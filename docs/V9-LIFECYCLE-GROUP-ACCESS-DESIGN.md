@@ -1,6 +1,6 @@
 # V9 group page and case-action boundary
 
-Status: proposed authorization change, not applied. The preset editor, typed configuration metadata and pure merge/record rules are implemented; database authorization and case-action wiring are pending owner confirmation. The supplied Admin V9 HTML is the product reference. Its `JORD`, `JPRESETS`, `joinerPerm` and `JPACT` functions distinguish page visibility from case actions. Automatic approval review rejected the first attempted implementation of the database predicates/update policy because it could persistently broaden mutation authority. That rejected command did not execute.
+Status: owner approved the scoped case-action rules on30 October2026. Implementation and verification are in progress; no real account grants or deployment are implied. The preset editor, typed configuration metadata and pure merge/record rules are implemented; database authorization and case-action wiring now use separate page-reader, case-actor and record-reader predicates. The supplied Admin V9 HTML is the product reference. Its `JORD`, `JPRESETS`, `joinerPerm` and `JPACT` functions distinguish page visibility from case actions. Automatic approval review rejected the first attempted implementation of the database predicates/update policy because it could persistently broaden mutation authority. That rejected command did not execute.
 
 ## Reviewable behavior
 
@@ -18,7 +18,7 @@ Only the existing Master Admin configuration writer can select groups, presets o
 
 - Keep the existing task/approval/fulfilment participant predicate unchanged. A new page reader must never become a writer by reusing that predicate in an update policy.
 - Add read authorization separately, with fresh active-account/tenant checks and redacted response projections. Hidden case sections, HR answers, identity fields and private documents must be absent from serialized responses, not merely hidden in the UI.
-- If the owner approves case actions, add a distinct fresh predicate for selected groups whose effective `actions` value is `allowed`. Apply it only to case operations, preserving canonical revision checks, audit/history, Personnel locks and company HR checks. It grants no global HR role, Payroll permission, template/configuration administration, identity grant or arbitrary asset mutation.
+- The owner approved a distinct fresh predicate for selected groups whose effective `actions` value is `allowed`. Apply it only to case operations, preserving canonical revision checks, audit/history, Personnel locks and company HR checks. It grants no global HR role, Payroll permission, template/configuration administration, identity grant or arbitrary asset mutation.
 - A read-only preset receives no new case-update permission. The existing assigned-task, approval and providing-team work authorities remain independently checked.
 - Case edits must respect each section: hidden case fields and notes cannot be changed, equipment selections require the appropriate equipment/case authority, and HR-only fields require actual company HR permission.
 - No real account/group membership will be changed as part of implementation or tests. A later Master Admin decision in the application owns actual grants. Deployment still requires the final migration rehearsals, full gate and coordinated staging window.
@@ -26,3 +26,8 @@ Only the existing Master Admin configuration writer can select groups, presets o
 ## Required evidence before release
 
 Compare the TypeScript and database preset/merge results for every preset and multiple-group combinations. Verify view-only users cannot save/submit/cancel/reopen through services or direct application-role SQL. Verify an explicitly allowed case actor can perform only permitted case actions, stale revisions fail, private fields remain absent, changing/revoking the configuration takes effect on the next request, and unrelated tenants/companies remain isolated. Retain existing assigned-task/approval/fulfilment regression checks and render the actual group-view journeys.
+
+
+## Implemented boundary under verification
+
+The legacy participant predicate remains unchanged. Additive SELECT policies admit configured page/record readers; a separate UPDATE/append predicate admits explicit case actors. A restrictive update policy prevents a group page grant from making an otherwise nonparticipating HR viewer a writer. Existing assigned-task, approval and providing-team participation retains its independent authority. Group presets never confer shared configuration administration. Services derive the actor from fresh database identities and canonical configuration and redact hidden case/HR fields, task slices, notes and history before serialization. The deterministic model checks changed patch keys against their section permissions; required fields, Personnel locks, revision/history and actual company HR checks remain in force.

@@ -35,3 +35,9 @@ export function joinerPageSections(config:Pick<Config,'access'|'groups'>,userId:
 export function joinerRecordAccess(config:Pick<Config,'access'|'groups'>,userId:string):boolean {
   return (config.access.recordHR??true)&&config.access.onboarding.includes(userId)||config.groups.some(group=>config.access.recordGroups?.includes(group.id)&&group.members.includes(userId));
 }
+
+/** UI payload pruning complements, but never replaces, the deterministic save boundary. */
+export function joinerEditablePatch<T extends Record<string,unknown>>(patch:T,sections:JoinerSections|null|undefined):Partial<T>{
+ if(!sections)return patch;
+ return Object.fromEntries(Object.entries(patch).filter(([key])=>['selected','extras','equipmentOverrides','deviceType'].includes(key)?sections.equip==='act':key==='checklistOverride'?sections.checklist==='all':key==='notes'?sections.notes==='view':sections.case==='view')) as Partial<T>;
+}

@@ -1154,7 +1154,7 @@ it('separates module membership, company HR scope and the minimal onboarding she
   let native=await onboardingContext(admin);native.config.access.onboarding.push(employee.userId!);native.config.access.offboarding.push(employee.userId!);
   await onboardingSaveConfig(admin,native.revision,native.config);
   const shell=await v9Workspace(employee);
-  expect(shell.permissions).toEqual({onboarding:true,offboarding:false,administration:false});
+  expect(shell.permissions).toEqual({onboarding:true,offboarding:false,administration:false,records:true});
   expect(shell.cases).toEqual([]);expect(shell.config!.checklists.every(checklist=>checklist.module==='onb')).toBe(true);
   expect(shell.config).toMatchObject({templates:[],emails:[],workflows:[],bpRules:[]});
   expect(shell.config).not.toHaveProperty('settlementPolicy');expect(shell.config).not.toHaveProperty('companies');

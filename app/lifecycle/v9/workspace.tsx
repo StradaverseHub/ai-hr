@@ -56,7 +56,7 @@ function Dialog({ title, children, close }: { title: string; children: ReactNode
 }
 export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativeSettings = null }: { nativeSettings?: NativeSettingsData | null; nativeCase?: { name: string; content: ReactNode }; initial: Workspace; viewer: ViewerIdentity; joiners?: NativeJoinersData | null }) {
   const router = useRouter(), [busy, start] = useTransition();
-  const [view, setView] = useState<View>(initial.permissions?.onboarding===false?(initial.permissions?.offboarding===false?'access':'leavers'):'joiners'), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
+  const [view, setView] = useState<View>(initial.permissions?.onboarding===false?(initial.permissions?.offboarding===false?(initial.permissions?.records?'records':'access'):'leavers'):'joiners'), [selected, setSelected] = useState<string | null>(null), [search, setSearch] = useState(''), [company, setCompany] = useState(''), [module, setModule] = useState<M.Module>('off');
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [creating, setCreating] = useState(false), [reason, setReason] = useState<{ type: 'cancel' | 'reopen'; value: string } | null>(null);
   const [mobileNavigation, setMobileNavigation] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'onb' | 'off' | 'shared'>('onb');

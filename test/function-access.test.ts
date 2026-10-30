@@ -31,7 +31,7 @@ import en from '../messages/en.json';
 
 const APP = path.resolve(__dirname, '../app');
 // ADR-0142: requireOnehrAdminAccess replaced requirePerfCompAccess on the /performance/[cycleId] pages.
-const GUARD_RE = /requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
+const GUARD_RE = /requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|readV9Workspace\s*\(|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
 
 /**
  * r362 — THIS USED TO TEST THE RAW SOURCE, SO A COMMENT COUNTED AS A GUARD.

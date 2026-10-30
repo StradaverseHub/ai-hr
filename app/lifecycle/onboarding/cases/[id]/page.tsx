@@ -12,6 +12,6 @@ export default async function Page({ params }: {
 }) { const s = await requireModule('lifecycle'), { id } = await params; if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
     notFound(); const detail = await onboardingDetail(s, id).catch(e => { if (e instanceof OnboardingError && ['not_found', 'forbidden'].includes(e.code))
     notFound(); throw e; }); const options = await onboardingOptions(s);
-    const documents = detail.actor.hr && detail.config.v9ChecklistRevision ? await v9CaseDetail(s, id) : null;
+    const documents = (detail.actor.module||detail.actor.caseActions) && detail.actor.hr && detail.config.v9ChecklistRevision ? await v9CaseDetail(s, id) : null;
     const signers=documents?.native?(await v9Workspace(s)).options.signatoryCandidatesByModule?.onb[documents.case.facts.company]:undefined;
     return <><OnboardingCaseView key={detail.revision} detail={detail} options={options}/>{documents?.native && <NativeCaseDocuments key={id} initial={documents.case} writableKeys={documents.personnelWritableKeys} config={documents.native.config} actor={documents.native.actor} users={detail.directory} eligibleSignatoryIds={signers}/>}</>; }

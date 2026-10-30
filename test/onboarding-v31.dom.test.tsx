@@ -223,3 +223,14 @@ it('shows an unlimited group as available without a zero-maximum workload meter'
   expect(group.getByText(/No task limit/)).toBeVisible(); expect(group.queryByRole('progressbar')).not.toBeInTheDocument();
   expect(group.getByRole('spinbutton', { name: 'Open onboarding task limit per person' })).toHaveAttribute('min', '0');
 });
+it('renders a group viewer with read-only case/checklist controls and no case-action buttons',async()=>{
+ const {JOINER_SECTION_PRESETS}=await import('../lib/onboarding-page-access');const {defaultV9CaseFields}=await import('../lib/lifecycle-v9-case-form');
+ const today=todayInKualaLumpur(),env={today,now:today+'T02:00:00Z',id:()=> 'fictional-id',nextNumber:()=> 'IT-1',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner','viewer']};
+ const config=defaultConfig('owner');config.v9CaseFields=defaultV9CaseFields('onb');config.v9ChecklistRevision=1;
+ const c=blankCase('case','OB-view','draft',{fullName:'Fictional read-only joiner',company:'company',department:'department',title:'position',joinDate:today},env);
+ const detail={case:c,config,revision:1,actor:{id:'viewer',name:'Fictional viewer',module:false,page:true,caseActions:false,sections:JOINER_SECTION_PRESETS.coord,hr:false,master:false},directory:[],labels:{},notes:[],availability:{},today,canOpenRequisition:false};
+ render(<NextIntlClientProvider locale="en" messages={messages('en')}><OnboardingCaseView detail={detail}/></NextIntlClientProvider>);
+ expect(screen.getByRole('heading',{name:'Fictional read-only joiner'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Cancel onboarding case'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit case and confirm checklist'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Save'})).not.toBeInTheDocument();
+ expect(screen.getByRole('combobox',{name:'Checklist choice'})).toBeDisabled();expect(mocks.change).not.toHaveBeenCalled();
+});

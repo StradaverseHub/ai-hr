@@ -1060,7 +1060,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // registered on `leaveConfig` above, behind the same requireAdmin guard, so nobody who could open the old
   // page loses access. (a324a4b3 had renamed its label nav.toilPolicy → nav.timeOffInLieu.)
   // ADR-0129: role-independent module grants and participation are explained by the scope notes.
-  { screenKey: 'onboardingV31', href: '/lifecycle/onboarding', labelKey: 'nav.newJoiners', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding', '/lifecycle/onboarding/cases/[id]'], hasScopeNote: true },
+  { screenKey: 'onboardingV31', href: '/lifecycle/onboarding', labelKey: 'nav.newJoiners', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding', '/lifecycle/onboarding/cases/[id]', '/lifecycle/v9', '/lifecycle/v9/onboarding/[id]'], hasScopeNote: true },
   { screenKey: 'onboardingChecklists', href: '/lifecycle/onboarding/checklists', labelKey: 'nav.onboardingChecklists', guard: 'onboardingAccess', routes: ['/lifecycle/onboarding/checklists'], hasScopeNote: true },
   { screenKey: 'onboardingSettings', href: '/admin/lifecycle/onboarding', labelKey: 'nav.onboardingSettings', guard: 'onboardingAccess', routes: ['/admin/lifecycle/onboarding'], hasScopeNote: true },
   { screenKey: 'onboardingGroups', href: '/admin/lifecycle/onboarding/groups', labelKey: 'nav.onboardingGroups', guard: 'onboardingParticipant', routes: ['/admin/lifecycle/onboarding/groups'], hasScopeNote: true },
@@ -1075,7 +1075,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     href: '/admin/lifecycle',
     labelKey: 'nav.lifecycleConfig',
     guard: 'requireAdmin',
-    routes: ['/admin/lifecycle', '/lifecycle/v9', '/lifecycle/v9/onboarding/[id]'],
+    routes: ['/admin/lifecycle'],
   },
   {
     screenKey: 'claimsConfig',

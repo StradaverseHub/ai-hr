@@ -365,6 +365,7 @@ export function log(c: Case, a: Actor, env: Environment, action: string, detail 
 }
 const member = (config: Config, group: Id | null, user: Id) => !!group && !!config.groups.find(g => g.id === group)?.members.includes(user);
 export const inGroup = member;
+const caseActor = (a:Actor) => a.module || a.caseActions || fail('Case actions are not allowed for this group.', 'forbidden');
 const moduleActor = (a: Actor) => a.module || fail('Onboarding access is required.', 'forbidden');
 const userAllowed = (env: Environment, id: Id) => env.users.includes(id) || fail('Choose an active user in this organisation.');
 export const available = (env: Environment, id: Id, date: string) => !(env.leave[id] ?? []).includes(date);
@@ -473,7 +474,7 @@ export function assignEquipment(config: Config, c: Case, item: Item, a: Actor, e
 export function manualEquipment(config: Config, c: Case, id: string, user: string | null, a: Actor, env: Environment, rr = false) {
     const request = currentReq(c), item = request?.items.find(item => item.id === id);
     if (c.state !== 'submitted' || !request || request.cancelledAt || request.handedAt || !item || !activeItem(item) || ['ready','handed'].includes(item.state)) fail('Choose an open approved equipment item.');
-    if (!a.module && !inGroup(config, item.team, a.id)) fail('Only the fulfilling team or onboarding editors can assign this item.', 'forbidden');
+    if (!a.module && !(a.caseActions&&a.sections?.equip==='act') && !inGroup(config, item.team, a.id)) fail('Only the fulfilling team or onboarding editors can assign this item.', 'forbidden');
     if (user && (!env.users.includes(user) || !inGroup(config, item.team, user))) fail('Choose an eligible member of the fulfilling team.');
     if (item.claim) env.taskLoads[item.claim] = Math.max(0, (env.taskLoads[item.claim] ?? 0) - 1);
     item.claim = null; item.assignmentFailure = null;
@@ -481,7 +482,7 @@ export function manualEquipment(config: Config, c: Case, id: string, user: strin
     else { item.claim = user; if (user) env.taskLoads[user] = (env.taskLoads[user] ?? 0) + 1; log(c, a, env, 'item.assigned', item.name + (user ? ' · ' + (env.userNames?.[user] ?? 'Team member') : ' · unassigned')); }
 }
 export function bulkEquipment(config: Config, c: Case, change: EquipmentBulk, a: Actor, env: Environment) {
-    moduleActor(a);
+    if(!a.module&&!(a.caseActions&&a.sections?.equip==='act'))fail('Equipment case actions are required.','forbidden');
     if (!change.ids.length || new Set(change.ids).size !== change.ids.length || change.group === undefined && change.method === undefined && change.due === undefined) fail('Choose items and at least one equipment change.');
     if (change.group !== undefined && !config.groups.some(group => group.id === change.group)) fail('Choose an existing assignment group.');
     if (change.method !== undefined && !['rr','manual'].includes(change.method)) fail('Choose Round robin or Manual.');
@@ -584,7 +585,7 @@ export function validateCase(config: Config, c: Case, hr = true) {
         fail('An item may only be requested once.');
 }
 export function submitCase(config: Config, c: Case, a: Actor, env: Environment) {
-    moduleActor(a);
+    caseActor(a);
     if (c.state === 'cancelled')
         fail('Reopen the case before submitting.');
     if (c.state === 'submitted' && !c.reconcileNeeded)
@@ -644,7 +645,7 @@ export function removeItem(config: Config, c: Case, item: Item, a: Actor, env: E
     if (!r || r.handedAt || r.cancelledAt)
         fail('Items cannot be removed after handover.');
     if (viaCase) {
-        moduleActor(a);
+        caseActor(a);
         if (!item.fromCase)
             fail('Case edits cannot remove items added by Group Tech.');
     }
@@ -699,7 +700,17 @@ export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'devi
     local?: Partial<Facts>;
 };
 export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, env: Environment) {
-    moduleActor(a);
+    caseActor(a);
+    if(!a.module&&a.sections){
+        const equal=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
+        for(const [key,value] of Object.entries(patch)){
+            if(value===undefined)continue;
+            const changed=key==='local'?Object.entries(patch.local??{}).some(([field,value])=>value!==effectiveFacts(c)[field as keyof Facts]):!equal(value,c[key as keyof Case]);
+            if(!changed)continue;
+            const permitted=['selected','extras','equipmentOverrides','deviceType'].includes(key)?a.sections.equip==='act':key==='checklistOverride'?a.sections.checklist==='all':key==='notes'?a.sections.notes==='view':a.sections.case==='view';
+            if(!permitted)fail('This case section is hidden or read-only for your group.','forbidden');
+        }
+    }
     if (c.state === 'cancelled')
         fail('Reopen the case to edit it.');
     if (patch.caseValues !== undefined || patch.caseContactEmail !== undefined) {
@@ -738,7 +749,7 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
     log(c, a, env, 'case.saved');
 }
 export function cancelCase(c: Case, reason: string, a: Actor, env: Environment, note = '') {
-    moduleActor(a);
+    caseActor(a);
     if (!reason.trim())
         fail('A cancellation reason is required.');
     if (c.state === 'cancelled')
@@ -759,7 +770,7 @@ export function cancelCase(c: Case, reason: string, a: Actor, env: Environment, 
     log(c, a, env, 'case.cancelled', reason + (note ? ' · ' + note : ''));
 }
 export function reopenCase(c: Case, a: Actor, env: Environment) {
-    moduleActor(a);
+    caseActor(a);
     if (c.state !== 'cancelled')
         fail('Only cancelled cases can be reopened.');
     c.state = 'pending';
@@ -797,7 +808,7 @@ export function setTask(config: Config, c: Case, taskId: Id, status: Task['statu
     log(c, a, env, 'task.status', t.name + ' · ' + status);
 }
 export function manualTask(config: Config, c: Case, id: Id, user: Id | null, a: Actor, env: Environment, rr = false) {
-    moduleActor(a);
+    if(!a.module&&!(a.caseActions&&a.sections?.checklist==='all'))fail('Checklist case actions are required.','forbidden');
     if (c.state !== 'submitted')
         fail('Submit this case first.');
     const t = c.tasks.find(t => t.id === id);

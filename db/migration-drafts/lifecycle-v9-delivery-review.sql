@@ -40,7 +40,7 @@ BEGIN
   IF NOT app.lc_v9_off_access(job.company_id) THEN RETURN false; END IF;
   SELECT data,data->>'state',jsonb_build_object('personId',data->'facts'->>'personId','employmentId',data->'facts'->>'employmentId') INTO state,parent_state,subject FROM lc_v9_case WHERE id=job.case_id AND tenant_id=job.tenant_id;
  ELSE
-  IF NOT app.onboarding_page_access() THEN RETURN false; END IF;
+  IF NOT app.onboarding_v9_case_actor() THEN RETURN false; END IF;
   SELECT p.data->'lifecycleV9',c.data->>'state',p.data->'lifecycleV9Subject' INTO state,parent_state,subject FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id WHERE c.id=job.onboarding_case_id AND c.tenant_id=job.tenant_id;
  END IF;
  IF parent_state IS DISTINCT FROM 'submitted' OR subject IS DISTINCT FROM job.payload->'subject' THEN RETURN false; END IF;

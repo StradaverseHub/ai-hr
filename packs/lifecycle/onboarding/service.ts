@@ -1,3 +1,5 @@
+import {JOINER_SECTION_PRESETS,joinerPageSections,joinerRecordAccess} from '../../../lib/onboarding-page-access';
+import {projectJoinerPage} from '../../../lib/onboarding-page-projection';
 import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
 import { documentFinal } from '../../../lib/lifecycle-v9-model';
 import type { NativeDocumentState } from '../../../lib/lifecycle-v9-native';
@@ -49,7 +51,8 @@ async function actorTx(tx: Tx, ctx: SessionContext, config: M.Config, companyId?
     }>(await tx.execute(sql `select app.is_group_admin() as master, app.is_admin_for(${companyId ?? null}::uuid) as hr, coalesce(p.full_name,'User '||left(u.id::text,8)) as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=app.current_user_id() and u.tenant_id=app.current_tenant_id() and not app.login_blocked(u.id)`));
     if (!row)
         M.fail('Your login is not available.', 'forbidden');
-    return { id: uid(ctx), name: row.name, module: config.access.onboarding.includes(uid(ctx)), master: row.master, hr: row.hr };
+    const sections=joinerPageSections(config,uid(ctx)),module=config.access.onboarding.includes(uid(ctx));
+    return { id:uid(ctx),name:row.name,module,page:!!sections,sections,caseActions:!!sections&&sections.actions==='allowed',records:joinerRecordAccess(config,uid(ctx)),master:row.master,hr:row.hr&&(module||!sections||sections.hr==='view') };
 }
 const clock = () => ({ now: new Date().toISOString(), today: todayInKualaLumpur() });
 async function directoryTx(tx: Tx) {
@@ -175,7 +178,7 @@ export async function onboardingSetupTx(ctx: SessionContext, tx: Tx) {
 export async function onboardingOptions(ctx: SessionContext) {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        if (!actor.module && !actor.master)
+        if (!actor.page && !actor.records && !actor.master)
             M.fail('Onboarding access is required.', 'forbidden');
         const companies = await tx.select({ id: company.id, name: company.legalName }).from(company).orderBy(asc(company.legalName));
         const ids = companies.map(c => c.id);
@@ -196,11 +199,11 @@ export async function onboardingOptions(ctx: SessionContext) {
 export async function onboardingList(ctx: SessionContext, companyIds?: string[]) {
     return withTenant(ctx, async (tx) => {
         const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config);
-        if (!actor.module)
+        if (!actor.page&&!actor.records)
             M.fail('Onboarding access is required.', 'forbidden');
         const list = await tx.select().from(cases).where(companyIds ? inArray(cases.companyId, companyIds) : undefined).orderBy(asc(cases.createdAt), asc(cases.id));
         const reads = await tx.select({ caseId: seen.caseId }).from(seen).where(eq(seen.userId, uid(ctx))), opened = new Set(reads.map(x => x.caseId));
-        return list.map(r => ({ case: r.data, revision: r.revision, isNew: !opened.has(r.id), progress: M.progress(config, r.data) }));
+        return list.map(r => ({ case: projectJoinerPage(r.data,config,actor.page?actor:{...actor,sections:{...JOINER_SECTION_PRESETS.approver,history:'equip'},hr:false}), revision: r.revision, isNew: !opened.has(r.id), progress: M.progress(config, r.data) }));
     });
 }
 async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
@@ -216,7 +219,7 @@ async function loadTx(tx: Tx, ctx: SessionContext, id: string, lock = false) {
             c.caseValues = s.data.caseValues; c.caseContactEmail = s.data.caseContactEmail;
         }
     }
-    if (!actor.hr && actor.module && config.v9CaseFields) {
+    if (!actor.hr && actor.page && config.v9CaseFields) {
         const [form] = await tx.execute<{ values: {caseValues?:Record<string,string>;caseContactEmail?:string} | null }>(sql`select app.onboarding_v9_case_values(${id}::uuid) as values`);
         c.caseValues = form?.values?.caseValues; c.caseContactEmail = form?.values?.caseContactEmail;
     }
@@ -227,14 +230,14 @@ function requisitionGroupAccess(config: M.Config, user: string): boolean {
     return groups.some(group => M.inGroup(config, group, user));
 }
 function canReadRequisition(config: M.Config, r: M.Requisition | null, actor: M.Actor): boolean {
-    return !!r && (actor.module || actor.hr || requisitionGroupAccess(config, actor.id) || r.items.some(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id))));
+    return !!r && (actor.records || actor.module || actor.hr || requisitionGroupAccess(config, actor.id) || r.items.some(i => M.inGroup(config, i.team, actor.id) || i.steps.some(s => s.user === actor.id || M.inGroup(config, s.group, actor.id))));
 }
 export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case', generation?: string) {
     return withTenant(ctx, async (tx) => {
         const { row, config, actor, c } = await loadTx(tx, ctx, id);
-        if (mode === 'case' && !actor.module)
+        if (mode === 'case' && !actor.page)
             M.fail('Onboarding access is required.', 'forbidden');
-        if (mode !== 'case' && !actor.module && !await participantTx(tx, id))
+        if (mode !== 'case' && !actor.module && !(mode==='requisition'&&actor.records) && !await participantTx(tx, id))
             M.fail('This work is not available to you.', 'forbidden');
         const selectedReq = generation ? c.requisitions.find(r => r.id === generation) ?? null : M.currentReq(c);
         if (mode === 'requisition' && !canReadRequisition(config, selectedReq, actor))
@@ -258,7 +261,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
         }
         if (mode !== 'case') { delete visible.caseValues; delete visible.caseContactEmail; }
         if (mode === 'requisition' && !actor.module && selectedReq) {
-            visible = structuredClone(c);
+            visible = projectJoinerPage(c,config,{...actor,hr:false,sections:{...JOINER_SECTION_PRESETS.approver,history:'equip'}});
             visible.tasks = [];
             visible.taskHistory = [];
             visible.acknowledgement = null;
@@ -276,7 +279,10 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
             if (cost)
                 labels.costCentre = cost.name;
         }
-        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.module || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor)), availability: actor.module ? (await environmentTx(tx, ctx, config, [c])).leave : {} as M.Environment['leave'], today: todayInKualaLumpur() };
+        if(mode==='case')visible=projectJoinerPage(visible,config,actor);
+        if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
+        if(!actor.module&&(mode==='requisition'||actor.sections?.case==='hidden'))for(const key of Object.keys(labels))if(!['company','businessGroup','title'].includes(key))delete labels[key as keyof M.Facts];
+        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor)), availability: actor.module ? (await environmentTx(tx, ctx, config, [c])).leave : {} as M.Environment['leave'], today: todayInKualaLumpur() };
     });
 }
 const participantTx = async (tx: Tx, id: string) => rows<{
@@ -285,7 +291,7 @@ const participantTx = async (tx: Tx, id: string) => rows<{
 export async function onboardingMarkSeen(ctx: SessionContext, id: string) {
     return withTenant(ctx, async (tx) => {
         const { actor } = await loadTx(tx, ctx, id);
-        if (!actor.module)
+        if (!actor.page)
             M.fail('Onboarding access is required.', 'forbidden');
         await tx.insert(seen).values({ tenantId: ctx.tenantId, userId: uid(ctx), caseId: id }).onConflictDoUpdate({ target: [seen.tenantId, seen.userId, seen.caseId], set: { seenAt: new Date() } });
     });
@@ -434,7 +440,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             case 'taskGroup': {
                 if (c.state !== 'submitted')
                     M.fail('Submit the case before assigning work.');
-                if (!actor.module)
+                if (!actor.module&&!(actor.caseActions&&actor.sections?.checklist==='all'))
                     M.fail('Onboarding access is required.', 'forbidden');
                 const task = c.tasks.find(t => t.id === command.taskId);
                 if (!task || task.by !== 'group' || task.status === 'done' || !config.groups.some(g => g.id === command.group))
@@ -824,7 +830,7 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
         if (input.context !== 'requisition' && !c.tasks.some(t => t.id === input.context) && !input.id)
             M.fail('Choose an existing task conversation.');
         const task = c.tasks.find(t => t.id === input.context), r = M.currentReq(c);
-        const allowed = actor.module || task?.assignee === actor.id || input.context === 'requisition' && canReadRequisition(config, r, actor) || thread.some(n => n.context === input.context && n.mentions.includes(actor.id));
+        const allowed = actor.module || actor.caseActions&&actor.sections?.notes==='view' || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id))) || thread.some(n => n.context === input.context && n.mentions.includes(actor.id));
         if (!allowed)
             M.fail('This conversation is not available.', 'forbidden');
         if (c.state === 'cancelled')
@@ -1280,7 +1286,7 @@ export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string
         if (privateRow) { Object.assign(c.source, privateRow.data.source); Object.assign(c.local, privateRow.data.local); c.caseValues = privateRow.data.caseValues; c.caseContactEmail = privateRow.data.caseContactEmail; }
         result = { row, config, c, actor: { id: 'system', name: 'System', module: true, hr: true, master: true } };
     }
-    if (!result.actor.module || !result.actor.hr) M.fail('Onboarding and company HR access are required.', 'forbidden');
+    if (!(result.actor.module||result.actor.caseActions) || !result.actor.hr) M.fail('Onboarding and company HR access are required.', 'forbidden');
     const [privateRow] = await tx.execute<{ state: NativeDocumentState | null; subject: { employmentId: string | null; personId: string | null } | null }>(sql`select data->'lifecycleV9' as state,data->'lifecycleV9Subject' as subject from lc_onboarding_private where case_id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
     if (privateRow?.subject?.employmentId && (privateRow.subject.employmentId !== result.c.employmentId || privateRow.subject.personId !== result.c.personId)) M.fail('The private document subject no longer matches this case. Review its Personnel link.', 'conflict');
     const subjects = result.c.personId ? await tx.execute<{ id: string }>(sql`select id from app_user where person_id=${result.c.personId}::uuid and tenant_id=${ctx.tenantId}::uuid and archived_at is null and not app.login_blocked(id) order by id limit 2`) : [];
@@ -1290,6 +1296,7 @@ export async function onboardingV9ReadTx(ctx: SessionContext, tx: Tx, id: string
 }
 export async function onboardingV9StoreTx(ctx: SessionContext, tx: Tx, id: string, expected: number, state: NativeDocumentState, completed: string[], action: string) {
     const { row, c, actor } = await onboardingV9ReadTx(ctx, tx, id);
+    if(ctx.userId&&!actor.module&&!actor.caseActions)M.fail('Case actions are required.','forbidden');
     if (row.revision !== expected) M.fail('This case changed. Refresh before trying again.', 'conflict');
     const { now, today } = clock();
     for (const task of c.tasks) if (completed.includes(task.id) && task.documentTemplate && task.status !== 'done') {

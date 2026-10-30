@@ -36,6 +36,71 @@ CREATE TABLE lc_v9_file (
  uploaded_by uuid NOT NULL REFERENCES app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
  CHECK(num_nonnulls(case_id,onboarding_case_id)=1)
 );
+-- Group page readers and case writers are deliberately separate from assigned-work participation.
+CREATE FUNCTION app.onboarding_v9_sections() RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+DECLARE cfg jsonb; g jsonb; setting jsonb; candidate jsonb; result jsonb; k text; ordering jsonb := '{"case":["hidden","view"],"hr":["hidden","view"],"notes":["hidden","view"],"checklist":["hidden","team","all"],"equip":["hidden","view","act"],"history":["hidden","equip","full"],"actions":["none","allowed"]}';
+BEGIN
+ IF app.current_user_id() IS NULL OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN NULL; END IF;
+ SELECT data INTO cfg FROM lc_onboarding_config WHERE tenant_id=app.current_tenant_id();
+ IF cfg->'access'->'onboarding' ? app.current_user_id()::text THEN RETURN '{"case":"view","hr":"view","notes":"view","checklist":"all","equip":"act","history":"full","actions":"allowed"}'::jsonb; END IF;
+ FOR g IN SELECT * FROM jsonb_array_elements(coalesce(cfg->'groups','[]')) LOOP
+  IF NOT (coalesce(cfg->'access'->'joinerViewGroups','[]') ? (g->>'id') AND g->'members' ? app.current_user_id()::text) THEN CONTINUE; END IF;
+  setting:=cfg->'access'->'joinerSections'->(g->>'id');
+  candidate:=CASE setting->>'preset'
+   WHEN 'full' THEN '{"case":"view","hr":"view","notes":"view","checklist":"all","equip":"act","history":"full","actions":"allowed"}'::jsonb
+   WHEN 'coord' THEN '{"case":"view","hr":"hidden","notes":"view","checklist":"all","equip":"act","history":"full","actions":"none"}'::jsonb
+   WHEN 'approver' THEN '{"case":"hidden","hr":"hidden","notes":"hidden","checklist":"hidden","equip":"view","history":"hidden","actions":"none"}'::jsonb
+   ELSE '{"case":"view","hr":"hidden","notes":"view","checklist":"team","equip":"act","history":"equip","actions":"none"}'::jsonb END;
+  IF setting->>'preset'='custom' THEN candidate:=candidate||coalesce(setting->'s','{}'); END IF;
+  IF result IS NULL THEN result:=candidate; ELSE
+   FOR k IN SELECT jsonb_object_keys(ordering) LOOP
+    IF (SELECT ordinality FROM jsonb_array_elements_text(ordering->k) WITH ORDINALITY v WHERE value=candidate->>k) > (SELECT ordinality FROM jsonb_array_elements_text(ordering->k) WITH ORDINALITY v WHERE value=result->>k) THEN result:=jsonb_set(result,ARRAY[k],candidate->k); END IF;
+   END LOOP;
+  END IF;
+ END LOOP;
+ RETURN result;
+END;
+$$;
+CREATE FUNCTION app.onboarding_v9_case_actor() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$ SELECT coalesce(app.onboarding_v9_sections()->>'actions'='allowed',false) $$;
+CREATE FUNCTION app.onboarding_v9_page_reader() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$ SELECT app.onboarding_v9_sections() IS NOT NULL $$;
+CREATE FUNCTION app.onboarding_v9_record_reader() RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) AND EXISTS(
+ SELECT 1 FROM lc_onboarding_config cfg WHERE cfg.tenant_id=app.current_tenant_id() AND (
+ coalesce((cfg.data->'access'->>'recordHR')::boolean,true) AND cfg.data->'access'->'onboarding' ? app.current_user_id()::text OR EXISTS(
+ SELECT 1 FROM jsonb_array_elements(coalesce(cfg.data->'groups','[]')) g WHERE coalesce(cfg.data->'access'->'recordGroups','[]') ? (g->>'id') AND g->'members' ? app.current_user_id()::text)))
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_v9_sections(),app.onboarding_v9_case_actor(),app.onboarding_v9_page_reader(),app.onboarding_v9_record_reader() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_v9_sections(),app.onboarding_v9_case_actor(),app.onboarding_v9_page_reader(),app.onboarding_v9_record_reader() TO ai_hr_app;
+CREATE POLICY onb_v9_group_read ON lc_onboarding_case FOR SELECT USING(tenant_id=app.current_tenant_id() AND (app.onboarding_v9_page_reader() OR app.onboarding_v9_record_reader()));
+CREATE POLICY onb_v9_case_actions ON lc_onboarding_case FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.onboarding_v9_case_actor()) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onboarding_v9_case_actor());
+CREATE POLICY onb_v9_group_write_boundary ON lc_onboarding_case AS RESTRICTIVE FOR UPDATE USING(NOT app.onboarding_v9_page_reader() OR app.onboarding_v9_case_actor() OR app.onboarding_participant(id)) WITH CHECK(NOT app.onboarding_v9_page_reader() OR app.onboarding_v9_case_actor() OR app.onboarding_participant(id));
+CREATE POLICY onb_v9_revision_append ON lc_onboarding_case_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.onboarding_v9_case_actor());
+CREATE POLICY onb_v9_note_read ON lc_onboarding_note FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.onboarding_v9_sections()->>'notes'='view');
+CREATE POLICY onb_v9_note_append ON lc_onboarding_note FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.onboarding_v9_case_actor() AND app.onboarding_v9_sections()->>'notes'='view' AND data->>'by'=app.current_user_id()::text);
+CREATE POLICY onb_v9_note_edit ON lc_onboarding_note FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.onboarding_v9_case_actor() AND app.onboarding_v9_sections()->>'notes'='view' AND data->>'by'=app.current_user_id()::text) WITH CHECK(tenant_id=app.current_tenant_id() AND app.onboarding_v9_case_actor() AND data->>'by'=app.current_user_id()::text);
+CREATE POLICY onb_v9_seen_update ON lc_onboarding_seen FOR UPDATE USING(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.onboarding_v9_page_reader()) WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.onboarding_v9_page_reader());
+CREATE POLICY onb_v9_seen ON lc_onboarding_seen FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND app.onboarding_v9_page_reader());
+
+CREATE OR REPLACE FUNCTION app.onboarding_case_labels(p_case uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+ WITH c AS (SELECT (data->'local')||(data->'source') AS f FROM lc_onboarding_case
+ WHERE id=p_case AND tenant_id=app.current_tenant_id() AND (app.onboarding_participant(id) OR app.is_admin_for(company_id) OR app.onboarding_v9_page_reader() OR app.onboarding_v9_record_reader()))
+ SELECT jsonb_strip_nulls(jsonb_build_object(
+ 'company',(SELECT legal_name FROM company,c WHERE company.tenant_id=app.current_tenant_id() AND company.id::text=c.f->>'company'),
+ 'businessGroup',(SELECT name FROM business_unit,c WHERE business_unit.tenant_id=app.current_tenant_id() AND business_unit.id::text=c.f->>'businessGroup'),
+ 'department',(SELECT name FROM department,c WHERE department.tenant_id=app.current_tenant_id() AND department.id::text=c.f->>'department'),
+ 'title',(SELECT title FROM position,c WHERE position.tenant_id=app.current_tenant_id() AND position.id::text=c.f->>'title'),
+ 'grade',(SELECT name FROM job_grade,c WHERE job_grade.tenant_id=app.current_tenant_id() AND job_grade.id::text=c.f->>'grade'),
+ 'supervisor',(SELECT p.full_name FROM employment e JOIN person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id,c WHERE e.tenant_id=app.current_tenant_id() AND e.id::text=c.f->>'supervisor')
+ )) WHERE EXISTS(SELECT 1 FROM c)
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_case_labels(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_case_labels(uuid) TO ai_hr_app;
+
 -- Module membership is independent of the existing company HR scope.
 CREATE FUNCTION app.lc_v9_off_access(p_company uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
@@ -61,8 +126,8 @@ CREATE POLICY v9_case_insert ON lc_v9_case FOR INSERT WITH CHECK(tenant_id=app.c
 CREATE POLICY v9_case_update ON lc_v9_case FOR UPDATE USING(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id)) WITH CHECK(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
 CREATE POLICY v9_case_revision_read ON lc_v9_case_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
 CREATE POLICY v9_case_revision_append ON lc_v9_case_revision FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND app.lc_v9_off_access(company_id));
-CREATE POLICY v9_file_read ON lc_v9_file FOR SELECT USING(tenant_id=app.current_tenant_id() AND (case_id IS NOT NULL AND app.lc_v9_off_access(company_id) OR onboarding_case_id IS NOT NULL AND app.is_admin_for(company_id) AND (app.onboarding_page_access() OR app.is_group_admin())));
-CREATE POLICY v9_file_append ON lc_v9_file FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND (case_id IS NOT NULL AND app.lc_v9_off_access(company_id) OR onboarding_case_id IS NOT NULL AND app.is_admin_for(company_id) AND (app.onboarding_page_access() OR app.is_group_admin())) AND uploaded_by=app.current_user_id());
+CREATE POLICY v9_file_read ON lc_v9_file FOR SELECT USING(tenant_id=app.current_tenant_id() AND (case_id IS NOT NULL AND app.lc_v9_off_access(company_id) OR onboarding_case_id IS NOT NULL AND app.is_admin_for(company_id) AND (app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin())));
+CREATE POLICY v9_file_append ON lc_v9_file FOR INSERT WITH CHECK(tenant_id=app.current_tenant_id() AND (case_id IS NOT NULL AND app.lc_v9_off_access(company_id) OR onboarding_case_id IS NOT NULL AND app.is_admin_for(company_id) AND (app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin())) AND uploaded_by=app.current_user_id());
 GRANT SELECT,INSERT,UPDATE ON lc_v9_config,lc_v9_case TO ai_hr_app;
 GRANT SELECT,INSERT ON lc_v9_config_revision,lc_v9_case_revision,lc_v9_file TO ai_hr_app;
 
@@ -354,7 +419,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  WITH members AS (
  SELECT DISTINCT (jsonb_array_elements_text(g->'members'))::uuid AS id
  FROM lc_onboarding_config c,jsonb_array_elements(c.data->'groups') g
- WHERE c.tenant_id=app.current_tenant_id() AND (app.is_admin() OR app.onboarding_page_access() OR app.is_group_admin() OR app.onboarding_group_member(g->>'id'))
+ WHERE c.tenant_id=app.current_tenant_id() AND (app.is_admin() OR app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() OR app.onboarding_group_member(g->>'id'))
  ), dates AS (SELECT DISTINCT unnest(p_dates) d LIMIT 400)
  SELECT DISTINCT u.id,dates.d FROM members m JOIN app_user u ON u.id=m.id AND u.tenant_id=app.current_tenant_id()
  JOIN employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
@@ -409,11 +474,11 @@ CREATE OR REPLACE FUNCTION app.onboarding_v9_case_values(p_case uuid) RETURNS js
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE c lc_onboarding_case%ROWTYPE; p jsonb; cfg jsonb; result jsonb; hr boolean;
 BEGIN
- IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR NOT app.onboarding_page_access() THEN RETURN NULL; END IF;
+ IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR NOT app.onboarding_v9_page_reader() THEN RETURN NULL; END IF;
  SELECT * INTO c FROM lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id(); IF NOT FOUND THEN RETURN NULL; END IF;
  SELECT data INTO p FROM lc_onboarding_private WHERE case_id=c.id AND tenant_id=c.tenant_id;
  SELECT data INTO cfg FROM lc_v9_config WHERE tenant_id=c.tenant_id;
- hr:=app.is_admin_for(c.company_id);
+ hr:=app.is_admin_for(c.company_id) AND app.onboarding_v9_sections()->>'hr'='view';
  SELECT jsonb_build_object('caseValues',coalesce(jsonb_object_agg(a.key,a.value) FILTER(WHERE hr OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->'onb','[]'::jsonb)) f WHERE f->>'key'=a.key AND coalesce((f->>'hrOnly')::boolean,false)=false)),'{}'::jsonb)) INTO result FROM jsonb_each(coalesce(p->'caseValues','{}'::jsonb)) a;
  IF p ? 'caseContactEmail' AND (hr OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->'onb','[]'::jsonb)) f WHERE f->>'key'='email' AND f->>'hrOnly'='true')) THEN result:=result||jsonb_build_object('caseContactEmail',p->'caseContactEmail'); END IF;
  RETURN result;
@@ -426,7 +491,7 @@ CREATE OR REPLACE FUNCTION app.onboarding_v9_save_case_values(p_case uuid,p_revi
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE c lc_onboarding_case%ROWTYPE; prior jsonb; cfg jsonb; answers jsonb;
 BEGIN
- IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR NOT app.onboarding_page_access() THEN RAISE EXCEPTION 'Onboarding access is required'; END IF;
+ IF app.current_user_id() IS NULL OR app.login_blocked(app.current_user_id()) OR NOT app.onboarding_v9_case_actor() OR app.onboarding_v9_sections()->>'case'<>'view' THEN RAISE EXCEPTION 'Onboarding case actions are required'; END IF;
  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
  SELECT * INTO c FROM lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
@@ -528,7 +593,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
  'peopleOpsGroup',v.data->'peopleOpsGroup','checklists',coalesce((SELECT jsonb_agg(c) FROM jsonb_array_elements(v.data->'checklists') c WHERE c->>'module'='onb'),'[]'::jsonb),
  'templates','[]'::jsonb,'emails','[]'::jsonb,'workflows','[]'::jsonb,'bpRules','[]'::jsonb)
  FROM lc_v9_config v JOIN lc_onboarding_config n ON n.tenant_id=v.tenant_id WHERE v.tenant_id=app.current_tenant_id()
- AND app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id()) AND app.onboarding_page_access()
+ AND app.current_user_id() IS NOT NULL AND NOT app.login_blocked(app.current_user_id()) AND (app.onboarding_v9_page_reader() OR app.onboarding_v9_record_reader())
 $$;
 REVOKE ALL ON FUNCTION app.lc_v9_onboarding_shell() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lc_v9_onboarding_shell() TO ai_hr_app;
