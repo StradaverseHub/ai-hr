@@ -13,7 +13,8 @@ import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
 import {ownAssistantConversationContext as readOwnedContext,issueAssistantConversationToken,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,ASSISTANT_CHAT_CONTEXT_LIMITS} from '../core/assistant-conversation-context';
 import * as contextOwner from '../core/assistant-conversation-context';
 import {openaiAdapter} from '../lib/ai/providers/openai';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let b:Base;
 const tokens=new Map<string,string>();
 const ownAssistantConversationContext=(ctx:SessionContext,id:unknown,question:unknown)=>readOwnedContext(ctx,id,question,typeof id==='string'?tokens.get(id):undefined);
@@ -27,7 +28,7 @@ async function actor(base:Base=b){
   companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const userId=await createAppUser(base.tenantId,employee.personId,'employee');await grantAssistant(admin,{appUserId:userId});
  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
- return {ctx,admin,userId};
+ return {ctx,admin,userId,employmentId:employee.employmentId};
 }
 async function exchange(ctx:SessionContext,question='What leave can I take next week?',continues:string|null=null,askedAt?:Date){
  const id=randomUUID();await owner.db.insert(s.assistantExchange).values({id,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,
@@ -108,38 +109,39 @@ describe('same-login human chat context owner',()=>{
 });
 
 describe('ordinary follow-up admission uses current human context only',()=>{
+ async function providerActor(){const result=await actor();await seedEntitlement(result.admin,{leaveTypeId:b.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});await owner.db.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:result.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return result;}
  it('records and reopens a genuine greeting without reading HR records or claiming missing facts',async()=>{
-  provider();const {ctx}=await actor();const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({...end,text:JSON.stringify({version:1,mode:'social',code:'greeting'})});
-  const answer=await askAssistant(ctx,{question:'Hello!'});expect(answer.toolsUsed).toEqual([]);expect(transport).toHaveBeenCalledOnce();
+  provider();const {ctx}=await providerActor();const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({...end,text:JSON.stringify({version:1,mode:'social',code:'greeting'})});
+  const answer=await askAssistant(ctx,{question:'Hello!'});expect(answer.toolsUsed).toEqual([]);expect(transport).not.toHaveBeenCalled();
   const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:answer.exchangeId,includeGovernance:false});
   expect(workspace.history.find(row=>row.id===answer.exchangeId)?.grounded?.conversation).toEqual({plan:{version:1,mode:'social',code:'greeting'},facts:[]});
  });
- it('passes human context on every fresh provider call, persists only the new question and links the own exchange',async()=>{
-  provider();const {ctx}=await actor(),first=await exchange(ctx),second=await exchange(ctx,'Which dates are public holidays?',first);
-  const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValueOnce(tool).mockResolvedValueOnce(end);
-  const answer=await askAssistant(ctx,{question:'What about tomorrow?',previousExchangeId:second,previousConversationToken:tokens.get(second)});
-  expect(transport).toHaveBeenCalledTimes(2);
+ it('resolves follow-up intent locally, sends only closed references, stores only the new question and links the own exchange',async()=>{
+  provider();const {ctx}=await providerActor(),first=await exchange(ctx,'My leave balance'),second=await exchange(ctx,'And pending?',first);
+  const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValueOnce(end);
+  const answer=await askAssistant(ctx,{question:'And taken?',previousExchangeId:second,previousConversationToken:tokens.get(second)});
+  expect(transport).toHaveBeenCalledOnce();
   for(const [,args] of transport.mock.calls){
-   expect(args.turns.slice(0,3)).toEqual([{role:'user',content:JSON.stringify({previousHumanQuestion:'What leave can I take next week?'})},
-    {role:'user',content:JSON.stringify({previousHumanQuestion:'Which dates are public holidays?'})},{role:'user',content:'What about tomorrow?'}]);
+   expect(args.turns).toHaveLength(1);expect(args.turns[0]).toMatchObject({role:'user'});expect(JSON.stringify(args)).toContain('leave_taken');
+   for(const human of ['My leave balance','And pending?','And taken?'])expect(JSON.stringify(args)).not.toContain(human);
    expect(JSON.stringify(args)).not.toContain(staleAnswer);expect(JSON.stringify(args)).not.toContain(staleRead);
   }
   const row=(await ownRows(ctx)).find(row=>row.id===answer.exchangeId)!;
-  expect(row.question).toBe('What about tomorrow?');expect(row.continuesExchangeId).toBe(second);
+  expect(row.question).toBe('And taken?');expect(row.continuesExchangeId).toBe(second);
   expect(answer.conversationToken).toBeTruthy();const continued=await readOwnedContext(ctx,answer.exchangeId,'And Friday?',answer.conversationToken);
-  expect(continued.questions).toEqual(['What leave can I take next week?','Which dates are public holidays?','What about tomorrow?']);
+  expect(continued.questions).toEqual(['My leave balance','And pending?','And taken?']);
  });
  it('sends no historical context for a new conversation and refuses mixed continuation modes before any provider admission',async()=>{
-  provider();const {ctx}=await actor(),first=await exchange(ctx);
+  provider();const {ctx}=await providerActor(),first=await exchange(ctx);
   const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
-  await askAssistant(ctx,{question:'New topic'});
-  expect(transport.mock.calls[0][1].turns).toEqual([{role:'user',content:'New topic'}]);
+  await askAssistant(ctx,{question:'My leave balance'});
+  expect(transport.mock.calls[0][1].turns).toHaveLength(1);expect(JSON.stringify(transport.mock.calls[0][1])).toContain('leave_available');expect(JSON.stringify(transport.mock.calls[0][1])).not.toContain('My leave balance');
   await expect(askAssistant(ctx,{question:'Next',previousExchangeId:first,previousConversationToken:tokens.get(first),clarificationExchangeId:first})).rejects.toMatchObject({code:'invalid_question'});
   await expect(askAssistant(ctx,{question:'Next',previousExchangeId:randomUUID(),previousConversationToken:'not-a-token'})).rejects.toMatchObject({code:'invalid_question'});
   expect(transport).toHaveBeenCalledOnce();
  });
  it('refuses the marker transaction if history is erased after it was read, without reaching a provider',async()=>{
-  provider();const {ctx}=await actor(),id=await exchange(ctx),read=contextOwner.ownAssistantConversationContext;
+  provider();const {ctx}=await providerActor(),id=await exchange(ctx),read=contextOwner.ownAssistantConversationContext;
   const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
   vi.spyOn(contextOwner,'ownAssistantConversationContext').mockImplementationOnce(async(supplied,previous,question,token,conversationScope)=>{
    const context=await read(supplied,previous,question,token,conversationScope);expect(await eraseOwnAssistantHistory(ctx)).toEqual({retired:1});return context;
@@ -147,12 +149,12 @@ describe('ordinary follow-up admission uses current human context only',()=>{
   await expect(askAssistant(ctx,{question:'And tomorrow?',previousExchangeId:id,previousConversationToken:tokens.get(id)})).rejects.toThrow('Current conversation unavailable.');
   expect(transport).not.toHaveBeenCalled();expect(await ownRows(ctx)).toHaveLength(1);
  });
- it('refuses another provider round trip when any carried question retires after the first call',async()=>{
-  provider();const {ctx}=await actor(),first=await exchange(ctx),second=await exchange(ctx,'What about next month?',first);
+ it('makes no additional dispatch and retires content when any carried question retires during the sole call',async()=>{
+  provider();const {ctx}=await providerActor(),first=await exchange(ctx,'My leave balance'),second=await exchange(ctx,'And pending?',first);
   const transport=vi.spyOn(openaiAdapter,'converse').mockImplementationOnce(async()=>{
    await owner.db.execute(sql`select app._assistant_transcripts_retire(${ctx.tenantId}::uuid,array[${first}::uuid],true)`);return tool;
   }).mockResolvedValue(end);
-  await expect(askAssistant(ctx,{question:'And tomorrow?',previousExchangeId:second,previousConversationToken:tokens.get(second)})).rejects.toMatchObject({code:'provider_error'});
+  await expect(askAssistant(ctx,{question:'And taken?',previousExchangeId:second,previousConversationToken:tokens.get(second)})).rejects.toMatchObject({code:'provider_error'});
   expect(transport).toHaveBeenCalledOnce();
   expect((await ownRows(ctx)).find(row=>row.id===first)?.contentRetiredAt).not.toBeNull();
  });

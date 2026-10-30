@@ -79,7 +79,7 @@ const h=vi.hoisted(()=>{
  });
  const prepareStrategy=vi.fn(async(_tx:unknown,_ctx:unknown,configuration:unknown,_question:string,_continuationSourceTx?:unknown)=>{
   if(state.prepareFails)throw Error('Agent review could not be confirmed.');
-  return {configuration,system:'fixture-strategy',capability:{},provenance:{mode:'baseline',version:0,configurationDigest:'fixture'}};
+  return {configuration,system:'fixture-strategy',variant:'baseline_v1',capability:{},provenance:{mode:'baseline',version:0,configurationDigest:'fixture'}};
  });
  const completeStrategy=vi.fn(async(_tx:unknown,_ctx:unknown,_capability:unknown,_exchangeId:string)=>{
   if(state.erased)throw Error('Agent review could not be confirmed.');
@@ -113,22 +113,21 @@ vi.mock('../core/assistant-question-budget',async()=>{
 });
 vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrategyTx:h.prepareStrategy,completeAssistantConversationStrategyTx:h.completeStrategy,
  retireAssistantConversationStrategyCapability:h.retireStrategy,withGovernedSpecialistReadBatch:async()=>{throw Error('no specialist reads in this fixture');}}));
-vi.mock('../core/assistant-provider-input',()=>({prepareAssistantConversation:(_ctx:unknown,configuration:unknown,args:unknown)=>({configuration,args})}));
+vi.mock('../core/ai-governance',async()=>({preparePrivateAiTask:async(configuration:unknown,_contract:string,readSource:(tx:unknown,ctx:unknown)=>Promise<unknown>)=>{const {capturePrivateAssistantTask}=await import('../lib/ai/provider-assistant-policy');const prepared=capturePrivateAssistantTask(await readSource({},ctx));return{...prepared,configuration,operation:prepared.local.operation,dispose:()=>undefined};}}));
+vi.mock('../core/entitlements',()=>({resolveEntitlementsTx:async()=>({})}));
+vi.mock('../core/assistant-disclosure-read',()=>({assistantSourceReplay:()=>async()=>true}));
 vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:()=>null}));
-vi.mock('../core/assistant-tools',()=>({ASSISTANT_TOOLS:[],toolsFor:()=>[]}));
-vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async()=>{throw Error('no reads in this fixture');}}));
+vi.mock('../core/assistant-tools',()=>{const tool={module:'leave',sensitivity:'ordinary',spec:{name:'my_leave_balances',description:'Fictional bounded own read',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,employments:[{employmentId:'fixture-employment',company:'Fixture Company',balances:[{leaveType:'Annual leave',available:113.75,taken:0,pending:0}]}]})};return{ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
+vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,read:(session:unknown)=>Promise<unknown>)=>read({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,read:(session:unknown)=>Promise<unknown>)=>read({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
-vi.mock('../lib/ai/assistant-conversation-system',()=>({buildAssistantConversationSystem:(system:string)=>system}));
-vi.mock('../lib/ai/assistant-answer-plan',()=>({parseAssistantAnswerPlan:()=>{throw Error('no plan in this fixture');},adjudicateAssistantAnswerPlan:()=>undefined}));
 vi.mock('../lib/ai/assistant-tool-answer-evidence',()=>({assistantToolAnswerExplanations:()=>[]}));
 vi.mock('../lib/ai/assistant-answer-explanations',()=>({assistantAnswerExplanationAvailability:()=>[]}));
-vi.mock('../lib/ai/grounded-tool-presentation',()=>({isGroundedToolName:()=>false,presentGroundedToolOutcome:()=>null}));
 
 import {askAssistant,AssistantError} from '../core/assistant';
 
 const ctx:Parameters<typeof askAssistant>[0]={tenantId:'00000000-0000-4000-8000-0000000000a1',userId:'00000000-0000-4000-8000-0000000000b2',
  personId:'00000000-0000-4000-8000-0000000000c3',roles:['employee'],grants:[{role:'employee',companyId:null}]};
-const QUESTION='How many annual leave days do I have left?';
+const QUESTION='How much leave do I have?';
 /** The refusal the caller sees: an AssistantError code, or a description of anything else. */
 async function outcome(promise:Promise<unknown>):Promise<string>{try{await promise;}catch(error){return error instanceof AssistantError?error.code:'not an AssistantError: '+String(error);}return 'answered';}
 const rawText=(row:Row)=>[row.question,row.answer,row.disclosureReceipt,JSON.stringify(row.toolCalls),row.error].join('|');
@@ -209,13 +208,13 @@ describe('every admitted Assistant question counts exactly once',()=>{
 });
 
 describe('a clarification continuation cannot carry the original question past its own 30 days',()=>{
- it('stores only the new human reply; the original question reaches the provider as transient context',async()=>{
-  const original='ORIGINAL-QUESTION-READ-ON-DAY-29: which leave should I take next month?';
+ it('stores only the new human reply; original question and local slot label never reach the provider',async()=>{
+  const original='My leave balance';
   h.state.clarification={originalQuestion:original,slot:'leave_type',answer:'Annual leave'};
   const answer=await askAssistant(ctx,{question:'  Annual leave  ',clarificationExchangeId:'00000000-0000-4000-8000-0000000000d4'});
   expect(exchanges()).toHaveLength(1);const [row]=exchanges();
   expect(row).toMatchObject({id:answer.exchangeId,question:'Annual leave'});
-  expect(rawText(row)).not.toContain('ORIGINAL-QUESTION');
+  expect(rawText(row)).not.toContain(original);
   // The marker digest and the sealed receipt bind the STORED question, so completion still verifies.
   expect(h.prepareStrategy.mock.calls[0][3]).toBe('Annual leave');
   // The original question is transient context: its own source is handed to the strategy owner to
@@ -223,8 +222,8 @@ describe('a clarification continuation cannot carry the original question past i
   expect(typeof h.prepareStrategy.mock.calls[0][4]).toBe('function');
   expect(h.seal.mock.calls[0][0].question).toBe('Annual leave');
   const turns=h.converse.mock.calls[0][1].turns;
-  expect(turns[0]).toEqual({role:'user',content:original});
-  expect(JSON.parse(String(turns[1].content))).toEqual({humanClarification:{slot:'leave_type',answer:'Annual leave'}});
+  expect(turns).toHaveLength(1);expect(turns[0]).toMatchObject({role:'user'});expect(JSON.parse(String(turns[0].content))).toMatchObject({operation:'conversation',intent:'leave_available',strategy:'baseline_v1'});
+  expect(JSON.stringify(turns)).not.toContain(original);expect(JSON.stringify(turns)).not.toContain('Annual leave');
   expect(usage()).toHaveLength(1);
  });
 });
