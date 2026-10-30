@@ -5,6 +5,7 @@ import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi,type MockInstance} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as governance from '../core/ai-governance';
+import * as assistantReads from '../core/assistant-read-session';
 import {submitFeedback,generateFeedbackPlan,cancelFeedback} from '../core/feedback';
 import {cancelClaim,updateClaimType,deleteClaimDraft,saveClaimDraft} from '../core/claims';
 import {askAssistant} from '../core/assistant';
@@ -182,9 +183,22 @@ describe('exact native source ownership at callback tail',()=>{
  });
  it('protects the Assistant own-claim list against native deletion and insertion phantoms without granting other claims',async()=>{
   const employmentId=await makeEmp('Actual fictional claim-list owner'),[employment]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employmentId)),userId=await createAppUser(b.tenantId,employment.personId,'employee');await grantAssistant(a,{appUserId:userId});const self:SessionContext={...await entitledCtx(b,['employee']),userId,personId:employment.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]},[type]=await owner.db.insert(schema.claimType).values({tenantId:b.tenantId,code:'SOURCE_LIST',name:'Fictional own claim type'}).returning(),input={employmentId,claimTypeId:type.id,amount:12,incurredOn:todayInKualaLumpur(),description:'Fictional own draft.'},draft=await saveClaimDraft(self,input);
-  afterSourceReplay=async()=>{await expect(deleteClaimDraft(self,draft.id)).rejects.toThrow();await expect(saveClaimDraft(self,input)).rejects.toThrow();expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,employmentId))).toHaveLength(1);};
   const chat=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({text:'{"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":0,"fact":0}]}',stop:'end',toolCalls:[],usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0},usageReported:true});
-  await askAssistant(self,{question:'show my claims'});expect(chat).toHaveBeenCalledOnce();expect(chat.mock.calls[0][1].tools).toEqual([]);expect(chat.mock.calls[0][1].cacheKey).toBeUndefined();expect(JSON.stringify(chat.mock.calls[0][1].turns)).not.toMatch(/Fictional own draft\.|show my claims/);await deleteClaimDraft(self,draft.id);const replacement=await saveClaimDraft(self,input);expect(replacement.id).not.toBe(draft.id);
+  // Source preparation and provider admission both replay the native list. Observe its REAL reader
+  // only inside the actual conversation admission, independent of derived config/check identities.
+  let admitting=false,tailReads=0;const originalConverse=ai.converse,originalRead=assistantReads.withAssistantAdmissionReadsTx;
+  vi.spyOn(ai,'converse').mockImplementation(async(configuration,args)=>{admitting=true;try{return await originalConverse(configuration,args);}finally{admitting=false;}});
+  const checkNativeRead:typeof originalRead=async(context,tx,consume)=>{
+   const result=await originalRead(context,tx,consume);
+   if(admitting){tailReads++;expect(tailReads).toBe(1);expect(result).toBe(true);expect(chat).not.toHaveBeenCalled();
+    // The caller's actual admission transaction still owns native list row/phantom protections.
+    await expect(deleteClaimDraft(self,draft.id)).rejects.toThrow();await expect(saveClaimDraft(self,input)).rejects.toThrow();
+    expect(await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,employmentId))).toHaveLength(1);
+   }
+   return result;
+  };
+  vi.spyOn(assistantReads,'withAssistantAdmissionReadsTx').mockImplementation(checkNativeRead);
+  await askAssistant(self,{question:'show my claims'});expect(tailReads).toBe(1);expect(chat).toHaveBeenCalledOnce();expect(chat.mock.calls[0][1].tools).toEqual([]);expect(chat.mock.calls[0][1].cacheKey).toBeUndefined();expect(JSON.stringify(chat.mock.calls[0][1].turns)).not.toMatch(/Fictional own draft\.|show my claims/);await deleteClaimDraft(self,draft.id);const replacement=await saveClaimDraft(self,input);expect(replacement.id).not.toBe(draft.id);
  });
 });
 
