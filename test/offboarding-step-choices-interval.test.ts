@@ -26,6 +26,11 @@ describe('offboarding choices authorization interval',()=>{
   else await setModule(b.tenantId,'lifecycle',null);
   expect(await readOffboardingStepChoices(ctx,{caseNumber:number})).toEqual({kind:'unavailable'});expect(native.offboardingStepChoicesTx).not.toHaveBeenCalled();
  });
+ it('refuses a formerly valid cached HR-admin carrier after actual role revocation before native projection',async()=>{
+  const stale=adminCtx(b);await grantAssistant(stale,{appUserId:stale.userId!});expect((await readOffboardingStepChoices(stale,{caseNumber:number})).kind).toBe('choices');
+  vi.mocked(native.offboardingStepChoicesTx).mockClear();await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,stale.userId!));
+  expect(await readOffboardingStepChoices(stale,{caseNumber:number})).toEqual({kind:'unavailable'});expect(native.offboardingStepChoicesTx).not.toHaveBeenCalled();
+ });
  it('uses the SAME guarded Tx/fresh actor and holds Access/case locks across projection, releasing them after return',async()=>{
   vi.mocked(native.offboardingStepChoicesTx).mockImplementation(async(tx,fresh,selected)=>{
    expect(tx).toBe(vi.mocked(guard.withAgentActionGuard).mock.calls.at(-1)![0]);expect(fresh).not.toBe(ctx);expect(fresh.userId).toBe(ctx.userId);
