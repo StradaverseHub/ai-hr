@@ -21,6 +21,12 @@ def package(destination):
             if member.isdir():continue
             require(member.isfile() and safe(member.name) and member.size<=16*1024**2,'Unsupported tool member')
             data=tar.extractfile(member).read();path=destination/member.name;path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+            # pathlib's parents=True uses the process umask for intermediate parents, not mode.
+            # Every package directory is newly owned here; enforce the reviewed private tree.
+            parent=path.parent
+            while parent!=destination:
+                require(parent.is_relative_to(destination) and not parent.is_symlink(),'Canonical private package parents required')
+                parent.chmod(0o700);parent=parent.parent
             path.write_bytes(data);path.chmod(0o600);files.append({'path':member.name,'sha256':hashlib.sha256(data).hexdigest()})
     source=[]
     git_modes={}

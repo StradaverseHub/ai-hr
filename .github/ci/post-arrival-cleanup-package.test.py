@@ -3,6 +3,7 @@ import hashlib,json,shutil,subprocess,sys,tempfile
 from pathlib import Path
 
 root=Path(sys.argv[1]).resolve()
+assert all(path.stat().st_mode&0o777==0o700 for path in root.rglob('*') if path.is_dir())
 probe="import {pathToFileURL} from 'node:url'; const p=process.argv[1]; const m=await import(pathToFileURL(p+'/.github/ci/post-arrival-cleanup-server.mjs')); const t=m.verifyTool(p); console.log(JSON.stringify({controller:t.controller,toolSha256:t.toolSha256,sourceFiles:t.sourcePaths.length,executionAuthorized:false}));"
 def verify(path):return subprocess.run(['node','--input-type=module','-e',probe,str(path)],capture_output=True,text=True,timeout=30)
 result=verify(root);assert result.returncode==0,result.stderr
