@@ -469,9 +469,10 @@ BEGIN
  PERFORM app._assistant_payroll_reset_review_identity(NULL,false,false);
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE tenant_id=app.current_tenant_id() AND user_id=app.current_user_id() AND action_kind='payroll.reset' AND state='completed' AND payroll_reset_batch_id=p_batch AND payroll_reset_event_id=p_event;
  IF NOT FOUND OR r.payroll_reset_proof->>'phase' IS DISTINCT FROM 'completed' OR r.payroll_reset_proof->>'resetEventId' IS DISTINCT FROM p_event::text THEN RETURN NULL;END IF;
- SELECT * INTO b FROM public.payroll_batch WHERE id=p_batch AND tenant_id=r.tenant_id AND app.can_admin_payroll_for(company_id) AND app.is_admin();
+ SELECT * INTO b FROM public.payroll_batch WHERE id=p_batch AND tenant_id=r.tenant_id AND company_id=r.company_id AND pay_period_id=r.payroll_reset_period_id AND app.can_admin_payroll_for(company_id) AND app.is_admin();
  IF NOT FOUND THEN RETURN NULL;END IF;
- SELECT * INTO parent FROM public.pay_period WHERE id=b.pay_period_id AND tenant_id=b.tenant_id;
+ SELECT * INTO parent FROM public.pay_period WHERE id=r.payroll_reset_period_id AND tenant_id=r.tenant_id AND company_id=r.company_id AND period=b.pay_period;
+ IF NOT FOUND THEN RETURN NULL;END IF;
  SELECT * INTO h FROM public.payroll_status_history WHERE id=(r.payroll_reset_proof->>'statusHistoryId')::uuid AND tenant_id=r.tenant_id AND batch_id=b.id;
  IF NOT FOUND OR app._payroll_reset_hash(to_jsonb(h)) IS DISTINCT FROM r.payroll_reset_proof->>'historyHash' THEN RETURN NULL;END IF;
  FOR x IN SELECT key,value FROM jsonb_each_text(r.payroll_reset_proof->'eventHashes') LOOP

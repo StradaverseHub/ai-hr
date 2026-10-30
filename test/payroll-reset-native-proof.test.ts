@@ -141,4 +141,15 @@ describe('protected native reset proof',()=>{
   const id=await prepare();await withTenant(ctx,async tx=>{await arm(tx,id);const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});await complete(tx,id,native.resetEventId);});const after=await state();expect(after.reps.find(row=>row.id===repId)).toMatchObject({status:'reserved',dueAmount:nativeDue});expect(after.reps.find(row=>row.id===hidden.id)).toEqual(hidden);expect(after.loans[0]).toMatchObject({outstandingBalance:'200.00',instalmentsPaid:0,status:'active'});
  });
 
+ it.each(['company','period'] as const)('refuses privileged historical %s reparenting without retargeting the protected review',async(kind)=>{
+  const id=await prepare();let eventId='';await withTenant(ctx,async tx=>{await arm(tx,id);const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});eventId=native.resetEventId;await complete(tx,id,eventId);});
+  const [original]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));let targetCompany=b.companyId;
+  if(kind==='company'){const [other]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional privileged reparent target'}).returning();targetCompany=other.id;}
+  const targetPeriod=kind==='company'?period:String(Number(period.slice(0,4))-1)+'-02';
+  const [parent]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:targetCompany,period:targetPeriod,status:'open'}).returning();
+  await owner.db.update(s.payrollBatch).set({companyId:targetCompany,payPeriodId:parent.id,payPeriod:targetPeriod,batchDate:targetPeriod+'-28'}).where(eq(s.payrollBatch.id,batchId));
+  const beforeRead=await state();const [row]=await withTenant(ctx,tx=>tx.execute<{receipt:unknown}>(sql`select app.read_own_payroll_reset_effect(${batchId}::uuid,${eventId}::uuid) receipt`));expect(row.receipt).toBeNull();expect(await state()).toEqual(beforeRead);
+  const [binding]=await owner.db.execute<{company:string;period:string}>(sql`select company_id company,payroll_reset_period_id period from app.assistant_own_leave_review where id=${id}::uuid`);expect(binding).toEqual({company:b.companyId,period:original.payPeriodId});
+ });
+
 });
