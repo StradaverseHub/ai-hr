@@ -9,11 +9,11 @@ export const AI_WORKSPACE_TASKS = [
   { id: 'claim_statuses', module: 'claims', requiredTools: ['my_claim_statuses'] },
   { id: 'holidays', module: 'org', requiredTools: ['upcoming_holidays'] },
   { id: 'reporting_line', module: 'org', requiredTools: ['my_reporting_line'] },
-  { id: 'work_profile', module: 'employees', requiredTools: ['my_reporting_line', 'employee_profile'] },
+  { id: 'work_profile', module: 'employees', requiredTools: ['my_module_work', 'employee_profile'] },
   { id: 'payslip', module: 'payroll', requiredTools: ['my_payslip_summary'] },
-  { id: 'pay_change', module: 'payroll', requiredTools: ['my_payslip_summary', 'my_pay_change'] },
 ] as const;
-export type AiWorkspaceTaskId = typeof AI_WORKSPACE_TASKS[number]['id'];
+// Historical stored task IDs remain representable, but unsupported causal pay analysis is not offered.
+export type AiWorkspaceTaskId = typeof AI_WORKSPACE_TASKS[number]['id'] | 'pay_change';
 
 /** Pure offered-set projection. No reader, provider, mutation or inferred permission is invoked. */
 export function workspaceTasksFor(offeredNames: readonly string[]): AiWorkspaceTaskId[] {

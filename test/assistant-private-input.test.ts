@@ -70,6 +70,14 @@ describe('private conversational native Assistant integration',()=>{
  it('retains local action proposal and the existing separate human confirmation boundary',async()=>{
   const {ctx}=await fixture(),transport=vi.spyOn(openaiAdapter,'converse');const result=await askAssistant(ctx,{question:'cancel my leave'});expect(transport).not.toHaveBeenCalled();expect(result.toolsUsed).toEqual([]);expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'propose',action:'leave.cancel',hints:{}});
  });
+ it('reads the actual own work-record source and selects its local employee code without sending identity values',async()=>{
+  const {ctx,mine}=await fixture();const transport=vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_cfg,args)=>{
+   const turn=args.turns[0];if(turn.role!=='user')throw Error('Expected closed metadata');const parsed=capturePrivateAssistantTask(JSON.parse(turn.content)).local;if(parsed.operation!=='conversation')throw Error('Expected conversation');expect(parsed.intent).toBe('work_profile');const read=parsed.reads.find(read=>read.module==='employees')!,card=read.cards.find(card=>card.facts.some(fact=>fact.field==='employeeCode'&&fact.available))!,fact=card.facts.find(fact=>fact.field==='employeeCode'&&fact.available)!;expect(fact).toBeTruthy();
+   for(const secret of [mine.personId,mine.employmentId,base.companyId,'PRIVATE Clarification Person','Acme Sdn Bhd'])expect(JSON.stringify(args)).not.toContain(secret);
+   return{text:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]}),stop:'end',toolCalls:[],usage,usageReported:true};
+  });
+  const result=await askAssistant(ctx,{question:'My work profile'});expect(transport).toHaveBeenCalledOnce();expect(result.toolsUsed).toEqual(['my_module_work']);expect((await recorded(ctx,result.exchangeId)).proof.plan).toMatchObject({mode:'answer',blocks:[{kind:'fact'}]});
+ });
  it('reports unsupported pay cause locally without substituting payslip totals or inventing a causal explanation',async()=>{
   const {ctx}=await fixture(),transport=vi.spyOn(openaiAdapter,'converse');const result=await askAssistant(ctx,{question:'Why did my pay change?'});expect(transport).not.toHaveBeenCalled();expect(result.toolsUsed).toEqual([]);expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'insufficient',code:'unsupported_explanation'});
  });
