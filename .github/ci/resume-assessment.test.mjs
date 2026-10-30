@@ -9,7 +9,7 @@ function fixture(){
  const suite=['test/db.test.ts','test/plain.test.ts'];const units=buildUnits(suite,{db:[suite[0]],nodb:[suite[1]]},['test/ui.browser.test.tsx']);
  const body={schemaVersion:2,policyVersion:CI_POLICY,sha:expected.candidate,controller:expected.controller,migrationBase:expected.baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'},execution:CI_EXECUTION,suite,units};
  const expectedPlan={...body,fingerprint:hash(body)};
- const resource=()=>({schemaVersion:1,memoryLimit:2147483648,memoryMax:2147483648,memoryPeak:1000000000,memoryEvents:{oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}});
+ const resource=()=>({schemaVersion:2,errors:{},profileVersion:2,configuredCapBytes:2113929216,peakBudgetBytes:2147483648,memoryLimit:2113929216,memorySwap:2113929216,memoryMax:2113929216,memorySwapMax:0,memoryPeak:1000000000,memoryEvents:{oom:0,oom_kill:0},state:{Running:true,OOMKilled:false,Dead:false},settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'}});
  const reports=units.map(u=>({schemaVersion:1,id:u.id,sha:expected.candidate,fingerprint:expectedPlan.fingerprint,cwd:'/candidate',files:u.files,exitCode:0,...(u.kind==='db'?{databaseTerminalEvidence:resource()}:{}),batches:[{exitCode:0,...(u.kind==='db'?{databaseEvidence:resource()}:{}),result:{success:true,numTotalTests:1,numPassedTests:1,numFailedTests:0,numFailedTestSuites:0,testResults:[{name:'/candidate/'+u.files[0],status:'passed',assertionResults:[{status:'passed'}]}]}}]}));
  return {expectedPlan,reports,expected};
 }

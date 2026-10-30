@@ -7,7 +7,7 @@ import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {FILES,sourceProof} from './attendance-split-benchmark.mjs';
 import {measuredCommand} from './compiler-incremental.mjs';
-import {capturePostgresEvidence,validatePostgresEvidence} from '../postgres-evidence.mjs';
+import {capturePostgresEvidence,validatePostgresEvidence,postgresProfileFromEnv} from '../postgres-evidence.mjs';
 
 export const PROFILE_FILE='test/attendance-policy-storage-unclocked.test.ts';
 export const PROFILE_CASE="immutable non-payable policy part storage settles disjoint approved-plan quantity through the actual 'cash' owner with v4 (combined=true) while reserving original work";
@@ -56,12 +56,13 @@ export async function profile(){
    &&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.GITHUB_EVENT_NAME==='workflow_dispatch','Owned hosted diagnostic only');
  const cwd=realpathSync(process.cwd()),sha=git(cwd,'rev-parse','HEAD'),jit=process.env.AIHR_CI_PG_JIT;
  assert.equal(sha,process.env.AIHR_CI_HEAD);assert.equal(git(cwd,'status','--porcelain'),'');assert(['on','off'].includes(jit));assert.equal(process.env.AIHR_CI_PG_MEMORY_GIB,'2');
+ const postgresProfile=postgresProfileFromEnv(process.env);assert.equal(postgresProfile.profileVersion,1);assert.equal(postgresProfile.profileId,'legacy-2g');
  const controller=fileURLToPath(new URL('../../../',import.meta.url));assert.equal(git(controller,'rev-parse','HEAD'),process.env.AIHR_CI_CONTROL_HEAD);assert.equal(git(controller,'status','--porcelain'),'');
  const original=execFileSync('git',['show',BASE+':'+FILES[0]],{cwd,encoding:'utf8',maxBuffer:1024**2}),contents=Object.fromEntries(FILES.map(f=>[f,readFileSync(join(cwd,f),'utf8')]));
  const proof=sourceProof(original,contents,readFileSync(join(cwd,'test/attendance-policy-storage-fixture.ts'),'utf8'),createRequire(join(cwd,'package.json'))('typescript'));
  const out=join(realpathSync(process.env.RUNNER_TEMP),'diagnostic-attendance-sql');mkdirSync(out,{mode:0o700});
  const report={kind:'SELECTED_CASE_SQL_DIAGNOSTIC_NOT_TEST_GATE',candidate:sha,controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,
-  sourceProof:proof,runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},execution:{workers:2,postgres:{memoryBytes:2*1024**3,jit}},file:PROFILE_FILE,selectedCase:PROFILE_CASE,releaseAuthorized:false,startedAt:new Date().toISOString(),exitCode:1,
+  sourceProof:proof,runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},execution:{workers:2,postgres:postgresProfile},file:PROFILE_FILE,selectedCase:PROFILE_CASE,releaseAuthorized:false,startedAt:new Date().toISOString(),exitCode:1,
   limits:['Exactly one case executes;31 other registered cases are deliberately unselected, never called passing.','Planning/all-nested/I/O instrumentation adds overhead; this is not a comparable performance benchmark.','Top-level and nested execution/JIT times overlap; do not sum cohorts.','Statistics include owned cluster setup/template work, not only the case. Dropped worker database OIDs may no longer resolve.','Representative SQL may be truncated at8192characters; only synthetic test data is used.']};
  const env={...process.env,AIHR_CI_UNIT:UNIT,AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'attendance-sql-profile',VITEST_MAX_WORKERS:'2',VITEST_MAX_WORKERS_NODB:'2',TEST_DB_NAMESPACE:'attendance_sql',
   DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
@@ -78,7 +79,7 @@ export async function profile(){
   report.exitCode=0;
  }catch(error){report.error=String(error);throw error;}
  finally{
-  if(started){try{const stats=JSON.parse(query(STATISTICS_SQL));writeFileSync(join(out,'statement-statistics.json'),JSON.stringify(stats,null,2)+'\n',{flag:'wx',mode:0o600});report.statistics=validateStatistics(stats,jit);report.databaseEvidence=capturePostgresEvidence(UNIT);validatePostgresEvidence(report.databaseEvidence,{postgres:{memoryBytes:2*1024**3,jit}});}catch(error){report.statisticsError=String(error);report.exitCode=1;}}
+  if(started){try{const stats=JSON.parse(query(STATISTICS_SQL));writeFileSync(join(out,'statement-statistics.json'),JSON.stringify(stats,null,2)+'\n',{flag:'wx',mode:0o600});report.statistics=validateStatistics(stats,jit);report.databaseEvidence=capturePostgresEvidence(UNIT,postgresProfile);validatePostgresEvidence(report.databaseEvidence,{postgres:postgresProfile});}catch(error){report.statisticsError=String(error);report.exitCode=1;}}
   try{control('stop');report.ownedContainerRemoved=true;}catch(error){report.cleanupError=String(error);report.exitCode=1;}
   report.sourceUnchanged=git(cwd,'rev-parse','HEAD')===sha&&git(cwd,'status','--porcelain')==='';if(!report.sourceUnchanged)report.exitCode=1;
   report.endedAt=new Date().toISOString();writeFileSync(join(out,'report.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});

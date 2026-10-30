@@ -10,7 +10,7 @@ import {createHash} from 'node:crypto';
 import {createPlanCopies,validatePlanSelection} from './visibility-plan-copies.mjs';
 import {STATISTICS_SQL,validateStatistics} from './attendance-sql-profile.mjs';
 import {measuredCommand} from './compiler-incremental.mjs';
-import {capturePostgresEvidence,validatePostgresEvidence} from '../postgres-evidence.mjs';
+import {capturePostgresEvidence,validatePostgresEvidence,postgresProfileFromEnv} from '../postgres-evidence.mjs';
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',timeout:30000,maxBuffer:4*1024**2}).trim();
 const UNIT='db-3',postgres=fileURLToPath(new URL('../postgres.sh',import.meta.url));
@@ -32,6 +32,7 @@ export function assertBenchmarkInvocation(e){
 }
 export async function benchmark(){
  assertBenchmarkInvocation(process.env);
+ const postgresProfile=postgresProfileFromEnv(process.env);assert.equal(postgresProfile.profileVersion,1);assert.equal(postgresProfile.profileId,'legacy-2g');
  const cwd=realpathSync(process.cwd()),controller=realpathSync(fileURLToPath(new URL('../../../',import.meta.url))),sha=process.env.AIHR_CI_HEAD;
  const clean=()=>{for(const p of [cwd,controller]){assert.equal(git(p,'rev-parse','HEAD'),sha);assert.equal(git(p,'status','--porcelain'),'');}};
  clean();for(const file of ['visibility-plan-prototype.mjs','visibility-plan-controls.mjs'])assert(readFileSync(join(cwd,'.github/ci/diagnostics',file)).equals(readFileSync(join(controller,'.github/ci/diagnostics',file))),'Installed experiment helper differs');
@@ -39,7 +40,7 @@ export async function benchmark(){
  const proof=createPlanCopies(cwd,createRequire(join(cwd,'package.json'))('typescript'));writeFileSync(join(out,'copy-source-proof.json'),JSON.stringify(proof,null,2)+'\n',{flag:'wx',mode:0o600});
  const phases=(process.env.AIHR_PLAN_BENCHMARK_PHASES??'both')==='both'?['baseline','prototype']:['prototype'];
  const report={kind:phases.length===2?'PAIRED_VISIBILITY_PLAN_DIAGNOSTIC_NOT_RELEASE_EVIDENCE':'SINGLE_VISIBILITY_PROTOTYPE_NOT_PAIRED_PERFORMANCE',candidate:sha,controller:sha,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,
-  runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},execution:{workers:1,postgres:{memoryBytes:2147483648,jit:'on'}},order:phases,phases:[],releaseAuthorized:false,startedAt:new Date().toISOString(),exitCode:1,
+  runtime:{node:process.versions.node,platform:process.platform,arch:process.arch},execution:{workers:1,postgres:postgresProfile},order:phases,phases:[],releaseAuthorized:false,startedAt:new Date().toISOString(),exitCode:1,
   limits:['Only37 selected cases execute;88 registered cases are deliberately unselected. This is not full release coverage.','Baseline precedes prototype on one VM; OS/dependency warming may affect elapsed comparison.','Statement planning instrumentation adds overhead; nested/outer durations overlap.','Target query rows include deliberate reverted mutation definitions; inspect bound function/catalog proofs.','This changes only owned worker database functions; no applied migration or staging setting changes.']};
  const base={...process.env,AIHR_CI_UNIT:UNIT,AIHR_CI_PG_STATEMENTS:'1',AIHR_CI_PG_STATEMENTS_OWNER:'visibility-plan-benchmark',VITEST_MAX_WORKERS:'1',VITEST_MAX_WORKERS_NODB:'1',
   DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_dev',TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
@@ -73,7 +74,7 @@ export async function benchmark(){
     if(started){
      try{const raw=query(STATISTICS_SQL);writeFileSync(join(directory,'statement-statistics.json'),raw+'\n',{flag:'wx',mode:0o600});row.statistics=validateStatistics(JSON.parse(raw),'on');}catch(error){row.statisticsError=String(error);row.exitCode=1;}
      try{const raw=query(VISIBILITY_STATISTICS_SQL);writeFileSync(join(directory,'visibility-statistics.json'),raw+'\n',{flag:'wx',mode:0o600});validateVisibilityRows(JSON.parse(raw));}catch(error){row.targetStatisticsError=String(error);row.exitCode=1;}
-     try{row.databaseEvidence=capturePostgresEvidence(UNIT);validatePostgresEvidence(row.databaseEvidence,report.execution);}catch(error){row.databaseEvidenceError=String(error);row.exitCode=1;}
+     try{row.databaseEvidence=capturePostgresEvidence(UNIT,postgresProfile);validatePostgresEvidence(row.databaseEvidence,report.execution);}catch(error){row.databaseEvidenceError=String(error);row.exitCode=1;}
     }
     if(row.diskSamplingError)row.exitCode=1;
     try{control('stop');row.ownedContainerRemoved=true;}catch(error){row.cleanupError=String(error);row.exitCode=1;}
