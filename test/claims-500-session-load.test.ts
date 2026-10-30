@@ -1,0 +1,47 @@
+/** Service burst probe, not an HTTP/browser capacity certificate. Uses the ordinary ten-connection
+ * application pool and real distinct employee principals; no authorization bypass in measured work. */
+import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {afterAll,beforeAll,expect,it} from 'vitest';
+import {appUser,employment,person,roleAssignment} from '../db/schema';
+import {createClaimType,deleteClaimDraft,listClaimHistoryPage,listClaimsForEmployment,saveClaimDraft} from '../packs/claims/service';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
+beforeAll(migrateTestDb);afterAll(closeAll);
+it('measures 500 simultaneous employee read/create/edit/delete journeys over one million distributed claims',async()=>{
+ await resetDb();const b=await seedBase(),admin=adminCtx(b);
+ const type=await createClaimType(admin,{code:'BURST',name:'Fictional burst',defaultTaxable:false,requiresReceipt:false});
+ const users=Array.from({length:500},(_,i)=>({personId:randomUUID(),employmentId:randomUUID(),userId:randomUUID(),name:'Fictional '+i}));
+ await owner.db.insert(person).values(users.map(u=>({id:u.personId,tenantId:b.tenantId,fullName:u.name,primaryEmail:u.userId+'@example.invalid'})));
+ await owner.db.insert(employment).values(users.map(u=>({id:u.employmentId,tenantId:b.tenantId,personId:u.personId,companyId:b.companyId,hiredOn:'2026-01-01'})));
+ await owner.db.insert(appUser).values(users.map(u=>({id:u.userId,tenantId:b.tenantId,personId:u.personId,workosUserId:'fictional_load_'+u.userId})));
+ await owner.db.insert(roleAssignment).values(users.map(u=>({tenantId:b.tenantId,appUserId:u.userId,role:'employee' as const,companyId:b.companyId})));
+ await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
+   select ${b.tenantId}::uuid,e.id,${type.id}::uuid,1,'2026-01-02'::date,'pending',
+    '2026-01-03'::timestamptz+n*interval '1 second'
+   from unnest(${users.map(u=>u.employmentId)}::uuid[]) e(id) cross join generate_series(1,2000) n`;
+ await owner.client`analyze claim_request`;
+ const samples:Record<string,number[]>={read:[],create:[],edit:[],delete:[]};
+ const timed=async<T>(operation:string,run:()=>Promise<T>)=>{const start=performance.now();try{return await run();}finally{samples[operation].push(performance.now()-start);}};
+ const started=performance.now();
+ const results=await Promise.allSettled(users.map(async(u,i)=>{
+   const ctx={...admin,userId:u.userId,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+   const page=await timed('read',()=>listClaimHistoryPage(ctx,u.employmentId));
+   expect(page.state.total).toBe(2000);expect(page.rows).toHaveLength(25);
+   // A real different employee's id cannot be used to read their claim.
+   if(i===0)expect(await listClaimsForEmployment(ctx,users[1].employmentId,{claimId:page.rows[0].id})).toEqual([]);
+   const input={employmentId:u.employmentId,claimTypeId:type.id,incurredOn:'2026-01-02',amount:1};
+   const draft=await timed('create',()=>saveClaimDraft(ctx,input));
+   await timed('edit',()=>saveClaimDraft(ctx,{...input,id:draft.id,amount:2}));
+   expect((await listClaimsForEmployment(ctx,u.employmentId,{claimId:draft.id}))[0]?.amount).toBe(2);
+   await timed('delete',()=>deleteClaimDraft(ctx,draft.id,u.employmentId));
+   expect(await listClaimsForEmployment(ctx,u.employmentId,{claimId:draft.id})).toEqual([]);
+ }));
+ const failures=results.flatMap((r,i)=>r.status==='rejected'?[{session:i,message:String(r.reason)}]:[]);
+ const quantiles=Object.fromEntries(Object.entries(samples).map(([k,values])=>{values.sort((a,b)=>a-b);return[k,{samples:values.length,p50Ms:values[Math.ceil(values.length*.5)-1],p95Ms:values[Math.ceil(values.length*.95)-1],p99Ms:values[Math.ceil(values.length*.99)-1],maxMs:values.at(-1)}];}));
+ const report={kind:'service-burst-only',sessions:500,records:1000000,applicationPool:10,elapsedMs:performance.now()-started,errors:failures.length,operations:quantiles,failures};
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-sessions.json',JSON.stringify(report,null,2));
+ console.info('[claims-500-sessions]',JSON.stringify(report));
+ expect(failures).toEqual([]);
+ const [remaining]=await owner.client`select count(*)::int as n from claim_request where tenant_id=${b.tenantId}::uuid`;
+ expect(remaining.n).toBe(1000000);
+},240000);
