@@ -77,6 +77,11 @@ describe('V3.1 onboarding database and authorization', () => {
         Reflect.deleteProperty(legacyTask.tasks[0]!,'status');examples.push(legacyTask);
         const legacyState=structuredClone(unfinished);legacyState.id=randomUUID();
         Reflect.deleteProperty(legacyState,'state');examples.push(legacyState);
+        const completed=examples.find(c=>c.state==='submitted'&&c.personnelStatus==='Active'&&c.tasks.every(task=>task.status==='done')&&c.requisitions.every(req=>!!req.handedAt))!;
+        const unknownDate=structuredClone(completed);unknownDate.id=randomUUID();
+        Reflect.set(unknownDate.source,'joinDate',null);examples.push(unknownDate);
+        const inheritedDate=structuredClone(completed);inheritedDate.id=randomUUID();
+        Reflect.deleteProperty(inheritedDate.source,'joinDate');examples.push(inheritedDate);
         for(const c of examples.slice(1))await owner.db.insert(schema.lcOnboardingCase).values({id:c.id,tenantId:b.tenantId,companyId:b.companyId,sourceDraftId:null,data:c});
         expect((await onboardingNavigation(admin)).joiners).toBe(examples.filter(c=>visibleRecentJoiner(context.config,c,today)).length);
         expect((await onboardingNavigation(other)).joiners).toBe(0);

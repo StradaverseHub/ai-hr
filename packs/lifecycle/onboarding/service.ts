@@ -1191,7 +1191,8 @@ export async function onboardingNavigation(ctx: SessionContext) {
                     where req = (select entry from jsonb_array_elements(${cases.data}->'requisitions') with ordinality as r(entry,ordinal)
                         where coalesce(entry->>'cancelledAt','') = '' order by ordinal limit 1)
                     and coalesce(req->>'handedAt','') = '')
-            )) or coalesce(${cases.data}->'source'->>'joinDate',${cases.data}->'local'->>'joinDate','') >= ${cutoff}
+            )) or (case when (${cases.data}->'source') ? 'joinDate'
+                then ${cases.data}->'source'->>'joinDate' else ${cases.data}->'local'->>'joinDate' end) >= ${cutoff}
         )`)):[{n:0}];
         const [scope]=await tx.execute<{hr:boolean}>(sql`select app.is_admin() as hr`);
         // Read the same existing authorities as v9Workspace. Menu placement grants nothing.
