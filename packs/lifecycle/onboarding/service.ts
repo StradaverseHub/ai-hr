@@ -921,7 +921,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
         const list = await tx.select().from(cases).where(and(eq(cases.tenantId,ctx.tenantId),sql`(
             (${actor.module} and ${cases.data}->>'state' = 'pending') or
             (${cases.data}->>'state' = 'submitted' and (
-                exists(select 1 from jsonb_array_elements(${cases.data}->'tasks') task where task->>'status' <> 'done') or
+                exists(select 1 from jsonb_array_elements(${cases.data}->'tasks') task where coalesce(task->>'status','') <> 'done') or
                 exists(select 1 from jsonb_array_elements(${cases.data}->'requisitions') req where coalesce(req->>'cancelledAt','') = '' and coalesce(req->>'handedAt','') = '') or
                 ${inArray(cases.id,[...notesByCase.keys()])}
             )))`)).orderBy(asc(cases.id)), out: OnboardingTask[] = [];
@@ -1184,9 +1184,9 @@ export async function onboardingNavigation(ctx: SessionContext) {
         const today=todayInKualaLumpur(),cutoff=M.dayDate(today,-config.recentActiveDays);
         const counts=actor.module?await tx.select({n:sql<number>`count(*)::int`}).from(cases).where(and(eq(cases.tenantId,ctx.tenantId),sql`(
             ${cases.data}->>'personnelStatus' = 'Draft' or
-            (${cases.data}->>'state' <> 'cancelled' and (
+            (coalesce(${cases.data}->>'state','') <> 'cancelled' and (
                 ${cases.data}->>'state' = 'pending' or
-                exists(select 1 from jsonb_array_elements(${cases.data}->'tasks') task where task->>'status' <> 'done') or
+                exists(select 1 from jsonb_array_elements(${cases.data}->'tasks') task where coalesce(task->>'status','') <> 'done') or
                 exists(select 1 from jsonb_array_elements(${cases.data}->'requisitions') req
                     where req = (select entry from jsonb_array_elements(${cases.data}->'requisitions') with ordinality as r(entry,ordinal)
                         where coalesce(entry->>'cancelledAt','') = '' order by ordinal limit 1)

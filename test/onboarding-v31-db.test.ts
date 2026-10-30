@@ -70,9 +70,17 @@ describe('V3.1 onboarding database and authorization', () => {
         const unfinished=structuredClone(examples.find(c=>c.state==='submitted'&&c.personnelStatus==='Active')!);
         unfinished.id=randomUUID();unfinished.source.joinDate=dayDate(today,-1000);unfinished.tasks[0]!.status='todo';examples.push(unfinished);
         const open=structuredClone(unfinished);open.id=randomUUID();open.tasks.forEach(task=>task.status='done');open.requisitions[0]!.handedAt=null;examples.push(open);
+        // SQL NULL is neither equal nor unequal. The original owner treats an absent
+        // legacy status as unfinished, and an absent state as not cancelled.
+        const legacyTask=structuredClone(unfinished);legacyTask.id=randomUUID();
+        legacyTask.tasks[0]!.assignee=admin.userId!;legacyTask.tasks[0]!.gate=false;
+        Reflect.deleteProperty(legacyTask.tasks[0]!,'status');examples.push(legacyTask);
+        const legacyState=structuredClone(unfinished);legacyState.id=randomUUID();
+        Reflect.deleteProperty(legacyState,'state');examples.push(legacyState);
         for(const c of examples.slice(1))await owner.db.insert(schema.lcOnboardingCase).values({id:c.id,tenantId:b.tenantId,companyId:b.companyId,sourceDraftId:null,data:c});
         expect((await onboardingNavigation(admin)).joiners).toBe(examples.filter(c=>visibleRecentJoiner(context.config,c,today)).length);
         expect((await onboardingNavigation(other)).joiners).toBe(0);
+        expect((await onboardingTasks(admin)).some(task=>task.caseId===legacyTask.id&&task.taskId===legacyTask.tasks[0]!.id&&task.assigned)).toBe(true);
     });
     it('retains unresolved mentions on completed cases but excludes resolved, deleted and cancelled history',async()=>{
         const row=await prepared();
