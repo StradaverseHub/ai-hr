@@ -1,0 +1,13 @@
+# Offboarding case cancellation — unexposed native prerequisite
+
+This isolated followup starts at verified undo recoveryb4134a482c65d685946b919c57674f590c6d85ad. Its independent coordinator source review found no material defect. The discard helperc517 remains a separate reviewed/evidence slice; no helper changes are imported here.
+
+The mounted generic cancelCaseAction reaches native cancelCase for legacy onboarding or offboarding. The next bounded Assistant intent is exactly one in-progress offboarding case, current native company LEVEL.manager, a required reason and explicit human cancellation consent. An actual USER need not have a PERSON/employment or an HR role. Completed cases refuse; native already-cancelled calls stay a no-op and the bounded intent refuses them. Generic export remains backlog; no whole-export parity claim.
+
+The default Promise<void> API preserves native reason normalization, company authority, state rules, status/cancelReason writes and original history/event. The additive cancelCaseTx returns the exact original native event ID, or null for the unchanged native no-op. No case/body hashes or extra private facts are added to subject-visible event payloads. The guarded bounded native projection reads manager scope before case facts and returns only current case identity/dates/status/reason.
+
+Cancellation changes case status/reason only. It does not cancel an existing IT return, alter checklist/outcome, or change employment dates/status. Those are separate intents. The native test explicitly creates a genuine accepted-outcome IT return and verifies its full rows and existing steps are unchanged after cancellation.
+
+Seven native DB tests cover unlinked manager authority, exact original event/history and unchanged case fields, actual related-return/step preservation, agent/blank/completed refusal, unchanged public void/no-op behavior, outer rollback and minimal guarded/foreign/mismatched projections. Strict contract tests bind reason/case/consent and exclude authority/composite fields. Hosted focused checks plus whole compiler are required; no local app execution.
+
+One distinct private-purpose migration assistant_lifecycle_offboarding_case_cancel is requested through the exclusive phase file. No number, journal entry, SQL authority, custody adapter, executable registry, API or UI is introduced at this prerequisite checkpoint. Full action must use the same encrypted ledger and native actor/source interval, protect reason/case/result commitments privately, prove exact top-transaction native event/history/allowed-field delta, refuse stale/changed sources and ABA, and preserve privacy/erasure/body budgets. Coordinator contract/allocation review precedes executable implementation. No release authority.
