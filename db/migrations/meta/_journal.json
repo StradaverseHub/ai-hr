@@ -4054,6 +4054,13 @@
       "when": 1793330000041,
       "tag": "0712_delegated_leave_review_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 694,
+      "version": "7",
+      "when": 1793330000042,
+      "tag": "0713_assistant_qualification_maintenance",
+      "breakpoints": true
     }
   ]
 }
