@@ -23,10 +23,11 @@ const version=spawnSync('gh',['--version'],{encoding:'utf8',timeout:10000,maxBuf
 proof.execution={...executionEnvelope({tokenPresent:typeof process.env.GH_TOKEN==='string'&&process.env.GH_TOKEN.length>0,versionText:version.stdout,stderr:result.stderr}),ghAvailable:version.status===0,apiHostnameExact:true};
 // Node HTTPS never follows redirects. The Location/body are neither read into diagnostics nor published.
 proof.directHttps=await new Promise(resolve=>{
- let timedOut=false;
- const req=request({hostname:'api.github.com',path:'/repos/StradaverseHub/ai-hr/actions/jobs/124016969855/logs',method:'GET',headers:{Authorization:'Bearer '+process.env.GH_TOKEN,'User-Agent':'AIHR-V9-read-only-diagnostic',Accept:'application/vnd.github+json'}},res=>{res.resume();resolve({status:res.statusCode,rate:publicRateHeaders(res.headers),redirectsFollowed:false});});
- req.setTimeout(20000,()=>{timedOut=true;req.destroy();});
- req.on('error',error=>resolve({status:null,errorClass:timedOut?'TIMEOUT':['ENOTFOUND','ETIMEDOUT','ECONNRESET','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','ERR_TLS_CERT_ALTNAME_INVALID'].includes(error.code)?error.code:'UNCLASSIFIED_NETWORK_ERROR',redirectsFollowed:false}));req.end();
+ let timedOut=false,settled=false;
+ const finish=value=>{if(settled)return;settled=true;clearTimeout(deadline);resolve(value);};
+ const req=request({hostname:'api.github.com',path:'/repos/StradaverseHub/ai-hr/actions/jobs/124016969855/logs',method:'GET',headers:{Authorization:'Bearer '+process.env.GH_TOKEN,'User-Agent':'AIHR-V9-read-only-diagnostic',Accept:'application/vnd.github+json'}},res=>{const response={status:res.statusCode,rate:publicRateHeaders(res.headers),redirectsFollowed:false};res.destroy();finish(response);});
+ const deadline=setTimeout(()=>{timedOut=true;req.destroy();finish({status:null,errorClass:'TIMEOUT',redirectsFollowed:false});},20000);
+ req.on('error',error=>finish({status:null,errorClass:timedOut?'TIMEOUT':['ENOTFOUND','ETIMEDOUT','ECONNRESET','CERT_HAS_EXPIRED','UNABLE_TO_VERIFY_LEAF_SIGNATURE','ERR_TLS_CERT_ALTNAME_INVALID'].includes(error.code)?error.code:'UNCLASSIFIED_NETWORK_ERROR',redirectsFollowed:false}));req.end();
 });
 writeFileSync(join(output,'log-transport.json'),JSON.stringify(proof,null,2)+'\n',{mode:0o600,flag:'wx'});console.log(JSON.stringify(proof));
 if(result.status!==0)process.exitCode=1;
