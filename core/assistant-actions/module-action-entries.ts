@@ -1,3 +1,4 @@
+import {readRewardsCancelChoices} from './rewards-cancel-source';
 /** Server answer for Assistant native-action shortcuts. Read-only; never a capability, cache or grant.
  * The target action re-checks everything on its own server path, so a hidden or shown link changes
  * what is OFFERED, never what is ALLOWED. Failures stay `unknown` (hidden), never `allowed`. */
@@ -16,6 +17,7 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
  try{
   // The reporting-line search admits only employments where app.access_workforce_employment(...,
   // 'workforce.maintain') holds, which is app.access_workforce_company on the employment's company.
+  if(entry==='rewards_cancel')return (await readRewardsCancelChoices(ctx)).units.length>0?'allowed':'refused';
   if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0?'allowed':'refused';
   // Posting needs app.reward_admin for the unit's company (plus its payroll seat, checked per unit).
   if(entry==='rewards')return await administersRewardsForAnyCompany(ctx)?'allowed':'refused';
@@ -30,6 +32,6 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
 /** Only `allowed` entries for the task cards actually shown. Sequential: one carrier at a time. */
 export async function allowedModuleActionEntries(ctx:SessionContext,modules:readonly AgentModuleCode[]):Promise<ModuleActionEntry[]>{
  const allowed:ModuleActionEntry[]=[];
- for(const module of modules){const entry=MODULE_ACTION_ENTRY_OF[module];if(entry&&!allowed.includes(entry)&&await moduleActionEntryAccess(ctx,entry)==='allowed')allowed.push(entry);}
+ for(const module of modules){const entry=MODULE_ACTION_ENTRY_OF[module];if(entry&&!allowed.includes(entry)&&await moduleActionEntryAccess(ctx,entry)==='allowed')allowed.push(entry);if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_cancel')==='allowed')allowed.push('rewards_cancel');}
  return allowed;
 }

@@ -6,13 +6,20 @@ VALUES('rewards.cancel_review','rewards','approve','pay','rewards.cancel_review'
 --> statement-breakpoint
 -- Preserve every predecessor CHECK byte-expression for all predecessor kinds. Only the new closed
 -- kind uses the existing unit/company column family; no assigned employment/person is fabricated.
-DO $$ DECLARE c record; old text; adapted text;
+DO $$ DECLARE c record; old text; canonical text; null_columns text;
 BEGIN
+ -- Closed metadata/receipt whitelist. Every other physical column is strictly NULL for cancellation,
+ -- including all existing assigned subject and other action receipt columns. No predecessor tree copy.
+ SELECT string_agg(format('%I IS NULL',attname),' AND ' ORDER BY attnum) INTO null_columns
+ FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attnum>0 AND NOT attisdropped
+ AND attname NOT IN ('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','rewards_unit_id','rewards_posted_event_id','rewards_posted_revision','rewards_posted_batch_id','rewards_review_person_ids');
+ IF null_columns IS NULL THEN RAISE EXCEPTION '0731 missing canonical custody columns';END IF;
+ canonical:=null_columns||' AND employment_id IS NULL AND company_id IS NOT NULL AND rewards_unit_id IS NOT NULL AND rewards_posted_batch_id IS NULL AND ((state=''completed'')=(rewards_posted_event_id IS NOT NULL AND rewards_posted_revision IS NOT NULL)) AND ((rewards_posted_event_id IS NULL)=(rewards_posted_revision IS NULL)) AND (state=''completed'' OR (rewards_posted_event_id IS NULL AND rewards_posted_revision IS NULL)) AND (rewards_review_person_ids IS NULL OR rewards_review_person_ids=ARRAY[]::uuid[])';
  FOR c IN SELECT conname,pg_get_expr(conbin,conrelid) AS expression FROM pg_constraint
  WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND pg_get_expr(conbin,conrelid) LIKE '%action_kind%' LOOP
- old:=c.expression; adapted:=replace(old,'action_kind','''rewards.post''::text');
+ old:=c.expression;
  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
- EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''rewards.cancel_review'' THEN (%s) ELSE (%s) END)',c.conname,adapted,old);
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''rewards.cancel_review'' THEN (%s) ELSE (%s) END)',c.conname,canonical,old);
  END LOOP;
 END $$;
 --> statement-breakpoint
@@ -20,7 +27,7 @@ CREATE FUNCTION app._assistant_rewards_cancel_review_identity(p_person uuid,p_bi
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF app.current_tenant_id() IS NULL OR app.current_user_id() IS NULL OR current_setting('transaction_isolation')<>'read committed' OR (p_write AND current_setting('transaction_read_only')<>'off') THEN RAISE EXCEPTION 'Rewards review unavailable' USING ERRCODE='42501';END IF;
- PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0));
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||app.current_tenant_id()::text,0)) THEN RAISE EXCEPTION 'Rewards cancellation busy' USING ERRCODE='55P03';END IF;
  IF app.principal_snapshot_current() IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=app.current_tenant_id() AND a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND (p_bind IS NOT TRUE OR a.person_id IS NOT DISTINCT FROM p_person) AND (a.person_id IS NULL OR EXISTS(SELECT 1 FROM public.person actual WHERE actual.id=a.person_id AND actual.tenant_id=a.tenant_id))) THEN RAISE EXCEPTION 'Rewards review unavailable' USING ERRCODE='42501';END IF;
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_rewards_cancel_review_identity(uuid,boolean,boolean) FROM PUBLIC,ai_hr_app;
@@ -34,7 +41,7 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_rewards_cancel_review_source(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
--- Complete native snapshot/current person union, including restricted rows. Never silently truncate.
+-- Cancellation review contains no employee identities; only the real actor is a privacy target.
 CREATE FUNCTION app._assistant_rewards_cancel_review_json(p_id uuid) RETURNS jsonb
  LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('metadata',jsonb_build_object('actionId',r.id,'action',r.action_kind,'contractVersion',1,

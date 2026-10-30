@@ -1,8 +1,9 @@
+import {pgSqlState} from '../../lib/db-error';
 /** Whole-unit human cancellation; native Rewards retains the command and all authority. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import type {SessionContext,Tx} from '../../db/client';
+import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {withAgentActionGuard} from './agent-action-guard';
 import {cancelRewardReviewTx} from '../../packs/rewards/service';
 import {REWARDS_CANCEL_ACTION as action,RewardsCancelHuman,RewardsCancelReview,RewardsCancelReceipt,RewardsCancelChoices} from '../../lib/assistant-actions/rewards-cancel-contract';
@@ -30,4 +31,15 @@ export async function confirmRewardsCancelSourceTx(tx:Tx,ctx:SessionContext,valu
 export async function reconcileRewardsCancelSourceTx(tx:Tx,ctx:SessionContext,reference:{unitId:string;eventId:string}){
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_rewards_cancel_receipt(${reference.unitId}::uuid,${reference.eventId}::uuid) as receipt`);return RewardsCancelReceipt.parse(row?.receipt);
 }
-export async function readRewardsCancelChoicesTx(tx:Tx,ctx:SessionContext){await assertRewardsCancelActorTx(tx,ctx);const [row]=await tx.execute<{choices:unknown}>(sql`select app.assistant_rewards_cancel_choices() as choices`);return RewardsCancelChoices.parse(row?.choices);}
+export async function readRewardsCancelChoicesTx(tx:Tx,ctx:SessionContext){return withRewardsCancelBoundsTx(tx,async()=>{await assertRewardsCancelActorTx(tx,ctx);const [row]=await tx.execute<{choices:unknown}>(sql`select app.assistant_rewards_cancel_choices() as choices`);const result=RewardsCancelChoices.parse(row?.choices);if(Buffer.byteLength(JSON.stringify(result))>49152)return rewardsCancelUnavailable();return result;});}
+
+/** Same per-lock bound as the existing Rewards post adapter, preserving shorter caller limits. */
+export async function withRewardsCancelBoundsTx<T>(tx:Tx,work:()=>Promise<T>):Promise<T>{
+ const [prior]=await tx.execute<{saved:string;milliseconds:number;unit:string}>(sql`select current_setting('lock_timeout') as saved,setting::integer as milliseconds,unit from pg_settings where name='lock_timeout'`);
+ if(!prior||prior.unit!=='ms'||!Number.isSafeInteger(prior.milliseconds)||prior.milliseconds<0)return rewardsCancelUnavailable();
+ const limit=prior.milliseconds===0?1000:Math.min(prior.milliseconds,1000);await tx.execute(sql`select set_config('lock_timeout',${String(limit)+'ms'},true)`);let result:T;
+ try{result=await work();}catch(error){if(!pgSqlState(error)){try{await tx.execute(sql`select set_config('lock_timeout',${prior.saved},true)`);}catch{}}throw error;}
+ await tx.execute(sql`select set_config('lock_timeout',${prior.saved},true)`);return result;
+}
+
+export const readRewardsCancelChoices=(ctx:SessionContext)=>withTenant(ctx,tx=>readRewardsCancelChoicesTx(tx,ctx));

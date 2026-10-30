@@ -41,6 +41,6 @@ export function RewardsCancelPanel({choices,resumeActionId}:{choices:z.infer<typ
  {known&&<div className="flex flex-wrap gap-2"><Button variant="outline" disabled={busy} onClick={()=>void send({action,operation:'reopen',actionId:known})}>{t('reopen')}</Button>{result?.kind!=='completed'&&<Button variant="outline" disabled={busy} onClick={()=>void send({action,operation:'discard',confirmation:{action,contractVersion:1,actionId:known}})}>{t('discard')}</Button>}</div>}
  <Button variant="outline" disabled={busy} onClick={()=>void send({action,operation:'list'})}>{t('find')}</Button>{index&&<ul className="space-y-2">{index.reviews.map(r=><li key={r.actionId}><Button variant="outline" disabled={busy||uncertain&&known!==null&&known!==r.actionId} onClick={()=>{if(!uncertain)expected.current=null;void send({action,operation:'reopen',actionId:r.actionId});}}>{t('reopen')} · {r.createdAt}</Button></li>)}</ul>}
  {(result?.kind==='completed'||result?.kind==='retired')&&<Button variant="outline" disabled={busy} onClick={()=>{setResult(null);setKnown(null);setIndex(null);setConsent(false);expected.current=null;}}>{t('new')}</Button>}
- <Link className="inline-flex min-h-11 items-center text-sm underline" href="/admin/rewards">{t('native')}</Link>
+ <Link className="inline-flex min-h-11 items-center text-sm underline" href="/rewards">{t('native')}</Link>
  </section>;
 }

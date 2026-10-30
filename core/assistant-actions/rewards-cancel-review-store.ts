@@ -6,7 +6,7 @@ import {createGenericAssignedCompatibilityStore} from './generic-assigned-review
 import {OwnLeaveSealedReview} from './own-leave-content';
 import {REWARDS_CANCEL_ACTION as action,RewardsCancelHuman as Human,RewardsCancelReview} from '../../lib/assistant-actions/rewards-cancel-contract';
 import {RewardsCancelHuman as RewardsCancelReviewPrepare,RewardsCancelConfirmation as RewardsCancelReviewConfirmation,RewardsCancelRetirement as RewardsCancelReviewRetirement,RewardsCancelPrepared as RewardsCancelPreparedReview,RewardsCancelCompleted as RewardsCancelCompletedReview,RewardsCancelRetired as RewardsCancelRetiredReview,RewardsCancelIndex as RewardsCancelReviewIndex} from '../../lib/assistant-actions/rewards-cancel-contract';
-import {assertRewardsCancelActorTx,withRewardsCancelIntervalTx,prepareRewardsCancelSourceTx,confirmRewardsCancelSourceTx,reconcileRewardsCancelSourceTx} from './rewards-cancel-source';
+import {withRewardsCancelBoundsTx,assertRewardsCancelActorTx,withRewardsCancelIntervalTx,prepareRewardsCancelSourceTx,confirmRewardsCancelSourceTx,reconcileRewardsCancelSourceTx} from './rewards-cancel-source';
 
 export class RewardsCancelReviewUnavailable extends Error{constructor(){super('That Rewards handoff needs another look. Please reopen the approved review.');this.name='RewardsCancelReviewUnavailable';}}
 const fail=():never=>{throw new RewardsCancelReviewUnavailable();},digest=z.string().regex(/^[a-f0-9]{64}$/);
@@ -28,7 +28,7 @@ export const rewardsCancelReviews=createGenericAssignedCompatibilityStore<
 >({
  action,tier:'approve',human:RewardsCancelReviewPrepare,metadata:Metadata,stored:Stored,
  confirmation:RewardsCancelReviewConfirmation,retirement:RewardsCancelReviewRetirement,retired:RewardsCancelRetiredReview,index:RewardsCancelReviewIndex,indexKind:'rewards_cancel_review_index',
- async withInterval(tx,ctx,nomination,work){let unitId:string,actor=ctx;if(nomination.human)unitId=nomination.human.unitId;else{actor=await assertRewardsCancelActorTx(tx,ctx);const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_rewards_cancel_review_subject(${z.guid().parse(nomination.actionId)}::uuid) as subject`);unitId=z.guid().parse(row?.subject);}return withRewardsCancelIntervalTx(tx,actor,unitId,work);},
+ async withInterval(tx,ctx,nomination,work){return withRewardsCancelBoundsTx(tx,async()=>{let unitId:string,actor=ctx;if(nomination.human)unitId=nomination.human.unitId;else{actor=await assertRewardsCancelActorTx(tx,ctx);const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_rewards_cancel_review_subject(${z.guid().parse(nomination.actionId)}::uuid) as subject`);unitId=z.guid().parse(row?.subject);}return withRewardsCancelIntervalTx(tx,actor,unitId,work);});},
  binding:(ctx,source)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:null,companyId:source.companyId,unitId:source.unitId}),
  assertSubjectBinding:(binding,source)=>{if(binding.unitId!==source.unitId||binding.companyId!==source.companyId)return fail();},
  assertHumanBinding:(binding,human)=>{if(human.unitId.toLowerCase()!==binding.unitId)return fail();},
