@@ -96,8 +96,9 @@ BEGIN
  IF app.assistant_goal_approval_choice_scope(p_goal) IS NOT TRUE THEN RAISE EXCEPTION 'Goal review unavailable' USING ERRCODE='42501';END IF;
  PERFORM 1 FROM public.performance_goal WHERE id=p_goal AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF app.assistant_goal_approval_choice_scope(p_goal) IS NOT TRUE THEN RAISE EXCEPTION 'Goal review unavailable' USING ERRCODE='42501';END IF;
- SELECT jsonb_build_object('subjectId',g.id,'employmentId',g.employment_id,'companyId',e.company_id,'subjectPersonId',e.person_id,'revision',g.xmin::text) INTO result
+ SELECT jsonb_build_object('subjectId',g.id,'employmentId',g.employment_id,'companyId',e.company_id,'subjectPersonId',e.person_id,'revision',g.xmin::text,'employeeName',p.full_name,'companyName',c.legal_name) INTO result
  FROM public.performance_goal g JOIN public.employment e ON e.id=g.employment_id AND e.tenant_id=g.tenant_id
+ JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
  WHERE g.id=p_goal AND g.tenant_id=app.current_tenant_id();
  IF result IS NULL THEN RAISE EXCEPTION 'Goal review unavailable' USING ERRCODE='42501';END IF;RETURN result;
 END $$;

@@ -8,7 +8,7 @@ import {z} from 'zod';
 import {Button,inputCls} from '@/components/ui';
 import {GoalApproval as contract,GOAL_APPROVAL_ACTION as action} from '@/lib/assistant-actions/goal-approval-contract';
 import {checkGenericPacket,packetActionId,sendGenericModuleAction} from './generic-module-action-transport';
-type Subject={subjectId:string;employmentId:string;title:string};
+type Subject={subjectId:string;employmentId:string;employeeName:string;companyName:string;title:string};
 type Choices={kind:'choices';items:Subject[];truncated:boolean}|{kind:'idle'|'unavailable'};
 type Item=Subject&{description:string|null;metric:string|null;target:string|null;weight:string|null;dueOn:string|null;before:string;after:string};
 type Review={actionId:string;reviewedDigest:string;createdAt:string;expiresAt:string;content:{employmentId:string;subjectId:string};review:Item};
@@ -58,7 +58,7 @@ export function GoalApprovalPanel({resumeActionId,initialGoalId}:{resumeActionId
   if(!review||op==='confirm'&&(!confirmed||Date.now()>=Date.parse(review.expiresAt)))return;
   void dispatch({action,operation:op,confirmation:{action,contractVersion:1,actionId:review.actionId,...(op==='confirm'?{reviewedDigest:review.reviewedDigest}:{})}});
  }
- const person=(row:Subject)=>row.title;
+ const person=(row:Subject)=>`${row.title} · ${row.employeeName} · ${row.companyName}`;
  const stamp=(value:string)=>format.dateTime(new Date(value),{dateStyle:'medium',timeStyle:'short'});
  const display=(value:string|null)=>value??t('blank');
  const expired=review?now>=Date.parse(review.expiresAt):false;

@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
-import {performanceGoal} from '../../db/schema';
+import {performanceGoal,employment,person,company} from '../../db/schema';
 import {GoalApproval as C,type GoalApprovalHuman as Human} from '../../lib/assistant-actions/goal-approval-contract';
 import {approveGoalTx,readGoalApprovalSourceTx} from '../../packs/performance/service';
 import {assertCanDecide} from '../approvals';
@@ -11,7 +11,7 @@ import {withAgentActionGuard} from './agent-action-guard';
 import type {AssignedSubject} from './generic-assigned-review-store';
 export const goalApprovalUnavailable=():never=>{throw Error('Please reopen the goal approval review.');};
 const fail=goalApprovalUnavailable,hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-type Subject=AssignedSubject&{revision:string};
+type Subject=AssignedSubject&{revision:string;employeeName:string;companyName:string};
 async function subject(tx:Tx,ctx:SessionContext,id:string):Promise<Subject>{
  const [row]=await tx.execute<{scope:Subject|null}>(sql`select app.assistant_goal_approval_scope(${id}::uuid) as scope`);
  if(!row?.scope)return fail();await assertCanDecide(tx,ctx,row.scope.employmentId,'goal approval');
@@ -23,7 +23,7 @@ export async function withGoalApprovalSubjectTx<T>(tx:Tx,ctx:SessionContext,id:s
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.subjectId);if(s.employmentId!==human.employmentId)return fail();
  const native=await readGoalApprovalSourceTx(tx,ctx,human.subjectId),g=native.goal;
- const item=C.Item.parse({subjectId:g.id,employmentId:g.employmentId,title:g.title,description:g.description,metric:g.metric,target:g.target,weight:g.weight,dueOn:g.dueOn,before:'proposed',after:'approved'});
+ const item=C.Item.parse({subjectId:g.id,employmentId:g.employmentId,employeeName:s.employeeName,companyName:s.companyName,title:g.title,description:g.description,metric:g.metric,target:g.target,weight:g.weight,dueOn:g.dueOn,before:'proposed',after:'approved'});
  return{review:item,reviewedDigest:hash([1,C.action,s,human,native.reviewDigest,item]),nativeDigest:native.reviewDigest};
 }
 export async function prepareGoalApprovalSourceTx(tx:Tx,ctx:SessionContext,human:Human){return review(tx,ctx,human);}
@@ -40,7 +40,7 @@ export async function readGoalApprovalChoicesTx(tx:Tx,ctx:SessionContext,selecti
  const fresh=await withAgentActionGuard(tx,ctx,C.action,'approve'),pick=C.Selection.parse(selection??{query:''});
  // The SQL predicate mirrors native visibility/direct-manager/delegation + absolute self-ban.
  // Limit before projection; no names, ratings, comments or other assessment work is read.
- const rows=await tx.select({subjectId:performanceGoal.id,employmentId:performanceGoal.employmentId,title:performanceGoal.title}).from(performanceGoal)
+ const rows=await tx.select({subjectId:performanceGoal.id,employmentId:performanceGoal.employmentId,title:performanceGoal.title,employeeName:person.fullName,companyName:company.legalName}).from(performanceGoal).innerJoin(employment,and(eq(employment.id,performanceGoal.employmentId),eq(employment.tenantId,performanceGoal.tenantId))).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId)))
   .where(and(eq(performanceGoal.tenantId,fresh.tenantId),eq(performanceGoal.approvalStatus,'proposed'),sql`${performanceGoal.title} ilike ${'%'+pick.query.replace(/[\\%_]/g,'\\$&')+'%'}`,sql`app.assistant_goal_approval_choice_scope(${performanceGoal.id})`,...(pick.subjectId?[eq(performanceGoal.id,pick.subjectId)]:[])))
   .orderBy(performanceGoal.id).limit(26);
  return C.Choices.parse({kind:'choices',items:rows.slice(0,25),truncated:rows.length>25});
