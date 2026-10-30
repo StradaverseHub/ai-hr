@@ -31,8 +31,9 @@ BEGIN
  SELECT pg_get_expr(c.conbin,c.conrelid) INTO previous FROM pg_constraint c
   WHERE c.conrelid='app.assistant_own_leave_review'::regclass AND c.conname='assistant_review_kind_columns' AND c.contype='c';
  IF previous IS NULL OR position('employees.qualification.maintain' in previous)=0 THEN RAISE EXCEPTION '0729: existing generic assigned branch unavailable';END IF;
- -- Evaluate the already accepted generic-column rule for the new kind, preserving all sibling cases.
- generic_columns:=replace(previous,'action_kind','''employees.qualification.maintain''::text');
+ -- Exact canonical generic null-column rule from0670; carry the nested predecessor ONLY ONCE.
+ -- Copying/rebinding the whole predecessor here duplicates its expression tree and exhausts replay memory.
+ generic_columns:='leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL';
  ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT assistant_review_kind_columns;
  EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind=''attendance.schedule_group.maintain'' THEN ('||generic_columns||') ELSE ('||previous||') END)';
 END $$;

@@ -1,3 +1,5 @@
+import {employeeCodeMaintenanceReviews} from '../core/assistant-actions/employee-code-maintenance-review-store';
+import {pgSqlState} from '../lib/db-error';
 /** Authored for hosted migrated native/custody verification only. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
@@ -43,4 +45,16 @@ it('allows a real unlinked USER but refuses SYSTEM, ordinary employee, foreign c
  const company=await createCompany(root(),{legalName:'Fictional other company'});await createDepartment(root(),{companyId:company.id,name:'Other department'});const restricted=await login(hrPerson.personId,'hr_admin',company.id);
  for(const who of [{...ctx,userId:undefined,personId:null},await login(hrPerson.personId,'employee'),restricted]){expect(await readScheduleGroupMaintenanceChoices(who,{query:'',employmentId:target.employmentId})).toEqual({kind:'unavailable'});await expect(store.prepare(who,human())).rejects.toThrow();}
  await expect(store.prepare(ctx,{...human(),actor:'system'})).rejects.toThrow();
+});
+
+it('refuses every legacy-column hybrid while preserving a valid new-kind review and an existing kind',async()=>{
+ const r=(await store.prepare(ctx,human())).review;
+ for(const field of ['leave_request_id','submission_event_id','notification_event_id','profile_request_id','profile_requested_event_id','claim_draft_id','claim_saved_event_id','performance_ack_event_id']){
+  let error:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(field)}=${randomUUID()}::uuid where id=${r.actionId}::uuid`);}catch(cause){error=cause;}expect(pgSqlState(error),field).toBe('23514');
+ }
+ expect((await store.confirm(ctx,command(r))).kind).toBe('completed');
+ const [employee]=await owner.db.select({code:s.employment.employeeCode}).from(s.employment).where(eq(s.employment.id,target.employmentId));expect(employee).toBeTruthy();
+ const old=(await employeeCodeMaintenanceReviews.prepare(ctx,{action:'employees.code.maintain',contractVersion:1,employmentId:target.employmentId,subjectId:target.employmentId,expectedCode:employee.code,employeeCode:'ATT-LEGACY42'})).review;
+ expect((await employeeCodeMaintenanceReviews.confirm(ctx,command(old))).kind).toBe('completed');
+ const [size]=await owner.db.execute<{bytes:number}>(sql`select octet_length(pg_get_expr(conbin,conrelid))::int as bytes from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and conname='assistant_review_kind_columns'`);expect(size.bytes).toBeGreaterThan(400);console.log('Attendance generic custody constraint bytes',size.bytes);
 });

@@ -36,7 +36,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
   expect(probe).toContain("describe.each([...selection.actions])('ADR-0151 parity: %s'");
   for(const variant of PARITY_PROBE_VARIANTS)expect(probe.split("if(selection.variants.includes('"+variant+"')) describe")).toHaveLength(2);
   expect([...probe.matchAll(/if\(selection\.variants\.includes\(/g)]).toHaveLength(PARITY_PROBE_VARIANTS.length);
-  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(3);
+  expect(probe.split("it.each([...PARITY_ROLES])")).toHaveLength(4);
   // Inspect the actual implementation, never a comment-only wrapper: all native/own/custody probes,
   // independent declared screen expectations, rejection reason and foreign source non-effects stay.
   for(const assertion of ["const screen=await screenOutcome(adapter,who,item","const own=await tryPrepare(adapter,who,item","const confirm:ParityOutcome=own?await tryConfirm(adapter,who,own","if(!theirs)throw Error","foreign confirmation changed the owner's custody","foreign confirmation wrote a native event","screen differs from the declared matrix","cross-company/tenant agent must refuse","rejection must preserve the same explicit human reason","before confirmation","no adjustment row may be written"])expect(probe).toContain(assertion);
@@ -56,7 +56,7 @@ describe('WP8 parity matrix coverage of the agent action registry',()=>{
  });
 
  it('has a real adapter for every human review action, with no remaining pending ceiling',()=>{
-  const humanActions=[...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain'];
+  const humanActions=['attendance.schedule_group.maintain',...PARITY_PENDING_ORIGINAL,'approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide','leave.adjustment.apply','employees.movement.transfer','toil.credit.grant','employees.qualification.maintain','employees.compensation.maintain','employees.emergency_contact.maintain','employees.draft.activate','employees.workforce_profile.maintain','employees.family.maintain','employees.bank.maintain','employees.fixed_item.archive','employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain'];
   expect([...PROBED_ACTION_IDS].sort()).toEqual(humanActions.sort());
   expect(PROBED_ACTION_IDS).toHaveLength(humanActions.length);expect(PARITY_PENDING_CEILING.size).toBe(0);
   for(const id of PROBED_ACTION_IDS)expect(AGENT_ACTIONS.find(action=>action.id===id)?.store,id).not.toBe('human_workflow_only');
