@@ -27,6 +27,7 @@ async function currentControlAdminTx(tx: Tx, ctx: SessionContext, groupOnly: boo
   }
 }
 type ScheduledAgentFeature=Extract<typeof AI_FEATURES[number],{kind:'agent'}>;
+const isScheduledAgentFeature=(feature:typeof AI_FEATURES[number]):feature is ScheduledAgentFeature=>feature.kind==='agent';
 /** Shared with the management screen. A switch is not runtime eligibility or a successful run. */
 function scheduledAgentFeatureStatus(ctx:SessionContext,feature:ScheduledAgentFeature){
  const setting=SETTING_CATALOG.find(row=>row.key===feature.setting);
@@ -43,7 +44,7 @@ export async function assistantAgentStatusTx(tx:Tx,supplied:SessionContext){
  const ctx=captureControlContext(supplied);assertAdmin(ctx);await currentControlAdminTx(tx,ctx,false);
  const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};
  const switches=await agentSwitchStatesTx(tx,fresh);
- const agents=AI_FEATURES.filter((feature):feature is ScheduledAgentFeature=>feature.kind==='agent').map(feature=>{
+ const agents=AI_FEATURES.filter(isScheduledAgentFeature).map(feature=>{
   const status=scheduledAgentFeatureStatus(fresh,feature),attribution=switches.find(row=>row.feature===feature.id)?.state??'not_applicable';
   // Only the two named-principal specialists require recorded switch attribution. In particular,
   // 'scheduled' still means scheduled AI is unavailable, even when these switch prerequisites pass.
