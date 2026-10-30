@@ -20,8 +20,9 @@ attendance rows, no attendance before hire, all30 selected concurrent routes, ni
 authorization boundaries, no browser runtime errors and valid post-load native audit
 chains with only the known initialization prefix. Browser navigation timeouts remain
 failures. These separate hosted runners do not establish a causal scaling ratio.
-An additional measured Home-role query fix is now an unapplied development migration;
-its broader native and HTTP/browser qualification remains pending.
+An additional measured Home-role query fix is now an unapplied development migration.
+Its 188 affected application cases pass, and an exact-file populated-database
+comparison passes. Its HTTP/browser qualification remains pending.
 
 Earlier comparable development checkpoints are retained below with their original
 sources and narrower data volumes.
@@ -122,7 +123,8 @@ planning/execution values overlap and must not be summed as independent CPU time
 A reversible disposable-database experiment now isolates role/visibility plan reuse
 and a necessary reporting-edge precheck that retains the full original visibility
 query whenever any edge exists. The winning necessary-edge precheck is now drafted in unapplied migration0862;
-broader native and HTTP/browser qualification is pending. Function language, security
+188 affected application cases and exact-file populated qualification pass; full
+HTTP/browser qualification remains pending. Function language, security
 attributes and execute ACLs remain unchanged. No installation has been changed.
 The first diagnostic run stopped before timing because the isolated worker lacked
 `pg_stat_statements`; its original failed setup is retained and the corrected run
@@ -147,6 +149,9 @@ it does not establish an equivalent page-speed improvement or meet HTTP acceptan
 | [41106189667](https://github.com/StradaverseHub/ai-hr/actions/runs/41106189667) | `0331b4cf6`: frozen-ref native task metadata, actual assignment, stage transitions and shell regression **47 cases PASS** (40 DB,seven non-DB), zero skips. |
 | [41106766391](https://github.com/StradaverseHub/ai-hr/actions/runs/41106766391) | `f7dd66c60`: Home-role diagnostic setup FAIL before timing: missing worker extension. No capacity or performance result. |
 | [41107920846](https://github.com/StradaverseHub/ai-hr/actions/runs/41107920846) | `35a9544ed`: repaired native experiment PASS.500 actual principals/100 active probes: baseline p9513,995.9ms; role-plan12,102.5; necessary-edge guard98.8; visibility-plan wrappers5,841.0; restored baseline12,373.3. All phase identity/assignment/archival/forged-grant/foreign-subject checks and owner/ACL/security attributes PASS. Only the necessary-edge guard is selected for product SQL; global visibility wrappers are not adopted. |
+| [41110030641](https://github.com/StradaverseHub/ai-hr/actions/runs/41110030641) | `d883ce28e`: **188 affected application cases PASS** (159 DB,29 non-DB), zero skipped assertions, including future reporting-edge activation/revocation, current identity, isolation, sharing, restricted-owner and privacy boundaries. Whole compiler FAIL on a stray quote in the development diagnostic, not application source. Original failure retained. |
+| [41110027898](https://github.com/StradaverseHub/ai-hr/actions/runs/41110027898) | `d883ce28e`: exact-file Home-role diagnostic FAIL to load because of the same diagnostic syntax error. No timing claim from this run. |
+| [41111998461](https://github.com/StradaverseHub/ai-hr/actions/runs/41111998461) | `83d3e4304`: diagnostic-only syntax recovery; application and migration bytes unchanged. Exact-file populated native experiment PASS:500-principal inventory/100 active probes; canonical baseline p9528,335.5ms; guarded role178.4ms; restored baseline25,617.1ms. All phases return zero errors and pass live authorization checks; installed headers/security retained and original functions restored. Whole compiler remains pending. |
 
 ## Workload and acceptance
 
@@ -160,7 +165,8 @@ it does not establish an equivalent page-speed improvement or meet HTTP acceptan
   employees, 20 managers, 18 company HR and two group HR; two tenants and ten
   companies. Normal session validation, RLS, module gates and domain services run.
   Login enrollment, MFA enrollment and recovery throughput are not measured.
-- One million pending claims, 90,000 attendance rows and 500 frozen payslips.
+- One million pending claims, 90,000 or one million attendance rows as identified
+  per run, and 500 frozen payslips.
   Other worklists are not populated at million-row scale. Payroll calculation,
   publication, imports, exports, document generation and AI-provider throughput
   are not capacity-certified by this fixture.
@@ -169,7 +175,7 @@ it does not establish an equivalent page-speed improvement or meet HTTP acceptan
   create and edit; delete is followed by the next journey without an extra pause.
   These are closed-loop full-document page requests and real server actions,
   not a claim of 500 requests per second or a measured warm SPA navigation mix.
-- The wider mix rotates over 27 selected routes across employee, manager and HR
+- The wider mix rotates over 27 or 30 selected routes as identified per run across employee, manager and HR
   areas. The harness rejects missing route coverage. Browser pilots also prove
   six locales, client-link navigation, translated form labels and persisted CRUD.
 - Real captured multipart server-action order is retained. The driver verifies
@@ -197,7 +203,7 @@ it does not establish an equivalent page-speed improvement or meet HTTP acceptan
 | ORM | Application transactions no longer construct unused relational-query helpers for 319 schema tables. Explicit typed table queries remain; application, maintenance and bootstrap factories agree. |
 | Workforce access | The sealed read-only scope projection takes a shared advisory lock on the existing key. Configuration writers retain exclusive locks; no read-to-write upgrade or permission-result cache was added. |
 | Session and visibility SQL | Development migrations retain the canonical queries and cache PL/pgSQL execution plans per connection. Current principals, grants, termination and dates remain freshly evaluated; data/results are not cached. |
-| Home role read | An unapplied necessary reporting-edge gate avoids unrelated visibility evaluations for unassigned employees. If any eligible edge exists, the entire original visibility query remains authoritative; native qualification and full load recovery are pending. |
+| Home role read | An unapplied necessary reporting-edge gate avoids unrelated visibility evaluations for unassigned employees. If any eligible edge exists, the entire original visibility query remains authoritative. The188 affected cases and exact-file populated comparison pass; full load recovery remains pending. |
 | Date display | Reuse immutable Kuala Lumpur date/time formatter objects; dates and formatted results remain fresh. Midnight, leap-day and year-boundary test cases cover behavior. |
 | Payroll, attendance and reports | SQL paging/aggregates and narrowed source reads; totals remain global to authorized scope. Employee Master avoids an export for its count and explicitly bounds source rows. |
 | Personnel | Authorized remote search returns eight matches, aborts stale requests and preserves current selection. No unbounded employment download for the picker. |

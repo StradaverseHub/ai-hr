@@ -43,7 +43,7 @@ on:
         description: Explicit service benchmark outside the normal unit-test inventory
         default: none
         type: choice
-        options: [none, plan-cache, claims-sql, admin-gate, session-plan, scope-lock, orm-schema, review-queues, ess-fields, home-role]
+        options: [none, plan-cache, claims-sql, admin-gate, session-plan, scope-lock, orm-schema, review-queues, ess-fields, home-role, profile-queue]
       profile_database_sql:
         description: Track statements in the isolated development database
         default: false
@@ -344,7 +344,7 @@ jobs:
           retention-days: 14
 
   service-performance-profile:
-    if: ${{ inputs.service_profile == 'plan-cache' || inputs.service_profile == 'claims-sql' || inputs.service_profile == 'admin-gate' || inputs.service_profile == 'session-plan' || inputs.service_profile == 'scope-lock' || inputs.service_profile == 'orm-schema' || inputs.service_profile == 'review-queues' || inputs.service_profile == 'ess-fields' || inputs.service_profile == 'home-role' }}
+    if: ${{ inputs.service_profile == 'plan-cache' || inputs.service_profile == 'claims-sql' || inputs.service_profile == 'admin-gate' || inputs.service_profile == 'session-plan' || inputs.service_profile == 'scope-lock' || inputs.service_profile == 'orm-schema' || inputs.service_profile == 'review-queues' || inputs.service_profile == 'ess-fields' || inputs.service_profile == 'home-role' || inputs.service_profile == 'profile-queue' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
