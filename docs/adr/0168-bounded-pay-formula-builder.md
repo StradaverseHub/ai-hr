@@ -16,6 +16,10 @@ this same tree, retain comments and support nested conditions, assignments, type
 and Return. Sources are named registry calls with literal source identities, not executable JavaScript,
 SQL, imports or network operations. Explicit source/token/node/depth/step/output limits bound execution.
 
+Calculation transactions retain the canonical exclusive Access configuration barrier to prevent authority
+revocation races. The shared catalogue read lock pins formula revisions; it does not promise parallel
+company-run throughput while that Access barrier is held.
+
 The evaluator uses fixed12-scale BigInt decimal arithmetic, 18 integer digits and half-away-from-zero
 rounding. It receives synchronous, prefetched typed facts from the payroll source owner. Simulation and
 real payroll use the same provider and evaluator. Missing, ambiguous, out-of-scope or unauthorized facts
