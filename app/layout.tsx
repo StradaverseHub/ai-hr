@@ -310,7 +310,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               viewerName={viewer.name}
               viewerCode={viewer.employeeCode}
             />
-            <div data-app-content className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
+            <div data-app-content className="flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4 monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]">
               {/* Three-zone grid: equal minmax(0,1fr) side tracks keep the centre search geometrically
                   centred regardless of what each cluster contains (dev switcher hidden in production,
                   bell variants, …). The centre track is bounded from sm up so the w-full trigger has a
