@@ -1,7 +1,7 @@
 /** Authenticated focused-recovery operator adapter. Original failed evidence remains immutable. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync,readdirSync,mkdtempSync,rmSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync,readdirSync,mkdtempSync,rmSync,existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -26,7 +26,8 @@ async function collect(runId,dir,{reuse=false,prefetchDirectory}={}){
  try{for(const a of artifacts){
   const path=join(dir,a.name+'.zip'),bytes=readCiArchive(a,path);verifyArtifactBytes(a,bytes);archives.set(a.name,bytes);
   const binary=a.name===BUILD_ARTIFACT,destination=join(temporary??dir,a.name);
-  if(!reuse||!binary)execFileSync('python3',[fileURLToPath(new URL(binary?'./build-transport-extract.py':'./extract-artifact.py',import.meta.url)),path,destination,...(binary?[a.digest.slice(7)]:[])],{timeout:60000,stdio:'pipe'});
+  const extractor=binary?'./build-transport-extract.py':a.name==='focused-development-evidence'?'./focused-recovery-extract.py':'./extract-artifact.py';
+  if(!reuse||!binary)execFileSync('python3',[fileURLToPath(new URL(extractor,import.meta.url)),path,destination,...(binary?[a.digest.slice(7)]:[])],{timeout:60000,stdio:'pipe'});
   if(!binary)parsed.set(a.name,new Map(readdirSync(destination).map(name=>[name,JSON.parse(readFileSync(join(destination,name),'utf8'))])));
  }}finally{if(temporary)rmSync(temporary,{recursive:true,force:true});}
  return {run,jobs,artifacts,archives,parsed};
@@ -54,7 +55,8 @@ export async function verifyRecoveredCi({candidatePath,runId,baseline,focusedRun
  assert(workflow.path==='.github/workflows/alpha-focused-checks.yml'&&workflow.state==='active','Focused workflow registry differs');
  const focused=[];
  for(const id of focusedRunIds.slice().sort((a,b)=>a-b)){
-  const sub=join(dir,`focused-${id}`),f=await collect(id,sub,{reuse});
+  const sub=join(dir,`focused-${id}`),prefetch=process.env.AIHR_CI_PREFETCH_DIR?join(process.env.AIHR_CI_PREFETCH_DIR,`focused-${id}`):null;
+  const f=await collect(id,sub,{reuse,prefetchDirectory:prefetch&&existsSync(prefetch)?prefetch:undefined});
   const producer=validateFocusedMetadata({...f,expected:{runId:id,controller,workflowId:workflow.id,after:source.run.updated_at}});
   const artifact=f.artifacts[0],packet=f.parsed.get(artifact.name);
   assert(isDeepStrictEqual([...packet.keys()].sort(),['focused.json','nodb.vitest.json']),'Exact focused no-DB packet members required');

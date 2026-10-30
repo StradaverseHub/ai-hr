@@ -89,6 +89,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-transport-extract.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-activate.test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/focused-recovery-extract.test.py
       - name: Resolve frozen candidate
         id: candidate
         env:
