@@ -42,11 +42,11 @@ CREATE FUNCTION app._performance_review_scope(p_kind text,p_subject uuid) RETURN
 BEGIN
  PERFORM app._assistant_leave_decision_login();
  PERFORM app.access_workforce_write_lock();
- IF CASE p_kind
+ IF (CASE p_kind
  WHEN 'performance.goal.approve' THEN app.assistant_goal_approval_choice_scope(p_subject)
  WHEN 'performance.checkin.cancel' THEN app.assistant_checkin_cancel_choice_scope(p_subject)
  WHEN 'performance.checkin.complete' THEN app.assistant_checkin_complete_choice_scope(p_subject)
- ELSE false END IS NOT TRUE THEN RAISE EXCEPTION 'Performance review unavailable' USING ERRCODE='42501';END IF;
+ ELSE false END) IS NOT TRUE THEN RAISE EXCEPTION 'Performance review unavailable' USING ERRCODE='42501';END IF;
 END $$;
 REVOKE ALL ON FUNCTION app._performance_review_scope(text,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -232,8 +232,8 @@ BEGIN
  IF NOT FOUND OR r.performance_postimage_version IS DISTINCT FROM 1 OR r.performance_postimage_event_id IS DISTINCT FROM p_event OR r.receipt_event_id IS DISTINCT FROM p_event THEN RAISE EXCEPTION 'Performance proof unavailable; open native history' USING ERRCODE='42501';END IF;
  PERFORM app._assistant_assigned_review_binding(r.action_kind,r.person_id,r.employment_id,r.company_id,r.decision_subject_person_id,r.receipt_subject_id);
  SELECT * INTO d FROM public.domain_event WHERE id=p_event AND tenant_id=r.tenant_id AND aggregate_id=r.receipt_subject_id AND actor_type='user' AND actor_id=r.user_id AND subject_employment_id=r.employment_id;
- IF NOT FOUND OR d.aggregate_type IS DISTINCT FROM CASE WHEN r.action_kind='performance.goal.approve' THEN 'performance-goal' ELSE 'performance-checkin' END
- OR d.event_type IS DISTINCT FROM CASE r.action_kind WHEN 'performance.goal.approve' THEN 'performance-goal.approved' WHEN 'performance.checkin.cancel' THEN 'performance-checkin.cancelled' ELSE 'performance-checkin.completed' END THEN RAISE EXCEPTION 'Performance history unavailable' USING ERRCODE='42501';END IF;
+ IF NOT FOUND OR d.aggregate_type IS DISTINCT FROM (CASE WHEN r.action_kind='performance.goal.approve' THEN 'performance-goal' ELSE 'performance-checkin' END)
+ OR d.event_type IS DISTINCT FROM (CASE r.action_kind WHEN 'performance.goal.approve' THEN 'performance-goal.approved' WHEN 'performance.checkin.cancel' THEN 'performance-checkin.cancelled' ELSE 'performance-checkin.completed' END) THEN RAISE EXCEPTION 'Performance history unavailable' USING ERRCODE='42501';END IF;
  kind:=CASE r.action_kind WHEN 'performance.goal.approve' THEN 'approved' WHEN 'performance.checkin.cancel' THEN 'cancelled' ELSE 'completed' END;
  RETURN jsonb_build_object('kind',kind,'subjectId',r.receipt_subject_id,'employmentId',r.employment_id,'eventId',d.id)
   ||CASE WHEN r.action_kind='performance.checkin.complete' THEN jsonb_build_object('completedAt',d.payload->>'completedAt') ELSE '{}'::jsonb END;
