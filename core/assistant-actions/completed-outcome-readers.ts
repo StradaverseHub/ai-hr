@@ -3,6 +3,10 @@ import {profileRequestRejectionReviews} from './profile-request-rejection-review
 import {readCompletedPayrollReopenOutcomeTx} from './payroll-reopen-review-store';
 import {departmentArchiveReviews} from './department-archive-review-store';
 import {positionArchiveReviews} from './position-archive-review-store';
+import {readCompletedRewardsCalendarOutcomeTx} from './rewards-calendar-review-store';
+import {readCompletedRewardsCancelOutcomeTx} from './rewards-cancel-review-store';
+import {offboardingStepUndoReviews} from './offboarding-step-undo-review-store';
+import {offboardingStepReviews} from './offboarding-step-completion-review-store';
 import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
 import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
 import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
@@ -94,6 +98,8 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'attendance.correction.request':(tx,ctx,id)=>readCompletedAttendanceCorrectionOutcomeTx(tx,ctx,id),
  'country-my.statutory.update':(tx,ctx,id)=>readCompletedCountryStatutoryOutcomeTx(tx,ctx,id),
  'approvals.leave.decide':(tx,ctx,id)=>readCompletedLeaveDecisionOutcomeTx(tx,ctx,id),
+ 'lifecycle.offboarding.step.undo':(tx,ctx,id)=>offboardingStepUndoReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'lifecycle.offboarding.step.complete':(tx,ctx,id)=>offboardingStepReviews.readCompletedOutcomeTx(tx,ctx,id),
  'lifecycle.acknowledgement.submit':(tx,ctx,id)=>readCompletedLifecycleAckOutcomeTx(tx,ctx,id),
  'toil.replacement.request':(tx,ctx,id)=>readCompletedToilRequestOutcomeTx(tx,ctx,id),
  'multi_cycle_payroll.create_run':(tx,ctx,id)=>readCompletedMultiCycleRunOutcomeTx(tx,ctx,id),
@@ -102,6 +108,8 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'typed_pay_components.create':(tx,ctx,id)=>readCompletedPayComponentOutcomeTx(tx,ctx,id),
  'payroll.reopen':(tx,ctx,id)=>readCompletedPayrollReopenOutcomeTx(tx,ctx,id),
  'payroll.close':(tx,ctx,id)=>readCompletedPayrollCloseOutcomeTx(tx,ctx,id),
+ 'rewards.calendar.update':(tx,ctx,id)=>readCompletedRewardsCalendarOutcomeTx(tx,ctx,id),
+ 'rewards.cancel_review':(tx,ctx,id)=>readCompletedRewardsCancelOutcomeTx(tx,ctx,id),
  'rewards.post':(tx,ctx,id)=>readCompletedRewardsPostOutcomeTx(tx,ctx,id),
 };
 export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,server:NativeOutcomeServerContext={}){

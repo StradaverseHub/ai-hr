@@ -16,6 +16,7 @@ import {AiAllowanceError} from '../lib/ai/types';
 export function assistantActionActors(ctx:SessionContext):readonly AgentActionActor[]{
  const person=typeof ctx.personId==='string'&&ctx.personId.length>0,user=typeof ctx.userId==='string'&&ctx.userId.length>0;
  const held:Record<AgentActionActor,boolean>={
+  lifecycle_staff:false, // No inline proposal: the case-specific native guard owns staff/company admission.
   self:person,assigned_approver:person,assigned_tester:user,agent_principal:false,
   // Positive Workforce authority requires a fresh owning-service read; it has no inline hint protocol.
   workforce_maintainer:false,hr_admin:isAdmin(ctx),tenant_admin:isGroupAdmin(ctx),payroll_admin:canManagePayroll(ctx),rewards_admin:canManagePerfComp(ctx),

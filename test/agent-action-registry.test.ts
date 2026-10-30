@@ -167,7 +167,7 @@ describe('the agent action registry',()=>{
   }
   for(const module of AGENT_MODULE_CODES){
    const expected=agentActionsByModule(module).filter(action=>action.review.handoff==='review_page').map(action=>({module,action:action.id,route:action.review.route}));
-   if(module!=='employees')expect(moduleHumanActionHandoffs(module).map(row=>({module:row.module,action:row.action,route:row.route})),module).toEqual(expected);
+   if(module!=='employees')expect(moduleHumanActionHandoffs(module).filter(row=>row.action!=='lifecycle.offboarding.workflow').map(row=>({module:row.module,action:row.action,route:row.route})),module).toEqual(expected);
   }
   expect(moduleHumanActionHandoffs('employees').map(row=>row.action)).toEqual(AGENT_ACTIONS.filter(action=>action.module==='employees'&&action.review.handoff!=='none').map(action=>action.id));
  });

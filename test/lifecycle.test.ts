@@ -5,7 +5,8 @@
  * layers (an admin session sails through RLS, so it can only be the service refusing).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { withLifecycleTenant } from '../core/module-gate';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
@@ -15,7 +16,7 @@ import {
   createOffboardingCase, createOnboardingCase, createStandaloneRequisition, decideAssetRequest, decideRequisition, ensureCatalogue, getAsset,
   getCase, getRequisition, listAssetRequests, listAssets, listCases, listRequisitions, exportLifecycleCsv, listMyCompanies, listMyEmployerCompanies, listStaff, pendingApprovals, loadHandoverDefaults, registerAsset, getMyOnboarding, submitMyAcknowledgement,
   reopenCase, returnAssets, saveCompanyConfig, saveCustomFields, saveProvisionDefs, saveStepDefs, setAssetRequestHandler, setOutcome, setProvision,
-  setStaff, tickStep, undoStep, updateAsset, updateCase, caseHistory, listComments,
+  setStaff, tickStep, tickStepTx, undoStep, updateAsset, updateCase, caseHistory, listComments,
 } from '../packs/lifecycle/service';
 import { ONBOARDING_STEPS, OFFBOARDING_STEPS } from '../core/lifecycle-defaults';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -292,6 +293,40 @@ describe('Lifecycle module', () => {
   // ───────────────────────── offboarding ─────────────────────────
   describe('offboarding', () => {
     const ofbInput = (o: Record<string, unknown> = {}) => ({ companyId: b.companyId, fullName: 'Leaver One', employeeNo: 'E500', resignationDate: '2026-10-01', lastWorkingDay: '2026-10-31', ...o });
+
+    it('returns the exact step and derived completion event identities from the native transaction', async () => {
+      const { id, number } = await createOffboardingCase(agent, ofbInput());
+      await setOutcome(agent, number, 'accepted');
+      const view = await getCase(agent, 'offboarding', number);
+      const remaining = view.steps.filter(step => step.applicability === 'applicable' && !step.done);
+      expect(remaining.length).toBeGreaterThan(1);
+      for (const step of remaining.slice(0, -1)) await tickStep(agent, 'offboarding', number, step.key);
+      const last = remaining[remaining.length - 1]!;
+      const result = await withLifecycleTenant(agent, tx => tickStepTx(tx, agent, 'offboarding', number, last.key, { reference: 'native receipt' }));
+      expect(result).toMatchObject({caseId:id,stepKey:last.key,status:'completed'});
+      expect(result.stepEventId).not.toBe(result.completionEventId);
+      const events = await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.aggregateId,id)));
+      const stepEvent = events.find(event => event.id === result.stepEventId);
+      const completionEvent = events.find(event => event.id === result.completionEventId);
+      expect(stepEvent).toMatchObject({aggregateType:'lifecycle-case',eventType:'lifecycle-case.step-done',actorType:'user',actorId:agent.userId,subjectEmploymentId:null,payload:{action:'step.done',number,step:last.key}});
+      expect(completionEvent).toMatchObject({aggregateType:'lifecycle-case',eventType:'lifecycle-case.completed',actorType:'user',actorId:agent.userId,subjectEmploymentId:null});
+      expect((await caseHistory(agent,'offboarding',number)).filter(row=>row.action==='case.completed')).toHaveLength(1);
+    });
+
+    it('rolls back both the native step and its event when the enclosing command fails', async () => {
+      const { id, number } = await createOffboardingCase(agent, ofbInput());
+      let eventId: string | undefined;
+      await expect(withLifecycleTenant(agent,async tx=>{
+        const result=await tickStepTx(tx,agent,'offboarding',number,'resign_submit');
+        eventId=result.stepEventId;expect(result.completionEventId).toBeNull();
+        throw Error('enclosing command refused');
+      })).rejects.toThrow('enclosing command refused');
+      expect(eventId).toBeDefined();
+      expect(await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,eventId!))).toHaveLength(0);
+      const steps=await owner.db.select().from(schema.lcCaseStep).where(eq(schema.lcCaseStep.caseId,id));
+      expect(steps.some(step=>step.stepKey==='resign_submit' && step.done)).toBe(false);
+      expect((await caseHistory(agent,'offboarding',number)).some(row=>row.action==='step.done')).toBe(false);
+    });
 
     it('locks the processing phase until the outcome is recorded', async () => {
       const { number } = await createOffboardingCase(agent, ofbInput());

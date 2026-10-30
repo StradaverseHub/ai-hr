@@ -7,6 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
+import {parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
+import {PayrollReopen as PayrollReopenContract} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {AGENT_PRINCIPAL_SPECIALISTS,AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_ACTION_CATEGORY,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
 import {NATIVE_OUTCOME_ACTIONS} from '../lib/ai/module-native-outcomes';
 
@@ -80,17 +82,33 @@ describe('ADR-0151 agent capability inventory',()=>{
   for(const id of automatic)expect(['chaser','reminder']).toContain(AGENT_ACTION_CATEGORY[id as keyof typeof AGENT_ACTION_CATEGORY]);
  });
 
- it('keeps the never-automatic categories as handoffs',()=>{
+ it('keeps unsupported sensitive actions as handoffs and Payroll reopening in explicit human review',()=>{
   const expectations:[string,string,string][]=[
    ['app/admin/actions.ts','assignRoleAction','handoff:access_and_authentication'],
    ['app/admin/privacy/actions.ts','erasePersonPiiAction','handoff:privacy_erasure'],
-   ['app/payroll/actions.ts','unlockAction','handoff:payroll_reversal'],
    ['app/payroll/actions.ts','resetAction','handoff:payroll_reversal'],
    ['app/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
    ['app/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
    ['app/operator/actions.ts','setCustomerFeedbackMenuAction','handoff:platform_operator'],
   ];
   for(const [file,name,value] of expectations)expect(inventory[file]?.[name],`${file} › ${name}`).toBe(value);
+  expect(inventory['app/payroll/actions.ts']?.unlockAction).toBe('registered:payroll.reopen');
+  expect(AGENT_ACTION_TIER_CEILING['payroll.reopen']).toBe('approve');
+  expect(AGENT_ACTIONS.find(action=>action.id==='payroll.reopen')).toMatchObject({
+   module:'payroll',policy:{tier:'approve',category:'payroll'},store:'generic_own',browserOwner:'payrollReopen',
+   screen:{entryPoints:['app/payroll/actions.ts#unlockAction']},review:{route:'/assistant/payroll-reopen',handoff:'review_page'},
+   humanInputs:['batchId','reason','confirmReopenClosedRun','acknowledgeRecordedDownstreamWarnings'],
+  });
+  expect(parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'prepare'})).toMatchObject({kind:'prepare',requiresHumanSelection:true,effect:'none',adapter:'module_payroll_reopen_review_v1'});
+  for(const extra of [{batchId:'model batch'},{reason:'model reason'},{confirmReopenClosedRun:true},{acknowledgeRecordedDownstreamWarnings:true}])expect(()=>parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'prepare',...extra})).toThrow();
+  expect(()=>parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'confirm'})).toThrow();
+  const human={action:'payroll.reopen',contractVersion:1,batchId:'10000000-0000-4000-8000-000000000001',reason:'Correct the reviewed run.',confirmReopenClosedRun:true,acknowledgeRecordedDownstreamWarnings:true};
+  expect(PayrollReopenContract.Human.safeParse(human).success).toBe(true);
+  for(const consent of ['confirmReopenClosedRun','acknowledgeRecordedDownstreamWarnings']){
+   const missing:Record<string,unknown>={...human};delete missing[consent];expect(PayrollReopenContract.Human.safeParse(missing).success).toBe(false);
+   expect(PayrollReopenContract.Human.safeParse({...human,[consent]:false}).success).toBe(false);
+  }
+
   for(const entries of Object.values(inventory))for(const value of Object.values(entries)){
    const [kind,reason]=value.split(':');
    if(kind==='handoff')expect(AGENT_HANDOFF_REASONS as readonly string[]).toContain(reason);

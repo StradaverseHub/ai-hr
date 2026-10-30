@@ -75,6 +75,8 @@ export async function recordChange(
     action: string;
     detail?: Record<string, unknown>;
     eventType: string;
+    /** Optional native identity allocated by an enclosing reviewed command. */
+    eventId?: string;
     subjectEmploymentId?: string | null;
     eventRef?: Record<string, string | number | boolean | null>;
   },
@@ -90,6 +92,7 @@ export async function recordChange(
     actorName: name,
   });
   await appendEvent(tx, {
+    id: e.eventId,
     tenantId: ctx.tenantId,
     aggregateType: `lifecycle-${e.refType.replace('_', '-')}`,
     aggregateId: e.refId,

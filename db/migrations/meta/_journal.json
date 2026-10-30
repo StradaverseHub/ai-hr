@@ -4168,6 +4168,13 @@
       "breakpoints": true
     },
     {
+      "idx": 711,
+      "version": "7",
+      "when": 1793330000068,
+      "tag": "0731_assistant_rewards_cancel_review",
+      "breakpoints": true
+    },
+    {
       "idx": 712,
       "version": "7",
       "when": 1793330000069,
@@ -4189,10 +4196,31 @@
       "breakpoints": true
     },
     {
+      "idx": 715,
+      "version": "7",
+      "when": 1793330000072,
+      "tag": "0735_assistant_lifecycle_offboarding_step_review",
+      "breakpoints": true
+    },
+    {
       "idx": 718,
       "version": "7",
       "when": 1793330000076,
       "tag": "0739_native_ess_bank_direct_purpose",
+      "breakpoints": true
+    },
+    {
+      "idx": 720,
+      "version": "7",
+      "when": 1793330000078,
+      "tag": "0741_assistant_rewards_cycle_calendar_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 721,
+      "version": "7",
+      "when": 1793330000079,
+      "tag": "0742_assistant_lifecycle_offboarding_step_undo",
       "breakpoints": true
     },
     {

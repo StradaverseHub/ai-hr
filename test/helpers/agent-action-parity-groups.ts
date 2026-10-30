@@ -8,6 +8,9 @@ export const PARITY_PROBE_GROUPS={
  attendance:{actions:['attendance.schedule_group.maintain'],variants:[]},
  payroll:{actions:['payroll.reopen'],variants:[]},
  organisation:{actions:['org.position.archive','org.department.archive'],variants:[]},
+ rewardsCalendar:{actions:['rewards.calendar.update'],variants:[]},
+ rewards:{actions:['rewards.cancel_review'],variants:[]},
+ lifecycle:{actions:['lifecycle.offboarding.step.complete','lifecycle.offboarding.step.undo'],variants:[]},
  commands:{actions:[
   'org.reporting.change','knowledge_base.article.create','typed_pay_components.create','leave.adjustment.apply',
   'employees.compensation.maintain','employees.bank.maintain','employees.emergency_contact.maintain',
@@ -31,4 +34,4 @@ export const PARITY_PROBE_GROUPS={
  ],variants:['cost_allocation_clear']},
 } satisfies Record<string,{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}>;
 export type ParityProbeGroup=keyof typeof PARITY_PROBE_GROUPS;
-export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={organisation:'test/agent-action-permission-parity-organisation.test.ts',payroll:'test/agent-action-permission-parity-payroll.test.ts',attendance:'test/agent-action-permission-parity-attendance.test.ts',commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts'};
+export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={lifecycle:'test/agent-action-permission-parity-lifecycle.test.ts',rewardsCalendar:'test/agent-action-permission-parity-rewards-calendar.test.ts',rewards:'test/agent-action-permission-parity-rewards.test.ts',organisation:'test/agent-action-permission-parity-organisation.test.ts',payroll:'test/agent-action-permission-parity-payroll.test.ts',attendance:'test/agent-action-permission-parity-attendance.test.ts',commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts'};
