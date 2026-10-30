@@ -85,7 +85,7 @@ try{
  });await new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(3443,'127.0.0.1',resolve);});
  let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:3174/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
  assert(ready,'production server did not become ready');
- await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,NODE_OPTIONS:'--max-old-space-size=2048'},600000);
+ await run('http-and-browser',process.execPath,['--import','tsx','scripts/performance/system-load.mjs'],{...env,PERF_APP_PID:String(app.pid),PERF_CLOCK_TICKS:execFileSync('getconf',['CLK_TCK'],{encoding:'utf8'}).trim(),NODE_OPTIONS:'--max-old-space-size=2048'},600000);
  report.exitCode=0;
 }catch(error){report.error=String(error.message).slice(0,350);console.error('[system-perf] '+report.error);}
 finally{

@@ -21,6 +21,11 @@ const report={suite,kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:fa
  assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs:30000,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
+function appCpu(){
+ const pid=process.env.PERF_APP_PID,ticks=Number(process.env.PERF_CLOCK_TICKS);
+ if(!/^\d+$/.test(pid??'')||!Number.isFinite(ticks)||ticks<=0)return null;
+ try{const stat=readFileSync('/proc/'+pid+'/stat','utf8'),fields=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/);return (Number(fields[11])+Number(fields[12]))/ticks;}catch{return null;}
+}
 const samples=[];
 async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[]){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
@@ -208,6 +213,7 @@ try{
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  await db`select pg_stat_statements_reset()`;
  const waits=[];let samplingBusy=false;sampling=setInterval(async()=>{if(samplingBusy)return;samplingBusy=true;try{const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;waits.push({at:Date.now(),rows});}catch{}finally{samplingBusy=false;}},1000);
+ const appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+30000;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  progressTimer=setInterval(()=>{report.progress={...progress,elapsedMs:performance.now()-started};save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));},5000);
@@ -245,6 +251,8 @@ try{
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:String(v.reason.message).slice(0,180)}]:[])};
  clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
  report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);
+ const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore);
+ report.cpu={appCpuSeconds:appCpuBefore!==null&&appCpuAfter!==null?appCpuAfter-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1000000,elapsedSeconds:(performance.now()-started)/1000,includesBrowserCpu:false,includesPostgresCpu:false};
  const loaded=samples.slice(offset),reads=loaded.filter(v=>v.method==='GET'),writes=loaded.filter(v=>v.method==='POST');
  report.phases.push({name:'500-paced-HTTP-users-'+suite+'-'+thinkTimeMs+'ms-think',elapsedMs:performance.now()-started,completed:results.filter(v=>v.status==='fulfilled').length,errors:report.functionalErrors.length,
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
