@@ -29,7 +29,7 @@ const modulePlacement = (module:NavigationModule,section:NavigationSection):Navi
 const shared = new Set(['/','/me','/org','/tasks','/approvals','/system-testing','/assistant','/knowledge-base','/feedback']);
 const system = new Set(['/admin/holidays','/admin/settings/system-labels','/admin/system-settings/approval-delegation',
   '/admin/settings/email','/admin/settings/email-templates','/admin/settings/login','/admin/settings/notifications','/admin/scheduled-actions','/admin/privacy','/admin/audit',
-  '/admin/ai','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
+  '/admin/ai','/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users','/admin/system-explorer','/admin/system-testing','/mobile-preview','/admin/settings/dashboard']);
 const peopleConfig = new Set(['/admin/organization','/admin/settings/employee-id','/admin/settings/hiring-defaults',
   '/admin/settings/movement','/admin/settings/profile-requests','/admin/settings/people-general']);
 const leaveHr = new Set(['/admin/leave-config/adjustments','/admin/leave-config/data-import',

@@ -491,7 +491,13 @@
     "aiManagementOrchestrator": "HR 工作队列",
     "aiManagementRuns": "最近模型调用",
     "moduleELetter": "电子信函",
-    "emailTemplates": "邮件模板"
+    "emailTemplates": "邮件模板",
+    "securityCenter": "安全中心",
+    "securityPermissions": "安全与权限",
+    "functionAccess": "功能访问",
+    "createLogin": "手动创建登录账户",
+    "inviteUser": "邀请用户",
+    "users": "用户"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11174,7 +11180,10 @@
         "letterRegister": "当前公司范围及各操作所需的当前信函读取、签发、生成或设置权限。",
         "letterSettings": "当前公司范围。设置权限可配置工作流；审批权限仅可管理您自己的签名图像。",
         "emailTemplates": "只有具备全组织人力资源或系统权限的管理员可以管理邮件设计。仅有公司范围权限的管理员不能管理。",
-        "importHistory": "当您对导入中至少一家公司拥有人员查看权限时会列出该导入，并且只显示您可查看公司的员工。下载原始文件需要对其中每家公司拥有查看权限；撤销需要对其中每家公司拥有人员维护权限。"
+        "importHistory": "当您对导入中至少一家公司拥有人员查看权限时会列出该导入，并且只显示您可查看公司的员工。下载原始文件需要对其中每家公司拥有查看权限；撤销需要对其中每家公司拥有人员维护权限。",
+        "securityCenter": "管理员或具有访问配置权限的人员可以使用。",
+        "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
+        "inviteUser": "仅限集团级管理员。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -30345,6 +30354,33 @@
       "proven_window_too_wide": "打卡时间的不确定性超出了公司允许的范围。",
       "employment_inactive": "该员工当天不在职。",
       "overtime_settled": "当天的加班已经结算。"
+    }
+  },
+  "securityCenter": {
+    "title": "安全中心",
+    "description": "管理安全设置、账户创建和用户访问权限。",
+    "back": "返回安全中心",
+    "invitationSent": "邀请已发送。",
+    "legacyHelp": "请选择此账户设置的页面。",
+    "permissions": {
+      "title": "安全与权限",
+      "description": "配置访问规则、受保护群组和权限。"
+    },
+    "functions": {
+      "title": "功能访问",
+      "description": "查看哪些角色可以打开各个页面。"
+    },
+    "create": {
+      "title": "手动创建登录账户",
+      "description": "创建登录账户并完成待处理的账户设置。"
+    },
+    "invite": {
+      "title": "邀请用户",
+      "description": "向指定人员发送电子邮件邀请。"
+    },
+    "users": {
+      "title": "用户",
+      "description": "查找用户并管理角色、邀请和账户访问权限。"
     }
   }
 }

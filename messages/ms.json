@@ -491,7 +491,13 @@
     "aiManagementOrchestrator": "Baris kerja HR",
     "aiManagementRuns": "Panggilan model terkini",
     "moduleELetter": "E-Surat",
-    "emailTemplates": "Templat e-mel"
+    "emailTemplates": "Templat e-mel",
+    "securityCenter": "Pusat Keselamatan",
+    "securityPermissions": "Keselamatan & Kebenaran",
+    "functionAccess": "Akses Fungsi",
+    "createLogin": "Cipta Log Masuk Secara Manual",
+    "inviteUser": "Jemput Pengguna",
+    "users": "Pengguna"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11174,7 +11180,10 @@
         "letterRegister": "Konteks syarikat semasa dan kebenaran Surat semasa untuk setiap tindakan.",
         "letterSettings": "Konteks syarikat semasa. Kebenaran Tetapan mengurus aliran kerja; kebenaran Lulus mengurus imej tandatangan anda sendiri.",
         "emailTemplates": "Hanya pentadbir HR atau sistem yang mempunyai akses seluruh organisasi boleh mengurus reka bentuk e-mel. Pentadbir satu syarikat tidak boleh.",
-        "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya."
+        "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya.",
+        "securityCenter": "Tersedia kepada pentadbir atau individu dengan kebenaran mengkonfigurasi akses.",
+        "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
+        "inviteUser": "Pentadbir seluruh kumpulan sahaja."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -30345,6 +30354,33 @@
       "proven_window_too_wide": "masa rekod tidak pasti melebihi had yang dibenarkan oleh syarikat.",
       "employment_inactive": "pekerja tidak bekerja pada hari tersebut.",
       "overtime_settled": "lebih masa bagi hari ini telah diselesaikan."
+    }
+  },
+  "securityCenter": {
+    "title": "Pusat Keselamatan",
+    "description": "Urus tetapan keselamatan, penciptaan akaun dan akses pengguna.",
+    "back": "Kembali ke Pusat Keselamatan",
+    "invitationSent": "Jemputan telah dihantar.",
+    "legacyHelp": "Pilih halaman untuk persediaan akaun ini.",
+    "permissions": {
+      "title": "Keselamatan & Kebenaran",
+      "description": "Konfigurasi peraturan akses, kumpulan dilindungi dan kebenaran."
+    },
+    "functions": {
+      "title": "Akses Fungsi",
+      "description": "Semak peranan yang boleh membuka setiap skrin."
+    },
+    "create": {
+      "title": "Cipta Log Masuk Secara Manual",
+      "description": "Cipta log masuk dan lengkapkan persediaan akaun yang belum selesai."
+    },
+    "invite": {
+      "title": "Jemput Pengguna",
+      "description": "Hantar jemputan e-mel kepada individu yang dinamakan."
+    },
+    "users": {
+      "title": "Pengguna",
+      "description": "Cari pengguna dan urus peranan, jemputan serta akses akaun."
     }
   }
 }

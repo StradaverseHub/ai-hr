@@ -31,7 +31,7 @@ import en from '../messages/en.json';
 
 const APP = path.resolve(__dirname, '../app');
 // ADR-0142: requireOnehrAdminAccess replaced requirePerfCompAccess on the /performance/[cycleId] pages.
-const GUARD_RE = /requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|readV9Workspace\s*\(|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
+const GUARD_RE = /requireSecurityCenter|requireGroupAdministration|requireWorkforceAccess|requireAccessConfiguration|requireTeamAccess|requireAdmin|requirePayrollAccess|requirePerfCompAccess|requireOnehrAdminAccess|scopedAdmin|scopedSession|readV9Workspace\s*\(|onboarding(?:Context|Detail|MyAcknowledgements|Requisitions)\s*\(/;
 
 /**
  * r362 — THIS USED TO TEST THE RAW SOURCE, SO A COMMENT COUNTED AS A GUARD.
@@ -177,7 +177,7 @@ describe('function-access registry (lib/permissions)', () => {
   // assertion that matters: neither operator nor performance_partner is an admin role, so the loop below
   // also proves neither reaches a requireAdmin/scopedAdmin screen.
   it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 8', () => {
-    const guardExpect: Record<Guard, number> = { assistantSession: 8, requireWorkforceAccess: 8, requireAccessConfiguration: 8, requireAdmin: 2, scopedAdmin: 2, scopedSession: 8, requireTeamAccess: 3, onboardingAccess: 8, onboardingParticipant: 8, onboardingMaster: 2 };
+    const guardExpect: Record<Guard, number> = { requireSecurityCenter:8, requireGroupAdministration:2, assistantSession: 8, requireWorkforceAccess: 8, requireAccessConfiguration: 8, requireAdmin: 2, scopedAdmin: 2, scopedSession: 8, requireTeamAccess: 3, onboardingAccess: 8, onboardingParticipant: 8, onboardingMaster: 2 };
 
     for (const g of Object.keys(guardExpect) as Guard[]) {
       expect(rolesForGuard(g).size, g).toBe(guardExpect[g]);

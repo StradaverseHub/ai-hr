@@ -70,6 +70,7 @@ import { modulePackById } from '@/packs/registry';
 import {LETTER_NAV_ITEMS} from '@/lib/letter-navigation';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
+import {SECURITY_CENTER,SECURITY_PAGES,isSecurityDestination,securityDestinationAllowed} from '@/lib/security-center-navigation';
 import { openCommandBar } from '@/lib/command-bar-events';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
@@ -567,7 +568,8 @@ const GROUPS: Group[] = [
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
-      { href: '/admin/users', labelKey: 'securityPermission', icon: ShieldCheck },
+      {href:SECURITY_CENTER,labelKey:'securityCenter',icon:ShieldCheck,exactHref:true},
+      ...SECURITY_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true})),
     ],
   },
 ];
@@ -590,6 +592,9 @@ export function Sidebar({
   hasAssignedApproval = false,
   canReviewProfileChanges = false,
   canAdministerAi = false,
+  canAdministerSecurity = false,
+  canConfigureAccess = false,
+  canProvisionUsers = false,
   canConfigureAiProvider = false,
   canAccessTeam = false,
   letterDestinations = [],
@@ -611,6 +616,9 @@ export function Sidebar({
   viewerCode = null,
 }: {
   isAdmin: boolean;
+  canAdministerSecurity?: boolean;
+  canConfigureAccess?: boolean;
+  canProvisionUsers?: boolean;
   canConfigureIdentityEmail?: boolean;
   canConfigureLoginPresentation?: boolean;
   /** Actual HR administrator access, independent of the broader partner administration rail. */
@@ -755,18 +763,19 @@ export function Sidebar({
   };
   // Per-child visibility for flyout nodes (per-child gating vs. whole-group gating). Role gating and
   // module gating are ANDed: a row needs both the role AND the module to appear.
+  const securityAccess={admin:canAdministerSecurity,configure:canConfigureAccess,provision:canProvisionUsers};
   const canSeeChild = (c: ChildItem) =>
-    moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS
     // Group-level flags still supported (the Admin group uses adminOnly).
-    .filter((g) => (g.adminOnly ? isAdmin || canConfigureIdentityEmail || onboardingAccess || onboardingMaster : g.managerUp ? isAdmin || canApprove : true))
+    .filter((g) => (g.adminOnly ? isAdmin || canConfigureAccess || canConfigureIdentityEmail || onboardingAccess || onboardingMaster : g.managerUp ? isAdmin || canApprove : true))
     // 1b35f17b: filter per-row too, so a group (e.g. Manage) can mix all-employee rows
     // (Personnel) with manager-up rows (Approvals/Performance).
     .map((g) => ({
       ...g,
-      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (!isCollapsible(r)&&r.href.startsWith('/admin/lifecycle/onboarding')&&canSeeChild(r)) || (isCollapsible(r) ? r.children.some(c => c.identityEmailOnly && canSeeChild(c)) : r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
+      items: g.items.filter((r) => (!g.adminOnly || isAdmin || (!isCollapsible(r)&&isSecurityDestination(r.href)&&canSeeChild(r)) || (!isCollapsible(r)&&r.href.startsWith('/admin/lifecycle/onboarding')&&canSeeChild(r)) || (isCollapsible(r) ? r.children.some(c => c.identityEmailOnly && canSeeChild(c)) : r.identityEmailOnly)) && (isCollapsible(r) ? r.children.some(canSeeChild) : canSeeChild(r))),
     }))
     // Drop a group that has become empty for this viewer (no stray divider in the collapsed rail).
     .filter((g) => g.items.length > 0);
@@ -814,10 +823,15 @@ export function Sidebar({
     tour:inboxRows.some(row=>row.tour==='nav-approvals')?'nav-approvals':undefined,
   });
   const systemRows = navigation.placed.filter(row=>row.placement.area==='system').map(row=>row.destination);
+  const securityRows=systemRows.filter(row=>isSecurityDestination(row.href));
+  const otherSystemRows=systemRows.filter(row=>!isSecurityDestination(row.href));
   const groups: Group[] = [
     {items:[...sharedItems,...navigation.unplaced]},
     {labelKey:selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps',items:moduleRows},
-    ...(systemRows.length ? [{items:[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:systemRows} satisfies CollapsibleGroupItem]}] : []),
+    ...(systemRows.length ? [{labelKey:'systemConfiguration',items:[
+      ...(otherSystemRows.length?[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows} satisfies CollapsibleGroupItem]:[]),
+      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',icon:ShieldCheck,defaultHref:SECURITY_CENTER,children:securityRows} satisfies CollapsibleGroupItem]:[]),
+    ]}] : []),
   ];
   const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
   const compactWorkspace = collapsed && !atelier && !monolith;
@@ -1126,7 +1140,7 @@ export function Sidebar({
       return (
         <div key={item.labelKey} data-atelier-module={item.labelKey}>
           {item.defaultHref && !collapsed ? (
-            <div className="atelier-row pr-0">
+            <div className={cn('atelier-row pr-0', active&&'bg-accent font-medium text-foreground')}>
               <Link href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>

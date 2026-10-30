@@ -491,7 +491,13 @@
     "aiManagementOrchestrator": "HR work queue",
     "aiManagementRuns": "Recent model calls",
     "moduleELetter": "E-Letter",
-    "emailTemplates": "Email templates"
+    "emailTemplates": "Email templates",
+    "securityCenter": "Security Center",
+    "securityPermissions": "Security & Permissions",
+    "functionAccess": "Function Access",
+    "createLogin": "Create a Login Manually",
+    "inviteUser": "Invite a User",
+    "users": "Users"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -11174,7 +11180,10 @@
         "letterRegister": "Current company context and current Letters read, issue, generate or settings permissions for each action.",
         "letterSettings": "Current company context. Settings permission configures workflows; Approve permission manages only your own signing images.",
         "emailTemplates": "Only administrators with organization-wide HR or system access can manage email designs. Company-only administrators cannot.",
-        "importHistory": "Lists an import when you have Workforce view for at least one of its companies, and shows only the employees of companies you can view. The original file needs view for every company in it; Revert needs Workforce maintain for every company in it."
+        "importHistory": "Lists an import when you have Workforce view for at least one of its companies, and shows only the employees of companies you can view. The original file needs view for every company in it; Revert needs Workforce maintain for every company in it.",
+        "securityCenter": "Available to administrators or people with permission to configure access.",
+        "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
+        "inviteUser": "Group-wide administrators only."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -30345,6 +30354,33 @@
       "proven_window_too_wide": "the time of the punch is uncertain by more than the company allows.",
       "employment_inactive": "the employee was not employed on that day.",
       "overtime_settled": "overtime for this day has already been settled."
+    }
+  },
+  "securityCenter": {
+    "title": "Security Center",
+    "description": "Manage security settings, account creation and user access.",
+    "back": "Back to Security Center",
+    "invitationSent": "Invitation sent.",
+    "legacyHelp": "Choose the page for this account setup.",
+    "permissions": {
+      "title": "Security & Permissions",
+      "description": "Configure access rules, protected groups and permissions."
+    },
+    "functions": {
+      "title": "Function Access",
+      "description": "Review which roles can open each screen."
+    },
+    "create": {
+      "title": "Create a Login Manually",
+      "description": "Create a login and finish pending account setup."
+    },
+    "invite": {
+      "title": "Invite a User",
+      "description": "Send an email invitation to a named person."
+    },
+    "users": {
+      "title": "Users",
+      "description": "Find users and manage roles, invitations and account access."
     }
   }
 }
