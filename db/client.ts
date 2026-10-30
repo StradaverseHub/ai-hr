@@ -1,3 +1,4 @@
+import {applicationPoolMax} from '../lib/db-pool-size';
 /**
  * Database client + the RLS session wrapper (ADR-0002 / ADR-0004).
  *
@@ -281,4 +282,4 @@ const url = process.env.DATABASE_URL;
 if (!url) throw new Error('DATABASE_URL is not set');
 
 // App singleton (non-privileged role).
-export const { db, client, withTenant } = createDb(url);
+export const { db, client, withTenant } = createDb(url,{max:applicationPoolMax(process.env.AIHR_DB_POOL_MAX)});
