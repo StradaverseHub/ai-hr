@@ -1,4 +1,5 @@
 import { withExitDateAuthorityTx } from './exit-date-authority';
+import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 /**
  * Employment History — Movement tab redesign (78853b97).
@@ -173,8 +174,11 @@ export type MovementHistoryRow = {
    *  reads these flags so the affordance and the service rule cannot drift apart. */
   canEdit: boolean;
   canReverse: boolean;
-  /** A CLOSED payroll run relied on this movement's window — corrections are refused until it is reopened. */
+  /** A CLOSED payroll run relied on this movement's window. 646355e5 — corrections are allowed after HR
+   *  acknowledges that closed payroll stays as issued; the screen asks for that confirmation. */
   payrollLocked: boolean;
+  /** The closed 'YYYY-MM' periods behind `payrollLocked`, named in that confirmation. */
+  payrollClosedPeriods: string[];
   /** A PROCESSED (not yet closed) run covered it. Correcting is allowed; payslips are never reprocessed
    *  automatically, so the UI must say so before HR commits. */
   payrollWarning: boolean;
@@ -1396,7 +1400,8 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
       const exitDates=r.kind==='resignation'?resignationFinancialDates(g):[];
       const financial=c.stateChanging&&(r.kind!=='resignation'||exitDates.length>0);
       const payrollFrom=[r.effectiveDate,...exitDates].sort()[0];
-      const locked = financial && overlapsClosedPeriod(closed, payrollFrom, null);
+      const closedPeriods = financial ? closed.filter((period) => overlapsClosedPeriod([period], payrollFrom, null)).sort() : [];
+      const locked = closedPeriods.length > 0;
       return {
         id: r.id,
         kind: r.kind,
@@ -1406,9 +1411,10 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
         endDate: r.endDate,
         remarks: r.remarks,
         reversed: r.reversed,
-        canEdit: c.canEdit && !locked && !terminal,
-        canReverse: c.canReverse && !locked && !terminal,
+        canEdit: c.canEdit && !terminal,
+        canReverse: c.canReverse && !terminal,
         payrollLocked: locked,
+        payrollClosedPeriods: closedPeriods,
         payrollWarning: financial && !locked && overlapsClosedPeriod(processed, payrollFrom, null),
         // The flat-column replay bounds on the WHOLE group's last sequence, exactly as the detail view's
         // After column does — the leg that wrote Division can carry a higher sequence than the leg that
@@ -2393,7 +2399,8 @@ async function resignationValuesTx(tx:Tx,p:CreateMovementInput){
   const changes=RESIGNATION_INFO_FIELDS.filter(field=>before[field]!==next[field]).map(field=>({field,before:before[field],after:next[field]}));
   const thresholds=changes.filter(change=>change.field!=='tenderResignationDate');
   const from=[p.effectiveDate,...thresholds.flatMap(change=>[change.before,change.after]).filter((date):date is string=>!!date)].sort()[0];
-  if(thresholds.length&&overlapsClosedPeriod(await closedPeriodsTx(tx,p.employmentId),from,null))throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
+  // 646355e5 — an acknowledged correction owns this window (closed-payroll-correction-authority).
+  if(thresholds.length&&!hasClosedPayrollCorrectionAuthorityTx(tx,p.employmentId)&&overlapsClosedPeriod(await closedPeriodsTx(tx,p.employmentId),from,null))throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
   return {before,next,changes};
 }
 async function applyResignationMovementTx(tx:Tx,ctx:SessionContext,p:CreateMovementInput,opts?:{groupId?:string;allSecondary?:boolean}){
@@ -3147,6 +3154,20 @@ export class MovementReasonRequiredError extends Error {
   }
 }
 
+/**
+ * 646355e5 — a correction would change a movement that a CLOSED payroll run relied on, and the caller has
+ * not confirmed that closed payroll stays as issued. Correcting is allowed (the approved plan); doing it
+ * without that explicit acknowledgement is not. `periods` are the closed 'YYYY-MM' months involved.
+ */
+export class MovementClosedPayrollAcknowledgementError extends Error {
+  constructor(readonly periods: string[]) {
+    super(
+      `Payroll for ${periods.join(', ')} is already closed. Confirm that the closed payroll, released payslips and statutory submissions will not change, then save the correction again.`,
+    );
+    this.name = 'MovementClosedPayrollAcknowledgementError';
+  }
+}
+
 function assertMovementAdmin(ctx: SessionContext, what: string): void {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -3512,14 +3533,35 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
     throw new MovementNotCorrectableError('A later information-only correction protects these details. Review the correction history before changing this movement.');
   }
   const exitDates=row.kind==='resignation'?resignationFinancialDates(group):[];
+  let closedPayrollPeriods: string[] = [];
   if (c.stateChanging&&(row.kind!=='resignation'||exitDates.length>0)) {
     const closed = await closedPeriodsTx(tx, employmentId);
     const from=[row.effectiveDate,...exitDates].sort()[0];
-    if (overlapsClosedPeriod(closed, from, null)) {
-      throw new Error('A closed payroll run relied on this movement. Reopen that payroll before correcting the event.');
+    // 646355e5 — a closed run no longer blocks the correction; it requires the caller's explicit
+    // acknowledgement, which only the service entry points grant (closed-payroll-correction-authority).
+    closedPayrollPeriods = closed.filter((period) => overlapsClosedPeriod([period], from, null)).sort();
+    if (closedPayrollPeriods.length && !hasClosedPayrollCorrectionAuthorityTx(tx, employmentId)) {
+      throw new MovementClosedPayrollAcknowledgementError(closedPayrollPeriods);
     }
   }
-  return { events, row, group };
+  return { events, row, group, closedPayrollPeriods };
+}
+
+/**
+ * 646355e5 — before an acknowledged correction behind closed payroll changes anything, retain the issued
+ * payslip document metadata through the ADR-0163 owner. Same readiness rule: a payslip whose original
+ * metadata can no longer be verified refuses the correction rather than stamping today's master as issued.
+ * Payroll transactions and canonical payslip amounts are never touched here.
+ */
+async function preserveClosedPayrollDocumentsTx(tx: Tx, employmentId: string): Promise<number> {
+  const [ready] = await tx.execute<{ ready: boolean }>(sql`select app.information_payroll_ready(${employmentId}::uuid) as ready`);
+  if (!ready?.ready) {
+    throw new MovementNotCorrectableError(
+      'Original historical information cannot be verified after intervening changes. Ask the payroll administrator to reconcile the historical document evidence before correcting this event.',
+    );
+  }
+  const [preserved] = await tx.execute<{ count: number }>(sql`select app.preserve_information_payroll(${employmentId}::uuid) as count`);
+  return Number(preserved?.count ?? 0);
 }
 
 /** The shared rollback body. `corrected` distinguishes the first half of an Edit from a plain Rollback —
@@ -3532,7 +3574,8 @@ async function reverseMovementTx(
   reason: string | null,
   corrected: boolean,
 ): Promise<void> {
-  const { events, row, group } = await reversalGuardTx(tx, ctx, employmentId, movementId);
+  const { events, row, group, closedPayrollPeriods } = await reversalGuardTx(tx, ctx, employmentId, movementId);
+  const snapshotCount = closedPayrollPeriods.length ? await preserveClosedPayrollDocumentsTx(tx, employmentId) : null;
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
   const hireCorrections = events.filter((x) => x.eventType === HIRE_CORRECTED_EVENT).map((x) => x.payload);
@@ -3546,7 +3589,14 @@ async function reverseMovementTx(
     eventType: 'employment.movement.reversed',
     actor: actorOf(ctx),
     subjectEmploymentId: employmentId,
-    payload: { movementId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected },
+    payload: {
+      movementId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected,
+      // 646355e5 — the audit trail of an acknowledged correction behind closed payroll, and the business
+      // day the leave owner treats as the correction boundary (assertInformationLeavePeriodTx).
+      ...(closedPayrollPeriods.length
+        ? { closedPayrollPeriods, closedPayrollAcknowledged: true, closedPayrollCorrectedOn: todayInKualaLumpur(), snapshotCount }
+        : {}),
+    },
   });
 }
 
@@ -3568,7 +3618,7 @@ async function reverseMovementTx(
  */
 export async function reverseMovementEvent(
   ctx: SessionContext,
-  p: { employmentId: string; movementId: string; reason?: string | null },
+  p: { employmentId: string; movementId: string; reason?: string | null; acknowledgeClosedPayroll?: boolean },
 ) {
   assertMovementAdmin(ctx, 'roll back a movement');
   const reason = p.reason?.trim() || null;
@@ -3578,7 +3628,9 @@ export async function reverseMovementEvent(
   return withTenant(ctx, async (tx) => {
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
-    await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
+    const run = () => reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, false);
+    if (p.acknowledgeClosedPayroll === true) await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, run);
+    else await run();
     return { employmentId: p.employmentId };
   });
 }
@@ -3589,6 +3641,9 @@ export type EditMovementInput = CreateMovementInput & {
    *  correction is a rollback wearing another name; still typed optional so the field can be absent from
    *  the call and refused by the service rather than by the type. */
   reason?: string | null;
+  /** 646355e5 — HR confirmed that closed payroll stays as issued. Required only when a closed run relied on
+   *  the movement; refused with MovementClosedPayrollAcknowledgementError otherwise. */
+  acknowledgeClosedPayroll?: boolean;
 };
 
 /**
@@ -3628,7 +3683,7 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
     const remarks = p.remarks?.trim() || null;
     const endDate = p.endDate?.trim() || null;
 
-    const result=await (async () => {
+    const correct = async () => {
       const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
       const row = rows.find((r) => r.id === p.movementId);
       if (!row) throw new Error('Movement event not found.');
@@ -3823,7 +3878,12 @@ export async function editMovementEvent(ctx: SessionContext, rawEdit: EditMoveme
         }
         throw e;
       }
-    })();
+    };
+    // 646355e5 — the acknowledgement covers the rollback AND the replay: the replay writers refuse a closed
+    // window on their own (resignation dates, salary supersede), and the corrected values are the point.
+    const result = rawEdit.acknowledgeClosedPayroll === true
+      ? await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correct)
+      : await correct();
     return {...result,behaviourKind:p.kind};
   });
 }

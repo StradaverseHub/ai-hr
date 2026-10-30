@@ -1,4 +1,5 @@
 import { hasExitDateAuthorityTx } from './exit-date-authority';
+import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
@@ -3287,7 +3288,8 @@ export async function setEmploymentInfo(
         if (w) windows.push(w);
       }
 
-      if (windows.length > 0) {
+      // 646355e5 — an acknowledged Movement correction owns this window (closed-payroll-correction-authority).
+      if (windows.length > 0 && !hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) {
         const closed = await closedPeriodsTx(tx, p.employmentId);
         if (closed.length > 0 && windows.some((w) => overlapsClosedPeriod(closed, w.from, w.to))) {
           // Same sentence pattern, and the same reopen instruction, the Movement correction gives

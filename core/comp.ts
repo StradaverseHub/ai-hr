@@ -6,6 +6,7 @@ import { and, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from 'drizzle-or
 import { type SessionContext, type Tx } from '../db/client';
 import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent, type MovementTag } from '../db/events';
+import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {
   appUser,
   compensation,
@@ -692,7 +693,8 @@ export async function supersedeCompensation(
       .limit(1);
     if (!row) throw new Error('Salary record not found');
     if (row.supersededAt !== null) throw new Error('This salary record has already been deleted');
-    const closed = await closedPeriodsTx(tx, p.employmentId);
+    // 646355e5 — an acknowledged Movement correction may supersede it; the closed run keeps its payslip.
+    const closed = hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId) ? [] : await closedPeriodsTx(tx, p.employmentId);
     if (overlapsClosedPeriod(closed, row.validFrom, row.validTo)) {
       throw new Error('This salary record was used by a closed payroll run and cannot be deleted');
     }

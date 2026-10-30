@@ -134,6 +134,8 @@ export type MovementEditTarget = {
   allowedKinds: string[];
   /** A processed (not yet closed) payroll run covered this period; payslips are never reprocessed. */
   payrollWarning: boolean;
+  /** 646355e5 — closed 'YYYY-MM' periods a correction would sit behind; non-empty requires acknowledgement. */
+  payrollClosedPeriods?: string[];
   /** Present only for an authorized pending intent; omission must not become today's default. */
   pendingInput?: MovementPendingFormValues;
   pendingUnavailable?: boolean;
@@ -479,10 +481,22 @@ export function MovementNewEvent({
           {t('form.editHint')}
         </p>
       )}
-      {edit?.payrollWarning && (
+      {edit?.payrollWarning && !edit.payrollClosedPeriods?.length && (
         <p className="border-b border-border bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           {t('form.payrollWarning')}
         </p>
+      )}
+      {/* 646355e5 — a closed run no longer blocks the correction. HR confirms that closed payroll stays as
+          issued; the service refuses without this box (MovementClosedPayrollAcknowledgementError). */}
+      {!!edit?.payrollClosedPeriods?.length && (
+        <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+          <p className="font-medium">{t('form.closedPayrollTitle', { periods: edit.payrollClosedPeriods.join(', ') })}</p>
+          <p className="mt-1">{t('form.closedPayrollBody')}</p>
+          <label className="mt-2 flex items-start gap-2">
+            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" required className="mt-1" />
+            <span>{t('form.closedPayrollAcknowledge')}</span>
+          </label>
+        </div>
       )}
 
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">

@@ -614,11 +614,14 @@ describe('a backdated transfer does not rewrite a closed payroll run', () => {
     expect(runRow.companyId).toBe(b.companyId); // the run stays with the company that paid it
     expect(runRow.status).toBe('closed');
 
-    // And correcting it is REFUSED while the run is closed — the affordance and the rule agree.
+    // 646355e5 — correcting it is offered, but only behind the closed-payroll acknowledgement.
     const row = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'entityTransfer')!;
     expect(row.payrollLocked).toBe(true);
-    expect(row.canReverse).toBe(false);
-    expect(row.canEdit).toBe(false);
+    expect(row.canReverse).toBe(true);
+    await expect(
+      reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: row.id, reason: 'Wrong entity' }),
+    ).rejects.toThrow(/already closed/);
+    expect((await employmentRow(hire.employmentId)).companyId).toBe(coB);
   });
 });
 

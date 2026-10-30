@@ -29,6 +29,7 @@ import {
   editMovementEvent,
   movementHistory,
   MovementNoChangeError,
+  MovementClosedPayrollAcknowledgementError,
   MovementNotCorrectableError,
   reverseMovementEvent,
 } from '../core/movement';
@@ -443,8 +444,8 @@ describe('editMovementEvent — a correction is a replay through the same writer
   });
 });
 
-describe('payroll interaction — block on closed, warn on processed, never reprocess', () => {
-  it('refuses a correction whose window a CLOSED payroll run relied on', async () => {
+describe('payroll interaction — acknowledge on closed, warn on processed, never reprocess', () => {
+  it('646355e5 — a CLOSED run requires an explicit acknowledgement, then corrects without touching the payslip', async () => {
     const hire = await hireOne();
     await setCompensation(adminCtx(b), {
       employmentId: hire.employmentId,
@@ -460,14 +461,61 @@ describe('payroll interaction — block on closed, warn on processed, never repr
     await closedPayrollFor(hire.employmentId, '2026-06');
     const move = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'increment')!;
 
+    // The closed run is named, and no longer hides the affordances.
     expect(move.payrollLocked).toBe(true);
-    expect(move.canReverse).toBe(false);
-    expect(move.canEdit).toBe(false);
+    expect(move.payrollClosedPeriods).toEqual(['2026-06']);
+    expect(move.canReverse).toBe(true);
+    expect(move.canEdit).toBe(true);
+    const slipsBefore = await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, hire.employmentId));
+
+    // Without the acknowledgement: refused, and nothing moved.
     await expect(
       reverseMovementEvent(adminCtx(b), { employmentId: hire.employmentId, movementId: move.id, reason: 'Keyed in error' }),
-    ).rejects.toThrow(/closed payroll/i);
-    // Nothing moved: the salary in force is still the one the closed run paid against.
+    ).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
     expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
+    // A posted flag on another call does not leak into this one: the edit path refuses the same way.
+    await expect(
+      editMovementEvent(adminCtx(b), {
+        employmentId: hire.employmentId,
+        movementId: move.id,
+        kind: 'increment',
+        effectiveDate: '2026-06-01',
+        basicSalary: 4500,
+        reason: 'Wrong amount keyed',
+      }),
+    ).rejects.toBeInstanceOf(MovementClosedPayrollAcknowledgementError);
+    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('5000.00');
+
+    // With it: the correction applies to the record…
+    await editMovementEvent(adminCtx(b), {
+      employmentId: hire.employmentId,
+      movementId: move.id,
+      kind: 'increment',
+      effectiveDate: '2026-06-01',
+      basicSalary: 4500,
+      reason: 'Wrong amount keyed',
+      acknowledgeClosedPayroll: true,
+    });
+    expect((await openCompensation(hire.employmentId)).basicSalary).toBe('4500.00');
+    // …the closed payslip is byte-for-byte what was issued, and its document metadata is retained…
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, hire.employmentId))).toEqual(slipsBefore);
+    const retained = await owner.db
+      .select({ payslipId: schema.informationPayslipSnapshot.payslipId })
+      .from(schema.informationPayslipSnapshot)
+      .where(eq(schema.informationPayslipSnapshot.employmentId, hire.employmentId));
+    expect(retained.map((r) => r.payslipId)).toEqual(slipsBefore.map((s) => s.id));
+    // …and the audit trail records the acknowledged periods with the reason.
+    const [reversal] = await owner.db
+      .select({ payload: schema.domainEvent.payload })
+      .from(schema.domainEvent)
+      .where(and(eq(schema.domainEvent.subjectEmploymentId, hire.employmentId), eq(schema.domainEvent.eventType, 'employment.movement.reversed')));
+    expect(reversal.payload).toMatchObject({
+      corrected: true,
+      reason: 'Wrong amount keyed',
+      closedPayrollPeriods: ['2026-06'],
+      closedPayrollAcknowledged: true,
+      snapshotCount: 1,
+    });
   });
 
   it('only WARNS when a processed (not yet closed) run covered the period — the correction still applies', async () => {

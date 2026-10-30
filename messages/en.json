@@ -1746,7 +1746,10 @@
           "entityTransferHint": "Choose the company the employee is moving to. The Business Unit, Department, Position and Work Location lists below now show the destination company’s options — pick a Department there. Their employee ID, Group Join Date and history stay exactly as they are.",
           "selectPlaceholder": "Select…",
           "pendingTargetUnavailable": "A saved target is no longer available in your current choices or access scope. This correction cannot be saved. Review the pending event before continuing.",
-          "resignationLifecycleHint": "Resignation information takes effect on the Effective Date. Record the tender date, resignation date and last working date separately."
+          "resignationLifecycleHint": "Resignation information takes effect on the Effective Date. Record the tender date, resignation date and last working date separately.",
+          "closedPayrollTitle": "Payroll for {periods} is already closed.",
+          "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process.",
+          "closedPayrollAcknowledge": "I understand that closed payroll will not change."
         },
         "edit": "Edit",
         "rollback": "Roll Back",
@@ -1840,7 +1843,8 @@
           "originalHeading": "Originally recorded",
           "correctedHeading": "Corrected",
           "noneValue": "None"
-        }
+        },
+        "payrollClosedBadge": "Payroll closed: {periods}"
       },
       "salaryCurrency": "Currency",
       "emergency": {

@@ -1746,7 +1746,10 @@
           "entityTransferHint": "请选择该员工将调往的公司。下方的业务单位、部门、职位和工作地点列表现已切换为目标公司的选项 — 请在其中选择部门。该员工的工号、集团入职日期和历史记录均保持不变。",
           "selectPlaceholder": "请选择…",
           "pendingTargetUnavailable": "已保存的目标不再属于您当前可选的项目或访问范围，无法保存此次更正。请先检查尚未生效的变动记录，再继续操作。",
-          "resignationLifecycleHint": "离职资料在生效日期开始适用。请分别记录提交辞呈日期、离职日期和最后工作日期。"
+          "resignationLifecycleHint": "离职资料在生效日期开始适用。请分别记录提交辞呈日期、离职日期和最后工作日期。",
+          "closedPayrollTitle": "{periods} 的薪资已关闭。",
+          "closedPayrollBody": "此更正会更新员工记录及之后的处理。已关闭的薪资、已发布的工资单和法定申报将保留最终数字，不会重新计算。如需调整金额，请使用薪资更正流程。",
+          "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。"
         },
         "edit": "编辑",
         "rollback": "撤销",
@@ -1840,7 +1843,8 @@
           "originalHeading": "原始记录",
           "correctedHeading": "已更正",
           "noneValue": "无"
-        }
+        },
+        "payrollClosedBadge": "薪资已关闭：{periods}"
       },
       "salaryCurrency": "货币",
       "emergency": {

@@ -183,8 +183,9 @@ describe('Movement rollback-only preview and atomic confirmation',()=>{
   const beforeBatch=await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id)),beforeSlips=await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id));
   const text=csv([['EMP-0004','transfer',effective,b.deptB,'','Fictional historic transfer']]),preview=await ready(text);expect(preview.valid).toBe(1);expect((await commit(text,preview)).imported).toBe(1);
   expect(await owner.db.select().from(payrollBatch).where(eq(payrollBatch.id,batch.id))).toEqual(beforeBatch);expect(await owner.db.select().from(payslip).where(eq(payslip.batchId,batch.id)).orderBy(asc(payslip.id))).toEqual(beforeSlips);
-  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canEdit:false,canReverse:false});
-  await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional forbidden rollback'})).rejects.toThrow();
+  const movement=(await movementHistory(ctx,id)).find(row=>row.kind==='transfer');expect(movement).toMatchObject({payrollLocked:true,canReverse:true});
+  // 646355e5 — the closed run no longer locks the row, but a correction without the acknowledgement is refused.
+  await expect(reverseMovementEvent(ctx,{employmentId:id,movementId:movement!.id,reason:'Fictional unacknowledged rollback'})).rejects.toThrow(/already closed/);
  });
 
  it('rolls back transactional label epochs and an actually armed audit chain during preview',async()=>{

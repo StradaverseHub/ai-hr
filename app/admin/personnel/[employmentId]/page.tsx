@@ -3292,6 +3292,16 @@ export default async function EmployeePage({
                         // and reverseMovementEvent refuses a blank one regardless — the dialog is not the
                         // only caller, so the control lives in the service and the form only mirrors it.
                         reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel'), required: true }}
+                        // 646355e5 — a closed run no longer blocks the rollback; HR confirms it stays as issued.
+                        acknowledgement={
+                          m.payrollLocked
+                            ? {
+                                name: 'acknowledgeClosedPayroll',
+                                warning: `${t('movement.form.closedPayrollTitle', { periods: m.payrollClosedPeriods.join(', ') })} ${t('movement.form.closedPayrollBody')}`,
+                                label: t('movement.form.closedPayrollAcknowledge'),
+                              }
+                            : undefined
+                        }
                         variant="ghost"
                         size="sm"
                         className="h-auto p-0 text-sm font-normal text-primary hover:bg-transparent hover:underline"
@@ -3301,7 +3311,9 @@ export default async function EmployeePage({
                     </form>
                   )}
                   {m.payrollLocked && (
-                    <span className="text-xs text-muted-foreground">{t('movement.payrollLocked')}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t('movement.payrollClosedBadge', { periods: m.payrollClosedPeriods.join(', ') })}
+                    </span>
                   )}
                 </div>
               </td>
@@ -3609,6 +3621,7 @@ export default async function EmployeePage({
             return Array.from(new Set([movementEditRow.kind, ...codes]));
           })(),
           payrollWarning: movementEditRow.payrollWarning,
+          payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
         }}
       />
     </Card>

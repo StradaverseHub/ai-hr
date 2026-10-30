@@ -550,6 +550,8 @@ export async function editMovementEventAction(formData: FormData) {
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
       ...p,
+      // 646355e5 — the closed-payroll confirmation box; the service decides whether it is needed.
+      acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
     });
     // A correction can move the grade just as the original did, and it carries its own effective date.
     if (isComparisonKind(result.behaviourKind))
@@ -581,6 +583,7 @@ export async function reverseMovementEventAction(formData: FormData) {
       employmentId,
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
+      acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
     });
     // A rollback moves the grade BACK, and that is a grade change worth naming. It carries no effective
     // date of its own — the reversal takes effect now — so `changeEffectiveOn` is deliberately omitted
