@@ -468,3 +468,11 @@ The still-unapplied0800 body now distinguishes Native financial subject authorit
 Workforce-purpose source provenance and intersects private-category rights with the current company.
 This changes no default grants and adds no schema columns; immutable requirements JSON carries the
 optional provenance flag. Clean and populated ordinary upgrades are rerun after this final SQL change.
+
+Before the sixth focused verification freeze, a fresh canonical fetch and complete scan of1536 distinct
+ref heads and324 registered worktrees found only Formula-owned claims for0800 /1793330000200.
+Concurrent external source reservations extend through0810 /1793330000210 and remain separate;
+main/alpha still resolve to`d6cb83d620d8d4380c981a72fc41628780840b4e`. A fresh read-only staging ledger
+query still returns579 installed receipts through1793330000063. The0800 SQL hash above is unchanged;
+fifth verification run41047504952 passed both clean and populated ordinary upgrades on these bytes.
+No deployment/application authority is implied by this source-reservation audit.
