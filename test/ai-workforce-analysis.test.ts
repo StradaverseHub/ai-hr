@@ -83,4 +83,13 @@ describe('real workforce analysis source adoption',()=>{
   h.today='2027-01-01';await generateWorkforceAnalysis(ctx(),{companyIds:[companyA]});expect(h.native.mock.calls[0][2]).toEqual({previousAsOf:'2026-11-30',currentAsOf:'2026-12-31'});
   h.configuration.mockResolvedValueOnce(null);h.privateAnalysis.mockClear();await expect(generateWorkforceAnalysis(ctx(),{companyIds:[companyA]})).rejects.toThrow();expect(h.privateAnalysis).not.toHaveBeenCalled();
  });
+ it('refuses changed native counts even when both versions share the same disclosed range',async()=>{
+  h.native.mockResolvedValueOnce(counts()).mockResolvedValueOnce({...counts(),currentHeadcount:32});
+  await expect(generateWorkforceAnalysis(ctx(),{companyIds:[companyA]})).rejects.toThrow('Workforce analysis');expect(h.native).toHaveBeenCalledTimes(2);
+ });
+ it('rejects proxy options and proxy company arrays without invoking their traps',async()=>{
+  let invoked=0;const proxy=new Proxy({companyIds:[companyA]},{getPrototypeOf(){invoked++;return Object.prototype;}}),ids=new Proxy([companyA],{getPrototypeOf(){invoked++;return Array.prototype;}});
+  await expect(generateWorkforceAnalysis(ctx(),proxy)).rejects.toThrow();await expect(generateWorkforceAnalysis(ctx(),{companyIds:ids})).rejects.toThrow();expect(invoked).toBe(0);
+ });
+
 });

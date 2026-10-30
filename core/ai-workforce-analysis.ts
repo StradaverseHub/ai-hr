@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {types as nodeTypes} from 'node:util';
 /** Native workforce analysis source. This is an explanation of the existing employment-headcount
  * owner, not a new HR calculator. Privacy support counts DISTINCT PEOPLE in both completed months.
  * Names, company IDs, period dates and exact counts stay local; no causal driver is invented.
@@ -24,12 +26,12 @@ const unavailable=():never=>{throw new AiGatewayError('Workforce analysis is una
 /** Server callers pass their current selected company scope explicitly. No undefined/empty scope may
  * fall through to analytics' legacy all-visible-companies default. Caller references never survive. */
 function selection(value:WorkforceAnalysisOptions):Selection{
- if(!value||typeof value!=='object'||![Object.prototype,null].includes(Object.getPrototypeOf(value)))return unavailable();
+ if(!value||typeof value!=='object'||nodeTypes.isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))return unavailable();
  const descriptors=Object.getOwnPropertyDescriptors(value);
  if(Reflect.ownKeys(descriptors).some(key=>typeof key!=='string'||!['companyIds','currentPeriod'].includes(key)))return unavailable();
  for(const descriptor of Object.values(descriptors))if(!descriptor.enumerable||!('value'in descriptor))return unavailable();
  const raw=descriptors.companyIds?.value;
- if(!Array.isArray(raw)||Object.getPrototypeOf(raw)!==Array.prototype||raw.length===0||raw.length>100)return unavailable();
+ if(!Array.isArray(raw)||nodeTypes.isProxy(raw)||Object.getPrototypeOf(raw)!==Array.prototype||raw.length===0||raw.length>100)return unavailable();
  const elements=Object.getOwnPropertyDescriptors(raw);if(Reflect.ownKeys(elements).length!==raw.length+1)return unavailable();
  const ids=Array.from({length:raw.length},(_,index)=>{const descriptor=elements[String(index)];if(!descriptor||!('value'in descriptor)||typeof descriptor.value!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(descriptor.value))return unavailable();return descriptor.value.toLowerCase();});
  if(new Set(ids).size!==ids.length)return unavailable();
@@ -46,7 +48,7 @@ async function authorizeSourceTx(tx:Tx,ctx:SessionContext,selected:Selection){
  if(!isAdmin(ctx)||!ctx.grants?.length||ctx.roles?.some(role=>!ctx.grants!.some(grant=>grant.role===role)))return unavailable();
  // A selected month can never include an unfinished current month, including at later replay.
  if(selected.currentPeriod>=todayInKualaLumpur().slice(0,7))return unavailable();
- const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)},available=new Set((await allowedCompanies(fresh,tx)).map(company=>company.id));
+ const fresh={...ctx,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId),entitlementsExempt:undefined,entitlementsError:undefined},available=new Set((await allowedCompanies(fresh,tx)).map(company=>company.id));
  if(selected.companyIds.some(id=>!available.has(id)))return unavailable();
  for(const companyId of selected.companyIds){
   const [admin]=await tx.execute<{allowed:boolean}>(sql`select (app.has_role_for('hr_admin',${companyId}::uuid) or app.has_role_for('super_admin',${companyId}::uuid)) as allowed`);
@@ -72,9 +74,12 @@ export async function generateWorkforceAnalysis(supplied:SessionContext,options:
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},selected=selection(options);
  const configuration=await withTenant(ctx,async tx=>{const fresh=await authorizeSourceTx(tx,ctx,selected);return resolveActiveAiConfig(tx,fresh,'report_insight');});
  if(!configuration)return unavailable();
+ let originalFingerprint:string|undefined;
  return generatePrivateAiAnalysis(configuration,async(tx,current)=>{
   await authorizeSourceTx(tx,current,selected);
   const source=await workforceHeadcountSourceTx(tx,selected.companyIds,{previousAsOf:selected.previousAsOf,currentAsOf:selected.currentAsOf});
+  const fingerprint=createHash('sha256').update(JSON.stringify([selected,source])).digest('hex');
+  if(originalFingerprint!==undefined&&originalFingerprint!==fingerprint)return unavailable();originalFingerprint=fingerprint;
   return projection(source);
  });
 }

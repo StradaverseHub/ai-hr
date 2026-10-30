@@ -7,7 +7,7 @@ export const ANALYSIS_DOMAIN_METRICS=Object.freeze({
  workforce:Object.freeze(['active_workforce','joiners','departures','vacancies','onboarding_completion'] as const),
  attendance:Object.freeze(['scheduled_hours','attendance_consistency','lateness_frequency','absence_frequency','overtime_hours'] as const),
  leave:Object.freeze(['leave_taken','leave_pending','leave_coverage','leave_cancellation_volume'] as const),
- payroll:Object.freeze(['payroll_cost','headcount','overtime_cost','employer_contribution_cost','variable_pay_cost'] as const),
+ payroll:Object.freeze(['payroll_cost','base_pay_cost','headcount','overtime_cost','employer_contribution_cost','variable_pay_cost'] as const),
  claims:Object.freeze(['expense_total','claim_volume','processing_time','returned_claim_share'] as const),
  performance:Object.freeze(['review_completion','goal_progress','development_plan_completion','feedback_participation'] as const),
  rewards:Object.freeze(['review_completion','budget_utilisation','proposal_volume'] as const),

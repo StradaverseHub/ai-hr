@@ -1,3 +1,5 @@
+import {PROVIDER_ANALYSIS_CHANGE_BANDS,ANALYSIS_CHANGE_INTERVALS} from './provider-analysis-bands';
+export {PROVIDER_ANALYSIS_CHANGE_BANDS} from './provider-analysis-bands';
 import {providerDataReviewStatus,assertProviderDataContractReviewed} from './provider-data-reviews';
 import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from './provider-data-source-manifest';
 /** CLOSED attendance-analysis projection, prepared locally for specialist review only. PENDING means
@@ -127,8 +129,6 @@ export function retireAttendanceTrendAnalysis(capability:unknown):void{
 // and source-recorded relationships, which it can compare/explain without calculating HR outcomes.
 export const PROVIDER_ANALYSIS_CONTRACT='aggregate_comparison_analysis_v1' as const;
 export const PROVIDER_ANALYSIS_LIMITS=Object.freeze({minimumPopulation:20,minimumNonzeroSlice:5,maximumPopulation:1000000,maximumCohorts:4,maximumMetrics:8,maximumSlices:8,bytes:262144,lifetimeMs:300000});
-export const PROVIDER_ANALYSIS_CHANGE_BANDS=Object.freeze(['decrease_over_25_percent','decrease_10_to_25_percent','decrease_5_to_10_percent','decrease_up_to_5_percent','unchanged',
- 'increase_up_to_5_percent','increase_5_to_10_percent','increase_10_to_25_percent','increase_over_25_percent'] as const);
 const aggregateCohorts=Object.freeze(['cohort_a','cohort_b','cohort_c','cohort_d'] as const);
 const relationships=Object.freeze(['associated_change','recorded_contributor'] as const);
 export type ProviderAnalysisBinding=Readonly<{feature:AiFeatureId;operation:'draft'|'conversation';contractId:typeof PROVIDER_ANALYSIS_CONTRACT;
@@ -139,7 +139,7 @@ export type PreparedProviderAnalysisProjection=Readonly<{purpose:'aggregate_comp
  originalSourceFingerprint:string;contractId:typeof PROVIDER_ANALYSIS_CONTRACT;contractSourceVersion:string;contractSourceDigest:string;reviewStatus:ProviderDataReviewStatus}>;
 const aggregateContract=Object.freeze({id:PROVIDER_ANALYSIS_CONTRACT,version:'aggregate-comparison-analysis.v1',
  digest:hash(JSON.stringify({id:PROVIDER_ANALYSIS_CONTRACT,version:1,metrics:ANALYSIS_DOMAIN_METRICS,drivers:ANALYSIS_DOMAIN_DRIVERS,categories:ANALYSIS_DOMAIN_CATEGORIES,coverage:PROVIDER_ANALYSIS_COVERAGE,
-  changeBands:PROVIDER_ANALYSIS_CHANGE_BANDS,cohorts:aggregateCohorts,windows,relationships,limits:PROVIDER_ANALYSIS_LIMITS,
+  changeBands:ANALYSIS_CHANGE_INTERVALS,cohorts:aggregateCohorts,windows,relationships,limits:PROVIDER_ANALYSIS_LIMITS,
   shape:{root:['version','domain','window','cohorts'],cohort:['cohort','population','metrics'],metric:['metric','support','changeBand','drivers','slices'],driver:['code','relationship'],slice:['category','people','changeBand']},
   use:'relative comparisons only; source-recorded association is not a causal inference; slices may overlap; no exact amounts, dates, ratings or free prose'}))});
 type AggregateDriver=Readonly<{code:string;relationship:typeof relationships[number]}>;
@@ -202,7 +202,7 @@ export function prepareProviderAnalysis(current:unknown,payload:unknown):Prepare
    metric:metric.metric,supportBand:populationBand(metric.support),changeBand:metric.changeBand,drivers:metric.drivers,
    slicesMayOverlap:true,slices:Object.freeze(metric.slices.map(slice=>Object.freeze({category:slice.category,peopleBand:populationBand(slice.people),changeBand:slice.changeBand})))})))}));
   const json=JSON.stringify({version:1,purpose:'aggregate_comparison_analysis',domain:source.domain,window:source.window,periods:{reference:'previous_period',comparison:'current_period'},
-   scale:'native_source_relative_change_bands',cohorts});
+   scale:'native_source_relative_change_bands',changeBandIntervals:ANALYSIS_CHANGE_INTERVALS,cohorts});
   if(Buffer.byteLength(json,'utf8')>PROVIDER_ANALYSIS_LIMITS.bytes)return aggregateUnavailable();
   const projection:PreparedProviderAnalysisProjection=Object.freeze({purpose:'aggregate_comparison_analysis',sourceStatus:'requires_native_owner_replay',risk:'coarse_aggregate_bands_not_anonymity',json,sanitizedDigest:hash(json),
    originalSourceFingerprint,contractId:aggregateContract.id,contractSourceVersion:aggregateContract.version,contractSourceDigest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST,reviewStatus:providerDataReviewStatus(aggregateContract.id)});

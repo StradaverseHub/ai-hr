@@ -1,3 +1,4 @@
+import {adjudicatePrivateAnalysisResult} from '../lib/ai/provider-analysis-result';
 import {createHash} from 'node:crypto';
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {generateDraft} from '../lib/ai';
@@ -175,10 +176,11 @@ export async function preparePrivateAiAnalysis(configuration:ResolvedAiConfig,re
  const issued=issuedConfigurations.get(configuration);
  if(!issued||typeof readSource!=='function')throw new AiGatewayError('The private AI source owner could not be confirmed.');
  const {ctx,snapshot,feature}=issued;
- const source=await withTenant(ctx,async tx=>{
+ let source:unknown;
+ try{source=await withTenant(ctx,async tx=>{
   await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,configuration);
   return readSource(tx,ctx);
- });
+ });}catch{throw new AiGatewayError('The private AI source owner could not be confirmed.');}
  const sourceFingerprint=fingerprintProviderAnalysisSource(source);
  const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
  const binding=Object.freeze({feature,operation:'draft' as const,contractId:'aggregate_comparison_analysis_v1' as const,
@@ -189,7 +191,7 @@ export async function preparePrivateAiAnalysis(configuration:ResolvedAiConfig,re
   const projection=inspectPreparedProviderAnalysis(prepared,binding);
   if(projection.originalSourceFingerprint!==sourceFingerprint)throw new AiGatewayError('The private AI source could not be confirmed.');
   // This fixed prompt has no tenant-authored strings, history, user prompt, tool catalogue or state.
-  const args=Object.freeze({system:'Explain and compare only the supplied protected aggregate facts. Preserve uncertainty. Do not infer causes beyond the supplied verified relationships. Do not calculate money, invent exact values, identify people, assign ratings, or make employment decisions. State which comparisons the coarse categories cannot support.',
+  const args=Object.freeze({system:'Explain and compare only the supplied protected aggregate facts. Preserve uncertainty. Do not infer causes beyond the supplied verified relationships. Do not calculate money, invent exact values, identify people, assign ratings, or make employment decisions. Do not include prose. Return exactly JSON {"observations":[{"cohort":"cohort_a","metric":"a supplied metric"}],"comparisons":[{"left":{"cohort":"cohort_a","metric":"a supplied metric"},"right":{"cohort":"cohort_b","metric":"a supplied metric"},"relationship":"higher_change|lower_change|same_range"}]}. Use only supplied cohorts/metrics. Choose supported useful comparisons. Same range does not establish equal exact values.',
    prompt:projection.json,maxTokens:1024});
   const next=withAiAdmissionCheck(configuration,feature,async(tx,request)=>{
    inspectPreparedProviderAnalysis(prepared,binding);
@@ -207,5 +209,5 @@ export async function preparePrivateAiAnalysis(configuration:ResolvedAiConfig,re
  */
 export async function generatePrivateAiAnalysis(configuration:ResolvedAiConfig,readSource:(tx:Tx,ctx:SessionContext)=>Promise<unknown>):Promise<string>{
  const prepared=await preparePrivateAiAnalysis(configuration,readSource);
- try{return await generateDraft(prepared.configuration,prepared.args);}finally{prepared.dispose();}
+ try{const raw=await generateDraft(prepared.configuration,prepared.args);return adjudicatePrivateAnalysisResult(raw,prepared.args.prompt);}finally{prepared.dispose();}
 }

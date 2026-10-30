@@ -5,7 +5,7 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import type {SessionContext,Tx} from '../db/client';
 import {employment,type CustomReportSpec} from '../db/schema';
 import type {PayrollComparisonExecution} from '../core/report-payroll-comparison';
-import {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_DATASET,validatePayrollComparisonDefinition} from '../lib/payroll-period-comparison';
+import {DEFAULT_PAYROLL_COMPARISON,PAYROLL_COMPARISON_DATASET,validatePayrollComparisonDefinition,payrollVariance,payrollAmountMinor} from '../lib/payroll-period-comparison';
 import {PROVIDER_ANALYSIS_CONTRACT,fingerprintProviderAnalysisSource,prepareProviderAnalysis,inspectPreparedProviderAnalysis,retireProviderAnalysis} from '../lib/ai/provider-analysis-policy';
 import {providerDataReviewStatus} from '../lib/ai/provider-data-reviews';
 const state=vi.hoisted(()=>({native:vi.fn(),analysis:vi.fn(),config:vi.fn(),tenant:vi.fn()}));
@@ -48,7 +48,7 @@ describe('native payroll BASIC private analysis source adapter',()=>{
  it('delegates current config and every complete replay to the same native export owner without broadening company/department scope',async()=>{
   state.analysis.mockImplementation(async(cfg:unknown,read:(tx:Tx,ctx:SessionContext)=>Promise<unknown>)=>{expect(cfg).toBe(configuration);const first=await read(replay.tx,current),second=await read(replay.tx,current);expect(second).toEqual(first);return 'Fictional untrusted explanation';});
   expect(await run({...raw,onlyVariances:true,minVariance:'999.00',reason:'increment',page:7,pageSize:1})).toBe('Fictional untrusted explanation');
-  expect(state.config).toHaveBeenCalledWith(initial.tx,ctx,'payroll_explanation');expect(state.tenant).toHaveBeenCalledWith(ctx,expect.any(Function),{readOnlySnapshot:true});
+  expect(state.config).toHaveBeenCalledWith(initial.tx,ctx,'payroll_explanation');expect(state.tenant).toHaveBeenCalledWith(ctx,expect.any(Function));
   expect(state.native).toHaveBeenCalledTimes(2);
   for(const call of state.native.mock.calls){expect(call[0]).toBe(replay.tx);expect(call[1]).toBe(current);expect(call[2]).toEqual(spec());expect(call[3]).toEqual(scope);expect(call[4]).toEqual({...raw,onlyVariances:false,minVariance:'0',reason:'',page:1,pageSize:200});expect(call[5]).toBe('export');}
   expect(replay.select).toHaveBeenCalledWith({employmentId:employment.id,personId:employment.personId});expect(replay.from).toHaveBeenCalledWith(employment);
@@ -68,7 +68,7 @@ describe('native payroll BASIC private analysis source adapter',()=>{
   });expect(await run()).toBe('Fictional protected explanation');
  });
  it('retains the shared percentage band for the native +7.25 percent result without recalculating pay',async()=>{
-  summary().totals[0].variancePct='7.25';state.analysis.mockImplementation(async(_cfg:unknown,read:(tx:Tx,ctx:SessionContext)=>Promise<unknown>)=>{const aggregate=await read(replay.tx,current) as Aggregate;expect(aggregate.cohorts[0].metrics[0].changeBand).toBe('increase_5_to_10_percent');return 'Explanation';});await run();
+  Object.assign(summary().totals[0],{previous:'100000.00',current:'107250.00',variance:'7250.00',variancePct:'7.25'});state.analysis.mockImplementation(async(_cfg:unknown,read:(tx:Tx,ctx:SessionContext)=>Promise<unknown>)=>{const aggregate=await read(replay.tx,current) as Aggregate;expect(aggregate.cohorts[0].metrics[0].changeBand).toBe('increase_5_to_10_percent');return 'Explanation';});await run();
  });
  it.each(['0.00','-1.00','not-an-amount'])('refuses a zero/negative/unestablished native previous BASIC baseline: %s',async previous=>{
   summary().totals[0].previous=previous;await expect(run()).rejects.toThrow('private payroll comparison source');
@@ -107,4 +107,12 @@ describe('native payroll BASIC private analysis source adapter',()=>{
  it('refuses missing configuration and non-payroll reports without invoking private analysis',async()=>{
   state.config.mockResolvedValue(null);await expect(run()).rejects.toThrow();expect(state.analysis).not.toHaveBeenCalled();await expect(generatePrivatePayrollComparisonAnalysis(ctx,{...spec(),datasetId:'employees'},scope,raw)).rejects.toThrow();expect(state.analysis).not.toHaveBeenCalled();
  });
+ it.each([['10000.00','10000.01','increase_up_to_5_percent'],['10000.00','9999.99','decrease_up_to_5_percent'],['10000.00','10500.01','increase_5_to_10_percent'],['10000.00','9499.99','decrease_5_to_10_percent']])('does not turn native rounded percentages into false unchanged or boundary claims: %s→%s',async(previous,current,expected)=>{
+  const native=payrollVariance(payrollAmountMinor(previous),payrollAmountMinor(current));
+  Object.assign(summary().totals[0],{previous,current,variance:native.difference,variancePct:native.percentage});
+  if(expected.includes('up_to_5'))expect(native.percentage).toBe('0.00');else expect(native.percentage).toBe(expected.startsWith('increase')?'5.00':'-5.00');
+  state.analysis.mockImplementation(async(_cfg:unknown,read:(tx:Tx,ctx:SessionContext)=>Promise<unknown>)=>{const aggregate=await read(replay.tx,currentCtx) as Aggregate;expect(aggregate.cohorts[0].metrics[0].changeBand).toBe(expected);return 'Protected comparison';});
+  const currentCtx=ctx;await run();
+ });
+
 });

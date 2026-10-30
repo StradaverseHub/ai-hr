@@ -11,7 +11,7 @@ import {generatePrivateAiAnalysis} from './ai-governance';
 import {AiGatewayError} from '../lib/ai/types';
 import {PAYROLL_COMPARISON_DATASET,payrollAmountMinor} from '../lib/payroll-period-comparison';
 import {PROVIDER_ANALYSIS_LIMITS} from '../lib/ai/provider-analysis-policy';
-import {analysisPercentageBand} from '../lib/ai/provider-analysis-bands';
+import {analysisPercentageBand,analysisNativeRatioBand} from '../lib/ai/provider-analysis-bands';
 const unavailable=():never=>{throw new AiGatewayError('The private payroll comparison source could not be confirmed.');};
 /** Retain ordinary JSON data only, without executing accessors or keeping caller-owned references. */
 function capture<T>(input:T):T{
@@ -46,7 +46,7 @@ export async function generatePrivatePayrollComparisonAnalysis(ctx:SessionContex
  const capturedSpec=capture(spec),capturedScope=capture(scope),requested=capture(raw);
  if(capturedSpec.datasetId!==PAYROLL_COMPARISON_DATASET||!Array.isArray(capturedScope)||!capturedScope.length||capturedScope.length>100||capturedScope.some(id=>typeof id!=='string'))return unavailable();
  const full=Object.freeze({...requested,onlyVariances:false,minVariance:'0',reason:'',page:1,pageSize:200});
- const configuration=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx,'payroll_explanation'),{readOnlySnapshot:true});
+ const configuration=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx,'payroll_explanation'));
  if(!configuration)return unavailable();
  let originalFingerprint:string|undefined;
  return generatePrivateAiAnalysis(configuration,async(tx:Tx,current:SessionContext)=>{
@@ -59,9 +59,11 @@ export async function generatePrivatePayrollComparisonAnalysis(ctx:SessionContex
   let changeBand:ReturnType<typeof analysisPercentageBand>;
   try{
    // Canonical parsing only establishes sign/baseline validity. The native owner remains the sole
-   // calculator of amounts and variancePct; the shared analysis owner assigns percentage bands.
-   if(payrollAmountMinor(total.previous)<=BigInt('0')||payrollAmountMinor(total.current)<BigInt('0')||typeof total.variancePct!=='string')return unavailable();
-   changeBand=analysisPercentageBand(total.variancePct);
+   // calculator of amounts, exact variance and variancePct. The shared classifier uses the native exact variance/baseline ratio, so a nonzero change rounded to 0.00% is never called unchanged.
+   const baseline=payrollAmountMinor(total.previous);
+   if(baseline<=BigInt('0')||payrollAmountMinor(total.current)<BigInt('0')||typeof total.variancePct!=='string'||typeof total.variance!=='string')return unavailable();
+   analysisPercentageBand(total.variancePct); // Validate native reported percentage; never use its rounding for the band.
+   changeBand=analysisNativeRatioBand(payrollAmountMinor(total.variance),baseline);
   }catch{return unavailable();}
   const employmentIds=[...new Set(result.rows.map(row=>row.employmentId))];
   const identities=await tx.select({employmentId:employment.id,personId:employment.personId}).from(employment)

@@ -1,3 +1,6 @@
+import * as governance from '../core/ai-governance';
+import {generatePrivatePayrollComparisonAnalysis} from '../core/ai-payroll-comparison-analysis';
+import {payrollComparisonSpec} from '../core/report-payroll-comparison';
 /** Actual app-role source replay/admission/settlement, synthetic facts and mocked adapter only.
  * An explicit simulated technical review isolates custody tests; real pending-review refusal is
  * separately covered by provider-data-review-gate.test.ts. No actual specialist approval is claimed. */
@@ -43,4 +46,19 @@ it('rejects copied configs and preserves added native refusal checks',async()=>{
  const cfg=await configuration();await expect(preparePrivateAiAnalysis({...cfg},async()=>source())).rejects.toThrow();
  const prepared=await preparePrivateAiAnalysis(cfg,async()=>source());const guarded=withAiAdmissionCheck(prepared.configuration,'report_insight',async()=>{throw Error('Synthetic native refusal');});
  const adapter=vi.spyOn(anthropicAdapter,'generate');try{await expect(generateDraft(guarded,prepared.args)).rejects.toThrow();expect(adapter).not.toHaveBeenCalled();}finally{adapter.mockRestore();prepared.dispose();}
+});
+
+it('retains completed inference usage when later deterministic analysis validation rejects model prose',async()=>{
+ const cfg=await configuration(),adapter=vi.spyOn(anthropicAdapter,'generate').mockImplementation(async(_cfg,args)=>{args.onUsage?.({inputTokens:8,outputTokens:2,cachedInputTokens:0});return 'Invented Person received 999999 and a rating of 5';});
+ try{await expect(generatePrivateAiAnalysis(cfg,async()=>source())).rejects.toThrow('protected analysis could not be verified');const rows=await withTenant(ctx(),tx=>tx.execute<{state:string;actual_tokens:number}>(sql`select state,actual_tokens::int as actual_tokens from ai_model_run`));expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({state:'completed',actual_tokens:10});}finally{adapter.mockRestore();}
+});
+
+it('returns a locally verified natural explanation after a complete private analysis',async()=>{
+ const cfg=await configuration(),adapter=vi.spyOn(anthropicAdapter,'generate').mockResolvedValue(JSON.stringify({observations:[{cohort:'cohort_a',metric:'payroll_cost'}],comparisons:[]}));
+ try{await expect(generatePrivateAiAnalysis(cfg,async()=>source())).resolves.toBe('Cohort A: payroll cost rose by 5–10% compared with the previous period.');}finally{adapter.mockRestore();}
+});
+
+it('issues payroll native analysis configuration in actual read-committed app-role transactions',async()=>{
+ await configuration();const flow=vi.spyOn(governance,'generatePrivateAiAnalysis').mockImplementation(async cfg=>{expect(cfg.governance).toBeDefined();return 'Native source callback ready';});
+ try{await expect(generatePrivatePayrollComparisonAnalysis(ctx(),payrollComparisonSpec(),[b.companyId],{})).resolves.toBe('Native source callback ready');expect(flow).toHaveBeenCalledOnce();}finally{flow.mockRestore();}
 });
