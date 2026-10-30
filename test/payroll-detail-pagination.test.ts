@@ -10,7 +10,7 @@ describe('payroll detail database pages',()=>{
  it('bounds payslip snapshots, preserves totals and keeps off-page recalculation identities',async()=>{
   const ctx=adminCtx(b),{batchId}=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-05'});
   const subjects=Array.from({length:61},(_,i)=>({personId:randomUUID(),id:randomUUID(),name:`Fictional ${String(i).padStart(3,'0')}`}));
-  await owner.db.insert(person).values(subjects.map(row=>({id:row.personId,tenantId:b.tenantId,fullName:row.name})));
+  await owner.db.insert(person).values(subjects.map(row=>({id:row.personId,tenantId:b.tenantId,fullName:row.name,primaryEmail:row.id+'@example.test'})));
   await owner.db.insert(employment).values(subjects.map(row=>({id:row.id,tenantId:b.tenantId,personId:row.personId,companyId:b.companyId,hiredOn:'2026-01-01'})));
   await owner.db.insert(payslip).values(subjects.map(row=>({tenantId:b.tenantId,batchId,employmentId:row.id,basicSalary:'100',grossPay:'100',statutory:{fixture:'x'.repeat(4000)},totalDeductions:'0',netPay:'100',employerCost:'100'})));
   await owner.db.update(payrollBatch).set({needsRecalcAt:new Date(),recalcEmploymentIds:[subjects[60].id]}).where(eq(payrollBatch.id,batchId));

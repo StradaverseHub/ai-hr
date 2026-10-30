@@ -335,3 +335,14 @@ fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to th
 Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
+
+## Performance development reservation — 30 October 2026
+
+Owned branch `codex/system-performance-audit-20261030` reserves
+`0726_claim_history_order`, development idx684 / when1793330000055. Freshly fetched
+main/alpha retain the 569-entry prefix through0696 /1793330000031. Reachable worktree
+SQL names extend through0725 and journal sequences through1793330000054. This
+append is for isolated hosted development tests only; it is not an installation
+allocation. Reconcile all unmerged reservations, the complete actual applied ledger
+and historical byte identities before integration or deployment. No existing journal
+entry or SQL byte changes. The index changes no grants or RLS.

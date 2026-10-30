@@ -64,7 +64,7 @@ describe('V3.1 onboarding database and authorization', () => {
         const examples=[original];
         for(const state of ['pending','submitted','cancelled'] as const)for(const draft of [true,false])for(const recent of [true,false]){
             const c=structuredClone(original);c.id=randomUUID();c.sourceDraftId=null;c.state=state;c.personnelStatus=draft?'Draft':'Active';
-            c.source.joinDate=dayDate(today,recent?0:-1000);c.local.joinDate=dayDate(today,100);
+            c.source.joinDate=dayDate(today,recent?1:-1000);c.local.joinDate=dayDate(today,100);
             c.tasks.forEach(task=>task.status='done');c.requisitions.forEach(req=>req.handedAt=new Date().toISOString());examples.push(c);
         }
         const unfinished=structuredClone(examples.find(c=>c.state==='submitted'&&c.personnelStatus==='Active')!);
@@ -84,11 +84,11 @@ describe('V3.1 onboarding database and authorization', () => {
         const before=await onboardingTasks(tech);
         expect(before.filter(task=>task.caseId===row.case.id).map(task=>task.kind)).toEqual(['mention']);
         const [note]=await owner.db.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,row.case.id));
-        await owner.db.update(schema.lcOnboardingNote).set({data:{...note.data,resolved:[tech.userId!]}}).where(eq(schema.lcOnboardingNote.id,note.id));
+        await onboardingNote(tech,row.case.id,{id:note.id,context:'requisition',body:note.data.body,mentions:note.data.mentions,resolve:true});
         expect((await onboardingTasks(tech)).filter(task=>task.caseId===row.case.id)).toEqual([]);
-        await owner.db.update(schema.lcOnboardingNote).set({data:{...note.data,deleted:true}}).where(eq(schema.lcOnboardingNote.id,note.id));
+        await onboardingNote(admin,row.case.id,{id:note.id,context:'requisition',body:'',mentions:[],deleted:true});
         expect((await onboardingTasks(tech)).filter(task=>task.caseId===row.case.id)).toEqual([]);
-        await owner.db.update(schema.lcOnboardingNote).set({data:note.data}).where(eq(schema.lcOnboardingNote.id,note.id));
+        await onboardingNote(admin,row.case.id,{context:'requisition',body:'Another mention',mentions:[tech.userId!]});
         await owner.db.update(schema.lcOnboardingCase).set({data:{...data,state:'cancelled'}}).where(eq(schema.lcOnboardingCase.id,row.case.id));
         expect((await onboardingTasks(tech)).filter(task=>task.caseId===row.case.id)).toEqual([]);
     });

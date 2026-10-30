@@ -3396,6 +3396,13 @@ function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
     opts.claimStatus ? eq(claimRequest.status, opts.claimStatus as typeof CLAIM_STATUSES[number]) : undefined,
     opts.before ? sql`(date_trunc('milliseconds',${claimRequest.createdAt}),${claimRequest.id}) < (${opts.before[0]}::timestamptz,${opts.before[1]}::uuid)` : undefined);
 }
+/** Semi-joins retain each related table's RLS without repeating its identity lookup per claim. */
+function employmentClaimCountWhere(tx: Tx, employmentId: string, opts: EmploymentClaimRead) {
+  return and(employmentClaimWhere(employmentId, opts),
+    inArray(claimRequest.claimTypeId, tx.select({id: claimType.id}).from(claimType)),
+    inArray(claimRequest.employmentId, tx.select({id: employment.id}).from(employment)
+      .innerJoin(person, eq(person.id, employment.personId)).where(eq(employment.id, employmentId))));
+}
 async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
   const query = tx.select(rowSelect()).from(claimRequest)
     .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
@@ -3425,14 +3432,11 @@ export function listClaimDraftsForEmployment(ctx: SessionContext, employmentId: 
 export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, input: {page?: string; size?: string} = {}) {
   const query = parsePageQuery(input);
   return withTenant(ctx, async tx => {
-    // RLS expands into large policy plans; LLVM compilation dominates these interactive reads.
+    // Avoid compiling the expanded RLS plan for a short interactive read.
     // Limit interpretation to this read transaction; the server's JIT setting is unchanged.
     await tx.execute(sql`SET LOCAL jit = off`);
     const [countRow] = await tx.select({n: sql<number>`count(*)::int`}).from(claimRequest)
-      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(employmentClaimWhere(employmentId, {status: 'history'}));
+      .where(employmentClaimCountWhere(tx, employmentId, {status: 'history'}));
     const rows = await employmentClaimRowsTx(tx, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
     return {rows, state: pageState(query, Number(countRow?.n ?? 0), rows.length)};
   });
@@ -3449,10 +3453,7 @@ export function listEmploymentClaimsCursorPage(ctx: SessionContext, employmentId
   return withTenant(ctx, async tx => {
     await tx.execute(sql`SET LOCAL jit = off`);
     const totals = await tx.select({status: claimRequest.status, n: sql<number>`count(*)::int`}).from(claimRequest)
-      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(employmentClaimWhere(employmentId, {})).groupBy(claimRequest.status);
+      .where(employmentClaimCountWhere(tx, employmentId, {})).groupBy(claimRequest.status);
     const counts = Object.fromEntries(CLAIM_STATUSES.map(status => [status, 0])) as Record<typeof CLAIM_STATUSES[number],number>;
     for (const row of totals) counts[row.status] = Number(row.n);
     const found = await employmentClaimRowsTx(tx, employmentId, {claimStatus: status, before: cursor ?? undefined, cursorOrder: true, limit: limit + 1});
