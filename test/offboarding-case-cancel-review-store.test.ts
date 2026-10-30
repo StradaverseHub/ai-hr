@@ -67,3 +67,7 @@ it('rejects dedicated/generic hybrid custody fields and loss of actual case/comp
  for(const column of ['company_id','lifecycle_case_id']){let error:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column)}=null where id=${r.actionId}::uuid`);}catch(e){error=e;}expect(pgSqlState(error),column).toBe('23514');}
  expect(await privateRow(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1,commitment:expect.any(String)});
 });
+
+it('preserves canonical erasure of already completed custody in a later transaction',async()=>{
+ f=await caseCancelFixture(true);const r=await prepare();await reviews.confirm(f.ctx,confirmation(r));await erasePersonPii(adminCtx(f.b),{subjectEmploymentId:f.subject!.employmentId,scope:'contact',requestRef:'FICTIONAL-COMPLETED-ERASURE',reason:'Fictional completed subject request'});expect(await privateRow(r.actionId)).toMatchObject({state:'completed',bodies:0,commitment:null,intent_digest:null,reviewed_digest:null});
+});

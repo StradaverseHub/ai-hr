@@ -72,3 +72,52 @@ it('refuses actual row-writer/review contention NOWAIT and releases its case/rel
  expect(await owner.db.transaction(tx=>tx.select({id:s.lcCase.id}).from(s.lcCase).where(eq(s.lcCase.id,f.caseId)).for('update',{noWait:true}))).toHaveLength(1);
 });
 it('enforces native normalized UTF-16 reason bounds in the definer owner too',async()=>{for(const bad of ['','\t\n','\u00a0','🙂'.repeat(251)]){await assertRefused(prepare(bad));}await prepare('🙂'.repeat(250));});
+
+it('keeps whole-effect commitments portable across UTC/Kuala Lumpur without changing authority TimeZone or current_date',async()=>{
+ await withTenant(f.ctx,async tx=>{await tx.execute(sql`set local TimeZone='UTC'`);const [before]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);await tx.execute(sql`select app.assistant_offboarding_case_cancel_review_prepare(${id}::uuid,null::uuid,${f.caseId}::uuid,null::uuid,null::uuid,${f.b.companyId}::uuid,${f.human.reason},${'a'.repeat(64)},${digest},'0123456789abcdef','fictional-wrapped','fictional-cipher')`);const [after]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);expect(after).toEqual(before);});
+ await withTenant(f.ctx,async tx=>{await tx.execute(sql`set local TimeZone='Asia/Kuala_Lumpur'`);const [before]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);await source(tx);const r=await native(tx);await complete(tx,r.eventId);const [after]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);expect(after).toEqual(before);});
+});
+
+async function installedTamper(stage:'before_ledger'|'after_ledger'|'before_body'|'after_body'|'deferred_ledger',mutation:string,work:()=>Promise<void>){
+ const body=stage.includes('body'),table=body?'app.assistant_own_leave_review_content':'app.assistant_own_leave_review',timing=stage.startsWith('before')?'BEFORE':'AFTER',event=body?'DELETE':'UPDATE';
+ const filter=body?`OLD.action_id='${id}'::uuid`:`NEW.id='${id}'::uuid AND NEW.state='completed'`;
+ await owner.db.execute(sql.raw(`CREATE FUNCTION app.test_case_cancel_tamper() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN IF ${filter} THEN ${mutation}; END IF; IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END $$`));
+ try{await owner.db.execute(sql.raw(`CREATE ${stage==='deferred_ledger'?'CONSTRAINT ':''}TRIGGER test_case_cancel_tamper ${timing} ${event} ON ${table} ${stage==='deferred_ledger'?'DEFERRABLE INITIALLY DEFERRED ':''}FOR EACH ROW EXECUTE FUNCTION app.test_case_cancel_tamper()`));await work();}
+ finally{await owner.db.execute(sql.raw(`DROP TRIGGER IF EXISTS test_case_cancel_tamper ON ${table}`));await owner.db.execute(sql`drop function app.test_case_cancel_tamper()`);}
+}
+const lateMutations=()=>({
+ case:`UPDATE public.lc_case SET work_location='Unreviewed late location' WHERE id='${f.caseId}'::uuid`,
+ step:`UPDATE public.lc_case_step SET notes='Unreviewed late step' WHERE case_id='${f.caseId}'::uuid`,
+ comment:`UPDATE public.lc_comment SET body='Unreviewed late comment' WHERE case_id='${f.caseId}'::uuid`,
+ item:`UPDATE public.it_requisition_item SET note='Unreviewed late item' WHERE requisition_id='${f.reqId}'::uuid`,
+ asset:`UPDATE public.it_asset SET location='Unreviewed late asset' WHERE id='${f.assetId}'::uuid`,
+});
+it.each((['before_ledger','after_ledger','before_body','after_body'] as const).flatMap(stage=>(['case','step','comment','item','asset'] as const).map(target=>({stage,target}))))('refuses actual $stage trigger mutation of $target after initial effect validation',async({stage,target})=>{
+ await prepare();const before=await caseCancelSnapshot(f);await installedTamper(stage,lateMutations()[target],async()=>{await assertRefused(withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);}));});expect(await caseCancelSnapshot(f)).toEqual(before);
+ const [r]=await owner.db.execute(sql`select state,offboarding_cancel_effect_commitment commitment from app.assistant_own_leave_review where id=${id}::uuid`);expect(r).toMatchObject({state:'awaiting_confirmation',commitment:expect.any(String)});
+});
+it.each(['case','step','comment','return','item','asset','step_insert','return_insert','item_insert','asset_insert','comment_insert','event','history','released_child','constraints_immediate'] as const)('fences complete-then-%s through the remainder of the root transaction',async target=>{
+ await prepare();const before=await caseCancelSnapshot(f);await assertRefused(withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);
+  if(target==='released_child'){await tx.execute(sql`savepoint after_case_completion`);await tx.execute(sql`release savepoint after_case_completion`);}
+  if(target==='constraints_immediate')await tx.execute(sql`set constraints all immediate`);
+  if(target==='step_insert')await tx.insert(s.lcCaseStep).values({tenantId:f.b.tenantId,caseId:f.caseId,stepKey:'late-extra',done:false});
+  else if(target==='return_insert')await tx.insert(s.itRequisition).values({tenantId:f.b.tenantId,companyId:f.b.companyId,caseId:f.caseId,number:'LATE-'+randomUUID(),kind:'return',fullName:'Late return',employeeNo:'LATE'});
+  else if(target==='item_insert')await tx.insert(s.itRequisitionItem).values({tenantId:f.b.tenantId,requisitionId:f.reqId,itemKey:'late-item',name:'Late item'});
+  else if(target==='asset_insert')await tx.insert(s.itAsset).values({tenantId:f.b.tenantId,companyId:f.b.companyId,requisitionId:f.reqId,code:'LATE-'+randomUUID(),assetType:'laptop'});
+  else if(target==='comment_insert')await tx.insert(s.lcComment).values({tenantId:f.b.tenantId,caseId:f.caseId,body:'Late comment',authorUserId:f.ctx.userId});
+  else if(target==='return')await tx.update(s.itRequisition).set({notes:'Unreviewed late return'}).where(eq(s.itRequisition.id,f.reqId));
+  else if(target==='event')await appendEvent(tx,{tenantId:f.b.tenantId,aggregateType:'lifecycle-case',aggregateId:f.caseId,eventType:'lifecycle-case.cancelled',actor:actorOf(f.ctx),payload:{action:'case.cancelled',number:f.number}});
+  else if(target==='history')await tx.insert(s.lcHistory).values({tenantId:f.b.tenantId,refType:'case',refId:f.caseId,action:'case.cancelled',actorUserId:f.ctx.userId,detail:{reason:f.human.reason}});
+  else await tx.execute(sql.raw(lateMutations()[target==='released_child'||target==='constraints_immediate'?'case':target]));
+ }));expect(await caseCancelSnapshot(f)).toEqual(before);
+});
+it.each([false,true])('refuses deferred trigger changes at root commit or after SET CONSTRAINTS ALL IMMEDIATE (%s)',async flush=>{
+ await prepare();const before=await caseCancelSnapshot(f);await installedTamper('deferred_ledger',lateMutations().item,async()=>{await assertRefused(withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);if(flush)await tx.execute(sql`set constraints all immediate`);}));});expect(await caseCancelSnapshot(f)).toEqual(before);
+});
+it.each(['version','identity'] as const)('refuses a BEFORE ledger trigger that substitutes completed %s and then writes late work',async change=>{
+ await prepare();const before=await caseCancelSnapshot(f),mutation=`NEW.${change==='version'?'offboarding_cancel_case_version':'user_id'}:='${change==='version'?'1':f.b.adminUserId}'; ${lateMutations().step}`;
+ await installedTamper('before_ledger',mutation,async()=>{await assertRefused(withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);}));});expect(await caseCancelSnapshot(f)).toEqual(before);
+});
+it('allows ordinary later-transaction native IT work after the root fence ends',async()=>{
+ await prepare();await withTenant(f.ctx,async tx=>{await source(tx);const r=await native(tx);await complete(tx,r.eventId);});await withTenant(f.ctx,tx=>tx.update(s.itRequisition).set({notes:'Legitimate later work'}).where(eq(s.itRequisition.id,f.reqId)));const [q]=await owner.db.select().from(s.itRequisition).where(eq(s.itRequisition.id,f.reqId));expect(q.notes).toBe('Legitimate later work');
+});

@@ -45,10 +45,17 @@ ALTER TABLE app.assistant_own_leave_review ADD COLUMN offboarding_cancel_effect_
 -- scrubs it atomically; no private case/body fingerprint is added to native domain-event payloads.
 CREATE FUNCTION app._assistant_case_cancel_scrub() RETURNS trigger
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN
+ -- The completed identity, never a content hash, fences the rest of this root transaction.
+ -- Canonical erasure may clear private content/digests; it never changes completed identity.
+ IF OLD.action_kind='lifecycle.offboarding.case.cancel' AND OLD.state='completed'
+  AND OLD.offboarding_cancel_case_version=pg_current_xact_id()::xid::text
+  AND (TG_OP='DELETE' OR to_jsonb(NEW) IS DISTINCT FROM to_jsonb(OLD)) THEN
+  RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;END IF;
  IF NEW.action_kind='lifecycle.offboarding.case.cancel' AND (NEW.state<>'awaiting_confirmation' OR NEW.intent_digest IS NULL OR NEW.reviewed_digest IS NULL) THEN NEW.offboarding_cancel_effect_commitment:=NULL;END IF;
  RETURN NEW;END $$;
 REVOKE ALL ON FUNCTION app._assistant_case_cancel_scrub() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER assistant_case_cancel_private_scrub BEFORE UPDATE ON app.assistant_own_leave_review
+CREATE TRIGGER assistant_case_cancel_private_scrub BEFORE UPDATE OR DELETE ON app.assistant_own_leave_review
  FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_scrub();
 --> statement-breakpoint
 DO $$ DECLARE unrelated text;BEGIN
@@ -90,17 +97,87 @@ CREATE FUNCTION app._assistant_case_cancel_reason_valid(p_reason text) RETURNS b
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_case_cancel_reason_valid(text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- A completed case/root identity is immutable until this transaction ends. Ordinary BEFORE
+-- triggers cannot be flushed by SET CONSTRAINTS, and also run for writes from deferred triggers.
+CREATE INDEX assistant_case_cancel_root_identity ON app.assistant_own_leave_review
+ (lifecycle_case_id,offboarding_cancel_case_version)
+ WHERE action_kind='lifecycle.offboarding.case.cancel' AND state='completed';
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_domain_fence() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE row_data jsonb;case_id uuid;parent_id uuid;which integer;BEGIN
+ FOR which IN 1..2 LOOP
+  IF (which=1 AND TG_OP='INSERT') OR (which=2 AND TG_OP='DELETE') THEN CONTINUE;END IF;
+  row_data:=CASE WHEN which=1 THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;case_id:=NULL;
+  IF TG_TABLE_NAME='lc_case' THEN case_id:=(row_data->>'id')::uuid;
+  ELSIF TG_TABLE_NAME IN ('lc_case_step','lc_comment','it_requisition') THEN case_id:=(row_data->>'case_id')::uuid;
+  ELSIF TG_TABLE_NAME IN ('it_requisition_item','it_asset') THEN
+   parent_id:=(row_data->>'requisition_id')::uuid;
+   SELECT q.case_id INTO case_id FROM public.it_requisition q WHERE q.id=parent_id;
+  ELSIF TG_TABLE_NAME='domain_event' AND row_data->>'aggregate_type'='lifecycle-case' THEN case_id:=(row_data->>'aggregate_id')::uuid;
+  ELSIF TG_TABLE_NAME='lc_history' AND row_data->>'ref_type'='case' THEN case_id:=(row_data->>'ref_id')::uuid;
+  END IF;
+  IF case_id IS NOT NULL AND EXISTS(SELECT 1 FROM app.assistant_own_leave_review r
+   WHERE r.action_kind='lifecycle.offboarding.case.cancel' AND r.state='completed'
+    AND r.lifecycle_case_id=case_id AND r.offboarding_cancel_case_version=pg_current_xact_id()::xid::text) THEN
+   RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
+ END LOOP;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_domain_fence() FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE table_name text;BEGIN
+ FOREACH table_name IN ARRAY ARRAY['lc_case','lc_case_step','lc_comment','it_requisition','it_requisition_item','it_asset','domain_event','lc_history'] LOOP
+  EXECUTE format('CREATE TRIGGER assistant_case_cancel_root_fence BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_domain_fence()',table_name);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_body_fence() RETURNS trigger
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN
+ IF EXISTS(SELECT 1 FROM app.assistant_own_leave_review r WHERE r.id=NEW.action_id
+  AND r.action_kind='lifecycle.offboarding.case.cancel' AND r.state='completed'
+  AND r.offboarding_cancel_case_version=pg_current_xact_id()::xid::text) THEN
+  RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;END $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_body_fence() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER assistant_case_cancel_body_fence BEFORE INSERT OR UPDATE ON app.assistant_own_leave_review_content
+ FOR EACH ROW EXECUTE FUNCTION app._assistant_case_cancel_body_fence();
+--> statement-breakpoint
+-- Pure typed-row serialization only: caller authority and current_date retain their TimeZone.
+CREATE FUNCTION app._assistant_case_cancel_json(p_row public.lc_case) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$ SELECT to_jsonb(p_row) $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_json(public.lc_case) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_json(p_row public.lc_case_step) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$ SELECT to_jsonb(p_row) $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_json(public.lc_case_step) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_json(p_row public.lc_comment) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$ SELECT to_jsonb(p_row) $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_json(public.lc_comment) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_json(p_row public.it_requisition) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$ SELECT to_jsonb(p_row) $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_json(public.it_requisition) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_json(p_row public.it_requisition_item) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$ SELECT to_jsonb(p_row) $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_json(public.it_requisition_item) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app._assistant_case_cancel_json(p_row public.it_asset) RETURNS jsonb
+ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp SET TimeZone='UTC' AS $$ SELECT to_jsonb(p_row) $$;
+REVOKE ALL ON FUNCTION app._assistant_case_cancel_json(public.it_asset) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- PRIVATE: complete ordered related sets and physical versions. All rows are fenced/authorized by
 -- source() before this function is called. Case has NO updated_at: only status/cancel_reason differ.
 CREATE FUNCTION app._assistant_case_cancel_effect(p_case uuid,p_reason text,p_predicted boolean) RETURNS text
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT encode(sha256(convert_to(jsonb_build_array(
-  CASE WHEN p_predicted THEN to_jsonb(c)||jsonb_build_object('status','cancelled','cancel_reason',p_reason) ELSE to_jsonb(c) END,
-  (SELECT coalesce(jsonb_agg(jsonb_build_array(to_jsonb(a),a.xmin::text) ORDER BY a.step_key),'[]'::jsonb) FROM public.lc_case_step a WHERE a.case_id=c.id),
-  (SELECT coalesce(jsonb_agg(jsonb_build_array(to_jsonb(a),a.xmin::text) ORDER BY a.id),'[]'::jsonb) FROM public.lc_comment a WHERE a.case_id=c.id),
-  (SELECT coalesce(jsonb_agg(jsonb_build_array(to_jsonb(a),a.xmin::text) ORDER BY a.id),'[]'::jsonb) FROM public.it_requisition a WHERE a.case_id=c.id),
-  (SELECT coalesce(jsonb_agg(jsonb_build_array(to_jsonb(a),a.xmin::text) ORDER BY a.requisition_id,a.item_key),'[]'::jsonb) FROM public.it_requisition_item a JOIN public.it_requisition q ON q.id=a.requisition_id WHERE q.case_id=c.id),
-  (SELECT coalesce(jsonb_agg(jsonb_build_array(to_jsonb(a),a.xmin::text) ORDER BY a.id),'[]'::jsonb) FROM public.it_asset a JOIN public.it_requisition q ON q.id=a.requisition_id WHERE q.case_id=c.id)
+  CASE WHEN p_predicted THEN app._assistant_case_cancel_json(c)||jsonb_build_object('status','cancelled','cancel_reason',p_reason) ELSE app._assistant_case_cancel_json(c) END,
+  (SELECT coalesce(jsonb_agg(jsonb_build_array(app._assistant_case_cancel_json(a),a.xmin::text) ORDER BY a.step_key),'[]'::jsonb) FROM public.lc_case_step a WHERE a.case_id=c.id),
+  (SELECT coalesce(jsonb_agg(jsonb_build_array(app._assistant_case_cancel_json(a),a.xmin::text) ORDER BY a.id),'[]'::jsonb) FROM public.lc_comment a WHERE a.case_id=c.id),
+  (SELECT coalesce(jsonb_agg(jsonb_build_array(app._assistant_case_cancel_json(a),a.xmin::text) ORDER BY a.id),'[]'::jsonb) FROM public.it_requisition a WHERE a.case_id=c.id),
+  (SELECT coalesce(jsonb_agg(jsonb_build_array(app._assistant_case_cancel_json(a),a.xmin::text) ORDER BY a.requisition_id,a.item_key),'[]'::jsonb) FROM public.it_requisition_item a JOIN public.it_requisition q ON q.id=a.requisition_id WHERE q.case_id=c.id),
+  (SELECT coalesce(jsonb_agg(jsonb_build_array(app._assistant_case_cancel_json(a),a.xmin::text) ORDER BY a.id),'[]'::jsonb) FROM public.it_asset a JOIN public.it_requisition q ON q.id=a.requisition_id WHERE q.case_id=c.id)
  )::text,'UTF8')),'hex') FROM public.lc_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND c.kind='offboarding';
 $$;
 REVOKE ALL ON FUNCTION app._assistant_case_cancel_effect(uuid,text,boolean) FROM PUBLIC,ai_hr_app;
@@ -247,7 +324,7 @@ GRANT EXECUTE ON FUNCTION app.assistant_offboarding_case_cancel_reviews_index() 
 --> statement-breakpoint
 CREATE FUNCTION app.assistant_offboarding_case_cancel_review_complete(p_id uuid,p_reviewed_digest text,p_case uuid,p_event uuid) RETURNS jsonb
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE r app.assistant_own_leave_review%ROWTYPE;source jsonb;c public.lc_case%ROWTYPE;v text;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();BEGIN
+DECLARE r app.assistant_own_leave_review%ROWTYPE;done app.assistant_own_leave_review%ROWTYPE;source jsonb;c public.lc_case%ROWTYPE;v text;expected text;t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();BEGIN
  PERFORM app._assistant_lifecycle_review_identity(NULL,false);
  SELECT * INTO r FROM app.assistant_own_leave_review WHERE id=p_id AND tenant_id=t AND user_id=u AND action_kind='lifecycle.offboarding.case.cancel'
   AND person_id IS NOT DISTINCT FROM (SELECT a.person_id FROM public.app_user a WHERE a.id=u AND a.tenant_id=t);
@@ -275,8 +352,19 @@ DECLARE r app.assistant_own_leave_review%ROWTYPE;source jsonb;c public.lc_case%R
    OR NOT EXISTS(SELECT 1 FROM public.lc_history h WHERE h.tenant_id=t AND h.ref_type='case' AND h.ref_id=p_case AND h.action='case.cancelled' AND h.actor_user_id=u
     AND h.detail=jsonb_build_object('reason',c.cancel_reason) AND h.xmin=pg_current_xact_id()::xid) THEN
    RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
+  expected:=r.offboarding_cancel_effect_commitment;
   UPDATE app.assistant_own_leave_review SET state='completed',intent_digest=NULL,reviewed_digest=NULL,lifecycle_submitted_event_id=p_event,offboarding_cancel_case_version=v WHERE id=r.id;
   DELETE FROM app.assistant_own_leave_review_content WHERE action_id=r.id;
+  -- Validate AFTER all custody and body triggers. Only a local pending expectation survives until
+  -- here; no content fingerprint is retained in completed custody or exposed in native events.
+  SELECT * INTO done FROM app.assistant_own_leave_review WHERE id=r.id;
+  IF NOT FOUND OR to_jsonb(done) IS DISTINCT FROM (to_jsonb(r)||jsonb_build_object(
+   'state','completed','intent_digest',NULL,'reviewed_digest',NULL,'lifecycle_submitted_event_id',p_event,
+   'offboarding_cancel_case_version',v,'offboarding_cancel_effect_commitment',NULL))
+   OR EXISTS(SELECT 1 FROM app.assistant_own_leave_review_content WHERE action_id=r.id)
+   OR app._assistant_case_cancel_effect(p_case,NULL,false) IS DISTINCT FROM expected THEN
+   RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
+  PERFORM app.assistant_offboarding_case_cancel_reference(r.id);
  ELSE RAISE EXCEPTION 'Case cancellation unavailable' USING ERRCODE='42501';END IF;
  RETURN app._assistant_case_cancel_review_json(r.id);
 END $$;
