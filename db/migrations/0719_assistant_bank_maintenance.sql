@@ -20,6 +20,28 @@ BEGIN
  EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_review_kind_columns CHECK (CASE WHEN action_kind=''employees.bank.maintain'' THEN ('||generic_columns||') ELSE ('||previous||') END)';
 END $$;
 --> statement-breakpoint
+-- Current native USER-scoped Personnel actors need not have their own employee Person.
+-- This is the closed six-kind repair of the original 0622 actor-scope fallback, not a permission.
+-- Preserve the COMPLETE predecessor predicate, including the 0714 draft branch, for every other kind.
+DO $$
+DECLARE previous text;constraint_name text;found integer;
+BEGIN
+ SELECT count(*),min(conname) INTO found,constraint_name FROM pg_constraint
+  WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+   AND pg_get_expr(conbin,conrelid) LIKE '%testing_execution_id IS NOT NULL%'
+   AND pg_get_expr(conbin,conrelid) LIKE '%employment_id IS NULL%';
+ IF found<>1 THEN RAISE EXCEPTION '0719: original actor scope predicate unavailable';END IF;
+ SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint
+  WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=constraint_name AND contype='c';
+ IF previous IS NULL OR position('employees.draft.activate' in previous)=0 THEN RAISE EXCEPTION '0719: predecessor draft actor scope unavailable';END IF;
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',constraint_name);
+ EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind IN
+  (''employees.qualification.maintain'',''employees.compensation.maintain'',''employees.emergency_contact.maintain'',
+   ''employees.workforce_profile.maintain'',''employees.family.maintain'',''employees.bank.maintain'')
+  THEN employment_id IS NOT NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL
+   AND testing_run_id IS NULL AND testing_event_id IS NULL ELSE (%s) END)',constraint_name,previous);
+END $$;
+--> statement-breakpoint
 -- Preserve each remaining prior expression exactly, adding only a branch for this kind.
 DO $$
 DECLARE item record;previous text;added text;
