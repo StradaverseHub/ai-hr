@@ -50,6 +50,7 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   await promotePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,maxJobs:1,hours:1});
   const result=await runPromptPlannedSyntheticJob(a.author,{fixtureId:'own-leave',consent:consent(1)});
   expect(result.decision).toBe('read');expect(result.results.map(row=>row.module)).toEqual(['leave']);expect(sent).toHaveBeenCalledTimes(expectedModelRuns());
+  expect(sent.mock.lastCall?.[1]).toMatchObject({system:promptCandidateSystem({kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}),prompt:PROMPT_HOLDOUTS.find(row=>row.id==='own-leave')!.question,maxTokens:384,timeoutMs:15000});
   await expect(runPromptPlannedSyntheticJob(a.author,{fixtureId:'own-leave',consent:consent(1)})).rejects.toThrow();expect(sent).toHaveBeenCalledTimes(expectedModelRuns());
   const [runs]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_model_run where tenant_id=${base.tenantId}::uuid and feature_id='module_agent_evaluation' and state='completed'`);
   expect(runs.n).toBe(expectedModelRuns());
@@ -84,7 +85,17 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
   await promotePromptAgentCandidate(a.reviewer,{candidateId:a.candidateId,maxJobs:2,hours:1});
   sent.mockResolvedValue(JSON.stringify({decision:'read',modules:['employees']}));
   await expect(runPromptPlannedSyntheticJob(a.author,{fixtureId:'own-leave',consent:consent(1)})).rejects.toThrow();
-  const [row]=await owner.db.execute<{reason:string}>(sql`select reason from public.ai_agent_rollback limit 1`);expect(row.reason).toBe('quality_regression');
+  // A valid protected request must actually reach transport and adjudication. A privacy
+  // preparation failure cannot masquerade as a successful wrong-plan safety check.
+  expect(sent).toHaveBeenCalledTimes(expectedModelRuns());
+  const [row]=await owner.db.execute<{reason:string;used:number;completed:number;receipts:number}>(sql`select r.reason,p.used_jobs as used,
+   (select count(*)::int from public.ai_model_run where tenant_id=${base.tenantId}::uuid and feature_id='module_agent_evaluation' and state='completed') as completed,
+   (select count(*)::int from public.ai_agent_job_receipt j where j.tenant_id=p.tenant_id and j.promotion_id=p.id) as receipts
+   from public.ai_agent_rollback r join public.ai_agent_promotion p on p.id=r.promotion_id and p.tenant_id=r.tenant_id
+   where p.tenant_id=${base.tenantId}::uuid and p.candidate_id=${a.candidateId}::uuid`);
+  expect(row).toEqual({reason:'quality_regression',used:1,completed:expectedModelRuns(),receipts:2});
+  await expect(runPromptPlannedSyntheticJob(a.author,{fixtureId:'own-leave',consent:consent(1)})).rejects.toThrow();
+  expect(sent).toHaveBeenCalledTimes(expectedModelRuns());
  });
  it('refuses equal perfect baseline/candidate plans after two authentic independent paired evaluations, regardless of zero reported tokens',async()=>{
   const a=await candidate();await transport(a.author);for(const ctx of [a.reviewer,a.second]){const report=await completeEvaluation(ctx,{candidateId:a.candidateId,consent:consent()});expect(report.comparison).toMatchObject({qualityImproved:false,baseline:{correct:144,tokens:0,costCredits:null},candidate:{correct:144,tokens:0,costCredits:null}});}

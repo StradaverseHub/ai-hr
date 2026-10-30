@@ -656,7 +656,15 @@ export async function runPromptPlannedSyntheticJob(ctx:SessionContext,input:{fix
    return {candidate,promotionId:promotion.id,jobId,cfg,providerFingerprint:snapshot.fingerprint};
   });
   if(!prepared)return fail();const started=Date.now();
-  const text=await generateDraft(prepared.cfg,Object.freeze({system:promptCandidateSystem(prepared.candidate.configuration),prompt:fixture.question,maxTokens:384,timeoutMs:15000}));
+  // Use the same finite synthetic contract as evaluation, retaining the issued promotion,
+  // source and shared-spend guards. Replay the actual candidate before privacy admission.
+  const task=await preparePrivateAiTask(prepared.cfg,'synthetic_read_plan_v1',async carrier=>{
+   const candidate=await candidateTx(carrier,current,prepared.candidate.id);
+   if(candidate.candidate_digest!==prepared.candidate.candidate_digest)return fail();
+   return {candidate:candidate.configuration,fixtureId:fixture.id};
+  });
+  let text:string;
+  try{if(task.operation!=='draft')return fail();text=await generateDraft(task.configuration,task.args);}finally{task.dispose();}
   let plan:ReturnType<typeof adjudicatePromptReadPlan>|undefined;
   try{plan=adjudicatePromptReadPlan(text);}catch{/* No malformed proposal can reach the canonical engines. */}
   const accepted=plan&&plan.decision===fixture.decision&&[...plan.modules].sort().join(',')===[...fixture.modules].sort().join(',');

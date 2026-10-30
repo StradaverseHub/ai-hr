@@ -8,6 +8,8 @@ import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {converse} from '../lib/ai';
+import {preparePrivateAiTask} from '../core/ai-governance';
+import {ASSISTANT_PRIVATE_CONTRACT,privateAssistantCatalogue} from '../lib/ai/provider-assistant-policy';
 import {hireEmployee} from '../core/org';
 import {grantAssistant} from '../core/assistant-grant';
 import {resolveActiveAiConfig} from '../core/ai-config';
@@ -157,13 +159,21 @@ describe('in-flight evaluation cannot recreate erased conversation metadata',()=
 const QUESTION='fictional fenced human question';
 async function prepare(ctx:SessionContext){return withTenant(ctx,async tx=>{const cfg=await resolveActiveAiConfig(tx,ctx,'hr_assistant');if(!cfg)throw Error('Missing fictional configured provider');return prepareAssistantConversationStrategyTx(tx,ctx,await bindAiSpendTaskTx(tx,ctx,cfg,{kind:'assistant_question'}),QUESTION);});}
 async function persist(tx:Tx,ctx:SessionContext,capability:Parameters<typeof completeAssistantConversationStrategyTx>[2]){await recheckAssistantConversationStrategyTx(tx,ctx,capability);const id=randomUUID();await tx.execute(sql`insert into public.assistant_exchange(id,tenant_id,app_user_id,question,answer) values(${id}::uuid,${ctx.tenantId}::uuid,${ctx.userId}::uuid,${QUESTION},'FICTIONAL LATE MAIN REPLY')`);await completeAssistantConversationStrategyTx(tx,ctx,capability,id);return id;}
-const ask=(configuration:Awaited<ReturnType<typeof prepare>>)=>converse(configuration.configuration,{system:[configuration.system],turns:[{role:'user',content:QUESTION}],tools:[],maxTokens:64});
+/** The marker question stays local. Even this source-free custody fixture uses a genuine protected
+ * task, on the SAME issued strategy/root, rather than granting privacy authority to raw turns. */
+async function ask(selected:Awaited<ReturnType<typeof prepare>>){
+ const task=await preparePrivateAiTask(selected.configuration,ASSISTANT_PRIVATE_CONTRACT,async()=>privateAssistantCatalogue('module_overview',[],selected.variant));
+ try{if(task.operation!=='conversation')throw Error('Expected protected conversation');expect(JSON.stringify(task.args)).not.toContain(QUESTION);return await converse(task.configuration,task.args);}finally{task.dispose();}
+}
+async function reachedMainTransport(atPause:Promise<void>,running:Promise<Settled<unknown>>){
+ await Promise.race([atPause,running.then(result=>{if(!result.ok)throw result.error;throw Error('Main call settled before reaching the paused transport');})]);
+}
 
 describe('in-flight main question shares the same marker fence',()=>{
  it('self-erasure while the provider call is paused leaves the late reply unpersistable, refuses further calls and keeps accounting',async()=>{
   const a=await actors();await installSyntheticSpendCapability(a.author,spendFixture);const selected=await prepare(a.author),transport=mainTransport(),running=settle(ask(selected));
   try{
-   await transport.atPause;expect(await count(USE)).toBe(1);const atPause=await accounting();
+   await reachedMainTransport(transport.atPause,running);expect(await count(USE)).toBe(1);const atPause=await accounting();
    await eraseOwnConversationStrategyMetadata(a.author);expect(await count(USE)).toBe(0);
    transport.release();const late=await running;expect(late.ok).toBe(true);
    await expect(withTenant(a.author,tx=>persist(tx,a.author,selected.capability))).rejects.toThrow();
@@ -174,7 +184,7 @@ describe('in-flight main question shares the same marker fence',()=>{
  it('a same-id strategy marker copied back with its original dates and ciphertext cannot complete the old in-memory question',async()=>{
   const a=await actors();await installSyntheticSpendCapability(a.author,spendFixture);const selected=await prepare(a.author),transport=mainTransport(),running=settle(ask(selected));
   try{
-   await transport.atPause;
+   await reachedMainTransport(transport.atPause,running);
    const[old]=await owner.db.execute<{id:string;user_id:string;person_id:string|null;promotion_id:string|null;candidate_digest:string;provider_fingerprint:string;source_digest:string;receipt:string;created_at:string;expires_at:string;incarnation:string}>(sql`select id::text as id,user_id::text as user_id,person_id::text as person_id,promotion_id::text as promotion_id,candidate_digest,provider_fingerprint,source_digest,receipt,created_at::text as created_at,expires_at::text as expires_at,incarnation::text as incarnation from public.ai_assistant_answer_strategy_use where tenant_id=${base.tenantId}::uuid and state='pending'`);
    expect(old).toBeDefined();await eraseOwnConversationStrategyMetadata(a.author);expect(await count(USE)).toBe(0);
    // Physical copy of every non-identity column, including dates; only the identity can differ.
