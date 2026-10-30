@@ -48,3 +48,14 @@ test('real ZIP digest and bounded Python reader bind historical source; missing 
 test('a fabricated installable result cannot enter the immutable diagnostic proof adapter',()=>{
  assert.throws(()=>knownProofBindings({sha:FINITE_SOURCE,result:'PASS',installationEligible:true,recovery:{}},999),/Exact frozen managed proof/);
 });
+
+import {pinAssessmentController} from './finite-staging-assessment.mjs';
+test('actual clean Git controller pin refuses HEAD replacement during awaited composition',()=>{
+ const root=mkdtempSync(join(tmpdir(),'finite-controller-pin-'));
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',stdio:'pipe'}).trim();
+ try{
+  git('init');git('config','user.name','Controller fixture');git('config','user.email','fixture@example.invalid');git('commit','--allow-empty','-m','Initial loaded controller');
+  const pin=pinAssessmentController(root);assert.equal(pin.verify(),git('rev-parse','HEAD'));
+  git('commit','--allow-empty','-m','Another clean controller');assert.throws(()=>pin.verify(),/Wrapper controller changed/);
+ }finally{rmSync(root,{recursive:true,force:true});}
+});

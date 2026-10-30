@@ -79,7 +79,7 @@ jobs:
   resolve:
     if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository)) }}
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.finite_stage_assessment && 30 || 5 }}
+    timeout-minutes: ${{ inputs.finite_stage_assessment && 30 || inputs.fixture_projection && 10 || 5 }}
     outputs:
       sha: ${{ steps.candidate.outputs.sha }}
       branch: ${{ steps.candidate.outputs.branch }}

@@ -7,7 +7,11 @@ import {pathToFileURL,fileURLToPath} from 'node:url';
 import {hash} from './manifest.mjs';
 import {cleanHead,controllerRoot} from './release-ci.mjs';
 import {verifyCompleteCandidateHistory,FROZEN_PROOF_CONTROLLER,FINITE_SOURCE} from './finite-candidate-history.mjs';
+export function pinAssessmentController(path=controllerRoot){
+ const controller=cleanHead(path);return {controller,verify(){assert(cleanHead(path)===controller,'Wrapper controller changed during assessment');return controller;}};
+}
 export async function assessFiniteStaging({proofControllerPath,candidatePath,originalPath,runs,evidenceDirectory}){
+ const wrapper=pinAssessmentController();
  proofControllerPath=resolve(proofControllerPath);candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);evidenceDirectory=resolve(evidenceDirectory);
  assert(cleanHead(proofControllerPath)===FROZEN_PROOF_CONTROLLER&&cleanHead(candidatePath)===FINITE_SOURCE,'Exact unchanged proof controller and application required');
  const origin=path=>execFileSync('git',['remote','get-url','origin'],{cwd:path,encoding:'utf8'}).trim().toLowerCase();for(const path of [proofControllerPath,candidatePath,originalPath])assert(origin(path)==='https://github.com/stradaversehub/ai-hr.git','Unexpected source repository');
@@ -21,7 +25,8 @@ export async function assessFiniteStaging({proofControllerPath,candidatePath,ori
  assert(managed.result==='DIAGNOSTIC_NONINSTALLABLE'&&managed.installationEligible===false&&managed.recovery.pendingReview===true,'Managed coverage proof must retain original noninstallable semantics');
  const lineage=await verifyCompleteCandidateHistory({proof:managed,directory:join(evidenceDirectory,'lineage')});
  assert(cleanHead(proofControllerPath)===FROZEN_PROOF_CONTROLLER&&cleanHead(candidatePath)===FINITE_SOURCE,'Frozen proof or application changed during composition');
- const body={kind:'FINITE_STAGING_READINESS_ASSESSMENT',source:FINITE_SOURCE,verificationController:cleanHead(controllerRoot),proofController:FROZEN_PROOF_CONTROLLER,managedProofHash:hash(managed.recovery),managedProofScope:'MANAGED_EXECUTION_NAMESPACE_ONLY',lineage,managed,installationEligible:false,releaseAuthorized:false,requiresSeparateReviewedStagingAdmission:true};
+ wrapper.verify();
+ const body={kind:'FINITE_STAGING_READINESS_ASSESSMENT',source:FINITE_SOURCE,verificationController:wrapper.controller,proofController:FROZEN_PROOF_CONTROLLER,managedProofHash:hash(managed.recovery),managedProofScope:'MANAGED_EXECUTION_NAMESPACE_ONLY',lineage,managed,installationEligible:false,releaseAuthorized:false,requiresSeparateReviewedStagingAdmission:true};
  const result={...body,fingerprint:hash(body)};writeFileSync(join(evidenceDirectory,'readiness-assessment.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});return result;
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
