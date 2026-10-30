@@ -83,5 +83,14 @@ describe('feedback Kanban and release labels', () => {
     expect(screen.getByText('Showing 200 of 201.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View this stage' })).toHaveAttribute('href', '/feedback?status=staging&view=kanban');
     expect(screen.getByText(en.feedback.listTruncated.replace('{shown, number}', '200').replace('{total, number}', '201'))).toBeInTheDocument();
-  });
+    await captureAiReviewScreenshots(document.body.innerHTML, 'en', 'feedback-capped');
+    cleanup();
+    state.counts = [{ status: 'staging', count: 1 }, { status: 'production', count: 200 }];
+    state.rows = Array.from({ length: 200 }, (_, i) => ({ ...fixtures()[2], id: `production-fixture-${i}` }));
+    await board({ view: 'kanban' });
+    expect(screen.getByText('Showing 0 of 1.')).toBeInTheDocument();
+    expect(screen.getByText('Items in this stage are outside the loaded results.')).toBeInTheDocument();
+    expect(screen.queryByText('No items in this stage')).toBeNull();
+    await captureAiReviewScreenshots(document.body.innerHTML, 'en', 'feedback-unloaded');
+  }, 60000);
 });
