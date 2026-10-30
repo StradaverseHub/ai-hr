@@ -2,13 +2,13 @@
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {closeAll,migrateTestDb,owner} from './harness';
-import {runClaimsLoad} from './fixtures/claims-load';
+import {closeAll,migrateTestDb,owner} from '../harness';
+import {runClaimsLoad} from '../fixtures/claims-load';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it.runIf(process.env.AIHR_CI_PG_STATEMENTS==='1')('compares repeated permission planning against a connection-local cached plan',async()=>{
+it('compares repeated permission planning against a connection-local cached plan',async()=>{
  const out=process.env.AIHR_FOCUSED_EVIDENCE_DIR!;expect(out).toBeTruthy();
  const [definition]=await owner.client`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure)as original,prosrc as body from pg_proc where oid='app.visible_employment_ids()'::regprocedure`;
- const body=readFileSync(new URL('../db/migrations/0726_claim_history_order.sql',import.meta.url),'utf8').split('AS $$')[1].split('$$;')[0].trim().replace(/;$/,'');
+ const body=readFileSync(new URL('../../db/migrations/0726_claim_history_order.sql',import.meta.url),'utf8').split('AS $$')[1].split('$$;')[0].trim().replace(/;$/,'');
  try{
   await owner.client.unsafe(`CREATE OR REPLACE FUNCTION app.visible_employment_ids() RETURNS uuid[] LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public AS $baseline$ ${body} $baseline$`);
   await runClaimsLoad('-cache-baseline');

@@ -19,6 +19,11 @@ on:
         description: Isolated production HTTP/browser profiling; no release or deployment
         default: false
         type: boolean
+      service_profile:
+        description: Explicit service benchmark outside the normal unit-test inventory
+        default: none
+        type: choice
+        options: [none, plan-cache, claims-sql]
       profile_database_sql:
         description: Track statements in the isolated development database
         default: false
@@ -102,7 +107,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
-    if: ${{ !inputs.run_system_load }}
+    if: ${{ !inputs.run_system_load && (inputs.service_profile == 'none' || inputs.service_profile == '') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -311,5 +316,36 @@ jobs:
         with:
           name: system-http-browser-development-evidence
           path: ${{ runner.temp }}/system-performance-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  service-performance-profile:
+    if: ${{ inputs.service_profile == 'plan-cache' || inputs.service_profile == 'claims-sql' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_UNIT: db-1
+      AIHR_CI_PG_STATEMENTS: '1'
+      AIHR_CI_PG_STATEMENTS_OWNER: visibility-plan-benchmark
+      PERF_SERVICE_PROFILE: ${{ inputs.service_profile }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {mobile: 'false', capacity_profile: legacy}
+      - name: Run explicit service benchmark in a job-owned database
+        run: node scripts/performance/service-runner.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: service-performance-development-evidence
+          path: ${{ runner.temp }}/service-performance-evidence/
           if-no-files-found: error
           retention-days: 14

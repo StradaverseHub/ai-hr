@@ -349,3 +349,16 @@ are required, preventing a fast majority or short-lived sessions from hiding HR 
 It writes partial progress, request samples and wait evidence every five seconds. This is a
 full-document HTTPS stress mix with real server actions; no login-enrollment or native-client
 navigation throughput claim is implied. Earlier one-journey runs retain their narrower scope.
+
+Driver/CI corrections after those receipts:
+
+-542dcf6a3 /41024268138 reached the browser form but the normal first-login welcome tour
+  intercepted the click. Its screenshot confirms the overlay. The outstanding response waiter
+  then rejected outside the active click await; no500-user phase completed. Dismiss the tour's
+  normal Skip button, attach click/response handlers together, and preserve a screenshot on error.
+-529ce39a7 /41025823216 deliberately checked normal profiling-off behavior. Four pagination
+  assertions passed, but the strict evidence verifier correctly rejected two skipped diagnostic
+  assertions. This run is a failure. Keep that verifier unchanged. Move diagnostics into
+  `test/performance/*.profile.ts`, a separate `vitest.performance.config.ts` and an explicit
+  `service_profile` Actions job. Normal test coverage has no conditional skips; benchmark reports
+  have their own source/run identity and never become normal-suite or release receipts.

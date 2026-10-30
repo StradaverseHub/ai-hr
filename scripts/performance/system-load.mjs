@@ -23,19 +23,19 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(fields){const form=new FormData();for(const [key,value]of Object.entries(fields))form.append(key,String(value));const encoded=new Response(form);contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
  const response=await new Promise((resolve,reject)=>{
-  const req=https.request(base+path,{agent,method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
+  const req=https.request(base+path,{agent,signal:AbortSignal.timeout(90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
    Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}},res=>{
    let wireBytes=0,decodedBytes=0,content='';const ttfbMs=performance.now()-started;
    res.on('data',chunk=>{wireBytes+=chunk.length;});const stream=res.headers['content-encoding']==='gzip'?res.pipe(createGunzip()):res;
-   stream.on('data',chunk=>{decodedBytes+=chunk.length;if(decodedBytes<=12*1024*1024)content+=chunk.toString();});
+   stream.on('data',chunk=>{decodedBytes+=chunk.length;if(decodedBytes>12*1024*1024){stream.destroy(new Error('Decoded response exceeded the 12MiB measurement ceiling'));return;}content+=chunk.toString();});
    stream.on('error',reject);stream.on('end',()=>resolve({status:res.statusCode,headers:res.headers,content,wireBytes,decodedBytes,ttfbMs}));
-  });req.setTimeout(90000,()=>req.destroy(new Error('HTTP deadline')));req.on('error',reject);req.end(body);
- });
+  });req.on('error',reject);req.end(body);
+ }).catch(error=>{(report.requestErrors??=[]).push({user:user?.index??null,role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',elapsedMs:performance.now()-started,error:String(error.message).slice(0,180)});throw error;});
  response.durationMs=performance.now()-started;
- if(record)samples.push({role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
+ if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
  if(!fields&&expectedStatus===200&&!path.startsWith('/api/')){
-  assert(!/NEXT_HTTP_ERROR_FALLBACK;(404|500)/.test(response.content),'streamed error boundary');
+  assert(!/NEXT_HTTP_ERROR_FALLBACK;(404|500)/.test(response.content)&&!/<h1[^>]*>\s*404(?:\s|<)/.test(response.content),'streamed error boundary');
   assert(response.content.includes(user.name),'signed-in principal marker missing');
   assert(!response.content.includes('PERF Person '+String(user.tenant?0:250).padStart(4,'0')),'cross-tenant person leaked');
  }
@@ -52,9 +52,9 @@ async function databaseSnapshot(label){
  writeFileSync(join(out,'database-'+label+'.json'),JSON.stringify({settings,statements,active},null,2));
 }
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
-const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle/me'];
+const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle'];
 const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement'];
-let browser,sampling,progressTimer,contextTemplates;
+let browser,sampling,progressTimer,contextTemplates,lastPage;
 try{
  save();await db`select pg_stat_statements_reset()`;
  const anonymous=await request(null,'/claims',undefined,307,false);assert(String(anonymous.headers.location).includes('/login'));report.boundaries.push({kind:'anonymous',passed:true});
@@ -76,9 +76,12 @@ try{
  report.browserVersion=browser.version();
  async function context(user){const context=await browser.newContext({ignoreHTTPSErrors:true,locale:'en-MY'});await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:'en',url:base}]);return context;}
  async function visit(page,user,path,phase='baseline'){
+  lastPage=page;
   const start=performance.now();const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
+  const skip=page.getByRole('button',{name:'Skip',exact:true});
+  if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
   report.browser.push({phase,role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
@@ -89,7 +92,7 @@ try{
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
- const ctx=await context(employee),page=await ctx.newPage();await page.goto(base+'/claims',{waitUntil:'networkidle'});
+ const ctx=await context(employee),page=await ctx.newPage();await visit(page,employee,'/claims');
  async function capturedAction(response){
   const req=response.request();const raw=req.postDataBuffer();assert(raw,'missing browser action payload');
   const form=await new Request(base+'/claims',{method:'POST',headers:{'Content-Type':req.headers()['content-type']},body:raw}).formData();
@@ -101,19 +104,18 @@ try{
   assert(headers['next-action'],'browser server action header missing');
   return {fields,prefix,headers,status:response.status()};
  }
- const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims');
+ const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
  await page.locator('[name="claimTypeId"]').selectOption(employee.claimTypeId);await page.locator('[name="amount"]').fill('1');await page.locator('[name="incurredOn"]').fill(fixture.today);
  await page.locator('textarea[name="description"]').fill('PERF_BROWSER_DRAFT');
- const creating=browserAction();await page.locator('button[name="intent"][value="draft"]').click();const createTemplate=await capturedAction(await creating);
+ const [createResponse]=await Promise.all([browserAction(),page.locator('button[name="intent"][value="draft"]').click()]);const createTemplate=await capturedAction(createResponse);
  await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});
  const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft' and description='PERF_BROWSER_DRAFT'`;
  assert(draft,'browser create did not persist');
  await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await page.locator('[name="amount"]').fill('2');await page.locator('button[name="intent"][value="draft"]').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved');
  const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
- const deleting=browserAction();
  await page.locator('form').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).first().getByRole('button').click();
- await page.getByRole('button',{name:'Delete draft',exact:true}).click();
- const deleteTemplate=await capturedAction(await deleting);await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted');
+ const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
+ const deleteTemplate=await capturedAction(deleteResponse);await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted');
  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
  report.browser.push({role:'employee',workflow:'claim create/edit/delete',persisted:true});await ctx.close();
  contextTemplates={createTemplate,deleteTemplate};
@@ -170,5 +172,5 @@ try{
  report.latencyTargetMet=progress.peakActive===500&&Object.values(report.steady.roles).every(role=>role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  await databaseSnapshot('loaded');save();assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
-}catch(error){report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
+}catch(error){if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}
