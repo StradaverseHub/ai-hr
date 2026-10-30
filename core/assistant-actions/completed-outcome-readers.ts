@@ -1,6 +1,7 @@
 import {dayScheduleCorrectionReviews} from './day-schedule-correction-review-store';
 import {scheduleGroupMaintenanceReviews} from './schedule-group-maintenance-review-store';
 import {profileRequestRejectionReviews} from './profile-request-rejection-review-store';
+import {readCompletedPayrollResetOutcomeTx} from './payroll-reset-review-store';
 import {readCompletedPayrollReopenOutcomeTx} from './payroll-reopen-review-store';
 import {peopleGeneralPolicyReviews} from './people-general-policy-review-store';
 import {employeeIdTemplateStatusReviews} from './employee-id-template-status-review-store';
@@ -126,6 +127,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'org.position.archive':(tx,ctx,id)=>positionArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
  'typed_pay_components.create':(tx,ctx,id)=>readCompletedPayComponentOutcomeTx(tx,ctx,id),
  'payroll.reopen':(tx,ctx,id)=>readCompletedPayrollReopenOutcomeTx(tx,ctx,id),
+ 'payroll.reset':(tx,ctx,id)=>readCompletedPayrollResetOutcomeTx(tx,ctx,id),
  'payroll.close':(tx,ctx,id)=>readCompletedPayrollCloseOutcomeTx(tx,ctx,id),
  'rewards.annual_review.return':(tx,ctx,id)=>readCompletedRewardsReturnOutcomeTx(tx,ctx,id),
  'rewards.calendar.update':(tx,ctx,id)=>readCompletedRewardsCalendarOutcomeTx(tx,ctx,id),
