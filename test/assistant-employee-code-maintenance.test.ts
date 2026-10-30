@@ -165,7 +165,7 @@ it.each([false,true])('refuses released-savepoint native proof even when the emp
  })).rejects.toThrow('subtransaction locator proof refused');expect(await snapshot()).toEqual(before);
 });
 it('refuses direct locator calls for a foreign employment, own person or absent positive authority',async()=>{
- const who=await positive(),input=await human(who),before=await snapshot();
+ const who=await positive(),denied=await login(other,'employee'),input=await human(who),before=await snapshot();
  for(const employmentId of [other.employmentId,hrPerson.employmentId,randomUUID()])await expect(withTenant(who,tx=>currentCodeEvent(tx,employmentId,input.expectedCode,'HUMAN-42'))).rejects.toThrow();
- const denied=await login(other,'employee');await expect(withTenant(denied,tx=>currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42'))).rejects.toThrow();expect(await snapshot()).toEqual(before);
+ await expect(withTenant(denied,tx=>currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42'))).rejects.toThrow();expect(await snapshot()).toEqual(before);
 });
