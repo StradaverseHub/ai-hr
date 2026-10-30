@@ -16625,7 +16625,7 @@
   },
   "movementSettings": {
     "title": "Movement Settings",
-    "description": "The career event types HR can record on an employee. Rename them to match the language your organisation uses, switch off the ones you do not use, and add your own.",
+    "description": "The career event types HR can record on an employee, and the termination reasons they offer.",
     "behaviourNotice": "A few event types drive real consequences — Termination ends employment, Confirmation completes probation, a join-date correction changes leave entitlement. You can rename those or switch them off; you cannot change what they do. Your own event types are recorded on the employee and change only the details you enter.",
     "catalogTitle": "Event Types",
     "save": "Save",
@@ -16650,7 +16650,10 @@
       "behaviour": "What It Does",
       "status": "Status",
       "action": "Action",
-      "created": "Created"
+      "created": "Created",
+      "classification": "Classification",
+      "description": "Description",
+      "group": "Group"
     },
     "status": {
       "active": "Active",
@@ -16658,7 +16661,7 @@
       "all": "All"
     },
     "searchPlaceholder": "Search event type or code…",
-    "createNew": "+ Add Movement Event",
+    "createNew": "+ Add Event Type",
     "edit": "Edit",
     "editTitle": "Edit Event Type",
     "editHint": "Rename it to match the language your organisation uses. A built-in type keeps what it does; only your own types can be re-pointed.",
@@ -16666,7 +16669,68 @@
     "empty": "No event types match this search.",
     "builtIn": "Built-in",
     "saving": "Saving…",
-    "close": "Close"
+    "close": "Close",
+    "tabs": {
+      "types": "Event Types",
+      "reasons": "Termination Reasons"
+    },
+    "classification": {
+      "termination": "Termination",
+      "nonTermination": "Non-Termination"
+    },
+    "noDescription": "No description",
+    "deleteBlocked": {
+      "title": "{name} cannot be deleted",
+      "inUse": "It is already used by recorded movements. Deleting it would leave those employees' history without a name, so the system keeps it.",
+      "builtIn": "It is one of the standard event types the system ships with, so it cannot be removed.",
+      "switchOffInstead": "You can switch it off instead. It stops appearing when HR records a new movement, and the records that use it keep their meaning.",
+      "alreadyOff": "It is already switched off, so it no longer appears when HR records a new movement. The records that use it keep their meaning."
+    },
+    "config": {
+      "newTitle": "Add Event Type",
+      "newSubtitle": "Your own event type",
+      "builtInType": "Standard event type",
+      "customType": "Your own event type",
+      "breadcrumb": "Breadcrumb",
+      "code": "Code (kept on every record, cannot change)",
+      "codeAuto": "Created from the name when you save",
+      "sections": {
+        "general": "General Information",
+        "classification": "Classification",
+        "description": "Description"
+      },
+      "classificationHint": "Set by what the event type does. It cannot be changed here.",
+      "optional": "(optional)",
+      "descriptionHint": "Shown to HR under the event type when they record a new movement.",
+      "descriptionPlaceholder": "e.g. Reassignment to a new role after a restructure."
+    },
+    "reasons": {
+      "createNew": "+ Add Reason",
+      "add": "Add Reason",
+      "addTitle": "Add a Termination Reason",
+      "addHint": "Give it the name your organisation uses and choose its group. It then appears when HR records a termination.",
+      "renameTitle": "Rename Termination Reason",
+      "renameHint": "Records that already use this reason keep it; they show the new name.",
+      "rename": "Rename",
+      "namePlaceholder": "e.g. Mutual Separation",
+      "groupPlaceholder": "— Choose a group —",
+      "groupFixed": "The group decides how the exit is counted in the turnover and termination reports, so it cannot be changed after the reason is added.",
+      "notice": "The three groups are fixed because they feed the turnover and termination reports.",
+      "inUse": "Used by recorded terminations",
+      "emptyGroup": "No reasons in this group.",
+      "deactivateConfirmTitle": "Switch this reason off?",
+      "deactivateConfirmDescription": "It stops appearing when HR records a termination. Terminations that already use it keep their reason. You can switch it back on at any time.",
+      "activateConfirmTitle": "Switch this reason on?",
+      "activateConfirmDescription": "It appears again when HR records a termination.",
+      "deleteConfirmTitle": "Delete this reason?",
+      "deleteConfirmDescription": "It is removed from the list. This is only offered for your own reasons that no termination uses yet.",
+      "deleteBlocked": {
+        "inUse": "It is already used by recorded terminations. Deleting it would leave those records without a reason name, so the system keeps it.",
+        "builtIn": "It is one of the standard reasons the system ships with, so it cannot be removed.",
+        "switchOffInstead": "You can switch it off instead. It stops appearing when HR records a termination, and the records that use it keep their reason.",
+        "alreadyOff": "It is already switched off, so it no longer appears when HR records a termination. The records that use it keep their reason."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Hiring Defaults",

@@ -16625,7 +16625,7 @@
   },
   "movementSettings": {
     "title": "异动设置",
-    "description": "HR 可为员工记录的职涯事件类型。可按贵机构的用语重命名、关闭不使用的类型，并新增自订类型。",
+    "description": "HR 可为员工记录的职业事件类型，以及这些事件可选的离职原因。",
     "behaviourNotice": "少数事件类型会带来实际后果——离职终止雇佣、转正完成试用期、入职日期更正会改变休假额度。您可以重命名或关闭它们，但无法更改它们的作用。您自订的事件类型只会记录您填写的资料。",
     "catalogTitle": "事件类型",
     "save": "保存",
@@ -16650,7 +16650,10 @@
       "behaviour": "作用",
       "status": "状态",
       "action": "操作",
-      "created": "创建日期"
+      "created": "创建日期",
+      "classification": "分类",
+      "description": "说明",
+      "group": "分组"
     },
     "status": {
       "active": "启用中",
@@ -16658,7 +16661,7 @@
       "all": "全部"
     },
     "searchPlaceholder": "搜索事件类型或代码…",
-    "createNew": "+ 新增异动事件",
+    "createNew": "+ 新增事件类型",
     "edit": "编辑",
     "editTitle": "编辑事件类型",
     "editHint": "按贵组织的用语重命名。内置类型的作用不变；只有自建类型可以改变其行为。",
@@ -16666,7 +16669,68 @@
     "empty": "没有符合此搜索条件的事件类型。",
     "builtIn": "内置",
     "saving": "正在保存…",
-    "close": "关闭"
+    "close": "关闭",
+    "tabs": {
+      "types": "事件类型",
+      "reasons": "离职原因"
+    },
+    "classification": {
+      "termination": "离职",
+      "nonTermination": "非离职"
+    },
+    "noDescription": "无说明",
+    "deleteBlocked": {
+      "title": "无法删除「{name}」",
+      "inUse": "该类型已被已记录的异动使用。删除后这些员工的历史记录将失去名称，因此系统会保留它。",
+      "builtIn": "这是系统内置的标准事件类型之一，无法删除。",
+      "switchOffInstead": "您可以改为关闭它。关闭后 HR 记录新异动时将不再显示，已使用它的记录保持原有含义。",
+      "alreadyOff": "该类型已关闭，HR 记录新异动时不再显示。已使用它的记录保持原有含义。"
+    },
+    "config": {
+      "newTitle": "新增事件类型",
+      "newSubtitle": "贵组织自定义的事件类型",
+      "builtInType": "标准事件类型",
+      "customType": "贵组织自定义的事件类型",
+      "breadcrumb": "导航路径",
+      "code": "代码（保存在每条记录中，不可更改）",
+      "codeAuto": "保存时根据名称生成",
+      "sections": {
+        "general": "基本信息",
+        "classification": "分类",
+        "description": "说明"
+      },
+      "classificationHint": "由该事件类型的作用决定，无法在此更改。",
+      "optional": "（可选）",
+      "descriptionHint": "HR 记录新异动时，显示在事件类型下方。",
+      "descriptionPlaceholder": "例如：组织重组后调任新岗位。"
+    },
+    "reasons": {
+      "createNew": "+ 新增原因",
+      "add": "新增原因",
+      "addTitle": "新增离职原因",
+      "addHint": "填写贵组织使用的名称并选择分组。之后 HR 记录离职时即可选择该原因。",
+      "renameTitle": "重命名离职原因",
+      "renameHint": "已使用该原因的记录将继续保留，并显示新名称。",
+      "rename": "重命名",
+      "namePlaceholder": "例如：协商解除",
+      "groupPlaceholder": "— 选择分组 —",
+      "groupFixed": "分组决定离职在人员流动和离职报表中的统计方式，因此原因添加后不可更改分组。",
+      "notice": "这三个分组是固定的，因为人员流动和离职报表依赖它们。",
+      "inUse": "已被已记录的离职使用",
+      "emptyGroup": "此分组暂无原因。",
+      "deactivateConfirmTitle": "关闭此原因？",
+      "deactivateConfirmDescription": "关闭后 HR 记录离职时将不再显示。已使用该原因的离职记录保持不变。您可随时重新开启。",
+      "activateConfirmTitle": "开启此原因？",
+      "activateConfirmDescription": "HR 记录离职时将再次显示该原因。",
+      "deleteConfirmTitle": "删除此原因？",
+      "deleteConfirmDescription": "该原因将从列表中移除。仅适用于尚未被任何离职使用的自定义原因。",
+      "deleteBlocked": {
+        "inUse": "该原因已被已记录的离职使用。删除后这些记录将失去原因名称，因此系统会保留它。",
+        "builtIn": "这是系统内置的标准原因之一，无法删除。",
+        "switchOffInstead": "您可以改为关闭它。关闭后 HR 记录离职时将不再显示，已使用它的记录保留原有原因。",
+        "alreadyOff": "该原因已关闭，HR 记录离职时不再显示。已使用它的记录保留原有原因。"
+      }
+    }
   },
   "hiringDefaults": {
     "title": "入职默认设置",

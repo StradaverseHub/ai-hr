@@ -16625,7 +16625,7 @@
   },
   "movementSettings": {
     "title": "Cài đặt biến động",
-    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên. Đổi tên cho khớp với cách gọi của tổ chức bạn, tắt những loại không dùng, và thêm loại của riêng bạn.",
+    "description": "Các loại sự kiện nghề nghiệp mà HR có thể ghi nhận cho nhân viên, và các lý do chấm dứt mà chúng cung cấp.",
     "behaviourNotice": "Một vài loại sự kiện có hệ quả thực sự — Chấm dứt kết thúc việc làm, Xác nhận hoàn tất thử việc, sửa ngày gia nhập làm thay đổi phép năm. Bạn có thể đổi tên hoặc tắt chúng; bạn không thể thay đổi việc chúng làm. Loại sự kiện của riêng bạn chỉ ghi nhận những thông tin bạn nhập.",
     "catalogTitle": "Loại sự kiện",
     "save": "Lưu",
@@ -16650,7 +16650,10 @@
       "behaviour": "Việc nó làm",
       "status": "Trạng thái",
       "action": "Thao tác",
-      "created": "Ngày tạo"
+      "created": "Ngày tạo",
+      "classification": "Phân loại",
+      "description": "Mô tả",
+      "group": "Nhóm"
     },
     "status": {
       "active": "Đang dùng",
@@ -16658,7 +16661,7 @@
       "all": "Tất cả"
     },
     "searchPlaceholder": "Tìm loại sự kiện hoặc mã…",
-    "createNew": "+ Thêm sự kiện biến động",
+    "createNew": "+ Thêm loại sự kiện",
     "edit": "Sửa",
     "editTitle": "Sửa loại sự kiện",
     "editHint": "Đổi tên cho khớp với cách gọi của tổ chức bạn. Loại có sẵn giữ nguyên chức năng; chỉ loại do bạn tạo mới đổi được hành vi.",
@@ -16666,7 +16669,68 @@
     "empty": "Không có loại sự kiện nào khớp với tìm kiếm này.",
     "builtIn": "Có sẵn",
     "saving": "Đang lưu…",
-    "close": "Đóng"
+    "close": "Đóng",
+    "tabs": {
+      "types": "Loại sự kiện",
+      "reasons": "Lý do chấm dứt"
+    },
+    "classification": {
+      "termination": "Chấm dứt",
+      "nonTermination": "Không chấm dứt"
+    },
+    "noDescription": "Không có mô tả",
+    "deleteBlocked": {
+      "title": "Không thể xóa {name}",
+      "inUse": "Loại này đã được các biến động ghi nhận sử dụng. Xóa nó sẽ khiến lịch sử của những nhân viên đó không có tên, nên hệ thống giữ lại.",
+      "builtIn": "Đây là một trong các loại sự kiện tiêu chuẩn có sẵn trong hệ thống, nên không thể xóa.",
+      "switchOffInstead": "Bạn có thể tắt nó. Nó sẽ không còn hiển thị khi HR ghi nhận biến động mới, và các bản ghi đang dùng nó vẫn giữ nguyên ý nghĩa.",
+      "alreadyOff": "Loại này đã tắt, nên không còn hiển thị khi HR ghi nhận biến động mới. Các bản ghi đang dùng nó vẫn giữ nguyên ý nghĩa."
+    },
+    "config": {
+      "newTitle": "Thêm loại sự kiện",
+      "newSubtitle": "Loại sự kiện của riêng bạn",
+      "builtInType": "Loại sự kiện tiêu chuẩn",
+      "customType": "Loại sự kiện của riêng bạn",
+      "breadcrumb": "Đường dẫn",
+      "code": "Mã (lưu trên mọi bản ghi, không thể thay đổi)",
+      "codeAuto": "Được tạo từ tên khi bạn lưu",
+      "sections": {
+        "general": "Thông tin chung",
+        "classification": "Phân loại",
+        "description": "Mô tả"
+      },
+      "classificationHint": "Được xác định bởi việc loại sự kiện này làm. Không thể thay đổi tại đây.",
+      "optional": "(không bắt buộc)",
+      "descriptionHint": "Hiển thị cho HR bên dưới loại sự kiện khi ghi nhận biến động mới.",
+      "descriptionPlaceholder": "vd. Điều chuyển sang vai trò mới sau khi tái cấu trúc."
+    },
+    "reasons": {
+      "createNew": "+ Thêm lý do",
+      "add": "Thêm lý do",
+      "addTitle": "Thêm lý do chấm dứt",
+      "addHint": "Đặt tên theo cách tổ chức của bạn dùng và chọn nhóm. Sau đó lý do sẽ hiển thị khi HR ghi nhận chấm dứt.",
+      "renameTitle": "Đổi tên lý do chấm dứt",
+      "renameHint": "Các bản ghi đã dùng lý do này vẫn giữ nó và sẽ hiển thị tên mới.",
+      "rename": "Đổi tên",
+      "namePlaceholder": "vd. Thỏa thuận chấm dứt",
+      "groupPlaceholder": "— Chọn nhóm —",
+      "groupFixed": "Nhóm quyết định cách tính trường hợp nghỉ việc trong báo cáo biến động nhân sự và chấm dứt, nên không thể thay đổi sau khi đã thêm lý do.",
+      "notice": "Ba nhóm này cố định vì chúng được dùng cho báo cáo biến động nhân sự và chấm dứt.",
+      "inUse": "Đã được các trường hợp chấm dứt ghi nhận sử dụng",
+      "emptyGroup": "Không có lý do nào trong nhóm này.",
+      "deactivateConfirmTitle": "Tắt lý do này?",
+      "deactivateConfirmDescription": "Lý do sẽ không còn hiển thị khi HR ghi nhận chấm dứt. Các trường hợp chấm dứt đã dùng lý do này vẫn giữ nguyên. Bạn có thể bật lại bất cứ lúc nào.",
+      "activateConfirmTitle": "Bật lý do này?",
+      "activateConfirmDescription": "Lý do sẽ hiển thị lại khi HR ghi nhận chấm dứt.",
+      "deleteConfirmTitle": "Xóa lý do này?",
+      "deleteConfirmDescription": "Lý do sẽ bị xóa khỏi danh sách. Chỉ áp dụng cho lý do của riêng bạn chưa được trường hợp chấm dứt nào sử dụng.",
+      "deleteBlocked": {
+        "inUse": "Lý do này đã được các trường hợp chấm dứt ghi nhận sử dụng. Xóa nó sẽ khiến các bản ghi đó không có tên lý do, nên hệ thống giữ lại.",
+        "builtIn": "Đây là một trong các lý do tiêu chuẩn có sẵn trong hệ thống, nên không thể xóa.",
+        "switchOffInstead": "Bạn có thể tắt nó. Lý do sẽ không còn hiển thị khi HR ghi nhận chấm dứt, và các bản ghi đang dùng vẫn giữ nguyên lý do.",
+        "alreadyOff": "Lý do này đã tắt, nên không còn hiển thị khi HR ghi nhận chấm dứt. Các bản ghi đang dùng vẫn giữ nguyên lý do."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Mặc định tuyển dụng",

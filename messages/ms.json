@@ -16625,7 +16625,7 @@
   },
   "movementSettings": {
     "title": "Tetapan Pergerakan",
-    "description": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR untuk pekerja. Namakan semula mengikut istilah organisasi anda, matikan yang tidak digunakan, dan tambah jenis anda sendiri.",
+    "description": "Jenis peristiwa kerjaya yang boleh direkodkan oleh HR bagi pekerja, dan sebab penamatan yang ditawarkan.",
     "behaviourNotice": "Beberapa jenis peristiwa membawa akibat sebenar — Penamatan menamatkan pekerjaan, Pengesahan melengkapkan tempoh percubaan, pembetulan tarikh menyertai mengubah kelayakan cuti. Anda boleh menamakannya semula atau mematikannya; anda tidak boleh mengubah fungsinya. Jenis peristiwa anda sendiri hanya merekodkan maklumat yang anda masukkan.",
     "catalogTitle": "Jenis Peristiwa",
     "save": "Simpan",
@@ -16650,7 +16650,10 @@
       "behaviour": "Fungsinya",
       "status": "Status",
       "action": "Tindakan",
-      "created": "Dicipta"
+      "created": "Dicipta",
+      "classification": "Klasifikasi",
+      "description": "Keterangan",
+      "group": "Kumpulan"
     },
     "status": {
       "active": "Aktif",
@@ -16658,7 +16661,7 @@
       "all": "Semua"
     },
     "searchPlaceholder": "Cari jenis peristiwa atau kod…",
-    "createNew": "+ Tambah Peristiwa Pergerakan",
+    "createNew": "+ Tambah Jenis Peristiwa",
     "edit": "Sunting",
     "editTitle": "Sunting Jenis Peristiwa",
     "editHint": "Namakan semula mengikut bahasa yang digunakan organisasi anda. Jenis terbina dalam mengekalkan fungsinya; hanya jenis anda sendiri boleh ditukar fungsinya.",
@@ -16666,7 +16669,68 @@
     "empty": "Tiada jenis peristiwa sepadan dengan carian ini.",
     "builtIn": "Terbina dalam",
     "saving": "Menyimpan…",
-    "close": "Tutup"
+    "close": "Tutup",
+    "tabs": {
+      "types": "Jenis Peristiwa",
+      "reasons": "Sebab Penamatan"
+    },
+    "classification": {
+      "termination": "Penamatan",
+      "nonTermination": "Bukan Penamatan"
+    },
+    "noDescription": "Tiada keterangan",
+    "deleteBlocked": {
+      "title": "{name} tidak boleh dipadam",
+      "inUse": "Ia sudah digunakan oleh pergerakan yang direkodkan. Memadamnya akan menyebabkan sejarah pekerja tersebut tanpa nama, jadi sistem menyimpannya.",
+      "builtIn": "Ia ialah salah satu jenis peristiwa standard yang disediakan oleh sistem, jadi ia tidak boleh dibuang.",
+      "switchOffInstead": "Anda boleh mematikannya. Ia tidak lagi dipaparkan apabila HR merekodkan pergerakan baharu, dan rekod yang menggunakannya kekal maksudnya.",
+      "alreadyOff": "Ia sudah dimatikan, jadi ia tidak lagi dipaparkan apabila HR merekodkan pergerakan baharu. Rekod yang menggunakannya kekal maksudnya."
+    },
+    "config": {
+      "newTitle": "Tambah Jenis Peristiwa",
+      "newSubtitle": "Jenis peristiwa anda sendiri",
+      "builtInType": "Jenis peristiwa standard",
+      "customType": "Jenis peristiwa anda sendiri",
+      "breadcrumb": "Laluan navigasi",
+      "code": "Kod (disimpan pada setiap rekod, tidak boleh diubah)",
+      "codeAuto": "Dijana daripada nama apabila anda menyimpan",
+      "sections": {
+        "general": "Maklumat Am",
+        "classification": "Klasifikasi",
+        "description": "Keterangan"
+      },
+      "classificationHint": "Ditentukan oleh fungsi jenis peristiwa. Ia tidak boleh diubah di sini.",
+      "optional": "(pilihan)",
+      "descriptionHint": "Dipaparkan kepada HR di bawah jenis peristiwa apabila mereka merekodkan pergerakan baharu.",
+      "descriptionPlaceholder": "cth. Penempatan semula ke jawatan baharu selepas penstrukturan semula."
+    },
+    "reasons": {
+      "createNew": "+ Tambah Sebab",
+      "add": "Tambah Sebab",
+      "addTitle": "Tambah Sebab Penamatan",
+      "addHint": "Berikan nama yang digunakan oleh organisasi anda dan pilih kumpulannya. Ia kemudian dipaparkan apabila HR merekodkan penamatan.",
+      "renameTitle": "Namakan Semula Sebab Penamatan",
+      "renameHint": "Rekod yang sudah menggunakan sebab ini mengekalkannya; ia memaparkan nama baharu.",
+      "rename": "Namakan Semula",
+      "namePlaceholder": "cth. Perpisahan Bersama",
+      "groupPlaceholder": "— Pilih kumpulan —",
+      "groupFixed": "Kumpulan menentukan cara penamatan dikira dalam laporan pusing ganti dan penamatan, jadi ia tidak boleh diubah selepas sebab ditambah.",
+      "notice": "Tiga kumpulan ini tetap kerana ia digunakan oleh laporan pusing ganti dan penamatan.",
+      "inUse": "Digunakan oleh penamatan yang direkodkan",
+      "emptyGroup": "Tiada sebab dalam kumpulan ini.",
+      "deactivateConfirmTitle": "Matikan sebab ini?",
+      "deactivateConfirmDescription": "Ia tidak lagi dipaparkan apabila HR merekodkan penamatan. Penamatan yang sudah menggunakannya mengekalkan sebabnya. Anda boleh menghidupkannya semula pada bila-bila masa.",
+      "activateConfirmTitle": "Hidupkan sebab ini?",
+      "activateConfirmDescription": "Ia dipaparkan semula apabila HR merekodkan penamatan.",
+      "deleteConfirmTitle": "Padam sebab ini?",
+      "deleteConfirmDescription": "Ia dibuang daripada senarai. Ini hanya ditawarkan untuk sebab anda sendiri yang belum digunakan oleh mana-mana penamatan.",
+      "deleteBlocked": {
+        "inUse": "Ia sudah digunakan oleh penamatan yang direkodkan. Memadamnya akan menyebabkan rekod tersebut tanpa nama sebab, jadi sistem menyimpannya.",
+        "builtIn": "Ia ialah salah satu sebab standard yang disediakan oleh sistem, jadi ia tidak boleh dibuang.",
+        "switchOffInstead": "Anda boleh mematikannya. Ia tidak lagi dipaparkan apabila HR merekodkan penamatan, dan rekod yang menggunakannya mengekalkan sebabnya.",
+        "alreadyOff": "Ia sudah dimatikan, jadi ia tidak lagi dipaparkan apabila HR merekodkan penamatan. Rekod yang menggunakannya mengekalkan sebabnya."
+      }
+    }
   },
   "hiringDefaults": {
     "title": "Tetapan Lalai Pengambilan",
