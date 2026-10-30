@@ -45,6 +45,7 @@ export async function AttendanceRecordList({ s, state, query }: {
     </form>
     <ErrorBanner message={refusal ?? result.error}/>
     {!refusal && !result.error && <>
+      <Pager basePath="/attendance/my-roster" params={preserved} state={paging}/>
       <div className="hidden overflow-x-auto lg:block"><table className="w-max min-w-full text-sm">
         <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr>{columns.map(label=><th key={label} className="px-3 py-2 font-medium">{label}</th>)}</tr></thead>
         <tbody className="divide-y divide-border">{days.map(row=>{
@@ -71,7 +72,6 @@ export async function AttendanceRecordList({ s, state, query }: {
         </article>;
       })}</div>
       {days.length===0&&<p className="p-8 text-center text-sm text-muted-foreground">{t('noRecords')}</p>}
-      <Pager basePath="/attendance/my-roster" params={preserved} state={paging}/>
       {days.some(row=>personalAttendanceStatus(row,today)==='on_leave')&&<p className="border-t border-border px-4 py-3 text-xs text-muted-foreground">{t('myRecords.leaveTypeNote')}</p>}
     </>}
   </Card>;

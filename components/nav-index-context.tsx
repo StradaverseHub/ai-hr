@@ -19,6 +19,8 @@ export type NavIndexEntry = {
   section: string | null;
   /** The module a child row belongs to (translated), when it is a module child. */
   parent: string | null;
+  /** Where the module crumb leads: the module's own landing page, else its first visible child. */
+  parentHref: string | null;
 };
 
 type NavIndex = {

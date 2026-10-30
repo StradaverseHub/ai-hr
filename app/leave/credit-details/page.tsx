@@ -32,12 +32,12 @@ export default async function LeaveCreditDetailsPage({searchParams}:{searchParam
       </form>
     </Card>
     <Card className="overflow-hidden p-0">
+      <Pager state={state} basePath={PAGE} params={q.filters} truncatedHint={t('truncatedHint')}/>
       <div className={tableWrapCls} tabIndex={0} role="region" aria-label={t('title')}>
         <table className="w-full min-w-[58rem] text-sm" data-testid="own-earned-credit-register"><thead className={theadCls}><tr>
           {[th('col.dateWorked'),tr('earned'),tr('used'),tr('availableBalance'),th('col.expires'),th('col.reason'),tr('addedBy'),th('col.status')].map(label=><th key={label} scope="col" className={thCls}>{label}</th>)}
         </tr></thead><tbody className={tbodyCls}>{register.rows.length?register.rows.map(row=><tr className="align-top" key={row.accrualId}><EarnedCreditCells row={row}/></tr>):<tr><td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">{emptyMessage}</td></tr>}</tbody></table>
       </div>
-      <Pager state={state} basePath={PAGE} params={q.filters} truncatedHint={t('truncatedHint')}/>
     </Card>
   </div>;
 }

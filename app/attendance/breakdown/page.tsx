@@ -232,6 +232,17 @@ export default async function AttendanceBreakdownPage({
               {fmtDayDate(from, locale)} – {fmtDayDate(to, locale)}
             </span>
           </div>
+          <Pager
+            hrefFor={(p) => {
+              const q = new URLSearchParams();
+              if (selectedEmp) q.set('emp', selectedEmp);
+              q.set('from', from);
+              q.set('to', to);
+              q.set('page', String(p));
+              return `/attendance/breakdown?${q.toString()}`;
+            }}
+            state={pgState}
+          />
           {/* The TABLE scrolls, never the page — the rule test/leave-inquiry-layout.test.ts states for the
               inquiry tables, and the reason this screen can afford thirty columns at all. */}
           <div className="overflow-x-auto">
@@ -352,17 +363,6 @@ export default async function AttendanceBreakdownPage({
               </tbody>
             </table>
           </div>
-          <Pager
-            hrefFor={(p) => {
-              const q = new URLSearchParams();
-              if (selectedEmp) q.set('emp', selectedEmp);
-              q.set('from', from);
-              q.set('to', to);
-              q.set('page', String(p));
-              return `/attendance/breakdown?${q.toString()}`;
-            }}
-            state={pgState}
-          />
         </Card>
       )}
       </CollapsibleEmployeePanel>

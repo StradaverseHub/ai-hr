@@ -25,7 +25,9 @@ export default async function VisibleAttendanceApplications({ searchParams }: {
     <PageHeader title={t('visibleTitle')} description={t('visibleHelp')} />
     <Link href="/attendance" className="inline-flex min-h-11 items-center text-sm text-primary underline">{t('backToOverview')}</Link>
     <ErrorBanner message={sp.error} />
-    <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><caption className="sr-only">{t('visibleTitle')}</caption>
+    <Card className="overflow-hidden">
+      <Pager state={page.state} basePath="/attendance/application-history/visible" params={sp} />
+      <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><caption className="sr-only">{t('visibleTitle')}</caption>
       <thead className="bg-white text-slate-900"><tr>{['employee', 'attendanceDate', 'reportedDetails', 'reason', 'actions'].map(key => <th key={key} scope="col" className="px-4 py-3 font-medium">{t(key)}</th>)}</tr></thead>
       <tbody className="divide-y divide-border">{page.rows.map(row => {
         const canAct = (s.personId == null || row.personId !== s.personId) && row.canDecide !== false;
@@ -51,7 +53,6 @@ export default async function VisibleAttendanceApplications({ searchParams }: {
         </tr>;
       })}</tbody>
     </table>{!rows.length && <p className="p-5 text-sm text-muted-foreground">{t('visibleEmpty')}</p>}</div>
-      <Pager state={page.state} basePath="/attendance/application-history/visible" params={sp} />
     </Card>
     <p className="text-xs text-muted-foreground">{t('visibleLimit')}</p>
   </div>;

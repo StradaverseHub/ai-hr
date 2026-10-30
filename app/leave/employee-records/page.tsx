@@ -425,6 +425,11 @@ export default async function EmployeeLeaveRecordPage({
             </Card>
           ) : (
           <Card className="overflow-hidden">
+            <Pager
+              hrefFor={pagerHref}
+              state={pageState(pq, total, rows.length)}
+              exportHref={exportHref('csv')}
+            />
             <TableFullscreen
               title={tInq('employeeLeaveRecord')}
               subtitle={selected ? `${selected.name} · ${selected.company}` : tInq('allEmployeesHeader', { count: employees.length, companies: inquiry.companies.map(c => c.name).join(', ') })}
@@ -588,11 +593,6 @@ export default async function EmployeeLeaveRecordPage({
               </table>
             </div>
             </TableFullscreen>
-            <Pager
-              hrefFor={pagerHref}
-              state={pageState(pq, total, rows.length)}
-              exportHref={exportHref('csv')}
-            />
           </Card>
           )}
         </div>

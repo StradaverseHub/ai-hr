@@ -13383,6 +13383,7 @@
     "live": "Live",
     "scope": "Scope",
     "breadcrumb": "Breadcrumb",
+    "details": "Details",
     "homePreferences": "Home preferences"
   },
   "components": {

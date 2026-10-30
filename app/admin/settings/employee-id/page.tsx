@@ -84,6 +84,7 @@ export default async function EmployeeIdConfigPage({
           </Link>
         </div>
 
+        <Pager basePath={PAGE} state={pgState} />
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -164,7 +165,6 @@ export default async function EmployeeIdConfigPage({
             </tbody>
           </table>
         </div>
-        <Pager basePath={PAGE} state={pgState} />
       </Card>
 
       {showForm && (

@@ -496,3 +496,27 @@ label[data-edited-field='true'] > span:first-child::after {
 @keyframes route-loading-in { from { opacity: 0; } to { opacity: 1; } }
 .route-loading { animation: route-loading-in 200ms ease-out 150ms both; }
 @media (prefers-reduced-motion: reduce) { .route-loading { animation: none; } }
+
+/* Owner request 2026-10-30 — the page header (components/ui.tsx PageHeader: title + actions) stays pinned to
+   the top of <main>, the scroll container, so a long page's actions never need a scroll back up. A page that
+   wraps the header in its own element (a tour anchor) pins that wrapper instead, since sticky is bounded by
+   its parent. It paints the page's own background so rows scroll under it; where scroll-driven animation is
+   supported a hairline appears once content is underneath. Phones keep it in flow: their header wraps to
+   several lines and would eat the screen. Atelier pins it a little lower (main has top padding) and fills the
+   gap above with its background. */
+@keyframes page-header-stuck { to { box-shadow: 0 1px 0 var(--border); } }
+@media screen and (min-width: 640px) {
+  main [data-page-header],
+  main :has(> [data-page-header]:only-child) {
+    position: sticky; top: 0; z-index: 20; background: var(--canvas);
+  }
+  @supports (animation-timeline: scroll()) {
+    main [data-page-header] { animation: page-header-stuck linear both; animation-timeline: scroll(nearest); animation-range: 0 1px; }
+  }
+  :root[data-ui-theme='atelier'] main [data-page-header],
+  :root[data-ui-theme='atelier'] main :has(> [data-page-header]:only-child) {
+    /* Sticky's inset starts below main's 1.75rem top padding (atelier.css). Cover that padding as
+       well as the .75rem inset, so scrolled rows cannot peek through above the pinned header. */
+    top: .75rem; background: var(--background); box-shadow: 0 -2.5rem 0 var(--background); animation: none;
+  }
+}
