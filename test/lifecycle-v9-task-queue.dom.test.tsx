@@ -98,3 +98,21 @@ it('offers only actual providing-group members and preserves an unavailable reco
   fireEvent.change(picker,{target:{value:'eligible'}});expect(change).toHaveBeenCalledExactlyOnceWith('eligible');
   view.rerender(<WorkAssignee name="Fictional device" group="fulfilling" assignee="historical" config={config} users={[]} busy={false} editable={false} change={change}/>);expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
 });
+
+it('exports exactly the currently filtered, authorized request rows and escapes spreadsheet formula text', () => {
+  const props=fixture();props.cases[0].facts.name='=HYPERLINK("fictional")';
+  render(<RequestRecords cases={props.cases} native={null} labels={{}} company="" search="" openCase={props.openCase}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Export (CSV)'}));
+  expect((screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value).toContain("'=HYPERLINK");
+  fireEvent.change(screen.getByRole('combobox',{name:'Request type'}),{target:{value:'onb'}});
+  expect((screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value.trim().split('\r\n')).toHaveLength(1);
+  expect((screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value).not.toContain('fictional');
+});
+it('exports the eleven reference columns with labels, real item names, not-returned markers and clearance time',()=>{
+ const props=fixture(),c=props.cases[0];c.facts.title='position';c.facts.businessGroup='group';c.facts.lastDay='2026-10-30';c.state='cleared';c.closedAt='2026-10-30T10:00:00Z';c.items=[{name:'Fictional laptop',status:'notReturned'} as V9Case['items'][number]];
+ render(<RequestRecords cases={props.cases} native={null} labels={{title:{position:'Site engineer'},businessGroup:{group:'Fictional group'}}} company="two" search="Offboarding person" openCase={props.openCase}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Export (CSV)'}));
+ const csv=(screen.getByRole('textbox',{name:'Request records CSV'}) as HTMLTextAreaElement).value;
+ expect(csv.split(/\r?\n/)[0]).toBe('Type,Request,Case,Person,Job title,Business Group,Join date / last working day,Status,Done,Items,Handed over / cleared');
+ expect(csv).toContain('Site engineer,Fictional group,2026-10-30,Cleared,1/1,Fictional laptop (not returned),2026-10-30T10:00:00Z');
+});

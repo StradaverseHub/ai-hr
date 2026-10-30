@@ -443,7 +443,7 @@
     "workspaceStrata": "Strat",
     "workspaceSwitch": "导航工作区",
     "modulePeople": "人员",
-    "moduleOnboarding": "入职与 IT",
+    "moduleOnboarding": "入职/离职",
     "moduleLeave": "休假",
     "moduleAttendance": "考勤",
     "sectionMine": "我的",
@@ -491,7 +491,17 @@
     "aiManagementOrchestrator": "HR 工作队列",
     "aiManagementRuns": "最近模型调用",
     "moduleELetter": "电子信函",
-    "emailTemplates": "邮件模板"
+    "emailTemplates": "邮件模板",
+    "v9Offboarding": "离职",
+    "v9Leavers": "离职员工",
+    "v9OffboardingChecklists": "离职清单",
+    "v9Templates": "模板",
+    "v9Workflows": "工作流",
+    "v9Settings": "入职与离职设置",
+    "v9AssignmentGroups": "分配组",
+    "v9ModuleAccess": "模块访问",
+    "v9Tasks": "任务",
+    "v9RequestRecords": "申请记录"
   },
   "dashboard": {
     "title": "仪表盘",

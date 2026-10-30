@@ -954,7 +954,7 @@ export function defaultConfig(owner: Id): Config {
 export function validateConfig(config: Config) {
     if (config.version !== 1)
         fail('Unsupported configuration version.');
-    if (!config.workflows.length || !config.checklists.length || !config.checklists.some(c => !specificity(c.rules)))
+    if (!config.workflows.length || !config.v9ChecklistRevision && (!config.checklists.length || !config.checklists.some(c => !specificity(c.rules))))
         fail('Keep at least one workflow, checklist and fallback checklist.');
     for (const list of [config.groups, config.workflows, config.routings, config.checklists, config.catalogue])
         if (new Set(list.map(x => x.id)).size !== list.length)

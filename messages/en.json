@@ -443,7 +443,7 @@
     "workspaceStrata": "Strat",
     "workspaceSwitch": "Navigation workspace",
     "modulePeople": "People",
-    "moduleOnboarding": "Onboarding & IT",
+    "moduleOnboarding": "On/Off Boarding",
     "moduleLeave": "Leave",
     "moduleAttendance": "Attendance",
     "sectionMine": "Mine",
@@ -491,7 +491,17 @@
     "aiManagementOrchestrator": "HR work queue",
     "aiManagementRuns": "Recent model calls",
     "moduleELetter": "E-Letter",
-    "emailTemplates": "Email templates"
+    "emailTemplates": "Email templates",
+    "v9Offboarding": "Offboarding",
+    "v9Leavers": "Leavers",
+    "v9OffboardingChecklists": "Offboarding checklists",
+    "v9Templates": "Templates",
+    "v9Workflows": "Workflows",
+    "v9Settings": "Onboarding & Offboarding Settings",
+    "v9AssignmentGroups": "Assignment Groups",
+    "v9ModuleAccess": "Module Access",
+    "v9Tasks": "Tasks",
+    "v9RequestRecords": "Request Records"
   },
   "dashboard": {
     "title": "Dashboard",

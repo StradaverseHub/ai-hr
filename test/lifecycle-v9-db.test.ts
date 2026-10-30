@@ -1354,3 +1354,66 @@ it.each(['pending','cancelled'] as const)('captures native onboarding %s self-te
  expect(after.state).toBe(state);expect(after.mails[0]).toMatchObject({test:true,to:[admin.userId],cc:[],documentIds:[]});expect(after.mails[0].delivery).not.toHaveProperty('contact');expect({tasks:after.tasks,documents:after.documents,runs:after.runs}).toEqual({tasks:before.tasks,documents:before.documents,runs:before.runs});
  const [job]=await owner.db.execute<{payload:{mail:{test:boolean;to:string[];cc:string[]}}}>(sql`select payload from lc_v9_email_delivery where onboarding_case_id=${row.case.id}::uuid`);expect(job.payload.mail).toMatchObject({test:true,to:[admin.userId],cc:[]});
 });
+
+it('transfers checklist ownership only from its current owner to an active module member, rejects stale edits and protects deletion', async()=>{
+  let config=(await v9Workspace(admin)).config!,cl=config.checklists.find(checklist=>checklist.module==='off')!;
+  const originalId=cl.id;
+  cl.ownerUserId=other.userId!;
+  await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('access to this module');
+  const native=await onboardingContext(admin);native.config.access.offboarding.push(other.userId!);await onboardingSaveConfig(admin,native.revision,native.config);
+  config=(await v9Workspace(admin)).config!;config.checklists.find(checklist=>checklist.id===originalId)!.ownerUserId=other.userId!;
+  await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('existing configuration authority');
+  expect((await v9Workspace(admin)).options.checklistOwnerIds).not.toContain(other.userId);
+  await owner.client`update role_assignment set role='hr_admin',company_id=null where tenant_id=${base.tenantId}::uuid and app_user_id=${other.userId!}::uuid and role='employee'`;
+  expect((await v9Workspace(admin)).options.checklistOwnerIds).toContain(other.userId);
+  const before=structuredClone(config);await v9SaveConfig(admin,config.revision,config);
+  await expect(v9SaveConfig(admin,before.revision,before)).rejects.toThrow('Settings changed');
+  config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.id!==originalId);
+  await expect(v9SaveConfig(admin,config.revision,config)).rejects.toThrow('Only the current owner');
+  await expect(v9SaveConfig(employee,config.revision,config)).rejects.toThrow();
+});
+it('deletes the last shared onboarding checklist, falls back pending overrides, and retains Active confirmed snapshots',async()=>{
+  let config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='off');
+  config.checklists.push({id:'only-onboarding',name:'Only onboarding',module:'onb',rules:{},tasks:[]});await v9SaveConfig(admin,config.revision,config);
+  await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional delete checklist'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,hiredOn:todayInKualaLumpur()}}});
+  const row=(await onboardingList(admin)).find(row=>row.case.source.fullName==='Fictional delete checklist')!;expect(row).toBeDefined();
+  await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional pending override'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,hiredOn:todayInKualaLumpur()}}});
+  const pending=(await onboardingList(admin)).find(row=>row.case.source.fullName==='Fictional pending override')!;expect(pending).toBeDefined();
+  await owner.client`update lc_onboarding_case set data=${JSON.stringify({...pending.case,state:'pending',checklistOverride:'only-onboarding'})}::jsonb where id=${pending.case.id}::uuid`;
+  const retained={...row.case,personnelStatus:'Active',confirmedChecklist:{id:'only-onboarding',name:'Retained snapshot',owner:admin.userId!,createdAt:new Date().toISOString(),rules:{},tasks:[]},checklistOverride:'only-onboarding'};
+  await owner.client`update lc_onboarding_case set data=${JSON.stringify(retained)}::jsonb where id=${row.case.id}::uuid`;
+  config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module!=='onb');await v9SaveConfig(admin,config.revision,config);
+  const after=(await onboardingList(admin)).find(candidate=>candidate.case.id===row.case.id)!.case;
+  expect(after.confirmedChecklist).toEqual(retained.confirmedChecklist);expect(after.checklistOverride).toBe('only-onboarding');
+  expect((await onboardingContext(admin)).config.checklists).toEqual([]);
+  const pendingAfter=(await onboardingList(admin)).find(row=>row.case.id===pending.case.id)!.case;expect(pendingAfter.checklistOverride).toBeNull();expect(pendingAfter.state).toBe('pending');
+});
+it('regenerates a released document with the latest version, preserves its history and rejects an employee and stale revisions',async()=>{
+  const c=await prepared(),before=c.documents.find(document=>document.templateId==='fixture-form')!;expect(before.status).toBe('sent');
+  const config=(await v9Workspace(admin)).config!,template=config.templates.find(template=>template.id==='fixture-form')!;
+  template.versions.push({...structuredClone(template.versions[0]),version:2});template.currentVersion=2;await v9SaveConfig(admin,config.revision,config);
+  await expect(v9Command(employee,c.id,c.revision,{type:'documentRegenerate',id:before.id})).rejects.toThrow();
+  await v9Command(admin,c.id,c.revision,{type:'documentRegenerate',id:before.id});
+  const after=(await v9CaseDetail(admin,c.id)).case,old=after.documents.find(document=>document.id===before.id)!;
+  expect(old).toMatchObject({...before,status:'superseded'});expect(old.supersededBy).toBeTruthy();expect(after.documents.find(document=>document.id===old.supersededBy)).toMatchObject({version:2,status:'draft',employeeSignature:null,hrSignature:null});
+  await expect(v9Command(admin,c.id,c.revision,{type:'documentRegenerate',id:before.id})).rejects.toThrow();expect(after.log.at(-1)?.action).toBe('document.regenerated');
+});
+it('returns a pending offboarding override to automatic matching when its checklist is deleted',async()=>{
+ const config=(await v9Workspace(admin)).config!,cl=config.checklists.find(checklist=>checklist.module==='off')!;
+ const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:'2026-10-01',lastDay:'2026-11-01'});
+ await v9Command(admin,id,1,{type:'override',checklist:cl.id});
+ config.checklists=config.checklists.filter(checklist=>checklist.id!==cl.id);await v9SaveConfig(admin,config.revision,config);
+ const after=(await v9CaseDetail(admin,id)).case;expect(after.state).toBe('pending');expect(after.override).toBe('automatic');expect(after.log.at(-1)?.action).toBe('checklist.override_removed');
+});
+it('regenerates native documents through the canonical private writer and keeps native history/revision identity',async()=>{
+ const draft=await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional native regeneration',primaryEmail:'regeneration@test.invalid'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,reportingManagerEmploymentId:employmentId,hiredOn:addDays(todayInKualaLumpur(),7)}}});
+ const row=(await onboardingList(admin)).find(row=>row.case.sourceDraftId===draft.id)!;
+ await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:employmentId}}});
+ const config=(await v9Workspace(admin)).config!,template={...structuredClone(config.templates.find(template=>template.module==='onb'&&template.type==='Form')!),id:'native-regeneration',retired:false,rules:{}};
+ config.templates.push(template);await v9SaveConfig(admin,config.revision,config);
+ let c=(await v9CaseDetail(admin,row.case.id)).case;await v9Command(admin,c.id,c.revision,{type:'generate',template:template.id});c=(await v9CaseDetail(admin,c.id)).case;
+ const old=c.documents.find(document=>document.templateId===template.id)!;await v9Command(admin,c.id,c.revision,{type:'documentRegenerate',id:old.id});
+ const after=(await v9CaseDetail(admin,c.id)).case;expect(after.revision).toBe(c.revision+1);expect(after.documents.some(document=>document.id===old.id)).toBe(false);expect(after.documents.filter(document=>document.templateId===template.id)).toHaveLength(1);expect(after.log.at(-1)?.action).toBe('document.regenerated');
+ const [stored]=await owner.db.execute<{public_data:Record<string,unknown>;private_data:Record<string,unknown>;copies:number}>(sql`select c.data as public_data,p.data as private_data,(select count(*)::int from lc_v9_case where id=c.id) as copies from lc_onboarding_case c join lc_onboarding_private p on p.case_id=c.id where c.id=${c.id}::uuid`);
+ expect(stored.public_data).not.toHaveProperty('documents');expect(stored.private_data).toHaveProperty('lifecycleV9.documents');expect(stored.copies).toBe(0);
+});

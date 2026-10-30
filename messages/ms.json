@@ -443,7 +443,7 @@
     "workspaceStrata": "Strat",
     "workspaceSwitch": "Ruang navigasi",
     "modulePeople": "Kakitangan",
-    "moduleOnboarding": "Penyertaan & IT",
+    "moduleOnboarding": "On/Off Boarding",
     "moduleLeave": "Cuti",
     "moduleAttendance": "Kehadiran",
     "sectionMine": "Saya",
@@ -491,7 +491,17 @@
     "aiManagementOrchestrator": "Baris kerja HR",
     "aiManagementRuns": "Panggilan model terkini",
     "moduleELetter": "E-Surat",
-    "emailTemplates": "Templat e-mel"
+    "emailTemplates": "Templat e-mel",
+    "v9Offboarding": "Pelepasan pekerja",
+    "v9Leavers": "Pekerja keluar",
+    "v9OffboardingChecklists": "Senarai semak pelepasan",
+    "v9Templates": "Templat",
+    "v9Workflows": "Aliran kerja",
+    "v9Settings": "Tetapan kemasukan & pelepasan",
+    "v9AssignmentGroups": "Kumpulan Penugasan",
+    "v9ModuleAccess": "Akses Modul",
+    "v9Tasks": "Tugas",
+    "v9RequestRecords": "Rekod Permintaan"
   },
   "dashboard": {
     "title": "Papan pemuka",

@@ -61,6 +61,7 @@ export type Document = {
   status: 'draft' | 'sent' | 'opened' | 'completed' | 'hrsigned' | 'countersign' | 'signed' | 'acknowledged' | 'superseded' | 'withdrawn';
   blocks: Block[]; fields: Field[]; values: Record<string, string>; edits: Record<string, string>;
   hrSignature: Signature | null; employeeSignature: Signature | null; createdAt: string; sentAt: string | null;
+  supersededBy?: string;
   mergeValues?: Record<string, string>;
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
 };
@@ -308,6 +309,25 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   for (const field of version.fields) if (field.pmKey) values[field.id] = env.mergeValues[field.pmKey] ?? '';
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
+}
+/** Regeneration is explicit; publishing alone never replaces a person's document. */
+export function canRegenerate(c: Pick<Case, 'state' | 'mails'>, document: Document): boolean {
+  return ['pending', 'submitted'].includes(c.state) && !documentFinal(document) && !['superseded', 'withdrawn', 'countersign'].includes(document.status) && !documentDeliveryReserved(c, document.id);
+}
+export function regenerate(c: Case, config: Config, id: string, env: Environment): Document {
+  const previous = c.documents.find(document => document.id === id);
+  if (!previous) throw new V9Error('Document not found.', 'not_found');
+  if (!canRegenerate(c, previous)) throw new V9Error('This document cannot be regenerated while closed, completed, awaiting countersignature or reserved for delivery.', 'conflict');
+  const template = config.templates.find(template => template.id === previous.templateId && template.module === c.module);
+  if (!template || !currentVersion(template)) throw new V9Error('Publish the document template before regenerating.');
+  // A failed/cancelled/test delivery still owns its frozen document identity.
+  const referenced = c.mails.some(mail => mail.documentIds.includes(id));
+  if (previous.status === 'draft' && !referenced) c.documents = c.documents.filter(document => document.id !== id);
+  else previous.status = 'superseded';
+  const replacement = generate(c, config, previous.templateId, env);
+  if (previous.status === 'superseded') previous.supersededBy = replacement.id;
+  appendLog(c, env, 'document.regenerated', `${previous.name} (${previous.id}, v${previous.version}) replaced by ${replacement.id}, v${replacement.version}`);
+  return replacement;
 }
 function linkedTasks(c: Case, doc: Document, action: TaskDefinition['documentAction']): void {
   for (const task of c.tasks) if (task.documentTemplate === doc.templateId && (task.documentAction === action || task.documentAction === 'completed' && action === 'signed')) task.status = 'done';

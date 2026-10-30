@@ -155,17 +155,11 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     const src = read('app/layout.tsx');
     // The JSX elements, not comment mentions of <html>: each opens with `<html` + newline + `lang={locale}`.
     const htmlTags = src.match(/<html\s+lang=\{locale\}/g) ?? [];
-    // Auth, installation operator and customer shells retain the selected theme.
-    // The supplied V9 design has a separate, explicitly pinned classic/light shell.
-    expect(htmlTags.length).toBe(4);
+    // Auth, installation operator and every customer route share the selected AIHR theme.
+    expect(htmlTags.length).toBe(3);
     expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(3);
-    expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme="classic"/g) ?? []).toHaveLength(1);
-    const start = src.indexOf("if (isLifecycleV9Path(pathname))"), end = src.indexOf("const principals = await listPrincipals()", start);
-    expect(start).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(start);
-    const v9Shell = src.slice(start, end);
-    expect(v9Shell).toContain("if (isLifecycleV9Path(pathname))");
-    expect(v9Shell).toContain('forcedTheme="light" lifecycleV9');
-    expect(v9Shell).toContain('<UiThemeProvider theme="classic">');
+    expect(src).not.toContain('data-ui-theme="classic"');
+    expect(src).not.toContain('forcedTheme="light" lifecycleV9');
     // r401 — the cookie is read in ONE place, lib/ui-theme-server.ts, which the layout and the pages that branch
     // on the theme (Dashboard, My Profile) all call; the read itself is the same resolveUiTheme(cookie) it was.
     expect(src).toMatch(/const uiTheme = await currentUiTheme\(\);/);
