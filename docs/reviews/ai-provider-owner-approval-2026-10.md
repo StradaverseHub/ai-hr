@@ -117,3 +117,40 @@ Source reviews and newly authored assertions are not executed PASS evidence. The
 repaired source still requires classifier-derived hosted qualification, ordinary clean
 and populated upgrades, actual backup/restore evidence and coordinated staging admission.
 Any further covered-source change invalidates this exact technical disposition.
+
+
+## Technical source binding — 31 October 2026
+
+The release coordinator authorized a technical binding refresh for immutable source
+`3101bb6ef51eda1a07e9df4c5b38f6b61fdecab8`, within the protected feature/UI and fixed published
+synthetic evaluation purposes of the existing provisional owner approval. This is not a new
+human approval event, independent privacy certification, runtime PASS or staging acceptance.
+The original human quote, status, reviewer, evidence and `2026-10-30T06:19:30Z` provenance above
+and in every literal record remain unchanged. The two unused legacy contracts remain pending.
+
+Independent Rewards source review reconstructed the exact transitive closure of **1133 files**,
+agreeing with the generated digest
+`c35cdfc5b601063f2f3158b073d631c3838fbacd57a7854cd969c4b6936b3b04`. The same 24 existing
+active approved records bind only to this reviewed source; no contract or pending record is added
+or promoted. Static review artifacts are retained by the coordinator as
+`rewards-provider-scope-technical-review-3101-20261031.md` and `rewards-provider-closure-3101.json`.
+
+The reviewed aggregate restores current-main native provider configuration save/activation behavior
+and preserves exact OpenRouter evaluation/account-policy receipts. Its fixed published synthetic
+conversation fixtures use the source-owned catalogue and matching synthetic caller, rather than
+a posted authority flag or an empty catalogue that would erase proposal holdouts. Optional raw
+provider-baseline UI is deferred; no new provider contract makes that path available.
+
+The exact `a59c99e512e45f78076569dfa1aade8eb2c76292` → `3101bb6ef51eda1a07e9df4c5b38f6b61fdecab8`
+covered delta contains only the Lifecycle completion store, undo store and native case owner.
+Normalized human arguments and the native public default-label catalogue pass to private SQL custody,
+not to a provider serializer. Native public events restore canonical action/number/step fields and
+remove private-derived row hashes/versions; no historical event is rewritten. Protected serializers,
+source replay, access, spend, one-use dispatch and output adjudication remain authoritative.
+No raw text, image, identity, exact HR amount/date disclosure, model money calculation or sensitive
+autonomous effect is added. These minimization controls are not an anonymity guarantee.
+
+Further covered-byte changes require another exact technical disposition. A generated digest alone
+does not renew human approval. Fresh exact-source hosted checks remain required; prior failures and
+original receipts are retained under their actual SHAs. This technical refresh grants no release
+or deployment authority by itself.
