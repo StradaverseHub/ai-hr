@@ -18,14 +18,21 @@ import {
   submitFeedback,
   type BulkAction,
 } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 import type { FeedbackCategory } from '@/db/schema';
 
 const BASE = '/feedback';
 const fail = (e: unknown, path: string = BASE): never =>
   redirect(`${path}?error=${encodeURIComponent(publicErrorMessage(e))}`);
+/** Every action refuses while an operator has the board switched off for this customer (0696). */
+async function boardSession() {
+  const s = await getSession();
+  if (!feedbackBoardOpen(s)) redirect('/');
+  return s;
+}
 
 export async function submitFeedbackAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   try {
     const me = await myEmployment(s);
     const { id } = await submitFeedback(s, {
@@ -91,7 +98,7 @@ async function attachTo(
 }
 
 export async function approveFeedbackPlanAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   try {
     await approveFeedbackPlan(s, { feedbackId: id });
@@ -103,7 +110,7 @@ export async function approveFeedbackPlanAction(formData: FormData) {
 }
 
 export async function contestFeedbackPlanAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   let attachNote: string | null = null;
   try {
@@ -127,7 +134,7 @@ export async function contestFeedbackPlanAction(formData: FormData) {
  * an upload would be scope the defect does not ask for.
  */
 export async function answerBlockingQuestionAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   try {
     await answerBlockingQuestion(s, { feedbackId: id, answer: String(formData.get('answer') ?? '') });
@@ -141,7 +148,7 @@ export async function answerBlockingQuestionAction(formData: FormData) {
 
 /** Admin "Generate plan now" — runs the planning agent immediately instead of waiting for the cron. */
 export async function generateFeedbackPlanNowAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   try {
     await generateFeedbackPlan(s, { feedbackId: id });
@@ -153,7 +160,7 @@ export async function generateFeedbackPlanNowAction(formData: FormData) {
 }
 
 export async function cancelFeedbackAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   try {
     await cancelFeedback(s, { feedbackId: id });
@@ -165,7 +172,7 @@ export async function cancelFeedbackAction(formData: FormData) {
 }
 
 export async function restoreFeedbackAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   try {
     await restoreFeedback(s, { feedbackId: id });
@@ -179,7 +186,7 @@ export async function restoreFeedbackAction(formData: FormData) {
 
 /** Close the loop: the reporter refutes a DEPLOYED result that still needs changes (→ contested, re-planned). */
 export async function refuteDeploymentAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const id = String(formData.get('id'));
   let attachNote: string | null = null;
   try {
@@ -194,7 +201,7 @@ export async function refuteDeploymentAction(formData: FormData) {
 
 /** List-view bulk bar: apply one review action to the selected items at once. */
 export async function bulkReviewAction(formData: FormData) {
-  const s = await getSession();
+  const s = await boardSession();
   const ids = formData.getAll('ids').map(String).filter(Boolean);
   const action = String(formData.get('action')) as BulkAction;
   let count = 0;

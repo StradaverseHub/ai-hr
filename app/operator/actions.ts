@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
-import { renameOperatorCustomer,requestOperatorModuleChange } from '@/core/operator-customers';
+import { renameOperatorCustomer,requestOperatorModuleChange,setOperatorCustomerFeedbackMenu } from '@/core/operator-customers';
 import { publicErrorMessage } from '@/lib/public-error';
 import type { OperatorActionState } from './action-state';
 import { claimActivationUrl, createProvisionRequest, requestReissue } from '@/core/operator';
@@ -76,4 +76,13 @@ export async function changeCustomerModuleAction(_previous:OperatorActionState,f
     revalidatePath('/operator');revalidatePath(`/operator/customers/${String(formData.get('tenantId')??'')}`);
     return {ok:false,error:publicErrorMessage(error)};
   }
+}
+export async function setCustomerFeedbackMenuAction(_previous:OperatorActionState,formData:FormData):Promise<OperatorActionState> {
+  const tenantId=String(formData.get('tenantId')??'');
+  try {
+    const enabled=String(formData.get('enabled')??'');
+    if(enabled!=='true'&&enabled!=='false')throw new Error('Choose whether to show or hide the Feedback menu.');
+    await setOperatorCustomerFeedbackMenu(await getSession(),tenantId,enabled==='true');
+    revalidatePath(`/operator/customers/${tenantId}`);return {ok:true,error:null};
+  }catch(error){return {ok:false,error:publicErrorMessage(error)};}
 }

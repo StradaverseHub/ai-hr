@@ -25,6 +25,26 @@ These follow Board 0688–0690 (idx 678–680, `when` 1793330000014–16) and Ba
 first. The live staging ledger watermark was **not** freshly queried for this reservation (last verified:
 563 rows through 0687); it must be re-read, together with canonical branch journals, before integration or
 application. These reservations grant no deployment.
+## Feedback menu operator switch — 30 October 2026 (unapplied successor)
+
+Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
+`f752ac7f5d0323c5eae2280c3830af05b6da465f`. Its complete568-entry applied journal ends at
+`0698_information_only_corrections`, idx682 / when1793330000030. The existing credential-free
+ordered ledger export was independently compared to every applied source identity.
+The owner explicitly approved appending Feedback at **idx683 / when1793330000031**,
+preserving its `0696` filename and SQL bytes. This supersedes earlier idx681/…022 and
+idx682/…024 reservations, which would be skipped after Board's applied watermark.
+The complete installed prefix and applied SQL bytes are unchanged. AI migration allocations
+remain provisional until their own freeze above the actual accepted ledger.
+
+Source/CI preparation does not release Board's exclusive acceptance window. Staging installation
+still requires the verified complete exact-SHA gate, final canonical handback and deployment scope.
+Recheck live source/build/ledger and branch alignment before installation; no server rehearsal
+or protected-ref update is authorized by this source allocation.
+
+| Owner | Index | Sequence | Filename | Purpose |
+| --- | ---: | ---: | --- | --- |
+| Feedback menu switch | 683 | 1793330000031 | 0696_feedback_menu_operator_switch | Platform setting `feedback.menu_enabled` and operator-only read/write functions |
 
 ## Owner-approved combined board allocation — 29 October 2026
 

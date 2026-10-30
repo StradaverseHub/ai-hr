@@ -1,6 +1,6 @@
 import React, {isValidElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',onboarded:true,scopeIds:[] as string[],module:vi.fn(),notifications:vi.fn(),unread:vi.fn()}));
+const m=vi.hoisted(()=>({session:vi.fn(),operator:vi.fn(),tasks:vi.fn(),pathname:'/admin/settings/email',onboarded:true,scopeIds:[] as string[],module:vi.fn(),feedback:vi.fn(),notifications:vi.fn(),unread:vi.fn()}));
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-schibsted-font'})}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'x-pathname':m.pathname}),cookies:async()=>({get:()=>undefined})}));
@@ -24,7 +24,7 @@ vi.mock('../core/access-configuration-editor',()=>({canConfigureAccess:async()=>
 vi.mock('../core/workforce-access',()=>({workforceViewScope:async()=>({canOpen:false,companyIds:[]})}));
 vi.mock('../core/approvals-inbox',()=>({listPendingTasks:m.tasks}));
 vi.mock('../core/notifications',()=>({dispatchNotifications:async()=>{},listNotifications:m.notifications,unreadNotificationCount:m.unread}));
-vi.mock('../core/entitlements',()=>({isModuleEnabled:m.module,isModuleEnabledOrFalse:m.module}));
+vi.mock('../core/entitlements',()=>({isModuleEnabled:m.module,isModuleEnabledOrFalse:m.module,settingEnabledOrDefault:m.feedback}));
 vi.mock('../components/command-bar',()=>({CommandBar:()=>null}));
 vi.mock('../components/notice/notice-surfaces',()=>({NoticePopupSlot:()=>null}));
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
@@ -36,7 +36,7 @@ import {Sidebar} from '../components/sidebar';
 import {OnboardingTour} from '../components/onboarding-tour';
 import {NoticePopupSlot} from '../components/notice/notice-surfaces';
 import {WELCOME_TOUR_ID} from '../lib/onboarding-tour';
-beforeEach(()=>{m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.notifications.mockReset();m.notifications.mockResolvedValue([]);m.unread.mockReset();m.unread.mockResolvedValue(0);m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
+beforeEach(()=>{m.scopeIds=[];m.module.mockReset();m.module.mockReturnValue(false);m.feedback.mockReset();m.feedback.mockReturnValue(true);m.notifications.mockReset();m.notifications.mockResolvedValue([]);m.unread.mockReset();m.unread.mockResolvedValue(0);m.tasks.mockReset();m.tasks.mockResolvedValue([]);m.pathname='/admin/settings/email';m.onboarded=true;});
 function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|undefined{
  if(Array.isArray(node)){for(const child of node){const found=propsOf(child,target);if(found)return found;}return;}
  if(!isValidElement<{children?:React.ReactNode}>(node))return;
@@ -45,6 +45,13 @@ function propsOf(node:React.ReactNode,target:unknown):Record<string,unknown>|und
 }
 const sidebarProps=(node:React.ReactNode)=>propsOf(node,Sidebar);
 describe('root layout SMTP preview authority',()=>{
+ it.each([false,true])('passes the current tenant Feedback setting to the rail when enabled=%s',async(enabled)=>{
+  const session={tenantId:'tenant',userId:'user',roles:['employee'],grants:[]};
+  m.session.mockResolvedValue(session);m.operator.mockResolvedValue(false);m.feedback.mockReturnValue(enabled);
+  const props=sidebarProps(await Layout({children:<span>Fixture content</span>}));
+  expect(props).toBeDefined();expect(props!.feedbackAccess).toBe(enabled);
+  expect(m.feedback).toHaveBeenCalledExactlyOnceWith(session,'feedback.menu_enabled');
+ });
  it.each([
   {roles:['hr_admin'],preview:true,rail:true},
   {roles:['super_admin'],preview:true,rail:true},
