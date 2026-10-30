@@ -3,8 +3,7 @@ import {existsSync,readFileSync,readdirSync,statSync} from 'node:fs';
 import {join,resolve,relative,dirname,extname} from 'node:path';
 import ts from 'typescript';
 import {unscopedClientMessageContracts} from './personnel-message-contract';
-export type MessageScope={prefixes:string[]|null;unknown:string[]};
-export type ClientMessageScopes={version:1;shared:MessageScope;segments:Record<string,MessageScope>};
+import type {MessageScope,ClientMessageScopes} from '../lib/client-message-tree';
 export function computeClientMessageScopes(root:string):ClientMessageScopes{
  root=resolve(root);
  const files=new Map<string,ts.SourceFile>();

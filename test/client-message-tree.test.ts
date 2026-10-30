@@ -44,6 +44,7 @@ it('preserves every selected locale value and keeps the Claims payload below 30%
    expect(merged).toEqual(mergeClientMessages(shared,selected));
    const bytes=Buffer.byteLength(JSON.stringify(shared))+Buffer.byteLength(JSON.stringify(additional)),fullBytes=Buffer.byteLength(JSON.stringify(messages));
    if(locale==='en'&&segment==='claims')expect(bytes).toBeLessThan(fullBytes*.3);
+   if(locale==='en'&&segment==='me')expect(bytes).toBeLessThan(fullBytes*.5);
    if(segment==='me'){
     const at=(tree:ClientMessages,key:string)=>key.split('.').reduce<unknown>((value,part)=>value&&typeof value==='object'&&Object.hasOwn(value,part)?(value as Record<string,unknown>)[part]:undefined,tree);
     for(const key of personnelClientMessageKeys())if(at(messages,key)!==undefined)expect(at(merged,key),key).toEqual(at(messages,key));

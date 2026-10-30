@@ -362,3 +362,52 @@ Driver/CI corrections after those receipts:
   `test/performance/*.profile.ts`, a separate `vitest.performance.config.ts` and an explicit
   `service_profile` Actions job. Normal test coverage has no conditional skips; benchmark reports
   have their own source/run identity and never become normal-suite or release receipts.
+
+### Sustained500-active-user HTTP failure and next measured fixes
+
+Source79a4eadea /41026824898 completed production build,44 pilot route requests,
+17 browser route visits and a real hydrated Claim create/edit/delete with persisted-state
+checks. It dismissed the welcome tour through the normal UI. Then all500 users remained
+active during the sustained workload (peak500); none completed a full HTTP journey.
+Read p95 among112 completed responses was88,909ms;500 journeys aborted or failed and
+all six browsers exceeded90seconds. Only12 writes completed, so their315ms p95 is not
+representative throughput evidence. No500-user pass or arbitrary-million-record guarantee
+is implied. The test records failed users and routes, absolute deadlines, partial progress,
+database waits and CPU profiles. The load generator, app, browsers and database share the
+four-CPU/~16GiB development runner; the installation has different hardware.
+
+After the load statistics reset,602 task-owner reads accompanied51,240 visibility-function
+calls and258,671 company-admin checks. The nested role predicate ran898,544 times and
+accumulated48,277ms planning. Nested SQL totals overlap and are not wall time. Wait samples
+were predominantly CPU/ready; the app profile also attributed substantial time to React
+serialization, output buffers and garbage collection. Both database query fan-out and the
+full client translation catalog are measured bottlenecks, not assumed diagnoses.
+
+The public English catalog is1,561,561 UTF-8 JSON bytes. A conservative source inventory
+52b38ea39 /41028176486 verifies client boundaries, named/aliased hooks, imported namespace
+constants, dynamic imports and type-only/server-action exclusions. Unknown consumers retain
+the complete catalog. A route template owns first-segment message requirements, including
+all deeper pages; the persistent root shell gets only its own messages. A small client provider
+merges inherited messages without resending them. Selected messages and their projection
+cache contain public strings only, never principals, grants, employment facts or authorization
+results. The library recommends selective message provision and documents its serialization
+cost: https://next-intl.dev/docs/environments/server-client-components . Installed Next16.3.8
+template/layout documentation was read to preserve cached-layout navigation behavior.
+
+8a12631ec /41030475504 passed the compiler but exposed a missing explicit locale in the
+nested client provider and correctly failed a stale message inventory. ae06157b7 /41032656640
+fixes the provider and passes all six data/provider checks; only the intentional inventory
+mismatch remains. Refresh the manifest from its hosted canonical Personnel descriptor/choice
+vocabulary output. Unknown unscoped consumers stay conservative. English Claims messages
+measure49,891 bytes including the shell, versus1,561,561 before; these are public-message
+bytes, not yet a production HTML or concurrency result. Six-locale and real client-link
+navigation checks are added before the next sustained HTTP phase.
+
+The first admin-gate fixture41031593641 failed on a required fixture email; no timing or
+permission result is claimed. Corrected9e7b20ab5 /41032946748 passes500 mixed principals
+per phase and preserves malformed-context22P02 failures. Baseline/candidate/baseline-after
+p95 visibility-transaction latencies were363.6/238.7/282.1ms. This skips only the canonical
+admin branch for principals with no admin grant, validates grant company IDs before the
+short-circuit and retains every original per-company guard. It remains an isolated reversible
+experiment until broad visibility/write equivalence and sustained HTTP evidence validate an
+appended successor. A follow-up separately tests plan reuse for the nested pure grant predicate.

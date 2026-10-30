@@ -1,4 +1,6 @@
 /** Public translation data only. These helpers never cache principals, permissions or HR records. */
+export type MessageScope={readonly prefixes:readonly string[]|null;readonly unknown:readonly string[]};
+export type ClientMessageScopes={readonly version:1;readonly shared:MessageScope;readonly segments:Readonly<Record<string,MessageScope>>};
 export type ClientMessages={ [key:string]:string|ClientMessages };
 const branch=(value:unknown):value is ClientMessages=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const put=(tree:ClientMessages,key:string,value:string|ClientMessages)=>Object.defineProperty(tree,key,{value,enumerable:true,writable:true,configurable:true});

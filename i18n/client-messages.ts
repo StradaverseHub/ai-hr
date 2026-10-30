@@ -1,7 +1,6 @@
 import 'server-only';
 import manifest from './client-message-scopes.json';
-import type {ClientMessageScopes} from '../scripts/client-message-scopes';
-import {additionalClientMessages,pickClientMessages,type ClientMessages} from '../lib/client-message-tree';
+import {additionalClientMessages,pickClientMessages,type ClientMessages,type ClientMessageScopes} from '../lib/client-message-tree';
 const scopes=manifest as ClientMessageScopes;
 // Public, immutable catalog objects only. Weak keys release per-request locale fallback catalogs.
 const cache=new WeakMap<ClientMessages,{shared:ClientMessages;routes:Map<readonly string[]|null,ClientMessages>}>();
