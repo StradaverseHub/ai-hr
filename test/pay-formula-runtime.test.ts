@@ -92,7 +92,8 @@ it('keeps saved named inputs separate from the sample current input, including t
 it('reads typed dates and legacy nullable-company assignment fields through their canonical owners',async()=>{
  await owner.db.update(schema.person).set({dateOfBirth:'1990-01-01'}).where(eq(schema.person.id,employee.personId));
  await owner.db.update(schema.assignment).set({companyId:null}).where(eq(schema.assignment.employmentId,employee.employmentId));
- const saved=await savePayFormula(ctx,{formulaId:'PROFILE',description:'Typed native fields',method:'write',source:'If {#EmployeeInformation}("dateOfBirth") = {#Date}("1990-01-01") And {#EmployeeProfile}("employmentType") = "full_time" Then\n Return 1\nElse\n Return 0\nEnd If'});
+ const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'G7',name:'A different display label'}).returning();await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.id,employee.employmentId));
+ const saved=await savePayFormula(ctx,{formulaId:'PROFILE',description:'Typed native fields',method:'write',source:'If {#EmployeeInformation}("dateOfBirth") = {#Date}("1990-01-01") And {#EmployeeProfile}("employmentType") = "full_time" And {#EmployeeProfile}("gradeCode") = "G7" Then\n Return 1\nElse\n Return 0\nEnd If'});
  const result=await testPayFormula(ctx,{...saved,context});expect(result.passed,result.error??'typed sources').toBe(true);expect(result.amount).toBe('1');
 });
 it('matches the approved Monthly overtime vocabulary and explicit rate bindings in a real payroll result',async()=>{
