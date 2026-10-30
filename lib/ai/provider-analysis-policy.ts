@@ -8,6 +8,8 @@ import {createHash,randomBytes} from 'node:crypto';
 import {types as nodeTypes} from 'node:util';
 import {AiGatewayError} from './types';
 import type {ProviderDataReviewStatus} from './provider-data-policy';
+import {ANALYSIS_DOMAIN_METRICS,ANALYSIS_DOMAIN_DRIVERS,ANALYSIS_DOMAIN_CATEGORIES,PROVIDER_ANALYSIS_COVERAGE,type ProviderAnalysisDomain} from './provider-analysis-coverage';
+import type {AiFeatureId} from './features';
 export const ATTENDANCE_ANALYSIS_CONTRACT='attendance_trend_analysis_v1' as const;
 export const ATTENDANCE_ANALYSIS_LIMITS=Object.freeze({minimumPeoplePerCohort:20,minimumNonzeroSlice:5,maximumPeople:500,maximumCohorts:2,bytes:262144,lifetimeMs:300000});
 const windows=Object.freeze(['four_weeks','calendar_month'] as const);
@@ -44,7 +46,7 @@ function list(value:unknown,maximum:number):readonly unknown[]{
  const descriptors=Object.getOwnPropertyDescriptors(value);if(Reflect.ownKeys(descriptors).length!==value.length+1)return unavailable();
  return Object.freeze(Array.from({length:value.length},(_,index)=>{const descriptor=descriptors[String(index)];if(!descriptor||!('value'in descriptor))return unavailable();return descriptor.value;}));
 }
-function member<const T extends readonly string[]>(value:unknown,allowed:T):T[number]{return typeof value==='string'&&(allowed as readonly string[]).includes(value)?value:unavailable();}
+function member<const T extends readonly string[]>(value:unknown,allowed:T):T[number]{return typeof value==='string'&&(allowed as readonly string[]).includes(value)?value as T[number]:unavailable();}
 function binding(value:unknown):AttendanceAnalysisBinding{
  const captured=object(value,['feature','operation','contractId','principalDigest','scopeDigest','providerSnapshotDigest','sourceFingerprint','expiresAt']);
  if(captured.feature!=='hr_assistant'||captured.operation!=='conversation'||captured.contractId!==contract.id)return unavailable();
@@ -116,4 +118,100 @@ export function assertAttendanceTrendReviewApproved(capability:unknown,current:u
 }
 export function retireAttendanceTrendAnalysis(capability:unknown):void{
  if(!capability||typeof capability!=='object')return;const state=vault.get(capability);if(!state)return;state.people.clear();if(state.timer)clearTimeout(state.timer);vault.delete(capability);
+}
+
+// Reusable aggregate comparison candidate. Actual calculations and verification belong to each
+// native owner. Monetary values/ratings never pass: the AI receives coarse relative-change bands
+// and source-recorded relationships, which it can compare/explain without calculating HR outcomes.
+export const PROVIDER_ANALYSIS_CONTRACT='aggregate_comparison_analysis_v1' as const;
+export const PROVIDER_ANALYSIS_LIMITS=Object.freeze({minimumPopulation:20,minimumNonzeroSlice:5,maximumPopulation:1000000,maximumCohorts:4,maximumMetrics:8,maximumSlices:8,bytes:262144,lifetimeMs:300000});
+export const PROVIDER_ANALYSIS_CHANGE_BANDS=Object.freeze(['decrease_over_25_percent','decrease_10_to_25_percent','decrease_5_to_10_percent','decrease_up_to_5_percent','unchanged',
+ 'increase_up_to_5_percent','increase_5_to_10_percent','increase_10_to_25_percent','increase_over_25_percent'] as const);
+const aggregateCohorts=Object.freeze(['cohort_a','cohort_b','cohort_c','cohort_d'] as const);
+const relationships=Object.freeze(['associated_change','recorded_contributor'] as const);
+export type ProviderAnalysisBinding=Readonly<{feature:AiFeatureId;operation:'draft'|'conversation';contractId:typeof PROVIDER_ANALYSIS_CONTRACT;
+ principalDigest:string;scopeDigest:string;providerSnapshotDigest:string;sourceFingerprint:string;expiresAt:number}>;
+declare const analysisBrand:unique symbol;
+export type PreparedProviderAnalysis=Readonly<{readonly [analysisBrand]:true}>;
+export type PreparedProviderAnalysisProjection=Readonly<{purpose:'aggregate_comparison_analysis';sourceStatus:'requires_native_owner_replay';risk:'coarse_aggregate_bands_not_anonymity';json:string;sanitizedDigest:string;
+ originalSourceFingerprint:string;contractId:typeof PROVIDER_ANALYSIS_CONTRACT;contractSourceVersion:string;contractSourceDigest:string;reviewStatus:ProviderDataReviewStatus}>;
+const aggregateContract=Object.freeze({id:PROVIDER_ANALYSIS_CONTRACT,version:'aggregate-comparison-analysis.v1',reviewStatus:'pending' as ProviderDataReviewStatus,
+ digest:hash(JSON.stringify({id:PROVIDER_ANALYSIS_CONTRACT,version:1,metrics:ANALYSIS_DOMAIN_METRICS,drivers:ANALYSIS_DOMAIN_DRIVERS,categories:ANALYSIS_DOMAIN_CATEGORIES,coverage:PROVIDER_ANALYSIS_COVERAGE,
+  changeBands:PROVIDER_ANALYSIS_CHANGE_BANDS,cohorts:aggregateCohorts,windows,relationships,limits:PROVIDER_ANALYSIS_LIMITS,
+  shape:{root:['version','domain','window','cohorts'],cohort:['cohort','population','metrics'],metric:['metric','support','changeBand','drivers','slices'],driver:['code','relationship'],slice:['category','people','changeBand']},
+  use:'relative comparisons only; source-recorded association is not a causal inference; slices may overlap; no exact amounts, dates, ratings or free prose'}))});
+type AggregateDriver=Readonly<{code:string;relationship:typeof relationships[number]}>;
+type AggregateSlice=Readonly<{category:string;people:number;changeBand:typeof PROVIDER_ANALYSIS_CHANGE_BANDS[number]}>;
+type AggregateMetric=Readonly<{metric:string;support:number;changeBand:typeof PROVIDER_ANALYSIS_CHANGE_BANDS[number];drivers:readonly AggregateDriver[];slices:readonly AggregateSlice[]}>;
+type AggregateCohort=Readonly<{cohort:typeof aggregateCohorts[number];population:number;metrics:readonly AggregateMetric[]}>;
+type AggregateSource=Readonly<{version:1;domain:ProviderAnalysisDomain;window:typeof windows[number];cohorts:readonly AggregateCohort[]}>;
+type AggregateOwned={binding:ProviderAnalysisBinding;bindingDigest:string;projection:PreparedProviderAnalysisProjection;deadline:number;timer?:ReturnType<typeof setTimeout>};
+const aggregateVault=new WeakMap<object,AggregateOwned>();
+const aggregateUnavailable=():never=>{throw new AiGatewayError('The aggregate analysis disclosure policy could not be confirmed.');};
+const count=(value:unknown,minimum:number,maximum:number):number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=minimum&&value<=maximum?value:aggregateUnavailable();
+function captureAggregateSource(payload:unknown):AggregateSource{
+ const root=object(payload,['version','domain','window','cohorts']);if(root.version!==1||typeof root.domain!=='string'||!Object.hasOwn(ANALYSIS_DOMAIN_METRICS,root.domain))return aggregateUnavailable();
+ const domain=root.domain as ProviderAnalysisDomain,window=member(root.window,windows),seenCohorts=new Set<string>();let expectedMetrics:string|null=null;
+ const cohorts=list(root.cohorts,PROVIDER_ANALYSIS_LIMITS.maximumCohorts).map(item=>{
+  const row=object(item,['cohort','population','metrics']),cohort=member(row.cohort,aggregateCohorts),population=count(row.population,PROVIDER_ANALYSIS_LIMITS.minimumPopulation,PROVIDER_ANALYSIS_LIMITS.maximumPopulation);
+  if(seenCohorts.has(cohort))return aggregateUnavailable();seenCohorts.add(cohort);const seenMetrics=new Set<string>();
+  const metrics=list(row.metrics,PROVIDER_ANALYSIS_LIMITS.maximumMetrics).map(item=>{
+   const source=object(item,['metric','support','changeBand','drivers','slices']),metric=member(source.metric,ANALYSIS_DOMAIN_METRICS[domain]);if(seenMetrics.has(metric))return aggregateUnavailable();seenMetrics.add(metric);
+   const support=count(source.support,PROVIDER_ANALYSIS_LIMITS.minimumPopulation,population),changeBand=member(source.changeBand,PROVIDER_ANALYSIS_CHANGE_BANDS),seenDrivers=new Set<string>(),seenSlices=new Set<string>();
+   const drivers=list(source.drivers,8).map(item=>{const source=object(item,['code','relationship']),code=member(source.code,ANALYSIS_DOMAIN_DRIVERS[domain]);if(seenDrivers.has(code))return aggregateUnavailable();seenDrivers.add(code);return Object.freeze({code,relationship:member(source.relationship,relationships)});});
+   const slices=list(source.slices,PROVIDER_ANALYSIS_LIMITS.maximumSlices).map(item=>{
+    const source=object(item,['category','people','changeBand']),category=member(source.category,ANALYSIS_DOMAIN_CATEGORIES[domain]);if(seenSlices.has(category))return aggregateUnavailable();seenSlices.add(category);
+    return Object.freeze({category,people:count(source.people,PROVIDER_ANALYSIS_LIMITS.minimumNonzeroSlice,support),changeBand:member(source.changeBand,PROVIDER_ANALYSIS_CHANGE_BANDS)});
+   });
+   return Object.freeze({metric,support,changeBand,drivers:Object.freeze(drivers),slices:Object.freeze(slices)});
+  });
+  if(metrics.length===0)return aggregateUnavailable();const metricKey=JSON.stringify([...seenMetrics].sort());if(expectedMetrics!==null&&expectedMetrics!==metricKey)return aggregateUnavailable();expectedMetrics=metricKey;
+  return Object.freeze({cohort,population,metrics:Object.freeze(metrics)});
+ });
+ if(cohorts.length===0)return aggregateUnavailable();const captured=Object.freeze({version:1 as const,domain,window,cohorts:Object.freeze(cohorts)});
+ if(Buffer.byteLength(JSON.stringify(captured),'utf8')>PROVIDER_ANALYSIS_LIMITS.bytes)return aggregateUnavailable();return captured;
+}
+/** Strict canonical capture before hashing. Root source replay must hash through this SAME helper;
+ * the fingerprint alone grants no source authority and cannot substitute for current native checks. */
+export function fingerprintProviderAnalysisSource(payload:unknown):string{
+ try{return hash(JSON.stringify(captureAggregateSource(payload)));}catch{return aggregateUnavailable();}
+}
+function aggregateBinding(value:unknown):ProviderAnalysisBinding{
+ const source=object(value,['feature','operation','contractId','principalDigest','scopeDigest','providerSnapshotDigest','sourceFingerprint','expiresAt']);
+ const coverage=PROVIDER_ANALYSIS_COVERAGE.find(row=>row.feature===source.feature);
+ if(source.contractId!==aggregateContract.id||!coverage||!(coverage.operations as readonly unknown[]).includes(source.operation)||coverage.domains.length===0)return aggregateUnavailable();
+ for(const key of ['principalDigest','scopeDigest','providerSnapshotDigest','sourceFingerprint'])if(typeof source[key]!=='string'||!/^[a-f0-9]{64}$/.test(source[key]))return aggregateUnavailable();
+ if(typeof source.expiresAt!=='number'||!Number.isSafeInteger(source.expiresAt)||source.expiresAt<=Date.now()||source.expiresAt>Date.now()+PROVIDER_ANALYSIS_LIMITS.lifetimeMs)return aggregateUnavailable();
+ return Object.freeze(source) as ProviderAnalysisBinding;
+}
+function aggregateOwned(capability:unknown,current:unknown):AggregateOwned{
+ if(!capability||typeof capability!=='object')return aggregateUnavailable();const state=aggregateVault.get(capability);if(!state)return aggregateUnavailable();
+ if(state.binding.expiresAt<=Date.now()||performance.now()>=state.deadline){retireProviderAnalysis(capability);return aggregateUnavailable();}
+ if(hash(JSON.stringify(aggregateBinding(current)))!==state.bindingDigest)return aggregateUnavailable();return state;
+}
+/** Counts are used only for local disclosure admission and coarsening, never forwarded exactly. */
+function populationBand(value:number):string{return value<10?'5_to_9':value<20?'10_to_19':value<50?'20_to_49':value<100?'50_to_99':value<250?'100_to_249':value<500?'250_to_499':value<1000?'500_to_999':'1000_or_more';}
+export function prepareProviderAnalysis(current:unknown,payload:unknown):PreparedProviderAnalysis{
+ try{
+  const capturedBinding=aggregateBinding(current),source=captureAggregateSource(payload),originalSourceFingerprint=hash(JSON.stringify(source));
+  const coverage=PROVIDER_ANALYSIS_COVERAGE.find(row=>row.feature===capturedBinding.feature)!;
+  if(!(coverage.domains as readonly string[]).includes(source.domain)||capturedBinding.sourceFingerprint!==originalSourceFingerprint)return aggregateUnavailable();
+  const cohorts=source.cohorts.map(cohort=>Object.freeze({cohort:cohort.cohort,populationBand:populationBand(cohort.population),metrics:Object.freeze(cohort.metrics.map(metric=>Object.freeze({
+   metric:metric.metric,supportBand:populationBand(metric.support),changeBand:metric.changeBand,drivers:metric.drivers,
+   slicesMayOverlap:true,slices:Object.freeze(metric.slices.map(slice=>Object.freeze({category:slice.category,peopleBand:populationBand(slice.people),changeBand:slice.changeBand})))})))}));
+  const json=JSON.stringify({version:1,purpose:'aggregate_comparison_analysis',domain:source.domain,window:source.window,periods:{reference:'previous_period',comparison:'current_period'},
+   scale:'native_source_relative_change_bands',cohorts});
+  if(Buffer.byteLength(json,'utf8')>PROVIDER_ANALYSIS_LIMITS.bytes)return aggregateUnavailable();
+  const projection:PreparedProviderAnalysisProjection=Object.freeze({purpose:'aggregate_comparison_analysis',sourceStatus:'requires_native_owner_replay',risk:'coarse_aggregate_bands_not_anonymity',json,sanitizedDigest:hash(json),
+   originalSourceFingerprint,contractId:aggregateContract.id,contractSourceVersion:aggregateContract.version,contractSourceDigest:aggregateContract.digest,reviewStatus:aggregateContract.reviewStatus});
+  const capability=Object.freeze(Object.create(null)) as PreparedProviderAnalysis,state:AggregateOwned={binding:capturedBinding,bindingDigest:hash(JSON.stringify(capturedBinding)),projection,deadline:performance.now()+Math.max(0,capturedBinding.expiresAt-Date.now())};
+  state.timer=setTimeout(()=>{aggregateVault.delete(capability);},Math.max(1,capturedBinding.expiresAt-Date.now()));state.timer.unref?.();aggregateVault.set(capability,state);return capability;
+ }catch{return aggregateUnavailable();}
+}
+export function inspectPreparedProviderAnalysis(capability:unknown,current:unknown):PreparedProviderAnalysisProjection{return aggregateOwned(capability,current).projection;}
+export function assertProviderAnalysisReviewApproved(capability:unknown,current:unknown):void{
+ const state=aggregateOwned(capability,current);if(state.projection.reviewStatus!=='approved'||aggregateContract.reviewStatus!=='approved')return aggregateUnavailable();
+}
+export function retireProviderAnalysis(capability:unknown):void{
+ if(!capability||typeof capability!=='object')return;const state=aggregateVault.get(capability);if(!state)return;if(state.timer)clearTimeout(state.timer);aggregateVault.delete(capability);
 }
