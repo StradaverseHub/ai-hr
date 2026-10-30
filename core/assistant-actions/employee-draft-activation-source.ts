@@ -13,13 +13,14 @@ import {lockLabelCriteriaTx,labelUsableByCompany} from '../system-labels';
 import {listLeaveTypes} from '../read';
 import {requirePackFor} from '../../localization/registry';
 import {onboardingDraftActivationContextTx} from '../../packs/lifecycle/service';
+import {canonicalEntitlementsForDigest} from '../../lib/assistant-actions/canonical-entitlements';
 export class EmployeeDraftActivationUnavailable extends Error{constructor(){super('Please reopen the draft on the native Personnel screen.');this.name='EmployeeDraftActivationUnavailable';}}
 export const employeeDraftActivationUnavailable=():never=>{throw new EmployeeDraftActivationUnavailable();};
 const fail=employeeDraftActivationUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
 /** Commercial module/company arrays are sets; private digest ordering is not authority. */
 export function employeeDraftActivationEntitlements(snapshot:SessionContext['entitlements']){
  if(!snapshot)return snapshot;
- return {...snapshot,enabledModules:[...new Set(snapshot.enabledModules)].sort(),scopedModules:Object.fromEntries(Object.entries(snapshot.scopedModules).sort(([a],[b])=>a<b?-1:a>b?1:0).map(([code,companies])=>[code,[...new Set(companies)].sort()])),settings:Object.fromEntries(Object.entries(snapshot.settings).sort(([a],[b])=>a<b?-1:a>b?1:0))};
+ return canonicalEntitlementsForDigest(snapshot);
 }
 const allowed={profile:['fullName','primaryEmail','employeeCode','employeeIdMode','phone'],employment:['companyId','departmentId','employmentType','hiredOn'],payroll:['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']} as const;
 /** A closed supported subset. No nonempty captured field may be silently ignored by this review. */

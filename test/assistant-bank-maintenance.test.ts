@@ -14,6 +14,7 @@ import {setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {requirePackFor} from '../localization/registry';
 import {bankMaintenanceReviews as store,readBankMaintenanceChoices} from '../core/assistant-actions/bank-maintenance-review-store';
 import {BankMaintenance as C} from '../lib/assistant-actions/bank-maintenance-contract';
+import {prepareBankMaintenanceSourceTx} from '../core/assistant-actions/bank-maintenance-source';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base,ctx:SessionContext,target:{employmentId:string;personId:string};
@@ -24,6 +25,12 @@ const profile=()=>withTenant(ctx,tx=>pack().statutory.get(ctx,target.personId,tx
 async function state(){return{profile:await profile(),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(s.domainEvent.id)};}
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-bank-maintenance-custody-key-1234');await resetDb();b=await seedBase();for(const m of ['assistant','payroll','country-my'])await setModule(b.tenantId,m,'active');ctx={...await entitledCtx(b,['hr_admin']),grants:[{role:'hr_admin',companyId:null}]};await grantAssistant(ctx,{appUserId:ctx.userId!});target=await hireEmployee(ctx,{person:{fullName:'Fictional Bank Employee',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()});await pack().statutory.set(ctx,{personId:target.personId,icNumber:null,epfNumber:'PRIVATE-EPF',socsoNumber:'PRIVATE-SOCSO',taxNumber:'PRIVATE-TAX',bankName:'Legacy Fictional Bank',bankAccountNo:'000-FICTIONAL-OLD'});await pack().statutory.setBank(ctx,{personId:target.personId,bankName:'Legacy Fictional Bank',bankAccountNo:'000-FICTIONAL-OLD',enableCustomHolderName:true,customHolderName:'Old Payee',enableCustomHolderId:true,customHolderId:'PRIVATE-OLD-ID'});});
+it('keeps the same native source digest when equivalent entitlement sets arrive in another order',async()=>{
+ const left=structuredClone(ctx.entitlements!);if(!left)throw Error('Expected resolved fixture entitlements');
+ const right={...left,enabledModules:[...left.enabledModules].reverse(),scopedModules:Object.fromEntries(Object.entries(left.scopedModules).reverse().map(([code,companies])=>[code,[...companies].reverse()])),settings:Object.fromEntries(Object.entries(left.settings).reverse())},before=await state(),input=C.Human.parse(human());
+ const first=await withTenant(ctx,tx=>prepareBankMaintenanceSourceTx(tx,{...ctx,entitlements:left},input)),second=await withTenant(ctx,tx=>prepareBankMaintenanceSourceTx(tx,{...ctx,entitlements:right},input));
+ expect(second.reviewedDigest).toBe(first.reviewedDigest);expect(second.review).toEqual(first.review);expect(await state()).toEqual(before);
+});
 it('reviews exact account/holder changes, preserves all sibling statutory columns and reopens the same native receipt',async()=>{
  const before=await state(),r=(await store.prepare(ctx,human())).review;expect(await state()).toEqual(before);expect(r.review.before.bankAccountNo).toBe('000-FICTIONAL-OLD');expect(r.review.after).toEqual({...fields(),customHolderName:null,customHolderId:null});expect(JSON.stringify(r)).not.toMatch(/PRIVATE-EPF|PRIVATE-SOCSO|PRIVATE-TAX/);
  const done=await store.confirm(ctx,confirm(r));expect(done.kind).toBe('completed');expect(await store.reopen(ctx,r.actionId)).toEqual(done);expect(await store.confirm(ctx,confirm(r))).toEqual(done);

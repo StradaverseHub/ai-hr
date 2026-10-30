@@ -11,6 +11,7 @@ import {lockProfileValueWritesTx} from '../access-configuration-lock';
 import {masterReportFieldsTx} from '../employee-master-access';
 import {assertModuleEnabled} from '../entitlements';
 import {requirePackFor} from '../../localization/registry';
+import {canonicalEntitlementsForDigest} from '../../lib/assistant-actions/canonical-entitlements';
 export class BankMaintenanceUnavailable extends Error{constructor(){super('Please reopen Bank Information on the native Personnel screen.');this.name='BankMaintenanceUnavailable';}}
 export const bankMaintenanceUnavailable=():never=>{throw new BankMaintenanceUnavailable();};
 const fail=bankMaintenanceUnavailable,hash=(v:unknown)=>createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -34,9 +35,9 @@ export async function withBankMaintenanceIntervalTx<T>(tx:Tx,ctx:SessionContext,
 async function review(tx:Tx,ctx:SessionContext,human:Human){
  const s=await subject(tx,ctx,human.employmentId);if(s.subjectId!==human.subjectId)return fail();const pack=requirePackFor(s.country),owner=pack.statutory.reviewedBank;if(!owner)return fail();
  const native=await owner(tx,ctx,{personId:s.subjectId,...human.fields});
- const configuration=await tx.execute(sql`select coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) as rows from company_payroll_config c where c.tenant_id=${ctx.tenantId}::uuid and c.company_id=any(${uuidArray(s.companyIds)}) union all select coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) from payroll_permission_grant c where c.tenant_id=${ctx.tenantId}::uuid`);
+ const configuration=await tx.execute<{kind:string;rows:unknown}>(sql`select 'payroll' as kind,coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) as rows from company_payroll_config c where c.tenant_id=${ctx.tenantId}::uuid and c.company_id=any(${uuidArray(s.companyIds)}) union all select 'permissions',coalesce(jsonb_agg(to_jsonb(c) order by c.id),'[]'::jsonb) from payroll_permission_grant c where c.tenant_id=${ctx.tenantId}::uuid`);
  const item=C.Item.parse({employmentId:s.employmentId,subjectId:s.subjectId,employeeName:s.employeeName,employeeCode:s.employeeCode,companyName:s.companyName,supported:true,country:s.country,before:native.before,after:native.after,sharedPerson:true});
- return{review:item,reviewedDigest:hash([1,C.action,s,native.reviewedDigest,Array.from(configuration),pack.client.bankNames,ctx.entitlements,item])};
+ return{review:item,reviewedDigest:hash([1,C.action,s,native.reviewedDigest,Array.from(configuration).sort((a,b)=>a.kind<b.kind?-1:a.kind>b.kind?1:0),pack.client.bankNames,canonicalEntitlementsForDigest(ctx.entitlements),item])};
 }
 export const prepareBankMaintenanceSourceTx=review;
 export async function confirmBankMaintenanceSourceTx(tx:Tx,ctx:SessionContext,human:Human,expected:string){
