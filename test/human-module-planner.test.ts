@@ -2,12 +2,18 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {installSyntheticSpendCapability} from './ai-spend-fixture';
 import {defaultModelFor} from '../lib/ai/registry';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {PROMPT_HOLDOUTS,promptCandidateSystem,PROMPT_BASELINE} from '../lib/ai/module-agent-prompt-candidate';
-import {HUMAN_PLAN_HOLDOUTS} from '../lib/ai/human-plan-holdouts';
+import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST,humanQuestionPrompt} from '../lib/ai/human-plan-holdouts';
+import * as ai from '../lib/ai';
+import {resolveActiveAiConfig} from '../core/ai-config';
+import {bindStrictAiSpendRoot,preparePrivateAiTask} from '../core/ai-governance';
+import {setAiFeature} from '../core/ai-management';
+import type {AiFeatureId} from '../lib/ai/features';
+import type {ResolvedAiConfig} from '../lib/ai/types';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';
 import {issueOwnModulePlanPermitTx,createPromptAgentCandidate,evaluatePromptAgentCandidate,evaluateHumanQuestionPlannerCandidate,promotePromptAgentCandidate,proposeOwnModuleReadPlan,reopenOwnModulePlanTx,runGovernedModuleReadPlan,eraseOwnModulePlanProposals,rollbackRoutingAgent} from '../core/module-agent-releases';
 import {decryptSecret,encryptSecret} from '../lib/ai/crypto';
@@ -22,9 +28,9 @@ beforeEach(async()=>{vi.restoreAllMocks();vi.stubEnv('AI_CONFIG_SECRET','fiction
 const consent=()=>({synthetic:true as const,maxRequests:12,sourceDigest:MODULE_AGENT_SOURCE_DIGEST});
 const input=async(ctx:SessionContext,question='my work profile')=>({permit:await withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return issueOwnModulePlanPermitTx(tx,ctx);}),question,locale:'en',consent:{questionOnly:true as const,oneRequest:true as const,sourceDigest:MODULE_AGENT_SOURCE_DIGEST}});
 const reopen=(ctx:SessionContext,id:string)=>withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reopenOwnModulePlanTx(tx,ctx,id);});
+async function makeActor(name:string){const admin=adminCtx(base),hired=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});const userId=await createAppUser(base.tenantId,hired.personId,'hr_admin');await grantAssistant(admin,{appUserId:userId});return {...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} satisfies SessionContext;}
 async function fixture(human=true){
- const admin=adminCtx(base);const make=async(name:string)=>{const hired=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});const userId=await createAppUser(base.tenantId,hired.personId,'hr_admin');await grantAssistant(admin,{appUserId:userId});return {...await entitledCtx(base,['hr_admin']),userId,personId:hired.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} satisfies SessionContext;};
- const author=await make('PRIVATE_AUTHOR_HR_RECORD'),reviewer=await make('PRIVATE_REVIEWER_RECORD'),second=await make('PRIVATE_SECOND_RECORD');
+ const author=await makeActor('PRIVATE_AUTHOR_HR_RECORD'),reviewer=await makeActor('PRIVATE_REVIEWER_RECORD'),second=await makeActor('PRIVATE_SECOND_RECORD');
  const sent=vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_cfg,args)=>{let proposed:{question?:string;locale?:string;version?:number;operation?:string;intent?:string;modules?:string[]}|undefined;try{proposed=JSON.parse(args.prompt);}catch{}const f=proposed?.question?HUMAN_PLAN_HOLDOUTS.find(row=>row.question===proposed!.question&&row.locale===proposed!.locale):PROMPT_HOLDOUTS.find(row=>row.question===args.prompt);args.onUsage?.({inputTokens:3,outputTokens:4,cachedInputTokens:0});if(!proposed&&f?.id==='own-leave'&&args.system===promptCandidateSystem(PROMPT_BASELINE))return JSON.stringify({decision:'read',modules:['employees']});if(proposed?.operation==='draft'){expect(proposed).toEqual({version:1,operation:'draft',intent:'work_profile',strategy:'explicit_scope_v1',modules:['employees']});return JSON.stringify({decision:'read',modules:proposed.modules});}return JSON.stringify(f?{decision:f.decision,modules:f.modules}:{decision:'read',modules:['employees']});});
  // This fictional counterexample exercises the quality-gain gate; it is not live provider quality evidence.
  await installSyntheticSpendCapability(author,{provider:'openai',model:defaultModelFor('openai')});
@@ -59,4 +65,116 @@ describe('consented human-question planner with human-reviewed canonical jobs',(
   expect(await reopen(a.author,duplicateId!)).toMatchObject({state:'ready'});expect(a.sent).toHaveBeenCalledTimes(1);const [runs]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_model_run where tenant_id=${base.tenantId}::uuid and feature_id='module_agent_planning'`);expect(runs.n).toBe(1);
  });
  it('concurrent duplicate commands never issue two requests',async()=>{const a=await fixture(),p=await input(a.author),outcomes=await Promise.allSettled([proposeOwnModuleReadPlan(a.author,p),proposeOwnModuleReadPlan(a.author,p)]);expect(outcomes.some(row=>row.status==='fulfilled')).toBe(true);expect(a.sent).toHaveBeenCalledTimes(1);expect((await counts()).proposals).toBe(1);});
+});
+
+
+// Genuine issued admission for the exact fixed human suite. Only adapter transport is fictional;
+// no provider-privacy/governance/review/candidate authorization is mocked or bypassed.
+async function finiteHumanFixture(){
+ const author=await makeActor('PRIVATE_FINITE_AUTHOR'),reviewer=await makeActor('PRIVATE_FINITE_REVIEWER');
+ await installSyntheticSpendCapability(author,{provider:'openai',model:defaultModelFor('openai')});
+ const candidate=await createPromptAgentCandidate(author,{version:1,configuration:{kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}});
+ const sent=vi.spyOn(openaiAdapter,'generate').mockImplementation(async(_configuration,args)=>{
+  const fixed=HUMAN_PLAN_HOLDOUTS.find(row=>humanQuestionPrompt(row.question,row.locale)===args.prompt);
+  if(!fixed)throw Error('Only exact checked-in human holdouts may reach this transport');
+  expect(args.system).toBe(promptCandidateSystem({kind:'read_plan_prompt_v1',variant:'explicit_scope_v1'}));
+  expect(args.maxTokens).toBe(384);expect(args.timeoutMs).toBe(15000);
+  expect(args.prompt).not.toContain('PRIVATE_FINITE');expect(args.prompt).not.toContain(author.userId!);expect(args.prompt).not.toContain(reviewer.userId!);
+  args.onUsage?.({inputTokens:3,outputTokens:4,cachedInputTokens:0});return JSON.stringify({decision:fixed.decision,modules:fixed.modules});
+ });
+ const configuration=async(feature:AiFeatureId='module_agent_evaluation')=>withTenant(reviewer,async tx=>{
+  const cfg=await resolveActiveAiConfig(tx,reviewer,feature);if(!cfg)throw Error('Missing actual issued configuration');
+  return bindStrictAiSpendRoot(cfg,{rootTaskId:candidate.candidateId,kind:'evaluation'});
+ });
+ let sourceReads=0;
+ const source=async(tx:Tx,current:SessionContext)=>{
+  sourceReads++;const [row]=await tx.execute<{configuration:unknown;candidate_digest:string;source_digest:string;author_user_id:string}>(sql`select configuration,candidate_digest,source_digest,author_user_id from public.ai_agent_candidate where id=${candidate.candidateId}::uuid and tenant_id=${current.tenantId}::uuid`);
+  if(!row||row.author_user_id===current.userId||row.candidate_digest!==candidate.candidateDigest||row.source_digest!==MODULE_AGENT_SOURCE_DIGEST)throw Error('Current finite candidate source changed');
+  return {version:1,suite:'human_plan_holdouts_v1',suiteDigest:HUMAN_PLAN_SUITE_DIGEST,candidate:row.configuration,fixtureId:'en-pair'};
+ };
+ const prepare=async()=>preparePrivateAiTask(await configuration(),'synthetic_read_plan_v1',source);
+ return {author,reviewer,sent,...candidate,configuration,source,prepare,sourceReads:()=>sourceReads};
+}
+async function finiteUsage(){const [row]=await owner.db.execute<{runs:number;reservations:number;roots:number}>(sql`select (select count(*)::int from public.ai_model_run where tenant_id=${base.tenantId}::uuid) as runs,(select count(*)::int from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid) as reservations,(select count(*)::int from app.ai_spend_root where tenant_id=${base.tenantId}::uuid) as roots`);return row;}
+
+describe('fixed human holdout protected preparation and actual evaluation',()=>{
+ it('admits one genuine finite draft on its candidate root, replays its actual source and refuses one-use replay',async()=>{
+  const a=await finiteHumanFixture(),task=await a.prepare();
+  try{
+   if(task.operation!=='draft')throw Error('Expected protected finite draft');
+   expect(a.sourceReads()).toBe(1);expect(task.args.prompt).toBe('{"locale":"en","question":"I need my claim progress and my attendance status, please."}');
+   expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
+   await expect(ai.generateDraft(task.configuration,task.args)).resolves.toBe('{"decision":"read","modules":["claims","attendance"]}');
+   expect(a.sourceReads()).toBe(2);expect(a.sent).toHaveBeenCalledTimes(1);expect(await finiteUsage()).toEqual({runs:1,reservations:1,roots:1});
+   await expect(ai.generateDraft(task.configuration,task.args)).rejects.toThrow();expect(a.sent).toHaveBeenCalledTimes(1);expect(await finiteUsage()).toEqual({runs:1,reservations:1,roots:1});
+   const [accounting]=await owner.db.execute<{state:string;actual_tokens:number;root_id:string}>(sql`select r.state,r.actual_tokens::int as actual_tokens,s.root_id from public.ai_model_run r join app.ai_spend_reservation s on s.run_id=r.id where r.tenant_id=${base.tenantId}::uuid`);
+   expect(accounting).toEqual({state:'completed',actual_tokens:7,root_id:a.candidateId});
+  }finally{task.dispose();}
+ });
+ it('refuses raw, forged and copied configs, wrong feature/operation and changed exact input without transport or reservation',async()=>{
+  const a=await finiteHumanFixture(),cfg=await a.configuration(),forgedRun=vi.fn();
+  for(const copy of [{provider:cfg.provider,model:cfg.model,apiKey:'fictional'}, {...cfg,governance:{run:forgedRun}},{...cfg},JSON.parse(JSON.stringify(cfg))] as ResolvedAiConfig[])await expect(preparePrivateAiTask(copy,'synthetic_read_plan_v1',a.source)).rejects.toThrow();
+  await expect(preparePrivateAiTask(await a.configuration('hr_assistant'),'synthetic_read_plan_v1',a.source)).rejects.toThrow();
+  const task=await a.prepare();try{
+   if(task.operation!=='draft')throw Error('Expected protected finite draft');
+   await expect(ai.generateDraft({...task.configuration},task.args)).rejects.toThrow();
+   await expect(ai.converse(task.configuration,{system:[task.args.system],turns:[{role:'user',content:task.args.prompt}],tools:[]})).rejects.toThrow();
+   await expect(ai.generateDraft(task.configuration,{...task.args,prompt:task.args.prompt+' PRIVATE_CHANGED_INPUT'})).rejects.toThrow();
+   expect(a.sent).not.toHaveBeenCalled();expect(forgedRun).not.toHaveBeenCalled();expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
+   // Invalid attempts cannot consume or replace the genuine capability.
+   await expect(ai.generateDraft(task.configuration,task.args)).resolves.toContain('"decision":"read"');expect(a.sent).toHaveBeenCalledTimes(1);
+  }finally{task.dispose();}
+ });
+ it.each(['disposed','expired'] as const)('refuses a genuinely prepared %s finite request before any admission',async state=>{
+  const a=await finiteHumanFixture(),task=await a.prepare();try{
+   if(task.operation!=='draft')throw Error('Expected protected finite draft');
+   if(state==='disposed')task.dispose();else{const now=Date.now();vi.spyOn(Date,'now').mockReturnValue(now+300001);}
+   await expect(ai.generateDraft(task.configuration,task.args)).rejects.toThrow();expect(a.sent).not.toHaveBeenCalled();expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
+  }finally{vi.restoreAllMocks();task.dispose();}
+ });
+ it('detects actual candidate source drift after finite preparation at source replay, without admission',async()=>{
+  const a=await finiteHumanFixture(),task=await a.prepare();try{
+   if(task.operation!=='draft')throw Error('Expected protected finite draft');expect(a.sourceReads()).toBe(1);
+   await owner.db.execute(sql`update public.ai_agent_candidate set source_digest=${'0'.repeat(64)} where id=${a.candidateId}::uuid`);
+   await expect(ai.generateDraft(task.configuration,task.args)).rejects.toThrow();expect(a.sourceReads()).toBe(2);expect(a.sent).not.toHaveBeenCalled();expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
+  }finally{task.dispose();}
+ });
+ it('evaluates all twelve genuine fixed cases and retains only passed cases when retrying malformed and schema-valid wrong outcomes',async()=>{
+  const a=await finiteHumanFixture(),normal=a.sent.getMockImplementation()!;
+  a.sent.mockImplementation(async(cfg,args)=>{const valid=await normal(cfg,args);return args.prompt===humanQuestionPrompt(HUMAN_PLAN_HOLDOUTS[0].question,'en')?'not a plan':args.prompt===humanQuestionPrompt(HUMAN_PLAN_HOLDOUTS[1].question,'en')?JSON.stringify({decision:'read',modules:['claims','attendance']}):valid;});
+  const failed=await evaluateHumanQuestionPlannerCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});
+  expect(failed).toMatchObject({state:'complete',attempted:12,completedCases:12,totalCases:12,knownFailures:2,retainedPasses:0});expect(a.sent).toHaveBeenCalledTimes(12);
+  expect(await finiteUsage()).toEqual({runs:12,reservations:12,roots:1});
+  a.sent.mockImplementation(normal);a.sent.mockClear();
+  const repaired=await evaluateHumanQuestionPlannerCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});
+  expect(repaired).toMatchObject({state:'complete',attempted:2,completedCases:12,totalCases:12,knownFailures:0,retainedPasses:10});expect(a.sent).toHaveBeenCalledTimes(2);
+  expect(a.sent.mock.calls.map(([,args])=>args.prompt)).toEqual(HUMAN_PLAN_HOLDOUTS.slice(0,2).map(row=>humanQuestionPrompt(row.question,row.locale)));expect(await finiteUsage()).toEqual({runs:14,reservations:14,roots:1});
+  const [accounting]=await owner.db.execute<{completed:number;tokens:number;foreign_roots:number;held:number}>(sql`select count(*) filter(where r.state='completed')::int as completed,coalesce(sum(r.actual_tokens),0)::int as tokens,count(*) filter(where s.root_id<>${a.candidateId}::uuid)::int as foreign_roots,count(*) filter(where s.state='held')::int as held from public.ai_model_run r join app.ai_spend_reservation s on s.run_id=r.id where r.tenant_id=${base.tenantId}::uuid`);expect(accounting).toEqual({completed:14,tokens:98,foreign_roots:0,held:14});
+  await expect(evaluateHumanQuestionPlannerCandidate(a.author,{candidateId:a.candidateId,consent:consent()})).rejects.toThrow();expect(a.sent).toHaveBeenCalledTimes(2);expect(await finiteUsage()).toEqual({runs:14,reservations:14,roots:1});
+ });
+ it('retains the native blocked ledger when evaluation itself is paused after finite preparation',async()=>{
+  const a=await finiteHumanFixture(),original=ai.generateDraft;let afterPreparation=false;
+  vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{if(!afterPreparation){afterPreparation=true;await setAiFeature(adminCtx(base),'module_agent_evaluation',false);}return original(cfg,args);});
+  const result=await evaluateHumanQuestionPlannerCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()});
+  expect(afterPreparation).toBe(true);expect(result).toMatchObject({state:'incomplete',attempted:12,completedCases:0,knownFailures:0});expect(a.sent).not.toHaveBeenCalled();
+  // The canonical admission owner records refusals; these are not provider calls or spend roots.
+  expect(await finiteUsage()).toEqual({runs:12,reservations:0,roots:0});
+  const [blocked]=await owner.db.execute<{paused:number;admitted:number}>(sql`select count(*) filter(where state='blocked' and reason='paused')::int as paused,count(*) filter(where state<>'blocked')::int as admitted from public.ai_model_run where tenant_id=${base.tenantId}::uuid`);expect(blocked).toEqual({paused:12,admitted:0});
+ });
+ it.each(['candidate','provider','principal','assistant','pause'] as const)('refuses actual evaluator %s drift after real preparation and before provider dispatch',async change=>{
+  const a=await finiteHumanFixture(),original=ai.generateDraft;let afterPreparation=false;
+  vi.spyOn(ai,'generateDraft').mockImplementation(async(cfg,args)=>{
+   if(!afterPreparation){afterPreparation=true;
+    if(change==='candidate')await owner.db.execute(sql`update public.ai_agent_candidate set source_digest=${'0'.repeat(64)} where id=${a.candidateId}::uuid`);
+    if(change==='provider')vi.stubEnv('OPENAI_API_KEY','fictional-rotated-after-preparation');
+    if(change==='principal')await owner.db.execute(sql`update public.app_user set archived_at=now() where id=${a.reviewer.userId}::uuid`);
+    if(change==='assistant')await revokeAssistant(adminCtx(base),{appUserId:a.reviewer.userId!});
+    if(change==='pause')await setAiFeature(adminCtx(base),'hr_assistant',false);
+   }
+   return original(cfg,args);
+  });
+  const outcome=await evaluateHumanQuestionPlannerCandidate(a.reviewer,{candidateId:a.candidateId,consent:consent()}).then(value=>value,()=>null);
+  expect(afterPreparation).toBe(true);if(outcome)expect(outcome).toMatchObject({state:'incomplete',completedCases:0});
+  expect(a.sent).not.toHaveBeenCalled();expect(await finiteUsage()).toEqual({runs:0,reservations:0,roots:0});
+ });
 });
