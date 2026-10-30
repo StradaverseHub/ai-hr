@@ -65,7 +65,22 @@ import {
   type ComparisonKind,
   type MovementKind,
 } from './movement-kinds';
-import { resolveMovementEventTypeTx, resolveMovementEventTypeRows } from './movement-type';
+import { lockMovementTypeCatalogueTx, resolveMovementEventTypeTx, resolveMovementEventTypeRows } from './movement-type';
+// 1d58019a Step 2 (ADR-0166) — the per-type controls the writer enforces (offered reasons, Field Controls)
+// and the movement's supporting documents. Both modules are leaves: neither imports this one.
+import { assertTerminationReasonOfferedForTypeTx, movementFieldRulesTx } from './movement-type-controls';
+import {
+  MovementDocumentError,
+  carryMovementAttachmentsTx,
+  listMovementAttachmentsTx,
+  movementAttachmentFieldsTx,
+  readMovementAttachmentRowTx,
+  saveMovementAttachmentsTx,
+  validateMovementDocuments,
+  type MovementAttachmentSummary,
+  type MovementDocumentUpload,
+} from './movement-attachments';
+import { movementFieldRuleViolations, type MovementFieldRule, type MovementFieldRuleViolation } from '../lib/movement-field-rules';
 // c063eea9 — the hire-details correction. It owns its event and the trace the Hired row wears; this module
 // loads the event (it projects no row of its own) and follows its row replacements when rolling back.
 import {
@@ -88,6 +103,9 @@ import {
  * core/movement-type.ts (the configurable catalogue) needs the built-in kind list, and this module needs
  * the catalogue to resolve a tenant's own event type — a leaf module both can import is the whole fix. */
 export { COMPARISON_KINDS, INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, isComparisonKind };
+/** 1d58019a Step 2 — re-exported so the server actions and the document route need one import. */
+export { MovementDocumentError };
+export type { MovementAttachmentSummary, MovementDocumentUpload };
 export type { ComparisonKind, MovementKind };
 
 /** Frozen resignation dates for the selected history event, independent of today's master. */
@@ -123,7 +141,7 @@ export type MovementRecordedExit = {
  */
 export function movementRecordedExitOf(event: {
   id: string; eventType: string; payload: unknown; occurredAt: Date;
-}): MovementRecordedExit | null {
+}, behaviourOf?: (code: string) => string | null | undefined): MovementRecordedExit | null {
   const object = (value: unknown): Record<string, unknown> =>
     value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const payload = object(event.payload);
@@ -132,7 +150,12 @@ export function movementRecordedExitOf(event: {
   if (event.eventType === 'employment.terminated') {
     values = payload;
     source = { eventId: event.id, occurredAt: event.occurredAt.toISOString(), eventType: 'employment.terminated', role: 'effect' };
-  } else if (event.eventType === 'employment.movement.scheduled' && payload.type === 'termination') {
+  } else if (
+    event.eventType === 'employment.movement.scheduled' &&
+    typeof payload.type === 'string' &&
+    // 1d58019a Step 2 — a tenant's own Termination type schedules under ITS code; the catalogue decides.
+    (payload.type === 'termination' || behaviourOf?.(payload.type) === 'termination')
+  ) {
     values = object(payload.input);
     source = { eventId: event.id, occurredAt: event.occurredAt.toISOString(), eventType: 'employment.movement.scheduled', role: 'intent' };
   } else return null;
@@ -340,6 +363,41 @@ export class MovementNoChangeError extends Error {
     this.name = 'MovementNoChangeError';
   }
 }
+
+/**
+ * 1d58019a Step 2 (ADR-0166) — a movement does not meet its event type's Field Controls. `code` and `field`
+ * are finite (the import turns them into a row code); the message is the sentence the New Event form shows.
+ */
+export class MovementFieldRuleError extends Error {
+  readonly code: MovementFieldRuleViolation['code'];
+  readonly field: string;
+  constructor(v: MovementFieldRuleViolation) {
+    const what = FIELD_RULE_NAMES[v.field] ?? v.field;
+    super(
+      v.code === 'field_not_included'
+        ? `This event type does not change ${what}. Leave it as it is, or use another event type.`
+        : v.code === 'field_not_editable'
+          ? `${what.charAt(0).toUpperCase()}${what.slice(1)} cannot be edited for this event type. Leave it as it is.`
+          : v.code === 'field_must_change'
+            ? `This event type requires ${what} to change. Enter the new value.`
+            : v.code === 'document_required'
+              ? `Attach a supporting document for ${what}.`
+              : `This event type does not take a supporting document for ${what}.`,
+    );
+    this.name = 'MovementFieldRuleError';
+    this.code = v.code;
+    this.field = v.field;
+  }
+}
+/** English names for the service sentence; the screens and the import translate by field id instead. */
+const FIELD_RULE_NAMES: Record<string, string> = {
+  companyId: 'the company', businessUnitId: 'the business unit', departmentId: 'the department',
+  positionId: 'the position', gradeId: 'the grade', employmentType: 'the employment type',
+  locationId: 'the work location', managerEmploymentId: 'the reporting manager', basicSalary: 'the basic salary',
+  currency: 'the currency', payMode: 'the pay mode', paymentTerm: 'the payment term', orgDivision: 'the division',
+  employmentCategory: 'the category', orgRegion: 'the region', orgBranch: 'the branch', orgTeam: 'the team',
+  orgSection: 'the section', orgLine: 'the line', orgBase: 'the base',
+};
 
 // The event-type allowlist the projection reads. compensation.updated (in-place correction) is
 // deliberately EXCLUDED: amounts/remarks are reconstructed from the compensation row at read time, so
@@ -805,9 +863,17 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
       case 'employment.terminated':
         // An accepted employee resignation terminates via terminateEmploymentTx with type 'voluntary' —
         // shown as Resignation, never as a generic Termination.
+        // 1d58019a Step 2 (ADR-0166) — a termination recorded under one of the organisation's OWN Termination
+        // types carries that code on its tag, and the row is that type (so history reads "Retrenchment" and
+        // the row resolves back to the termination behaviour for correction). The built-in rule above is
+        // unchanged for the built-in code and for untagged terminations.
         rows.push({
           ...base,
-          kind: p.terminationType === 'voluntary' ? 'resignation' : 'termination',
+          kind:
+            mv?.type && mv.type !== 'termination' && !isKnownKind(mv.type) && tenantCodes.has(mv.type) &&
+            resolvedTypes.get(mv.type)?.behaviourKind === 'termination'
+              ? mv.type
+              : p.terminationType === 'voluntary' ? 'resignation' : 'termination',
           effectiveDate: p.terminationDate ?? occDate,
           // ae9350f2 — the Last Working Day, off the movement tag. Legacy/untagged terminations (the
           // resignation-approval path, imports) carry none and keep the historical null.
@@ -1431,7 +1497,7 @@ export async function movementHistoryTx(tx: Tx, ctx: SessionContext, employmentI
         // owns the row, and bounding on the row's own event alone would show the pre-movement value.
         ...placementAt(r.effectiveDate, spanEnd === -1 ? r.sequence : spanEnd),
         hireCorrection: r.kind === 'hired' ? hireTrace : null,
-        recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent) : null,
+        recordedExit: primaryEvent ? movementRecordedExitOf(primaryEvent, (code) => resolvedTypes.get(code)?.behaviourKind) : null,
         recordedResignation:primaryEvent?movementRecordedResignationOf(primaryEvent):null,
       };
     });
@@ -1627,12 +1693,53 @@ export function movementDetail(
   return withTenant(ctx, tx => movementDetailTx(tx, ctx, employmentId, movementId));
 }
 
+/**
+ * 1d58019a Step 2 (ADR-0166) — the supporting documents of one movement, for its detail view.
+ *
+ * WHO MAY READ THEM is Employment History's own audience, checked three ways: the caller is an admin (the
+ * history is an admin screen), holds workforce view of this employee (the same scope check every workforce
+ * read uses), and the movement is one this employee's projected history shows. The table's read policy adds
+ * the pay rule: a document filed against Basic Salary, Currency, Pay Mode or Payment Term is returned only to
+ * a caller who could read the salary itself (the compensation read predicate). Never throws for "not
+ * yours": an unknown or invisible movement simply has no documents.
+ */
+export async function movementAttachments(
+  ctx: SessionContext,
+  employmentId: string,
+  movementId: string,
+): Promise<MovementAttachmentSummary[]> {
+  assertMovementAdmin(ctx, 'view movement documents');
+  return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
+    const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
+    const row = rows.find((r) => r.id === movementId);
+    if (!row?.groupId) return [];
+    return (await listMovementAttachmentsTx(tx, ctx.tenantId, employmentId, [row.groupId])).map(
+      ({ movementGroupId: _group, ...summary }) => summary,
+    );
+  });
+}
+
+/** One document's bytes, under the same three checks as movementAttachments. Refuses with one message
+ *  whether the document does not exist or the caller may not see it, so the refusal discloses nothing. */
+export async function readMovementAttachment(ctx: SessionContext, employmentId: string, attachmentId: string) {
+  assertMovementAdmin(ctx, 'view movement documents');
+  return withTenant(ctx, async (tx) => {
+    await assertWorkforceEmploymentTx(tx, ctx, employmentId, 'view');
+    const file = await readMovementAttachmentRowTx(tx, ctx.tenantId, employmentId, attachmentId);
+    if (!file) throw new MovementDocumentError('Document not found.');
+    const { rows } = await projectRows(tx, ctx.tenantId, employmentId);
+    if (!rows.some((r) => r.groupId === file.movementGroupId)) throw new MovementDocumentError('Document not found.');
+    return { fileName: file.fileName, mimeType: file.mimeType, content: file.content };
+  });
+}
+
 /** Pending Edit alone needs raw picker values. Read the authoritative saved intent under current RLS;
  * do not send a reference the caller can no longer resolve, or hydrate omitted values from today. */
 export function movementPendingEditInput(ctx:SessionContext,employmentId:string,movementId:string):Promise<{values?:MovementPendingFormValues;unavailable:boolean}|null>{
   assertMovementAdmin(ctx,'correct a movement');
   return withTenant(ctx,async tx=>{
-    const {emp,events,rows,statusOf}=await projectRows(tx,ctx.tenantId,employmentId);
+    const {emp,events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,employmentId);
     const [scope]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_for(${emp.companyId}::uuid) as ok`);
     if(!scope?.ok)return {unavailable:true};
     const row=rows.find(r=>r.id===movementId);
@@ -1642,7 +1749,8 @@ export function movementPendingEditInput(ctx:SessionContext,employmentId:string,
       return after?{values:{tenderResignationDate:after.tenderResignationDate??null,resignationEffectiveDate:after.resignationDate??null},unavailable:false}:{unavailable:true};
     }
     // 646355e5 — an APPLIED termination pre-fills the coded reason and notice it recorded.
-    if(row?.kind==='termination'&&statusOf(row)==='applied'){
+    // 1d58019a Step 2 — decided by the resolved behaviour, so a tenant's own Termination type pre-fills too.
+    if(row&&resolvedTypes.get(row.kind)?.behaviourKind==='termination'&&statusOf(row)==='applied'){
       const leg=groupEventsOf(events,row).find(event=>event.eventType==='employment.terminated');
       const recorded=leg?.payload as {terminationReasonCode?:string|null;terminationNoticeDays?:number|null}|undefined;
       return recorded?{values:{terminationReasonCode:recorded.terminationReasonCode??null,terminationNoticeDays:recorded.terminationNoticeDays==null?null:String(recorded.terminationNoticeDays)},unavailable:false}:{unavailable:true};
@@ -1950,6 +2058,12 @@ export type CreateMovementInput = {
    * forged field cannot make a movement claim a type this tenant never configured.
    */
   typeCode?: string;
+  /**
+   * 1d58019a Step 2 (ADR-0166) — supporting documents, one per comparison field, for a type whose Field
+   * Controls enable them. Validated and stored in the same transaction as the movement; never part of the
+   * scheduled intent (scheduledInputOf ignores it). The movement import never supplies any.
+   */
+  documents?: MovementDocumentUpload[];
 } & Partial<Record<MovementFlatField, string | null>>;
 
 /** 941c9dac — one field a movement moved, resolved to raw values. The audit record the reporter asked
@@ -2099,6 +2213,59 @@ function movementDeltas(p: CreateMovementInput, cur: MovementCurrentState) {
     changes,
     fields: changes.map((c) => c.field),
   };
+}
+
+/**
+ * 1d58019a Step 2 (ADR-0166) — the event type's FIELD CONTROLS and supporting documents, for one comparison
+ * movement about to be written (a new one, or a correction being re-recorded).
+ *
+ * `p.kind` is the resolved behaviour and `p.typeCode` the catalogue code whose controls apply. "Changed" is
+ * the writer's own delta rule (movementDeltas against `baseline`, the state the write itself will diff
+ * against), so Required to Change means exactly "the after value differs from the current value", and a
+ * field the form did not post is never mistaken for a change. `carriedFields` are fields a correction
+ * already has documents for (copied forward from the movement it corrects).
+ *
+ * A type with NO stored controls and no documents returns before computing anything: today's behaviour,
+ * byte for byte. Returns the validated documents for the caller to store once the write has its group id.
+ */
+async function assertMovementFieldRulesTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: CreateMovementInput,
+  carriedFields: readonly string[],
+  baseline: () => Promise<MovementCurrentState>,
+) {
+  const documents = validateMovementDocuments(p.documents);
+  const { configured, rules } = await movementFieldRulesTx(tx, ctx.tenantId, p.typeCode ?? p.kind, p.kind);
+  if (!configured && !documents.length) return documents;
+  const changed = new Set(movementDeltas(p, await baseline()).changes.map((c) => c.field));
+  const supplied = new Set<string>([...documents.map((d) => d.field), ...carriedFields]);
+  const violations = movementFieldRuleViolations(rules, changed, supplied);
+  if (violations.length) throw new MovementFieldRuleError(violations[0]);
+  return documents;
+}
+
+/** The fields the movement being corrected has documents for that its (new) type still accepts documents
+ *  for — copied to the corrected movement, and counted towards "required". */
+async function correctionDocumentFieldsTx(tx: Tx, ctx: SessionContext, p: CreateMovementInput, fromGroupId: string | null) {
+  if (!fromGroupId || !isComparisonKind(p.kind)) return [];
+  const { rules } = await movementFieldRulesTx(tx, ctx.tenantId, p.typeCode ?? p.kind, p.kind);
+  const enabled = new Set<string>(rules.filter((r: MovementFieldRule) => r.document !== 'none').map((r) => r.field));
+  return (await movementAttachmentFieldsTx(tx, ctx.tenantId, p.employmentId, fromGroupId)).filter((f) => enabled.has(f));
+}
+
+/** Store a correction's documents: the carried copies, then any newly uploaded. */
+async function storeCorrectionDocumentsTx(
+  tx: Tx,
+  ctx: SessionContext,
+  employmentId: string,
+  fromGroupId: string | null,
+  toGroupId: string,
+  carriedFields: readonly string[],
+  documents: Awaited<ReturnType<typeof assertMovementFieldRulesTx>>,
+) {
+  if (fromGroupId) await carryMovementAttachmentsTx(tx, ctx, employmentId, fromGroupId, toGroupId, carriedFields);
+  if (documents.length) await saveMovementAttachmentsTx(tx, ctx, employmentId, toGroupId, documents);
 }
 
 /**
@@ -2400,7 +2567,7 @@ async function scheduleMovementTx(
       movement: { type: p.typeCode ?? kind, groupId, remarks, endDate } satisfies MovementTag,
     },
   });
-  return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate };
+  return { employmentId: p.employmentId, scheduled: true as const, effectiveDate: p.effectiveDate, groupId };
 }
 
 // Resignation information is a lifecycle effect, not a termination or final-pay command.
@@ -2478,6 +2645,9 @@ const TERMINATION_FIELDS = ['terminatedOn', 'lastWorkingDate'] as const;
 
 /** The validated, resolved shape of a Termination — computed once and used by both the write and the schedule. */
 type TerminationPlan = {
+  /** 1d58019a Step 2 — the catalogue code recorded on the ledger: 'termination', or one of the
+   *  organisation's own Termination types. The behaviour is the same either way. */
+  typeCode: string;
   effectiveDate: string;
   lastWorkingDate: string;
   reasonCode: string;
@@ -2516,7 +2686,10 @@ async function planTerminationTx(
   mode: 'create' | 'apply',
   excludeMovementId?: string,
 ): Promise<TerminationPlan> {
-  const { emp, rows, statusOf } = await projectRows(tx, ctx.tenantId, p.employmentId);
+  const { emp, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
+  // 1d58019a Step 2 — "is this row a termination" is a question for the catalogue, not for the code: a
+  // pending Retrenchment is a pending termination and must block a second exit exactly as one would.
+  const isTerminationRow = (r: ProjectedRow) => resolvedTypes.get(r.kind)?.behaviourKind === 'termination';
 
   if (!isIsoDate(p.effectiveDate)) throw new Error('A valid termination date (YYYY-MM-DD) is required.');
 
@@ -2570,7 +2743,7 @@ async function planTerminationTx(
   const pendingTermination = rows.find(
     (r) =>
       r.id !== excludeMovementId &&
-      r.kind === 'termination' &&
+      isTerminationRow(r) &&
       r.scheduled &&
       statusOf(r) === 'pending',
   );
@@ -2591,7 +2764,7 @@ async function planTerminationTx(
       (r) =>
         r.id !== excludeMovementId &&
         r.scheduled &&
-        r.kind !== 'termination' &&
+        !isTerminationRow(r) &&
         statusOf(r) === 'pending' &&
         r.effectiveDate >= p.effectiveDate,
     );
@@ -2610,6 +2783,7 @@ async function planTerminationTx(
   const payrollFlaggedPeriods = processed.filter((period) => overlapsClosedPeriod([period], p.effectiveDate, null));
 
   return {
+    typeCode: p.typeCode ?? 'termination',
     effectiveDate: p.effectiveDate,
     lastWorkingDate,
     reasonCode,
@@ -2640,7 +2814,8 @@ async function applyTerminationTx(
   let primaryTaken = opts?.allSecondary === true;
   const tag = (): MovementTag => {
     const t: MovementTag = {
-      type: 'termination',
+      // 1d58019a Step 2 — the CODE HR chose ('termination' or one of the organisation's own Termination types).
+      type: plan.typeCode,
       groupId,
       remarks: plan.remarks,
       endDate: plan.lastWorkingDate,
@@ -2708,7 +2883,8 @@ async function scheduleTerminationTx(
     actor: actorOf(ctx),
     subjectEmploymentId: employmentId,
     payload: {
-      type: 'termination',
+      // 1d58019a Step 2 — the catalogue code; the sweep resolves it back to the termination behaviour.
+      type: plan.typeCode,
       effectiveDate: plan.effectiveDate,
       endDate: plan.lastWorkingDate,
       remarks: plan.remarks,
@@ -2720,7 +2896,7 @@ async function scheduleTerminationTx(
         resignationDate: plan.resignationDate,
       },
       movement: {
-        type: 'termination',
+        type: plan.typeCode,
         groupId,
         remarks: plan.remarks,
         endDate: plan.lastWorkingDate,
@@ -2758,6 +2934,10 @@ async function resolveInputTypeTx<T extends CreateMovementInput>(
   verb: 'record' | 'correct',
   opts?: { allowInactive?: boolean },
 ): Promise<T> {
+  // 1d58019a Step 2 — hold the catalogue's SHARED lock for the rest of this movement write. A type's behaviour
+  // is locked once used, and the settings writer checks "used" under the EXCLUSIVE lock: without this, a
+  // re-point could commit between this resolution and the write that makes the type used.
+  await lockMovementTypeCatalogueTx(tx, ctx.tenantId);
   const resolved = await resolveMovementEventTypeTx(tx, ctx.tenantId, p.kind);
   if (!resolved) throw new Error('Unknown movement event type.');
   if (!resolved.active && !opts?.allowInactive) {
@@ -2830,11 +3010,22 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     // save (the reporter specified this explicitly: it must not wait for the next sweep). A movement
     // dated in the FUTURE is recorded as a pending intent and applies on the morning of its date.
     const today = todayInKualaLumpur();
-    if (p.effectiveDate > today) {
-      return scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind, futureAdmission);
-    }
-    return applyComparisonMovementTx(tx, ctx, p, p.kind);
+    // 1d58019a Step 2 (ADR-0166) — the type's Field Controls and its supporting documents, checked HERE, in
+    // the writer every create path shares (the New Event form, the import, the rehearsal), against the same
+    // baseline the write below diffs against. The sweep and an older correction's replay do not come through
+    // here: a rule never re-judges a movement already recorded.
+    const future = p.effectiveDate > today;
+    const documents = await assertMovementFieldRulesTx(tx, ctx, p, [], () =>
+      future && futureAdmission?.baseline ? Promise.resolve(futureAdmission.baseline) : currentStateTx(tx, p.employmentId),
+    );
+    const written = future
+      ? await scheduleMovementTx(tx, ctx, p, p.kind as ComparisonKind, futureAdmission)
+      : await applyComparisonMovementTx(tx, ctx, p, p.kind);
+    if (documents.length) await saveMovementAttachmentsTx(tx, ctx, p.employmentId, written.groupId, documents);
+    return written;
   }
+  // Only comparison types take supporting documents (Field Controls are per comparison field).
+  if (p.documents?.length) throw new MovementDocumentError('This event type does not take supporting documents.');
 
   const remarks = p.remarks?.trim() || null;
   const endDate = p.endDate?.trim() || null;
@@ -2884,6 +3075,8 @@ async function dispatchMovementEventTx(tx:Tx,ctx:SessionContext,rawInput:CreateM
     case 'termination': {
         const plan = await planTerminationTx(tx, ctx, p, 'create');
         await assertTerminationReasonOfferedTx(tx, ctx.tenantId, plan.reasonCode);
+        // 1d58019a Step 2 — and the reasons THIS Termination type offers (no list = every active reason).
+        await assertTerminationReasonOfferedForTypeTx(tx, ctx.tenantId, plan.typeCode, plan.reasonCode);
         return plan.effectiveDate > todayInKualaLumpur()
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
@@ -3980,6 +4173,19 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       if (row.reversed) throw new Error('This movement event has already been rolled back.');
       if (!resolvedTypes.get(row.kind)) throw new MovementNotCorrectableError('This event type cannot be edited from Employment History — use the screen that records it.');
       const status = statusOf(row);
+      // 1d58019a Step 2 — what the RECORDED movement does, from the catalogue. `row.kind` is its code, which
+      // for one of the organisation's own Termination types is not the string 'termination'.
+      const rowBehaviour = resolvedTypes.get(row.kind)?.behaviourKind ?? null;
+      if (p.documents?.length && !isComparisonKind(p.kind)) {
+        throw new MovementDocumentError('This event type does not take supporting documents.');
+      }
+      /** A corrected termination's reason must be one its (possibly re-chosen) type offers — checked only
+       *  when the reason or the type changes, so correcting the dates of an older exit never re-judges it. */
+      const assertCorrectedReasonTx = async (plan: TerminationPlan, recordedReason: unknown) => {
+        if (plan.reasonCode !== recordedReason || plan.typeCode !== row.kind) {
+          await assertTerminationReasonOfferedForTypeTx(tx, ctx.tenantId, plan.typeCode, plan.reasonCode);
+        }
+      };
 
       /**
        * 941c9dac — correcting a movement that has not taken effect yet.
@@ -4020,14 +4226,15 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         // branch the Edit button would render and the service would refuse it — an affordance that lies.
         // Only termination→termination: turning a pending exit into a transfer, or a transfer into an exit,
         // is recording a different movement, not correcting this one.
-        if (row.kind === 'termination' || p.kind === 'termination') {
-          if (row.kind !== 'termination' || p.kind !== 'termination') {
+        if (rowBehaviour === 'termination' || p.kind === 'termination') {
+          if (rowBehaviour !== 'termination' || p.kind !== 'termination') {
             throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
           }
           await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
           // Planned AFTER the rollback, so the duplicate-termination rule sees the movement being corrected
           // as already reversed rather than as a second termination competing with itself.
           const plan = await planTerminationTx(tx, ctx, corrected, 'create');
+          await assertCorrectedReasonTx(plan, retained.terminationReasonCode);
           return plan.effectiveDate > today
             ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
             : applyTerminationTx(tx, ctx, p.employmentId, plan);
@@ -4043,11 +4250,17 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
           throw new Error('Select the new employment type.');
         }
         await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        // 1d58019a Step 2 — the corrected intent meets its type's Field Controls (against today's values: a
+        // pending movement wrote nothing), and keeps the documents it already had.
+        const carried = await correctionDocumentFieldsTx(tx, ctx, corrected, row.groupId);
+        const pendingDocuments = await assertMovementFieldRulesTx(tx, ctx, corrected, carried, () => currentStateTx(tx, p.employmentId));
         // A correction may also move the date INTO the past — in which case the movement stops being a
         // schedule and applies at once, exactly as keying it fresh with that date would.
-        return p.effectiveDate > today
-          ? scheduleMovementTx(tx, ctx, corrected, p.kind)
-          : applyComparisonMovementTx(tx, ctx, corrected, p.kind);
+        const rewritten = p.effectiveDate > today
+          ? await scheduleMovementTx(tx, ctx, corrected, p.kind)
+          : await applyComparisonMovementTx(tx, ctx, corrected, p.kind);
+        await storeCorrectionDocumentsTx(tx, ctx, p.employmentId, row.groupId, rewritten.groupId, carried, pendingDocuments);
+        return rewritten;
       }
       if (status === 'superseded') {
         throw new MovementNotCorrectableError(
@@ -4083,12 +4296,14 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
 
       // 646355e5 — an APPLIED termination: roll it back, then record the corrected one through the same
       // planner and writer the New Event form uses (duplicate-exit and date rules included).
-      if (row.kind === 'termination' || p.kind === 'termination') {
-        if (row.kind !== 'termination' || p.kind !== 'termination') {
+      if (rowBehaviour === 'termination' || p.kind === 'termination') {
+        if (rowBehaviour !== 'termination' || p.kind !== 'termination') {
           throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
         }
+        const recordedReason = (group.find((e) => e.eventType === 'employment.terminated')?.payload as { terminationReasonCode?: unknown } | undefined)?.terminationReasonCode;
         await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
         const plan = await planTerminationTx(tx, ctx, { ...p, remarks: rawEdit.remarks === undefined ? row.remarks : remarks, endDate: rawEdit.endDate === undefined ? row.endDate : endDate }, 'create');
+        await assertCorrectedReasonTx(plan, recordedReason);
         return plan.effectiveDate > today
           ? scheduleTerminationTx(tx, ctx, p.employmentId, plan)
           : applyTerminationTx(tx, ctx, p.employmentId, plan);
@@ -4181,8 +4396,14 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
 
       await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+      // 1d58019a Step 2 — the corrected movement meets its type's Field Controls, judged against the state
+      // the rollback just restored (the same baseline the re-apply diffs against), and keeps its documents.
+      const carried = await correctionDocumentFieldsTx(tx, ctx, p, row.groupId);
+      const correctedDocuments = await assertMovementFieldRulesTx(tx, ctx, { ...p, remarks, endDate }, carried, () => currentStateTx(tx, p.employmentId));
       try {
-        return await applyComparisonMovementTx(tx, ctx, { ...p, remarks, endDate }, p.kind);
+        const rewritten = await applyComparisonMovementTx(tx, ctx, { ...p, remarks, endDate }, p.kind);
+        await storeCorrectionDocumentsTx(tx, ctx, p.employmentId, row.groupId, rewritten.groupId, carried, correctedDocuments);
+        return rewritten;
       } catch (e) {
         // The corrected movement would now change nothing at all — that is a Delete, not an Edit, and the
         // half-applied rollback must not commit behind a message about "no changes to record".

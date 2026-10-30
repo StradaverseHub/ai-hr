@@ -70,6 +70,8 @@ import {
   // R46 79eb7151 — read-only here, to validate the bank-transfer payment method against the person's
   // salary-payment destination. This module never WRITES the statutory row.
   employeeStatutoryMy,
+  // 1d58019a Step 2 — read-only: is a movement tag's custom code one of the tenant's exit types?
+  movementEventType,
 } from '../db/schema';
 
 export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number];
@@ -3053,7 +3055,7 @@ export async function setEmploymentInfo(
   }
 
   const exitAuthority=hasExitDateAuthorityTx(outerTx,p.employmentId);
-  const movement=!exitAuthority&&['resignation','termination'].includes(p.movement?.type??'')?undefined:p.movement;
+  let movement=!exitAuthority&&['resignation','termination'].includes(p.movement?.type??'')?undefined:p.movement;
 
   // Build the write set: only columns the caller actually provided. `undefined` = untouched; a period/text
   // field passed as '' or null clears to NULL. Validate + normalise as we go.
@@ -3154,6 +3156,17 @@ export async function setEmploymentInfo(
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
+    // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
+    // Movement writer's exit legs, which hold the exit-date authority, may carry an exit type's tag.
+    if (!exitAuthority && movement && !['resignation','termination'].includes(movement.type)) {
+      const [custom] = await tx
+        .select({ behaviourKind: movementEventType.behaviourKind })
+        .from(movementEventType)
+        .where(and(eq(movementEventType.tenantId, ctx.tenantId), eq(movementEventType.code, movement.type)))
+        .limit(1);
+      if (custom && movement.type !== custom.behaviourKind && ['resignation','termination'].includes(custom.behaviourKind)) movement = undefined;
+    }
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,
