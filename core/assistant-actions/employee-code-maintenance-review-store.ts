@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {EmployeeCodeMaintenance as C} from '../../lib/assistant-actions/employee-code-maintenance-contract';
+import {withEmployeeCodeMaintenanceSubjectTx,prepareEmployeeCodeMaintenanceSourceTx,confirmEmployeeCodeMaintenanceSourceTx,reconcileEmployeeCodeMaintenanceSourceTx,readEmployeeCodeMaintenanceChoicesTx,employeeCodeMaintenanceUnavailable} from './employee-code-maintenance-source';
+export const employeeCodeMaintenanceReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withEmployeeCodeMaintenanceSubjectTx,prepare:prepareEmployeeCodeMaintenanceSourceTx,confirm:confirmEmployeeCodeMaintenanceSourceTx,reconcile:reconcileEmployeeCodeMaintenanceSourceTx,unavailable:employeeCodeMaintenanceUnavailable});
+export async function readEmployeeCodeMaintenanceChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readEmployeeCodeMaintenanceChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {DocumentMetadata as C} from '../../lib/assistant-actions/document-metadata-contract';
+import {withDocumentMetadataSubjectTx,prepareDocumentMetadataSourceTx,confirmDocumentMetadataSourceTx,reconcileDocumentMetadataSourceTx,readDocumentMetadataChoicesTx,documentMetadataUnavailable} from './document-metadata-source';
+export const documentMetadataReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withDocumentMetadataSubjectTx,prepare:prepareDocumentMetadataSourceTx,confirm:confirmDocumentMetadataSourceTx,reconcile:reconcileDocumentMetadataSourceTx,unavailable:documentMetadataUnavailable});
+export async function readDocumentMetadataChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readDocumentMetadataChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

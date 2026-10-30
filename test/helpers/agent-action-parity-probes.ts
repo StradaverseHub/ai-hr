@@ -1,3 +1,10 @@
+import {paymentMethodMaintenanceReviews,readPaymentMethodMaintenanceChoices} from '../../core/assistant-actions/payment-method-maintenance-review-store';
+import {setEmploymentPaymentMethod} from '../../core/org';
+import {passportMaintenanceReviews,readPassportMaintenanceChoices} from '../../core/assistant-actions/passport-maintenance-review-store';
+import {employeeCodeMaintenanceReviews,readEmployeeCodeMaintenanceChoices} from '../../core/assistant-actions/employee-code-maintenance-review-store';
+import {setWorkforceEmployeeCode} from '../../core/workforce-code';
+import {documentMetadataReviews,readDocumentMetadataChoices} from '../../core/assistant-actions/document-metadata-review-store';
+import {addEmployeeDocument,updateEmployeeDocumentMeta} from '../../core/employee-documents';
 import {workforceViewScope} from '../../core/workforce-access';
 import {PARITY_PROBE_GROUPS,type ParityProbeGroup,type ParityProbeVariant} from './agent-action-parity-groups';
 import {workforceProfileMaintenanceReviews,readWorkforceProfileMaintenanceChoices} from '../../core/assistant-actions/workforce-profile-maintenance-review-store';
@@ -372,16 +379,37 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
   offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.payment_method.maintain':{family:'hr_on_employment',store:paymentMethodMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.employmentId),
+  human:item=>({action:'employees.payment_method.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,expectedMethod:null,paymentMethod:'cash'}),
+  offered:async(who,item)=>listed(await readPaymentMethodMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setEmploymentPaymentMethod(who,{employmentId:item.employmentId,paymentMethod:'cash'},tx)},
+ 'employees.code.maintain':{family:'hr_on_employment',store:employeeCodeMaintenanceReviews,
+  // Baseline construction is an owner fixture read, before per-role Assistant authority is exercised.
+  create:async(_w,h)=>{const [selected]=await owner.db.select({employeeCode:schema.employment.employeeCode}).from(schema.employment).where(and(eq(schema.employment.id,h.person.employmentId),eq(schema.employment.tenantId,h.base.tenantId)));if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},
+  human:item=>({action:'employees.code.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})}),
+  offered:async(who,item)=>listed(await readEmployeeCodeMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setWorkforceEmployeeCode(who,{employmentId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})},tx)},
  'employees.workforce_profile.maintain':{family:'hr_on_employment',store:workforceProfileMaintenanceReviews,
   create:async(_w,h)=>{const workspace=await workforceEditor(groupOf(h.base),h.person.employmentId);if(!workspace)throw Error('Native profile fixture unavailable');const values=Object.fromEntries(workforceMaintenanceFields('person','personal').map(({key})=>[key,workspace.profile[key as keyof typeof workspace.profile]]));values.preferredName='Fictional reviewed name';return itemOf(h,h.person.employmentId,{proposal:{expectedVersion:workspace.profileVersion,values}});},
   human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),
   offered:async(who,item)=>listed(await readWorkforceProfileMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>maintainWorkforceRecord(who,{employmentId:item.employmentId,kind:'person',rowId:null,operation:'update',patch:(item.proposal as {values:Record<string,string|null>}).values,expectedVersion:(item.proposal as {expectedVersion:string}).expectedVersion},tx)},
+ 'employees.passport.maintain':{family:'hr_on_employment',store:passportMaintenanceReviews,screenAdmits:async(who,item)=>isAdmin(who)&&(await workforceViewScope(who)).canOpen&&!!await employeeDetail(who,item.employmentId,'workforce'),
+  create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
+  human:item=>({action:'employees.passport.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{passportNumber:'FICTIONAL',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportRemark:null,passportIssuingCountry:null,passportIssuingCountryCode:null}}),
+  offered:async(who,item)=>listed(await readPassportMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>requirePackFor('MY').statutory.setPassport(who,{personId:item.subjectId,employmentId:item.employmentId,passportNumber:'FICTIONAL',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportRemark:null,passportIssuingCountry:null,passportIssuingCountryCode:null},tx)},
  'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:async(who,item)=>isAdmin(who)&&(await workforceViewScope(who)).canOpen&&!!await employeeDetail(who,item.employmentId,'workforce'),
   create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
   human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),
   offered:async(who,item)=>listed(await readBankMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>requirePackFor('MY').statutory.setBank(who,{personId:item.subjectId,employmentId:item.employmentId,bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null},tx)},
+ 'employees.document_metadata.maintain':{family:'hr_on_employment',store:documentMetadataReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>{const doc=await addEmployeeDocument(groupOf(h.base),{employmentId:h.person.employmentId,title:'Fictional metadata original',fileName:'fixture.txt',mimeType:'text/plain',content:Buffer.from('Fictional fixture attachment')});return itemOf(h,doc.id);},
+  human:item=>({action:'employees.document_metadata.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{title:'Fictional revised metadata',category:'Fictional category',description:'Fictional description'}}),
+  offered:async(who,item)=>listed(await readDocumentMetadataChoices(who,{query:item.name,employmentId:item.employmentId}),'documents','id',item.subjectId),
+  screen:(tx,who,item)=>updateEmployeeDocumentMeta(who,{documentId:item.subjectId,title:'Fictional revised metadata',category:'Fictional category',description:'Fictional description'},tx)},
  'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.personId),
   human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),

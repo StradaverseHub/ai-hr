@@ -994,6 +994,7 @@ export default async function EmployeePage({
     payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
   };
 
+  const canEditPassport=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const profilePanel = admin ? (
     <>
       {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
@@ -1123,6 +1124,8 @@ export default async function EmployeePage({
           countryOptions={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
           setIcAction={setIcAction}
           setPassportAction={setPassportAction}
+          passportDisabled={!canEditPassport}
+          passportReadOnlyMessage={tAccess('workforceReadOnly')}
         />
       </Card>
       </IdentityProvider>

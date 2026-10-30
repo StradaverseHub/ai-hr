@@ -4103,6 +4103,34 @@
       "when": 1793330000048,
       "tag": "0719_assistant_bank_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 701,
+      "version": "7",
+      "when": 1793330000049,
+      "tag": "0720_assistant_document_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 702,
+      "version": "7",
+      "when": 1793330000050,
+      "tag": "0721_assistant_employee_code_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 703,
+      "version": "7",
+      "when": 1793330000051,
+      "tag": "0722_assistant_passport_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 704,
+      "version": "7",
+      "when": 1793330000052,
+      "tag": "0723_assistant_payment_method_maintenance",
+      "breakpoints": true
     }
   ]
 }

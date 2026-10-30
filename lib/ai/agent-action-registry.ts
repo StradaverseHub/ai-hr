@@ -68,7 +68,7 @@ export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_le
 export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;/** Default working_wait. Fixed presence/expiry sources have explicit eligibility and no overdue-day interpretation. */eligibility?:'working_wait'|'previous_date_record_gap'|'recorded_expiry_30_calendar_days';overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
 
 /** Closed country-owned members; metadata never resolves or executes a callable. */
-export type AgentActionServiceMember='statutory.set'|'statutory.setBank';
+export type AgentActionServiceMember='statutory.set'|'statutory.setBank'|'statutory.setPassport';
 
 /** The policy field reuses WP2's AgentActionPolicy union, so `{category:'pay',tier:'automatic'}` (or any
  * never-Automatic category paired with Automatic) is a compile error in the entry itself. */
@@ -366,6 +366,14 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'entry_point',by:'app/admin/personnel/[employmentId]/actions.ts#supersedeCompensationAction'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#setCompensationAction','app/admin/personnel/[employmentId]/actions.ts#editCompensationAction','app/admin/personnel/[employmentId]/actions.ts#supersedeCompensationAction']},review:{route:'/assistant/compensation',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'compensationMaintenance',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.code.maintain',module:'employees',owner:'personnel',service:'core/workforce-code.ts#setWorkforceEmployeeCode',contractVersion:1,
+  prepare:{status:'implemented',adapter:'employee_code_maintenance_review_v1',inputSchema:'EmployeeCodeMaintenance.Human',outputSchema:'EmployeeCodeMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'employee_code_maintenance_review_v1',inputSchema:'EmployeeCodeMaintenance.Confirmation',outputSchema:'EmployeeCodeMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'employment_identifier_changed_not_person_pay_or_access',humanInputs:['employmentId','subjectId','expectedCode','employeeCode'],
+  permission:{actor:'workforce_maintainer',guard:'core/assistant-actions/employee-code-maintenance-source.ts#withEmployeeCodeMaintenanceSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'employment_identifier'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/workforce-record-actions.ts#saveWorkforceCodeAction']},review:{route:'/assistant/employee-code',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'employeeCodeMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.workforce_profile.maintain',module:'employees',owner:'personnel',service:'core/workforce-maintenance.ts#maintainWorkforceRecord',contractVersion:1,
   prepare:{status:'implemented',adapter:'workforce_profile_maintenance_review_v1',inputSchema:'WorkforceProfileMaintenance.Human',outputSchema:'WorkforceProfileMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'workforce_profile_maintenance_review_v1',inputSchema:'WorkforceProfileMaintenance.Confirmation',outputSchema:'WorkforceProfileMaintenance.Completed'},
@@ -382,6 +390,30 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/bank',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'bankMaintenance',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.document_metadata.maintain',module:'employees',owner:'personnel',service:'core/employee-documents.ts#updateEmployeeDocumentMeta',contractVersion:1,
+  prepare:{status:'implemented',adapter:'document_metadata_review_v1',inputSchema:'DocumentMetadata.Human',outputSchema:'DocumentMetadata.Prepared'},
+  confirm:{status:'implemented',adapter:'document_metadata_review_v1',inputSchema:'DocumentMetadata.Confirmation',outputSchema:'DocumentMetadata.Completed'},
+  outcome:'canonical_receipt_required',semantics:'ordinary_document_metadata_changed_attachment_untouched',humanInputs:['employmentId','subjectId','fields'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/document-metadata-source.ts#withDocumentMetadataSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'ordinary_document_three_metadata_fields'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#updateEmployeeDocumentMetaAction']},review:{route:'/assistant/document-details',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'documentMetadata',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.payment_method.maintain',module:'employees',owner:'personnel',service:'core/org.ts#setEmploymentPaymentMethod',contractVersion:1,
+  prepare:{status:'implemented',adapter:'payment_method_maintenance_review_v1',inputSchema:'PaymentMethodMaintenance.Human',outputSchema:'PaymentMethodMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'payment_method_maintenance_review_v1',inputSchema:'PaymentMethodMaintenance.Confirmation',outputSchema:'PaymentMethodMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'current_payment_method_changed_no_file_payment_or_recalculation',humanInputs:['employmentId','subjectId','expectedMethod','paymentMethod'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/payment-method-maintenance-source.ts#withPaymentMethodMaintenanceSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'current_employment_payment_method'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/payment-method',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'paymentMethodMaintenance',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.passport.maintain',module:'employees',owner:'personnel',service:'localization/registry.ts#requirePackFor',serviceMember:'statutory.setPassport',contractVersion:1,
+  prepare:{status:'implemented',adapter:'passport_maintenance_review_v1',inputSchema:'PassportMaintenance.Human',outputSchema:'PassportMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'passport_maintenance_review_v1',inputSchema:'PassportMaintenance.Confirmation',outputSchema:'PassportMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'passport_information_saved_not_ic_dob_pay_or_access',humanInputs:['employmentId','subjectId','fields'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/passport-maintenance-source.ts#withPassportMaintenanceIntervalTx'},subject:'other_person',blastRadius:{max:1,unit:'shared_person_passport_information'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/passport',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'passportMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.emergency_contact.maintain',module:'employees',owner:'personnel',service:'core/workforce-registers.ts#addEmergencyContact',contractVersion:1,
   prepare:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Human',outputSchema:'EmergencyContactMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Confirmation',outputSchema:'EmergencyContactMaintenance.Completed'},

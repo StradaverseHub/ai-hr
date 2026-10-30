@@ -20,6 +20,10 @@ export const PARITY_PROBE_GROUPS={
   'country-my.statutory.update','employees.workforce_profile.maintain','employees.draft.activate',
   'employees.family.maintain','toil.credit.grant',
  ],variants:[]},
+ personnel:{actions:[
+  'employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain',
+  'employees.payment_method.maintain',
+ ],variants:[]},
 } satisfies Record<string,{actions:readonly ProbedActionId[];variants:readonly ParityProbeVariant[]}>;
 export type ParityProbeGroup=keyof typeof PARITY_PROBE_GROUPS;
-export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts'};
+export const PARITY_PROBE_ENTRYPOINTS:Record<ParityProbeGroup,string>={commands:'test/agent-action-permission-parity-commands.test.ts',requests:'test/agent-action-permission-parity-requests.test.ts',reviews:'test/agent-action-permission-parity-reviews.test.ts',personnel:'test/agent-action-permission-parity-personnel.test.ts'};

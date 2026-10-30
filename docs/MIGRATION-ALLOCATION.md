@@ -435,3 +435,27 @@ Source-only claim `0719_assistant_bank_maintenance`, idx700 / when1793330000048.
 Sibling0714/0717/0718 claims are not included in this isolated package. Reconcile all reservations
 at integration freeze above the then-live ordered ledger. This is unapplied source, with no installation
 priority, deployment, protected-ref movement or release authority. Historical SQL/journal bytes remain unchanged.
+
+## Ordinary document metadata parity — provisional 30 October 2026
+
+Source-only claim `0720_assistant_document_metadata`, idx701 / when1793330000049, above frozen
+wave3 source1f5eab65a1cff89acb5409bfa5e451e7b6d03c58. Sibling code maintenance owns0721 separately.
+All numbers remain PROVISIONAL until integration reconciles the then-live ordered ledger. No installation
+priority, migration application, protected-ref movement or deployment is authorized. This adds only one
+ordinary-document metadata action to the existing encrypted assigned ledger; every prior kind remains
+under its prior owner/constraints and the same dynamic outcome bounds.
+
+0721 / idx702 / when1793330000050: employee-code Assistant maintenance, PROVISIONAL SOURCE CLAIM ONLY. Sibling0720 is separately owned; integration must reconcile the actual ordered ledger above the live watermark. No installation priority or deployment authority.
+
+## Existing-profile MY passport review — provisional 30 October 2026
+
+0722_assistant_passport_maintenance / idx703 / when1793330000051 is UNAPPLIED provisional source only.
+0720–0721 sibling packages are not included in this tree. Reconcile all claims above the then-live ordered
+ledger at integration freeze; no installation priority or deployment authority is granted.
+
+### Personnel current payment method — provisional source claim
+
+0723_assistant_payment_method_maintenance / idx704 / when1793330000052 is a PROVISIONAL
+append-only source allocation above frozen wave4 eabfe797. No installation priority or release
+authority; reconcile against the accepted migration ledger at integration freeze. Historical SQL
+is unchanged. Only the new kind gains its nullable actor scope; every predecessor rule is retained.
