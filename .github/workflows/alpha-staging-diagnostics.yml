@@ -1034,7 +1034,7 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
       - uses: ./.github/actions/setup-alpha
-        with: {path: source, mobile: 'false', capacity_profile: bounded-suite-setup}
+        with: {path: source, mobile: 'false', capacity_profile: legacy}
       - name: Normal cleanup controller, IPC and actual package controls
         working-directory: source
         shell: bash
