@@ -21,8 +21,8 @@ const rows=(employeeNo:string,amount='500')=>['01','02','03'].flatMap(month=>[
  [employeeNo,`2026-${month}`,'ME','EEEPF','TAXCO','0'],[employeeNo,`2026-${month}`,'ME','EESOCSO','TAXCO','0'],
  [employeeNo,`2026-${month}`,'ME','EEEIS','TAXCO','0'],[employeeNo,`2026-${month}`,'ME','PCB','TAXCO','0'],
 ]);
-async function upload(employeeNo='0007'){
- const draft=await previewPayrollHistoryUpload(ctx,{name:'source.csv',operationKey:randomUUID(),content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(employeeNo)]))});
+async function upload(employeeNo='0007',amount='500'){
+ const draft=await previewPayrollHistoryUpload(ctx,{name:'source.csv',operationKey:randomUUID(),content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows(employeeNo,amount)]))});
  expect(draft.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(ctx,{attemptId:draft.attemptId,previewHash:draft.plan.previewHash,confirmReplacement:true});return draft;
 }
 const selection=()=>({companyId:b.companyId,year:2026,upToMonth:3,employmentIds:[employee]});
@@ -116,6 +116,21 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect((await getTaxBasisBatch(ctx,batchId))?.status).toBe('failed');
   await continueTaxBasisBatch(ctx,batchId);expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(0);
   const fresh=await previewTaxBasisRecalculation(ctx,selection());await confirm(fresh);expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(3);
+ });
+ it('refuses legacy input readers after correction and keeps original payroll readable to the compatible reader',async()=>{
+  const original=await withTenant(ctx,tx=>tx.select().from(schema.payslip).orderBy(schema.payslip.id));
+  const legacyBefore=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_tax_basis_reader','',true)`);return tx.select().from(schema.payslip).orderBy(schema.payslip.id);});expect(legacyBefore).toEqual(original);
+  const p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);
+  expect(await withTenant(ctx,tx=>tx.select().from(schema.payslip).orderBy(schema.payslip.id))).toEqual(original);
+  const error=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_tax_basis_reader','0',true)`);return tx.select().from(schema.payslip).orderBy(schema.payslip.id);}).catch(error=>error);
+  expect(error.cause?.message??error.message).toMatch(/correction-aware income-tax reader/);
+ });
+ it('refuses a stale replaced source even when payroll readers cannot open the correction log',async()=>{
+  const p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);await upload('0007','600');
+  await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,permissionKey:'payroll.tax-basis.view',role:'hr_admin',allowed:false});
+  expect(await listTaxBasisBatches(ctx)).toEqual([]);
+  const current=await withTenant(ctx,tx=>tx.select().from(schema.payslip));expect(current).toHaveLength(3);
+  await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,current.map(s=>s.id)))).rejects.toThrow(/Saved payroll changed/);
  });
  it('keeps immutable correction records tenant-bound and refuses active-batch recovery',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection()),done=await confirm(p);

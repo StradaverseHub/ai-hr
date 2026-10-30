@@ -96,4 +96,23 @@ GRANT EXECUTE ON FUNCTION app.payroll_tax_basis_subjects(uuid,integer,integer) T
 --> statement-breakpoint
 -- A permitted payroll calculation/report must consume corrected inputs even when its actor cannot
 -- open the administrative correction log. The original payslip RLS remains the read boundary.
-CREATE POLICY tax_basis_payroll_source_read ON payroll_tax_basis_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.payslip p WHERE p.id=payslip_id AND p.tenant_id=payroll_tax_basis_revision.tenant_id));
+CREATE POLICY tax_basis_payroll_source_read ON payroll_tax_basis_revision FOR SELECT USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.payslip p JOIN public.payroll_batch b ON b.id=p.batch_id WHERE p.tenant_id=payroll_tax_basis_revision.tenant_id AND b.tenant_id=p.tenant_id AND p.employment_id=payroll_tax_basis_revision.employment_id AND b.company_id=payroll_tax_basis_revision.company_id AND b.pay_period=payroll_tax_basis_revision.period));
+
+--> statement-breakpoint
+-- A rollback must not silently read an uncorrected tax basis. New transaction owners declare
+-- the implemented reader contract; legacy readers fail closed on affected payroll source contexts.
+-- The definer checks only revision/batch/employment tables, never payslip, avoiding policy recursion.
+CREATE FUNCTION app.payroll_tax_basis_reader_compatible(subject_employment uuid,source_batch uuid)
+RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET row_security=off AS $$
+BEGIN
+ IF current_setting('app.payroll_tax_basis_reader',true)='1' THEN RETURN true; END IF;
+ IF EXISTS(SELECT 1 FROM public.payroll_tax_basis_revision r JOIN public.payroll_batch b ON b.id=source_batch
+  WHERE r.tenant_id=app.current_tenant_id() AND b.tenant_id=r.tenant_id AND r.employment_id=subject_employment
+  AND r.company_id=b.company_id AND r.period=b.pay_period
+  AND app.principal_snapshot_current() AND (app.can_admin_payroll_for(b.company_id) OR EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject_employment AND e.tenant_id=r.tenant_id AND app.is_self_person(e.person_id))))
+ THEN RAISE EXCEPTION 'A correction-aware income-tax reader is required for this payroll history' USING ERRCODE='55000'; END IF;
+ RETURN true;
+END $$;
+REVOKE ALL ON FUNCTION app.payroll_tax_basis_reader_compatible(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.payroll_tax_basis_reader_compatible(uuid,uuid) TO ai_hr_app;
+CREATE POLICY payroll_tax_basis_reader_guard ON payslip AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.payroll_tax_basis_reader_compatible(employment_id,batch_id));
