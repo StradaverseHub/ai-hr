@@ -7,7 +7,7 @@
  */
 import {normalizeEmployeeCode,isValidEmployeeCode} from './employee-code';
 import {movementImportDate,MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
-import {movementWorkbookLayout,movementWorkbookScalarChoices,type MovementWorkbookType} from './movement-workbook-layout';
+import {movementWorkbookLayout,movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
 import {movementRecordLimits} from './movement-type-csv';
 import {personnelImportOptionLookup} from './personnel-import-lookup';
 import type {PersonnelLabelResolver} from './personnel-import-contract';
@@ -128,8 +128,9 @@ export function movementRowsToRecords(rows:MovementSheetRow[],types:MovementWork
   if(!afterRaw)continue;
   if(field.key==='incrementAmount'){record.incrementAmount=afterRaw;continue;}
   const formField=field.key as keyof MovementImportRecord['cells'];
-  const choices=movementWorkbookScalarChoices(formField);
-  const matched=choices.filter(choice=>key(afterRaw)===key(choice.value)||resolvers.some(resolve=>{const label=resolve(choice.labelKey,choice.value);return key(afterRaw)===key(label)||key(afterRaw)===key(choice.value+' · '+label);}));
+  // 1d58019a Step 2 — a termination reason may be one of the organisation's own, under its own name.
+  const choices=movementWorkbookScalarChoices(formField,fieldType?[fieldType]:types);
+  const matched=choices.filter(choice=>key(afterRaw)===key(choice.value)||resolvers.some(resolve=>{const label=movementWorkbookChoiceLabel(choice,resolve);return key(afterRaw)===key(label)||key(afterRaw)===key(choice.value+' · '+label);}));
   record.cells[formField]=matched.length===1?matched[0].value:afterRaw;
  }
  const list=[...records.values()];

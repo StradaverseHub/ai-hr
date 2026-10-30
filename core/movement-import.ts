@@ -14,11 +14,12 @@ import {assignment,businessUnit,company,compensation,department,domainEvent,empl
 import {isAdmin} from '../lib/authz-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {movementRecordLimits} from '../lib/movement-type-csv';
+import type {MovementWorkbookType} from '../lib/movement-workbook-layout';
 import {MOVEMENT_FORM_IDS,type MovementFormField} from '../lib/movement-form-contract';
 import {personnelFormField,personnelFormChoices} from '../lib/personnel-form-contract';
 import {personnelImportOptionLookup} from '../lib/personnel-import-lookup';
 import {MOVEMENT_IMPORT_LIMITS,parseMovementImport,movementImportCellIssues,movementImportDate,type MovementImportAction,type MovementImportRecord,type MovementImportRow,type MovementImportEmployee,type MovementImportPreview,type MovementImportResult} from '../lib/movement-import-contract';
-import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,movementCorrectionBaseTx,editMovementEventTx,reverseMovementForImportTx,MovementClosedPayrollAcknowledgementError,MovementNoChangeError,MovementNotCorrectableError,MovementReasonRequiredError,type MovementSequenceCreate,type CreateMovementInput} from './movement';
+import {createMovementEventTx,movementCurrentStateTx,applyDueMovementsTx,rehearseMovementSequenceTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,movementCorrectionBaseTx,editMovementEventTx,reverseMovementForImportTx,MovementClosedPayrollAcknowledgementError,MovementFieldRuleError,MovementNoChangeError,MovementNotCorrectableError,MovementReasonRequiredError,type MovementSequenceCreate,type CreateMovementInput} from './movement';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import {allocationCompanyCode,matchAllocationCompany} from './cost-allocation-import';
 import {recordImportItemTx} from './import-history';
@@ -29,8 +30,20 @@ import {deriveEmploymentStatus} from './employment-status';
 import {visibleLabelIdsCondition} from './system-labels';
 import {reprojectEntitlementForEmployment} from '../packs/leave/service';
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+/** One active type as the workbook and the import see it. 1d58019a Step 2 — with its controls (the reasons a
+ * Termination type offers, a comparison type's Field Controls), which the catalogue fingerprint therefore binds. */
+const importType=(type:Awaited<ReturnType<typeof activeMovementEventTypeChoicesTx>>[number])=>({code:type.code,label:type.label,behaviour:type.behaviourKind,...('reasons' in type&&type.reasons?{reasons:type.reasons}:{}),...('rules' in type&&type.rules?{rules:type.rules}:{})});
+/**
+ * 1d58019a Step 2 — a Field Controls refusal as a finite row code naming the field. The import cannot carry
+ * files, so a row that changes a field whose document is Required becomes `movement_document_required` and the
+ * message tells HR to record that movement on screen.
+ */
+function fieldRuleError(error:unknown):never{
+ if(error instanceof MovementFieldRuleError)throw new Error('movement_'+error.code+':'+error.field);
+ throw error;
+}
 export type MovementImportOption={value:string;label:string;codes?:string[];aliases?:string[];companyId?:string;isTestRecord?:boolean;eligible?:boolean};
-export type MovementImportCatalog={types:{code:string;label:string|null;behaviour:string}[];companies:MovementImportOption[];fields:Partial<Record<MovementFormField,MovementImportOption[]>>};
+export type MovementImportCatalog={types:MovementWorkbookType[];companies:MovementImportOption[];fields:Partial<Record<MovementFormField,MovementImportOption[]>>};
 const fieldKinds={orgDivision:true,employmentCategory:true,orgRegion:true,orgBranch:true,orgTeam:true,orgSection:true,orgLine:true,orgBase:true} as const;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function assertAdmin(ctx:SessionContext){if(!isAdmin(ctx))throw new Error('Only an admin can import movements.');}
@@ -45,7 +58,7 @@ async function assertCompany(tx:Tx,ctx:SessionContext,id:string){
 }
 async function catalogTx(tx:Tx,ctx:SessionContext,companyId:string):Promise<MovementImportCatalog>{
  await assertCompany(tx,ctx,companyId);
- const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));
+ const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);
  // ac6645ec — the destination of an Entity Transfer may be named by the same Company ID as the row's company.
  const companies=(await tx.select({value:company.id,label:company.legalName,code:company.companyLabel,registration:company.registrationNo}).from(company).where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.is_admin_for(${company.id}) and app.access_workforce_company(${company.id},'workforce.view') and app.access_workforce_company(${company.id},'workforce.maintain')`)).orderBy(asc(company.legalName),asc(company.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1)).map(({code,registration,...row})=>({...row,codes:[code,registration].filter((v):v is string=>!!v?.trim())}));
  const departments=await tx.select({value:department.id,label:department.label,code:department.name}).from(department).where(and(eq(department.tenantId,ctx.tenantId),isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',[companyId]))).orderBy(asc(department.name),asc(department.id)).limit(MOVEMENT_IMPORT_LIMITS.referenceRows+1);
@@ -234,7 +247,7 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  const catalogBefore=prepared?.source??await catalogTx(tx,ctx,before.companyId);
  if(record.before&&Object.keys(record.before).length)checkBefore(record,before,readable(before,catalogBefore),catalogBefore);
  const catalogAfter=prepared?.catalog??(input.companyId&&input.companyId!==before.companyId?await catalogTx(tx,ctx,input.companyId):catalogBefore);
- const result=await (create?create(input):createMovementEventTx(tx,ctx,input));
+ const result=await (create?create(input):createMovementEventTx(tx,ctx,input)).catch(fieldRuleError);
  if('changed' in result&&result.changed===false)throw new Error('movement_has_no_changes');
  const scheduled='scheduled' in result&&result.scheduled===true;
  // Advance only the rollback-only rehearsal, through the very same owner the normal sweep uses.
@@ -260,6 +273,7 @@ async function rehearseSequenceTx(tx:Tx,ctx:SessionContext,records:MovementImpor
 type CorrectedRow={view:MovementImportRow;references:MovementManagerEvidence[];changedFields:string[];rawAfter:Record<string,string|null>;action:'update'|'delete';originalId:string;originalKind:string;originalDate:string;original:CreateMovementInput;replacementId:string|null;closedPayrollPeriods:string[]};
 /** Correction refusals as finite row codes. The owner's own sentence travels as the detail. */
 function correctionError(error:unknown):never{
+ if(error instanceof MovementFieldRuleError)fieldRuleError(error);
  if(error instanceof MovementClosedPayrollAcknowledgementError)throw new Error('closed_payroll_acknowledgement_required:'+error.periods.join(', '));
  if(error instanceof MovementNoChangeError)throw new Error('movement_has_no_changes');
  if(error instanceof MovementNotCorrectableError||error instanceof MovementReasonRequiredError)throw new Error('movement_not_correctable:'+error.message);
@@ -467,7 +481,7 @@ export async function movementImportStateTx(tx:Tx,employmentId:string):Promise<R
 export async function movementImportTemplateData(ctx:SessionContext){
  assertAdmin(ctx);return withTenant(ctx,async tx=>{
   await limits(tx);await lockAccessConfigurationTx(tx,ctx.tenantId);
-  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));
+  const types=(await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);
   const companies=[];
   for(const c of await movementImportCompaniesTx(tx,ctx))companies.push({companyId:c.id,code:allocationCompanyCode(c),name:c.name,catalog:await catalogTx(tx,ctx,c.id)});
   return{types,companies};
@@ -475,7 +489,7 @@ export async function movementImportTemplateData(ctx:SessionContext){
 }
 /** The tenant's active movement types (the catalogue a template is signed to). */
 export async function movementImportTypes(ctx:SessionContext){
- assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return (await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(type=>({code:type.code,label:type.label,behaviour:type.behaviourKind}));});
+ assertAdmin(ctx);return withTenant(ctx,async tx=>{await limits(tx);return (await activeMovementEventTypeChoicesTx(tx,ctx.tenantId)).map(importType);});
 }
 export type MovementImportFilters={departmentIds?:string[];businessUnitIds?:string[];gradeIds?:string[];locationIds?:string[];probationOnly?:boolean};
 /** Server-only download projection. Internal identities never leave this owner in workbook metadata. */

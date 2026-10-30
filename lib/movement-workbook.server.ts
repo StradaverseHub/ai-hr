@@ -11,7 +11,7 @@ import {createHash} from 'node:crypto';
 import {SaxesParser} from 'saxes';
 import type {MovementImportCatalog,MovementImportOption} from '../core/movement-import';
 import {readSpreadsheetArchive,decodeSpreadsheetXml,SpreadsheetArchiveError,type SpreadsheetArchive} from './spreadsheet-archive';
-import {movementWorkbookScalarChoices,type MovementWorkbookType} from './movement-workbook-layout';
+import {movementWorkbookScalarChoices,movementWorkbookChoiceLabel,type MovementWorkbookType} from './movement-workbook-layout';
 import {signMovementTemplate,verifyMovementTemplate} from './movement-workbook-metadata.server';
 import {MOVEMENT_IMPORT_LIMITS,type MovementImportRecord} from './movement-import-contract';
 import {MOVEMENT_ACTIONS,MOVEMENT_COLUMNS,MOVEMENT_SHEET,movementActionLabel,movementColumnCaptions,movementColumnsFor,movementHeaderIssue,movementHeaderVersion,movementRowsToRecords,movementSystemFields,movementTypeDisplay,type MovementSheetRow} from './movement-import-rows';
@@ -36,7 +36,9 @@ const SHEETJS_ROWS=Math.max(...Object.values(MOVEMENT_WORKBOOK_SHEET_ROWS))+1;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 const xml=(s:string)=>s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 function business(value:unknown){const s=value==null?'':String(value);if(s.length>32767||UUID.test(s))throw new Error('workbook_business_value_invalid');return s;}
-/** Binds the tenant's active movement types (code, label, behaviour); a changed catalogue needs a new download. */
+/** Binds the tenant's active movement types (code, label, behaviour); a changed catalogue needs a new download.
+ * 1d58019a Step 2 — each type also carries its controls (offered termination reasons with their names, and
+ * Field Controls), so a changed reason catalogue or rule is a changed catalogue too. */
 export function movementWorkbookCatalogue(catalog:Pick<MovementImportCatalog,'types'>){return createHash('sha256').update(JSON.stringify({version:2,types:catalog.types})).digest('hex');}
 const col=(n:number)=>{let s='';for(n++;n;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s;};
 const ALLOWED_SHEETS=Object.keys(MOVEMENT_WORKBOOK_SHEET_ROWS);
@@ -89,7 +91,8 @@ export async function buildMovementWorkbook(p:MovementTemplateInput){
  if(fieldLabels.has('companyId'))for(const company of p.companies)reference.push(['',fieldLabels.get('companyId')!,company.code,company.name].map(business));
  for(const [field,label]of fieldLabels){
   if(referenceFields.includes(field as MovementFormField)||field==='companyId'||field==='incrementAmount')continue;
-  for(const choice of movementWorkbookScalarChoices(field as MovementFormField))reference.push(['',label,choice.value,p.resolve(choice.labelKey,choice.value)].map(business));
+  // 1d58019a Step 2 — termination reasons are the tenant's catalogue (the reasons its Termination types offer).
+  for(const choice of movementWorkbookScalarChoices(field as MovementFormField,p.types))reference.push(['',label,choice.value,movementWorkbookChoiceLabel(choice,p.resolve)].map(business));
  }
  if(reference.length>MOVEMENT_WORKBOOK_SHEET_ROWS.Reference)throw new Error('movement_reference_catalog_too_large');
  const referenceSheet=XLSX.utils.aoa_to_sheet(reference);referenceSheet['!cols']=[{wch:24},{wch:28},{wch:28},{wch:40}];
