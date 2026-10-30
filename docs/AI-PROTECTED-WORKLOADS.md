@@ -8,7 +8,7 @@ calculate payroll, rate people, approve records or supply verified HR facts.
 | Feature | Available protected assistance | Native screen / remaining input |
 | --- | --- | --- |
 | Provider evaluation | Fixed published synthetic echo and tool-cycle fixtures | Arbitrary provider conversation state is not forwarded. |
-| Module-agent evaluation | Fixed published read-plan and conversation holdouts | No arbitrary caller-labelled “synthetic” prompt or HR source is accepted. Historical results retain their original source identity. |
+| Module-agent evaluation | Fixed published read-plan and conversation holdouts, including the twelve versioned human-planner fixtures | No arbitrary caller-labelled “synthetic” prompt or HR source is accepted. Historical results retain their original source identity. |
 | Personnel import | Select among canonical fields identified locally for each opaque column | Unknown private headings remain unresolved; no rows or raw headings leave the source owner. |
 | Readiness reminders | Choose a tone for a closed missing-record category | Native templates write the reminder; sending still follows the existing notification policy. |
 | Claims triage | Suggest asking for detail when the native source finds a missing or brief description | Category, expense date, subject and financial merit are not inferred from withheld narrative. Longer descriptions retain native review. |
@@ -22,6 +22,24 @@ calculate payroll, rate people, approve records or supply verified HR facts.
 | Performance guide/admin | Select current authorized fact references or existing native links | No invented facts, links, reports or administrative commands. |
 | Calibration | Parse a narrow explicit read request locally and confirm its action | Native review/confirmation owns every sensitive decision; ambiguous names refuse. |
 | Performance draft commands | Parse explicit human-authored fields and exact local targets | No inferred ratings, submission, approval or employment decision. Original UTF-16 spans remain local. |
+
+## Fixed human-planner evaluation fixtures
+
+The existing `synthetic_read_plan_v1` contract retains its exact two-field published prompt-fixture
+input. A separate explicit version1 branch accepts only `version`, `suite`, `suiteDigest`, `candidate`
+and `fixtureId`. Its suite must be `human_plan_holdouts_v1` and its digest must match the current
+checked-in human-planner suite. The twelve eligible IDs are `en-pair`, `en-target`, `ms-pair`,
+`ms-target`, `zh-pair`, `zh-target`, `ta-pair`, `ta-target`, `th-pair`, `th-target`, `vi-pair` and
+`vi-target`. Locale and question text come exclusively from these published synthetic fixtures;
+caller-supplied prose, locale, expected decisions or modules are refused.
+
+The branch preserves the evaluator's original candidate system, exact locale/question JSON,
+384-token limit and 15-second timeout. It uses the same issued configuration and shared evaluation
+spend root, replays current candidate/access/provider checks at admission and disposes each one-use
+request. Expected decisions stay local; two independent complete non-author evaluations remain
+required. This is synthetic evaluator coverage, not permission to forward real human questions or
+HR records. The actual integrated source still requires reviewed privacy binding and hosted checks;
+this description is not a new human sign-off or release acceptance.
 
 ## Examples for input helpers
 
