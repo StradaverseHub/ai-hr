@@ -27,6 +27,12 @@
  * repointed here later with no type surgery. It is NOT repointed by this item: the approved plan is about
  * event TYPES, and moving the exit-reason list at the same time would change two things behind one screen.
  * The text column is what keeps that door open.
+ *
+ * 1d58019a (ADR-0165) — that door is now open, but the reason list moved to its OWN overlay module,
+ * core/termination-reason-catalog.ts, rather than into this one: reasons are resolved inside core/org.ts's
+ * termination writer, and this module imports core/movement (which imports core/org). This item also adds an
+ * optional DESCRIPTION per event type (migration 0713) and admin-only settings readers for the full-width
+ * Movement Settings pages.
  */
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -68,6 +74,8 @@ export type MovementEventTypeRow = {
   behaviourKind: MovementKind;
   /** The tenant's label, or null when the shipped six-locale translation is still in use. */
   label: string | null;
+  /** 1d58019a — optional note shown under the type on the New Event form; null = none. */
+  description: string | null;
   active: boolean;
   sortOrder: number;
   /** true for one of the shipped kinds. A built-in can be renamed and deactivated but never deleted. */
@@ -187,6 +195,7 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
         code: kind,
         behaviourKind: kind,
         label: o?.label ?? null,
+        description: o?.description ?? null,
         active: o ? o.isActive : true,
         sortOrder: o?.sortOrder ?? i,
         builtIn: true,
@@ -204,6 +213,7 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
         // degrades to the neutral record-only kind rather than borrowing a lifecycle kind's consequences.
         behaviourKind: isConfigurableBehaviourKind(o.behaviourKind) ? o.behaviourKind : 'secondment',
         label: o.label,
+        description: o.description,
         active: o.isActive,
         sortOrder: o.sortOrder,
         builtIn: false,
@@ -213,6 +223,25 @@ export function listMovementEventTypes(ctx: SessionContext): Promise<MovementEve
     }
     return rows;
   });
+}
+
+/**
+ * 1d58019a — the Movement Settings pages' reads. The same catalogue, but VIEWING the settings is an admin
+ * capability enforced here as well as by the page guard: the New Event form's read (listMovementEventTypes)
+ * stays open to whoever may record a movement, because it only offers what is active.
+ */
+export async function listMovementEventTypesForSettings(ctx: SessionContext): Promise<MovementEventTypeRow[]> {
+  assertAdmin(ctx, 'view movement settings');
+  return listMovementEventTypes(ctx);
+}
+
+/** One entry for the event-type configuration page, or null for a code this tenant does not know. */
+export async function getMovementEventTypeForSettings(
+  ctx: SessionContext,
+  code: string,
+): Promise<MovementEventTypeRow | null> {
+  assertAdmin(ctx, 'view movement settings');
+  return (await listMovementEventTypes(ctx)).find((r) => r.code === code) ?? null;
 }
 
 /** The types the New Event form offers — the catalogue minus everything switched off. */
@@ -289,11 +318,19 @@ export async function activeMovementEventTypeChoicesTx(tx:Tx,tenantId:string){
  */
 export async function saveMovementEventType(
   ctx: SessionContext,
-  p: { code?: string | null; label: string; behaviourKind?: string | null; sortOrder?: number },
+  p: {
+    code?: string | null;
+    label: string;
+    behaviourKind?: string | null;
+    sortOrder?: number;
+    /** 1d58019a — undefined leaves the stored description alone; blank clears it. */
+    description?: string | null;
+  },
 ): Promise<{ code: string }> {
   assertAdmin(ctx, 'change movement event types');
   const label = p.label.trim();
   if (!label) throw new MovementTypeError('A name is required.');
+  const description = normaliseDescription(p.description);
 
   return withTenant(ctx, async (tx) => {
     await lockMovementTypeCatalogueWriteTx(tx,ctx.tenantId);
@@ -322,6 +359,7 @@ export async function saveMovementEventType(
         behaviourKind,
         label,
         sortOrder: p.sortOrder,
+        description,
       });
       return { code: existingCode };
     }
@@ -338,17 +376,42 @@ export async function saveMovementEventType(
     if (isBuiltInKind(code)) {
       throw new MovementTypeError('That name is already used by a built-in event type. Rename that one instead.');
     }
+    // 1d58019a — `new` is the Add page's own address (/admin/settings/movement/types/new), so a type with
+    // that code could never be opened for editing.
+    if (RESERVED_CODES.has(code)) throw new MovementTypeError('That name is reserved. Choose another name.');
     const existing = await overlayTx(tx, ctx.tenantId);
     if (existing.has(code)) throw new MovementTypeError('An event type with that name already exists.');
-    await upsertTx(tx, ctx, { code, behaviourKind, label, sortOrder: p.sortOrder ?? existing.size });
+    await upsertTx(tx, ctx, { code, behaviourKind, label, sortOrder: p.sortOrder ?? existing.size, description });
     return { code };
   });
+}
+
+const RESERVED_CODES = new Set(['new']);
+const DESCRIPTION_MAX = 1000;
+
+/** Trim; blank means "no description"; refuse one longer than the column allows. */
+function normaliseDescription(v: string | null | undefined): string | null | undefined {
+  if (v === undefined) return undefined;
+  const d = (v ?? '').trim();
+  if (!d) return null;
+  if (d.length > DESCRIPTION_MAX) {
+    throw new MovementTypeError(`Keep the description to ${DESCRIPTION_MAX} characters or fewer.`);
+  }
+  return d;
 }
 
 async function upsertTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { code: string; behaviourKind: MovementKind; label: string | null; sortOrder?: number; isActive?: boolean },
+  p: {
+    code: string;
+    behaviourKind: MovementKind;
+    label: string | null;
+    sortOrder?: number;
+    isActive?: boolean;
+    /** undefined = leave as stored. */
+    description?: string | null;
+  },
 ): Promise<void> {
   const [row] = await tx
     .insert(movementEventType)
@@ -357,6 +420,7 @@ async function upsertTx(
       code: p.code,
       behaviourKind: p.behaviourKind,
       label: p.label,
+      ...(p.description === undefined ? {} : { description: p.description }),
       ...(p.sortOrder === undefined ? {} : { sortOrder: p.sortOrder }),
       ...(p.isActive === undefined ? {} : { isActive: p.isActive }),
     })
@@ -365,18 +429,29 @@ async function upsertTx(
       set: {
         behaviourKind: p.behaviourKind,
         ...(p.label === undefined ? {} : { label: p.label }),
+        ...(p.description === undefined ? {} : { description: p.description }),
         ...(p.sortOrder === undefined ? {} : { sortOrder: p.sortOrder }),
         ...(p.isActive === undefined ? {} : { isActive: p.isActive }),
       },
     })
-    .returning({ id: movementEventType.id, isActive: movementEventType.isActive });
+    .returning({
+      id: movementEventType.id,
+      isActive: movementEventType.isActive,
+      description: movementEventType.description,
+    });
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'movement-event-type',
     aggregateId: row.id,
     eventType: 'movement-event-type.saved',
     actor: actorOf(ctx),
-    payload: { code: p.code, behaviourKind: p.behaviourKind, label: p.label, isActive: row.isActive },
+    payload: {
+      code: p.code,
+      behaviourKind: p.behaviourKind,
+      label: p.label,
+      isActive: row.isActive,
+      description: row.description,
+    },
   });
 }
 

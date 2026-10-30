@@ -9678,6 +9678,8 @@ export const movementEventType = pgTable(
     behaviourKind: text('behaviour_kind').notNull(),
     /** Display text. Null on a built-in override means "use the shipped translation". */
     label: text('label'),
+    /** 1d58019a (migration 0713) — optional note shown under the type on the New Event form. */
+    description: text('description'),
     sortOrder: integer('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
@@ -9685,6 +9687,34 @@ export const movementEventType = pgTable(
   (t) => [
     index('movement_event_type_tenant_idx').on(t.tenantId),
     uniqueIndex('movement_event_type_tenant_code_uq').on(t.tenantId, t.code),
+  ],
+);
+
+// ─────────────── Termination reasons — tenant overlay (1d58019a, migration 0713, ADR-0165) ───────────────
+// The SAME overlay shape as movement_event_type above, for the exit-reason list: the thirteen built-in reasons
+// in core/termination-reason.ts stay the starting list, and a row renames / switches off one of them or adds
+// one of the tenant's own inside one of the three FIXED groups. No stored termination_type: the turnover
+// classification is derived in code (built-in mapping, else the group), so it has exactly one owner.
+// employment.termination_reason_code stays TEXT with no FK, so history keeps whatever code it recorded.
+// RLS (0713): tenant-read for every member, admin-only insert/update/delete.
+export const terminationReason = pgTable(
+  'termination_reason',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity recorded on employment.termination_reason_code and in the movement payload. */
+    code: text('code').notNull(),
+    /** Display text. Null on a built-in override means "use the shipped translation". */
+    label: text('label'),
+    /** 'voluntary' | 'involuntary' | 'other' — the three fixed groups. */
+    category: text('category').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('termination_reason_tenant_idx').on(t.tenantId),
+    uniqueIndex('termination_reason_tenant_code_uq').on(t.tenantId, t.code),
   ],
 );
 

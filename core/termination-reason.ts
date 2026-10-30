@@ -24,6 +24,15 @@
  * exit classified `voluntary`) is a data-quality fault waiting to happen, and there is no honest way for a
  * reader to tell which of the two was meant. `death` and `other` are carried as reason codes precisely so
  * that every value the existing enum can express is still reachable through the single control.
+ *
+ * ── 1d58019a: THIS IS NOW THE STARTING LIST, NOT THE WHOLE LIST (ADR-0165) ───────────────────────────────
+ * Each tenant can rename and switch off these reasons and add its own inside the three fixed groups. That
+ * overlay lives in `termination_reason` (migration 0713) and is read through core/termination-reason-
+ * catalog.ts, exactly as movement_event_type overlays MOVEMENT_KINDS. This module stays PURE (no database
+ * import) because client-side and workbook code import it; anything that must know a tenant's own reasons
+ * resolves them through the catalogue module instead of the constants below. A built-in reason keeps its
+ * shipped classification whatever it is renamed to; a custom reason derives it from its group
+ * (terminationTypeForCategory) — one owner for the classification either way.
  */
 import type { TerminationType } from './org';
 
@@ -90,3 +99,16 @@ export function terminationReasonsByCategory(): { category: TerminationReasonCat
     reasons: TERMINATION_REASONS.filter((r) => r.category === category),
   }));
 }
+
+/**
+ * 1d58019a — the turnover classification of a tenant's OWN reason, derived from its group. The group is the
+ * whole classification by design: the three groups feed the Terminations and Turnover analytics, and a
+ * custom reason cannot claim the finer built-in mappings (retired, contract_end, death), which belong to the
+ * shipped reasons that mean exactly that.
+ */
+export function terminationTypeForCategory(category: TerminationReasonCategory): TerminationType {
+  return category;
+}
+
+export const isTerminationReasonCategory = (v: unknown): v is TerminationReasonCategory =>
+  typeof v === 'string' && (TERMINATION_REASON_CATEGORIES as readonly string[]).includes(v);

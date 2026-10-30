@@ -35,8 +35,9 @@ import { lockLabelCriteriaTx, labelUsableByCompany } from './system-labels';
 import { deriveEmploymentStatus } from './employment-status';
 // ae9350f2 — the coded exit reason derives the turnover classification. termination-reason.ts imports only
 // the TerminationType TYPE back from this file, so the cycle is erased at compile time and there is no
-// runtime import loop.
-import { terminationTypeForReason } from './termination-reason';
+// runtime import loop. 1d58019a — resolved through the tenant's catalogue (core/termination-reason-catalog.ts,
+// same type-only back-reference), so a tenant's own reason derives its group's classification.
+import { terminationTypeForReasonTx } from './termination-reason-catalog';
 // Company-change gate (9464bd56): the pre-transaction check lives in core/read.ts (ONE greppable set of
 // module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
@@ -709,7 +710,7 @@ export async function terminateEmploymentTx(
   // ae9350f2 — the coded reason is the single source of the classification when it is present. An unknown
   // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
   // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.
-  const derivedType = terminationTypeForReason(p.terminationReasonCode);
+  const derivedType = await terminationTypeForReasonTx(tx, ctx.tenantId, p.terminationReasonCode);
   const terminationPatch={terminated_on:p.terminationDate,termination_type:derivedType??p.terminationType??null,
     termination_reason:p.terminationReason?.trim()||null,
     ...(p.terminationReasonCode!==undefined?{termination_reason_code:p.terminationReasonCode||null}:{}),

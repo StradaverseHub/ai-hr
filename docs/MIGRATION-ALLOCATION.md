@@ -5,6 +5,23 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Board item 1d58019a (Movement Settings Enhancement, Step 1) — 30 October 2026
+
+Unapplied source reservation on `claude/fb-1d58019a` (base origin/main `f752ac7f5`, whose journal ends at
+idx682 / 0698_information_only_corrections / sequence1793330000030). A fresh check of every local and
+`origin/*` ref plus every registered worktree found migration filenames claimed through
+`0712_delegated_leave_review_receipts` and journal sequences through 1793330000041 (AI allocation branches,
+e.g. `codex/ai-dev-integration-work-20261030`). This item therefore takes the next free filename and sequence
+rather than any lower gap:
+
+| Owner | Index (on this branch) | Sequence | Filename | SQL SHA256 |
+| --- | ---: | ---: | --- | --- |
+| Board 1d58019a | 683 | 1793330000042 | 0713_movement_settings_catalog | 7e0f83300471d5297a0345a16ed8e156fd3fbd7ed8fc5a521577173c1c0c1246 |
+
+The index is this branch's journal position only. Integration with the AI 0699–0712 allocations must
+re-position the entry after them (index changes, filename/sequence/SQL bytes do not). Nothing is applied
+anywhere; recheck competing claims and the installed ledger before integration.
+
 ## Owner-approved combined board allocation — 29 October 2026
 
 ### Successor work in progress after the installed expanded release
