@@ -62,6 +62,56 @@ class BundleTests(unittest.TestCase):
             bundle.unpack(archive,manifest,self.destination,self.target)
         self.assertFalse(self.destination.exists())
 
+    def refusal_details(self, error):
+        prefix='Build bundle refused: nonregular or oversized file; '
+        self.assertTrue(str(error).startswith(prefix))
+        self.assertNotIn(str(self.root),str(error))
+        self.assertNotIn('\n',str(error))
+        return json.loads(str(error)[len(prefix):])
+
+    def test_oversized_member_refusal_identifies_exact_bound_without_reading_payload(self):
+        file=self.source/'.next/server/oversized.js'
+        with file.open('wb') as stream:stream.truncate(bundle.MAX_FILE+1)
+        with self.assertRaises(ValueError) as caught:bundle.pack(self.source,self.output)
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'build-payload-member','path':'server/oversized.js','type':'regular',
+            'sizeBytes':bundle.MAX_FILE+1,'limitBytes':bundle.MAX_FILE})
+        self.assertFalse(self.output.exists())
+
+    def test_compressed_archive_refusal_reports_actual_size_and_preserves_owned_cleanup(self):
+        # Isolate the archive boundary with a smaller test-only limit; production limits never change.
+        with mock.patch.object(bundle,'MAX_ARCHIVE',1):
+            with self.assertRaises(ValueError) as caught:bundle.pack(self.source,self.output)
+        details=self.refusal_details(caught.exception)
+        self.assertEqual({k:details[k] for k in ['context','path','type','limitBytes']},{
+            'context':'compressed-build-archive','path':'build-bundle.tar.gz','type':'regular','limitBytes':1})
+        self.assertGreater(details['sizeBytes'],1)
+        self.assertFalse(self.output.exists())
+
+    def test_external_package_and_manifest_refusals_identify_their_distinct_bounds(self):
+        file=self.source/'node_modules/.store/sharp/package.json'
+        with file.open('wb') as stream:stream.truncate(256*1024+1)
+        with self.assertRaises(ValueError) as caught:bundle.package_identity(self.source,'sharp')
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'external-package-manifest:sharp','path':'package.json','type':'regular',
+            'sizeBytes':256*1024+1,'limitBytes':256*1024})
+        file=self.root/'manifest.json'
+        with file.open('wb') as stream:stream.truncate(bundle.MAX_MANIFEST+1)
+        with self.assertRaises(ValueError) as caught:bundle.read_manifest(file)
+        self.assertEqual(self.refusal_details(caught.exception),{
+            'context':'build-manifest','path':'manifest.json','type':'regular',
+            'sizeBytes':bundle.MAX_MANIFEST+1,'limitBytes':bundle.MAX_MANIFEST})
+
+    def test_nonregular_and_escaped_path_diagnostics_do_not_follow_or_read_objects(self):
+        file=self.root/'blocked-fifo';os.mkfifo(file)
+        with self.assertRaises(ValueError) as caught:bundle.regular(file,context='fixture',root=self.root)
+        details=self.refusal_details(caught.exception);self.assertEqual(details['type'],'fifo')
+        self.assertEqual(details['path'],'blocked-fifo')
+        file=self.root/'escaped\nname';file.write_text('PRIVATE_CONTENT_MUST_STAY_LOCAL')
+        with self.assertRaises(ValueError) as caught:bundle.regular(file,0,context='fixture',root=self.root)
+        self.assertNotIn('PRIVATE_CONTENT_MUST_STAY_LOCAL',str(caught.exception))
+        self.assertEqual(self.refusal_details(caught.exception)['path'],'escaped\nname')
+
     def test_round_trip_preserves_all_production_bytes_and_rebuilds_only_known_aliases(self):
         m,archive,manifest=self.packed();actual=bundle.unpack(archive,manifest,self.destination,self.target)
         self.assertEqual(m,actual);self.assertNotIn('result',m)

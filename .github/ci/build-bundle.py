@@ -45,9 +45,16 @@ def safe_path(value):
         raise ValueError("Build bundle refused: unsupported bounded USTAR path") from error
     return value
 
-def regular(path, limit=MAX_FILE):
+def regular(path, limit=MAX_FILE, *, context="file", root=None):
     st = path.lstat()
-    require(stat.S_ISREG(st.st_mode) and not path.is_symlink() and st.st_size <= limit, "nonregular or oversized file")
+    if not (stat.S_ISREG(st.st_mode) and not path.is_symlink() and st.st_size <= limit):
+        # Refusal metadata only: never open the rejected object or disclose its contents or absolute root.
+        kind = {stat.S_IFREG: "regular", stat.S_IFDIR: "directory", stat.S_IFLNK: "symlink",
+                stat.S_IFIFO: "fifo", stat.S_IFSOCK: "socket", stat.S_IFCHR: "character-device",
+                stat.S_IFBLK: "block-device"}.get(stat.S_IFMT(st.st_mode), "unknown")
+        details = {"context": context, "path": path.relative_to(root).as_posix() if root is not None else path.name,
+                   "type": kind, "sizeBytes": st.st_size, "limitBytes": limit}
+        require(False, "nonregular or oversized file; " + json.dumps(details, sort_keys=True, ensure_ascii=True))
     return st
 
 def identity(st):
@@ -105,7 +112,7 @@ def package_identity(source, name, producer_source=None):
     require(modules.is_dir() and not modules.is_symlink() and modules.resolve() == modules, "runtime node_modules must be canonical")
     target = (modules / name).resolve(strict=True)
     require(target.is_dir() and target.is_relative_to(modules), "external package escapes runtime dependencies")
-    file = target / "package.json"; regular(file, 256 * 1024)
+    file = target / "package.json"; regular(file, 256 * 1024, context="external-package-manifest:" + name, root=target)
     data = file.read_bytes(); value = json.loads(data)
     require(isinstance(value,dict) and value.get("name") == name and isinstance(value.get("version"), str) and re.fullmatch(r"[0-9A-Za-z.+_-]{1,80}", value["version"]), "external package identity differs")
     rows=[];total=0
@@ -113,7 +120,7 @@ def package_identity(source, name, producer_source=None):
         for child in list(dirs)+files:
             require(not (Path(base)/child).is_symlink(),'unsupported symlink inside external package')
         for child in files:
-            path=Path(base)/child;before=regular(path,MAX_PACKAGE);total+=before.st_size
+            path=Path(base)/child;before=regular(path,MAX_PACKAGE,context="external-package-file:" + name,root=target);total+=before.st_size
             require(total<=MAX_PACKAGE and len(rows)<2000,'external package exceeds comparison bound')
             relative=path.relative_to(target).as_posix();size=before.st_size
             if name=='sharp' and value['version']=='0.35.5' and relative=='node_modules/.bin/semver':
@@ -154,7 +161,7 @@ def scan(source):
                 directories.append(rel)
             else:
                 require(rel.split("/")[0] != "node_modules", "unexpected dependency file in payload")
-                st = regular(path); files.append((rel, identity(st), stat.S_IMODE(st.st_mode)))
+                st = regular(path, context="build-payload-member", root=root); files.append((rel, identity(st), stat.S_IMODE(st.st_mode)))
         # Never follow the external aliases, even if os.walk classified them as directories.
         dirs[:] = sorted(d for d in dirs if not (base / d).is_symlink())
     require(0 < len(files) <= MAX_FILES and len(files) + len(directories) <= MAX_FILES and sum(x[1][2] for x in files) <= MAX_UNPACKED, "build file count/size exceeds bound")
@@ -227,7 +234,7 @@ def pack(source, output):
                     require(reader.count == info.size and identity(os.fstat(stream.fileno())) == expected, "build changed during packaging")
                     rows.append({"path": path, "size": info.size, "sha256": reader.hash.hexdigest(), "mode": info.mode})
         require(scan(source) == (files, dirs, aliases), "build inventory changed during packaging")
-        regular(archive, MAX_ARCHIVE)
+        regular(archive, MAX_ARCHIVE, context="compressed-build-archive", root=output)
         build_id = (source / ".next/BUILD_ID").read_text().strip()
         require(build_id and len(build_id.encode()) <= 512 and not any(ord(c) < 32 or ord(c) == 127 for c in build_id), "invalid production build ID")
         manifest = {"format": 1, "kind": "next-build-byte-bundle", "platform": sys.platform, "nextBuildId": build_id,
@@ -273,13 +280,13 @@ def validate_manifest(m):
     return m
 
 def read_manifest(path):
-    regular(path,MAX_MANIFEST);data=path.read_bytes();m=json.loads(data)
+    regular(path,MAX_MANIFEST,context="build-manifest",root=path.parent);data=path.read_bytes();m=json.loads(data)
     require(data==canonical(m),'noncanonical/duplicate manifest JSON')
     return validate_manifest(m)
 
 def unpack(archive, manifest_path, destination, runtime_source, producer_source=None):
     archive, manifest_path, destination, runtime_source=map(lambda p:Path(p).absolute(),[archive,manifest_path,destination,runtime_source])
-    m=read_manifest(manifest_path);st=regular(archive,MAX_ARCHIVE)
+    m=read_manifest(manifest_path);st=regular(archive,MAX_ARCHIVE,context="compressed-build-archive",root=archive.parent)
     require(st.st_size==m['archiveBytes'] and digest_file(archive)==m['archiveSha256'],'archive bytes differ')
     require(destination.parent.resolve()==destination.parent and stat.S_IMODE(destination.parent.stat().st_mode)&0o077==0 and destination.parent.stat().st_uid==os.getuid(),'private canonical destination parent required')
     require(runtime_source.resolve()==runtime_source and runtime_source.is_dir(),'canonical runtime source required')
@@ -363,7 +370,7 @@ def verify_directory(destination, manifest_path, runtime_source, producer_source
                 seen_dirs.add(relative);walk(path)
             else:
                 require(relative in files, "unexpected installed file")
-                row=files[relative];regular(path)
+                row=files[relative];regular(path,context="installed-build-payload-member",root=destination)
                 require(before.st_size==row['size'] and stat.S_IMODE(before.st_mode)==row['mode'] and digest_file(path)==row['sha256'], "installed file bytes or mode differ")
                 require(identity(path.stat())==identity(before), "installed file changed while hashing")
                 seen_files.add(relative)
