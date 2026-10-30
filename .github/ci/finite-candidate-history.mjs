@@ -7,11 +7,12 @@ import {fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
 import {hash} from './manifest.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,verifyArtifactBytes} from './release-policy.mjs';
+import {finiteGithubJson,finiteGithubPages} from './finite-github-read.mjs';
 import {BROWSER_REPAIR_WORKFLOW_ID} from './browser-repair-metadata.mjs';
 export const FINITE_SOURCE='6bdddf4f84b3ecb693d8fbf29409373e49c73ac9';
 export const PUBLISHED_CONTROLLER='d6cb83d620d8d4380c981a72fc41628780840b4e';
-export const FROZEN_PROOF_CONTROLLER='7d8bc8ac35c83553a48be3585022d12e03a20590';
-const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',timeout:60000,maxBuffer:64*1024**2}));
+export const FROZEN_PROOF_CONTROLLER='4b187c2628ebb24402adb5a196ab704ff35781a3';
+const api=finiteGithubJson;
 export function completeWorkflowRows(workflowIds,readApi=api){
  const rows=[],ids=new Set();assert(workflowIds.length===3&&new Set(workflowIds).size===3,'Exact supported workflow registry required');
  for(const workflow of workflowIds){let total=null,seen=0;
@@ -26,7 +27,7 @@ export function completeWorkflowRows(workflowIds,readApi=api){
  }
  return rows;
 }
-function pages(path,key){const all=[];for(let page=1;page<=10;page++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(r[key]),'Missing history producer inventory');all.push(...r[key]);if(r[key].length<100)return all;}throw Error('History producer inventory exceeds bound');}
+const pages=finiteGithubPages;
 const metadata=id=>({run:api(`actions/runs/${id}`),jobs:pages(`actions/runs/${id}/jobs?filter=all`,'jobs'),artifacts:pages(`actions/runs/${id}/artifacts`,'artifacts')});
 export function supportedExecution(row){return row.event==='workflow_dispatch'&&['main','alpha'].includes(row.head_branch)&&row.head_sha===PUBLISHED_CONTROLLER;}
 export function bindExecutionSource({row,directory,readMetadata=metadata,download=a=>execFileSync('gh',['api',`repos/${REPOSITORY}/actions/artifacts/${a.id}/zip`],{timeout:60000,maxBuffer:64*1024**2}),readPacket=(path,member)=>JSON.parse(execFileSync('python3',[fileURLToPath(new URL('./finite-history-source-extract.py',import.meta.url)),path,member],{encoding:'utf8',timeout:10000,maxBuffer:64*1024**2}))}){
