@@ -17,7 +17,7 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, asc } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext } from '../db/client';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -104,7 +104,8 @@ const auditEvents = (tenantId: string, eventType: string) =>
   owner.db
     .select()
     .from(schema.domainEvent)
-    .where(and(eq(schema.domainEvent.tenantId, tenantId), eq(schema.domainEvent.eventType, eventType)));
+    .where(and(eq(schema.domainEvent.tenantId, tenantId), eq(schema.domainEvent.eventType, eventType)))
+    .orderBy(asc(schema.domainEvent.sequence));
 
 describe('1d58019a — the reason catalogue is an overlay on the built-in list', () => {
   it('a tenant that configured nothing sees the thirteen built-ins, in order, active, with nothing stored', async () => {

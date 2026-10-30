@@ -183,7 +183,8 @@ function catalogue(overlay: Map<string, OverlayRow>): (ResolvedTerminationReason
  * The Termination Reasons settings tab: built-ins in their shipped order, then the organisation's own by
  * sort order. Admin-only — this is the settings view, with in-use flags.
  */
-export function listTerminationReasons(ctx: SessionContext): Promise<TerminationReasonRow[]> {
+// async so the admin refusal is a rejected promise like every other settings call, never a sync throw.
+export async function listTerminationReasons(ctx: SessionContext): Promise<TerminationReasonRow[]> {
   assertAdmin(ctx, 'view termination reason settings');
   return withTenant(ctx, async (tx) => {
     const overlay = await overlayTx(tx, ctx.tenantId);

@@ -61,8 +61,8 @@ const PAGE = '/admin/settings/movement';
  * WHAT STAYS (each line was a decision once — see git history for the full notes):
  *   • The toolbar, search, sort and status filter come from components/settings-list.tsx, the shared
  *     System Settings idiom (test/settings-list-idiom.test.ts).
- *   • PAGED SINCE 9da61c86, REVERSING the note that once stood here. It read: "NO PAGINATION,
- *     deliberately. A tenant has a handful of event types; searching finds one faster than paging." The
+ *   • PAGED SINCE 9da61c86, REVERSING the note that once stood here. It read:
+ *     "NO PAGINATION, deliberately. A tenant has a handful of event types; searching finds one faster than paging." The
  *     premise is still true, but a control that appears only once a list grows is a surprise, not a
  *     framework (fc776376). The contract is lib/pagination + components/Pager, never a hand-rolled sixth.
  *   • Created, not Last Updated: there is no updated_at, and a built-in reads "Built-in" because it has no
