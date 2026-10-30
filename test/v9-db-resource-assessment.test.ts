@@ -1,10 +1,14 @@
 import {expect,it} from 'vitest';
-import {readFileSync,mkdtempSync,readdirSync,rmSync} from 'node:fs';
+import {readFileSync,mkdtempSync,mkdirSync,writeFileSync,readdirSync,rmSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
-import {join} from 'node:path';
+import {join,dirname} from 'node:path';
+import {fixture as originalFixture,put} from '../.github/ci/resume-test-fixtures.mjs';
+import {assessResumeSource} from '../.github/ci/resume-source.mjs';
+import {buildPacketFixture} from '../.github/ci/build-artifact-test-fixture.mjs';
+import {inspectCiBuildPacket,bindCiBuildSource} from '../.github/ci/build-artifact.mjs';
 import {fileURLToPath} from 'node:url';
-import {V9_DB_CASE as pin,caseInventory,validateFreshDb,checkHistory,collectPages,assessV9DbResource} from '../.github/ci/v9-db-resource-policy.mjs';
+import {V9_DB_CASE as pin,caseInventory,validateFreshDb,checkHistory,collectPages,assessV9DbResource,validateOriginalPrerequisites,validateRetainedReports,assertStableSnapshot} from '../.github/ci/v9-db-resource-policy.mjs';
 import {hash,CI_EXECUTION} from '../.github/ci/manifest.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,verifyArtifactBytes,digest} from '../.github/ci/release-policy.mjs';
 const inventory:Record<string,string[]>=JSON.parse(readFileSync(new URL('../.github/ci/fixtures/v9-db-resource-cases.json',import.meta.url),'utf8'));
@@ -18,7 +22,7 @@ function fixture():any{
  const result={success:true,numFailedTests:0,numFailedTestSuites:0,numPendingTests:0,numTodoTests:0,numTotalTests:435,numPassedTests:435,testResults:files.map(path=>({name:cwd+'/'+path,status:'passed',assertionResults:inventory[path].map(fullName=>({fullName,status:'passed'}))}))};
  const resource={schemaVersion:1,name:'aihr-ci-321-1-db-1',errors:{},memoryLimit:2147483648,memoryMax:2147483648,memoryPeak:1073741824,memoryEvents:{oom:0,oom_kill:0,max:0},state,settings:{jit:'on',jitAvailable:true,serverVersionNum:'160015'},capturedAt:at(125)};
  const report={kind:'FOCUSED_ONLY',releaseEligible:false,schemaVersion:1,sha:pin.candidate,controller:pin.controller,runId:'321',attempt:'1',exitCode:0,runtime,files,groups:{NODB:[],DB:files},manifestHash:hash(JSON.stringify(files)),classifierHash:'c'.repeat(64),healthBefore:{ok:true},healthAfter:{ok:true},startedAt:at(70),endedAt:at(130),databaseTerminalEvidence:resource,batches:[{kind:'DB',files,exitCode:0,processExitCode:0,signal:null,assertions:435,startedAt:at(80),endedAt:at(120)}]};
- return {plan:{runtime,execution:structuredClone(CI_EXECUTION)},unit:{files},source:{run:{id:pin.runId,updated_at:at(0)}},focused:{run,jobs,artifacts:[artifact],report,result,state:structuredClone(state)},classifierHash:'c'.repeat(64),selectedLog:'AIHR_CI_PG_MEMORY_GIB: 2\nAIHR_CI_PG_JIT: on\nAIHR_TEST_DURATION_ORDER: true\n',focusedWorkflowId:12345,oldCases:{entries,total:435},now:epoch+200000};
+ return {plan:{runtime:structuredClone(runtime),execution:structuredClone(CI_EXECUTION)},unit:{files},source:{run:{id:pin.runId,updated_at:at(0)}},focused:{run,jobs,artifacts:[artifact],report,result,state:structuredClone(state)},classifierHash:'c'.repeat(64),selectedLog:'AIHR_CI_PG_MEMORY_GIB: 2\nAIHR_CI_PG_JIT: on\nAIHR_TEST_DURATION_ORDER: true\n',focusedWorkflowId:12345,oldCases:{entries,total:435},now:epoch+200000};
 }
 it('checks all 435 original case identities and the complete fresh DB unit with unchanged profile',()=>{const f=fixture();expect(hash(f.oldCases.entries)).toBe(pin.cases);expect(validateFreshDb(f).replacement.total).toBe(435);});
 it.each([
@@ -42,6 +46,9 @@ it.each([
  ['foreign DB owner',(f:any)=>{f.focused.report.databaseTerminalEvidence.name='aihr-ci-999-1-db-1';}],
  ['changed PG patch',(f:any)=>{f.focused.report.databaseTerminalEvidence.settings.serverVersionNum='160014';}],
  ['JIT off',(f:any)=>{f.focused.report.databaseTerminalEvidence.settings.jit='off';}],
+ ['inverted report interval',(f:any)=>{f.focused.report.startedAt=at(135);}],
+ ['inverted batch interval',(f:any)=>{f.focused.report.batches[0].startedAt=at(121);}],
+ ['batch starts after report end',(f:any)=>{f.focused.report.batches[0].startedAt=at(131);}],
  ['capture before tests ended',(f:any)=>{f.focused.report.databaseTerminalEvidence.capturedAt=at(110);}],
  ['different container PID',(f:any)=>{f.focused.state.Pid=5678;}],
  ['cleanup failure',(f:any)=>{f.focused.jobs[1].steps[0].conclusion='failure';}],
@@ -71,4 +78,33 @@ it.each(['valid','traversal','duplicate','symlink'])('extracts only the finite f
  const extract=()=>execFileSync('python3',[fileURLToPath(new URL('../.github/ci/v9-db-resource-extract.py',import.meta.url)),archive,target],{stdio:'pipe'});
  if(kind==='valid'){extract();expect(readdirSync(target).sort()).toEqual(['focused.json','db.vitest.json','postgres-state.json','postgres-stats.txt','postgres.log'].sort());}else expect(extract).toThrow();
  }finally{rmSync(dir,{recursive:true,force:true});}
+});
+
+it('does not hide a same-source alias or an unresolved active application behind another title',()=>{
+ const {rows,context}=historyFixture(),alias={...rows[1],id:999,display_title:'Focused only · another-frozen-alias',status:'in_progress',conclusion:null};
+ expect(()=>checkHistory([...rows,alias],context)).toThrow('Unresolved application identity');
+ const proof={runId:999,source:pin.candidate,controller:pin.controller,authenticated:true,artifactId:777,digest:'sha256:'+'b'.repeat(64)};
+ expect(()=>checkHistory([...rows,alias],{...context,bindings:new Map([[999,proof]])})).toThrow('Unaccounted');
+ expect(checkHistory([...rows,alias],{...context,bindings:new Map([[999,{...proof,source:'e'.repeat(40)}]])}).runIds).toEqual([pin.runId,321]);
+});
+
+it('composes real original API/ZIP, prerequisite and retained-report authentication with bound fixture packets',()=>{
+ const source=originalFixture(),failed=source.expectedPlan.units.find((u:any)=>u.kind==='db')!.id;source.jobs.find((j:any)=>j.name===`test (${failed})`)!.conclusion='failure';
+ const assessed=assessResumeSource(source);expect(assessed.rerun.map((u:any)=>u.id)).toEqual([failed]);expect(()=>validateOriginalPrerequisites(source.expectedPlan,source,failed)).not.toThrow();expect(validateRetainedReports(source.expectedPlan,source.reports,assessed,failed)).toHaveLength(source.expectedPlan.units.length-1);
+ for(const name of ['build','migrations','typecheck','browser (webkit)']){const changed=structuredClone(source.jobs);changed.find(j=>j.name===name)!.conclusion='failure';expect(()=>validateOriginalPrerequisites(source.expectedPlan,{jobs:changed},failed)).toThrow();}
+ expect(()=>validateOriginalPrerequisites(source.expectedPlan,{jobs:source.jobs.filter(j=>j.name!=='build')},failed)).toThrow();
+ const tampered=structuredClone(source.reports),retained=tampered.find(r=>r.id!==failed)!;retained.batches[0].result.numPassedTests=0;expect(()=>validateRetainedReports(source.expectedPlan,tampered,assessed,failed)).toThrow();
+ expect(()=>validateRetainedReports(source.expectedPlan,source.reports.slice(1),assessed,failed)).toThrow();
+ source.archives.set('gate-plan',Buffer.from('changed ZIP'));expect(()=>assessResumeSource(source)).toThrow();
+});
+it('refuses original source/controller/job/artifact changes through the actual shared authenticator',()=>{
+ for(const mutate of [(f:any)=>{f.run.head_sha='f'.repeat(40);},(f:any)=>{f.run.run_attempt=2;},(f:any)=>{f.jobs=f.jobs.slice(1);},(f:any)=>{f.artifacts[0].workflow_run.id=999;},(f:any)=>{f.artifacts[0].digest='sha256:'+'f'.repeat(64);}]){const source=originalFixture();mutate(source);expect(()=>assessResumeSource(source)).toThrow();}
+});
+it('revalidation rejects changed API job or artifact facts after an initially valid snapshot',()=>{
+ const before={run:{id:1},jobs:[{id:2,conclusion:'success'}],artifacts:[{id:3,digest:'original'}]};expect(()=>assertStableSnapshot(before,structuredClone(before))).not.toThrow();for(const key of ['jobs','artifacts']){const changed=structuredClone(before) as any;changed[key][0].id=999;expect(()=>assertStableSnapshot(before,changed)).toThrow();}
+});
+it('binds the original canonical build to source inputs and refuses altered lock/package/testing bytes',()=>{
+ const f=buildPacketFixture(),dir=mkdtempSync(join(tmpdir(),'v9-original-build-'));
+ try{for(const [name,data] of Object.entries(f.entries)){mkdirSync(dirname(join(dir,name)),{recursive:true,mode:0o700});writeFileSync(join(dir,name),data as string|Buffer,{mode:0o600});}const packet=inspectCiBuildPacket(dir,f.expected);expect(bindCiBuildSource(packet,f.source).canonicalCandidateInputsVerified).toBe(true);for(const key of ['lockBytes','packageBytes','preparedBytes'])expect(()=>bindCiBuildSource(packet,{...f.source,[key]:Buffer.from('changed')})).toThrow();}
+ finally{rmSync(dir,{recursive:true,force:true});}
 });
