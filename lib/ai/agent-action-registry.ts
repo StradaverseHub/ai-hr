@@ -68,7 +68,7 @@ export type AgentAutomaticSource='claim'|'attendance_correction'|'replacement_le
 export type AgentAutomaticPolicy=Readonly<{specialist:AgentAutomaticSpecialist;source:AgentAutomaticSource;/** Default working_wait. Fixed presence/expiry sources have explicit eligibility and no overdue-day interpretation. */eligibility?:'working_wait'|'previous_date_record_gap'|'recorded_expiry_30_calendar_days';overdueAfterDays:number;cooldownDays:number;maxPerItem:number;maxPerRun:number}>;
 
 /** Closed country-owned members; metadata never resolves or executes a callable. */
-export type AgentActionServiceMember='statutory.set'|'statutory.setBank'|'statutory.setPassport';
+export type AgentActionServiceMember='statutory.set'|'statutory.setBank'|'statutory.setPassport'|'statutory.setTp3';
 
 /** The policy field reuses WP2's AgentActionPolicy union, so `{category:'pay',tier:'automatic'}` (or any
  * never-Automatic category paired with Automatic) is a compile error in the entry itself. */
@@ -398,6 +398,22 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#updateEmployeeDocumentMetaAction']},review:{route:'/assistant/document-details',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'documentMetadata',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.fixed_item.archive',module:'employees',owner:'payroll',service:'packs/payroll/service.ts#archiveEmploymentPayComponent',contractVersion:1,
+  prepare:{status:'implemented',adapter:'fixed_item_archive_review_v1',inputSchema:'FixedItemArchive.Human',outputSchema:'FixedItemArchive.Prepared'},
+  confirm:{status:'implemented',adapter:'fixed_item_archive_review_v1',inputSchema:'FixedItemArchive.Confirmation',outputSchema:'FixedItemArchive.Completed'},
+  outcome:'canonical_receipt_required',semantics:'recurring_item_archived_history_retained_no_recalculation_or_stale_mark',humanInputs:['employmentId','subjectId'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/fixed-item-archive-source.ts#withFixedItemArchiveSubjectTx'},subject:'other_employment',blastRadius:{max:1,unit:'existing_recurring_pay_item'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'entry_point',by:'app/payroll/transactions/fixed/actions.ts#createFixedTransactionAction'},evaluationCases:[],
+  screen:{native:'app/payroll/transactions/fixed/[id]/page.tsx',entryPoints:['app/payroll/transactions/fixed/actions.ts#archiveFixedTransactionAction']},review:{route:'/assistant/fixed-item-archive',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'fixedItemArchive',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.cost_allocation.maintain',module:'employees',owner:'personnel',service:'core/employment-cost-allocations.ts#saveEmploymentCostAllocations',contractVersion:1,
+  prepare:{status:'implemented',adapter:'cost_allocation_maintenance_review_v1',inputSchema:'CostAllocationMaintenance.Human',outputSchema:'CostAllocationMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'cost_allocation_maintenance_review_v1',inputSchema:'CostAllocationMaintenance.Confirmation',outputSchema:'CostAllocationMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'dated_distribution_replaced_or_cleared_no_payroll_recalculation',humanInputs:['employmentId','subjectId','effectiveDate','effectiveCompanyId','expectedRevision','operation','rows'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/cost-allocation-maintenance-source.ts#withCostAllocationIntervalTx'},subject:'other_employment',blastRadius:{max:1,unit:'one_dated_distribution_complete_replace_or_clear'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/cost-allocation',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'costAllocationMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.payment_method.maintain',module:'employees',owner:'personnel',service:'core/org.ts#setEmploymentPaymentMethod',contractVersion:1,
   prepare:{status:'implemented',adapter:'payment_method_maintenance_review_v1',inputSchema:'PaymentMethodMaintenance.Human',outputSchema:'PaymentMethodMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'payment_method_maintenance_review_v1',inputSchema:'PaymentMethodMaintenance.Confirmation',outputSchema:'PaymentMethodMaintenance.Completed'},
@@ -406,6 +422,14 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/payment-method',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'paymentMethodMaintenance',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.tp3_opening.maintain',module:'employees',owner:'personnel',service:'localization/registry.ts#requirePackFor',serviceMember:'statutory.setTp3',contractVersion:1,
+  prepare:{status:'implemented',adapter:'tp3_opening_maintenance_review_v1',inputSchema:'Tp3OpeningMaintenance.Human',outputSchema:'Tp3OpeningMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'tp3_opening_maintenance_review_v1',inputSchema:'Tp3OpeningMaintenance.Confirmation',outputSchema:'Tp3OpeningMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'hand_tp3_balances_saved_year_and_ancillary_seeds_unchanged_no_payroll_recalculation',humanInputs:['employmentId','subjectId','fields'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/tp3-opening-maintenance-source.ts#withTp3OpeningMaintenanceIntervalTx'},subject:'other_person',blastRadius:{max:1,unit:'shared_person_hand_tp3_opening_balances'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/tp3-opening',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'tp3OpeningMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.passport.maintain',module:'employees',owner:'personnel',service:'localization/registry.ts#requirePackFor',serviceMember:'statutory.setPassport',contractVersion:1,
   prepare:{status:'implemented',adapter:'passport_maintenance_review_v1',inputSchema:'PassportMaintenance.Human',outputSchema:'PassportMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'passport_maintenance_review_v1',inputSchema:'PassportMaintenance.Confirmation',outputSchema:'PassportMaintenance.Completed'},

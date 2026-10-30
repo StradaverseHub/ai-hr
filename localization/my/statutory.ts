@@ -13,7 +13,7 @@ import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionCont
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
-import { company,companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
+import { company,companyStatutoryMy, domainEvent, employeeStatutoryMy, employeeTp3, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
 import { MY_STATES } from './holidays';
 import { customHolderGaps, IncompleteCustomHolderError } from '../../lib/custom-holder';
@@ -485,6 +485,20 @@ export type Tp3Input = {
   tp3PcbPaid?: number | null;
 };
 
+/** One normalization owner: retain the native Number/toFixed/null behavior for ordinary callers. */
+function normalizedTp3OpeningValuesMY(p:Tp3Input){
+  const money = (v: number | null | undefined) =>
+    v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
+  return {
+    tp3Year: p.tp3Year ?? null,
+    tp3NetRemuneration: money(p.tp3NetRemuneration),
+    tp3EpfClaimed: money(p.tp3EpfClaimed),
+    tp3PcbPaid: money(p.tp3PcbPaid),
+  };
+}
+/** Closed private ancillary proof; never expose the underlying Zakat/LP/exemption values. */
+const tp3AncillaryHashMY=sql<string>`encode(sha256(convert_to(jsonb_build_object('tp3ZakatPaid',${employeeStatutoryMy.tp3ZakatPaid},'tp3Lp',${employeeStatutoryMy.tp3Lp},'tp3ExemptionUsed',${employeeStatutoryMy.tp3ExemptionUsed})::text,'UTF8')),'hex')`;
+
 /**
  * Partial update of ONLY the four TP3 opening-balance columns on employee_statutory_my, leaving the
  * rest of the statutory row (IC, EPF, SOCSO/EIS, bank, zakat election, tp3ZakatPaid) untouched. This is
@@ -493,21 +507,14 @@ export type Tp3Input = {
  * existing statutory row (TP3 has no meaning without an IC on file) — throws NoStatutoryProfileError
  * otherwise. Appends an `employee.tp3.updated` DomainEvent (before/after) per substrate discipline.
  */
-export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
+export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input,outerTx?:Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
-  const money = (v: number | null | undefined) =>
-    v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
-  const values = {
-    tp3Year: p.tp3Year ?? null,
-    tp3NetRemuneration: money(p.tp3NetRemuneration),
-    tp3EpfClaimed: money(p.tp3EpfClaimed),
-    tp3PcbPaid: money(p.tp3PcbPaid),
-  };
-  return withTenant(ctx, async (tx) => {
+  const values=normalizedTp3OpeningValuesMY(p);
+  const run=async (tx:Tx) => {
     await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
       .select({
-        id: employeeStatutoryMy.id,
+        id: employeeStatutoryMy.id,ancillaryHash:tp3AncillaryHashMY,
         tp3Year: employeeStatutoryMy.tp3Year,
         tp3NetRemuneration: employeeStatutoryMy.tp3NetRemuneration,
         tp3EpfClaimed: employeeStatutoryMy.tp3EpfClaimed,
@@ -515,13 +522,14 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
-      .limit(1);
+      .limit(1).for('update');
     if (!existing) throw new NoStatutoryProfileError();
-    await tx
+    const [written]=await tx
       .update(employeeStatutoryMy)
       .set({ ...values, updatedAt: sql`now()` })
-      .where(eq(employeeStatutoryMy.id, existing.id));
-    await appendEvent(tx, {
+      .where(eq(employeeStatutoryMy.id, existing.id)).returning({ancillaryHash:tp3AncillaryHashMY});
+    if(!written||written.ancillaryHash!==existing.ancillaryHash)throw new Error('TP3 ancillary source changed');
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory',
       aggregateId: existing.id,
@@ -539,11 +547,11 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
           tp3EpfClaimed: existing.tp3EpfClaimed,
           tp3PcbPaid: existing.tp3PcbPaid,
         },
-        after: values,
+        after: values,ancillaryAfterHash:written.ancillaryHash,
       },
-    });
-    return { id: existing.id };
-  });
+    },{returnId:true});
+    return { id: existing.id,eventId };
+  };return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** A custom-holder switch was turned on without its required value (item ef720d3a). `field` names which.
@@ -1571,4 +1579,20 @@ export async function readReviewedPassportMYTx(tx:Tx,ctx:SessionContext,personId
 export async function prepareReviewedPassportMYTx(tx:Tx,ctx:SessionContext,p:PassportInput){
  p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);if(!validatePassportProfileMY(p,snapshot.subject.nationality))throw new PassportRequiredError();
  const after=normalizedPassportValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
+}
+
+/** Existing hand opening balances only. Matching form membership uses the same person/year axis as
+ * saveTp3 and payroll's year gate; even an undeclared/blank matching form belongs to that owner. */
+async function reviewedTp3OpeningSnapshotMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase();await lockReviewedStatutoryPersonIdMYTx(tx,ctx,id);
+ const [row]=await tx.select({statutoryId:employeeStatutoryMy.id,revision:sql<string>`xmin::text`,ancillaryHash:tp3AncillaryHashMY,tp3Year:employeeStatutoryMy.tp3Year,tp3NetRemuneration:employeeStatutoryMy.tp3NetRemuneration,tp3EpfClaimed:employeeStatutoryMy.tp3EpfClaimed,tp3PcbPaid:employeeStatutoryMy.tp3PcbPaid}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,id),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ if(!row||row.tp3Year==null)throw new Error('Open TP3 on the native Personnel screen.');
+ const forms=await tx.select({id:employeeTp3.id,revision:sql<string>`xmin::text`}).from(employeeTp3).where(and(eq(employeeTp3.personId,id),eq(employeeTp3.tenantId,ctx.tenantId),eq(employeeTp3.assessmentYear,row.tp3Year))).orderBy(employeeTp3.id).for('share',{noWait:true});
+ if(forms.length)throw new Error('Use the native Form TP3 owner for this person and year.');
+ const {statutoryId,revision,ancillaryHash,...fields}=row;return{statutoryId,revision,ancillaryHash,formMembership:{personId:id,assessmentYear:row.tp3Year,forms},fields};
+}
+export async function readReviewedTp3OpeningMYTx(tx:Tx,ctx:SessionContext,personId:string){const snapshot=await reviewedTp3OpeningSnapshotMYTx(tx,ctx,personId);return{statutoryId:snapshot.statutoryId,fields:snapshot.fields};}
+export async function prepareReviewedTp3OpeningMYTx(tx:Tx,ctx:SessionContext,p:Tp3Input){
+ p=structuredClone(p);const snapshot=await reviewedTp3OpeningSnapshotMYTx(tx,ctx,p.personId);if(p.tp3Year!==snapshot.fields.tp3Year)throw new Error('TP3 year changes require native Personnel review.');
+ const after=normalizedTp3OpeningValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['tp3-opening:MY:hand:v1',snapshot,after])).digest('hex')};
 }
