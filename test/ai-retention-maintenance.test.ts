@@ -8,7 +8,7 @@ import { withTenant, type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { lockAccessConfigurationTx } from '../core/access-configuration-lock';
-import { retireExpiredAiCustodyTx } from '../core/ai-retention-maintenance';
+import { retireExpiredAiCustodyTx, AI_RETENTION_MAINTAINED_RELATIONS } from '../core/ai-retention-maintenance';
 import { runAiRetentionTick } from '../scripts/ai-retention-runner';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -156,7 +156,29 @@ describe('out-of-band expired AI custody maintenance', () => {
       await tx.execute(sql`savepoint feedback_update_refusal`);
       await expect(tx.execute(sql`update public.ai_agent_feedback set outcome='helpful' where expires_at<=now()`)).rejects.toThrow();
       await tx.execute(sql`rollback to savepoint feedback_update_refusal`);
-      expect(await retireExpiredAiCustodyTx(tx as unknown as Tx)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:1 });
+      // DIAGNOSTIC ONLY: preserve the exact real nonsuper session/SQL; expose a first DB refusal
+      // outside the product's deliberate sanitizer, without logging bound SQL or changing privileges.
+      const [admission] = await tx.execute<{ isolation: string; writable: boolean; signalExecute: boolean; transcriptOwner: boolean; relations: number; relationOwner: boolean }>(sql`
+        select current_setting('transaction_isolation') as isolation,current_setting('transaction_read_only')='off' as writable,
+        has_function_privilege(current_user,'app.agent_signal_custody_visible(text,uuid,uuid,uuid)','EXECUTE') as "signalExecute",
+        (select pg_get_userbyid(proowner)=current_user from pg_proc where oid='app.assistant_transcripts_retire_expired(uuid,integer,integer)'::regprocedure) as "transcriptOwner",
+        (select count(*)::int from pg_class where oid in (${sql.join(AI_RETENTION_MAINTAINED_RELATIONS.map(name=>sql`${name}::regclass`),sql`,`)})) as relations,
+        (select bool_and(pg_get_userbyid(relowner)=current_user) from pg_class where oid in (${sql.join(AI_RETENTION_MAINTAINED_RELATIONS.map(name=>sql`${name}::regclass`),sql`,`)})) as "relationOwner"`);
+      expect(admission).toEqual({isolation:'read committed',writable:true,signalExecute:true,transcriptOwner:true,relations:AI_RETENTION_MAINTAINED_RELATIONS.length,relationOwner:true});
+      let statements=0, databaseFailure:{code:string;message:string}|undefined;
+      const diagnosticTx = new Proxy(tx, {get(target,key,receiver){
+        if(key!=='execute')return Reflect.get(target,key,receiver);
+        return async (...args:unknown[])=>{statements++;try{return await Reflect.apply(target.execute,target,args);}catch(error){
+          const cause=error instanceof Error?error.cause:undefined;
+          if(cause&&typeof cause==='object'&&'code' in cause&&'message' in cause)databaseFailure??={code:String(cause.code),message:String(cause.message)};
+          throw error;
+        }};
+      }});
+      let retired:Awaited<ReturnType<typeof retireExpiredAiCustodyTx>>;
+      try{retired=await retireExpiredAiCustodyTx(diagnosticTx as unknown as Tx);}catch{
+        throw Error('Owned retention diagnostic after '+statements+' statements: '+(databaseFailure?JSON.stringify(databaseFailure):'no database error; ownership/preflight already checked'));
+      }
+      expect(retired).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 1,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:1 });
       const [content] = await tx.execute<{ question: string; answer: string | null; retired: boolean; identities: number }>(sql`select question,answer,content_retired_at is not null as retired,
         (select count(*)::int from app.assistant_transcript_identity where exchange_id=${transcript}::uuid) as identities from public.assistant_exchange where id=${transcript}::uuid`);
       expect(content).toEqual({ question: '', answer: null, retired: true, identities: 0 });

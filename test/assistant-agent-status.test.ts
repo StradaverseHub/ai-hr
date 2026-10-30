@@ -24,15 +24,19 @@ afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
 const read=(ctx=group)=>withTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return assistantAgentStatusTx(tx,ctx);});
 const canonical=(ctx=group)=>withAssistantRead(ctx,'assistant',reader=>reader.moduleWork('assistant'));
 const key='notifications.readiness_nudge_enabled';
+// Closed expected inventory: five deterministic chasers were added to the original three.
+const expectedAgentIds=['readiness_reminders','claims_triage','approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers','payroll_hypotheses'];
+const expectedTemplateChasers=['approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers'];
 describe('minimal current administrator scheduled-agent switch source',()=>{
  it('reads live switch states in the supplied read-only transaction without resolving provider configuration or private metadata',async()=>{
   const config=vi.spyOn(providerConfig,'getAiConfigView').mockImplementation(async()=>{throw Error('Private configuration must not be read');});
   const active=vi.spyOn(providerConfig,'resolveActiveAiConfig').mockImplementation(async()=>{throw Error('Provider must not be resolved');});
   const before=await read();expect(before).toMatchObject({total:AI_FEATURES.filter(feature=>feature.kind==='agent').length,switchesOn:0,effectiveSwitchesOn:0,managementHref:ASSISTANT_AGENT_MANAGEMENT_HREF});
   await setTenantSetting(group,{key,value:true});
-  const after=await read();expect(after).toMatchObject({total:3,switchesOn:1,effectiveSwitchesOn:1});
+  const after=await read();expect(after).toMatchObject({total:8,switchesOn:1,effectiveSwitchesOn:1});
   expect(after.agents.find(row=>row.feature==='readiness_reminders')).toEqual({feature:'readiness_reminders',switchOn:true,effectiveSwitchOn:true,state:'templates',attribution:'attributed'});
-  expect(after.agents.map(row=>row.feature)).toEqual(['readiness_reminders','claims_triage','payroll_hypotheses']);
+  expect(after.agents.map(row=>row.feature)).toEqual(expectedAgentIds);
+  expect(after.agents.filter(row=>expectedTemplateChasers.includes(row.feature)).map(({feature,switchOn,effectiveSwitchOn,state})=>({feature,switchOn,effectiveSwitchOn,state}))).toEqual(expectedTemplateChasers.map(feature=>({feature,switchOn:false,effectiveSwitchOn:false,state:'paused'})));
   await setTenantSetting(group,{key,value:false});expect((await read()).switchesOn).toBe(0);
   expect(config).not.toHaveBeenCalled();expect(active).not.toHaveBeenCalled();
   expect(JSON.stringify(after)).not.toMatch(/provider|model|keyLast4|apiKey|userId|eventId|tenantId|budget|usage|workos|fullName/);
@@ -40,7 +44,8 @@ describe('minimal current administrator scheduled-agent switch source',()=>{
  it('separates saved switches from missing modules, platform restrictions, attribution and scheduled-model availability',async()=>{
   for(const setting of [key,'claims.input_triage_enabled','payroll.anomaly_hypotheses_enabled'])await setTenantSetting(group,{key:setting,value:true});
   const all=await read();expect(all).toMatchObject({switchesOn:3,effectiveSwitchesOn:3});
-  expect(all.agents.filter(row=>row.feature!=='readiness_reminders').map(row=>row.state)).toEqual(['scheduled','scheduled']);
+  expect(all.agents.filter(row=>row.feature==='claims_triage'||row.feature==='payroll_hypotheses').map(row=>row.state)).toEqual(['scheduled','scheduled']);
+  expect(all.agents.filter(row=>expectedTemplateChasers.includes(row.feature)).map(row=>row.state)).toEqual(['paused','paused','paused','paused','paused']);
   // The source state 'scheduled' means scheduled AI unavailable, never ready or running.
   expect(all.agents.some(row=>String(row.state)==='ready'||String(row.state)==='running')).toBe(false);
   await setModule(base.tenantId,'claims','disabled');
@@ -82,7 +87,7 @@ describe('minimal current administrator scheduled-agent switch source',()=>{
   const work=await canonical(),view=presentCanonicalModuleData('assistant',work.data);
   expect(view.cards.every(card=>card.title.kind==='module')).toBe(true);
   const card=view.cards.find(card=>card.title.kind==='module'&&card.title.module==='assistant')!;
-  expect(card.facts).toEqual([{field:'backgroundAgentsTotal',value:3,format:'number'},{field:'backgroundAgentSwitchesOn',value:1,format:'number'},{field:'backgroundAgentEffectiveSwitchesOn',value:1,format:'number'}]);
+  expect(card.facts).toEqual([{field:'backgroundAgentsTotal',value:8,format:'number'},{field:'backgroundAgentSwitchesOn',value:1,format:'number'},{field:'backgroundAgentEffectiveSwitchesOn',value:1,format:'number'}]);
   expect(card.href).toBe(ASSISTANT_AGENT_MANAGEMENT_HREF);expect(view.cards.filter(card=>card.facts.length>0)).toEqual([card]);
   const source=work.data as {capabilities:unknown[]};
   expect(()=>presentCanonicalModuleData('assistant',{...source,adminAgentStatus:{total:3,switchesOn:4,effectiveSwitchesOn:0}})).toThrow();
