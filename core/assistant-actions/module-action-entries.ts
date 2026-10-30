@@ -1,3 +1,4 @@
+import {readRewardsSubmitChoices} from './rewards-submit-source';
 import {readRewardsReturnChoices} from './rewards-return-source';
 import {readRewardsCalendarChoices} from './rewards-calendar-source';
 import {readRewardsCancelChoices} from './rewards-cancel-source';
@@ -20,6 +21,7 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
   // The reporting-line search admits only employments where app.access_workforce_employment(...,
   // 'workforce.maintain') holds, which is app.access_workforce_company on the employment's company.
   if(entry==='rewards_return')return (await readRewardsReturnChoices(ctx)).units.length>0?'allowed':'refused';
+  if(entry==='rewards_submit')return (await readRewardsSubmitChoices(ctx)).units.length>0?'allowed':'refused';
   if(entry==='rewards_calendar')return (await readRewardsCalendarChoices(ctx)).units.length>0?'allowed':'refused';
   if(entry==='rewards_cancel')return (await readRewardsCancelChoices(ctx)).units.length>0?'allowed':'refused';
   if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0?'allowed':'refused';
@@ -36,6 +38,6 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
 /** Only `allowed` entries for the task cards actually shown. Sequential: one carrier at a time. */
 export async function allowedModuleActionEntries(ctx:SessionContext,modules:readonly AgentModuleCode[]):Promise<ModuleActionEntry[]>{
  const allowed:ModuleActionEntry[]=[];
- for(const module of modules){const entry=MODULE_ACTION_ENTRY_OF[module];if(entry&&!allowed.includes(entry)&&await moduleActionEntryAccess(ctx,entry)==='allowed')allowed.push(entry);if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_cancel')==='allowed')allowed.push('rewards_cancel');if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_calendar')==='allowed')allowed.push('rewards_calendar');if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_return')==='allowed')allowed.push('rewards_return');}
+ for(const module of modules){const entry=MODULE_ACTION_ENTRY_OF[module];if(entry&&!allowed.includes(entry)&&await moduleActionEntryAccess(ctx,entry)==='allowed')allowed.push(entry);if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_cancel')==='allowed')allowed.push('rewards_cancel');if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_calendar')==='allowed')allowed.push('rewards_calendar');if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_return')==='allowed')allowed.push('rewards_return');if(module==='rewards'&&await moduleActionEntryAccess(ctx,'rewards_submit')==='allowed')allowed.push('rewards_submit');}
  return allowed;
 }

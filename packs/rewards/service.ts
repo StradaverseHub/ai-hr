@@ -945,8 +945,9 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
   return withRewardsTenant(ctx, tx => decideRewardUnitTx(tx, ctx, unitId, revision, action, reason, acknowledged));
 }
 
-/** Supplied-transaction seam; native decision body below is preserved byte for byte. */
-export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
+/** Supplied-transaction seam; native validation and effect chunks remain byte-identical. */
+/** One native decision-validation owner; the previous validation prefix is byte-identical. */
+async function prepareRewardDecisionTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   assertModuleGate(ctx, 'rewards');
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
     idSchema.parse(unitId); await funding(tx, unitId, true);
@@ -976,10 +977,36 @@ export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: st
       const [prior] = await tx.select().from(rewardDecision).where(and(eq(rewardDecision.unitId, unitId), eq(rewardDecision.revision, revision))).orderBy(desc(rewardDecision.createdAt), desc(rewardDecision.id)).limit(1);
       if (prior?.actorId === ctx.userId && action === 'approve') throw new RewardError('A different reviewer must sign the next approval stage.');
     }
+    return { unit, roles, entries, next, hash, calculated, reason };
+}
+
+export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
+  const prepared = await prepareRewardDecisionTx(tx, ctx, unitId, revision, action, reason, acknowledged);
+  const { unit, next, hash, calculated } = prepared; reason = prepared.reason;
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action, fromStage: unit.status, toStage: next, reason, digest: hash });
     await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] } } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });
     return next;
+}
+
+/** Annual-only full preflight calls the SAME native validation/calculation owner, without writes. */
+export async function reviewAnnualRewardSubmitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  const prepared = await prepareRewardDecisionTx(tx, ctx, unitId, revision, 'submit', reason);
+  const { unit, entries, next, hash } = prepared;
+  if (unit.kind !== 'annual' || unit.status !== 'draft' || next !== 'bg') throw new RewardError('Open the native annual draft for this submission.');
+  const [source] = await tx.execute<{ xmin: string }>(sql`select xmin::text as xmin from reward_unit where id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  if (!source) throw new RewardError('The annual submission source is unavailable.');
+  return { unitId, companyId: unit.companyId, revision, before: 'draft' as const, after: 'bg' as const,
+    decisionDigest: hash, fingerprint: createHash('sha256').update(JSON.stringify([unit, digest(unit, entries), source.xmin, prepared.reason])).digest('hex') };
+}
+/** The only effect remains the original native submit decision, repeated after full preflight. */
+export async function submitAnnualRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  const source = await reviewAnnualRewardSubmitTx(tx, ctx, unitId, revision, reason);
+  const stage = await decideRewardUnitTx(tx, ctx, unitId, revision, 'submit', reason);
+  return { stage, source };
+}
+export async function submitAnnualRewardReview(ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  return withRewardsTenant(ctx, tx => submitAnnualRewardReviewTx(tx, ctx, unitId, revision, reason));
 }
 
 /** Annual-only admission uses the same native transition and private digest owner. */

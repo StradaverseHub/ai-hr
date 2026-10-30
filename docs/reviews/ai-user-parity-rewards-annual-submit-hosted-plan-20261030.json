@@ -1,0 +1,84 @@
+{
+  "status": "CLOSED_LOCAL_MOUNT_FROZEN_FOR_COMPOSITION_REVIEW_NOT_AUTHORIZED_FOR_DISPATCH",
+  "baseSha": "5e1208577a13bf61ee28c8874886e8df9d32385f",
+  "candidateRef": "codex/ai-user-parity-rewards-annual-submit-20261030",
+  "candidateShaRule": "Freeze and record the complete full40 SHA after independent proof and closed integration review; never dispatch an incomplete unmounted stage.",
+  "workflow": "alpha-focused-checks.yml",
+  "controllerRef": "main",
+  "runner": "standard public ubuntu-24.04",
+  "runTypecheckEveryGroup": true,
+  "localExecution": false,
+  "releaseHold": true,
+  "preDispatchRequirements": [
+    "Independent exact private SQL and restricted-role/late-trigger fixture source review",
+    "Coordinated provisional migration 0755 idx734/version7/when1793330000092, preserved predecessor SQL and journal prefix",
+    "Explicitly cleared closed registry/journal/route/shared transport composition",
+    "Actual publication authorization for the final reviewable successor candidate",
+    "All selected paths exist, native-stage parity group is registered, no unknown action casts",
+    "Fresh public visibility/controller identity and unique immutable per-group refs at the same exact full40 SHA"
+  ],
+  "repairRule": "Let EVERY original planned job finish before repairs. Preserve all original failures and unaffected passing evidence on their actual original SHAs. Rerun only failed or concretely affected checks, with whole typecheck true.",
+  "groups": [
+    {
+      "name": "submission_native_and_private_proof",
+      "tests": [
+        "test/rewards-submit-native.test.ts",
+        "test/rewards-submit-proof.test.ts",
+        "test/rewards-submit-contract.test.ts",
+        "test/rewards-submit-browser.test.ts"
+      ]
+    },
+    {
+      "name": "real_encrypted_custody",
+      "tests": [
+        "test/rewards-submit-custody.test.ts",
+        "test/rewards-return-custody.test.ts",
+        "test/rewards-cancel-custody.test.ts",
+        "test/rewards-calendar-custody.test.ts"
+      ]
+    },
+    {
+      "name": "native_decision_regressions",
+      "tests": [
+        "test/rewards-service.test.ts",
+        "test/rewards-offcycle.test.ts",
+        "test/rewards-return-native.test.ts",
+        "test/rewards-post-review-store.test.ts",
+        "test/rewards-unit-governance-db.test.ts"
+      ]
+    },
+    {
+      "name": "human_ui_and_closed_shared_boundaries",
+      "tests": [
+        "test/rewards-submit-panel.dom.test.tsx",
+        "test/agent-action-registry.test.ts",
+        "test/agent-action-permission-parity-guard.test.ts",
+        "test/assistant-action-entries.test.ts",
+        "test/module-jobs.dom.test.tsx",
+        "test/module-agent-actions.test.ts",
+        "test/module-human-action-handoff.test.ts",
+        "test/module-action-http.test.ts"
+      ]
+    },
+    {
+      "name": "actual_BU_stage_roles",
+      "tests": [
+        "test/agent-action-permission-parity-rewards-submit.test.ts"
+      ],
+      "expectedFixture": "Actual employee login has the real native BU seat and matching People assignment; all other ten roles deny at native screen, offer, prepare, own confirm and foreign confirm. No HR override."
+    }
+  ],
+  "evidenceRequirements": [
+    "Actual native unit draft to bg at the same revision and native approved digest, one real native submit decision and unchanged routed event payload",
+    "Real NOSUPERUSER/NOBYPASSRLS function/table owner and BU-only principal, genuinely nonempty hidden governance/history/awards, zero raw hidden visibility",
+    "Admitted-interval hidden BEFORE/AFTER actual row guards, hostile arm/event/context switching and forced immediate late retarget proofs",
+    "Initial whole ledger postimage unit/company/actor/time rewrites, protected root arm and exact privacy target sets",
+    "Pending access request native handoff contrasted with unchanged real native lapse fallback",
+    "Native independently restored BU exception and later independent native governance/PDPA positives",
+    "Actual encrypted body expiry/discard/erasure, stale source and revoked identity/authority before unwrap",
+    "Six locales times desktop/mobile actual browser captures; clear fixture limitation and overflow checks",
+    "focused.json exact candidate/controller, actual assertion JSON, full workflow/job terminal states, compiler logs and database OOM state"
+  ],
+  "sourceSqlSha256": "4a9df518a54243b868bb6d64fb8bb161e74ce1bd2f8025035ed2d2816a373e81",
+  "composition": "Strict owned schema and bounded HTTP parser; authenticated session owner; RSC review route reuses predecessor framework APIs; live native BU choice availability; original outcome reader; closed role matrix. No dependency install/local execution."
+}
