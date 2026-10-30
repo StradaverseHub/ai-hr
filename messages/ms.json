@@ -19480,7 +19480,7 @@
       "chat": {
         "title": "Perbualan",
         "new": "Sembang baharu",
-        "thinking": "Biar saya semak…",
+        "thinking": "Sedang berfikir…",
         "latest": "Balasan terkini",
         "rate": "Nilai balasan ini",
         "recent": "Sembang terkini",
@@ -19516,7 +19516,7 @@
       "undock": "Kembali ke sembang terapung",
       "close": "Tutup",
       "intro": "Tanya tentang apa yang anda sedang lihat. Saya tahu bahagian sistem yang anda buka, bukan apa yang ada pada skrin anda, dan saya hanya boleh membaca apa yang anda sudah dibenarkan lihat.",
-      "working": "Sedang diproses…",
+      "working": "Sedang berfikir…",
       "failed": "Permintaan itu tidak berjaya. Sila cuba lagi.",
       "noCard": "Tiada kad jawapan dihasilkan untuk soalan ini.",
       "openInAssistant": "Buka dalam Pembantu",

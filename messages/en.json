@@ -19480,7 +19480,7 @@
       "chat": {
         "title": "Conversation",
         "new": "New chat",
-        "thinking": "Let me check…",
+        "thinking": "Thinking…",
         "latest": "Latest reply",
         "rate": "Rate this reply",
         "recent": "Recent chats",
@@ -19516,7 +19516,7 @@
       "undock": "Back to floating chat",
       "close": "Close",
       "intro": "Ask about what you are looking at. I know which area of the system you are in, not what is on your screen, and I can only read what you are already allowed to see.",
-      "working": "Working…",
+      "working": "Thinking…",
       "failed": "That did not go through. Please try again.",
       "noCard": "No answer card was produced for this question.",
       "openInAssistant": "Open in Assistant",

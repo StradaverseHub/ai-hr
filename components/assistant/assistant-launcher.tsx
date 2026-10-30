@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { ArrowUp, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
 import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
 import {AssistantChatSubmitContext} from './chat-submit-context';
+import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 
 type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string } | { ok: false; message: string } };
@@ -104,7 +105,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
         {turns.map(turn => <div key={turn.id} className="space-y-3">
           <p data-message-role="user" className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-primary/10 px-4 py-3 leading-relaxed">{turn.question}</p>
           <div data-message-role="assistant" className="mr-5 min-w-0 max-w-full break-words rounded-2xl rounded-tl-sm bg-muted/60 px-4 py-3 leading-relaxed">
-            {!turn.reply ? <p role="status" className="text-muted-foreground">{t('working')}</p>
+            {!turn.reply ? <ThinkingIndicator label={t('working')}/>
               : !turn.reply.ok ? <p role="alert">{turn.reply.message}</p>
               : <div className="space-y-2">{turn.reply.answer ?? <p className="text-muted-foreground">{t('noCard')}</p>}
                   <Link href={`/assistant?e=${encodeURIComponent(turn.reply.exchangeId)}`} className="inline-flex min-h-11 items-center text-xs font-medium text-primary hover:underline">{t('openInAssistant')}</Link></div>}

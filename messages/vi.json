@@ -19480,7 +19480,7 @@
       "chat": {
         "title": "Cuộc trò chuyện",
         "new": "Trò chuyện mới",
-        "thinking": "Để tôi kiểm tra…",
+        "thinking": "Đang suy nghĩ…",
         "latest": "Phản hồi mới nhất",
         "rate": "Đánh giá phản hồi này",
         "recent": "Trò chuyện gần đây",
@@ -19516,7 +19516,7 @@
       "undock": "Quay lại khung chat nổi",
       "close": "Đóng",
       "intro": "Hãy hỏi về những gì bạn đang xem. Tôi chỉ biết bạn đang ở khu vực nào của hệ thống, không biết nội dung trên màn hình, và chỉ đọc được những gì bạn đã được phép xem.",
-      "working": "Đang xử lý…",
+      "working": "Đang suy nghĩ…",
       "failed": "Yêu cầu chưa gửi được. Vui lòng thử lại.",
       "noCard": "Không có thẻ trả lời cho câu hỏi này.",
       "openInAssistant": "Mở trong Trợ lý",
