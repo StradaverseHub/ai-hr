@@ -4159,6 +4159,13 @@
       "when": 1793330000064,
       "tag": "0727_assistant_personnel_review_navigation",
       "breakpoints": true
+    },
+    {
+      "idx": 712,
+      "version": "7",
+      "when": 1793330000069,
+      "tag": "0732_assistant_personnel_profile_request_rejection",
+      "breakpoints": true
     }
   ]
 }

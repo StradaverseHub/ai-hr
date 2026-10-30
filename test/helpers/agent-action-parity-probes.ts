@@ -1,3 +1,5 @@
+import {profileRequestRejectionReviews,readProfileRequestRejectionChoices} from '../../core/assistant-actions/profile-request-rejection-review-store';
+import {decideProfileChange} from '../../core/profile';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -394,6 +396,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.payment_method.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,expectedMethod:null,paymentMethod:'cash'}),
   offered:async(who,item)=>listed(await readPaymentMethodMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setEmploymentPaymentMethod(who,{employmentId:item.employmentId,paymentMethod:'cash'},tx)},
+ 'employees.profile_request.reject':{family:'hr_on_employment',store:profileRequestRejectionReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>{const [request]=await owner.db.insert(schema.profileChangeRequest).values({tenantId:h.base.tenantId,employmentId:h.person.employmentId,personId:h.person.personId,proposed:{preferredName:'Fictional requested name'}}).returning({id:schema.profileChangeRequest.id});return itemOf(h,request.id);},
+  human:item=>({action:'employees.profile_request.reject',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,reason:'Please check the submitted request.'}),
+  offered:async(who,item)=>listed(await readProfileRequestRejectionChoices(who,{query:item.name,subjectId:item.subjectId}),'requests','subjectId',item.subjectId),
+  screen:(tx,who,item)=>decideProfileChange(who,{requestId:item.subjectId,decision:'rejected',reason:'Please check the submitted request.'},tx)},
  'employees.code.maintain':{family:'hr_on_employment',store:employeeCodeMaintenanceReviews,
   // Baseline construction is an owner fixture read, before per-role Assistant authority is exercised.
   create:async(_w,h)=>{const [selected]=await owner.db.select({employeeCode:schema.employment.employeeCode}).from(schema.employment).where(and(eq(schema.employment.id,h.person.employmentId),eq(schema.employment.tenantId,h.base.tenantId)));if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},
