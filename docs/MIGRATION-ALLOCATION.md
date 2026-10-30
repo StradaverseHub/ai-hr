@@ -445,3 +445,16 @@ are evaluated afresh; policies and grants do not change. The paired500-principal
 This does not resolve0726's pre-existing filename/sequence collision with AI/V9 reservations.
 Both performance successors require reconciliation above the accepted ledger at integration.
 No staging application, branch integration, deployment or release eligibility is authorized.
+
+## Permission read work — 30 October 2026, development only
+
+Fresh main/alpha refs point to d6cb83d62; remote refs and Git-discovered worktree claims
+were checked again. Reserve `0745_permission_read_work` at idx688 on this branch / sequence1793330000082.
+SQL SHA256: `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6`. It adds the measured coarse-admin short-circuit and
+plan reuse for the unchanged pure grant predicate. Existing per-company guards, malformed
+grant failures, function security attributes, grants and applied migration bytes remain intact.
+
+This is a disposable development journal position. The complete performance prefix still needs
+reconciliation against the accepted AI/V9 handback before integration;0726/0736 are not
+release allocations above that watermark. No merge, application, installation or deployment
+is authorized. Frozen source receipts remain tied to their exact original candidates.

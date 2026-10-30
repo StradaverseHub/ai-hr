@@ -59,7 +59,9 @@ try{
  proxy=https.createServer({key:readFileSync(join(privateDir,'key.pem')),cert:readFileSync(join(privateDir,'cert.pem'))},(req,res)=>{
   const request=http.request({host:'127.0.0.1',port:3174,path:req.url,method:req.method,agent:upstream,
    headers:{...req.headers,host:'localhost:3443','x-forwarded-host':'localhost:3443','x-forwarded-proto':'https'}},response=>{res.writeHead(response.statusCode,response.headers);response.pipe(res);});
-  request.on('error',()=>{res.writeHead(502);res.end();});req.pipe(request);
+  request.on('error',()=>{if(res.destroyed)return;if(res.headersSent){res.destroy();return;}res.writeHead(502);res.end();});
+  req.on('aborted',()=>request.destroy());
+  res.on('close',()=>{if(!res.writableFinished)request.destroy();});req.pipe(request);
  });await new Promise((resolve,reject)=>{proxy.once('error',reject);proxy.listen(3443,'127.0.0.1',resolve);});
  let ready=false;for(let i=0;i<120;i++){try{const response=await fetch('http://127.0.0.1:3174/login');if(response.status===200){ready=true;break;}}catch{}await pause(500);}
  assert(ready,'production server did not become ready');
