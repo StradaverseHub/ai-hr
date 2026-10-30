@@ -4152,6 +4152,13 @@
       "when": 1793330000055,
       "tag": "0726_assistant_cost_allocation_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 710,
+      "version": "7",
+      "when": 1793330000067,
+      "tag": "0730_assistant_performance_goal_approval",
+      "breakpoints": true
     }
   ]
 }
