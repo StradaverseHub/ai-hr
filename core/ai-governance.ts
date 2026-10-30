@@ -74,7 +74,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
   const preparedAdmission=await withTenant(ctx,async tx=>{
    await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,outgoing);
    if(check)try{await check(tx,capturedRequest);}catch(error){
-    if(error instanceof AiAllowanceError)throw error;
+    if(error instanceof AiAllowanceError||error instanceof AiPrivacyGateError)throw error;
     throw new AiGatewayError('The current AI source access could not be confirmed.');
    }
    assertAiProviderSnapshot(snapshot,ctx);

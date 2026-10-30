@@ -110,8 +110,9 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
   if(plan.mode==='clarify'){
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
    const taskModules={leave_available:'leave',leave_requests:'leave',claim_statuses:'claims',holidays:'org',reporting_line:'org',work_profile:'employees',payslip:'payroll',module_overview:'assistant'} as const;
-   const readable=assistantReadableModules(ctx);
-   const choices=plan.slot==='module'?Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})})):undefined;
+   // Optional shortcuts cannot suppress the existing owned reply form or exhausted-context notice.
+   // An absent offering snapshot grants nothing; the actual command reauthorizes every reply.
+   const choices=plan.slot==='module'&&conversation.clarificationAllowed!==false?(()=>{try{const readable=assistantReadableModules(ctx);return Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})}));}catch{return [];}})():undefined;
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
     {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')} choices={choices}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}

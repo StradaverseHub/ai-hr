@@ -1,6 +1,6 @@
 /** Disclosure review is source-owned. Pending/default records never authorize egress.
  * Technical automated testing is evidence for a human specialist, never a fabricated approval. */
-import {AiGatewayError} from './types';
+import {AiPrivacyGateError} from './provider-privacy-error';
 import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from './provider-data-source-manifest';
 export type ProviderDataReviewRecord=Readonly<{contractId:string;status:'pending'|'approved';sourceDigest:string;reviewer:string;evidence:string;reviewedAt:string}>;
 import {PROVIDER_DATA_REVIEW_RECORDS} from './provider-data-approvals';
@@ -17,7 +17,7 @@ export function isCompleteProviderDataReview(record:ProviderDataReviewRecord,exp
 export function assertProviderDataContractReviewed(contractId:string,sourceDigest:string):void{
  const review=PROVIDER_DATA_REVIEW_RECORDS.find(row=>row.contractId===contractId);
  if(!review||sourceDigest!==PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST||!isCompleteProviderDataReview(review,sourceDigest))
-  throw new AiGatewayError('The AI data-protection review is pending or no longer matches this request.');
+  throw new AiPrivacyGateError('unreviewed');
 }
 
 /** Single review-state owner for local projection metadata and the runtime boundary. */

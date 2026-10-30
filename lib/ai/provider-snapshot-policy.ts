@@ -31,7 +31,7 @@ function source(payload:unknown){
  });
  if(!cohorts.length)return privatePolicyRefusal();return Object.freeze({version:1,domain,window:'current_snapshot',cohorts:Object.freeze(cohorts)});
 }
-export const SNAPSHOT_ANALYSIS_DESCRIPTOR:PrivateTaskDescriptor=Object.freeze({features:['report_insight','hr_assistant'],operation:'draft',
+export const SNAPSHOT_ANALYSIS_DESCRIPTOR:PrivateTaskDescriptor=Object.freeze({features:Object.freeze(['report_insight','hr_assistant'] as const),operation:'draft',
  fingerprint(payload:unknown){return privateHash(source(payload));},capture(payload:unknown){
   const captured=source(payload),projected=Object.freeze({version:1,purpose:'aggregate_snapshot_analysis',domain:captured.domain,window:captured.window,
    cohorts:Object.freeze(captured.cohorts.map(cohort=>Object.freeze({cohort:cohort.cohort,populationBand:populationBand(cohort.population),metrics:Object.freeze(cohort.metrics.map(metric=>Object.freeze({metric:metric.metric,supportBand:populationBand(metric.support),levelBand:snapshotShareBand(metric.numeratorPeople,metric.support)})))})))});

@@ -15299,9 +15299,9 @@
       "UNSAFE_DIVISION": "Bạn không thể chia cho không. Hãy chọn một giá trị khác để chia."
     },
     "assistButton": "Hỗ trợ bằng AI",
-    "assistTitle": "Mô tả cách tính khoản này",
-    "assistDescription": "Viết bằng ngôn ngữ thông thường — AI gợi ý một quy tắc để bạn xem lại trước khi lưu.",
-    "assistPlaceholder": "ví dụ: Trả 10% lương cơ bản, hoặc RM50 mỗi ngày làm việc.",
+    "assistTitle": "Chọn mẫu quy tắc lương",
+    "assistDescription": "Dùng mẫu được hỗ trợ, sửa tham số và xem kiểm tra gốc trước khi lưu.",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "Gợi ý quy tắc",
     "assistUse": "Dùng quy tắc này",
     "assistCancel": "Hủy",
@@ -16260,9 +16260,9 @@
       "subtitle": "Chọn trường, sắp xếp bố cục và để AI thiết kế cho bạn."
     },
     "ai": {
-      "title": "Trình thiết kế báo cáo AI",
-      "describe": "Mô tả báo cáo bạn muốn và AI sẽ dựng bố cục để bạn xem lại.",
-      "placeholder": "ví dụ: giờ OT hàng tháng theo phòng ban kèm tổng",
+      "title": "Sắp xếp cột báo cáo đã chọn",
+      "describe": "Chọn cột trước. AI chỉ gợi ý thứ tự cho tập cột đó; đặt bộ lọc và phép tính trong trình tạo thủ công.",
+      "placeholder": "columns: name, balance",
       "generate": "Tạo bố cục",
       "generating": "Đang tạo…",
       "notConfigured": "AI chưa được cấu hình — hãy nhờ quản trị viên kết nối nhà cung cấp trong cài đặt AI.",
@@ -23241,10 +23241,10 @@
       "onBox": "Trong ô: {band}, từ {source}"
     },
     "rewrite": {
-      "title": "Soạn với AI",
-      "help": "Xem lại và chỉnh sửa gợi ý trước khi dùng trong biểu mẫu.",
+      "title": "Định dạng lời của tôi",
+      "help": "Chọn bố cục đoạn hoặc danh sách. Nguyên văn được giữ cục bộ và không đổi ý nghĩa.",
       "yourWords": "Lời của bạn",
-      "instruction": "Bạn muốn thay đổi cách diễn đạt thế nào?",
+      "instruction": "Lệnh bố cục",
       "polishInstruction": "Trau chuốt câu chữ mà không thêm sự kiện.",
       "working": "Đang chuẩn bị…",
       "generate": "Chuẩn bị gợi ý",
@@ -23252,9 +23252,9 @@
       "unavailable": "Không thể chuẩn bị bản nháp. Bạn có thể tiếp tục viết hoặc thử lại.",
       "changed": "Trường này đã thay đổi. Hãy đóng gợi ý và yêu cầu gợi ý mới từ nội dung hiện tại.",
       "tooLong": "Rút ngắn gợi ý còn {limit} ký tự trước khi dùng.",
-      "suggestion": "Cách diễn đạt được gợi ý",
+      "suggestion": "Văn bản đã định dạng",
       "discard": "Bỏ",
-      "keep": "Dùng câu chữ"
+      "keep": "Giữ định dạng"
     },
     "careerDraft": {
       "title": "Soạn kế hoạch nghề nghiệp",

@@ -15299,9 +15299,9 @@
       "UNSAFE_DIVISION": "Anda tidak boleh membahagi dengan sifar. Pilih nilai lain untuk membahagi."
     },
     "assistButton": "Bantuan AI",
-    "assistTitle": "Terangkan cara ia patut dikira",
-    "assistDescription": "Tulis dalam bahasa biasa — AI mencadangkan peraturan untuk anda semak sebelum simpan.",
-    "assistPlaceholder": "cth. Bayar 10% daripada gaji asas, atau RM50 sehari bekerja.",
+    "assistTitle": "Pilih templat peraturan gaji",
+    "assistDescription": "Gunakan templat yang disokong, edit parameternya dan semak pengesahan asal sebelum menyimpan.",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "Cadang peraturan",
     "assistUse": "Guna peraturan ini",
     "assistCancel": "Batal",
@@ -16260,9 +16260,9 @@
       "subtitle": "Pilih medan anda, atur susun atur, dan biar AI merekanya untuk anda."
     },
     "ai": {
-      "title": "Pereka Laporan AI",
-      "describe": "Terangkan laporan yang anda mahu dan AI akan menyusunnya untuk semakan anda.",
-      "placeholder": "cth. jam OT bulanan ikut jabatan dengan jumlah",
+      "title": "Susun lajur laporan pilihan",
+      "describe": "Pilih lajur dahulu. AI boleh mencadangkan susunan bagi pilihan itu sahaja; tetapkan penapis dan pengiraan dalam pembina manual.",
+      "placeholder": "columns: name, balance",
       "generate": "Jana susun atur",
       "generating": "Menjana…",
       "notConfigured": "AI belum dikonfigur — minta pentadbir menyambung penyedia dalam tetapan AI.",
@@ -23241,10 +23241,10 @@
       "onBox": "Dalam kotak: {band}, daripada {source}"
     },
     "rewrite": {
-      "title": "Draf dengan AI",
-      "help": "Semak dan sunting cadangan sebelum menggunakannya dalam borang anda.",
+      "title": "Format perkataan saya",
+      "help": "Pilih susun atur perenggan atau senarai. Perkataan asal kekal setempat dan maknanya tidak berubah.",
       "yourWords": "Kata-kata anda",
-      "instruction": "Bagaimanakah ayat perlu diubah?",
+      "instruction": "Arahan susun atur",
       "polishInstruction": "Perkemas ayat tanpa menambah fakta.",
       "working": "Sedang menyediakan…",
       "generate": "Sediakan cadangan",
@@ -23252,9 +23252,9 @@
       "unavailable": "Draf tidak dapat disediakan. Anda boleh terus menulis atau cuba lagi.",
       "changed": "Medan ini telah berubah. Tutup cadangan ini dan minta cadangan baharu berdasarkan ayat semasa.",
       "tooLong": "Pendekkan cadangan kepada {limit} aksara sebelum menggunakannya.",
-      "suggestion": "Ayat yang dicadangkan",
+      "suggestion": "Perkataan yang diformat",
       "discard": "Buang",
-      "keep": "Gunakan ayat"
+      "keep": "Kekalkan format"
     },
     "careerDraft": {
       "title": "Draf pelan kerjaya anda",

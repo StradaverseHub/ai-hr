@@ -81,3 +81,11 @@ it('checks every composed hook return and retains canonical settlement on invali
  const wrapped=governance.withAiRunObserver(governance.withAiRunObserver(cfg,{beforeCall(){calls.push('first');}}),{beforeCall:(()=>Promise.resolve()) as unknown as ()=>void,settled(){calls.push('settled');}});
  const prepared=await preparePrivateAiAnalysis(wrapped,async()=>source()),adapter=vi.spyOn(anthropicAdapter,'generate');try{await expect(generateDraft(prepared.configuration,prepared.args)).rejects.toThrow('observation');expect(calls).toEqual(['first','settled']);expect(adapter).not.toHaveBeenCalled();}finally{adapter.mockRestore();prepared.dispose();}
 });
+
+
+it('preserves closed privacy refusals through actual admission without exposing native diagnostics',async()=>{
+ const {AiPrivacyGateError}=await import('../lib/ai/provider-privacy-error');
+ const cfg=withAiAdmissionCheck(await configuration(),'report_insight',async()=>{throw new AiPrivacyGateError('source');});
+ const prepared=await preparePrivateAiAnalysis(cfg,async()=>source()),adapter=vi.spyOn(anthropicAdapter,'generate');
+ try{await expect(generateDraft(prepared.configuration,prepared.args)).rejects.toBeInstanceOf(AiPrivacyGateError);expect(adapter).not.toHaveBeenCalled();const rows=await withTenant(ctx(),tx=>tx.execute<{n:number}>(sql`select count(*)::int as n from ai_model_run`));expect(rows[0].n).toBe(0);}finally{adapter.mockRestore();prepared.dispose();}
+});

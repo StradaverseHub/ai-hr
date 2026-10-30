@@ -15299,9 +15299,9 @@
       "UNSAFE_DIVISION": "You cannot divide by zero. Choose a different value to divide by."
     },
     "assistButton": "Assist with AI",
-    "assistTitle": "Describe how this should be calculated",
-    "assistDescription": "Write it in plain language — AI suggests a rule you can review before saving.",
-    "assistPlaceholder": "e.g. Pay 10% of basic salary, or RM50 per day worked.",
+    "assistTitle": "Choose a pay-rule template",
+    "assistDescription": "Use a supported template, edit its parameters and review native validation before saving.",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "Suggest a rule",
     "assistUse": "Use this rule",
     "assistCancel": "Cancel",
@@ -16260,9 +16260,9 @@
       "subtitle": "Pick your fields, arrange the layout, and let AI design it for you."
     },
     "ai": {
-      "title": "AI Report Designer",
-      "describe": "Describe the report you want and AI will lay it out for you to review.",
-      "placeholder": "e.g. monthly OT hours by department with totals",
+      "title": "Arrange selected report columns",
+      "describe": "Choose columns first. AI can suggest an order for that exact selection; set filters and calculations in the manual builder.",
+      "placeholder": "columns: name, balance",
       "generate": "Generate layout",
       "generating": "Generating…",
       "notConfigured": "AI is not configured — ask an administrator to connect a provider in AI settings.",
@@ -23241,10 +23241,10 @@
       "onBox": "On the box: {band}, from {source}"
     },
     "rewrite": {
-      "title": "Draft with AI",
-      "help": "Review and edit the suggestion before keeping it in your form.",
+      "title": "Format my words",
+      "help": "Choose paragraph or bullet layout. Your original words stay local and their meaning is unchanged.",
       "yourWords": "Your words",
-      "instruction": "How should the wording change?",
+      "instruction": "Layout instruction",
       "polishInstruction": "Polish the wording without adding facts.",
       "working": "Preparing…",
       "generate": "Prepare suggestion",
@@ -23252,9 +23252,9 @@
       "unavailable": "Could not prepare a draft. You can continue writing or try again.",
       "changed": "This field changed. Close this suggestion and request a new one from your current words.",
       "tooLong": "Shorten the suggestion to {limit} characters before keeping it.",
-      "suggestion": "Suggested wording",
+      "suggestion": "Formatted words",
       "discard": "Discard",
-      "keep": "Keep wording"
+      "keep": "Keep formatting"
     },
     "careerDraft": {
       "title": "Draft your career plan",

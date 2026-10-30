@@ -22,3 +22,9 @@ The model cannot understand the meaning of prose that is withheld. Reference ord
 ## Technical review
 
 Independent source review identified and repaired: local adjudication mutability, PM-completion overstatement, observational accounting authority, import candidate subset escape, Performance wrong-subject/negation handling, repeated clarification recovery, real candidate-variant use, and floating-chat page annotation corrupting intent. Native original guards and positive controls are retained or adapted to the new one-call architecture. Final GitHub results will identify their actual candidate SHA; this document itself is not a PASS receipt.
+
+## Original combined check and bounded repairs
+
+Both original combined runs41014032754 and41014038861 at19fe378d88648fa6379a26d9c8d9d57ca4cff535 failed; all results remain preserved. Runtime findings repaired include the missing same-transaction carried-history custody fence, strict claim-triage output shape, valid captured synthetic candidate prototype and optional clarification shortcuts hiding the native form. Compiler repairs preserve exact feature/tool schema types and rename a duplicated test variable. Allowance and locking fixtures retain real native controls with explicit test-only privacy boundary isolation or the real admission-read owner. No production privacy bypass was added.
+
+Final review also adds package.json and pnpm-lock.yaml to the source closure and preserves the closed privacy refusal type through admission to the localized UI. Primary labels consistently describe rule-template confirmation, selected-column ordering and original-word formatting. The literal digest update records technical completion within the owner's existing provisional scope approval; it does not assert a new human specialist review or a new deployment authorization. Fresh exact-SHA GitHub results are still required for the repaired candidate.

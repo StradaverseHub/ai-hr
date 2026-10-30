@@ -1,16 +1,15 @@
 /** Opaque exact disclosure binding. Issuance belongs to core/ai-governance.ts only;
  * capture/derivation transfer belongs to canonical config owners. No posted flag is authority. */
 import {performance} from 'node:perf_hooks';
-import {AiGatewayError,type ResolvedAiConfig} from './types';
+import type {ResolvedAiConfig} from './types';
 import type {AiOperation} from './governance';
 import type {AiFeatureId} from './features';
 import {assertProviderDataContractReviewed} from './provider-data-reviews';
 type Disclosure=Readonly<{feature:AiFeatureId;operation:AiOperation;inputDigest:string;contractId:string;sourceDigest:string;expiresAt:number}>;
 type Owned={disclosure:Disclosure;deadline:number;used:boolean;revoked:boolean};
 const issued=new WeakMap<object,Owned>();
-export class AiPrivacyGateError extends AiGatewayError{
- constructor(readonly reason:'unreviewed'|'unsupported'|'small_cohort'|'source'='unreviewed'){super(reason==='unreviewed'?'This AI request needs a reviewed data-protection policy. You can continue using the application directly.':reason==='small_cohort'?'There is not enough grouped data for a protected AI analysis.':'This request needs protected input. You can continue using the application directly.');this.name='AiPrivacyGateError';}
-}
+import {AiPrivacyGateError} from './provider-privacy-error';
+export {AiPrivacyGateError} from './provider-privacy-error';
 const refuse=():never=>{throw new AiPrivacyGateError();};
 /** INTERNAL issuer: only core/ai-governance may import this symbol in production. */
 export function bindProviderPrivacyRequest(configuration:ResolvedAiConfig,disclosure:Disclosure):void{

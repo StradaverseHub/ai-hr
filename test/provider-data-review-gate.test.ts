@@ -20,6 +20,6 @@ it('rejects incomplete or placeholder approval metadata even after status/digest
 });
 
 it('binds the exact reviewed transform dependency sources through the generated manifest',()=>{
- const result=JSON.parse(execFileSync(process.execPath,['scripts/ai-provider-data-source-manifest.mjs','--check'],{encoding:'utf8'}));
- expect(result.files).toBeGreaterThanOrEqual(13);expect(result.digest).toBe(PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST);
+ const result=JSON.parse(execFileSync(process.execPath,['scripts/ai-provider-data-source-manifest.mjs','--check','--list'],{encoding:'utf8'}));
+ expect(result.files).toBeGreaterThanOrEqual(945);expect(result.sources).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','core/assistant-tools.ts','lib/ai/assistant-tool-catalogue.ts','messages/en.json','messages/ms.json','messages/zh.json','messages/vi.json','messages/ta.json','messages/th.json']));expect(result.digest).toBe(PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST);
 });

@@ -15299,9 +15299,9 @@
       "UNSAFE_DIVISION": "不能除以零。请选择其他数值作为除数。"
     },
     "assistButton": "AI 协助",
-    "assistTitle": "描述应如何计算",
-    "assistDescription": "用通俗语言描述——AI 会建议一条规则，保存前由你审核。",
-    "assistPlaceholder": "例如：支付基本薪资的 10%，或每个工作日 RM50。",
+    "assistTitle": "选择薪资规则模板",
+    "assistDescription": "使用支持的模板，编辑参数，并在保存前查看原生验证结果。",
+    "assistPlaceholder": "10% of basic",
     "assistSubmit": "建议规则",
     "assistUse": "使用此规则",
     "assistCancel": "取消",
@@ -16260,9 +16260,9 @@
       "subtitle": "选择字段、排列布局，或让 AI 为你设计。"
     },
     "ai": {
-      "title": "AI 报表设计器",
-      "describe": "描述你想要的报表，AI 将为你排布以供审阅。",
-      "placeholder": "例如：按部门统计每月加班工时及合计",
+      "title": "排列所选报表列",
+      "describe": "请先选择列。AI 仅建议这些列的排列顺序；筛选和计算请在手动构建器中设置。",
+      "placeholder": "columns: name, balance",
       "generate": "生成布局",
       "generating": "生成中…",
       "notConfigured": "AI 未配置——请管理员在 AI 设置中连接服务商。",
@@ -23241,10 +23241,10 @@
       "onBox": "当前九宫格：{band}，来源：{source}"
     },
     "rewrite": {
-      "title": "使用 AI 起草",
-      "help": "请先审阅并修改建议，再将其用于表单。",
+      "title": "排版我的文字",
+      "help": "选择段落或项目列表。原文保留在本地，不改变含义。",
       "yourWords": "您的原文",
-      "instruction": "您希望如何修改措辞？",
+      "instruction": "排版指令",
       "polishInstruction": "润色措辞，不添加事实。",
       "working": "正在准备…",
       "generate": "生成建议",
@@ -23252,9 +23252,9 @@
       "unavailable": "无法准备草稿。您可以继续自行撰写或重试。",
       "changed": "该字段已更改。请关闭此建议，再根据当前原文请求新建议。",
       "tooLong": "请将建议缩短至 {limit} 个字符以内再使用。",
-      "suggestion": "建议措辞",
+      "suggestion": "排版后的文字",
       "discard": "放弃",
-      "keep": "使用措辞"
+      "keep": "保留排版"
     },
     "careerDraft": {
       "title": "起草职业发展计划",
