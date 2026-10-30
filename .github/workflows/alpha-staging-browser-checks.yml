@@ -171,7 +171,10 @@ jobs:
         if: ${{ always() && inputs.probe_scope == 'browser-image-suite' }}
         with:
           name: diagnostic-complete-image-browser-${{ matrix.engine }}
-          path: ${{ runner.temp }}/aihr-ci/
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/aihr-ci/
+            source/.vitest-attachments/**/*.png
           if-no-files-found: error
           retention-days: 7
       - name: Retain container package and filesystem facts
