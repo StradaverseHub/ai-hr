@@ -26,8 +26,14 @@ describe('tax-basis notices preserve original working and scope administrative l
  it('shows recorded corrections beside original working without changing or reinterpreting its values',async()=>{
   const {ctx,slip,correctionBatchId}=await fixture();
   const notices=await taxBasisNoticesForPayslip(ctx,{companyIds:[b.companyId],payslipId:slip.id});
-  expect(notices).toEqual({original:[{batchId:correctionBatchId,reference:'TAX-'+correctionBatchId.slice(0,8).toUpperCase(),canOpen:true}],applied:[]});
+  expect(notices).toEqual({original:[{batchId:correctionBatchId,reference:'TAX-'+correctionBatchId.toUpperCase(),canOpen:true}],applied:[]});
   expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,slip.id)))[0]).toEqual(slip);
+ });
+ it('keeps references distinct when batch IDs share their first eight characters',async()=>{
+  const ids=['12345678-1234-4234-8234-123456789011','12345678-1234-4234-8234-123456789012'];
+  const references=await taxBasisNoticeReferences(ctx,ids.map(batchId=>({batchId})));
+  expect(references.map(r=>r.reference)).toEqual(['TAX-12345678-1234-4234-8234-123456789011','TAX-12345678-1234-4234-8234-123456789012']);
+  expect(references.every(r=>!r.canOpen)).toBe(true);
  });
  it('discloses the reference without granting access to a denied administrative log',async()=>{
   const {ctx,slip,correctionBatchId}=await fixture();

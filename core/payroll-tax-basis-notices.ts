@@ -14,7 +14,7 @@ async function referencesTx(tx: Tx, ctx: SessionContext, references: unknown): P
   const access = new Map<string, boolean>();
   for (const row of rows) if (!access.has(row.companyId)) access.set(row.companyId, await resolvePayrollPermission(tx, ctx, 'payroll.tax-basis.view', row.companyId));
   const permitted = new Set(rows.filter(row => access.get(row.companyId)).map(row => row.id));
-  return ids.map(batchId => ({batchId, reference: 'TAX-'+batchId.slice(0,8).toUpperCase(), canOpen: permitted.has(batchId)}));
+  return ids.map(batchId => ({batchId, reference: 'TAX-'+batchId.toUpperCase(), canOpen: permitted.has(batchId)}));
 }
 
 /** References already returned by an authorized calculation/report; log access is checked separately. */
