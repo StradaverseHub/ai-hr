@@ -16,7 +16,7 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, combined-ui]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, combined-ui, combined-motion]
       selected_browser_tests:
         description: JSON array of tracked browser test paths for preparation only
         required: false
@@ -194,7 +194,7 @@ jobs:
           retention-days: 7
 
   combined-ui:
-    if: ${{ inputs.probe_scope == 'combined-ui' }}
+    if: ${{ inputs.probe_scope == 'combined-ui' || inputs.probe_scope == 'combined-motion' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -215,6 +215,7 @@ jobs:
         with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, persist-credentials: false}
       - uses: ./automation/.github/actions/setup-browser-image
       - name: Bind selected production-component preparation probe
+        if: ${{ inputs.probe_scope == 'combined-ui' }}
         run: |
           node --input-type=module <<'JS'
           import fs from 'node:fs';
@@ -228,6 +229,9 @@ jobs:
           fs.writeFileSync('.vitest-attachments/combined-ui.config.mts',`import base from '../vitest.browser.config';\nexport default {...base,optimizeDeps:{...base.optimizeDeps,include:[...base.optimizeDeps.include,'react/jsx-runtime']},test:{...base.test,include:${JSON.stringify(files)},browser:{...base.test.browser,instances:[{browser:'chromium'}]}}};\n`);
           fs.writeFileSync(process.env.RUNNER_TEMP+'/combined-ui/binding.json',JSON.stringify({kind:'FICTIONAL_COMPONENT_PREPARATION_ONLY',candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,files,releaseAuthorized:false},null,2));
           JS
+      - name: Bind real reduced-motion generated preparation fixture
+        if: ${{ inputs.probe_scope == 'combined-motion' }}
+        run: node ../automation/.github/ci/diagnostics/combined-motion-probe.mjs
       - name: Selected Chromium behavior and rendered CSS
         run: pnpm exec vitest run --config .vitest-attachments/combined-ui.config.mts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/combined-ui/results.json"
       - name: Retain only fictional component screenshots

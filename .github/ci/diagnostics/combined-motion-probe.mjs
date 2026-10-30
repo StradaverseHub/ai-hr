@@ -1,0 +1,45 @@
+// Preparation-only generated fixture. Never a release witness or installed acceptance.
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+const fixture = String.raw`import {afterEach,expect,it} from 'vitest';
+import {page} from 'vitest/browser';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import {UiThemeProvider} from '../components/ui-theme-context';
+import {LoginShell} from '../app/login/login-shell';
+import en from '../messages/en.json';
+import '../app/globals.css';
+import '../app/atelier.css';
+import '../app/login/login.css';
+afterEach(()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');});
+for(const theme of ['atelier','classic','monolith'] as const)it(theme+' real browser reduced-motion public tour',async()=>{
+ expect(window.matchMedia('(prefers-reduced-motion: reduce)').matches).toBe(true);
+ await page.viewport(1440,900);document.documentElement.setAttribute('data-ui-theme',theme);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><UiThemeProvider theme={theme}><LoginShell><p>Fictional sessionless form fixture; no credentials or submission.</p></LoginShell></UiThemeProvider></NextIntlClientProvider>);
+ const tour=screen.getByRole('region',{name:en.loginTour.label});
+ await waitFor(()=>expect(within(tour).getByRole('button',{name:en.loginTour.play})).toBeVisible());
+ expect(await within(tour).findByText(en.loginTour.leave.open1)).toBeVisible();
+ const log=tour.querySelector('ol')!;
+ expect(log.querySelectorAll('li')).toHaveLength(1);expect(tour.querySelector('[data-typing]')).toBeNull();
+ expect(getComputedStyle(log).scrollBehavior).toBe('auto');
+ expect(getComputedStyle(log.querySelector('li')!).animationName).toBe('none');
+ // This exceeds the real AUTO_PICK_MS=2400 contract; no fake timers or media shim.
+ await new Promise(resolve=>setTimeout(resolve,2800));
+ expect(log.querySelectorAll('li')).toHaveLength(1);expect(within(tour).queryByRole('button',{name:en.loginTour.pause})).toBeNull();
+ const before=window.scrollY;
+ fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.leave.pickA1}));
+ expect(await within(tour).findByText(en.loginTour.leave.open2)).toBeVisible();
+ expect(log.querySelectorAll('li')).toHaveLength(4);expect(tour.querySelector('[data-typing]')).toBeNull();
+ for(const line of log.querySelectorAll('li'))expect(getComputedStyle(line).animationName).toBe('none');
+ expect(window.scrollY).toBe(before);expect(tour.getAnimations({subtree:true}).filter(a=>a.playState==='running')).toHaveLength(0);
+ fireEvent.click(within(tour).getByRole('button',{name:en.loginTour.pay.topic}));expect(await within(tour).findByText(en.loginTour.pay.open1)).toBeVisible();
+ expect(within(tour).getByRole('button',{name:en.loginTour.play})).toBeVisible();
+ await page.screenshot({element:view.container.querySelector('main')!,path:'../.vitest-attachments/combined-motion-'+theme+'.png',animations:'disabled',scale:'css'});
+ console.info('REAL_REDUCED_MOTION_FICTIONAL_TOUR',{theme,reduced:window.matchMedia('(prefers-reduced-motion: reduce)').matches,releaseAuthorized:false});
+},10000);
+`;
+fs.mkdirSync('.vitest-attachments',{recursive:true});
+const file='.vitest-attachments/combined-motion.browser.test.tsx';fs.writeFileSync(file,fixture);
+fs.writeFileSync('.vitest-attachments/combined-ui.config.mts',`import base from '../vitest.browser.config';\nimport {playwright} from '@vitest/browser-playwright';\nexport default {...base,test:{...base.test,include:[${JSON.stringify(file)}],browser:{...base.test.browser,provider:playwright({contextOptions:{reducedMotion:'reduce'}}),instances:[{browser:'chromium'}]}}};\n`);
+fs.mkdirSync(process.env.RUNNER_TEMP+'/combined-ui',{recursive:true});
+fs.writeFileSync(process.env.RUNNER_TEMP+'/combined-ui/binding.json',JSON.stringify({kind:'GENERATED_FICTIONAL_COMPONENT_PREPARATION_ONLY',candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,fixtureSha256:crypto.createHash('sha256').update(fixture).digest('hex'),providerContext:{reducedMotion:'reduce'},releaseAuthorized:false},null,2));
