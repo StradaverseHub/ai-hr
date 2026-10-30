@@ -1,7 +1,7 @@
 /** GHA-only populated ordinary-ledger upgrade. No CI policy swap, live DB or native-save claim. */
 import {describe,expect,it} from 'vitest';
 import {createHash,randomUUID} from 'node:crypto';
-import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {copyFileSync,existsSync,mkdtempSync,mkdirSync,readdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import postgres from 'postgres';
@@ -175,6 +175,9 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    phase='normal-bank-prefix-migration';
    copyFileSync('db/migrations/'+TAG+'.sql',join(directory,TAG+'.sql'));
    expect(sha(readFileSync(join(directory,TAG+'.sql')))).toBe(SQL_SHA);
+   exact(readdirSync(directory).filter(name=>name.endsWith('.sql')).sort(),journal.entries.map(entry=>entry.tag+'.sql').sort(),'The ordinary loader receives every one of the exact 581 prefix SQL files');
+   for(const entry of journal.entries)expect(sha(readFileSync(join(directory,entry.tag+'.sql')))).toBe(sha(readFileSync('db/migrations/'+entry.tag+'.sql')));
+   expect(existsSync(join(directory,'0800_pay_formula_builder.sql')),'The Bank-only rehearsal must not execute Formula SQL').toBe(false);
    writeFileSync(join(directory,'meta/_journal.json'),journalBytes);
    budget();await migrate(storage.db,{migrationsFolder:directory});budget();
    const applied=await ledger();expect(applied.length).toBe(581);exact(applied.slice(0,boundary),prior,'The complete old 580-row ledger prefix must be immutable');
