@@ -37,7 +37,7 @@ describe('in-place Assistant conversation',()=>{
   expect(screen.getByRole('button',{name:copy.workspace.working})).toBeDisabled();expect(state.ask).toHaveBeenCalledTimes(1);
   expect(state.ask).toHaveBeenCalledWith({question:'How much leave do I have?'});
   await act(async()=>resolve({ok:true,exchangeId:'exchange-1',conversationToken:'opaque-1',answer:<p>Annual leave: 12 days</p>}));
-  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
+  await captureAiReviewScreenshots('<div class="mx-auto max-w-3xl">'+aiReviewDomHtml(view.container)+'</div>','en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'exchange-2',conversationToken:'opaque-2',answer:<p>Pending leave: 2 days</p>});send('And how much is pending?');
   await waitFor(()=>expect(screen.getByText('Pending leave: 2 days')).toBeInTheDocument());
   expect(screen.getByText('Annual leave: 12 days')).toBeInTheDocument();expect(state.ask).toHaveBeenLastCalledWith({question:'And how much is pending?',previousExchangeId:'exchange-1',previousConversationToken:'opaque-1'});
