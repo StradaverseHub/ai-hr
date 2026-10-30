@@ -3,13 +3,28 @@
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES
  ('lifecycle.offboarding.step.complete','lifecycle','confirm','own_work','lifecycle.offboarding.step.complete');
 --> statement-breakpoint
--- Preserve each predecessor predicate EXACTLY ONCE. The new kind is governed by its own strict
--- nullable-case shape below; never substitute into a whole nested predecessor expression.
-DO $$ DECLARE c record; BEGIN
- FOR c IN SELECT conname,pg_get_expr(conbin,conrelid) expression FROM pg_constraint
-  WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND position('action_kind' in pg_get_expr(conbin,conrelid))>0 LOOP
-  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
-  EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''lifecycle.offboarding.step.complete'' THEN true ELSE (%s) END)',c.conname,c.expression);
+-- Extend only the three predicates that reject the new nullable-case family. Freeze their names
+-- before DDL; preserve every other dedicated guard and every predecessor expression once.
+DO $$ DECLARE item record;previous text;scope_name text;case_name text;matches integer; BEGIN
+ SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+ AND pg_get_expr(conbin,conrelid) LIKE '%testing_execution_id IS NOT NULL%'
+ AND pg_get_expr(conbin,conrelid) LIKE '%employment_id IS NULL%';
+ IF matches<>1 THEN RAISE EXCEPTION '0735: unexpected scope predicate';END IF;
+ SELECT count(*),min(conname) INTO matches,case_name FROM pg_constraint
+ WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c'
+ AND pg_get_expr(conbin,conrelid) LIKE '%lifecycle_case_id IS NOT NULL%';
+ IF matches<>1 THEN RAISE EXCEPTION '0735: unexpected lifecycle predicate';END IF;
+ FOR item IN SELECT * FROM (VALUES
+  (scope_name,'company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL'),
+  (case_name,'lifecycle_case_id IS NOT NULL AND ((state=''completed'')=(lifecycle_submitted_event_id IS NOT NULL))'),
+  ('assistant_review_kind_columns','leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL')
+ ) requirements(name,expression) LOOP
+  SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=item.name;
+  IF previous IS NULL THEN RAISE EXCEPTION '0735: missing predicate %',item.name;END IF;
+  RAISE NOTICE '0735 bounded predicate % predecessor bytes %',item.name,octet_length(previous);
+  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',item.name);
+  EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK (CASE WHEN action_kind=''lifecycle.offboarding.step.complete'' THEN (%s) ELSE (%s) END)',item.name,item.expression,previous);
  END LOOP;
 END $$;
 --> statement-breakpoint
