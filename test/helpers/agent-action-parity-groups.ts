@@ -8,6 +8,7 @@ export const PARITY_PROBE_GROUPS={
   'org.reporting.change','knowledge_base.article.create','typed_pay_components.create','leave.adjustment.apply',
   'employees.compensation.maintain','employees.bank.maintain','employees.emergency_contact.maintain',
   'employees.qualification.maintain','employees.movement.transfer','rewards.post',
+  'employees.document_metadata.maintain','employees.code.maintain','employees.passport.maintain',
  ],variants:[...PARITY_PROBE_VARIANTS]},
  requests:{actions:[
   'leave.apply','leave.cancel','leave.edit','ess.profile.request','attendance.correction.request',
