@@ -19495,7 +19495,9 @@
         "analytics": "Analitik",
         "controlTower": "Menara Kawalan",
         "settings": "Tetapan"
-      }
+      },
+      "identity": "Pembantu AI",
+      "welcome": "Hai! Saya pembantu AI anda. Apa yang boleh saya bantu?"
     },
     "fileImport": {
       "title": "Sediakan import daripada fail",

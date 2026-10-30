@@ -4,6 +4,12 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import ms from '../messages/ms.json';
+import zh from '../messages/zh.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import viMessages from '../messages/vi.json';
+import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const state=vi.hoisted(()=>({path:'/leave',ask:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>state.path}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
@@ -14,6 +20,50 @@ const show=(hiddenAreas:string[]=[],position:'bottom-right'|'bottom-left'='botto
 beforeEach(()=>{state.path='/leave';state.ask.mockReset();});
 afterEach(cleanup);
 describe('floating Assistant',()=>{
+ it('opens as a tall rounded messenger with an honest AI welcome and the composer outside its scrolling transcript',()=>{
+  show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
+  const dialog=screen.getByRole('dialog',{name:copy.title});
+  expect(dialog.className).toContain('h-[min(44rem,calc(100dvh-2rem))]');
+  expect(dialog.className).toContain('w-[min(26rem,calc(100vw-2rem))]');
+  expect(dialog.className).toContain('rounded-2xl');expect(dialog.className).toContain('right-4');
+  expect(dialog).toHaveTextContent(copy.identity);expect(screen.getByText(copy.welcome)).toBeInTheDocument();
+  const log=screen.getByRole('log',{name:copy.title}),form=dialog.querySelector('form')!;
+  expect(log.className).toContain('overflow-y-auto');expect(form.className).toContain('shrink-0');expect(log.contains(form)).toBe(false);
+  expect(log.compareDocumentPosition(form)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByText(copy.welcome).closest('[data-message-role="assistant"]')).toHaveClass('rounded-2xl','bg-muted/60');
+  expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();
+ });
+ it('keeps a continuous left/right bubble transcript in the approved messenger presentation',async()=>{
+  state.ask.mockResolvedValue({ok:true,exchangeId:'messenger-example',answer:<p>You have 12 days of annual leave left.</p>});show();
+  fireEvent.click(screen.getByRole('button',{name:copy.open}));fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'How much leave do I have left?'}});fireEvent.click(screen.getByRole('button',{name:copy.send}));
+  const answer=await screen.findByText('You have 12 days of annual leave left.');
+  const log=screen.getByRole('log',{name:copy.title});
+  expect(screen.getByText(copy.welcome)).toBeInTheDocument();
+  expect(log.querySelectorAll('[data-message-role="assistant"]')).toHaveLength(2);
+  expect(screen.getByText('How much leave do I have left?').closest('[data-message-role="user"]')).toHaveClass('ml-auto','rounded-tr-sm');
+  expect(answer.closest('[data-message-role="assistant"]')).toHaveClass('rounded-tl-sm','bg-muted/60');
+ });
+ it('captures the approved messenger fixture separately from functional interaction timeouts',async()=>{
+  state.ask.mockResolvedValue({ok:true,exchangeId:'messenger-fixture',answer:<p>You have 12 days of annual leave left.</p>});const view=show();
+  fireEvent.click(screen.getByRole('button',{name:copy.open}));fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'How much leave do I have left?'}});fireEvent.click(screen.getByRole('button',{name:copy.send}));
+  await screen.findByText('You have 12 days of annual leave left.');
+  await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','messenger','Real floating Assistant component with approved messenger geometry; fictional command reply; no authenticated provider or server journey');
+ },30_000);
+ it('honors the preferred left side in both floating and docked layouts',()=>{
+  show([],'bottom-left');fireEvent.click(screen.getByRole('button',{name:copy.open}));
+  expect(screen.getByRole('dialog').className).toContain('left-4');
+  fireEvent.click(screen.getByRole('button',{name:copy.dock}));
+  expect(screen.getByRole('dialog').className).toContain('left-0');expect(screen.getByRole('dialog').className).not.toContain('right-0');
+  fireEvent.click(screen.getByRole('button',{name:copy.undock}));expect(screen.getByRole('dialog').className).toContain('left-4');
+ });
+ it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s identifies itself as AI and greets the person without claiming a human operator',(_locale,messages)=>{
+  const labels=messages.assistant.launcher;
+  render(<NextIntlClientProvider locale={_locale} messages={messages}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:labels.open}));
+  expect(labels.identity).toContain('AI');expect(labels.welcome).toContain('AI');
+  expect(screen.getByText(labels.identity)).toBeInTheDocument();expect(screen.getByText(labels.welcome)).toBeInTheDocument();
+ });
+
  it('drops continuation after a refusal or uncertain second request rather than silently skipping it',async()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'first',conversationToken:'proof',answer:<p>First answer</p>}).mockRejectedValueOnce(Error('PRIVATE')).mockResolvedValueOnce({ok:true,exchangeId:'third',answer:<p>Third answer</p>});
   show();fireEvent.click(screen.getByRole('button',{name:copy.open}));

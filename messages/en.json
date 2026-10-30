@@ -19495,7 +19495,9 @@
         "analytics": "Analytics",
         "controlTower": "Control Tower",
         "settings": "Settings"
-      }
+      },
+      "identity": "AI assistant",
+      "welcome": "Hi! I’m your AI assistant. What can I help you with?"
     },
     "fileImport": {
       "title": "Prepare an import from a file",

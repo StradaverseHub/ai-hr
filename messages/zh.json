@@ -19495,7 +19495,9 @@
         "analytics": "分析",
         "controlTower": "控制塔",
         "settings": "设置"
-      }
+      },
+      "identity": "AI 助手",
+      "welcome": "您好！我是您的 AI 助手。有什么可以帮您？"
     },
     "fileImport": {
       "title": "从文件准备导入",

@@ -19495,7 +19495,9 @@
         "analytics": "Phân tích",
         "controlTower": "Tháp điều khiển",
         "settings": "Cài đặt"
-      }
+      },
+      "identity": "Trợ lý AI",
+      "welcome": "Xin chào! Tôi là trợ lý AI của bạn. Bạn cần tôi giúp gì?"
     },
     "fileImport": {
       "title": "Chuẩn bị nhập từ tệp",
