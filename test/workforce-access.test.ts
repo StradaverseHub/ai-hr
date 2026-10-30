@@ -82,15 +82,15 @@ describe('fresh Workforce-purpose record consumers',()=>{
 
  it('ranks folded employee codes, bounds results and rechecks Workforce grants for remote search',async()=>{
   const exact=await hire('ZZZ exact code'),prefix=await hire('YYY prefix code');
-  await setEmployeeCode(admin(),{employmentId:exact.employmentId,employeeCode:'EMP-0008'});await setEmployeeCode(admin(),{employmentId:prefix.employmentId,employeeCode:'EMP-00081'});
-  for(let i=0;i<10;i++)await hire('EMP0008 match '+i);
+  await setEmployeeCode(admin(),{employmentId:exact.employmentId,employeeCode:'LOAD-LOOKUP-0008'});await setEmployeeCode(admin(),{employmentId:prefix.employmentId,employeeCode:'LOAD-LOOKUP-00081'});
+  for(let i=0;i<10;i++)await hire('LOADLOOKUP0008 match '+i);
   await activate();const ctx=admin();
   const search=(q:string,ids=[b.companyId])=>withTenant(ctx,tx=>searchWorkforceEmployeesTx(ctx,tx,ids,q));
-  const rows=await search('emp0008');expect(rows).toHaveLength(8);
+  const rows=await search('loadlookup0008');expect(rows).toHaveLength(8);
   expect(rows.slice(0,2).map(row=>row.employmentId)).toEqual([exact.employmentId,prefix.employmentId]);
-  expect(await search('%_')).toEqual([]);expect(await search('emp0008',[])).toEqual([]);
+  expect(await search('%_')).toEqual([]);expect(await search('loadlookup0008',[])).toEqual([]);
   expect(await search('   ')).toEqual([]);await expect(search('x'.repeat(201))).rejects.toThrow('Invalid employee search');
-  await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await search('emp0008')).toEqual([]);
+  await override(b.adminUserId,'workforce.view',b.companyId,'deny');expect(await search('loadlookup0008')).toEqual([]);
  });
 
  it('filters the picker by the canonical branch, department and inclusive hire-date range',async()=>{

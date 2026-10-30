@@ -3403,18 +3403,18 @@ function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
 }
 /** Uncorrelated identity checks retain related-table RLS and execute once per statement.
  * ANY(array(select...)) prevents a flattened join from probing the type for every claim. */
-function employmentClaimCountWhere(employmentId: string, opts: EmploymentClaimRead) {
-  return and(employmentClaimWhere(employmentId, opts),
+function employmentClaimCountWhere(tenantId: string, employmentId: string, opts: EmploymentClaimRead) {
+  return and(eq(claimRequest.tenantId,tenantId), employmentClaimWhere(employmentId, opts),
     sql`${claimRequest.claimTypeId} = any(array(select ${claimType.id} from ${claimType}))`,
     sql`exists(select 1 from ${employment} inner join ${person} on ${person.id}=${employment.personId}
       where ${employment.id}=${employmentId}::uuid)`);
 }
-async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
+async function employmentClaimRowsTx(tx: Tx, tenantId: string, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
   const order = [opts.cursorOrder ? sql`date_trunc('milliseconds',${claimRequest.createdAt}) desc` : desc(claimRequest.createdAt), desc(claimRequest.id)];
   // LIMIT is inside the CTE, after all membership/RLS checks but before display joins.
   // Otherwise bad RLS cardinality estimates can cause a million display lookups before LIMIT25.
   const ids = tx.select({id:claimRequest.id}).from(claimRequest)
-    .where(employmentClaimCountWhere(employmentId,opts)).orderBy(...order).$dynamic();
+    .where(employmentClaimCountWhere(tenantId,employmentId,opts)).orderBy(...order).$dynamic();
   if(opts.limit!==undefined)ids.limit(opts.limit);
   if(opts.offset!==undefined)ids.offset(opts.offset);
   const page=tx.$with('employment_claim_page').as(ids);
@@ -3432,12 +3432,12 @@ async function employmentClaimRowsTx(tx: Tx, employmentId: string, opts: Employm
 
 /** A single employment's claims, newest first; a detail read can narrow by id in SQL. */
 export function listClaimsForEmployment(ctx: SessionContext, employmentId: string, opts: {claimId?: string} = {}): Promise<ClaimRow[]> {
-  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, opts));
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, ctx.tenantId, employmentId, opts));
 }
 
 /** Drafts have their own workspace; never read filed history to populate it. */
 export function listClaimDraftsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
-  return withTenant(ctx, tx => employmentClaimRowsTx(tx, employmentId, {status: 'draft'}));
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, ctx.tenantId, employmentId, {status: 'draft'}));
 }
 
 /** Bound history rows and attachment metadata in SQL before constructing the browser's page. */
@@ -3448,8 +3448,8 @@ export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, 
     // Limit interpretation to this read transaction; the server's JIT setting is unchanged.
     await tx.execute(sql`SET LOCAL jit = off`);
     const [countRow] = await tx.select({n: sql<number>`count(*)::int`}).from(claimRequest)
-      .where(employmentClaimCountWhere(employmentId, {status: 'history'}));
-    const rows = await employmentClaimRowsTx(tx, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
+      .where(employmentClaimCountWhere(ctx.tenantId, employmentId, {status: 'history'}));
+    const rows = await employmentClaimRowsTx(tx, ctx.tenantId, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
     return {rows, state: pageState(query, Number(countRow?.n ?? 0), rows.length)};
   });
 }
@@ -3465,10 +3465,10 @@ export function listEmploymentClaimsCursorPage(ctx: SessionContext, employmentId
   return withTenant(ctx, async tx => {
     await tx.execute(sql`SET LOCAL jit = off`);
     const totals = await tx.select({status: claimRequest.status, n: sql<number>`count(*)::int`}).from(claimRequest)
-      .where(employmentClaimCountWhere(employmentId, {})).groupBy(claimRequest.status);
+      .where(employmentClaimCountWhere(ctx.tenantId, employmentId, {})).groupBy(claimRequest.status);
     const counts = Object.fromEntries(CLAIM_STATUSES.map(status => [status, 0])) as Record<typeof CLAIM_STATUSES[number],number>;
     for (const row of totals) counts[row.status] = Number(row.n);
-    const found = await employmentClaimRowsTx(tx, employmentId, {claimStatus: status, before: cursor ?? undefined, cursorOrder: true, limit: limit + 1});
+    const found = await employmentClaimRowsTx(tx, ctx.tenantId, employmentId, {claimStatus: status, before: cursor ?? undefined, cursorOrder: true, limit: limit + 1});
     const rows = found.slice(0,limit), last = rows.at(-1);
     return {rows, counts, next: found.length > limit && last ? [last.createdAt,last.id] as const : null};
   });

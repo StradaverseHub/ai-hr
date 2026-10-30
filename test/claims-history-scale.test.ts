@@ -57,13 +57,13 @@ describe('claims history scale budget', () => {
           await tx.execute(sql`SET LOCAL jit = off`);
           const countPlan = await tx.execute(sql`explain (analyze, buffers, format json)
             select count(*)::int from claim_request q
-            where q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'
+            where q.tenant_id=${base.tenantId}::uuid and q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'
             and q.claim_type_id = any(array(select id from claim_type))
             and exists(select 1 from employment e inner join person p on p.id=e.person_id where e.id=${subject.employmentId}::uuid)`);
           const rowsPlan = await tx.execute(sql`explain (analyze, buffers, format json)
             select q.id from claim_request q
             inner join claim_type t on t.id=q.claim_type_id inner join employment e on e.id=q.employment_id
-            inner join person p on p.id=e.person_id where q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'
+            inner join person p on p.id=e.person_id where q.tenant_id=${base.tenantId}::uuid and q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'
             order by q.created_at desc,q.id desc limit 25`);
           const time = (rows: unknown) => (rows as {'QUERY PLAN': {'Execution Time': number}[]}[])[0]['QUERY PLAN'][0]['Execution Time'];
           return {countPlanMs: time(countPlan), rowsPlanMs: time(rowsPlan), countPlan, rowsPlan};
