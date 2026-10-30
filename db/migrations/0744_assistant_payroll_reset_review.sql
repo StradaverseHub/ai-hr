@@ -52,6 +52,13 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app._assistant_payroll_reset_review_identity(uuid,boolean,boolean) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- Canonical serialization only: receive a typed row/value BEFORE JSON conversion. This pure
+-- invoker reads no tables, authorizes nobody and runs no native command. Function-local UTC must
+-- never move current_date inside the surrounding native visibility/delegation/authority queries.
+CREATE FUNCTION app._payroll_reset_json(value anyelement) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY INVOKER SET search_path=pg_catalog SET TimeZone='UTC' AS $$ SELECT to_jsonb(value) $$;
+REVOKE ALL ON FUNCTION app._payroll_reset_json(anyelement) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
 -- Private source commitments only. Never returns loan/claim/payslip amounts or raw source JSON.
 CREATE FUNCTION app._payroll_reset_hash(value jsonb) RETURNS text LANGUAGE sql IMMUTABLE STRICT SET search_path=pg_catalog AS $$ SELECT encode(sha256(convert_to(value::text,'UTF8')),'hex') $$;
 REVOKE ALL ON FUNCTION app._payroll_reset_hash(jsonb) FROM PUBLIC,ai_hr_app;
@@ -66,19 +73,19 @@ BEGIN
  -- Explicitly preserve the native 0121 read predicate, including native-invisible loan skips.
  IF p_loans IS NULL THEN SELECT coalesce(array_agg(DISTINCT loan_id ORDER BY loan_id),'{}'::uuid[]) INTO loan_ids FROM public.loan_repayment WHERE tenant_id=b.tenant_id AND applied_batch_id=b.id AND status='applied' AND app.can_see_employment(employment_id);ELSE loan_ids:=p_loans;END IF;
  WITH source AS (
- SELECT 'payroll_batch' relation,id,to_jsonb(q) value FROM public.payroll_batch q WHERE q.tenant_id=b.tenant_id AND q.pay_period_id=b.pay_period_id
- UNION ALL SELECT 'company',id,to_jsonb(q) FROM public.company q WHERE q.id=b.company_id AND q.tenant_id=b.tenant_id
- UNION ALL SELECT 'payroll_cycle',id,to_jsonb(q) FROM public.payroll_cycle q WHERE q.id=b.payroll_cycle_id AND q.tenant_id=b.tenant_id
- UNION ALL SELECT 'pay_period',id,to_jsonb(q) FROM public.pay_period q WHERE q.tenant_id=b.tenant_id AND q.id=b.pay_period_id
- UNION ALL SELECT 'payslip',id,to_jsonb(q) FROM public.payslip q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id AND (app.can_admin_payroll_employment(q.employment_id) OR EXISTS(SELECT 1 FROM public.employment emp WHERE emp.id=q.employment_id AND emp.tenant_id=q.tenant_id AND app.is_self_person(emp.person_id))) AND (app.payroll_history_effective(q.id) OR app.payroll_history_self_issued(q.id))
- UNION ALL SELECT 'employee_loan',id,to_jsonb(q) FROM public.employee_loan q WHERE q.tenant_id=b.tenant_id AND q.id=ANY(loan_ids) AND app.can_see_employment(q.employment_id)
- UNION ALL SELECT 'loan_repayment',id,to_jsonb(q) FROM public.loan_repayment q WHERE q.tenant_id=b.tenant_id AND q.loan_id=ANY(loan_ids) AND app.can_see_employment(q.employment_id)
- UNION ALL SELECT 'claim_request',id,to_jsonb(q) FROM public.claim_request q WHERE q.tenant_id=b.tenant_id AND q.payroll_batch_id=b.id AND (app.can_see_employment(q.employment_id) OR (q.status::text<>'draft' AND q.employment_id=ANY(app.delegated_subject_ids('claims','claims.claim'))))
- UNION ALL SELECT 'payroll_individual_txn',id,to_jsonb(q) FROM public.payroll_individual_txn q WHERE q.tenant_id=b.tenant_id AND (q.batch_id=b.id OR q.consumed_batch_id=b.id OR q.id=ANY(coalesce(p_individuals,ARRAY[]::uuid[]))) AND ((q.batch_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.payroll_batch pb WHERE pb.id=q.batch_id AND pb.tenant_id=b.tenant_id AND app.can_admin_payroll_for(pb.company_id))) OR (q.batch_id IS NULL AND q.company_id IS NOT NULL AND app.can_admin_payroll_for(q.company_id)))
- UNION ALL SELECT 'payroll_input',id,to_jsonb(q) FROM public.payroll_input q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id
- UNION ALL SELECT 'payroll_batch_component',id,to_jsonb(q) FROM public.payroll_batch_component q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id AND app.is_admin_for(b.company_id)
- UNION ALL SELECT 'payroll_statutory_adjustment',id,to_jsonb(q) FROM public.payroll_statutory_adjustment q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id
- UNION ALL SELECT 'statutory_report',id,to_jsonb(q) FROM public.statutory_report q WHERE q.tenant_id=b.tenant_id AND q.company_id=b.company_id AND q.period_key=b.pay_period AND app.is_admin_for(q.company_id)
+ SELECT 'payroll_batch' relation,id,app._payroll_reset_json(q) value FROM public.payroll_batch q WHERE q.tenant_id=b.tenant_id AND q.pay_period_id=b.pay_period_id
+ UNION ALL SELECT 'company',id,app._payroll_reset_json(q) FROM public.company q WHERE q.id=b.company_id AND q.tenant_id=b.tenant_id
+ UNION ALL SELECT 'payroll_cycle',id,app._payroll_reset_json(q) FROM public.payroll_cycle q WHERE q.id=b.payroll_cycle_id AND q.tenant_id=b.tenant_id
+ UNION ALL SELECT 'pay_period',id,app._payroll_reset_json(q) FROM public.pay_period q WHERE q.tenant_id=b.tenant_id AND q.id=b.pay_period_id
+ UNION ALL SELECT 'payslip',id,app._payroll_reset_json(q) FROM public.payslip q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id AND (app.can_admin_payroll_employment(q.employment_id) OR EXISTS(SELECT 1 FROM public.employment emp WHERE emp.id=q.employment_id AND emp.tenant_id=q.tenant_id AND app.is_self_person(emp.person_id))) AND (app.payroll_history_effective(q.id) OR app.payroll_history_self_issued(q.id))
+ UNION ALL SELECT 'employee_loan',id,app._payroll_reset_json(q) FROM public.employee_loan q WHERE q.tenant_id=b.tenant_id AND q.id=ANY(loan_ids) AND app.can_see_employment(q.employment_id)
+ UNION ALL SELECT 'loan_repayment',id,app._payroll_reset_json(q) FROM public.loan_repayment q WHERE q.tenant_id=b.tenant_id AND q.loan_id=ANY(loan_ids) AND app.can_see_employment(q.employment_id)
+ UNION ALL SELECT 'claim_request',id,app._payroll_reset_json(q) FROM public.claim_request q WHERE q.tenant_id=b.tenant_id AND q.payroll_batch_id=b.id AND (app.can_see_employment(q.employment_id) OR (q.status::text<>'draft' AND q.employment_id=ANY(app.delegated_subject_ids('claims','claims.claim'))))
+ UNION ALL SELECT 'payroll_individual_txn',id,app._payroll_reset_json(q) FROM public.payroll_individual_txn q WHERE q.tenant_id=b.tenant_id AND (q.batch_id=b.id OR q.consumed_batch_id=b.id OR q.id=ANY(coalesce(p_individuals,ARRAY[]::uuid[]))) AND ((q.batch_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.payroll_batch pb WHERE pb.id=q.batch_id AND pb.tenant_id=b.tenant_id AND app.can_admin_payroll_for(pb.company_id))) OR (q.batch_id IS NULL AND q.company_id IS NOT NULL AND app.can_admin_payroll_for(q.company_id)))
+ UNION ALL SELECT 'payroll_input',id,app._payroll_reset_json(q) FROM public.payroll_input q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id
+ UNION ALL SELECT 'payroll_batch_component',id,app._payroll_reset_json(q) FROM public.payroll_batch_component q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id AND app.is_admin_for(b.company_id)
+ UNION ALL SELECT 'payroll_statutory_adjustment',id,app._payroll_reset_json(q) FROM public.payroll_statutory_adjustment q WHERE q.tenant_id=b.tenant_id AND q.batch_id=b.id
+ UNION ALL SELECT 'statutory_report',id,app._payroll_reset_json(q) FROM public.statutory_report q WHERE q.tenant_id=b.tenant_id AND q.company_id=b.company_id AND q.period_key=b.pay_period AND app.is_admin_for(q.company_id)
  ), grouped AS (SELECT relation,jsonb_object_agg(id::text,app._payroll_reset_hash(value)) hashes FROM source GROUP BY relation)
  SELECT coalesce(jsonb_object_agg(relation,hashes),'{}'::jsonb) INTO rows FROM grouped;
  -- Cohort is deliberately wider than the close/payslip cohort. Consumed rows may have moved batches.
@@ -99,7 +106,7 @@ BEGIN
  'applied',(SELECT count(*) FROM public.loan_repayment WHERE tenant_id=b.tenant_id AND applied_batch_id=b.id AND status='applied' AND app.can_see_employment(employment_id)),
  'claims',(SELECT count(*) FROM public.claim_request q WHERE q.tenant_id=b.tenant_id AND q.payroll_batch_id=b.id AND q.status='paid' AND (app.can_see_employment(q.employment_id) OR (q.status='pending' AND q.employment_id=ANY(app.delegated_subject_ids('claims','claims.claim'))))),
  'consumed',(SELECT count(*) FROM public.payroll_individual_txn q WHERE q.tenant_id=b.tenant_id AND q.consumed_batch_id=b.id AND ((q.batch_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.payroll_batch pb WHERE pb.id=q.batch_id AND app.can_admin_payroll_for(pb.company_id))) OR (q.batch_id IS NULL AND q.company_id IS NOT NULL AND app.can_admin_payroll_for(q.company_id)))),
- 'recalcMarked',b.needs_recalc_at IS NOT NULL,'beforeBatchHash',app._payroll_reset_hash(to_jsonb(b)),
+ 'recalcMarked',b.needs_recalc_at IS NOT NULL,'beforeBatchHash',app._payroll_reset_hash(app._payroll_reset_json(b)),
  'beforeTotalsHash',app._payroll_reset_hash(jsonb_build_object('status',b.status,'totals',b.totals,'employeeCount',b.employee_count)));
  RETURN jsonb_build_object('rows',rows,'meta',meta);
 END $$;
@@ -134,8 +141,8 @@ BEGIN
  IF NOT FOUND THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app._assistant_payroll_reset_review_identity(r.person_id);
  proof:=r.payroll_reset_proof;progress:=proof->'progress';
- IF TG_OP<>'INSERT' THEN oldj:=to_jsonb(OLD);oldhash:=app._payroll_reset_hash(oldj);END IF;
- IF TG_OP<>'DELETE' THEN newj:=to_jsonb(NEW);newhash:=app._payroll_reset_hash(newj);END IF;
+ IF TG_OP<>'INSERT' THEN oldj:=app._payroll_reset_json(OLD);oldhash:=app._payroll_reset_hash(oldj);END IF;
+ IF TG_OP<>'DELETE' THEN newj:=app._payroll_reset_json(NEW);newhash:=app._payroll_reset_hash(newj);END IF;
  rowid:=coalesce(oldj->>'id',newj->>'id');
  relevant:=(relation='payroll_status_history' AND (oldj->>'batch_id'=r.payroll_reset_batch_id::text OR newj->>'batch_id'=r.payroll_reset_batch_id::text)) OR (relation='domain_event' AND (coalesce(oldj->>'aggregate_id',newj->>'aggregate_id')=r.payroll_reset_batch_id::text OR (proof->'source'->'rows'->'loan_repayment')?coalesce(oldj->>'aggregate_id',newj->>'aggregate_id') OR (proof->'source'->'rows'->'employee_loan')?coalesce(oldj->>'aggregate_id',newj->>'aggregate_id') OR (proof->'source'->'rows'->'claim_request')?coalesce(oldj->>'aggregate_id',newj->>'aggregate_id'))) OR coalesce((progress->relation)?rowid,false) OR coalesce((proof->'source'->'rows'->relation)?rowid,false)
  OR (relation IN('payslip','payroll_input','payroll_batch_component','payroll_statutory_adjustment') AND (oldj->>'batch_id'=r.payroll_reset_batch_id::text OR newj->>'batch_id'=r.payroll_reset_batch_id::text))
@@ -161,14 +168,14 @@ BEGIN
  ELSIF relation='loan_repayment' AND TG_OP='DELETE' AND oldj->>'status'='scheduled' THEN
   step:=nullif(current_setting('app.payroll_reset_current_rep',true),'')::uuid;
   SELECT * INTO rep FROM public.loan_repayment q WHERE q.id=step AND q.tenant_id=r.tenant_id AND q.applied_batch_id=r.payroll_reset_batch_id AND q.status='applied' AND app.can_see_employment(q.employment_id);
-  IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.employee_loan l WHERE l.id=rep.loan_id AND l.tenant_id=r.tenant_id AND app.can_see_employment(l.employment_id)) OR progress->relation->>rep.id::text IS DISTINCT FROM app._payroll_reset_hash(to_jsonb(rep)) OR rep.loan_id::text IS DISTINCT FROM oldj->>'loan_id' OR rep.applied_amount>=rep.due_amount OR (rep.due_amount-rep.applied_amount)::numeric(12,2) IS DISTINCT FROM (oldj->>'due_amount')::numeric OR EXISTS(SELECT 1 FROM public.loan_repayment q WHERE q.tenant_id=r.tenant_id AND q.loan_id=rep.loan_id AND app.can_see_employment(q.employment_id) AND q.status='scheduled' AND q.due_amount=rep.due_amount-rep.applied_amount AND q.sequence_no>(oldj->>'sequence_no')::int) OR proof->'shortfalls'?rep.id::text THEN RAISE EXCEPTION 'Payroll reset shortfall mismatch';END IF;
+  IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.employee_loan l WHERE l.id=rep.loan_id AND l.tenant_id=r.tenant_id AND app.can_see_employment(l.employment_id)) OR progress->relation->>rep.id::text IS DISTINCT FROM app._payroll_reset_hash(app._payroll_reset_json(rep)) OR rep.loan_id::text IS DISTINCT FROM oldj->>'loan_id' OR rep.applied_amount>=rep.due_amount OR (rep.due_amount-rep.applied_amount)::numeric(12,2) IS DISTINCT FROM (oldj->>'due_amount')::numeric OR EXISTS(SELECT 1 FROM public.loan_repayment q WHERE q.tenant_id=r.tenant_id AND q.loan_id=rep.loan_id AND app.can_see_employment(q.employment_id) AND q.status='scheduled' AND q.due_amount=rep.due_amount-rep.applied_amount AND q.sequence_no>(oldj->>'sequence_no')::int) OR proof->'shortfalls'?rep.id::text THEN RAISE EXCEPTION 'Payroll reset shortfall mismatch';END IF;
   proof:=jsonb_set(proof,ARRAY['shortfalls',rep.id::text],jsonb_build_object('id',rowid,'hash',oldhash));
   entry:=entry||jsonb_build_object('kind','shortfall','repaymentId',rep.id);
  ELSIF relation='loan_repayment' AND TG_OP='UPDATE' AND oldj->>'status'='applied' AND oldj->>'applied_batch_id'=r.payroll_reset_batch_id::text THEN
   step:=nullif(current_setting('app.payroll_reset_current_rep',true),'')::uuid;
   IF step::text IS DISTINCT FROM rowid OR oldj-ARRAY['status','reserved_batch_id','due_amount','applied_batch_id','applied_amount','applied_at'] IS DISTINCT FROM newj-ARRAY['status','reserved_batch_id','due_amount','applied_batch_id','applied_amount','applied_at'] OR newj->>'applied_batch_id' IS NOT NULL OR (newj->>'applied_amount')::numeric<>0 OR newj->>'applied_at' IS NOT NULL THEN RAISE EXCEPTION 'Payroll reset repayment mismatch';END IF;
   SELECT * INTO loan FROM public.employee_loan q WHERE q.id=(oldj->>'loan_id')::uuid AND q.tenant_id=r.tenant_id AND app.can_see_employment(q.employment_id);
-  IF NOT FOUND OR progress->'employee_loan'->>loan.id::text IS DISTINCT FROM app._payroll_reset_hash(to_jsonb(loan)) OR proof->'pendingLoans'?loan.id::text THEN RAISE EXCEPTION 'Payroll reset loan mismatch';END IF;
+  IF NOT FOUND OR progress->'employee_loan'->>loan.id::text IS DISTINCT FROM app._payroll_reset_hash(app._payroll_reset_json(loan)) OR proof->'pendingLoans'?loan.id::text THEN RAISE EXCEPTION 'Payroll reset loan mismatch';END IF;
   SELECT EXISTS(SELECT 1 FROM public.loan_repayment q WHERE q.tenant_id=r.tenant_id AND q.loan_id=loan.id AND app.can_see_employment(q.employment_id) AND q.id<>(oldj->>'id')::uuid AND q.status='reserved') INTO other_reserved;
   IF (other_reserved AND (newj->>'status'<>'scheduled' OR newj->>'reserved_batch_id' IS NOT NULL)) OR (NOT other_reserved AND (newj->>'status'<>'reserved' OR newj->'reserved_batch_id' IS DISTINCT FROM oldj->'reserved_batch_id')) THEN RAISE EXCEPTION 'Payroll reset reservation mismatch';END IF;
   shortfall:=proof->'shortfalls'->rowid;
@@ -180,8 +187,8 @@ BEGIN
   -- reproduce an amortization algorithm or expose monetary values in the commitment.
   IF abs(loan.outstanding_balance*100)+abs((oldj->>'applied_amount')::numeric*100)>9007199254740991 THEN RAISE EXCEPTION 'Payroll reset requires native handoff' USING ERRCODE='54000';END IF;
   reopened:=loan.status='settled' AND (oldj->>'applied_amount')::numeric>0;
-  expected:=to_jsonb(loan)||jsonb_build_object('outstanding_balance',(loan.outstanding_balance+(oldj->>'applied_amount')::numeric)::numeric(12,2),'instalments_paid',greatest(0,loan.instalments_paid-CASE WHEN (oldj->>'applied_amount')::numeric>0 THEN 1 ELSE 0 END),'status',CASE WHEN reopened THEN 'active' ELSE loan.status::text END,'updated_at',now());
-  proof:=jsonb_set(proof,ARRAY['pendingLoans',loan.id::text],jsonb_build_object('old',app._payroll_reset_hash(to_jsonb(loan)),'new',app._payroll_reset_hash(expected),'repaymentId',rowid,'reopened',reopened,'employmentId',loan.employment_id));
+  expected:=app._payroll_reset_json(loan)||jsonb_build_object('outstanding_balance',(loan.outstanding_balance+(oldj->>'applied_amount')::numeric)::numeric(12,2),'instalments_paid',greatest(0,loan.instalments_paid-CASE WHEN (oldj->>'applied_amount')::numeric>0 THEN 1 ELSE 0 END),'status',CASE WHEN reopened THEN 'active' ELSE loan.status::text END,'updated_at',app._payroll_reset_json(now()));
+  proof:=jsonb_set(proof,ARRAY['pendingLoans',loan.id::text],jsonb_build_object('old',app._payroll_reset_hash(app._payroll_reset_json(loan)),'new',app._payroll_reset_hash(expected),'repaymentId',rowid,'reopened',reopened,'employmentId',loan.employment_id));
   entry:=entry||jsonb_build_object('kind','repayment','loanId',loan.id,'employmentId',oldj->>'employment_id');
  ELSIF relation='employee_loan' AND TG_OP='UPDATE' THEN
   pending:=proof->'pendingLoans'->rowid;
@@ -258,9 +265,9 @@ BEGIN
   event_count:=event_count+1;
  END LOOP;
  IF (SELECT count(*) FROM jsonb_array_elements(proof->'observed') WHERE value->>'kind'='history')<>1 OR (SELECT count(*) FROM jsonb_array_elements(proof->'observed') WHERE value->>'kind'='event')<>event_count+1 OR (SELECT count(*) FROM public.domain_event d WHERE d.tenant_id=r.tenant_id AND d.payload->>'resetEventId'=p_event::text)<>event_count THEN RAISE EXCEPTION 'Payroll reset extra native event';END IF;
- SELECT jsonb_object_agg(d.id::text,app._payroll_reset_hash(to_jsonb(d))) INTO event_hashes FROM public.domain_event d WHERE d.tenant_id=r.tenant_id AND (d.id=p_event OR d.payload->>'resetEventId'=p_event::text);
- commitment:=app._payroll_reset_hash(jsonb_build_object('source',proof->'source','observed',proof->'observed','progress',proof->'progress','history',app._payroll_reset_hash(to_jsonb(h)),'events',event_hashes));
- proof:=jsonb_build_object('phase','completed','commitment',commitment,'statusHistoryId',h.id,'resetEventId',p_event,'counts',counts,'historyHash',app._payroll_reset_hash(to_jsonb(h)),'eventHashes',event_hashes);
+ SELECT jsonb_object_agg(d.id::text,app._payroll_reset_hash(app._payroll_reset_json(d))) INTO event_hashes FROM public.domain_event d WHERE d.tenant_id=r.tenant_id AND (d.id=p_event OR d.payload->>'resetEventId'=p_event::text);
+ commitment:=app._payroll_reset_hash(jsonb_build_object('source',proof->'source','observed',proof->'observed','progress',proof->'progress','history',app._payroll_reset_hash(app._payroll_reset_json(h)),'events',event_hashes));
+ proof:=jsonb_build_object('phase','completed','commitment',commitment,'statusHistoryId',h.id,'resetEventId',p_event,'counts',counts,'historyHash',app._payroll_reset_hash(app._payroll_reset_json(h)),'eventHashes',event_hashes);
  UPDATE app.assistant_own_leave_review SET payroll_reset_proof=CASE WHEN p_finalize THEN proof ELSE payroll_reset_proof END WHERE id=r.id RETURNING xmin INTO physical;
  IF physical<>pg_current_xact_id()::xid THEN RAISE EXCEPTION 'Payroll reset completion is not top-level';END IF;
  RETURN proof;
@@ -474,9 +481,9 @@ BEGIN
  SELECT * INTO parent FROM public.pay_period WHERE id=r.payroll_reset_period_id AND tenant_id=r.tenant_id AND company_id=r.company_id AND period=b.pay_period;
  IF NOT FOUND THEN RETURN NULL;END IF;
  SELECT * INTO h FROM public.payroll_status_history WHERE id=(r.payroll_reset_proof->>'statusHistoryId')::uuid AND tenant_id=r.tenant_id AND batch_id=b.id;
- IF NOT FOUND OR app._payroll_reset_hash(to_jsonb(h)) IS DISTINCT FROM r.payroll_reset_proof->>'historyHash' THEN RETURN NULL;END IF;
+ IF NOT FOUND OR app._payroll_reset_hash(app._payroll_reset_json(h)) IS DISTINCT FROM r.payroll_reset_proof->>'historyHash' THEN RETURN NULL;END IF;
  FOR x IN SELECT key,value FROM jsonb_each_text(r.payroll_reset_proof->'eventHashes') LOOP
-  SELECT app._payroll_reset_hash(to_jsonb(d)) INTO actual FROM public.domain_event d WHERE d.id=x.key::uuid AND d.tenant_id=r.tenant_id;
+  SELECT app._payroll_reset_hash(app._payroll_reset_json(d)) INTO actual FROM public.domain_event d WHERE d.id=x.key::uuid AND d.tenant_id=r.tenant_id;
   IF actual IS DISTINCT FROM x.value THEN RETURN NULL;END IF;
  END LOOP;
  -- Do not require historical deletions to remain absent after an authorized regeneration.

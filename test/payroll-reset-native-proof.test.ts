@@ -17,7 +17,8 @@ const reviewedDigest='b'.repeat(64),intentDigest='c'.repeat(64),reason='Fictiona
 const ids=(values:string[])=>sql`ARRAY[${sql.join(values.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
 function databaseError(error:unknown){let current=error,code:string|undefined;const messages:string[]=[];for(let i=0;i<8&&current&&typeof current==='object';i++){const row=current as {code?:unknown;message?:unknown;cause?:unknown};if(typeof row.code==='string')code=row.code;if(typeof row.message==='string')messages.push(row.message);current=row.cause;}return{code,message:messages.join('\n')};}
 async function refused(work:(tx:Tx)=>Promise<unknown>,message:string,code='P0001'){let failure:unknown;try{await withTenant(ctx,work);}catch(error){failure=error;}expect(failure,'Expected the exact native proof refusal').toBeDefined();const actual=databaseError(failure);expect(actual.code).toBe(code);expect(actual.message).toContain(message);}
-async function prepare(){const actionId=randomUUID();await withTenant(ctx,async tx=>{
+async function prepare(zone?:string){const actionId=randomUUID();await withTenant(ctx,async tx=>{
+ if(zone)await tx.execute(sql`select set_config('TimeZone',${zone},true)`);
  const [row]=await tx.execute<{source:{people:string[];sourceDigest:string}}>(sql`select app.payroll_reset_review_context(${batchId}::uuid) as source`);
  const [batch]=await tx.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));
  await tx.execute(sql`select app.assistant_payroll_reset_review_prepare(${actionId}::uuid,${ctx.personId??null}::uuid,${batchId}::uuid,${b.companyId}::uuid,${batch.payPeriodId}::uuid,${ids(row.source.people)},NULL::uuid,ARRAY[]::uuid[],${intentDigest},${reviewedDigest},${'a'.repeat(16)},'fictional-wrapped-key','fictional-proof-fixture-ciphertext',${row.source.sourceDigest})`);
@@ -150,6 +151,36 @@ describe('protected native reset proof',()=>{
   await owner.db.update(s.payrollBatch).set({companyId:targetCompany,payPeriodId:parent.id,payPeriod:targetPeriod,batchDate:targetPeriod+'-28'}).where(eq(s.payrollBatch.id,batchId));
   const beforeRead=await state();const [row]=await withTenant(ctx,tx=>tx.execute<{receipt:unknown}>(sql`select app.read_own_payroll_reset_effect(${batchId}::uuid,${eventId}::uuid) receipt`));expect(row.receipt).toBeNull();expect(await state()).toEqual(beforeRead);
   const [binding]=await owner.db.execute<{company:string;period:string}>(sql`select company_id company,payroll_reset_period_id period from app.assistant_own_leave_review where id=${id}::uuid`);expect(binding).toEqual({company:b.companyId,period:original.payPeriodId});
+ });
+
+ it('keeps one canonical effect across UTC preparation, KL confirmation and other-zone recovery after regeneration',async()=>{
+  const id=await prepare('UTC');let eventId='',commitment='';
+  await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('TimeZone','Asia/Kuala_Lumpur',true)`);await arm(tx,id);const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});eventId=native.resetEventId;await complete(tx,id,eventId);const [row]=await tx.execute<{receipt:{commitment:string}}>(sql`select app.read_own_payroll_reset_effect(${batchId}::uuid,${eventId}::uuid) receipt`);commitment=row.receipt.commitment;});
+  await generatePayslips(ctx,{batchId});const before=await state();
+  for(const zone of ['America/New_York','Pacific/Kiritimati','Etc/GMT+12'])await withTenant(ctx,async tx=>{
+   await tx.execute(sql`select set_config('TimeZone',${zone},true)`);const [row]=await tx.execute<{receipt:{commitment:string;resetEventId:string;currentStatus:string}}>(sql`select app.read_own_payroll_reset_effect(${batchId}::uuid,${eventId}::uuid) receipt`);expect(row.receipt).toMatchObject({commitment,resetEventId:eventId,currentStatus:'processed'});await complete(tx,id,eventId);const [setting]=await tx.execute<{zone:string}>(sql`select current_setting('TimeZone') zone`);expect(setting.zone).toBe(zone);
+  });expect(await state()).toEqual(before);expect(before.events.filter(row=>row.eventType==='payroll-batch.reset')).toHaveLength(1);expect(before.history.filter(row=>row.action==='rollback')).toHaveLength(1);
+ });
+ it('canonically serializes a typed SQL timestamp without reinterpreting JSON strings or shifting caller dates',async()=>{
+  await owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('TimeZone','Pacific/Kiritimati',true)`);const [row]=await tx.execute<{utcDate:string;klDate:string;value:string;json:{date:string};zone:string}>(sql`select ((timestamptz '2026-10-30 16:30:00+00' at time zone 'UTC')::date)::text as "utcDate",((timestamptz '2026-10-30 16:30:00+00' at time zone 'Asia/Kuala_Lumpur')::date)::text as "klDate",app._payroll_reset_json(timestamptz '2026-10-30 16:30:00+00') value,app._payroll_reset_json('{"date":"2026-10-30T16:30:00+08:00"}'::jsonb) json,current_setting('TimeZone') zone`);expect(row).toEqual({utcDate:'2026-10-30',klDate:'2026-10-31',value:'2026-10-30T16:30:00+00:00',json:{date:'2026-10-30T16:30:00+08:00'},zone:'Pacific/Kiritimati'});});
+  await refused(tx=>tx.execute(sql`select app._payroll_reset_json(now())`),'permission denied','42501');
+ });
+
+ it('keeps actual date-sensitive native visibility outside canonical serialization',async()=>{
+  const administrator=ctx,manager=await hireEmployee(administrator,{person:{fullName:'Fictional date-sensitive manager',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:String(Number(period.slice(0,4))-1)+'-01-01'});
+  await mixedActor(true);await owner.db.update(s.appUser).set({personId:manager.personId}).where(eq(s.appUser.id,ctx.userId!));ctx={...ctx,personId:manager.personId};
+  const [dates]=await owner.db.execute<{high:string;low:string}>(sql`select (now() at time zone 'Pacific/Kiritimati')::date::text high,(now() at time zone 'Etc/GMT+12')::date::text low`);expect(dates.high>dates.low).toBe(true);
+  await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,subordinateEmploymentId:employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:dates.high});
+  const beforeState=await state(),digests:string[]=[];
+  for(const [zone,date,visible] of [['Pacific/Kiritimati',dates.high,true],['Etc/GMT+12',dates.low,false]] as const)await withTenant(ctx,async tx=>{
+   await tx.execute(sql`select set_config('TimeZone',${zone},true)`);
+   const probe=async()=>{const [row]=await tx.execute<{zone:string;date:string;visible:boolean}>(sql`select current_setting('TimeZone') zone,current_date::text date,app.can_see_employment(${employmentId}::uuid) visible`);return row;};
+   expect(await probe()).toEqual({zone,date,visible});const [source]=await tx.execute<{source:{sourceDigest:string}}>(sql`select app.payroll_reset_review_context(${batchId}::uuid) source`);digests.push(source.source.sourceDigest);expect(await probe()).toEqual({zone,date,visible});
+  });expect(digests[0]).not.toBe(digests[1]);
+  // This real native actor may READ the loan through today's reporting line but still lacks the
+  // company-B HR write floor. In the earlier native date the invisible parent is skipped instead.
+  await refused(async tx=>{await tx.execute(sql`select set_config('TimeZone','Pacific/Kiritimati',true)`);await resetProcessedBatchTx(tx,ctx,{batchId,reason});},'row-level security','42501');
+  await expect(withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('TimeZone','Etc/GMT+12',true)`);const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason});expect(native).toMatchObject({loanInstalmentsReversed:1,loansReopened:0,claimsReverted:0});throw Error('Fictional native date contrast rollback');})).rejects.toThrow('Fictional native date contrast rollback');expect(await state()).toEqual(beforeState);
  });
 
 });
