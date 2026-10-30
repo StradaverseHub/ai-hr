@@ -24,6 +24,7 @@ import { deliverNotificationEmails,type NotificationEmailTransport } from '../co
 import { dispatchNotifications,dispatchNotificationsFromSweep,notificationStillTargets } from '../core/notifications';
 import { appendEvent,actorOf } from '../db/events';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {privatePerformanceGuideContext} from '../packs/performance/onehr/guide-service';
 
 vi.mock('../lib/ai',async importActual=>({...await importActual<typeof import('../lib/ai')>(),generateDraft:vi.fn(),readImage:vi.fn()}));
 vi.mock('../core/ai-config',async importActual=>({...await importActual<typeof import('../core/ai-config')>(),resolveActiveAiConfig:vi.fn()}));
@@ -117,7 +118,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('Performance admin search falls back without AI and never exports private review input to the model',async()=>{
     const result=await perf.askAssessmentAdmin(a,cycleId,'panel target');expect(result.mode).toBe('search');expect(result.cards.some(c=>c.label==='360 panel target')).toBe(true);
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"actions":[{"tool":"find_setting","args":{"query":"panel target"}}]}');
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');
     const reply=await perf.askAssessmentAdmin(a,cycleId,'Find panel target');expect(reply.mode).toBe('answer');expect(reply.cards[0].label).toBe('360 panel target');
     const prompt=vi.mocked(generateDraft).mock.calls.at(-1)![1].prompt;expect(prompt).not.toContain('Assessment subject');expect(prompt).not.toMatch(/salary|managerRemark|selfRemark/);
   });
@@ -130,9 +131,9 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('Performance admin discards proposed reports after settings or provider configuration change',async()=>{
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
     const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
-    const report='{"actions":[{"tool":"build_report","args":{"kind":"participants"}}]}';
+    const report='{"items":[0]}';
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch(groupAdmin,'review',false);return report;});
-    expect((await perf.askAssessmentAdmin(a,cycleId,'Participants report')).mode).toBe('search');expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
+    expect((await perf.askAssessmentAdmin(a,cycleId,'Participants report')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledOnce();expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
     await perf.setAssessmentAiSwitch(groupAdmin,'review',true);
     vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.stubEnv('OPENAI_API_KEY','');vi.stubEnv('ANTHROPIC_API_KEY','fictional-changed-unit-transport-never-sent');return report;});
     expect((await perf.askAssessmentAdmin(a,cycleId,'Participants report')).mode).toBe('search');expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
@@ -141,7 +142,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const [account]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();const [role]=await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:account.id,role:'hr_admin',companyId:b.companyId}).returning();
     const scoped={...a,userId:account.id,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:b.companyId}]};
     vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,role.id));return '{"actions":[{"tool":"build_report","args":{"kind":"participants"}}]}';});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.id,role.id));return '{"items":[0]}';});
     await expect(perf.askAssessmentAdmin(scoped,cycleId,'Participants report')).rejects.toThrow(/administrator access/);
     expect(await perf.getAssessmentAdminReportHistory(a,cycleId)).toEqual([]);
   });
@@ -196,20 +197,25 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('Performance guide counts answered questions without storing their text or conversation',async()=>{
     await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockResolvedValue('{"facts":["dashboard"],"unanswered":false}');
-    const answer=await perf.askPerformanceGuide(self,'My review PRIVATE_QUESTION',[{role:'user',content:'PRIVATE_HISTORY'}]);
-    expect(answer.mode).toBe('answer');expect(answer.facts.map(f=>f.id)).toEqual(['dashboard']);
-    const rows=await owner.db.select().from(schema.assessmentGuideUse);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({status:'answered',question:null});
-    expect(JSON.stringify(rows)).not.toMatch(/PRIVATE_QUESTION|PRIVATE_HISTORY/);
+    vi.mocked(generateDraft).mockImplementation(async(_cfg,args)=>{const payload=JSON.parse(args.prompt) as {facts:{index:number;kind:string}[]};const dashboard=payload.facts.find(f=>f.kind==='other');if(!dashboard)throw Error('Expected the actual native dashboard reference');return JSON.stringify({items:[dashboard.index],unanswered:false});});
+    for(const locale of ['en','ms','zh','vi','ta','th']){
+      const dictionary=JSON.parse(readFileSync(new URL(`../messages/${locale}.json`,import.meta.url),'utf8'));
+      const question=dictionary.onehr.ask.todo as string;
+      const answer=await perf.askPerformanceGuide(self,question,[{role:'user',content:'PRIVATE_HISTORY'}]);
+      expect(answer.mode).toBe('answer');expect(answer.facts.map(f=>f.id)).toEqual(['dashboard']);
+      expect(vi.mocked(generateDraft).mock.calls.at(-1)![1].prompt).not.toContain(question);
+    }
+    const rows=await owner.db.select().from(schema.assessmentGuideUse);expect(rows).toHaveLength(6);expect(rows.every(row=>row.status==='answered'&&row.question===null)).toBe(true);
+    expect(JSON.stringify(rows)).not.toMatch(/PRIVATE_QUESTION|PRIVATE_HISTORY/);expect(JSON.stringify(vi.mocked(generateDraft).mock.calls)).not.toContain('PRIVATE_HISTORY');
   });
-  it('Performance guide reports anonymous unanswered questions and neutralizes spreadsheet formula content',async()=>{
+  it('Performance guide counts anonymous local unanswered questions without storing text and retains safe CSV formatting',async()=>{
     await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockResolvedValue('{"facts":[],"unanswered":true}');
-    await perf.askPerformanceGuide(self,'=UNANSWERED_QUESTION');
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[],"unanswered":true}');
+    expect(await perf.askPerformanceGuide(self,'=UNANSWERED_QUESTION')).toMatchObject({mode:'search',unanswered:true});expect(generateDraft).not.toHaveBeenCalled();
     const report=await perf.getPerformanceGuideReport(a);expect(report.week).toEqual({answered:0,unanswered:1,declined:0,people:1});
-    expect(report.rows).toHaveLength(1);expect(report.rows[0].question).toBe('=UNANSWERED_QUESTION');expect(Object.keys(report.rows[0]).sort()).toEqual(['at','businessGroup','company','department','question']);
+    expect(report.rows).toHaveLength(1);expect(report.rows[0].question).toBe('');expect(Object.keys(report.rows[0]).sort()).toEqual(['at','businessGroup','company','department','question']);
     expect(JSON.stringify(report)).not.toContain(self.userId);expect(JSON.stringify(report)).not.toContain('Assessment subject');
-    expect(await perf.exportPerformanceGuideReport(a)).toContain("'=UNANSWERED_QUESTION");
+    expect(await perf.exportPerformanceGuideReport(a)).not.toContain('UNANSWERED_QUESTION');expect(toCsv([['=UNANSWERED_QUESTION']])).toContain("'=UNANSWERED_QUESTION");expect((await owner.db.select().from(schema.assessmentGuideUse))[0].question).toBe('');
     const other=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated company'}).returning();
     const [scopedAccount]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();const scopedUser=scopedAccount.id;
     await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:scopedUser,role:'hr_admin',companyId:other[0].id});
@@ -219,17 +225,18 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   });
   it('Performance guide drops invalid model claims and rechecks a changed AI configuration',async()=>{
     await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockResolvedValue('{"facts":["foreign-review"],"unanswered":false}');
+    vi.mocked(generateDraft).mockResolvedValue('{"items":[999],"unanswered":false}');
     expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledOnce();
-    vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);return '{"facts":["dashboard"],"unanswered":false}';});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{vi.mocked(resolveActiveAiConfig).mockResolvedValue(null);return '{"items":[0],"unanswered":false}';});
     expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledTimes(2);
     expect((await owner.db.select().from(schema.assessmentGuideUse)).every(r=>r.status==='search'&&r.question===null)).toBe(true);
   });
   it('Performance guide discards a colleague task when reviewer access changes during the provider call',async()=>{
-    const before=await perf.getPerformanceGuideFacts(mgr,'review');const task=before.find(f=>f.id.startsWith(`task:${reviewId}.`));expect(task).toBeTruthy();
+    const before=await perf.getPerformanceGuideFacts(mgr,'my current tasks');const task=before.find(f=>f.id.startsWith(`task:${reviewId}.`));expect(task).toBeTruthy();
+    const targetIndex=privatePerformanceGuideContext('my current tasks',before,'status').findIndex(fact=>fact.id===task!.id);expect(targetIndex).toBeGreaterThanOrEqual(0);
     await prepareMockedSpend('performance_review');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
-    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.performanceReview).set({reviewerEmploymentId:peers[0].employmentId}).where(eq(schema.performanceReview.id,reviewId));return JSON.stringify({facts:[task!.id],unanswered:false});});
-    const reply=await perf.askPerformanceGuide(mgr,'Assessment subject review');expect(generateDraft).toHaveBeenCalledOnce();expect(reply.mode).toBe('search');expect(reply.facts.some(f=>f.id===task!.id)).toBe(false);
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await owner.db.update(schema.performanceReview).set({reviewerEmploymentId:peers[0].employmentId}).where(eq(schema.performanceReview.id,reviewId));return JSON.stringify({items:[targetIndex],unanswered:false});});
+    const reply=await perf.askPerformanceGuide(mgr,'my current tasks');expect(generateDraft).toHaveBeenCalledOnce();expect(reply.mode).toBe('search');expect(reply.facts.some(f=>f.id===task!.id)).toBe(false);
   });
   it('Performance guide remains useful during provider failures and has no fixed daily allowance',async()=>{
     expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).not.toHaveBeenCalled();
@@ -281,7 +288,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     vi.mocked(generateDraft).mockResolvedValueOnce('I completed 42 units.');
     await expect(perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow(/unsupported/);
     expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
-    vi.mocked(generateDraft).mockResolvedValue(words);
+    vi.mocked(generateDraft).mockResolvedValue('{"layout":"paragraph"}');
     for(let i=0;i<5;i++)expect(await perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID())).toMatchObject({text:words,remaining:4-i,limit:5});
     await expect(perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID())).rejects.toThrow(/All 5/);
     expect(generateDraft).toHaveBeenCalledTimes(6);
@@ -308,7 +315,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const words='I practised the agreed work with my colleagues.';
     for(const feature of ['tc','idp'] as const){
       vi.mocked(generateDraft).mockResolvedValue('{"items":[999]}');expect(await perf.draftOnehrNarrative(self,reviewId,words,feature)).toBe('');
-      vi.mocked(generateDraft).mockResolvedValue(words);
+      vi.mocked(generateDraft).mockResolvedValue('{"layout":"paragraph"}');
       const target=feature==='tc'?{kind:'tc_self_remark'}:{kind:'idp_action',area:'Collaboration',mode:'onJob'};
       for(let i=0;i<4;i++)await perf.rewriteAssessmentField(self,reviewId,target,words,'Polish.',randomUUID());
       vi.mocked(generateDraft).mockResolvedValue('{"items":[0]}');expect(await perf.draftOnehrNarrative(self,reviewId,words,feature)).toBe(words);
@@ -356,7 +363,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   it('allows only the assigned feedback rater to use their own field quota without granting access to the subject review',async()=>{
     await perf.assignOnehrPanel(mgr,reviewId,(await view()).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
     const rater=peers[0].ctx,request=(await perf.onehrAssignments(rater)).feedback.find(r=>r.subject==='Assessment subject')!,card=await perf.getOnehrFeedback(rater,request.id),words='They supported our agreed delivery.';
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue(words);
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"layout":"paragraph"}');
     const target={kind:'feedback_comment',contextId:request.id,principle:card.statements[0].principle};
     expect(await perf.rewriteAssessmentField(rater,reviewId,target,words,'Polish.',randomUUID())).toMatchObject({remaining:4,text:words});
     await expect(perf.getOnehrReview(rater,reviewId)).resolves.toBeNull();
@@ -368,23 +375,25 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(generateDraft).toHaveBeenCalledOnce();
   });
   it('shares the source development-action quota across all three learning modes without writing a plan or mobility choice',async()=>{
-    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('Facilitate a project retrospective and request feedback.');
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"layout":"paragraph"}');
+    const words='I will facilitate a project retrospective and request feedback.';
+    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:'onJob'},'','Suggest practical actions.',randomUUID())).rejects.toThrow(/own/);expect(generateDraft).not.toHaveBeenCalled();
     const modes=['onJob','fromOthers','formalLearning'] as const;
-    for(let i=0;i<5;i++)expect(await perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:modes[i%3]},'','Suggest practical actions.',randomUUID())).toMatchObject({remaining:4-i});
-    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:'onJob'},'','Suggest practical actions.',randomUUID())).rejects.toThrow(/All 5/);
+    for(let i=0;i<5;i++)expect(await perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:modes[i%3]},words,'Polish.',randomUUID())).toMatchObject({text:words,remaining:4-i});
+    await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'idp_action',area:'Facilitation',mode:'onJob'},words,'Polish.',randomUUID())).rejects.toThrow(/All 5/);
     expect(generateDraft).toHaveBeenCalledTimes(5);expect((await view(self)).plans).toEqual([]);expect((await view(self)).careerProfile).toBeNull();
     const uses=await owner.db.select().from(schema.assessmentAiUse);expect(new Set(uses.map(u=>u.fieldKey)).size).toBe(1);
   });
   it('discards a field rewrite if its independent feature is disabled while the provider runs',async()=>{
     const id=await editableDraftKpi(),words='I completed the delivery.';
-    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'pm',false);return words;});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await perf.setAssessmentAiSwitch({...a,grants:[{role:'hr_admin',companyId:null}]},'pm',false);return '{"layout":"paragraph"}';});
     await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'kpi_note',id},words,'Polish.',randomUUID())).rejects.toThrow(/changed/);
     expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
     expect((await view(self)).kpis[0].note).toBe('');
   });
   it('discards a field rewrite when module access is revoked during generation while preserving its configured switch',async()=>{
     const id=await editableDraftKpi(),words='I completed the delivery.';
-    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await setModule(b.tenantId,'performance','disabled');return words;});
+    vi.mocked(generateDraft).mockImplementationOnce(async()=>{await setModule(b.tenantId,'performance','disabled');return '{"layout":"paragraph"}';});
     await expect(perf.rewriteAssessmentField(self,reviewId,{kind:'kpi_note',id},words,'Polish.',randomUUID())).rejects.toThrow(/changed/);
     expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);
     const staleView=await view(self);expect(staleView.aiFeatures.pm).toBe(false);
