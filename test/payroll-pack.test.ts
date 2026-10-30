@@ -26,6 +26,7 @@ import { listPayrollInputContributors, payrollInputContributorById } from '../pa
 // so a contributor only exists here if this file pulls its registration in (the D8 convention).
 import '../packs/claims/payroll';
 import * as facade from '../packs/payroll/service';
+import * as corePayFormula from '../core/pay-formula';
 import * as corePayroll from '../core/payroll';
 import * as coreCycle from '../core/payroll-cycle';
 import * as coreConfig from '../core/payroll-config';
@@ -70,6 +71,7 @@ describe('ADR-0080 rung 7: payroll pack registration', () => {
       'payroll_step_up_challenge',
       'payroll_input',
       'pay_component',
+      'pay_formula','pay_formula_revision','pay_formula_test','pay_formula_event','pay_formula_evaluation','pay_formula_accumulation',
       // 4157a498 (migration 0427) — the payroll-history importer's DOE-code catalog.
       'payroll_import_code',
       // Board history imports retain provenance, revisions and recovery within Payroll.
@@ -173,6 +175,7 @@ describe('ADR-0080 rung 7: service facade re-exports the implementation unchange
     expect(facade.listPayrollPermissionGrants).toBe(corePermissions.listPayrollPermissionGrants);
     expect(facade.setPayrollBatchComponent).toBe(corePayComponents.setPayrollBatchComponent);
     expect(facade.UnsupportedBatchComponentError).toBe(corePayComponents.UnsupportedBatchComponentError);
+    expect(facade.savePayFormula).toBe(corePayFormula.savePayFormula);
     expect(facade.validatePayRule).toBe(corePayRule.validatePayRule);
     expect(facade.draftPayRule).toBe(corePayRuleAi.draftPayRule);
     expect(facade.setCp38).toBe(coreCp38.setCp38);
