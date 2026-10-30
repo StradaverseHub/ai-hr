@@ -945,7 +945,7 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
   return withRewardsTenant(ctx, tx => decideRewardUnitTx(tx, ctx, unitId, revision, action, reason, acknowledged));
 }
 
-/** Supplied-transaction seam; native decision body below is preserved byte for byte. */
+/** Supplied-transaction seam; native validation and effect chunks remain byte-identical. */
 /** One native decision-validation owner; the previous validation prefix is byte-identical. */
 async function prepareRewardDecisionTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   assertModuleGate(ctx, 'rewards');
