@@ -4,7 +4,7 @@
 -- Reuse the one prepared-action ledger and its generic ASSIGNED custody. Every prior kind retains
 -- its prior constraints, binding, verifier and receipt behaviour; no historical SQL is edited.
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES
- ('employees.fixed_item.archive','employees','approve','personnel','employees.fixed_item.archive');
+ ('employees.fixed_item.archive','employees','approve','pay','employees.fixed_item.archive');
 --> statement-breakpoint
 -- A USER need not be linked to a PERSON. Only this kind gains a nullable actor identity;
 -- its true subject remains bound by the existing decision/binding/receipt owners.

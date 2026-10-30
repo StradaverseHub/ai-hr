@@ -36,7 +36,7 @@ const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',pe
 beforeEach(()=>{vi.clearAllMocks();state.locale='en';state.fail=false;state.tools=[];state.data={rows:[{employeeCode:'CANONICAL-01',company:'Canonical employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false};});
 afterEach(()=>{cleanup();vi.restoreAllMocks();});
 describe('native-action shortcuts follow the target action authorization',()=>{
- const gated=['/admin/personnel/import','/assistant/org','/assistant/payroll-close','/assistant/knowledge-base','/assistant/payroll-runs','/assistant/pay-codes','/assistant/approvals','/assistant/statutory','/assistant/rewards'];
+ const gated=['/admin/personnel/import','/assistant/org','/assistant/payroll-close','/assistant/knowledge-base','/assistant/payroll-runs','/assistant/pay-codes','/assistant/approvals','/assistant/statutory','/assistant/rewards/cancel','/assistant/rewards'];
  const hrefs=(container:HTMLElement)=>Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).map(link=>link.getAttribute('href'));
  it('hides every administrative shortcut from an ordinary employee and keeps own-record shortcuts',async()=>{
   const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES}));const shown=hrefs(view.container);
@@ -68,7 +68,7 @@ describe('deterministic current-user job cards',()=>{
   const view=render(await ModuleJobChooser({modules:AGENT_MODULE_CODES,selected:'leave',actions:MODULE_ACTION_ENTRIES}));
   expect(screen.getAllByRole('link').map(link=>link.getAttribute('href')).sort()).toEqual([
    ...AGENT_MODULE_CODES.map(module=>'/assistant?job='+encodeURIComponent(module)),
-   '/assistant/payroll-runs','/assistant/statutory','/assistant/payroll-close','/admin/personnel/import','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
+   '/assistant/payroll-runs','/assistant/statutory','/assistant/payroll-close','/admin/personnel/import','/assistant/rewards/cancel','/assistant/rewards','/assistant/pay-codes','/assistant/attendance','/assistant/approvals','/assistant/leave','/assistant/profile','/assistant/notifications','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil',
   ].sort());expect(withAssistantRead).not.toHaveBeenCalled();
   expect(screen.getByRole('link',{name:en.assistant.workspace.claimActions.title}).getAttribute('href')).toBe('/assistant/claims');
   expect(screen.getByRole('link',{name:en.assistant.workspace.knowledgeActions.title}).getAttribute('href')).toBe('/assistant/knowledge-base');
