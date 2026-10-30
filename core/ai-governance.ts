@@ -1,3 +1,10 @@
+import {createHash} from 'node:crypto';
+import {draftInputDigest} from '../lib/ai/draft-input';
+import {generateDraft} from '../lib/ai';
+import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from '../lib/ai/provider-data-source-manifest';
+import {prepareProviderAnalysis,inspectPreparedProviderAnalysis,retireProviderAnalysis,fingerprintProviderAnalysisSource} from '../lib/ai/provider-analysis-policy';
+import type {GenerateArgs} from '../lib/ai/types';
+import {bindProviderPrivacyRequest,transferProviderPrivacyRequest,assertProviderPrivacyRequest,revokeProviderPrivacyRequest} from '../lib/ai/provider-privacy-request';
 import {createAiRunAccounting,type AiRunAccounting} from '../lib/ai/run-accounting';
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
@@ -65,6 +72,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
    }
    assertAiProviderSnapshot(snapshot,ctx);
    assertAiProviderSnapshotFeature(snapshot,feature);
+   assertProviderPrivacyRequest(outgoing,capturedRequest.operation,capturedRequest.inputDigest,feature);
    const nativeRootRequired=requiresAiTaskRoot(feature)||spendRoot!==undefined;
    if(nativeRootRequired&&!spendRoot)throw new AiGatewayError('The autonomous AI spend root could not be confirmed.');
    // Every admission checks ALL applicable monetary scopes under the actual ai-control interval.
@@ -128,7 +136,8 @@ export function withAiAdmissionCheck(configuration:ResolvedAiConfig,feature:AiFe
  const issued=issuedConfigurations.get(configuration);
  if(!issued||issued.feature!==feature||typeof check!=='function')throw new AiGatewayError('The prepared AI request could not be confirmed.');
  const combined:AiAdmissionCheck=issued.check?async(tx,request)=>{await issued.check!(tx,request);await check(tx,request);}:check;
- return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,combined,issued.lifecycle,issued.spendRoot);
+ const next=createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,combined,issued.lifecycle,issued.spendRoot);
+ transferProviderPrivacyRequest(configuration,next);return next;
 }
 
 /** Server-only durable correlation. Hooks run in admission/settlement transactions; failures roll back
@@ -142,7 +151,8 @@ export function withAiAdmissionLifecycle(configuration:ResolvedAiConfig,feature:
   async admitted(tx,event){if(previous?.admitted)await previous.admitted(tx,event);if(captured.admitted)await captured.admitted(tx,event);},
   async settled(tx,event){if(previous?.settled)await previous.settled(tx,event);if(captured.settled)await captured.settled(tx,event);}
  });
- return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,issued.check,composed,issued.spendRoot);
+ const next=createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,issued.check,composed,issued.spendRoot);
+ transferProviderPrivacyRequest(configuration,next);return next;
 }
 
 /** Trusted source nominates an ACTUAL persisted candidate, never a browser-created budget/reset.
@@ -151,5 +161,51 @@ export function withAiAdmissionLifecycle(configuration:ResolvedAiConfig,feature:
 export function bindStrictAiSpendRoot(configuration:ResolvedAiConfig,root:StrictAiSpendRoot):ResolvedAiConfig{
  const issued=issuedConfigurations.get(configuration),captured=captureStrictAiSpendRoot(root);
  if(!issued||issued.spendRoot&&(issued.spendRoot.rootTaskId!==captured.rootTaskId||issued.spendRoot.kind!==captured.kind))throw new AiGatewayError('The AI spend root could not be confirmed.');
- return createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,issued.check,issued.lifecycle,captured);
+ const next=createGovernedAiConfig(issued.ctx,issued.snapshot,issued.feature,issued.check,issued.lifecycle,captured);
+ transferProviderPrivacyRequest(configuration,next);return next;
+}
+
+
+/** A native owner supplies an authorized, complete source projection, not user-posted facts.
+ * It must perform its own module/subject/company permissions every time it is called. Preparation
+ * and replay both run under the current provider/principal transaction. No callback enters model data.
+ * Current contract accepts only closed aggregate categories; arbitrary text/images never fall back.
+ */
+export async function preparePrivateAiAnalysis(configuration:ResolvedAiConfig,readSource:(tx:Tx,ctx:SessionContext)=>Promise<unknown>):Promise<Readonly<{configuration:ResolvedAiConfig;args:GenerateArgs;dispose:()=>void}>>{
+ const issued=issuedConfigurations.get(configuration);
+ if(!issued||typeof readSource!=='function')throw new AiGatewayError('The private AI source owner could not be confirmed.');
+ const {ctx,snapshot,feature}=issued;
+ const source=await withTenant(ctx,async tx=>{
+  await assertCurrentAiProviderSnapshotTx(tx,ctx,snapshot,configuration);
+  return readSource(tx,ctx);
+ });
+ const sourceFingerprint=fingerprintProviderAnalysisSource(source);
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const binding=Object.freeze({feature,operation:'draft' as const,contractId:'aggregate_comparison_analysis_v1' as const,
+  principalDigest:snapshot.principal,scopeDigest:hash([ctx.tenantId,ctx.personId??null,ctx.roles??null,ctx.grants??null]),
+  providerSnapshotDigest:snapshot.fingerprint,sourceFingerprint,expiresAt:Math.min(snapshot.preparedAt+300000,Date.now()+300000)});
+ const prepared=prepareProviderAnalysis(binding,source);
+ try{
+  const projection=inspectPreparedProviderAnalysis(prepared,binding);
+  if(projection.originalSourceFingerprint!==sourceFingerprint)throw new AiGatewayError('The private AI source could not be confirmed.');
+  // This fixed prompt has no tenant-authored strings, history, user prompt, tool catalogue or state.
+  const args=Object.freeze({system:'Explain and compare only the supplied protected aggregate facts. Preserve uncertainty. Do not infer causes beyond the supplied verified relationships. Do not calculate money, invent exact values, identify people, assign ratings, or make employment decisions. State which comparisons the coarse categories cannot support.',
+   prompt:projection.json,maxTokens:1024});
+  const next=withAiAdmissionCheck(configuration,feature,async(tx,request)=>{
+   inspectPreparedProviderAnalysis(prepared,binding);
+   if(request.operation!=='draft'||request.inputDigest!==draftInputDigest(args))throw new AiGatewayError('The private AI request changed.');
+   if(fingerprintProviderAnalysisSource(await readSource(tx,ctx))!==sourceFingerprint)throw new AiGatewayError('The private AI source changed.');
+  });
+  bindProviderPrivacyRequest(next,{feature,operation:'draft',inputDigest:draftInputDigest(args),contractId:binding.contractId,
+   sourceDigest:PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST,expiresAt:binding.expiresAt});
+  return Object.freeze({configuration:next,args,dispose:()=>{revokeProviderPrivacyRequest(next);retireProviderAnalysis(prepared);}});
+ }catch(error){retireProviderAnalysis(prepared);throw error;}
+}
+
+/** Native-source analysis entry point, usable across the feature/domain registry. Output is an
+ * untrusted explanation only: no canonical source, calculation, rating or effect authority is added.
+ */
+export async function generatePrivateAiAnalysis(configuration:ResolvedAiConfig,readSource:(tx:Tx,ctx:SessionContext)=>Promise<unknown>):Promise<string>{
+ const prepared=await preparePrivateAiAnalysis(configuration,readSource);
+ try{return await generateDraft(prepared.configuration,prepared.args);}finally{prepared.dispose();}
 }

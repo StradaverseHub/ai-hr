@@ -42,7 +42,7 @@ describe('provider egress issuer import closure',()=>{
 });
 
 describe('privacy request issuer import closure',()=>{
- const owners={bindProviderPrivacyRequest:['core/ai-governance.ts'],transferProviderPrivacyRequest:['core/ai-governance.ts','lib/ai/governance.ts'],consumeProviderPrivacyRequest:['lib/ai/index.ts']} as const;
+ const owners={bindProviderPrivacyRequest:['core/ai-governance.ts'],transferProviderPrivacyRequest:['core/ai-governance.ts','lib/ai/governance.ts'],consumeProviderPrivacyRequest:['lib/ai/index.ts'],revokeProviderPrivacyRequest:['core/ai-governance.ts']} as const;
  it('keeps every privacy request issuer in its exact production owner',()=>{
   for(const file of ['app','core','lib','packs','scripts'].flatMap(walk))expect(aiBoundaryViolations(file,readFileSync(file,'utf8')).filter(error=>error.startsWith('provider privacy issuer')),file).toEqual([]);
  });

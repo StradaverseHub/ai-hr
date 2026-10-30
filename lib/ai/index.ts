@@ -1,14 +1,13 @@
+import {assertProviderPrivacyRequest,consumeProviderPrivacyRequest} from './provider-privacy-request';
+import {withProviderEgressDispatch} from './provider-egress';
 /**
  * AI gateway (ADR-0007 / ADR-0023). The single boundary between this product and any LLM provider.
  * Provider-agnostic: callers pass a already-resolved {provider, model, apiKey} and a redacted prompt;
  * this dispatches to the right adapter. Draft-only by contract — nothing here writes a review or pay.
  *
- * Two rails baked in:
- *  1. redactPII() — mask emails, Malaysian IC numbers and phone-like runs in free text before it leaves
- *     the tenant, for EVERY provider. It does NOT mask names or other identifying prose; employee
- *     personal data can still reach a tenant-chosen third party through any free text a caller sends.
- *  2. Generic errors — adapters map provider SDK errors to AiGatewayError, so no key fragment or raw
- *     provider body ever reaches a log, a server-action return, or the browser.
+ * Mandatory disclosure enforcement binds reviewed minimized request bytes before admission.
+ * Legacy redactPII remains a convenience helper, never proof that arbitrary prose is safe.
+ * Unknown/unreviewed data shapes refuse; operational fixed probes contain no workload data.
  *
  * The provider client is constructed PER CALL inside each adapter from the resolved key — never cached
  * at module scope (a singleton would serve one tenant's drafts with another tenant's key).
@@ -75,7 +74,12 @@ export async function generateDraft(cfg: ResolvedAiConfig, args: GenerateArgs): 
   args=Object.freeze({...args,system:args.system,prompt:args.prompt,maxTokens:args.maxTokens??2048});
   cfg=captureAiConfig(cfg);
   if(args.signal?.aborted)throw new AiGatewayError('Drafting was cancelled.');
-  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens),inputDigest:draftInputDigest(args)},(record,observe)=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
+  const inputDigest=draftInputDigest(args);
+  assertProviderPrivacyRequest(cfg,'draft',inputDigest);
+  return governed(cfg,{operation:'draft',reservedTokens:textReservation(args.system+args.prompt,args.maxTokens),inputDigest},(record,observe)=>{
+   consumeProviderPrivacyRequest(cfg,'draft',inputDigest);
+   return withProviderEgressDispatch(cfg,{operation:'draft',inputDigest},()=>generateDraftTransport(cfg,{...args,onUsage:record,onObservation:cfg.provider==='openrouter'?observe:undefined}));
+  });
 }
 async function generateDraftTransport(cfg: ResolvedAiConfig, args: GenerateArgs): Promise<string> {
   const adapter=adapterFor(cfg.provider);
@@ -94,7 +98,12 @@ export async function readImage(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'si
  cfg=captureAiConfig(cfg);
  if(!supportsImageReading(cfg.provider))throw new AiImageReadError(false);
  if(captured.signal?.aborted)throw new AiImageReadError(true);
- return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,captured.data.length*2)+2500),inputDigest:imageInputDigest(captured)},record=>readImageTransport(cfg,{...captured,onUsage:record}));
+ const inputDigest=imageInputDigest(captured);
+ assertProviderPrivacyRequest(cfg,'image',inputDigest);
+ return governed(cfg,{operation:'image',reservedTokens:Math.min(1000000000,Math.max(32768,captured.data.length*2)+2500),inputDigest},record=>{
+  consumeProviderPrivacyRequest(cfg,'image',inputDigest);
+  return withProviderEgressDispatch(cfg,{operation:'image',inputDigest},()=>readImageTransport(cfg,{...captured,onUsage:record}));
+ });
 }
 async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'signal'|'timeoutMs'>&Partial<Pick<ImageReadArgs,'signal'|'timeoutMs'>>){
  if(!validImageBytes(args.data,args.mimeType))throw new AiImageReadError(false);
@@ -113,7 +122,7 @@ async function readImageTransport(cfg:ResolvedAiConfig,args:Omit<ImageReadArgs,'
 /** Cheapest credential+model probe. Returns ok/false + a generic reason; never throws. */
 export function validateConfig(probe: UngovernedProbe) {
   const cfg=captureAiConfig(probe);
-  return governed(cfg,{operation:'probe',reservedTokens:0},()=>adapterFor(cfg.provider).validate(cfg));
+  return governed(cfg,{operation:'probe',reservedTokens:0},()=>withProviderEgressDispatch(cfg,{operation:'probe'},()=>adapterFor(cfg.provider).validate(cfg)));
 }
 
 /** Whether this provider can run the assistant loop (ADR-0082). A cheap UI gate that mirrors
@@ -136,12 +145,8 @@ export function supportsConverse(provider: AiProvider): boolean {
  * converse would NOT be intercepted, so those suites would make real network calls with a real key.
  * The two share adapters, error mapping and the per-call client factory — and share no call path.
  *
- * redactPII is deliberately NOT applied here. The drafting callers wrap every free-text field at the
- * call site because employee PII is leaving the tenant for a model. The assistant's tool results are
- * rows the caller is already entitled to read, fetched under its own RLS-scoped session — redacting
- * them produces an assistant that answers "[email]" for an address the user can see on screen. The
- * caller applies an untrusted-content fence to tool results instead. Do not copy the drafting pattern
- * here.
+ * Full captured request bytes must match an opaque source-issued reviewed disclosure binding.
+ * Raw history, system text, tool data and provider continuation cannot obtain a flag-based bypass.
  */
 export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promise<ConverseResult> {
   cfg=captureAiConfig(cfg);
@@ -151,13 +156,17 @@ export async function converse(cfg: ResolvedAiConfig, args: ConverseArgs): Promi
   // Defaults are normalised HERE, not per adapter, so a fourth adapter cannot silently send `undefined`
   // and inherit a server-side default nobody chose.
   const text=args.system.join('')+JSON.stringify(args.tools)+args.turns.map(t=>t.role==='tool'?t.results.map(r=>r.content).join(''):t.content).join('');
-  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest:conversationInputDigest(args)},async(record,observe)=>{let terminalObserved=false;const terminal:{usage:AiRunObservation['usage']}={usage:null};const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:(observation:AiRunObservation)=>{
+  const inputDigest=conversationInputDigest(args);
+  assertProviderPrivacyRequest(cfg,'conversation',inputDigest);
+  return governed(cfg,{operation:'conversation',reservedTokens:textReservation(text,args.maxTokens),inputDigest},async(record,observe)=>{
+   consumeProviderPrivacyRequest(cfg,'conversation',inputDigest);
+   return withProviderEgressDispatch(cfg,{operation:'conversation',inputDigest},async()=>{let terminalObserved=false;const terminal:{usage:AiRunObservation['usage']}={usage:null};const result=await adapter.converse!(cfg,{...args,...(cfg.provider==='openrouter'?{onObservation:(observation:AiRunObservation)=>{
    terminalObserved=true;terminal.usage=observation.usage;observe?.(observation);if(observation.usage)record(observation.usage);
   }}:{}),maxTokens:args.maxTokens??2048,timeoutMs:args.timeoutMs??120_000});
   if(terminalObserved){const usage=terminal.usage,reported=result.usageReported===true;if(reported?(!usage||usage.inputTokens!==result.usage.inputTokens||usage.outputTokens!==result.usage.outputTokens||usage.cachedInputTokens!==result.usage.cachedInputTokens):usage!==null)throw new AiGatewayError('The AI provider usage could not be confirmed.');}
   // A charged-but-rejected completion may never return. Actual terminal usage is already recorded
   // by the trusted adapter callback; do not double-record successful OpenRouter counters.
-  if(!terminalObserved&&(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0)))record(result.usage);return result;});
+  if(!terminalObserved&&(result.usageReported??[result.usage.inputTokens,result.usage.outputTokens,result.usage.cachedInputTokens].some(n=>n>0)))record(result.usage);return result;});});
 }
 
 /**

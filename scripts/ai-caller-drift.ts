@@ -9,7 +9,7 @@ export function aiBoundaryViolations(file:string,source:string):string[]{
  const testFile=file.startsWith('test/'),egressOwner=file==='lib/ai/index.ts',egressDefinition=file==='lib/ai/provider-egress.ts';
  const egressModule=(value:string)=>/(?:^|\/)provider-egress(?:\.[cm]?[jt]s)?$/.test(value);
  const privacyModule=(value:string)=>/(?:^|\/)provider-privacy-request(?:\.[cm]?[jt]s)?$/.test(value);
- const privacyOwners:Record<string,readonly string[]>={bindProviderPrivacyRequest:['core/ai-governance.ts'],transferProviderPrivacyRequest:['core/ai-governance.ts','lib/ai/governance.ts'],consumeProviderPrivacyRequest:['lib/ai/index.ts']};
+ const privacyOwners:Record<string,readonly string[]>={bindProviderPrivacyRequest:['core/ai-governance.ts'],transferProviderPrivacyRequest:['core/ai-governance.ts','lib/ai/governance.ts'],consumeProviderPrivacyRequest:['lib/ai/index.ts'],revokeProviderPrivacyRequest:['core/ai-governance.ts']};
  const privacyOutside=(name:string)=>Object.prototype.hasOwnProperty.call(privacyOwners,name)&&!privacyOwners[name].includes(file)&&file!=='lib/ai/provider-privacy-request.ts';
  const initializers=new Map<string,ts.Expression>(),loaders=new Set(['require']);
  const staticText=(node:ts.Expression,seen=new Set<string>()):string|null=>{
