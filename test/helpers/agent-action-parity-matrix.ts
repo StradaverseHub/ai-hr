@@ -100,6 +100,7 @@ export const AGENT_ACTION_PARITY={
  'notifications.email_preferences.save':{kind:'probed',screen:OWN_REQUEST},
  'system_testing.execution.save':{kind:'probed',screen:OWN_REQUEST},
  'leave.adjustment.apply':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.compensation.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.qualification.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.movement.transfer':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'toil.credit.grant':{kind:'probed',screen:HR_ON_EMPLOYMENT},

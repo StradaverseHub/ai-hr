@@ -43,6 +43,7 @@ import {resolveEntitlementsTx} from '../core/entitlements';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
 import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../core/assistant-actions/leave-change-review-store';
+import {compensationMaintenanceReviews,readCompensationMaintenanceChoices} from '../core/assistant-actions/compensation-maintenance-review-store';
 import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../core/assistant-actions/qualification-maintenance-review-store';
 import {addQualification} from '../core/workforce-registers';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../core/assistant-actions/hr-prepared-review-store';
@@ -352,6 +353,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:HR_LEAVE_ADJUSTMENT_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,leaveTypeId:item.leaveTypeId,direction:'add',days:'1.5',effectiveOn:todayInKualaLumpur(),reason:'Fictional correction of a missed carry-forward'}),
   offered:async(who,item)=>listed(await readLeaveAdjustmentChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>applyLeaveAdjustmentBatchTx(tx,who,{targetMode:'individual',employmentIds:[item.employmentId],leaveTypeIds:[item.leaveTypeId],days:1.5,effectiveOn:todayInKualaLumpur(),reason:'Fictional correction of a missed carry-forward'})},
+ 'employees.compensation.maintain':{family:'hr_on_employment',store:compensationMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.employmentId),
+  human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
+  offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
  'employees.qualification.maintain':{family:'hr_on_employment',store:qualificationMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:'employees.qualification.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',qualificationId:null,fields:{qualification:'Bachelor',description:'Fictional human-entered qualification',fromYm:'2018-01',toYm:'2021-12',institute:'Fictional Institute',major:null,graduationDate:'2021-12-15',result:null,isHighest:true}}),

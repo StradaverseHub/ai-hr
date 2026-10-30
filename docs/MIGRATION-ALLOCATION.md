@@ -5,6 +5,15 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Personnel compensation parity — 30 October 2026 (provisional source claim)
+
+`codex/ai-user-parity-personnel-comp-20261030` reserves
+`0715_assistant_compensation_maintenance`, idx696 / when1793330000044. Position695/0714
+is another personnel package's provisional claim; composition must preserve both claims.
+This is unapplied source only, with no installation priority or deployment authority.
+Re-freeze above the then-live ordered ledger and coordinate competing allocations before integration.
+All previously applied SQL bytes and journal identities remain immutable.
+
 ## Personnel qualification parity — 30 October 2026 (provisional source claim)
 
 `codex/ai-user-parity-personnel-custody-20261030` appends
