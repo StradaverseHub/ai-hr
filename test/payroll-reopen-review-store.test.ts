@@ -9,8 +9,9 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {requirePackFor} from '../localization/registry';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
-import {createBatch,generatePayslips,closeBatch,setPayrollPermissionGrant} from '../packs/payroll/service';
+import {createBatch,generatePayslips,closeBatch,unlockClosedBatch,setPayrollPermissionGrant} from '../packs/payroll/service';
 import {preparePayrollReopenReview,confirmPayrollReopenReview,reopenPayrollReopenReview,discardPayrollReopenReview,listPayrollReopenReviews,readPayrollReopenChoices} from '../core/assistant-actions/payroll-reopen-review-store';
+import {preparePayrollCloseReview} from '../core/assistant-actions/payroll-close-review-store';
 import {PayrollReopen as C} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
@@ -58,6 +59,15 @@ describe('Payroll reopening complete native/custody effect',()=>{
  it('rolls back when warning evidence changes inside the native update after its warning reader',async()=>{
   const r=await prepare(),before=await state();await owner.db.execute(sql`create function app.fictional_reopen_export_race() returns trigger language plpgsql as $$begin if NEW.status='processed' and OLD.status='closed' then insert into public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) values(NEW.tenant_id,'payroll-batch',NEW.id,'payroll-batch.payment-summary.exported','user',app.current_user_id(),'{}'::jsonb);end if;return NEW;end$$`);await owner.db.execute(sql`create trigger fictional_reopen_export_race after update on public.payroll_batch for each row execute function app.fictional_reopen_export_race()`);
   try{await expect(confirm(r)).rejects.toThrow();expect(await state()).toEqual(before);}finally{await owner.db.execute(sql`drop trigger fictional_reopen_export_race on public.payroll_batch`);await owner.db.execute(sql`drop function app.fictional_reopen_export_race()`);}
+ });
+
+ it('keeps each legacy dedicated column forbidden for reopening and new reopening columns forbidden for close',async()=>{
+  const r=await prepare();const columns=await owner.db.execute<{name:string;type:string}>(sql`select attname name,format_type(atttypid,atttypmod) type from pg_attribute where attrelid='app.assistant_own_leave_review'::regclass and attnum>0 and not attisdropped and attname not in('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','payroll_reopen_batch_id','payroll_reopen_period_id','payroll_reopened_event_id','payroll_reopen_person_ids') order by attnum`);
+  expect(columns.length).toBeGreaterThan(40);
+  const codes=(e:unknown)=>{const x=e as {code?:string;cause?:{code?:string}};return x.cause?.code??x.code;};
+  for(const c of columns){const value=c.type==='uuid'?"'10000000-0000-4000-8000-000000000099'::uuid":c.type==='uuid[]'?"ARRAY['10000000-0000-4000-8000-000000000099'::uuid]":c.type==='date'?"'2026-01-01'::date":c.type.includes('int')?'1':c.type==='jsonb'?"'{}'::jsonb":"'hybrid'";let caught:unknown;try{await owner.db.execute(sql.raw(`update app.assistant_own_leave_review set "${c.name}"=${value} where id='${r.actionId}'::uuid`));}catch(e){caught=e;}expect(codes(caught),c.name).toBe('23514');}
+  await unlockClosedBatch(ctx,{batchId,reason:'Fictional close hybrid fixture'});const close=await preparePayrollCloseReview(ctx,{action:'payroll.close',contractVersion:1,batchId,confirmCloseProcessedRun:true});if(close.kind!=='prepared')throw Error();let caught:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set payroll_reopen_batch_id=${batchId}::uuid where id=${close.review.actionId}::uuid`);}catch(e){caught=e;}expect(codes(caught)).toBe('23514');
+  const [sizes]=await owner.db.execute<{count:number;max:number;total:number}>(sql`select count(*)::int count,max(octet_length(pg_get_expr(conbin,conrelid)))::int max,sum(octet_length(pg_get_expr(conbin,conrelid)))::int total from pg_constraint where conrelid='app.assistant_own_leave_review'::regclass and contype='c'`);console.info('Payroll custody CHECK bytes',sizes);expect(sizes.count).toBeGreaterThan(10);
  });
 
 });
