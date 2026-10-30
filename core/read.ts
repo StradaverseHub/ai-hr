@@ -1,3 +1,4 @@
+import {EMPLOYEE_SEARCH_RESULT_CAP,foldEmployeeCode} from '../lib/employee-search';
 import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -474,7 +475,7 @@ export async function listWorkforcePickPageTx(ctx:SessionContext,tx:Tx,input:{co
  * This deliberately offers no continuation: the switcher is an eight-result jump control. */
 export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,companyIds:string[],query:string){
   if(query.length>200)throw new RangeError('Invalid employee search');
-  const raw=query.trim().toLowerCase(),folded=raw.replace(/[\s._-]/g,'');
+  const raw=query.trim().toLowerCase(),folded=foldEmployeeCode(query);
   if(!raw||!companyIds.length)return [];
   await lockAccessConfigurationTx(tx,ctx.tenantId);
   const columns=workforcePickerColumns(),name=sql`lower(${columns.name})`,code=sql`lower(coalesce(${columns.employeeCode},''))`;
@@ -487,7 +488,7 @@ export async function searchWorkforceEmployeesTx(ctx:SessionContext,tx:Tx,compan
     when position(${raw} in ${name}) > 0 then 4 else 5 end`;
   const source=sql`app.access_workforce_picker_rows(null,null::date,null::date) as workforce_row(value)`;
   return tx.select(columns).from(source).where(and(workforceListWhere({companyIds},workforceListColumns()),sql`${rank} < 5`))
-    .orderBy(rank,columns.name,columns.employmentId).limit(8);
+    .orderBy(rank,columns.name,columns.employmentId).limit(EMPLOYEE_SEARCH_RESULT_CAP);
 }
 
 /**

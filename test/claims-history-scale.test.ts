@@ -54,10 +54,12 @@ describe('claims history scale budget', () => {
       }
       if (target === 1_000_000) {
         const plans = await withTenant(ctx, async tx => {
+          await tx.execute(sql`SET LOCAL jit = off`);
           const countPlan = await tx.execute(sql`explain (analyze, buffers, format json)
             select count(*)::int from claim_request q
-            inner join claim_type t on t.id=q.claim_type_id inner join employment e on e.id=q.employment_id
-            inner join person p on p.id=e.person_id where q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'`);
+            where q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'
+            and q.claim_type_id = any(array(select id from claim_type))
+            and exists(select 1 from employment e inner join person p on p.id=e.person_id where e.id=${subject.employmentId}::uuid)`);
           const rowsPlan = await tx.execute(sql`explain (analyze, buffers, format json)
             select q.id from claim_request q
             inner join claim_type t on t.id=q.claim_type_id inner join employment e on e.id=q.employment_id

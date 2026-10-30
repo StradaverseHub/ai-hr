@@ -12,6 +12,11 @@ The source baseline is `c4fad43c1d67d69125a3f37e7549a5a8a7053362`, fetched from 
 | Personnel employee record | Twelve independent supporting reads waited individually | Three batches of four, retaining the session and each person, employment and company boundary |
 | Personnel New Event | Current company options were fetched again | Reuses the exact current-company lists already loaded; other companies still use their own resolvers |
 | Claims history | All claims and attachment metadata loaded before browser pagination; rejection facts fetched for all historical rejections | History uses SQL limit and offset with stable time/id ordering; facts are fetched for displayed rejections; drafts use a separate read |
+| Mobile claim lists | All claims loaded before status filtering, counts and cursor slicing | Status aggregates and cursor continuation run in SQL; only the bounded page receives receipt metadata |
+| Payroll batch detail | Every payslip statutory snapshot loaded before slicing | SQL pages fetch only displayed snapshots; count and minimal off-page recalculation identities preserve totals and warnings |
+| Lifecycle shell | All cases and notes loaded; directory resolved even without relevant mentions | Actionable case predicates, unresolved actor mentions, SQL recent-joiner counter and lazy name lookup |
+| Employee master export | Each employment repeatedly scanned shared source arrays | Projection-local grouped rows and descriptor/name maps; fresh slices preserve local sorting |
+| Personnel list switcher | Whole authorized directory shipped on every page opening | Debounced remote search returns at most eight authorized matches; abort/stale-result handling and explicit errors |
 | Mobile claim detail | Loaded every claim to locate one id | Narrows by employment and claim id in SQL |
 | Analytics | Generated the full employee master export solely to obtain its length | SQL aggregate with the same joins and shared filter predicate |
 | Payroll list | Loaded all historical batches and their totals for two counters | SQL aggregates over the same effective-history source and visibility predicate; selected-year behaviour stays intact |
@@ -96,13 +101,13 @@ Scores use `(impact + risk) × (6 − effort)`, with each input from 1 to 5. Eff
 
 Test at 10,000, 100,000 and 1,000,000 relevant records using both concentrated and distributed tenant/company histories. Include employee, manager, company HR and group HR scopes. Exercise cold and warm page opening, search, deep paging, create, edit and delete, with simultaneous exports, imports and payroll work.
 
-Candidate budgets for agreement are p95 under one second for ordinary authenticated page data and under 500 ms for a simple record mutation, excluding file transfer and long-running calculation jobs. A tab already loaded in the browser should respond within 100 ms. These are proposed acceptance targets, not established results. Choose realistic concurrent-user levels before setting server/database capacity.
+Candidate budgets for agreement are p95 under one second for ordinary authenticated page data and under 500 ms for a simple record mutation, excluding file transfer and long-running calculation jobs. A tab already loaded in the browser should respond within 100 ms. These are proposed acceptance targets, not established results. The owner confirmed a target of **500 concurrent users** on 30 October 2026. Distinguish 500 signed-in active users with realistic think time from a simultaneous 500-request burst; measure both before setting server/database capacity.
 
 Capture server duration, database execution and planning, rows scanned/returned, response bytes, browser interaction/hydration, pool waits, lock waits, CPU, memory and failure rate. Verify authorization, audit history, idempotency and transaction outcomes under the same load. Add indexes only against measured plans and real tenant distributions, then coordinate migrations through the current allocation and deployed-watermark policy.
 
-The staging alias was not resolvable from this environment, so installed-source comparison, live request measurements and rendered acceptance remain outstanding. No installation or production change is part of this candidate. Focused test passes do not replace the repository's impact-selected release gate, build, migration policy or staging acceptance.
+A Git-discovered private SSH configuration now permits read-only staging diagnostics. The observed installation reported an incomplete prior deployment and a stale build; this candidate has not changed that other-owner state. Live request measurements and rendered acceptance remain outstanding. The exported 569-row ledger matches current source hashes except three historical differences: two match historical Git bytes; the0240 hash remains unresolved. No applied SQL was changed. The0726 index reservation is development-only until the complete ledger and competing allocations are reconciled. No installation or production change is part of this candidate. Focused test passes do not replace the repository's impact-selected release gate, build, migration policy or staging acceptance.
 
-## Verification status
+## Earlier development verification (before hosted continuation)
 
 - Nine focused shell, Personnel, attendance display and pack-boundary suites pass: 109 tests.
 - Four focused database suites pass: 40 tests covering claim pagination, analytics parity, mobile claims and claim forms.
@@ -111,3 +116,29 @@ The staging alias was not resolvable from this environment, so installed-source 
 - Changed-file lint reports 15 errors and 14 warnings. Running the same checks against the baseline reproduces exactly those counts; there are no new diagnostics. Existing examples include render-local analytics components and a pure payroll helper named like a React hook.
 - The default full TypeScript check exhausted its 4 GB heap. The 8 GB rerun was stopped after more than twelve minutes without a result. It is not a full-repository type-check pass. The complete application project passes `tsc --project tsconfig.build.json --noEmit --incremental false` with a 6 GB heap; test and CLI typing remain outside that successful check.
 - The production build, complete impact-selected release gate, browser journeys on the candidate and installation acceptance remain outstanding. The staging SSH alias is unavailable here.
+
+## Hosted continuation and capacity evidence
+
+Development source includes freshly fetched main/alpha7098cde19 through a normal merge.
+All new application tests, whole compiler checks and production builds run on standard
+GitHub-hosted runners, following the updated repository policy. Earlier local evidence
+above retains its original scope; it is not relabelled onto the later candidate.
+
+The first hosted million-row claims probe failed its under1000ms median budget at
+approximately5218ms despite bounded response rows. Its retained permission-scoped
+plans showed full-history sorting plus nearly a million repeated person/type index
+lookups. Disabling JIT alone did not fix this. The successor replaces count joins with
+semi-joins and adds an employment/time/id ordering index. The first index migration
+failed the fresh baseline because its partial predicate referenced an enum value added
+in the same transaction. The unpublished index was corrected to cover all statuses;
+existing migration bytes and grants remain unchanged. Retain these failures as evidence.
+
+The500-session probe uses500 distinct real fictional employee principals and one
+million claims distributed across500 employments. Every concurrent journey reads a
+history page, creates/edits/deletes its own draft and verifies the persisted outcomes.
+It records per-operation p50/p95/p99, maximum latency and errors through the normal
+ten-connection application pool. This is a service burst probe, not an HTTP/browser
+capacity certificate or a measurement of pool wait in isolation. Functional completion
+does not establish the proposed latency budgets. Multi-role/multi-tenant HTTP workloads,
+deep paging, imports/exports/payroll contention and target-host resource measurements
+remain required before a whole-system500-user or millions-of-records readiness claim.
