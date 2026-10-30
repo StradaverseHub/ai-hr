@@ -177,6 +177,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/api/mobile/v1/submission-abandon/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/attendance/applications/[id]/withdraw/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/attendance/corrections/route.ts#route":{"POST":"internal:other_client_same_service"},
+ "app/api/mobile/v2/attendance/overtime-plans/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/attendance/replacement-leave/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/claims/[id]/cancel/route.ts#route":{"POST":"internal:other_client_same_service"},
  "app/api/mobile/v2/claims/[id]/delete/route.ts#route":{"POST":"internal:other_client_same_service"},

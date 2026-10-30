@@ -101,14 +101,14 @@ function fixture(o: { permission?: 'granted' | 'denied' | 'undetermined'; grant?
   });
   const View = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
   const Text = ({ children }: { children?: React.ReactNode }) => <span>{children}</span>;
-  const ui = {
+  const ui = {InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { title: string; onPress: () => void; disabled?: boolean }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, SectionLabel: Text,
   };
   const Switch = (p: { value: boolean; disabled?: boolean; accessibilityLabel?: string; onValueChange: (v: boolean) => void }) =>
     <input type="checkbox" role="switch" aria-label={p.accessibilityLabel} checked={p.value} disabled={p.disabled} onChange={(e) => p.onValueChange(e.target.checked)} />;
   const screens = load('mobile/lib/push.tsx', {
-    react: React, 'react/jsx-runtime': jsx, 'react-native': { AppState: { addEventListener: () => ({ remove() {} }) }, Switch, View },
+    react: React, 'react/jsx-runtime': jsx, 'react-native': { AppState: { addEventListener: () => ({ remove() {} }) }, Switch, View, Pressable: (p: { accessibilityLabel?: string; disabled?: boolean; onPress?: () => void; children?: React.ReactNode }) => <button aria-label={p.accessibilityLabel} disabled={p.disabled} onClick={p.onPress}>{p.children}</button> },
     'expo-notifications': Notifications, 'expo-router': { router: { push } }, './api': { apiPostV2 },
     './design': { DesignText: Text, useTenantDesign: () => ({ palette: { text: 'black' } }) }, './errors': errors, './i18n': { t },
     './inbox': { notificationHref: (d: { screen?: string } | null | undefined) => (d?.screen === 'leaveHistory' ? '/leave/history' : null) },
@@ -224,7 +224,7 @@ describe('shift reminders on Me', () => {
     render(<><f.PushLifecycle /><f.ShiftReminderSetting /></>);
     await waitFor(() => expect(f.ours()).toHaveLength(4));
     fireEvent.click(screen.getByRole('switch'));
-    await screen.findByText('reminderOffNote');
+    await screen.findByText('reminderStateOff');
     await waitFor(() => expect(f.ours()).toEqual([]));
     expect(f.Notifications.scheduled.has('other-app-local')).toBe(true);
     expect(f.stored.get('aihr.reminders.enabled')).toBe('0');
@@ -233,20 +233,23 @@ describe('shift reminders on Me', () => {
   it('without permission they say so and "Allow notifications" asks; denied points to the settings', async () => {
     const f = fixture({ permission: 'undetermined' });
     render(<><f.PushLifecycle /><f.ShiftReminderSetting /></>);
-    await screen.findByText('reminderNeedsPermission');
+    await screen.findByText('reminderStateBlocked');
     expect(f.ours()).toEqual([]);
     // Blocked reminders are not shown as ON.
     expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(screen.getByText('reminderAllow'));
+    fireEvent.click(screen.getByText('reminderAllowShort'));
     await waitFor(() => expect(f.ours()).toHaveLength(4));
     expect(f.Notifications.requestPermissionsAsync).toHaveBeenCalledOnce();
     cleanup();
     const g = fixture({ permission: 'denied' });
     render(<><g.PushLifecycle /><g.ShiftReminderSetting /></>);
-    await screen.findByText('reminderDenied');
+    await screen.findByText('reminderStateBlocked');
     expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
-    fireEvent.click(screen.getByText('pushOpenSettings'));
+    fireEvent.click(screen.getByText('reminderAllowShort'));
     expect(g.openSettings).toHaveBeenCalledTimes(1);
+    // The full sentence stays one tap away, behind the info control.
+    fireEvent.click(screen.getByRole('button', { name: 'moreInfo' }));
+    expect(screen.getByText('reminderDenied reminderExplain')).toBeTruthy();
     // Turning the switch on while denied opens Settings; it does not pretend to turn anything on.
     fireEvent.click(screen.getByRole('switch'));
     expect(g.openSettings).toHaveBeenCalledTimes(2);
@@ -256,7 +259,7 @@ describe('shift reminders on Me', () => {
   it('turning the switch on while permission is not yet asked asks for it, and shows ON once granted', async () => {
     const f = fixture({ permission: 'undetermined' });
     render(<><f.PushLifecycle /><f.ShiftReminderSetting /></>);
-    await screen.findByText('reminderNeedsPermission');
+    await screen.findByText('reminderStateBlocked');
     expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
     fireEvent.click(screen.getByRole('switch'));
     await waitFor(() => expect(f.ours()).toHaveLength(4));
@@ -267,7 +270,7 @@ describe('shift reminders on Me', () => {
   it('a stored "off" is honoured from the start', async () => {
     const f = fixture({ permission: 'granted', stored: { 'aihr.reminders.enabled': '0' } });
     render(<><f.PushLifecycle /><f.ShiftReminderSetting /></>);
-    await screen.findByText('reminderOffNote');
+    await screen.findByText('reminderStateOff');
     expect((screen.getByRole('switch') as HTMLInputElement).checked).toBe(false);
     expect(f.Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });

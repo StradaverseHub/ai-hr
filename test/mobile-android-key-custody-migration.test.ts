@@ -25,8 +25,10 @@ async function rehearsal(run:(tx:Tx,row:typeof schema.mobileIntegrityKey.$inferI
   if(!applied.present)for(const block of migration.split('--> statement-breakpoint').filter(value=>value.trim()))await tx.execute(sql.raw(block));
   expect(await tx.execute(sql`select relrowsecurity,relforcerowsecurity,relacl::text from pg_class where oid='mobile_integrity_key'::regclass`)).toEqual(original);
   expect(await guards()).toEqual(originalGuards);
+  // One instant: separate new Date() calls can put expires_at a millisecond past the 10-minute check in 0634.
+  const at=new Date();
   const identity=await tx.execute(sql`select app.mobile_integrity_installation_id() id`),installationId=String(identity[0].id),challengeId=randomUUID(),appInstallationId=randomUUID();
-  await tx.insert(schema.mobileIntegrityChallenge).values({id:challengeId,tenantId:b.tenantId,actorId,employmentId:e.employmentId,installationId,appInstallationId,requestId:randomUUID(),purpose:'device.enrollment',bindingHash:'1'.repeat(64),nonce:'A'.repeat(43),issuedAt:new Date(),expiresAt:new Date(Date.now()+600000),consumedAt:new Date()});
+  await tx.insert(schema.mobileIntegrityChallenge).values({id:challengeId,tenantId:b.tenantId,actorId,employmentId:e.employmentId,installationId,appInstallationId,requestId:randomUUID(),purpose:'device.enrollment',bindingHash:'1'.repeat(64),nonce:'A'.repeat(43),issuedAt:at,expiresAt:new Date(at.getTime()+600000),consumedAt:at});
   const row={id:randomUUID(),tenantId:b.tenantId,actorId,appInstallationId,installationId,originChallengeId:challengeId,enrolledForEmploymentId:e.employmentId,platform:'ios' as const,appId:'ABCDEFGHIJ.example.app',environment:'production' as const,vendorKeyId:Buffer.alloc(32,1).toString('base64'),fingerprint:'2'.repeat(64),publicKeySpki:Buffer.alloc(91,1),proofDigest:'3'.repeat(64),proofKind:'apple_key_proof' as const,receiptCiphertext:'synthetic encrypted proof',assertionCounter:0};
   await run(tx,row);throw rolledBack;
  });}catch(error){if(error!==rolledBack)throw error;}

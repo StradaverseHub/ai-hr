@@ -70,7 +70,7 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
     if(!stillCurrent())return;
     setEmploymentId(item.employmentId);router.replace(item.kind==='clock'?'/':'/leave');
   }
-  return <Screen>
+  return <Screen back>
     <Title>{t(intent==='logout'?'pendingBeforeLogout':intent==='company'?'pendingBeforeCompany':'pendingTitle')}</Title>
     <Muted>{t('pendingRetention')}</Muted>
     <LoadState loading={items===null&&!error} error={error} onRetry={()=>setAttempt(value=>value+1)}/>
@@ -90,6 +90,5 @@ export function PendingSubmissions({intent='review'}:{intent?:'review'|'logout'|
     </Card>)}
     {intent==='logout'&&queued>0&&<Muted>{t(queued===1?'offlineSignOutNoteOne':'offlineSignOutNote',{n:queued})}</Muted>}
     {intent!=='review'&&<Button title={t(intent==='company'?'pendingKeepCompany':'pendingKeepLogout')} onPress={continueExit}/>}
-    <Button title={t('back')} kind="quiet" onPress={()=>router.back()}/>
   </Screen>;
 }

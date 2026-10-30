@@ -11,6 +11,7 @@ function fixture() {
   let response: { config: unknown } | null = { config: { ...contract.DEFAULT_MOBILE_DESIGN, brandName: 'Tenant A', accent: 'jade' } };
   const reload = vi.fn(), signOut = vi.fn();
   let foreground: (state: string) => void = () => {};
+  const prefs = { appearance: 'auto' as 'auto' | 'light' | 'dark' };
   const output = { exports: {} as { TenantDesignProvider: React.ComponentType<React.PropsWithChildren>; useTenantDesign: () => { design: contract.MobileDesign; palette: { accent: string } } } };
   const code = transpileModule(readFileSync('mobile/lib/design.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText;
   runInNewContext(code, { exports: output.exports, module: output, require(id: string) {
@@ -18,13 +19,14 @@ function fixture() {
     if (id === 'react/jsx-runtime') return jsx;
     if (id === '../../lib/mobile-design') return contract;
     if (id === './session') return { useSession: () => ({ signOut }) };
+    if (id === './preferences') return { useDisplayPrefs: () => ({ appearance: prefs.appearance, language: 'auto' }) };
     if (id === './api') return { useApi: (path: string, params: unknown, onAuth: unknown) => { expect(path).toBe('design'); expect(params).toEqual({ schema: '2' }); expect(onAuth).toBe(signOut); return { data: response, reload }; } };
     if (id === 'react-native') return { useColorScheme: () => 'light', AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: (_: string, callback: typeof foreground) => { foreground = callback; return { remove() {} }; } } };
     throw new Error('Unexpected native design dependency: ' + id);
   } });
   function Probe() { const { design, palette } = output.exports.useTenantDesign(); return <p>{design.brandName} {palette.accent}</p>; }
   function View() { return <output.exports.TenantDesignProvider><Probe /></output.exports.TenantDesignProvider>; }
-  return { View, Probe, reload, foreground: (state: string) => foreground(state), set(value: typeof response) { response = value; } };
+  return { View, Probe, reload, prefs, foreground: (state: string) => foreground(state), set(value: typeof response) { response = value; } };
 }
 afterEach(cleanup);
 describe('store-app tenant design consumption', () => {
@@ -37,6 +39,14 @@ describe('store-app tenant design consumption', () => {
     f.foreground('active'); expect(f.reload).toHaveBeenCalledTimes(1);
     f.set({ config: { ...contract.DEFAULT_MOBILE_DESIGN, brandName: 'Tenant B', appearance: 'system', accent: 'cobalt' } });
     ui.rerender(<f.View />); expect(screen.getByText('Tenant B #174bb5')).toBeTruthy(); expect(screen.queryByText(/Tenant A/)).toBeNull();
+  });
+  it('lets the person’s own Light or Dark choice win over the company appearance, and Automatic follow it again', () => {
+    const f = fixture(), ui = render(<f.View />);
+    expect(screen.getByText('Tenant A #75d9b0')).toBeTruthy(); // the company design's dark jade
+    f.prefs.appearance = 'light'; ui.rerender(<f.View />);
+    expect(screen.getByText('Tenant A #126d50')).toBeTruthy(); // light jade
+    f.prefs.appearance = 'auto'; ui.rerender(<f.View />);
+    expect(screen.getByText('Tenant A #75d9b0')).toBeTruthy();
   });
   it('never restores another account’s design after unmount or malformed configuration', () => {
     const f = fixture(), ui = render(<f.View />); ui.unmount(); f.set(null);

@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { AccessibilityInfo, AppState, Image, Text as NativeText, StyleSheet, Platform, type TextProps, useColorScheme, View } from 'react-native';
 import { DEFAULT_MOBILE_DESIGN, mobilePalette, parseMobileDesign, type MobileDesign } from '../../lib/mobile-design';
 import { useApi } from './api';
+import { useDisplayPrefs } from './preferences';
 import { useSession } from './session';
 
 const Align = createContext<'start' | 'center'>('start');
@@ -16,7 +17,10 @@ export function TenantDesignProvider({ children }: { children: ReactNode }) {
   // A previous server can serve the default design (404), while malformed configuration never renders.
   const design = useMemo(() => { try { return parseMobileDesign(response.data?.config); } catch { return DEFAULT_MOBILE_DESIGN; } }, [response.data]);
   useEffect(() => { const sub = AppState.addEventListener('change', value => { if (value === 'active') response.reload(); }); return () => sub.remove(); }, [response.reload]);
-  const palette = mobilePalette(design, design.appearance === 'system' ? scheme === 'light' ? 'light' : 'dark' : design.appearance);
+  // The person's own Light/Dark choice (Settings) wins; Automatic follows the company design, which may follow the phone.
+  const { appearance: chosen } = useDisplayPrefs();
+  const companyAppearance = design.appearance === 'system' ? scheme === 'light' ? 'light' : 'dark' : design.appearance;
+  const palette = mobilePalette(design, chosen === 'auto' ? companyAppearance : chosen);
   return <Ctx.Provider value={{ design, palette, reload: response.reload, reduceMotion: deviceReduced || design.motion === 'reduced' }}>{children}</Ctx.Provider>;
 }
 export function useTenantDesign() {

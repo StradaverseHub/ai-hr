@@ -29,6 +29,20 @@ function protectScreen() {
   }
   return screenProtection;
 }
+/**
+ * Screenshots and screen recordings stay blocked for the whole life of the app (Android FLAG_SECURE; on iOS a secure
+ * canvas that hides the window from screenshots plus a cover while the screen is recorded or mirrored). iOS attaches
+ * that canvas to the CURRENT key window, which can change (the hosted sign-in sheet, a share sheet), so protection is
+ * asserted again every time the app returns to the foreground. Each assertion uses a fresh tag because the library
+ * skips a tag it already holds; the native call is idempotent for an unchanged window. Never released while running.
+ */
+let protectionRound = 0;
+async function reassertScreenProtection() {
+  if (!screenProtection) return; // not yet protected at all: the gate's own protectScreen() runs first and must succeed
+  protectionRound += 1;
+  try { await ScreenCapture.preventScreenCaptureAsync(`aihr-session-${protectionRound}`); }
+  catch { /* No key window yet: the next foreground (or the launch assertion) retries. */ }
+}
 function visibility(value: string | null): Visibility {
   return value === 'active' ? 'active' : value === 'inactive' ? 'inactive' : 'background';
 }
@@ -53,15 +67,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const snapshot = useSyncExternalStore(state.subscribe, state.getSnapshot, state.getSnapshot);
 
   useEffect(() => {
-    sweepProtectedDocuments(); // launch: leftovers of a killed process
+    sweepProtectedDocuments(); // launch: leftovers of a killed process (launch protection runs inside hasStoredSession)
+    // Biometrics prompt by themselves ONCE per lock when the app comes back; a cancelled prompt is not re-raised (the
+    // lock screen's button stays), so dismissing Face ID can never loop. Unlocking re-arms it.
+    let prompted = true; // launch: initialize() already prompts once
+    const armed = state.subscribe(() => { if (state.getSnapshot().status === 'signedIn') prompted = false; });
     const change = AppState.addEventListener('change', (value) => {
       const next = visibility(value);
       if (next === 'background') sweepProtectedDocuments({ keepSharing: true }); // a document in an OS share is spared (M09)
       state.setVisibility(next);
+      if (next === 'active') {
+        const auto = state.getSnapshot().status === 'locked' && !state.getSnapshot().unlocking && !prompted;
+        if (auto) prompted = true;
+        // Protection is re-attached to the current window BEFORE any automatic unlock can show private screens.
+        void reassertScreenProtection().then(() => { if (auto && state.getSnapshot().status === 'locked') void state.unlock(); });
+      }
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', state.blur) : null;
     void state.initialize();
-    return () => { change.remove(); blur?.remove(); state.dispose(); };
+    return () => { armed(); change.remove(); blur?.remove(); state.dispose(); };
   }, [state]);
   // A document fetched for one employment never survives a switch to another. Stable, as before.
   const setEmploymentId = useCallback((employmentId: string | null) => {

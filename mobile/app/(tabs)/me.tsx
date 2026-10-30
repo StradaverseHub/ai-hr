@@ -1,75 +1,89 @@
-import { useTenantDesign } from '../../lib/design';
 /**
- * Me — who I am, which employment I am acting as (the picker, when there is more than one), the way to my
- * payslips and EA forms, and sign out.
+ * Me — who I am (avatar, name, email), which employment I am acting as (the picker, when there is more than one),
+ * then one list of everything that is mine: profile, payslips and EA forms, attendance, overtime plans, leave history,
+ * team calendar, staff directory and approvals; and Settings, where this phone's things now live (app lock,
+ * screenshot protection, notifications, device registration, saved submissions, sign out).
  *
- * M09 — the v1 totals widget is gone from this screen: payslips open on their own screen (app/pay, v2), every
- * employment, natively. GET /api/mobile/v1/payslips stays for installed clients; this build no longer reads it.
+ * M09 — payslips open on their own screen (app/pay, v2), every employment, natively.
  */
-import { useEffect, useRef } from 'react';
-import { Pressable } from 'react-native';
-import { router } from 'expo-router';
-import { companyCopy, useCompanyConnection } from '../../lib/company-connection';
-import { DesignText as Text } from '../../lib/design';
+import { Pressable, View } from 'react-native';
+import { router, type Href } from 'expo-router';
+import { DesignText as Text, useTenantDesign } from '../../lib/design';
 import { useApi } from '../../lib/api';
-import { t } from '../../lib/i18n';
+import { Icon, type IconName } from '../../lib/icon';
+import { initials, tint } from '../../lib/home-hero';
+import { t, type MessageKey } from '../../lib/i18n';
 import { useSession } from '../../lib/session';
-import { useQueuedOfflinePunches } from '../../lib/offline-clock';
-import { ShiftReminderSetting } from '../../lib/push';
-import { Button, Card, LoadState, Muted, Screen, SectionLabel, Title } from '../../lib/ui';
+import { Card, LoadState, Muted, Screen, SectionLabel } from '../../lib/ui';
+
+type Item = { icon: IconName; label: MessageKey; href: Href };
 
 export default function Me() {
-  const company=useCompanyConnection();
   const { palette } = useTenantDesign();
-  const { signOut, employmentId, setEmploymentId, status } = useSession();
-  const signedIn = useRef(status === 'signedIn'); signedIn.current = status === 'signedIn';
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  // Offline punches stay on this phone across sign-out; shown as information beside Sign out, never as a blocker.
-  const queued = useQueuedOfflinePunches(() => mounted.current && signedIn.current);
+  const { signOut, employmentId, setEmploymentId } = useSession();
   const me = useApi('me', {}, signOut);
   const employments = me.data?.employments ?? [];
   const active = employmentId ?? employments[0]?.employmentId ?? null;
+  const current = employments.find((e) => e.employmentId === active);
+  const payroll = me.data?.modules.payroll !== false;
+  const mine: Item[] = [
+    { icon: 'profile', label: 'profileOpen', href: '/profile' },
+    ...(payroll ? [{ icon: 'payslip', label: 'payOpen', href: '/pay' } as const] : []),
+    { icon: 'attendance', label: 'attOpen', href: '/attendance' },
+    { icon: 'overtime', label: 'qaOtPlan', href: '/attendance/ot-plan' },
+    { icon: 'leave', label: 'meLeaveHistory', href: '/leave/history' },
+  ];
+  const team: Item[] = [
+    { icon: 'approvals', label: 'qaApprovals', href: '/approvals' },
+    { icon: 'teamCalendar', label: 'qaTeamCalendar', href: '/team-calendar' },
+    { icon: 'directory', label: 'qaDirectory', href: '/directory' },
+  ];
 
   return (
     <Screen refreshing={me.loading && me.data != null} onRefresh={me.reload}>
-      <Title>{me.data?.person.name ?? t('tabMe')}</Title>
-      {me.data?.person.email && <Muted>{me.data.person.email}</Muted>}
-      <LoadState loading={me.loading} hasData={me.data!=null} error={me.error} onRetry={me.reload} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 4 }}>
+        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: palette.button, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: palette.onButton, fontSize: 24, fontWeight: '800' }}>{initials(me.data?.person.name)}</Text>
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 24, fontWeight: '800' }}>{me.data?.person.name ?? t('tabMe')}</Text>
+          {current && <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 14 }}>{[current.position, current.company].filter(Boolean).join(' · ')}</Text>}
+          {me.data?.person.email && <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 13 }}>{me.data.person.email}</Text>}
+        </View>
+      </View>
+      <LoadState loading={me.loading} hasData={me.data != null} error={me.error} onRetry={me.reload} />
 
-      {employments.length > 0 && <SectionLabel>{t('employments')}</SectionLabel>}
-      {employments.map((e) => (
-        <Pressable
-          key={e.employmentId}
-          disabled={employments.length < 2}
-          onPress={() => setEmploymentId(e.employmentId)}
-          accessibilityRole={employments.length > 1 ? 'radio' : undefined}
-          accessibilityState={{ selected: e.employmentId === active }}
-        >
-          <Card>
-            <Text style={{ fontSize: 16, fontWeight: e.employmentId === active ? '700' : '400', color: palette.text }}>
-              {e.company}
-            </Text>
-            {(e.position || e.department) && <Muted>{[e.position, e.department].filter(Boolean).join(' · ')}</Muted>}
-          </Card>
-        </Pressable>
-      ))}
+      {employments.length > 1 && <>
+        <SectionLabel>{t('employments')}</SectionLabel>
+        {employments.map((e) => (
+          <Pressable key={e.employmentId} onPress={() => setEmploymentId(e.employmentId)} accessibilityRole="radio" accessibilityState={{ selected: e.employmentId === active }}>
+            <Card>
+              <Text style={{ fontSize: 16, fontWeight: e.employmentId === active ? '700' : '400', color: palette.text }}>{e.company}</Text>
+              {(e.position || e.department) && <Muted>{[e.position, e.department].filter(Boolean).join(' · ')}</Muted>}
+            </Card>
+          </Pressable>
+        ))}
+      </>}
 
-      <SectionLabel>{t('payslips')}</SectionLabel>
-      <Button title={t('payOpen')} onPress={() => router.push('/pay')} />
-      <SectionLabel>{t('meSectionClaims')}</SectionLabel>
-      <Button title={t('claimsOpen')} onPress={() => router.push('/claims')} />
-      <SectionLabel>{t('meSectionRecords')}</SectionLabel>
-      <Button title={t('attOpen')} onPress={() => router.push('/attendance')} kind="quiet" />
-      <Button title={t('profileOpen')} onPress={() => router.push('/profile')} kind="quiet" />
-      <ShiftReminderSetting />
-
-      <SectionLabel>{t('meSectionDevice')}</SectionLabel>
-      <Button title={t('integrityKeysTitle')} onPress={()=>router.push('/integrity-keys')} kind="quiet"/>
-      <Button title={t('pendingTitle')} onPress={()=>router.push('/pending-submissions')} kind="quiet"/>
-      {queued > 0 && <Muted>{t(queued === 1 ? 'offlineSignOutNoteOne' : 'offlineSignOutNote', { n: queued })}</Muted>}
-      <Button title={t('signOut')} onPress={() => router.push({pathname:'/pending-submissions',params:{intent:'logout'}})} kind="quiet" />
-      {company&&<Button title={companyCopy().change} onPress={()=>router.push({pathname:'/pending-submissions',params:{intent:'company'}})} kind="quiet"/>}
+      <SectionLabel>{t('meSectionMine')}</SectionLabel>
+      <Group items={mine} />
+      <SectionLabel>{t('meSectionTeam')}</SectionLabel>
+      <Group items={team} />
+      <SectionLabel>{t('meSectionApp')}</SectionLabel>
+      <Group items={[{ icon: 'settings', label: 'qaSettings', href: '/settings' }]} />
     </Screen>
   );
+}
+
+function Group({ items }: { items: readonly Item[] }) {
+  const { palette, design } = useTenantDesign();
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 4;
+  return <View style={{ borderRadius: radius, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+    {items.map((it, i) => <Pressable key={it.label} accessibilityRole="button" accessibilityLabel={t(it.label)} onPress={() => router.push(it.href)}
+      style={({ pressed }) => [{ flexDirection: 'row', alignItems: 'center', gap: 14, minHeight: 56, paddingHorizontal: 16, borderTopWidth: i ? 1 : 0, borderColor: palette.border }, pressed && { backgroundColor: tint(palette.accent, 0.06, palette.bg) }]}>
+      <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: tint(palette.accent, 0.12, palette.bg), alignItems: 'center', justifyContent: 'center' }}><Icon name={it.icon} color={palette.accent} size={17} /></View>
+      <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{t(it.label)}</Text>
+      <Icon name="chevron" color={palette.muted} size={13} />
+    </Pressable>)}
+  </View>;
 }

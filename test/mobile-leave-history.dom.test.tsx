@@ -46,7 +46,7 @@ function fixture() {
     RefreshControl: (p: any) => <button onClick={p.onRefresh}>pull</button>,
     FlatList: (p: any) => <div>{p.refreshControl}{p.ListHeaderComponent}{p.data.length ? p.data.map((item: any) => <div key={p.keyExtractor(item)}>{p.renderItem({ item })}</div>) : p.ListEmptyComponent}{p.ListFooterComponent}</div>,
   };
-  const ui = {
+  const ui = {InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: any) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, Title: Text, Row: ({ label, value }: any) => <p>{label}: {value}</p>,
     Screen: ({ children, onRefresh }: any) => <div><button onClick={onRefresh}>refresh</button>{children}</div>,
@@ -58,7 +58,7 @@ function fixture() {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
-    './i18n': { appLocale: () => 'en', t },
+    './i18n': { appLocale: () => 'en', intlLocale: () => 'en-MY', t },
   };
   const api = { apiGetPage, apiGetV2, apiPostV2, v2Page: (path: string) => ({ kind: 'page', path, schema: null }) };
   const paged = load('mobile/lib/paged-list.tsx', { ...base, './api': api });

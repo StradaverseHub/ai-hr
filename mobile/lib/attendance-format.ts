@@ -3,7 +3,7 @@
  * date comes from the server (lib/mobile-api/v2/attendance.ts). A calendar date is printed as a calendar date (never
  * moved through the device's zone); an instant is printed in the zone the server named, the kernel's business-day zone.
  */
-import { appLocale, t, type MessageKey } from './i18n';
+import { intlLocale, t, type MessageKey } from './i18n';
 import type {
   AttendanceApplicationDisplay, AttendanceApplicationSummaryV2, AttendanceDayStatus, AttendanceException,
 } from '../../lib/mobile-api/v2/attendance';
@@ -15,7 +15,6 @@ export function attendanceApplicationPath(id: string, action?: 'withdraw'): `v2/
   return `v2/attendance/applications/${id.toLowerCase()}${action ? `/${action}` : ''}`;
 }
 
-const intlLocale = () => (appLocale() === 'ms' ? 'ms-MY' : 'en-MY');
 
 /** `YYYY-MM-DD` as a calendar date ("Mon, 3 Nov 2026"), the same on every device. */
 export function fmtCalendarDate(iso: string, withYear = true): string {
@@ -36,15 +35,12 @@ export function fmtInstant(iso: string | null, zone: string): string {
   catch { return iso.slice(0, 16).replace('T', ' '); }
 }
 /**
- * A server-named IANA zone as people say it ("Malaysia Time", "Waktu Malaysia"), for "Dates and times are in {zone}".
- * Falls back to the id itself where the runtime has no name for it.
+ * A server-named IANA zone as a place people recognise ("Asia/Kuala_Lumpur" -> "Kuala Lumpur"), for "Dates and times are
+ * {zone} time". Taken from the id itself: Intl zone names differ by runtime (Hermes says "Malaysia", Node "Malaysia Time").
  */
 export function fmtZoneName(zone: string): string {
-  try {
-    const name = new Intl.DateTimeFormat(intlLocale(), { timeZone: zone, timeZoneName: 'long' }).formatToParts(new Date())
-      .find((part) => part.type === 'timeZoneName')?.value;
-    return name && !/^GMT[+-]/.test(name) ? name : zone;
-  } catch { return zone; }
+  const city = zone.split('/').pop()?.replace(/_/g, ' ').trim();
+  return city && /^[A-Za-z][A-Za-z .'-]*$/.test(city) ? city : zone;
 }
 /** Minutes as "7h 30m"; null as a dash. Formatting, not arithmetic on a figure the app owns. */
 export function fmtMinutes(n: number | null | undefined): string {

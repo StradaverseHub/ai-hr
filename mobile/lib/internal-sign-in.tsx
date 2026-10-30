@@ -16,7 +16,7 @@ import authCopy from './internal-auth-copy.json';
 export function InternalSignIn() {
   const company = useCompanyConnection(), session = useSession();
   const workplaceOrganization = company?.organization ?? '';
-  const copy = authCopy[appLocale() === 'ms' ? 'ms' : 'en'];
+  const copy = authCopy[appLocale()];
   const [step, setStep] = useState<InternalReply | null>(null), [organization, setOrganization] = useState('');
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');

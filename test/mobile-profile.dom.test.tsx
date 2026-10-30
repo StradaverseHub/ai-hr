@@ -55,7 +55,7 @@ function fixture() {
   }
   const apiPostV2 = vi.fn<(...a: any[]) => Promise<any>>();
   const push = vi.fn(), back = vi.fn(), alert = vi.fn(), openURL = vi.fn(async () => true), signOut = vi.fn();
-  const View = ({ children }: any) => <div>{children}</div>;
+  const View = ({ children, accessibilityLabel }: any) => <div aria-label={accessibilityLabel}>{children}</div>;
   const Text = ({ children, accessibilityRole }: any) => <span role={accessibilityRole === 'alert' ? 'alert' : undefined}>{children}</span>;
   const native = {
     View, Text, Alert: { alert }, Linking: { openURL }, Platform: { OS: 'ios' },
@@ -73,8 +73,8 @@ function fixture() {
     react: React, 'react/jsx-runtime': jsx, 'react-native': native, './ui': ui, './errors': errors,
     './auth': { authGeneration: () => 1, assertAuthGeneration: () => {} },
     './config': { config: { apiUrl: 'https://hr.test' }, identityNamespace: () => 'company' },
-    './i18n': { appLocale: () => 'en', t },
-    './api': { useApiV2, apiPostV2 },
+    './i18n': { appLocale: () => 'en', intlLocale: () => 'en-MY', t },
+    './api': { useApiV2, apiPostV2, useApi: () => ({ data: null, error: null, loading: false, reload: () => {} }) },
     './session': { useSession: () => ({ employmentId: 'own-emp', signOut }) },
     './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     'expo-router': { router: { push, back } },
@@ -96,9 +96,12 @@ describe('my profile', () => {
     const f = fixture();
     render(<f.ProfileScreen />);
     f.set('v2/profile', { data: found() });
-    expect(screen.getByText('Mobile phone: profileNotRecorded')).toBeTruthy();
-    expect(screen.getByText('Gender: Male')).toBeTruthy();
-    expect(screen.getAllByText('profilePendingNote')).toHaveLength(1);
+    // Each field reads as one line to assistive technology: its label, its value and any pending change.
+    expect(screen.getByLabelText(/^Mobile phone: profileNotRecorded/)).toBeTruthy();
+    expect(screen.getByLabelText(/^Gender: Male/)).toBeTruthy();
+    // The pending change is marked on its row, and once at the top of the profile.
+    expect(screen.getAllByLabelText(/\. profilePendingNote$/)).toHaveLength(1);
+    expect(screen.getAllByText('profilePendingNote')).toHaveLength(2);
     fireEvent.click(screen.getByText('profileRequestChange'));
     expect(f.push).toHaveBeenCalledWith('/profile/edit');
     fireEvent.click(screen.getByText('profileRequestsOpen'));
@@ -122,7 +125,7 @@ describe('my profile', () => {
     const { container, unmount } = render(<f.ProfileScreen />);
     f.set('v2/profile', { data: found(grouped()) });
     const text = container.textContent!;
-    const order = ['Personal details', 'Preferred name: Old', 'Contact & address', 'Mobile Phone Number: 0121', 'Correspondence address', 'Mobile Phone Number: 0999'].map((x) => text.indexOf(x));
+    const order = ['Personal details', 'Preferred nameOld', 'Contact & address', 'Mobile Phone Number0121', 'Correspondence address', 'Mobile Phone Number0999'].map((x) => text.indexOf(x));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
     expect(screen.queryByText('profileContact')).toBeNull();
@@ -149,7 +152,7 @@ describe('my profile', () => {
     const text = container.textContent!;
     expect(text.indexOf('profilePersonal')).toBeGreaterThanOrEqual(0);
     expect(text.indexOf('profilePersonal')).toBeLessThan(text.indexOf('profileContact'));
-    expect(text.indexOf('profileContact')).toBeLessThan(text.indexOf('Mobile phone: profileNotRecorded'));
+    expect(text.indexOf('profileContact')).toBeLessThan(text.indexOf('Mobile phoneprofileNotRecorded'));
   });
 
   it('a server path that is not relative is never opened', () => {

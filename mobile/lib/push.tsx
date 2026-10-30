@@ -13,13 +13,13 @@
  * permission changing. Any sign-out removes them (PushSessionWatcher).
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, Switch, View } from 'react-native';
+import { AppState, Pressable, Switch, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { router, type Href } from 'expo-router';
 import { apiPostV2 } from './api';
 import { DesignText as Text, useTenantDesign } from './design';
 import { SignInRequiredError } from './errors';
-import { t } from './i18n';
+import { t, type MessageKey } from './i18n';
 import { notificationHref } from './inbox';
 import {
   PUSH_HANDLER, afterReminders, askNotificationPermission, cancelShiftReminders, forgetEnrollment, identityKey, openNotificationSettings,
@@ -29,7 +29,7 @@ import {
 import { useSession } from './session';
 import { onShiftReminderRefresh } from './shift-reminder-signal';
 import { isShiftReminder } from './shift-reminders';
-import { Button, Card, Muted, SectionLabel } from './ui';
+import { Button, Card, ListRow, Muted } from './ui';
 import { NotificationReadResult } from '../../lib/mobile-api/v2/notifications';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,12 +122,14 @@ export function PushSessionWatcher() {
 }
 
 /** The Inbox's contextual push control. Absent when push does not apply; the inbox itself never depends on it. */
-export function PushPrompt() {
+export function PushPrompt({ compact = false }: { compact?: boolean } = {}) {
   const { employmentId } = useSession();
   const view = usePushView();
   const [busy, setBusy] = useState(false);
   const run = (work: () => Promise<unknown>) => { if (busy) return; setBusy(true); void work().catch(() => undefined).finally(() => setBusy(false)); };
   if (view === 'checking' || view === 'module_off' || view === 'unsupported') return null;
+  // The Inbox's contextual nudge: only the one action, only while notifications are off. Me holds the full control.
+  if (compact) return view === 'off' ? <Button title={t('pushTurnOn')} kind="quiet" disabled={busy} onPress={() => run(() => turnOnNotifications(employmentId))} /> : null;
   const body = view === 'on' ? 'pushOnBody' : view === 'server_off' ? 'pushServerOffBody' : view === 'denied' ? 'pushDeniedBody' : view === 'unavailable' ? 'pushUnavailableBody' : 'pushOffBody';
   return <Card>
     <Muted>{t(body)}</Muted>
@@ -138,13 +140,28 @@ export function PushPrompt() {
   </Card>;
 }
 
-/** Me: the shift-reminder switch, with the permission state said plainly. */
+const PUSH_STATE: Partial<Record<PushView, MessageKey>> = { on: 'pushStateOn', off: 'pushStateOff', denied: 'pushStateDenied', server_off: 'pushStateServerOff', unavailable: 'pushStateUnavailable' };
+/** Me → This phone: one "Notifications" row with its state; the full control (and its explanation) is one tap away. */
+export function NotificationsRow() {
+  const view = usePushView();
+  const state = PUSH_STATE[view];
+  if (!state) return null;
+  return <ListRow label={t('notificationsRow')} value={t(state)} onPress={() => router.push('/notifications' as Href)} />;
+}
+
+/**
+ * Me → This phone: the shift-reminder row — the switch, ONE line saying what will actually happen (with an inline
+ * "Allow" when the phone's permission is what blocks them), and the full explanation behind the "i". The switch keeps
+ * the effective-state rule: switched on but blocked by the phone's permission shows OFF; turning it on then asks (or
+ * opens Settings when denied).
+ */
 export function ShiftReminderSetting() {
   const { employmentId } = useSession();
   const { palette } = useTenantDesign();
   const prefs = usePushPreferences();
   const view = useReminderView();
   const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState(false);
   const on = prefs?.reminders ?? true;
   const toggle = (value: boolean) => { void savePreference({ reminders: value }).then(() => requestShiftReminders(employmentId)); };
   const allow = () => {
@@ -153,23 +170,27 @@ export function ShiftReminderSetting() {
     void askNotificationPermission().then(() => { void syncPush(employmentId, true).catch(() => undefined); return requestShiftReminders(employmentId); })
       .catch(() => undefined).finally(() => setBusy(false));
   };
-  // The switch shows what will actually happen: reminders switched on but blocked by the phone's permission show OFF,
-  // with the reason and the one action that unblocks them. Turning it on then asks (or opens Settings when denied).
   const blocked = on && (view === 'needs_permission' || view === 'denied');
   const change = (value: boolean) => { if (value && blocked) { if (view === 'denied') openNotificationSettings(); else allow(); return; } toggle(value); };
-  const note = !on ? 'reminderOffNote' : view === 'needs_permission' ? 'reminderNeedsPermission' : view === 'denied' ? 'reminderDenied'
+  const note: MessageKey | null = !on ? 'reminderOffNote' : view === 'needs_permission' ? 'reminderNeedsPermission' : view === 'denied' ? 'reminderDenied'
     : view === 'not_offered' ? 'reminderNotOffered' : view === 'unavailable' ? 'reminderUnavailable' : null;
-  return <>
-    <SectionLabel>{t('reminderSection')}</SectionLabel>
-    <Card>
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{t('reminderToggle')}</Text>
-        <Switch accessibilityLabel={t('reminderToggle')} value={on && !blocked} disabled={prefs == null || busy} onValueChange={change} />
-      </View>
-      <Muted>{t('reminderExplain')}</Muted>
-      {note ? <Muted>{t(note)}</Muted> : null}
-      {on && view === 'needs_permission' ? <Button title={t('reminderAllow')} disabled={busy} onPress={allow} /> : null}
-      {on && view === 'denied' ? <Button title={t('pushOpenSettings')} kind="quiet" onPress={openNotificationSettings} /> : null}
-    </Card>
-  </>;
+  const state: MessageKey | null = !on ? 'reminderStateOff' : blocked ? 'reminderStateBlocked' : view === 'not_offered' ? 'reminderStateNotOffered'
+    : view === 'unavailable' ? 'reminderStateUnavailable' : view === 'on' ? 'reminderStateOn' : null;
+  const detail = [note ? t(note) : null, t('reminderExplain')].filter(Boolean).join(' ');
+  return <View style={{ borderBottomWidth: 1, borderColor: palette.border, paddingVertical: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, minHeight: 44 }}>
+      <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{t('reminderToggle')}</Text>
+      <Switch accessibilityLabel={t('reminderToggle')} value={on && !blocked} disabled={prefs == null || busy} onValueChange={change} />
+    </View>
+    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+      {state ? <Muted>{t(state)}</Muted> : null}
+      {blocked ? <Pressable accessibilityRole="button" disabled={busy} onPress={view === 'denied' ? openNotificationSettings : allow} style={{ minHeight: 44, minWidth: 44, justifyContent: 'center' }}>
+        <Text style={{ color: palette.accent, fontWeight: '600' }}>{t('reminderAllowShort')}</Text>
+      </Pressable> : null}
+      <Pressable accessibilityRole="button" accessibilityLabel={t('moreInfo')} accessibilityHint={detail} accessibilityState={{ expanded: info }} onPress={() => setInfo(!info)} style={{ minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: palette.accent, fontSize: 16 }}>ⓘ</Text>
+      </Pressable>
+    </View>
+    {info ? <Muted>{detail}</Muted> : null}
+  </View>;
 }

@@ -1,9 +1,9 @@
 import { useFocusEffect,router } from 'expo-router';
-import { useCallback,useEffect,useRef,useState } from 'react';
+import { useCallback,useEffect,useRef,useState,type ReactNode } from 'react';
 import { Alert,AppState,Image,Platform,Pressable,View,Linking } from 'react-native';
 import { DesignText as Text } from './design';
 import { randomUUID } from 'expo-crypto';
-import { apiGet,apiPost,useApi } from './api';
+import { apiGet,apiPost,useApi,type ClockResponse } from './api';
 import { requestShiftReminderRefresh } from './shift-reminder-signal';
 import { assertAuthGeneration,authGeneration } from './auth';
 import { capturePhoto,capturePosition,appendAttachment } from './capture';
@@ -20,11 +20,24 @@ import {EnrollmentConflict} from './enrollment-journal';
 import { useSubmissionRecovery } from './submission-recovery';
 import { ClockCommand,ClockPreparation } from '../../lib/mobile-api/contract';
 import {SubmissionJournalFull,PendingSubmissionConflict} from './submission-journal';
-import { Button,Card,LoadState,Muted,Row } from './ui';
+import { Button,Card,InfoNote,LoadState,Muted,Row } from './ui';
 import {useOfflineClock,offlineClocking,offlineBlockedMessage,OfflineClockBanner,SavedOfflinePunches} from './offline-clock';
 const refusals={corrected_day:'correctedDay',clock_conflict:'clockConflict',location_required:'locationPermission',outside_geofence:'outsideGeofence',photo_required:'photoRequired',photo_invalid:'photoTooLarge',device_required:'registerDevice',mock_location:'mockLocation',integrity_required:'clockIntegrityRequired'} as const;
 const locationRefusals={location_required:'locationPermission',invalid_location:'locationInvalid',poor_accuracy:'locationPoorAccuracy',no_assigned_site:'locationNoSite',outside_site:'locationOutsideSite',stale_fix:'locationExpired',future_fix:'locationFuture'} as const;
-export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
+/** What Home's clock card needs from the ONE clock journey below, so Home can clock without a second implementation. */
+export type HomeClockView={
+  current:ClockResponse['state'];loading:boolean;error:Error|null;reload:()=>void;
+  action:'in'|'out';busy:boolean;disabled:boolean;doneAt:string|null;message:string|null;
+  /** Something here needs the Clock tab's full screen (a review left open there, an unresolved submission, registration, location settings). */
+  finishOnClockTab:boolean;clock:()=>void;
+};
+/**
+ * The clock journey. `variant: 'home'` (Mobile WOW round, owner request) runs the SAME journey from Home's card in one
+ * tap: prepare (saved attempt, signed-clock checks, location, the server's location assessment, a required photo) and,
+ * when it reaches review with nothing left to decide, submit at once instead of waiting for the slide. Every refusal,
+ * uncertainty and recovery path is the Clock tab's own; anything that needs a decision is finished there.
+ */
+export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode}={}){
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
@@ -86,6 +99,8 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
     return()=>{disposed=true;};
   },[identity,recovery.ready]);
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
+  /** Home asked for a one-tap clock: submit as soon as the journey reaches review with nothing left to decide. */
+  const quick=useRef(false);
   const label=action==='in'?t('clockIn'):t('clockOut');
   function needsRegistration(e:unknown){return e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable&&e.reason==='registration_required';}
   function errorMessage(e:unknown){
@@ -300,6 +315,27 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       attemptStartedAt:draft.attemptStartedAt,attemptReceiptTime:draft.attemptReceiptTime,phase:'idle',message:t('attemptSavedNotSent')});
     else putClock(null);
   }
+  useEffect(()=>{
+    if(variant!=='home'||!quick.current||!draft)return;
+    if(draft.phase==='review'){
+      quick.current=false;
+      // A phone that must be registered first is a decision for the Clock tab, never skipped.
+      if(current?.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed'){putClock({...draft,message:t('registrationNotice')},draft.requestId);return;}
+      void submit();
+    }else if(draft.phase!=='preparing')quick.current=false;
+  },[variant,draft?.phase,draft?.requestId]);
+  function quickClock(){
+    // An offline-capable build keeps its local route and banners on the Clock tab.
+    if(offlineClocking){router.navigate('/clock');return;}
+    quick.current=true;void prepare();
+  }
+  if(variant==='home'){
+    if(clock.data&&!clock.data.enabled)return null;
+    const disabled=!current||pending||!recovery.ready||(signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending');
+    const finishOnClockTab=!!draft&&(draft.phase==='uncertain'||draft.phase==='review'&&!quick.current)||registrationNeeded||!!draft?.locationIssue||!!recovery.error;
+    return <>{renderHome?.({current:current??null,loading:clock.loading,error:clock.error,reload:clock.reload,action,busy:pending||(draft?.phase==='review'&&quick.current),
+      disabled,doneAt:draft?.phase==='done'?draft.receiptTime??null:null,message:draft?.message??null,finishOnClockTab,clock:quickClock})}</>;
+  }
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
     <OfflineClockBanner offline={offline} server={offline.mode==='offline'&&current?{clockedIn:current.clockedIn,openSince:current.openSince,lastOutAt:[...current.captures].reverse().find(c=>c.direction==='out')?.recordedAt??null}:null}/>
@@ -349,7 +385,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
           {draft.clockProtocol==='signed'&&<Button title={t('pendingDiscard')} kind="quiet" onPress={()=>Alert.alert(t('pendingDiscard'),t('pendingDiscardConfirm'),[{text:t('cancel'),style:'cancel'},{text:t('pendingDiscard'),style:'destructive',onPress:()=>void recover(true)}])}/>}
         </>:<SlideConfirm label={pending?t('preparingClock'):draft?.phase==='review'?t('slideRecord',{action:label}):t('slidePrepare',{action:label})} disabled={(!current&&!coldStart)||pending||!recovery.ready||offline.mode==='sending'||(signedStatus?.status==='other_pending'&&!offline.otherExchange||signedStatus?.status==='offline_pending'&&!offlineClocking)||(draft?.phase==='review'&&current?.deviceRequired&&!draft.deviceToken)} onConfirm={()=>void(draft?.phase==='review'?submit():prepare())}/>}
         {draft&&draft.phase==='review'&&<Button title={t('cancel')} kind="quiet" onPress={cancel}/>}
-        {offline.mode!=='offline'&&<Muted>{t('onlineClockOnly')}</Muted>}
+        {offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
       </>}
       <SavedOfflinePunches offline={offline}/>
       {current&&<><View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
@@ -359,7 +395,7 @@ export function ClockPanel({refreshToken=0}:{refreshToken?:number}={}){
       </View>
       <View style={{gap:8,marginTop:8}}>
         <Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('reportedAttempts')}</Text>
-        <Muted>{t('reportedAttemptsHint')}</Muted>
+        <InfoNote short={t('reportedAttemptsShort')} detail={t('reportedAttemptsHint')}/>
         <LoadState loading={attempts.loading} hasData={!!attempts.data} error={attempts.error} onRetry={attempts.reload}/>
         {attempts.data?.items.map(item=><Card key={item.requestId}>
           <Text style={{color:palette.text,fontWeight:'600'}}>{t(item.action==='in'?'clockIn':'clockOut')}</Text>
