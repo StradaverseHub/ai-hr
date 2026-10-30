@@ -92,8 +92,8 @@ function assertWorkloadOwner(file:string,src:string){
    for(const feature of governed.features)expect(AI_FEATURES.some(f=>f.id===feature),`${file}:${feature}`).toBe(true);
    for(const seam of governed.seams)expect(src,`${file} ${seam}`).toMatch(seam);
    if(governed.issuedBy){const issuer=read(governed.issuedBy);expect(issuer,`${governed.issuedBy} issues ${file}`).toContain(governed.issuerImport??`from './${file.slice('core/'.length,-'.ts'.length)}'`);
-    for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\([^()]*'${feature}'\)`));}
-  }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\(tx,\s*ctx,\s*'${coreCallers[file]}'\)`));}
+    for(const feature of governed.features)expect(issuer).toMatch(new RegExp(`governedAiConfig\\([^()]*'${feature}'\\)`));}
+  }else{expect(coreCallers[file],`${file} needs a registered capability`).toBeTruthy();expect(src,`${file} resolves ${coreCallers[file]}`).toMatch(new RegExp(`resolveActiveAiConfig\\(tx,\\s*ctx,\\s*'${coreCallers[file]}'\\)`));}
   return {kind:'core',count:calls.length};
  }
  expect(file.startsWith('packs/performance/onehr/'),`${file} needs a governed configuration seam`).toBe(true);
