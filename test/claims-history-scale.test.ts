@@ -64,7 +64,7 @@ describe('claims history scale budget', () => {
             inner join person p on p.id=e.person_id where q.employment_id=${subject.employmentId}::uuid and q.status<>'draft'
             order by q.created_at desc,q.id desc limit 25`);
           const time = (rows: unknown) => (rows as {'QUERY PLAN': {'Execution Time': number}[]}[])[0]['QUERY PLAN'][0]['Execution Time'];
-          return {countPlanMs: time(countPlan), rowsPlanMs: time(rowsPlan)};
+          return {countPlanMs: time(countPlan), rowsPlanMs: time(rowsPlan), countPlan, rowsPlan};
         });
         Object.assign(measurement, plans);
       }
