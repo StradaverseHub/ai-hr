@@ -7,9 +7,9 @@ export const FIXED_ENTRY='scripts/qualify-restricted-port-prerequisites.ts';
 export const REQUIRED_DB_FILES=Object.freeze(['test/personnel-draft-discard-role-transfer.test.ts','test/employee-draft-discard-port.test.ts']);
 // Source-review frozen constants; root updates ONLY through an independently reviewed new proposal.
 export const SOURCE_PINS=Object.freeze({
-  "scripts/qualify-restricted-port-prerequisites.ts": "b0c5c57f0bff86f96c0bc1b2dd53315b30792aba080a0b6b2b2874951faedd5f",
+  "scripts/qualify-restricted-port-prerequisites.ts": "24faa15d5083e3b987dc51666a75ea42015dfc532f1304f5643c50142f507311",
   "scripts/lib/restricted-port-qualification.ts": "3f9d9f138e617cc5b33969cf2267a6c984714e6da0666ea48a60fac139442ef4",
-  "scripts/fixtures/restricted-port-operator-v4/qualification-source-manifest.json": "9889be7be6e4ea2641a97a3283ffca1041639740984970875dff96bded782d79",
+  "scripts/fixtures/restricted-port-operator-v4/qualification-source-manifest.json": "a5d2e5705a98674784aa1255406a5c3217508299944c07dad4a303bdec0c99e7",
   ".github/ci/restricted-port-history.mjs": "297fa5166942ebf084f86a661a85a1743efa3594457a57979d2e4d88c3fcceb5",
   ".github/ci/migration-history.mjs": "e9ebfb9d97f6c3eac0bb4a6884c31ebfdba00e7492e979b76ca0f51c6ca9a6e2",
   ".github/ci/historical-migrations/0180_profile_option.sql": "ae128e75c9491bd1d39537fdddd18ad9307b2050f813b8a056d473dcfda9d41f",

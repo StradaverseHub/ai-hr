@@ -11,6 +11,7 @@ import {assertQualificationEnvironment,assertPrefix,assertAppliedLedger,FIXTURE_
 import {appliedMigrationExecution} from '../.github/ci/restricted-port-history.mjs';
 const digest=(v:Buffer|string)=>createHash('sha256').update(v).digest('hex');
 const fail=(s:string):never=>{throw Error(s);};
+async function main(){
 const root=realpathSync(process.cwd()),fixture=join(root,FIXTURE_DIRECTORY),env=process.env;
 const mode=process.argv[2];if(process.argv.length!==4||!['before','after'].includes(mode))fail('Fixed qualifier before|after evidence-directory only');
 const evidence=resolve(process.argv[3]),temp=realpathSync(env.RUNNER_TEMP??'');
@@ -110,3 +111,5 @@ try{
 }finally{
  writeFileSync(join(evidence,'restricted-port-'+mode+'.psql.log'),log.join('\n'),{flag:'wx'});await connection.end({timeout:5});
 }
+}
+void main().catch((error:unknown)=>{console.error(error);process.exitCode=1;});
