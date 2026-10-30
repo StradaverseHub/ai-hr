@@ -2,7 +2,7 @@
 import type {ReactNode} from 'react';
 import {conversationFactLayout} from '../../lib/ai/assistant-answer-layout';
 import {randomUUID} from 'node:crypto';
-import {askAssistantAction} from '../../app/assistant/actions';
+import {ConversationClarification} from './conversation-clarification';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
 import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
@@ -104,10 +104,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    if(!closedConversationFields(plan,['version','mode','slot'])||!['employment','leave_type','period','module'].includes(plan.slot)||conversation.facts.length!==0)return unavailable();
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
-    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<form action={askAssistantAction} className="space-y-3"><input type="hidden" name="clarificationExchangeId" value={exchangeId}/>
-     <label className="block text-sm">{copy('replyLabel')}<textarea name="clarificationAnswer" required maxLength={500} rows={2} className="mt-1 min-h-11 w-full rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"/></label>
-     <button type="submit" className="min-h-11 rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('continue')}</button>
-    </form>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
+    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
    </section>;
   }
   // ADR-0151 §4.3: an adjudicated proposal renders the inline review card. It is a suggestion only: the

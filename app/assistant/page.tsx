@@ -52,7 +52,7 @@ import { eraseAgentFeedbackAction } from './feedback-actions';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -124,7 +124,7 @@ export default async function AssistantPage({
         <PageHeader title={greeting} description={t('description')} />
         <OwnClearStatus status={sp.ownClear}/>
         <ErrorBanner message={errorMessage} />
-        <WorkspaceConversation fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+        <WorkspaceConversation resetKey={sp.chatReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
           initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
             answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
         {homeTabs}

@@ -14,6 +14,12 @@ const show=(hiddenAreas:string[]=[],position:'bottom-right'|'bottom-left'='botto
 beforeEach(()=>{state.path='/leave';state.ask.mockReset();});
 afterEach(cleanup);
 describe('floating Assistant',()=>{
+ it('drops continuation after a refusal or uncertain second request rather than silently skipping it',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'first',conversationToken:'proof',answer:<p>First answer</p>}).mockRejectedValueOnce(Error('PRIVATE')).mockResolvedValueOnce({ok:true,exchangeId:'third',answer:<p>Third answer</p>});
+  show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
+  const send=(question:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
+  send('First');await screen.findByText('First answer');send('Second');await screen.findByRole('alert');send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third',path:'/leave'});
+ });
  it('is absent on the Assistant itself, in a hidden area and on an unknown area',()=>{
   for(const [path,hidden] of [['/assistant',[]],['/assistant/leave',[]],['/payroll',['payroll']],['/somewhere-else',[]]] as const){state.path=path;const view=show([...hidden]);expect(screen.queryByRole('button',{name:copy.open}),path).toBeNull();view.unmount();}
  });

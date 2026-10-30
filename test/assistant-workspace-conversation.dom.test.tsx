@@ -6,12 +6,30 @@ import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const state=vi.hoisted(()=>({ask:vi.fn()}));
 vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
+import {ConversationClarification} from '../components/assistant/conversation-clarification';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
 function show(initialTurn?:{id:string;question:string;answer:React.ReactNode}){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn}/></NextIntlClientProvider>);}
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
 beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('drops erased local content and ignores a response finishing after privacy reset or another history selection',async()=>{
+  let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const view=show();send('Private pending question');
+  view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1"/></NextIntlClientProvider>);
+  expect(screen.queryByText('Private pending question')).toBeNull();
+  await act(async()=>resolve({ok:true,exchangeId:'erased',conversationToken:'erased-token',answer:<p>Erased reply</p>}));expect(screen.queryByText('Erased reply')).toBeNull();
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',answer:<p>New reply</p>});send('New question');await screen.findByText('New reply');expect(state.ask).toHaveBeenLastCalledWith({question:'New question'});
+  state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));send('Pending old selection');
+  view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1" initialTurn={{id:'selected',question:'Selected question',answer:<p>Selected reply</p>}}/></NextIntlClientProvider>);
+  await act(async()=>resolve({ok:true,exchangeId:'old',conversationToken:'old-token',answer:<p>Late old answer</p>}));expect(screen.queryByText('Late old answer')).toBeNull();expect(screen.getByText('Selected reply')).toBeInTheDocument();
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'next',answer:<p>Next reply</p>});send('Next question');await screen.findByText('Next reply');expect(state.ask).toHaveBeenLastCalledWith({question:'Next question'});
+ });
+ it('submits a clarification in place through its dedicated owned-exchange path',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'answered',conversationToken:'answered-proof',answer:<p>Annual balance: 12 days</p>});
+  show({id:'needs-clarification',question:'How much leave?',answer:<ConversationClarification exchangeId="needs-clarification" replyLabel="Your reply" continueLabel="Continue"/>});
+  fireEvent.change(screen.getByLabelText('Your reply'),{target:{value:'Annual leave'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+  await screen.findByText('Annual balance: 12 days');expect(screen.getByText('How much leave?')).toBeInTheDocument();expect(state.ask).toHaveBeenCalledWith({question:'Annual leave',clarificationExchangeId:'needs-clarification'});expect(window.location.search).toBe('');
+ });
  it('shows the question and waiting reply immediately, keeps earlier replies and passes the opaque continuation only after success',async()=>{
   let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const view=show();
   send('How much leave do I have?');
