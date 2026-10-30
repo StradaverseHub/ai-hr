@@ -14,6 +14,11 @@ import {readRewardsCalendarChoices} from '../../core/assistant-actions/rewards-c
 import {establishRewardMembership} from '../rewards-shared-policy-fixture';
 import {prepareRewardsCancelReview,confirmRewardsCancelReview} from '../../core/assistant-actions/rewards-cancel-review-store';
 import {readRewardsCancelChoices} from '../../core/assistant-actions/rewards-cancel-source';
+import {offboardingStepUndoReviews} from '../../core/assistant-actions/offboarding-step-undo-review-store';
+import {readOffboardingStepUndoChoices} from '../../core/assistant-actions/offboarding-step-undo-source';
+import {offboardingStepReviews} from '../../core/assistant-actions/offboarding-step-completion-review-store';
+import {readOffboardingStepChoices} from '../../core/assistant-actions/offboarding-step-completion-source';
+import {createOffboardingCase,tickStepTx,undoStepTx} from '../../packs/lifecycle/service';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -290,6 +295,17 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'org.department.archive',contractVersion:1,departmentId:item.subjectId,expectedArchived:false,archived:true}),
   offered:async(who,item)=>{const choices=await readDepartmentArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.departments.some(p=>p.departmentId===item.subjectId);},
   screen:(tx,who,item)=>bulkSaveLabels(who,'department',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,name:item.code,businessUnitId:null,headEmploymentId:null,label:'',description:'',archived:true}]},tx)},
+ 'lifecycle.offboarding.step.undo':{family:'hr_on_employment',store:packetStore('lifecycle.offboarding.step.undo',offboardingStepUndoReviews.prepare,offboardingStepUndoReviews.confirm),
+  async create(_w,h){const root=groupOf(h.base),c=await createOffboardingCase(root,{companyId:h.companyId,fullName:'Fictional offboarding undo subject',employeeNo:'U-'+randomUUID().slice(0,8),resignationDate:todayInKualaLumpur(),personId:h.person.personId,employmentId:h.person.employmentId});await tickStep(root,'offboarding',c.number,'resign_submit');return {...itemOf(h,c.id),code:c.number};},
+  human:item=>({caseId:item.subjectId,caseNumber:item.code!,stepKey:'resign_submit',reason:null,confirmUndo:true,acceptCaseReopening:false}),
+  offered:async(who,item)=>{const choices=await readOffboardingStepUndoChoices(who,{caseNumber:item.code});return choices.kind==='choices'&&choices.cases.some(c=>c.caseId===item.subjectId&&c.steps.some(step=>step.key==='resign_submit'));},
+  screen:(tx,who,item)=>undoStepTx(tx,who,'offboarding',item.code!,'resign_submit')},
+ 'lifecycle.offboarding.step.complete':{family:'hr_on_employment',store:packetStore('lifecycle.offboarding.step.complete',offboardingStepReviews.prepare,offboardingStepReviews.confirm),
+  async create(_w,h){const c=await createOffboardingCase(groupOf(h.base),{companyId:h.companyId,fullName:'Fictional offboarding subject',employeeNo:'F-'+randomUUID().slice(0,8),resignationDate:todayInKualaLumpur(),personId:h.person.personId,employmentId:h.person.employmentId});return {...itemOf(h,c.id),code:c.number};},
+  human:item=>({caseId:item.subjectId,caseNumber:item.code!,stepKey:'resign_submit',reference:null,notes:null,confirmStepCompletion:true,acceptDerivedCaseCompletion:false}),
+  offered:async(who,item)=>{const choices=await readOffboardingStepChoices(who,{caseNumber:item.code});return choices.kind==='choices'&&choices.cases.some(c=>c.caseId===item.subjectId&&c.steps.some(step=>step.key==='resign_submit'));},
+  screen:(tx,who,item)=>tickStepTx(tx,who,'offboarding',item.code!,'resign_submit')},
+
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),

@@ -96,6 +96,7 @@ describe('Rewards cancellation custody and exact proof', () => {
       else if(c.type==='uuid[]')value=sql`array[${b.companyId}::uuid]::uuid[]`;
       else if(c.type==='text')value=sql`${c.name==='multi_cycle_pay_period'?'2026-10':c.name==='multi_cycle_run_type'?'bonus':'fictional'}`;
       else if(c.type==='integer')value=sql`1::integer`;
+      else if(c.type==='boolean')value=sql`true::boolean`;
       else if(c.type==='date')value=sql`'2026-10-30'::date`;
       else throw Error('Uncovered typed hybrid column '+c.name+': '+c.type);
       let caught:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(c.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){caught=error;}
