@@ -32,7 +32,7 @@ facts by being dragged between lanes.
 
 An additive nullable JSONB column is required; no historical environment is guessed or backfilled.
 Operators must independently verify the installation and acceptance/package evidence before using
-`improve:record-release`; this command records their attestation rather than querying target health.
+`record-release` through the existing improvement CLI; this command records their attestation rather than querying target health.
 Existing `mark-deployed` calls remove current evidence and display Deployment unverified until checked.
 The existing feedback permissions and restoration/refute semantics remain authoritative.
 

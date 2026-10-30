@@ -89,7 +89,7 @@ record on that same RLS-protected feedback row owns the environment claim; an ap
 **Deployment unverified** until an operator checks their environment. No historical item is
 inferred to be in production, and `done` means built, not ready for production.
 
-After independently verifying the target, use `pnpm improve:record-release` with JSON on stdin:
+After independently verifying the target, use `pnpm exec tsx scripts/improve/cli.ts record-release` with JSON on stdin:
 
 ```json
 {
