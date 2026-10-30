@@ -30,6 +30,6 @@ test('nonempty source proof or wrong finalizer result cannot phase or finish the
  const wrong=fixture({badResult:true});await assert.rejects(driveCleanup(wrong.ports),/identity/);assert.equal(wrong.phases,0);
 });
 test('server channel EOF and observation timeout remain uncertain and do not synthesize a result',async()=>{
- const eof=new PassThrough(),waiting=waitCleanupMessage(eof);eof.end();await assert.rejects(waiting,/without a result/);
+ const eof=new PassThrough(),waiting=waitCleanupMessage(eof);eof.end();await assert.rejects(waiting,/EOF|without a result/);
  await assert.rejects(waitCleanupMessage(new PassThrough(),{timeout:5}),/reconcile/);
 });

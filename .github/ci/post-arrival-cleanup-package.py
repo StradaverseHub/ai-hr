@@ -23,6 +23,12 @@ def package(destination):
             data=tar.extractfile(member).read();path=destination/member.name;path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
             path.write_bytes(data);path.chmod(0o600);files.append({'path':member.name,'sha256':hashlib.sha256(data).hexdigest()})
     source=[]
+    git_modes={}
+    for entry in subprocess.check_output(['git','ls-tree','-r','-z','--full-tree',SOURCE]).split(b'\0'):
+        if not entry:continue
+        meta,name=entry.split(b'\t',1);mode,kind,oid=meta.decode().split();name=name.decode()
+        require(kind=='blob' and mode in ('100644','100755','120000'),'Only immutable file/link source modes supported')
+        git_modes[name]=0o777 if mode=='120000' else int(mode,8)&0o777
     # Use the exact published transfer filter, through real rsync, rather than treating excluded
     # environment/native/history files as missing runtime source or inventing a second filter.
     release=subprocess.check_output(['git','show',SOURCE+':scripts/improve/release.ts'],text=True)
@@ -40,7 +46,8 @@ def package(destination):
                 require(path.parent.resolve().is_relative_to(original.resolve()),'Archive parent may not follow a link')
                 if member.issym():os.symlink(member.linkname,path)
                 else:path.write_bytes(data)
-                source.append({'path':member.name,'kind':'link' if member.issym() else 'file','mode':0o777 if member.issym() else member.mode&0o777,'sha256':hashlib.sha256(data).hexdigest()})
+                require(member.name in git_modes,'Archive member absent from immutable Git tree')
+                source.append({'path':member.name,'kind':'link' if member.issym() else 'file','mode':git_modes[member.name],'sha256':hashlib.sha256(data).hexdigest()})
         args=['rsync','-a','--omit-dir-times']
         for pattern in excludes:args.extend(['--exclude',pattern])
         subprocess.run([*args,str(original)+'/',str(filtered)+'/'],check=True,timeout=120)
