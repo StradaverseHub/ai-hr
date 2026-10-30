@@ -1,3 +1,4 @@
+import {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from './payroll-tax-basis-read';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -4844,6 +4845,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const priorSlips = empIds.length
       ? await tx
           .select({
+            id: payslip.id,
             employmentId: payslip.employmentId,
             period: payrollBatch.payPeriod,
             gross: payslip.grossPay,
@@ -4859,7 +4861,17 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
             ),
           )
       : [];
-    priorSlips.sort((a, b) => a.period.localeCompare(b.period));
+    // Correct only the tax-input read. The saved payroll row and actual deducted PCB remain original.
+    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id));
+    const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
+    for (const slip of priorSlips) {
+      const corrected = correctedPriorBases.get(slip.id);
+      if (!corrected) continue;
+      slip.statutory = corrected.statutory;
+      const refs = taxBasisCorrectionsByEmp.get(slip.employmentId) ?? [];
+      refs.push(corrected.correction); taxBasisCorrectionsByEmp.set(slip.employmentId, refs);
+    }
+    priorSlips.sort((a, b) => a.period.localeCompare(b.period)||a.id.localeCompare(b.id));
     const accByEmp = new Map<string, Acc>();
     for (const e of emps) {
       // r356 — the opening balances come from the pack, beside the fold below, because the multicycle
@@ -5030,6 +5042,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     if (isAdditionalRun || restatesMonth) {
       const earlier = await tx
         .select({
+          id: payslip.id,
           employmentId: payslip.employmentId,
           bonus: payslip.bonus,
           ot: payslip.overtimePay,
@@ -5039,9 +5052,16 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .from(payslip)
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
         .where(and(eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
+      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
       for (const r of earlier) {
+        const correction = correctedEarlier.get(r.id);
+        if (correction) {
+          r.statutory = correction.statutory;
+          const refs = taxBasisCorrectionsByEmp.get(r.employmentId) ?? [];
+          refs.push(correction.correction); taxBasisCorrectionsByEmp.set(r.employmentId, refs);
+        }
         const cur = earlierRunByEmp.get(r.employmentId) ?? { additional: 0, overtime: 0 };
-        cur.additional = round2(cur.additional + Number(r.bonus));
+        cur.additional = round2(cur.additional + Number(correction ? correction.basis.additional : r.bonus));
         if (r.runType === 'regular') cur.overtime = round2(cur.overtime + Number(r.ot));
         earlierRunByEmp.set(r.employmentId, cur);
         const nc=earlierNonCashByEmp.get(r.employmentId) ?? {ownedEntries:[],regularEntries:null,ownedEaEntries:[],regularEaEntries:null,legacyRegular:false};
@@ -7213,6 +7233,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         ...stCore,
         pcbNonCash:nonCashSnapshot,
         bases: statBases,
+        ...(taxBasisCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisCorrections: taxBasisCorrectionsByEmp.get(e.employmentId)} : {}),
         // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
         // so every other payslip is byte-identical.
         ...(epfManualStamp ? { epfManual: epfManualStamp } : {}),

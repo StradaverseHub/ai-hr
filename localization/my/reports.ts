@@ -1,3 +1,5 @@
+import {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';
+import {PayrollTaxBasisError} from '../../lib/payroll-tax-basis';
 import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 import {readSavedTaxCircumstance} from './tax-circumstance';
 import {explainPcb} from '../../core/pcb-explain';
@@ -82,6 +84,7 @@ export type ReportResult = {
     selectionEmpty?: boolean;
     batchStatus?: string;
     statutoryVersion: string;
+    taxBasisCorrections?: TaxBasisCorrectionRef[];
     /** Headline counts shown above the table (e.g. Form E Part A). */
     summary?: { label: string; value: string | number }[];
     /** Caveats for this report (e.g. fields the payroll system does not track). */
@@ -932,11 +935,12 @@ async function loadYearRows(
   ctx: SessionContext,
   year: string,
   companyId: string,
-): Promise<{ rows: YearRow[]; versions: string[] }> {
+): Promise<{ rows: YearRow[]; versions: string[]; correctionEmploymentIds: Set<string> }> {
   return withTenant(ctx, async (tx) => {
     const versions = new Set<string>();
     const slips = await tx
       .select({
+        id: payslip.id,
         employmentId: payslip.employmentId,
         name: person.fullName,
         ic: employeeStatutoryMy.icNumber,
@@ -955,6 +959,8 @@ async function loadYearRows(
       .leftJoin(informationReportRelation('employee_statutory_my',companyId,year), eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
 
+    const corrections = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const correctionEmploymentIds = new Set(slips.filter(s => corrections.has(s.id)).map(s => s.employmentId));
     const byEmp = new Map<string, YearRow>();
     for (const s of slips) {
       const st = (s.statutory ?? {}) as Stat;
@@ -988,6 +994,7 @@ async function loadYearRows(
     return {
       rows: [...byEmp.values()].sort((a, b) => a.name.localeCompare(b.name)),
       versions: [...versions].sort(),
+      correctionEmploymentIds,
     };
   });
 }
@@ -1123,8 +1130,17 @@ const CP8D_NOTE =
 
 /** Form E / CP8D — annual employer return (per-employee remuneration + Part A headcounts). */
 async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportResult> {
+  return withTenant(ctx, async () => {
   const year = params.periodKey;
-  const { rows: yr, versions } = await loadYearRows(ctx, year, params.companyId);
+  const { rows: yr, versions, correctionEmploymentIds } = await loadYearRows(ctx, year, params.companyId);
+  const taxBasisCorrections: TaxBasisCorrectionRef[] = [];
+  for (const employee of yr) {
+    if (!correctionEmploymentIds.has(employee.employmentId)) continue;
+    const ea = await eaStatement(ctx, {year, employmentId: employee.employmentId, companyId: params.companyId});
+    if (!ea) throw new PayrollTaxBasisError('Corrected EA income is unavailable for an affected employee.');
+    employee.gross = ea.partB.gross;
+    taxBasisCorrections.push(...(ea.taxBasisCorrections ?? []));
+  }
   const rows: ReportRow[] = yr.map((r, i) => ({
     no: i + 1,
     employmentId: r.employmentId, // not a column — lets the UI deep-link each row to its EA statement
@@ -1152,10 +1168,12 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
     meta: {
       hasBatch: yr.length > 0,
       statutoryVersion: versions.length ? versions.join(',') : MY_STATUTORY_VERSION,
+      ...(taxBasisCorrections.length ? {taxBasisCorrections} : {}),
       summary,
       notes: [CP8D_NOTE],
     },
   };
+  });
 }
 
 // ── EA statement (C.P.8A) — per employee ────────────────────────────────────
@@ -1343,6 +1361,7 @@ export const EA_ROUTING_FROM_YEAR = 2027;
 export type EaOverrideEntry = { field: EaField; original: number; amended: number; reason: string };
 
 export type EaStatement = {
+  taxBasisCorrections?: TaxBasisCorrectionRef[];
   year: string;
   /** b7b22514 — WHICH employer this form speaks for. A transfer year has one form per employer, and
    *  the screen needs the id to mark the selected one; the name alone cannot be compared safely. */
@@ -1909,6 +1928,7 @@ export async function eaStatement(
     const officerPosition = officer[0]?.officer_position ?? null;
     const slips = await tx
       .select({
+        id: payslip.id,
         payPeriod: payrollBatch.payPeriod,
         basic: payslip.basicSalary,
         allowance: payslip.allowance,
@@ -1958,6 +1978,14 @@ export async function eaStatement(
      * the switcher and `employeeEaStatements` can name passes this test by construction.
      */
     if (employerId !== info.companyId && slips.length === 0) return null;
+    const originalSlips = slips.map(s => ({...s}));
+    const correctedBases = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const taxBasisCorrections = [...correctedBases.values()].map(value => value.correction);
+    for (const slip of slips) {
+      const corrected = correctedBases.get(slip.id);
+      if (corrected) slip.statutory = corrected.statutory;
+    }
+
 
     let grossSalary = 0;
     let bonus = 0;
@@ -2223,6 +2251,30 @@ export async function eaStatement(
           .from(informationReportRelation('ea_override',p.companyId,p.year))
           .where(and(eq(eaOverride.employmentId, p.employmentId), eq(eaOverride.year, p.year)))
       : [];
+    // The original routing stamp remains evidence. Imported display-only lines cannot qualify.
+    if (correctedBases.size) {
+      const catalogue = await tx.select({code:payComponent.code,eaLine:payComponent.eaFormLine}).from(payComponent);
+      const mapping = new Map(catalogue.map(c => [c.code,c.eaLine]));
+      for (const original of originalSlips) {
+        const correction = correctedBases.get(original.id); if (!correction) continue;
+        if (!hasCompleteHistoricalEaProvenance([original],mapping))
+          throw new PayrollTaxBasisError('The corrected income has incomplete original EA routing evidence. Review the source before generating this tax report.');
+        const oldExemption = Object.entries(correction.basis.exemptionUsed).reduce((n,[code,value])=>code.startsWith('PCB_')?n+num(value):n,0);
+        const oldRouting = accumulateEaRouting(storedComponentLines(original.statutory),mapping,EA_LINE_TO_FIELD,true);
+        const oldParts: Partial<Record<EaField,number>> = {grossSalary:num(original.basic)+num(original.overtime),bonus:num(original.bonus),allowances:num(original.allowance)-oldExemption};
+        for (const [field,amount] of Object.entries(oldRouting.deltas)) oldParts[field as EaField]=(oldParts[field as EaField]??0)+(amount??0);
+        for (const field of EA_PART_B_COMPONENTS) derived[field]=round2(derived[field]-(oldParts[field]??0));
+        for (const item of correction.basis.items) {
+          if (item.latestTreatment==='Taxable remuneration deduction') { derived.grossSalary=round2(derived.grossSalary-item.amount);continue; }
+          if (!item.taxable) continue;
+          const classification=mapping.get(item.code)??null;
+          const target: EaField|undefined=classification===null?'grossSalary':(EA_LINE_TO_FIELD as Readonly<Record<string,EaField>>)[classification];
+          if (!target || !(EA_PART_B_COMPONENTS as readonly string[]).includes(target))
+            throw new PayrollTaxBasisError('A corrected taxable Pay Item needs a supported EA income mapping.');
+          derived[target]=round2(derived[target]+item.taxable);
+        }
+      }
+    }
     const merged: Record<EaField, number> = { ...derived };
     const overrides: EaOverrideEntry[] = [];
     let grossOverridden = false;
@@ -2242,6 +2294,7 @@ export async function eaStatement(
 
     return {
       year: p.year,
+      ...(taxBasisCorrections.length ? {taxBasisCorrections} : {}),
       employerId,
       employer: {
         name: employerName,

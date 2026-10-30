@@ -1,3 +1,4 @@
+import {replayMyTaxBasis} from './tax-basis-replay';
 import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
 import {getTaxSelectionMY,saveTaxSelectionMY,initializeHiredTaxSelectionMYTx,initializeTransferredTaxSelectionMYTx,resolveTaxSelectionMY} from './tax-selection';
@@ -149,6 +150,7 @@ export const myPack: CountryPack = {
   },
   holidays: MY_HOLIDAYS_2026,
   payroll: {
+    replayTaxBasis: replayMyTaxBasis,
     statutory,
     resolveTaxScheme:resolveTaxSelectionMY,
     // r356 — ONE replay of the prior months' PCB accumulators, for the kernel AND for the multicycle
