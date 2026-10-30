@@ -62,7 +62,12 @@ const num = (v: string | null): number | null => (v == null ? null : Number(v));
  * without Claims, and a caller-supplied tx must not be a way around it. Web callers pass none: unchanged.
  */
 async function withClaimsTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  if (!existingTx) return withTenant(ctx, run);
+  if (!existingTx) return withTenant(ctx, async tx => {
+    // Short interactive commands use expanded RLS plans; compiling them adds latency without
+    // amortizing it over a bulk calculation. Keep this setting local to the owned transaction.
+    await tx.execute(sql`SET LOCAL jit = off`);
+    return run(tx);
+  });
   assertModuleGate(ctx, 'claims');
   return run(existingTx);
 }

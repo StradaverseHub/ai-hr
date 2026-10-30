@@ -3,6 +3,7 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {afterAll,beforeAll,expect,it} from 'vitest';
+import {withTenant} from '../db/client';
 import {appUser,employment,person,roleAssignment} from '../db/schema';
 import {createClaimType,deleteClaimDraft,listClaimHistoryPage,listClaimsForEmployment,saveClaimDraft} from '../packs/claims/service';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -21,8 +22,23 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
    from unnest(${users.map(u=>u.employmentId)}::uuid[]) e(id) cross join generate_series(1,2000) n`;
  await owner.client`analyze claim_request`;
  const samples:Record<string,number[]>={read:[],create:[],edit:[],delete:[]};
- const timed=async<T>(operation:string,run:()=>Promise<T>)=>{const start=performance.now();try{return await run();}finally{samples[operation].push(performance.now()-start);}};
- const started=performance.now();
+ const started=performance.now();let checkpointAt=0;
+ const checkpoint=()=>{
+   if(performance.now()-checkpointAt<1000)return;checkpointAt=performance.now();
+   if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-progress.json',JSON.stringify({kind:'incomplete-service-burst',elapsedMs:performance.now()-started,completed:Object.fromEntries(Object.entries(samples).map(([key,values])=>[key,values.length]))}));
+ };
+ checkpoint();
+ const timed=async<T>(operation:string,run:()=>Promise<T>)=>{const start=performance.now();try{return await run();}finally{samples[operation].push(performance.now()-start);checkpoint();}};
+ const warm=users[0],warmCtx={...admin,userId:warm.userId,personId:warm.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+ const warmInput={employmentId:warm.employmentId,claimTypeId:type.id,incurredOn:'2026-01-02',amount:1};
+ const comparison:Record<string,number>={};
+ for(const mode of ['default','off'] as const){
+   const before=performance.now();
+   const draft=mode==='default'?await withTenant(warmCtx,tx=>saveClaimDraft(warmCtx,warmInput,null,tx)):await saveClaimDraft(warmCtx,warmInput);
+   comparison[mode+'CreateMs']=performance.now()-before;
+   await deleteClaimDraft(warmCtx,draft.id,warm.employmentId);
+ }
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-jit-comparison.json',JSON.stringify(comparison));
  const results=await Promise.allSettled(users.map(async(u,i)=>{
    const ctx={...admin,userId:u.userId,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
    const page=await timed('read',()=>listClaimHistoryPage(ctx,u.employmentId));
@@ -38,7 +54,7 @@ it('measures 500 simultaneous employee read/create/edit/delete journeys over one
  }));
  const failures=results.flatMap((r,i)=>r.status==='rejected'?[{session:i,message:String(r.reason)}]:[]);
  const quantiles=Object.fromEntries(Object.entries(samples).map(([k,values])=>{values.sort((a,b)=>a-b);return[k,{samples:values.length,p50Ms:values[Math.ceil(values.length*.5)-1],p95Ms:values[Math.ceil(values.length*.95)-1],p99Ms:values[Math.ceil(values.length*.99)-1],maxMs:values.at(-1)}];}));
- const report={kind:'service-burst-only',sessions:500,records:1000000,applicationPool:10,elapsedMs:performance.now()-started,errors:failures.length,operations:quantiles,failures};
+ const report={kind:'service-burst-only',sessions:500,records:1000000,applicationPool:10,jitComparison:comparison,elapsedMs:performance.now()-started,errors:failures.length,operations:quantiles,failures};
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/claims-500-sessions.json',JSON.stringify(report,null,2));
  console.info('[claims-500-sessions]',JSON.stringify(report));
  expect(failures).toEqual([]);
