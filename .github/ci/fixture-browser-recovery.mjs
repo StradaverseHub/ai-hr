@@ -64,12 +64,27 @@ export function validateLatestRepairHistory({source,rows,candidateBranch,focused
  assert(relevant.length===known.size&&relevant.every(r=>known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, pending, failed or superseding repair execution');
  return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.sort((a,b)=>a.id-b.id))};
 }
-function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId,browserRunId}){
- const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
- const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${focusedWorkflowId}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${BROWSER_REPAIR_WORKFLOW_ID}/runs?${query}`,'workflow_runs')];
- // Active executions must not disappear merely because they were queued before the lookback.
- for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[WORKFLOW_ID,focusedWorkflowId,BROWSER_REPAIR_WORKFLOW_ID].includes(r.workflow_id)));
- return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId});
+/** Every unfiltered workflow row is inventoried, including old-created runs updated recently. */
+export function collectCompleteRepairHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId,browserRunId}){
+ const inventory=()=>{
+  const rows=[];
+  for(const workflowId of [WORKFLOW_ID,focusedWorkflowId,BROWSER_REPAIR_WORKFLOW_ID]){
+   let total=null;const ids=new Set();
+   for(let page=1;page<=100;page++){
+    const response=api(`actions/workflows/${workflowId}/runs?per_page=100&page=${page}`);
+    assert(Number.isSafeInteger(response.total_count)&&response.total_count>=0&&response.total_count<=10000&&Array.isArray(response.workflow_runs),'Unbounded or incomplete workflow history');
+    if(total===null)total=response.total_count;
+    assert(response.total_count===total,'Workflow history count changed during pagination; retry');
+    for(const r of response.workflow_runs){assert(Number.isSafeInteger(r.id)&&!ids.has(r.id),'Repeated workflow history row; retry');ids.add(r.id);rows.push(r);}
+    if(response.workflow_runs.length<100){assert(ids.size===total,'Workflow history pagination omitted executions');break;}
+    assert(page<100,'Workflow history exceeds bound');
+   }
+  }
+  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId,browserRunId});
+ };
+ const first=inventory(),second=inventory();
+ assert(isDeepStrictEqual(first,second),'Relevant repair history changed during reconciliation; retry');
+ return second;
 }
 export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,browserRunId,candidateBranch,evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);originalPath=resolve(originalPath);runId=Number(runId);buildRunId=Number(buildRunId);browserRunId=Number(browserRunId);
@@ -135,7 +150,7 @@ export async function verifyFixtureBrowserCi({candidatePath,originalPath,runId,b
   const state=inspectNextStatePacket({files,run:built.run,job:built.jobs.find(j=>j.name==='build')});assert(state.producer.source===candidate&&state.producer.controller===controller,'Supplemental state source/controller differs');
  }
  const p={candidate,controller,baseline,runId:buildRunId,browserRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
- const history=latestHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId,browserRunId});
+ const history=collectCompleteRepairHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId,browserRunId});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
  const recovery=verifyFixtureBrowserRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,browsers,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
  recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));

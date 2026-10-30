@@ -37,6 +37,16 @@ on:
         required: false
         default: false
         type: boolean
+      fixture_certificate:
+        description: Read-only finite fixture/browser certificate after successful same-controller diagnostics; never installation authority
+        required: false
+        default: false
+        type: boolean
+      fixture_certificate_runs:
+        description: JSON object with focusedRunIds, buildRunId, browserRunId and diagnosticId
+        required: false
+        default: '{}'
+        type: string
   push:
     branches: [alpha]
   pull_request:
@@ -145,11 +155,12 @@ jobs:
         run: |
           git fetch origin a16f0beb40e2d331273ac2aaf40c7eb8effb280b 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
           git worktree add --detach "$RUNNER_TEMP/fixture-original" a16f0beb40e2d331273ac2aaf40c7eb8effb280b
-          git worktree add --detach "$RUNNER_TEMP/fixture-candidate" 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
+          mkdir -p scratchpad
+          git worktree add --detach scratchpad/fixture-projection-candidate 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9
       - name: Install declared parser dependencies for optional projection only
         if: ${{ inputs.fixture_projection }}
         uses: ./.github/actions/setup-alpha
-        with: {path: '${{ runner.temp }}/fixture-candidate', mobile: 'false', capacity_profile: legacy}
+        with: {path: scratchpad/fixture-projection-candidate, mobile: 'false', capacity_profile: legacy}
       - name: Project immutable repair coverage without executing application or tests
         if: ${{ inputs.fixture_projection }}
         env:
@@ -157,8 +168,8 @@ jobs:
           DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
           MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
         run: |
-          ln -s "$RUNNER_TEMP/fixture-candidate/node_modules" node_modules
-          node --import tsx .github/ci/fixture-browser-impact-projection.mjs "$RUNNER_TEMP/fixture-original" "$RUNNER_TEMP/fixture-candidate" "$RUNNER_TEMP/fixture-impact-projection.json"
+          ln -s "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate/node_modules" node_modules
+          node --import tsx .github/ci/fixture-browser-impact-projection.mjs "$RUNNER_TEMP/fixture-original" "$GITHUB_WORKSPACE/scratchpad/fixture-projection-candidate" "$RUNNER_TEMP/fixture-impact-projection.json"
       - if: ${{ inputs.fixture_projection }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -166,6 +177,34 @@ jobs:
           path: ${{ runner.temp }}/fixture-impact-projection.json
           if-no-files-found: error
           retention-days: 7
+      - name: Refuse certificate without the diagnostic parser projection
+        if: ${{ inputs.fixture_certificate }}
+        env: {PROJECTION: '${{ inputs.fixture_projection }}', CONTROLLER_ONLY: '${{ inputs.controller_only }}', DIAGNOSTICS_ONLY: '${{ inputs.diagnostics_only }}'}
+        run: test "$PROJECTION" = true && test "$CONTROLLER_ONLY" = true && test "$DIAGNOSTICS_ONLY" = true
+      - name: Compose authenticated read-only fixture/browser evidence
+        if: ${{ inputs.fixture_certificate }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CERTIFICATE_RUNS_JSON: ${{ inputs.fixture_certificate_runs }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import {writeFileSync} from 'node:fs';
+          const r=JSON.parse(process.env.CERTIFICATE_RUNS_JSON);
+          assert.deepEqual(Object.keys(r).sort(),['browserRunId','buildRunId','diagnosticId','focusedRunIds'].sort());
+          const options={candidatePath:process.env.GITHUB_WORKSPACE+'/scratchpad/fixture-projection-candidate',originalPath:process.env.RUNNER_TEMP+'/fixture-original',runId:41028659062,baseline:'d6cb83d620d8d4380c981a72fc41628780840b4e',focusedRunIds:r.focusedRunIds,buildRunId:r.buildRunId,browserRunId:r.browserRunId,candidateBranch:'codex/mobile-bank-feedback-staging-prep-20261030',evidenceDirectory:process.env.RUNNER_TEMP+'/fixture-browser-proof'};
+          assert(Number.isSafeInteger(r.diagnosticId)&&r.diagnosticId>0);
+          writeFileSync(process.env.RUNNER_TEMP+'/fixture-certificate-options.json',JSON.stringify(options));
+          writeFileSync(process.env.GITHUB_ENV,'AIHR_RECOVERY_CONTROLLER_RUN_ID='+r.diagnosticId+'\n',{flag:'a'});
+          NODE
+          AIHR_RECOVERY_CONTROLLER_RUN_ID=$(node -p 'JSON.parse(process.env.CERTIFICATE_RUNS_JSON).diagnosticId') node --import tsx .github/ci/fixture-browser-recovery.mjs "$RUNNER_TEMP/fixture-certificate-options.json"
+      - if: ${{ inputs.fixture_certificate }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fixture-browser-recovery-read-only-certificate
+          path: ${{ runner.temp }}/fixture-browser-proof/verification.json
+          if-no-files-found: error
+          retention-days: 14
   typecheck:
     if: ${{ !inputs.diagnostics_only && !inputs.build_only }}
     needs: resolve

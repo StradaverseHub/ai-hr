@@ -85,3 +85,22 @@ test('Actual bounded browser extractor preserves unit results, binds image text 
   let i=0;for(const entries of [{...unit,'../escape.json':'{}'},{...unit,'unexpected.json':'{}'},{'unit-browser-chromium.json':'{}'},{...identity,'unexpected.txt':'x'},{...identity,'ui-screenshots/extra.png':'x'}])assert.throws(()=>extract(entries,entries['image-binding.json']?'identity':'unit','refuse-'+i++));
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+import {collectCompleteRepairHistory} from './fixture-browser-recovery.mjs';
+test('Real history collector supplies old-created newly-completed failures and refuses incomplete API pagination',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-browser-history-api-')),bin=join(root,'bin');mkdirSync(bin);
+ const stamp='2026-10-30T03:00:00Z',row=(id,title)=>({id,display_title:title,head_sha:'controller',created_at:'2026-10-30T02:10:00Z',updated_at:stamp,status:'completed',conclusion:'success',run_attempt:1});
+ const state={395777276:[row(3,'Canonical build only · repair')],999:[row(2,'Focused only · repair')],395862646:[row(4,'Tooling transport only · repair')]};
+ const statePath=join(root,'state.json'),queries=join(root,'queries.txt'),saveState=()=>writeFileSync(statePath,JSON.stringify(state));saveState();
+ writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
+  'const fs=require("node:fs"),p=process.argv[3],root=process.env.AIHR_HISTORY_TEST_ROOT;fs.appendFileSync(root+"/queries.txt",p+"\\n");const id=p.match(/workflows\\/(\\d+)\\//)[1],s=JSON.parse(fs.readFileSync(root+"/state.json"));let rows=s[id];if(p.includes("created="))rows=rows.filter(r=>!r.created_at.startsWith("2020"));process.stdout.write(JSON.stringify({total_count:s.incomplete?rows.length+1:rows.length,workflow_runs:rows}));\n',{mode:0o700});
+ const oldPath=process.env.PATH,oldRoot=process.env.AIHR_HISTORY_TEST_ROOT;process.env.PATH=bin+':'+oldPath;process.env.AIHR_HISTORY_TEST_ROOT=root;
+ const input={source:{run:{id:1,display_title:'Alpha CI · repair',updated_at:'2026-10-30T02:00:00Z'}},focusedWorkflowId:999,candidateBranch:'repair',focusedRunIds:[2],buildRunId:3,browserRunId:4};
+ try{
+  assert.deepEqual(collectCompleteRepairHistory(input).runIds,[2,3,4]);
+  assert(!readFileSync(queries,'utf8').includes('created='));
+  state[395862646].push({...row(5,'Tooling transport only · repair'),created_at:'2020-01-01T00:00:00Z',conclusion:'failure'});saveState();
+  assert.throws(()=>collectCompleteRepairHistory(input),/Unaccounted/);
+  state[395862646].pop();state.incomplete=true;saveState();assert.throws(()=>collectCompleteRepairHistory(input),/omitted/);
+ }finally{process.env.PATH=oldPath;if(oldRoot===undefined)delete process.env.AIHR_HISTORY_TEST_ROOT;else process.env.AIHR_HISTORY_TEST_ROOT=oldRoot;rmSync(root,{recursive:true,force:true});}
+});
