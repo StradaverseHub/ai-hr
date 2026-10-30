@@ -5,9 +5,9 @@ const put=(tree:ClientMessages,key:string,value:string|ClientMessages)=>Object.d
 export function pickClientMessages(messages:ClientMessages,prefixes:readonly string[]|null):ClientMessages{
  if(prefixes===null)return messages;
  const selected=prefixes.filter(value=>!prefixes.some(parent=>parent!==value&&value.startsWith(parent+'.'))),result:ClientMessages={};
- for(const prefix of selected){
+ prefixes:for(const prefix of selected){
   const parts=prefix.split('.');let input:string|ClientMessages=messages;
-  for(const part of parts){if(!branch(input)||!Object.hasOwn(input,part))return messages;input=input[part];}
+  for(const part of parts){if(!branch(input)||!Object.hasOwn(input,part))continue prefixes;input=input[part];}
   let output=result;
   for(const part of parts.slice(0,-1)){if(!Object.hasOwn(output,part))put(output,part,{});output=output[part] as ClientMessages;}
   put(output,parts.at(-1)!,input);

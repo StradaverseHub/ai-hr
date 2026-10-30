@@ -10,7 +10,7 @@ export function personnelClientMessageKeys(){
  }
  return [...keys].sort();
 }
-const vocabulary=[...new Set(['people','me','attendance',...personnelClientMessageKeys().map(key=>key.split('.')[0])])].sort();
+const vocabulary=[...new Set(['people','me','attendance',...personnelClientMessageKeys()])].sort();
 /** These components resolve only the shared Personnel vocabulary or their explicit namespaced hooks.
  * New unscoped consumers remain unknown and retain the full catalog until their owner is declared. */
 export const unscopedClientMessageContracts:Readonly<Record<string,readonly string[]>>=Object.fromEntries([

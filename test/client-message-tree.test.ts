@@ -8,10 +8,10 @@ it('selects nested namespaces without mutating shared input or duplicating paren
  expect(pickClientMessages(messages,['claims.form'])).toEqual({claims:{form:{save:'Save'}}});
  expect(JSON.stringify(messages)).toBe(original);
 });
-it('keeps the full catalog for unknown usage or a missing namespace',()=>{
+it('keeps the full catalog for unknown usage and omits keys absent from the source',()=>{
  const messages={common:{ok:'Okay'}};
  expect(pickClientMessages(messages,null)).toBe(messages);
- expect(pickClientMessages(messages,['unknown'])).toBe(messages);
+ expect(pickClientMessages(messages,['unknown'])).toEqual({});
 });
 it('sends only the additional route messages and merges overlapping namespace branches on navigation',()=>{
  const messages={onehr:{workspace:{title:'Workspace'},review:{title:'Review'}},common:{ok:'Okay'},claims:{title:'Claims'}};
