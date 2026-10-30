@@ -22,12 +22,12 @@ function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const r=a
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 function metadata(runId){return {run:api(`actions/runs/${runId}`),jobs:pages(`actions/runs/${runId}/jobs?filter=all`,'jobs'),artifacts:pages(`actions/runs/${runId}/artifacts`,'artifacts')};}
-export function validateRepairArchiveInventory(m,allowed,producerFor){
+export function validateRepairArchiveInventory(m,allowed,producerFor,now=Date.now()){
  assert(m.run.repository?.id===REPOSITORY_ID&&m.run.head_repository?.id===REPOSITORY_ID,'Foreign artifact owner');
  assert(m.artifacts.length>0&&new Set(m.artifacts.map(a=>a.name)).size===m.artifacts.length&&new Set(m.artifacts.map(a=>a.id)).size===m.artifacts.length,'Incomplete/duplicate artifact inventory');
  for(const a of m.artifacts){const w=a.workflow_run,j=m.jobs.find(j=>j.name===producerFor(a.name));
   assert(allowed.has(a.name)&&j&&j.conclusion!=='skipped'&&w?.id===m.run.id&&w.repository_id===REPOSITORY_ID&&w.head_repository_id===REPOSITORY_ID&&w.head_sha===m.run.head_sha&&w.head_branch===m.run.head_branch,'Unknown or foreign repair artifact');
-  assert(Date.parse(a.created_at)>=Date.parse(j.started_at)&&Date.parse(a.created_at)<=Date.parse(j.completed_at)&&Date.parse(a.expires_at)>Date.now(),'Artifact outside original producing job');
+  assert(Date.parse(a.created_at)>=Date.parse(j.started_at)&&Date.parse(a.created_at)<=Date.parse(j.completed_at)&&Date.parse(a.expires_at)>now,'Artifact outside original producing job');
  }
 }
 function planAt(path,{controller,baseline,runtime}){
