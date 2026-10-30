@@ -28,7 +28,8 @@ BEGIN
     AND (p.data->'lifecycleV9Subject'->>'personId') IS NOT DISTINCT FROM c.data->>'personId'
     AND (p.data->'lifecycleV9Subject'->>'employmentId') IS NOT DISTINCT FROM c.data->>'employmentId';
  END IF;
- IF parent_state IS DISTINCT FROM 'submitted' OR subject IS DISTINCT FROM job.payload->'subject' OR
+ IF (parent_state IS DISTINCT FROM 'submitted' AND NOT app.lc_v9_is_self_test(job.payload->'mail')) OR
+  (job.payload->'mail'->'test'='true'::jsonb AND NOT app.lc_v9_is_self_test(job.payload->'mail')) OR subject IS DISTINCT FROM job.payload->'subject' OR
   NOT EXISTS(SELECT 1 FROM jsonb_array_elements(state->'mails') m WHERE m->>'id'=job.mail_id AND m->>'status'='sending')
  THEN RETURN NULL; END IF;
  -- A document changed through another writer must never be marked sent as a different copy.

@@ -13,17 +13,17 @@ The fresh canonical/accepted baseline is `2ab4f6c120a28692857e93adeed072d463713a
 
 The freeze audit inspected1887 refs/237 unique journals plus476 registered worktree journals. Known unapplied AI personnel claims end at54 and performance0726 at55; none of the inspected worktrees claimed56 or later. The release orchestrator and the AI, parity, performance, MOBILE and Bank owners were notified. Lower provisional AI0703–0712 and other uninstalled claims must be reallocated above the actual installed watermark before their later owning release; they are not silently included or replayed here. Bank's proposed successor64/idx694 remains provisional until this release's actual handback.
 
-V9 appends immediately after the installed prefix atidx686–693/when1793330000056–63. Its eight SQL bodies remain byte-identical to verified435d6f7a7; only unapplied journal metadata changes. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
+V9 appends immediately after the installed prefix atidx686–693/when1793330000056–63. Six SQL bodies remain byte-identical to verified435d6f7a7. The still-unapplied0714/0719 bodies now implement the HTML’s explicit self-test behavior for pending/closed cases: the frozen recipient must equal the initiating actor, CC must be empty and no onboarding contact is permitted; real delivery remains restricted to submitted cases. The installed571-entry prefix and these eight allocated positions are unchanged. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
 
 | Index | Timestamp | Filename | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |686|1793330000056|0713_lifecycle_v9|7cd451abc6b6fd5a2a7bd46aae2078e6d7b33d795f07e2c132d42637a44aeb3f|
-|687|1793330000057|0714_lifecycle_v9_email|1b4320ab4ad3d69c79213ba7c01e92a6aa89dfc06719cdcdfcc30de71a8d4c97|
+|687|1793330000057|0714_lifecycle_v9_email|6e2a5914825c1b89a73ba02c0da88f24c63c641ea6eab73280197b564387271b|
 |688|1793330000058|0715_lifecycle_v9_email_assets|7cce0a32d622fa500692deee33d1dc2738009fdddb3c9a7500c627cd50ede0ce|
 |689|1793330000059|0716_lifecycle_v9_events|98f23c7f62f93508f7da8eb4d51c891467ee87ec6d090cae2c64e1e111b51a1b|
 |690|1793330000060|0717_lifecycle_v9_delivery_review|a2a29747b6fcfea39dfc2e54f554f2f44fc9d365c911796066de1a4c36d2979f|
 |691|1793330000061|0718_lifecycle_v9_employment_class|8fcdc41c6db137aa69e29c5dab44a8788b7c3c30620b97d215d7bbbb65f34dd2|
-|692|1793330000062|0719_lifecycle_v9_business_recipients|aa3b80ffa3f013025569e0030fdee843c3af135cc7d0ae1611628cf0cb408035|
+|692|1793330000062|0719_lifecycle_v9_business_recipients|4547c284bbacdf709cd5a5c66b1f7458a981cc2dec40825ead194081ab9f2f22|
 |693|1793330000063|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
 
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)

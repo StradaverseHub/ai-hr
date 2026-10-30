@@ -7,7 +7,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9PreviewWorkflow, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -1304,4 +1304,53 @@ it('workflow test sends cannot resume an independently ready real waiting run',a
  await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,state:'submitted',runs:[waiting]})}::jsonb where id=${id}::uuid`);
  await v9Command(admin,id,before.revision,{type:'testWorkflow',workflowId:'test-only'});const after=(await v9CaseDetail(admin,id)).case;
  expect(after.runs).toEqual([waiting]);expect(after.mails).toHaveLength(1);expect(after.mails[0]).toMatchObject({to:[admin.userId],cc:[],test:true,workflowId:null});
+});
+
+it.each(['pending','cancelled','cleared'] as const)('captures and receipts only actor-bound self-tests for a %s case',async state=>{
+ const config=(await v9Workspace(admin)).config!,template=config.templates.find(template=>template.module==='off'&&template.type==='Form')!;
+ config.emails.push({id:'closed-self',name:'Fictional self-test',module:'off',active:true,sender:'hr',subject:'Fictional self-test',body:'For {employee.name}',cc:['supervisor'],links:[template.id],attachments:[],slots:[{id:'required-proof',label:'Fictional proof',required:true}]});config.workflows=[{id:'closed-self-flow',name:'Fictional self-test flow',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'earlier-notify',type:'notify',to:'employee',cc:[],subject:'Wrong earlier output',body:''},{id:'email',type:'email',template:'closed-self',to:'employee',cc:['supervisor']}],description:''}];await v9SaveConfig(admin,config.revision,config);
+ const day=todayInKualaLumpur(),id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:addDays(day,-30),lastDay:day}),before=(await v9CaseDetail(admin,id)).case;
+ await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,state})}::jsonb where id=${id}::uuid`);
+ await expect(v9Command(other,id,before.revision,{type:'testWorkflow',workflowId:'closed-self-flow'})).rejects.toThrow();
+ await v9Command(admin,id,before.revision,{type:'emailEdit',emailId:'closed-self',subject:'Reviewed self-test',body:'Future personal copy'}).then(()=>{expect(state).toBe('pending');},error=>{expect(state).not.toBe('pending');expect(error.message).toContain('Reopen this case');});
+ const ready=(await v9CaseDetail(admin,id)).case;
+ await v9Command(admin,id,ready.revision,{type:'testWorkflow',workflowId:'closed-self-flow'});
+ const queued=(await v9CaseDetail(admin,id)).case;expect(queued.mails).toHaveLength(1);expect(queued.mails[0]).toMatchObject({templateId:'closed-self',to:[admin.userId],cc:[],test:true,documentIds:[]});expect(queued.state).toBe(state);
+ const origin='https://self-test.fictional.invalid',subject='fictional-current-actor';await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+base.tenantId},${subject},${admin.userId!}::uuid)`;
+ let checked=false,failure:unknown;const result=await v9DeliverEmails({...admin,userId:undefined,personId:null},owner,async request=>{try{
+  const [{target}]=await owner.client`select app.lc_v9_email_target(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin}) as target`;expect(target).toMatchObject({caseId:id,bindings:[{userId:admin.userId}],literals:[]});expect(target.payload.mail).toMatchObject({test:true,to:[admin.userId],cc:[]});expect(target.contact).toBeNull();
+  const proof={bindings:target.bindings,contact:null,literals:[],addresses:['actor@fictional.invalid'],relayRevision:'controlled-self-test-proof'};
+  const [{started}]=await owner.client`select app.lc_v9_email_start(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${origin},${owner.client.json(proof)}) as started`;expect(started).toBe(true);
+  const [{finished}]=await owner.client`select app.lc_v9_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'sent',null) as finished`;expect(finished).toBe(true);checked=true;return{outcome:'sent',error:null};
+ }catch(error){failure=error;throw error;}});if(failure)throw failure;expect(checked).toBe(true);expect(result).toEqual({attempted:1,sent:1,held:0,failed:0});
+ const after=(await v9CaseDetail(admin,id)).case;expect(after.state).toBe(state);expect({documents:after.documents,tasks:after.tasks,items:after.items,runs:after.runs}).toEqual({documents:before.documents,tasks:before.tasks,items:before.items,runs:before.runs});expect(after.mails[0].status).toBe('sent');
+});
+it('refuses forged closed-case test recipients, CC and onboarding contacts at the SQL capture boundary',async()=>{
+ const day=todayInKualaLumpur(),id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:addDays(day,-30),lastDay:day}),before=(await v9CaseDetail(admin,id)).case;
+ const delivery={version:1,queuedBy:{id:admin.userId!,name:'Fictional HR'},sender:'hr',linkDocumentIds:[],pdfDocumentIds:[],toNames:[],ccNames:[]};
+ for(const [index,patch]of [{to:[employee.userId!]},{cc:[employee.userId!]},{to:[employee.userId!],delivery:{...delivery,queuedBy:{id:employee.userId!,name:'Forged initiating actor'}}},{delivery:{...delivery,contact:{kind:'onboardingContact',caseId:id,email:'external@fictional.invalid',sourceRevision:'fictional'}}}].entries()){
+  const mail={id:'forged-'+index,key:'forged-'+index,workflowId:null,templateId:null,to:[admin.userId!],cc:[],subject:'Fictional forged test',body:'',documentIds:[],fileIds:[],status:'pending',test:true,at:day+'T00:00:00Z',deliveredAt:null,failure:null,delivery,...patch};
+  await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,state:'cancelled',mails:[mail]})}::jsonb where id=${id}::uuid`);
+ }
+ const [{count}]=await owner.client`select count(*)::int as count from lc_v9_email_delivery where case_id=${id}::uuid`;expect(count).toBe(0);
+});
+it('previews only the first notification or first document without creating live case work',async()=>{
+ const config=(await v9Workspace(admin)).config!,templates=config.templates.filter(template=>template.module==='off').slice(0,2);expect(templates).toHaveLength(2);
+ const common={module:'off' as const,status:'published' as const,trigger:{event:'manual' as const,days:0,workdays:false,repeat:false,skipIf:'' as const},conditions:[],description:''};
+ config.workflows=[{...common,id:'preview-notice',name:'Fictional notice preview',steps:[{id:'first',type:'notify',to:'employee',cc:['supervisor'],subject:'First notification',body:'Read only'},{id:'second',type:'notify',to:'employee',cc:[],subject:'Second notification',body:''},{id:'doc',type:'doc',template:templates[0].id,release:false}]},{...common,id:'preview-document',name:'Fictional document preview',steps:templates.map((template,index)=>({id:'doc'+index,type:'doc' as const,template:template.id,release:false}))}];await v9SaveConfig(admin,config.revision,config);
+ const day=todayInKualaLumpur(),id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:addDays(day,-30),lastDay:day}),before=(await v9CaseDetail(admin,id)).case;
+ const notification=await v9PreviewWorkflow(admin,id,'preview-notice');expect(notification.messages).toEqual([expect.objectContaining({subject:'First notification',to:'Employee',cc:'Line manager'})]);expect(notification.documents).toEqual([]);
+ const document=await v9PreviewWorkflow(admin,id,'preview-document');expect(document.messages).toEqual([]);expect(document.documents).toHaveLength(1);expect(document.documents[0].templateId).toBe(templates[0].id);expect((await v9CaseDetail(admin,id)).case).toEqual(before);
+ const older={...document.documents[0],id:'fictional-existing-document',version:0,name:'Old saved document',edits:{},hrSignature:null,employeeSignature:null};
+ await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,documents:[older]})}::jsonb where id=${id}::uuid`);
+ const current=await v9PreviewWorkflow(admin,id,'preview-document');expect(current.documents[0].version).not.toBe(0);expect(current.documents[0].name).not.toBe('Old saved document');expect(current.documents[0].hrSignature).toBeNull();expect((await v9CaseDetail(admin,id)).case.documents).toEqual([older]);
+});
+
+it.each(['pending','cancelled'] as const)('captures native onboarding %s self-tests without exposing the contact or creating employee work',async state=>{
+ const draft=await saveEmployeeDraft(admin,{currentStep:1,data:{profile:{fullName:'Fictional native self-test',primaryEmail:'native-self@fictional.invalid'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,hiredOn:addDays(todayInKualaLumpur(),7),employmentType:'full_time'}}});const row=(await onboardingList(admin)).find(row=>row.case.sourceDraftId===draft.id)!;
+ if(state==='cancelled')await owner.db.execute(sql`update lc_onboarding_case set data=jsonb_set(data,'{state}','"cancelled"'::jsonb) where id=${row.case.id}::uuid`);
+ const config=(await v9Workspace(admin)).config!;config.workflows=[{id:'native-self-test',name:'Fictional native self-test',module:'onb',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'notice',type:'notify',to:'employee',cc:['supervisor'],subject:'Fictional native self-test',body:'Read only copy'}],description:''}];await v9SaveConfig(admin,config.revision,config);
+ const before=(await v9CaseDetail(admin,row.case.id)).case;await v9Command(admin,row.case.id,before.revision,{type:'testWorkflow',workflowId:'native-self-test'});const after=(await v9CaseDetail(admin,row.case.id)).case;
+ expect(after.state).toBe(state);expect(after.mails[0]).toMatchObject({test:true,to:[admin.userId],cc:[],documentIds:[]});expect(after.mails[0].delivery).not.toHaveProperty('contact');expect({tasks:after.tasks,documents:after.documents,runs:after.runs}).toEqual({tasks:before.tasks,documents:before.documents,runs:before.runs});
+ const [job]=await owner.db.execute<{payload:{mail:{test:boolean;to:string[];cc:string[]}}}>(sql`select payload from lc_v9_email_delivery where onboarding_case_id=${row.case.id}::uuid`);expect(job.payload.mail).toMatchObject({test:true,to:[admin.userId],cc:[]});
 });

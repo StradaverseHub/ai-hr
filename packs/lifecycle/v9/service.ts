@@ -155,8 +155,10 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
     const workflow=config?.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module);
     if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
     const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
-    const messages=workflow.steps.flatMap<{id:string;emailId:string|null;name:string;subject:string;body:string}>(step=>step.type==='email'?[{id:step.id,...M.previewEmail(c,config,step.template,env)}]:step.type==='notify'?[{id:step.id,emailId:null,name:'Notification',...M.previewWorkflowNotification(c,config,step,env)}]:[]);
-    const documents=workflow.steps.flatMap(step=>step.type==='doc'?[M.generate(c,config,step.template,env)]:[]);
+    const email=workflow.steps.find(step=>step.type==='email'),notification=workflow.steps.find(step=>step.type==='notify'),document=workflow.steps.find(step=>step.type==='doc');
+    // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
+    const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env)}]:[];
+    const documents=!email&&!notification&&document?.type==='doc'?[M.generate({...c,documents:[]},config,document.template,env)]:[];
     return {workflow, messages, documents};
   });
 }
@@ -481,7 +483,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       plan.mail.retryReason=command.reason.trim();c.documents=plan.case.documents;c.mails=plan.case.mails;c.log=plan.case.log;
       M.appendLog(c,env,'email.updatedCopyQueued',command.reason.trim());
     }
-    else if (command.type === 'emailEdit') { if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
+    else if (command.type === 'emailEdit') { if (!['pending','submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before editing its email.'); if (!config.emails.some(e => e.id === command.emailId && e.module === c.module) || command.body.length > 20000 || command.subject.length > 1000) throw new M.V9Error('Choose an available email and keep its content within the allowed length.'); c.emailEdits = { ...c.emailEdits, [command.emailId]: { subject: command.subject, body: command.body } }; M.appendLog(c, env, 'email.edited', 'Email text changed for this person only.'); }
     else if (command.type === 'documentTextEdit') M.editDocumentText(c, config, command.id, command.edits, env);
     else if (command.type === 'documentSave') M.saveDocument(c, command.id, command.values, 'hr', env);
     else if(command.type==='documentSignatory') {
@@ -659,7 +661,7 @@ export async function v9DeliverEmails(ctx: SessionContext, connection: Notificat
         if (!job) return null;
         assertModuleEnabled(ctx, 'lifecycle', job.company_id);
         const row = await readCase(tx, job), c = structuredClone(row.data), mail = c.mails.find(mail => mail.id === job.mail_id);
-        if (c.state !== 'submitted' || !mail || !mail.delivery || !['pending','sending'].includes(mail.status)) {
+        if (!mail || (c.state !== 'submitted' && !mail.test) || !mail.delivery || !['pending','sending'].includes(mail.status)) {
           await tx.execute(sql`update lc_v9_email_delivery set status='cancelled',error_code='notEligible',updated_at=now() where id=${id}::uuid`); return null;
         }
         const token = randomUUID(); mail.status = 'sending'; mail.failure = null;
@@ -681,7 +683,7 @@ export async function v9DeliverEmails(ctx: SessionContext, connection: Notificat
           [job] = await tx.execute<Job>(sql`update lc_v9_email_delivery set status=${held ? 'queued' : 'failed'},error_code=${error},lease_token=null,lease_until=null,next_attempt_at=now()+interval '5 minutes',updated_at=now() where id=${id}::uuid returning *`);
           if (held) {
             const row = await readCase(tx, job), c = structuredClone(row.data), mail = c.mails.find(mail => mail.id === job.mail_id);
-            if (mail) { mail.status = c.state === 'submitted' ? 'pending' : 'cancelled'; mail.failure = error; await store(tx, ctx, row, c, 'emailHeld'); }
+            if (mail) { mail.status = c.state === 'submitted' || mail.test ? 'pending' : 'cancelled'; mail.failure = error; await store(tx, ctx, row, c, 'emailHeld'); }
             return 'held';
           }
         } else if (job.status === 'sending') {

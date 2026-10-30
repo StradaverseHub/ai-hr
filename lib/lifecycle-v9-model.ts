@@ -565,7 +565,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
     const cc = test ? [] : ccTargets.filter(id => id !== target);
     const assetCount = (email?.files?.length ?? 0) + (email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}')).length;
     if (assetCount + (email?.attachments.length ?? 0) + c.files.filter(file => email?.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) throw new V9Error('Keep the total attached files and inline images within 20.');
-    const sender = email?.sender ?? 'noreply';
+    const sender = email?.sender ?? (test ? c.module==='onb'?'onboarding':'hr' : 'noreply');
     if (!['onboarding', 'hr', 'noreply'].includes(sender)) throw new V9Error('Choose a managed sender profile before sending.');
     const assets = structuredClone([...(email?.files ?? []), ...(email?.images ?? []).filter(image => body.text.includes('{image:' + image.id + '}'))]);
     if (assets.reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) throw new V9Error('Keep the total attached files and inline images within 20 MB.');
@@ -575,7 +575,7 @@ function enqueue(c: Case, config: Config, step: Extract<Step, { type: 'email' | 
   return deliveryHold(c.mails.filter(mail => mail.workflowId === workflowId && mail.key.startsWith(key + ':')));
 }
 export function queueEmail(c: Case, config: Config, emailId: string, env: Environment, test = false): void {
-  if (c.state !== 'submitted') throw new V9Error('Only an open case can send email.', 'conflict');
+  if (c.state !== 'submitted' && !test) throw new V9Error('Only an open case can send email.', 'conflict');
   const email = config.emails.find(e => e.id === emailId && e.module === c.module);
   if (!email) throw new V9Error('Email template not found.', 'not_found');
   const acceptance = c.module === 'off' && emailId === 'e3';
@@ -588,20 +588,23 @@ export function queueEmail(c: Case, config: Config, emailId: string, env: Enviro
 }
 export function previewWorkflowNotification(c: Case, config: Config, step: Extract<Step,{type:'notify'}>, env: Environment) {
  const role=Array.isArray(step.to)?step.to[0]:step.to;
- const target=recipients(c,config,role)[0];
- const tasks=pendingPre(c).filter(task=>role!=='taskOwners'||task.assignee===target);
- const values={...env.mergeValues,'owner.name':target?recipientName(target,env):'', 'pending.tasks':tasks.map(task=>`${task.name} (due ${task.dueOn})`).join('\n')};
- return {subject:merge(step.subject,values,emailSensitiveKeys(config)).text,body:merge(step.body,values,emailSensitiveKeys(config)).text};
+ const target=pendingPre(c).find(task=>task.assignee)?.assignee;
+ const tasks=pendingPre(c).filter(task=>task.assignee===target);
+ const selected=target?tasks:pendingPre(c);
+ const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+ const lines=selected.map(task=>`• ${task.name}${validDate(task.dueOn)?` (due ${Number(task.dueOn.slice(8))} ${months[Number(task.dueOn.slice(5,7))-1]})`:''}${target?'':` – ${task.assignee?env.userName(task.assignee):'unassigned'}`}`);
+ const values={...env.mergeValues,'owner.name':target?recipientName(target,env).split(' ')[0]:'','pending.count':String(selected.length),'pending.tasks':lines.length?lines.join('\n'):'Nothing pending'};
+ return {subject:merge(step.subject,values,emailSensitiveKeys(config)).text,body:merge(step.body,values,emailSensitiveKeys(config)).text,to:recipientLabel(role,config,env),cc:step.cc.map(role=>recipientLabel(role,config,env)).join(', ')};
 }
 /** A workflow test queues only its message steps to the actor, never advancing a run or employee work. */
 export function testWorkflowMessages(c: Case, config: Config, workflowId: string, env: Environment): void {
-  if (c.state !== 'submitted') throw new V9Error('Only an open case can send a test.', 'conflict');
   const workflow = config.workflows.find(workflow => workflow.id === workflowId && workflow.module === c.module);
   if (!workflow) throw new V9Error('Workflow not found.', 'not_found');
-  const messages = workflow.steps.filter((step): step is Extract<Step, {type: 'email' | 'notify'}> => step.type === 'email' || step.type === 'notify');
-  if (!messages.length) throw new V9Error('This workflow has no message to test.');
-  for (const step of messages.slice(0, 1)) {
-    const hold = enqueue(c, config, step, `test:${env.nextId()}`, null, env, true);
+  const message = workflow.steps.find(step=>step.type==='email') ?? workflow.steps.find(step=>step.type==='notify');
+  if (!message || (message.type!=='email' && message.type!=='notify')) throw new V9Error('This workflow has no message to test.');
+  for (const step of [message]) {
+    const output=step.type==='notify'?{...step,...previewWorkflowNotification(c,config,step,env),to:step.to,cc:step.cc}:step;
+    const hold = enqueue(c, config, output, `test:${env.nextId()}`, null, env, true);
     if (hold) throw new V9Error(hold);
   }
 }
@@ -663,7 +666,7 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
 /** Durable delivery acknowledgement is the only operation that marks email-linked documents sent. */
 export function markDelivered(c: Case, id: string, env: Environment, unchangedDocumentIds?: ReadonlySet<string>): void {
   const mail = c.mails.find(m => m.id === id); if (!mail || mail.status === 'sent') return;
-  if (mail.status !== 'sending' && (c.state !== 'submitted' || mail.status !== 'pending')) throw new V9Error('Delivery is no longer eligible.', 'conflict');
+  if (mail.status !== 'sending' && ((c.state !== 'submitted' && !mail.test) || mail.status !== 'pending')) throw new V9Error('Delivery is no longer eligible.', 'conflict');
   mail.status = 'sent'; mail.deliveredAt = env.now; mail.failure = null;
   // A late acknowledgement records the truth without reopening a closed case.
   if (!mail.test && c.state === 'submitted') for (const doc of c.documents.filter(d => mail.documentIds.includes(d.id) && (!unchangedDocumentIds || unchangedDocumentIds.has(d.id)))) {

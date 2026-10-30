@@ -40,6 +40,18 @@ CREATE TRIGGER lc_v9_email_immutable BEFORE UPDATE ON lc_v9_email_delivery FOR E
 
 -- Capture only canonical stored records at their actual writer's transaction boundary. There is
 -- no caller-controlled payload argument and no second owner of Native onboarding facts/tasks.
+-- A closed/pending case may only queue an explicit test to its initiating signed-in actor.
+-- This pure internal predicate grants no recipient, company or case authority.
+CREATE FUNCTION app.lc_v9_is_self_test(p_mail jsonb) RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path=public,pg_temp AS $$
+ SELECT coalesce(p_mail->'test'='true'::jsonb
+  AND p_mail->'delivery'->'queuedBy'->>'id' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+  AND p_mail->'to'=jsonb_build_array(p_mail->'delivery'->'queuedBy'->>'id')
+  AND p_mail->'cc'='[]'::jsonb
+  AND (p_mail->'delivery'->'contact' IS NULL OR p_mail->'delivery'->'contact'='null'::jsonb),false)
+$$;
+REVOKE ALL ON FUNCTION app.lc_v9_is_self_test(jsonb) FROM PUBLIC;
+
 CREATE FUNCTION app.lc_v9_capture_mail() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE parent_id uuid; company uuid; state jsonb; facts jsonb; is_native boolean; mail jsonb;
@@ -60,14 +72,20 @@ BEGIN
  IF parent_state IS DISTINCT FROM 'submitted' THEN
   UPDATE lc_v9_email_delivery SET status='cancelled',error_code='notEligible',updated_at=now()
    WHERE tenant_id=NEW.tenant_id AND coalesce(case_id,onboarding_case_id)=parent_id
-    AND status IN ('queued','retry','leased') AND started_at IS NULL;
-  RETURN NEW;
+    AND status IN ('queued','retry','leased') AND started_at IS NULL AND NOT app.lc_v9_is_self_test(payload->'mail');
  END IF;
  FOR mail IN SELECT value FROM jsonb_array_elements(coalesce(state->'mails','[]'::jsonb)) LOOP
+  IF parent_state IS DISTINCT FROM 'submitted' AND NOT app.lc_v9_is_self_test(mail) OR mail->'test'='true'::jsonb AND NOT app.lc_v9_is_self_test(mail) THEN CONTINUE; END IF;
   -- Old records without frozen transport choices remain historical holds.
   IF mail->>'status'<>'pending' OR mail->'delivery'->>'version' IS DISTINCT FROM '1' OR
      coalesce(mail->>'id','')='' OR jsonb_typeof(mail->'to') IS DISTINCT FROM 'array' OR
      jsonb_array_length(mail->'to')<>1 OR coalesce(mail->'delivery'->>'sender','') NOT IN ('onboarding','hr','noreply')
+  THEN CONTINUE; END IF;
+  -- Bind a new test intent to its actual database actor; worker updates reuse the sealed job.
+  IF app.lc_v9_is_self_test(mail) AND NOT EXISTS(
+   SELECT 1 FROM lc_v9_email_delivery existing WHERE existing.tenant_id=NEW.tenant_id
+    AND coalesce(existing.case_id,existing.onboarding_case_id)=parent_id AND existing.mail_id=mail->>'id')
+   AND (app.current_user_id() IS NULL OR mail->'delivery'->'queuedBy'->>'id' IS DISTINCT FROM app.current_user_id()::text)
   THEN CONTINUE; END IF;
   SELECT coalesce(jsonb_agg(d),'[]'::jsonb) INTO docs
    FROM jsonb_array_elements(coalesce(state->'documents','[]'::jsonb)) d
@@ -112,7 +130,8 @@ BEGIN
     AND (p.data->'lifecycleV9Subject'->>'personId') IS NOT DISTINCT FROM c.data->>'personId'
     AND (p.data->'lifecycleV9Subject'->>'employmentId') IS NOT DISTINCT FROM c.data->>'employmentId';
  END IF;
- IF parent_state IS DISTINCT FROM 'submitted' OR subject IS DISTINCT FROM job.payload->'subject' OR
+ IF (parent_state IS DISTINCT FROM 'submitted' AND NOT app.lc_v9_is_self_test(job.payload->'mail')) OR
+  (job.payload->'mail'->'test'='true'::jsonb AND NOT app.lc_v9_is_self_test(job.payload->'mail')) OR subject IS DISTINCT FROM job.payload->'subject' OR
   NOT EXISTS(SELECT 1 FROM jsonb_array_elements(state->'mails') m WHERE m->>'id'=job.mail_id AND m->>'status'='sending')
  THEN RETURN NULL; END IF;
  -- A document changed through another writer must never be marked sent as a different copy.
