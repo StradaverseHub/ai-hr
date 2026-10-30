@@ -942,7 +942,13 @@ export async function setRewardPayWindowKeep(ctx: SessionContext, unitId: string
 
 export async function decideRewardUnit(ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
-  return withRewardsTenant(ctx, async tx => {
+  return withRewardsTenant(ctx, tx => decideRewardUnitTx(tx, ctx, unitId, revision, action, reason, acknowledged));
+}
+
+/** Supplied-transaction seam; native decision body below is preserved byte for byte. */
+export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
+  assertModuleGate(ctx, 'rewards');
+  z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
     idSchema.parse(unitId); await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
     const route = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries);
@@ -974,7 +980,28 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
     await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] } } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });
     return next;
-  });
+}
+
+/** Annual-only admission uses the same native transition and private digest owner. */
+export async function reviewAnnualRewardReturnTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number) {
+  assertModuleGate(ctx, 'rewards'); idSchema.parse(unitId);
+  await funding(tx, unitId, true);
+  const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
+  if (unit.kind !== 'annual') throw new RewardError('Open the native off-cycle review for this decision.');
+  const after = transition(unit.status, roles, 'return');
+  const [source] = await tx.execute<{ xmin: string }>(sql`select xmin::text as xmin from reward_unit where id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  if (!source || after !== 'draft') throw new RewardError('The annual return source is unavailable.');
+  return { unitId, companyId: unit.companyId, revision, before: unit.status, after, returnedTo: 'bu' as const,
+    decisionDigest: digest(unit, entries), fingerprint: createHash('sha256').update(JSON.stringify([unit, digest(unit, entries), source.xmin])).digest('hex') };
+}
+/** One annual review only; no Assistant transport is enabled by this native facade. */
+export async function returnAnnualRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  const source = await reviewAnnualRewardReturnTx(tx, ctx, unitId, revision);
+  const stage = await decideRewardUnitTx(tx, ctx, unitId, revision, 'return', reason);
+  return { stage, source };
+}
+export async function returnAnnualRewardReview(ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  return withRewardsTenant(ctx, tx => returnAnnualRewardReviewTx(tx, ctx, unitId, revision, reason));
 }
 
 /**

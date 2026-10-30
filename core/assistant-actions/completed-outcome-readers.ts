@@ -4,6 +4,7 @@ import {profileRequestRejectionReviews} from './profile-request-rejection-review
 import {readCompletedPayrollReopenOutcomeTx} from './payroll-reopen-review-store';
 import {departmentArchiveReviews} from './department-archive-review-store';
 import {positionArchiveReviews} from './position-archive-review-store';
+import {readCompletedRewardsReturnOutcomeTx} from './rewards-return-review-store';
 import {readCompletedRewardsCalendarOutcomeTx} from './rewards-calendar-review-store';
 import {readCompletedRewardsCancelOutcomeTx} from './rewards-cancel-review-store';
 import {offboardingCaseCancelReviews} from './offboarding-case-cancel-review-store';
@@ -114,6 +115,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'typed_pay_components.create':(tx,ctx,id)=>readCompletedPayComponentOutcomeTx(tx,ctx,id),
  'payroll.reopen':(tx,ctx,id)=>readCompletedPayrollReopenOutcomeTx(tx,ctx,id),
  'payroll.close':(tx,ctx,id)=>readCompletedPayrollCloseOutcomeTx(tx,ctx,id),
+ 'rewards.annual_review.return':(tx,ctx,id)=>readCompletedRewardsReturnOutcomeTx(tx,ctx,id),
  'rewards.calendar.update':(tx,ctx,id)=>readCompletedRewardsCalendarOutcomeTx(tx,ctx,id),
  'rewards.cancel_review':(tx,ctx,id)=>readCompletedRewardsCancelOutcomeTx(tx,ctx,id),
  'rewards.post':(tx,ctx,id)=>readCompletedRewardsPostOutcomeTx(tx,ctx,id),

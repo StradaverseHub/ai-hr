@@ -98,6 +98,8 @@ describe('Rewards cancellation custody and exact proof', () => {
       else if(c.type==='integer')value=sql`1::integer`;
       else if(c.type==='boolean')value=sql`true::boolean`;
       else if(c.type==='date')value=sql`'2026-10-30'::date`;
+      else if(c.type==='jsonb')value=sql`'{"fictional":true}'::jsonb`;
+      else if(c.type==='xid8')value=sql`'1'::xid8`;
       else throw Error('Uncovered typed hybrid column '+c.name+': '+c.type);
       let caught:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(c.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){caught=error;}
       expect(pgSqlState(caught),c.name+' ('+c.type+')').toBe('23514');

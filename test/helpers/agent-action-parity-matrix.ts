@@ -96,6 +96,7 @@ export const AGENT_ACTION_PARITY={
  'performance.onehr.plan.acknowledge':{kind:'probed',screen:OWN_REQUEST},
  'rewards.post':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  // Fixture's assigned approver holds a real GR seat; other non-HR roles hold no cancellation seat.
+ 'rewards.annual_review.return':{kind:'probed',screen:{employee:D,manager:D,assigned_approver:A,company_hr:D,group_hr:D,super_admin:D,payroll_partner:D,performance_comp_partner:D,performance_partner:D,another_company:D,another_tenant:D}},
  'rewards.calendar.update':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,assigned_approver:A}},
  'rewards.cancel_review':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,assigned_approver:A}},
  // Stock role fixture: no lc_staff grants. Unlinked native staff positive control is in offboarding-step-review-store.test.ts.

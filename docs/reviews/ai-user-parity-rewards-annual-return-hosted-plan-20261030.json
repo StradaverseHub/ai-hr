@@ -1,0 +1,50 @@
+{
+  "baseSha": "510d2fb94ad1b1e41eb8aa88a082018d7684dbcb",
+  "candidateRef": "codex/ai-user-parity-rewards-annual-return-20261030",
+  "candidateShaRule": "Record exact full 40-character frozen candidate after this plan is committed; never infer from a moving ref.",
+  "workflow": "alpha-focused-checks.yml",
+  "controllerRef": "main",
+  "runTypecheckEveryGroup": true,
+  "releaseHold": true,
+  "repairRule": "Wait for every planned job to finish before repairs. Preserve original failures and unaffected evidence on actual original SHAs; rerun only failed or affected checks.",
+  "groups": [
+    {
+      "name": "annual_custody",
+      "tests": [
+        "test/rewards-return-native.test.ts",
+        "test/rewards-return-custody.test.ts",
+        "test/rewards-return-contract.test.ts",
+        "test/rewards-return-browser.test.ts"
+      ]
+    },
+    {
+      "name": "native_regression",
+      "tests": [
+        "test/rewards-service.test.ts",
+        "test/rewards-offcycle.test.ts",
+        "test/rewards-cancel-custody.test.ts",
+        "test/rewards-calendar-custody.test.ts",
+        "test/rewards-post-review-store.test.ts"
+      ]
+    },
+    {
+      "name": "annual_roles",
+      "tests": [
+        "test/agent-action-permission-parity-rewards-return.test.ts"
+      ]
+    },
+    {
+      "name": "review_ui_shared",
+      "tests": [
+        "test/rewards-return-panel.dom.test.tsx",
+        "test/agent-action-registry.test.ts",
+        "test/agent-action-permission-parity-guard.test.ts",
+        "test/assistant-action-entries.test.ts",
+        "test/module-jobs.dom.test.tsx",
+        "test/module-agent-actions.test.ts",
+        "test/module-human-action-handoff.test.ts",
+        "test/module-action-http.test.ts"
+      ]
+    }
+  ]
+}
