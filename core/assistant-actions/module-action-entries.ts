@@ -1,3 +1,4 @@
+import {employeeIdTemplateStatusEntryAvailable} from './employee-id-template-status-review-store';
 import {departmentArchiveEntryAvailable} from './department-archive-review-store';
 import {positionArchiveEntryAvailable} from './position-archive-review-store';
 /** Server answer for Assistant native-action shortcuts. Read-only; never a capability, cache or grant.
@@ -18,7 +19,7 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
  try{
   // The reporting-line search admits only employments where app.access_workforce_employment(...,
   // 'workforce.maintain') holds, which is app.access_workforce_company on the employment's company.
-  if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0||await positionArchiveEntryAvailable(ctx)||await departmentArchiveEntryAvailable(ctx)?'allowed':'refused';
+  if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0||await positionArchiveEntryAvailable(ctx)||await departmentArchiveEntryAvailable(ctx)||await employeeIdTemplateStatusEntryAvailable(ctx)?'allowed':'refused';
   // Posting needs app.reward_admin for the unit's company (plus its payroll seat, checked per unit).
   if(entry==='rewards')return await administersRewardsForAnyCompany(ctx)?'allowed':'refused';
   // Same audience as the native Approvals entry (app/layout.tsx canApprove = admin or manager), plus

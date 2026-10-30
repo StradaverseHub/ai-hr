@@ -4166,6 +4166,13 @@
       "when": 1793330000080,
       "tag": "0743_assistant_department_archive_custody",
       "breakpoints": true
+    },
+    {
+      "idx": 724,
+      "version": "7",
+      "when": 1793330000082,
+      "tag": "0745_assistant_employee_id_template_status_custody",
+      "breakpoints": true
     }
   ]
 }

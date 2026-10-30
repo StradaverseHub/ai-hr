@@ -1,3 +1,6 @@
+import {employeeIdTemplateStatusReviews,readEmployeeIdTemplateStatusChoices} from '../../core/assistant-actions/employee-id-template-status-review-store';
+import {createConfig as createEmployeeIdConfig,setStatus as setEmployeeIdConfigStatus,listConfigs as listEmployeeIdConfigs} from '../../core/employee-id-config';
+import {allowedCompanies} from '../../core/read';
 import {departmentArchiveReviews,readDepartmentArchiveChoices} from '../../core/assistant-actions/department-archive-review-store';
 import {listDepartmentsForLabels} from '../../core/admin';
 import {positionArchiveReviews,readPositionArchiveChoices} from '../../core/assistant-actions/position-archive-review-store';
@@ -278,6 +281,12 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'org.department.archive',contractVersion:1,departmentId:item.subjectId,expectedArchived:false,archived:true}),
   offered:async(who,item)=>{const choices=await readDepartmentArchiveChoices(who,{query:item.code});return choices.kind==='choices'&&choices.departments.some(p=>p.departmentId===item.subjectId);},
   screen:(tx,who,item)=>bulkSaveLabels(who,'department',{creates:[],updates:[{key:item.subjectId,id:item.subjectId,name:item.code,businessUnitId:null,headEmploymentId:null,label:'',description:'',archived:true}]},tx)},
+ 'org.employee_id_template.status':{family:'catalogue',store:packetStore('org.employee_id_template.status',employeeIdTemplateStatusReviews.prepare,employeeIdTemplateStatusReviews.confirm),
+  screenAdmits:async(who,item)=>isAdmin(who)&&(await listEmployeeIdConfigs(who,(await allowedCompanies(who)).map(c=>c.id))).some(p=>p.id===item.subjectId),
+  create:async(_w,h)=>{const prefix='FIC'+randomUUID().replaceAll('-','').slice(0,8).toUpperCase(),p=await createEmployeeIdConfig(groupOf(h.base),{companyId:h.companyId,templateName:prefix,prefix,numberLength:4});return itemOf(h,p.id,{code:prefix});},
+  human:item=>({action:'org.employee_id_template.status',contractVersion:1,configId:item.subjectId,expectedStatus:'active',status:'inactive'}),
+  offered:async(who,item)=>{const choices=await readEmployeeIdTemplateStatusChoices(who,{query:item.code});return choices.kind==='choices'&&choices.templates.some(p=>p.configId===item.subjectId);},
+  screen:(tx,who,item)=>setEmployeeIdConfigStatus(who,{id:item.subjectId,status:'inactive'},tx)},
  'approvals.leave.decide':{family:'assigned_decision',store:packetStore('approvals.leave.decide',prepareLeaveDecisionReview,confirmLeaveDecisionReview),
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),

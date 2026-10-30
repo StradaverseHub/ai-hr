@@ -1,8 +1,9 @@
+vi.mock('../core/assistant-actions/employee-id-template-status-review-store',()=>({employeeIdTemplateStatusEntryAvailable:source.templates}));
 // @vitest-environment jsdom
 /** Authored UNRUN: actual selected-session composition and private-state lifetime. */
 import React,{isValidElement,type ReactElement} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn(),entry:vi.fn(),catalogue:vi.fn(),departments:vi.fn()}));
+const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn(),entry:vi.fn(),catalogue:vi.fn(),departments:vi.fn(),templates:vi.fn()}));
 vi.mock('../core/assistant-actions/department-archive-review-store',()=>({departmentArchiveEntryAvailable:source.departments}));
 vi.mock('../core/assistant-actions/position-archive-review-store',()=>({positionArchiveEntryAvailable:source.catalogue}));
 vi.mock('../core/assistant-actions/module-action-entries',()=>({moduleActionEntryAccess:source.entry}));
@@ -13,7 +14,7 @@ import AssistantOrgReportingPage from '../app/assistant/org/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000002',review='10000000-0000-4000-8000-000000000003';
 const session=()=>({tenantId:tenant,userId:user,personId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});
 function elements(value:unknown):ReactElement[]{if(Array.isArray(value))return value.flatMap(elements);if(!isValidElement(value))return[];return[value,...elements((value.props as {children?:unknown}).children)];}
-beforeEach(()=>{vi.clearAllMocks();source.session.mockResolvedValue(session());source.locale.mockResolvedValue('en');source.availability.mockResolvedValue({kind:'available'});source.entry.mockResolvedValue('allowed');source.catalogue.mockResolvedValue(false);source.departments.mockResolvedValue(false);});
+beforeEach(()=>{vi.clearAllMocks();source.session.mockResolvedValue(session());source.locale.mockResolvedValue('en');source.availability.mockResolvedValue({kind:'available'});source.entry.mockResolvedValue('allowed');source.catalogue.mockResolvedValue(false);source.departments.mockResolvedValue(false);source.templates.mockResolvedValue(false);});
 describe('actual human Org server composition',()=>{
  it('supports a genuine personless HR login, exposes no session/grants/target selectors and performs no model/native effect',async()=>{const result=await ModuleOrgActionSection();expect(result.type).toBe(ModuleOrgActionPanel);expect(result.props).toEqual({available:true,resumeActionId:undefined});expect(result.key).toMatch(/^[a-f0-9]{64}$/);expect(source.availability).toHaveBeenCalledWith(session());expect(JSON.stringify(result.props)).not.toContain(user);});
  it('captures real selected-session scalar and nested grants BEFORE the locale await can mutate a retained object',async()=>{const retained=session(),expected=structuredClone(retained);source.session.mockResolvedValue(retained);source.locale.mockImplementationOnce(async()=>{retained.userId=review;retained.tenantId=review;retained.roles.push('super_admin');retained.grants[0].companyId=review;return'en';});await ModuleOrgActionSection();expect(source.availability).toHaveBeenCalledWith(expected);});
@@ -24,5 +25,7 @@ describe('actual human Org server composition',()=>{
  it('offers the catalogue link only when the native boolean witness allows it',async()=>{source.catalogue.mockResolvedValue(true);const page=await AssistantOrgReportingPage({searchParams:Promise.resolve({})});expect(elements(page).some(e=>(e.props as {href?:string}).href==='/assistant/org-positions')).toBe(true);expect(source.availability).not.toHaveBeenCalled();});
  it('hides the catalogue shortcut on a failed native witness without exposing raw errors',async()=>{source.catalogue.mockRejectedValue(Error('PRIVATE witness detail'));const page=await AssistantOrgReportingPage({searchParams:Promise.resolve({})});expect(elements(page).some(e=>(e.props as {href?:string}).href==='/assistant/org-positions')).toBe(false);expect(JSON.stringify(page)).not.toContain('PRIVATE');});
  it('offers the department link through its own native boolean without hiding positions on a sibling failure',async()=>{source.departments.mockResolvedValue(true);source.catalogue.mockRejectedValue(Error('unavailable'));const page=await AssistantOrgReportingPage({searchParams:Promise.resolve({})});expect(elements(page).some(e=>(e.props as {href?:string}).href==='/assistant/org-departments')).toBe(true);expect(source.departments).toHaveBeenCalledWith(session());});
+
+ it('offers the Employee ID template link through its own native boolean after sibling witness failures',async()=>{source.templates.mockResolvedValue(true);source.departments.mockRejectedValue(Error('unavailable'));source.catalogue.mockRejectedValue(Error('unavailable'));const page=await AssistantOrgReportingPage({searchParams:Promise.resolve({})});expect(elements(page).some(e=>(e.props as {href?:string}).href==='/assistant/org-employee-id')).toBe(true);expect(source.templates).toHaveBeenCalledWith(session());});
 
 });
