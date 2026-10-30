@@ -40,6 +40,8 @@ The existing CI resume assessors are scheduling-only; the current operator verif
 
 ## Public-repository Actions capacity
 
+Owner direction reaffirmed 30 October 2026: GitHub Actions has removed the Mac as the shared verification bottleneck. Run builder/focused checks, application tests, whole-repository type checks and release verification on GitHub-hosted runners. Use `.github/workflows/alpha-focused-checks.yml` for development checks on frozen owned branches; release evidence must satisfy the authenticated CI policy. Include this execution route in builder briefs. Local slots are a temporary fallback while the Actions controller is broken; resume hosted verification when it is repaired, stopping only the local verification processes owned by that session. Local admission rules still apply during that fallback. This direction is not a claim that the end-to-end release performance goal has been met.
+
 Use standard public-repository GitHub-hosted runners only. The owner forbids paid larger runners and spending-limit increases. Inspect actual current runner resources, workflow, repository visibility and capacity before making performance/cost claims. [Actions procedure](ALPHA-STAGING-ACTIONS.md) and [CI policy](CI-STAGING-VERIFICATION-POLICY.md) own candidate dispatch and authenticated evidence. Inspect actual enable switches; this document grants no authority to enable automatic CD.
 
 ## Private production package distribution
