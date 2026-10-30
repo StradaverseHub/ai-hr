@@ -1,4 +1,5 @@
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
+import {AiPrivacyGateError} from '../../../lib/ai/provider-privacy-error';
 import {ProviderWorkloadUnavailableError} from '../../../lib/ai/provider-workload-policy';
 import {draftInputDigest} from '../../../lib/ai/draft-input';
 import {assessmentAiFeatureEnabledTx} from './ai-settings';
@@ -79,7 +80,7 @@ export async function suggestAssessmentCareerPlan(ctx:SessionContext,reviewId:st
  if(!unchanged)throw Error('Your career profile, assessment or plan changed while drafting. Reload before trying again.');
  if(!goals.length&&!aspirationLong){
   // A typed AI control refusal (paused, allowance or USD spend control) is the reason, not an empty draft.
-  const refused=responses.find((r):r is PromiseRejectedResult=>r.status==='rejected'&&r.reason instanceof AiAllowanceError);
+  const refused=responses.find((r):r is PromiseRejectedResult=>r.status==='rejected'&&(r.reason instanceof AiAllowanceError||r.reason instanceof AiPrivacyGateError));
   if(refused)throw refused.reason;
   throw Error('No usable career draft was returned. You can build your plan yourself.');
  }
