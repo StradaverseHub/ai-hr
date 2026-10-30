@@ -259,8 +259,8 @@ function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) 
 function assertUnlocked(unit: typeof rewardUnit.$inferSelect) {
   if (unit.status !== 'draft') throw new RewardError('Return the unit to draft before changing its approved inputs.');
 }
-async function stamp(tx: Tx, ctx: SessionContext, unitId: string, event: string, payload: Record<string, unknown> = {}, returnEventId = false) {
-  return appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: `reward-unit.${event}`, actor: actorOf(ctx), payload }, {returnId:returnEventId});
+async function stamp(tx: Tx, ctx: SessionContext, unitId: string, event: string, payload: Record<string, unknown> = {}, returnEventId = false, eventId?: string) {
+  return appendEvent(tx, { id: eventId, tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: `reward-unit.${event}`, actor: actorOf(ctx), payload }, {returnId:returnEventId});
 }
 async function touch(tx: Tx, unitId: string) {
   await tx.update(rewardUnit).set({ revision: sql`${rewardUnit.revision}+1`, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
@@ -1011,8 +1011,10 @@ export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: 
     await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
   }
   const [proof] = await tx.execute<{hash:string}>(sql`select encode(sha256(convert_to(to_jsonb(q)::text,'UTF8')),'hex') as hash from reward_unit q where q.id=${unitId}::uuid and q.tenant_id=${ctx.tenantId}::uuid`);
-  const eventId = await stamp(tx, ctx, unitId, 'cancelled', { cancelRowHash: proof.hash, fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } }, true);
-  if (!eventId) throw new RewardError('Cancellation audit identity unavailable.');
+  // Preallocation preserves the native insert-only audit path for GR users who cannot read
+  // unscoped audit rows. The enclosing custody verifier still requires the actual top-TX event.
+  const eventId = randomUUID();
+  await stamp(tx, ctx, unitId, 'cancelled', { cancelRowHash: proof.hash, fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } }, false, eventId);
   return { unitId, eventId, cancelledRevision: revision, currentRevision: revision + 1, status: 'withdrawn' as const };
 }
 

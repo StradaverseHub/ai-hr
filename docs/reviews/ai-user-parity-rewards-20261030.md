@@ -36,3 +36,18 @@ The cancellation review identifies the actual company legal name and native cycl
 Only the three existing rejecting constraints are rewrapped: actor scope, dedicated Rewards receipt columns and named legacy kind columns. Before/after hashes must match for every untouched CHECK; raw target conbin sizes are recorded before deparse. The fixture attempts a correctly typed non-NULL value for every unrelated legacy field and requires SQLSTATE23514. Recovery retains the exact human reason for an uncertain prepare, refuses adoption of unrelated historical completions and binds a resumed review's unit/revision before accepting completion. Choice-loading failure provides an explicit native handoff.
 
 Frozen75cf installed without OOM in both workflows and both whole compilers passed. Feature evidence:95DBPASS/12cancellationprepareFAIL,31NODBPASS; role11fixtureFAIL before admission because native membership was missing. Those originals remain unchanged. The actual projection and fixture defects are repaired in the next source candidate; prior native/posting/emergency successes remain tied to75cf. No release authority follows from development evidence.
+
+## Insert-only audit receipt correction
+The original native GR path appends an unscoped cancellation event but cannot SELECT that audit row under existing domain_event RLS. The first receipt seam incorrectly requested INSERT RETURNING and therefore added a read prerequisite. Cancellation now preallocates its event UUID and uses the original insert-only appendEvent path. Returning that nomination follows a successfully awaited native append; only the existing exact top-transaction event/unit/hash verifier establishes custody completion. No domain_event policy, grant or security-definer write shim was changed. The positive GR test also requires that ordinary raw audit SELECT still returns no row after successful completion.
+
+## UI review
+
+| Before | After | Why |
+| --- | --- | --- |
+| Prepared card repeated the initial selection instruction | Prepared card asks the person to review cancellation | Describes the current step accurately |
+| Review name lacked company context | Company legal name and native cycle/BU label appear before confirmation | Distinguishes same-named reviews across companies |
+| Inline recovery/footer controls crowded together | Separate footer rows and 44px buttons | Keeps mobile actions readable and distinct |
+| Unknown prepare recovery checked only unit/revision | Exact reason is retained for matching; unrelated old completion is refused | Prevents silently adopting a different cancellation intent |
+| Resumed review lacked a retained unit binding | Resumed canonical content becomes the completion binding | Refuses a substituted unit in a completion response |
+
+Hosted b375 evidence contains twelve actual component captures (six locales × desktop/mobile), all overflow=false. These are fictional scripted-transport fixtures; they do not claim an authenticated installed browser journey.
