@@ -144,8 +144,27 @@ describe('Payroll transaction-final closure, genuine app-role completion',()=>{
  it.each(['reset','reopen'] as const)('%s preserves unchanged retired-group membership across caller timezones without changing the caller date or zone',async(kind)=>{
   const group=randomUUID();await owner.db.execute(sql`insert into public.access_group(id,tenant_id,name,retired_at) values(${group}::uuid,${b.tenantId}::uuid,'Fictional retired membership','2020-01-01T01:02:03Z'::timestamptz)`);await owner.db.execute(sql`insert into public.access_membership(tenant_id,group_id,user_id) values(${b.tenantId}::uuid,${group}::uuid,${b.adminUserId}::uuid)`);
   const otherUser=await createAppUser(b.tenantId,null,'employee'),review=await prepareKind(kind);
-  await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('TimeZone','UTC',true)`);const current=await accessConfigurationStore.loadCurrent(tx,ctx);if(kind==='reset')await completeReset(tx,review);else await completeReopen(tx,review);await tx.execute(sql`select set_config('TimeZone','Pacific/Kiritimati',true)`);const [before]=await tx.execute<{zone:string;day:string}>(sql`select current_setting('TimeZone') as zone,current_date::text as day`);await commitAccess(tx,current,{kind:'setOverride',userId:otherUser,capabilityId:'access.configure',companyId:null,effect:'deny'});await tx.execute(sql`set constraints all immediate`);const [after]=await tx.execute<{zone:string;day:string}>(sql`select current_setting('TimeZone') as zone,current_date::text as day`);expect(after).toEqual(before);expect(after.zone).toBe('Pacific/Kiritimati');});
+  await withTenant(ctx,async tx=>{
+   await tx.execute(sql`select set_config('TimeZone','UTC',true)`);
+   const current=await accessConfigurationStore.loadCurrent(tx,ctx);
+   const [utc]=await tx.execute<{zone:string;day:string}>(sql`select current_setting('TimeZone') as zone,current_date::text as day`);expect(utc.zone).toBe('UTC');
+   if(kind==='reset')await completeReset(tx,review);else await completeReopen(tx,review);
+   await tx.execute(sql`select set_config('TimeZone','Pacific/Kiritimati',true)`);
+   const [before]=await tx.execute<{zone:string;day:string}>(sql`select current_setting('TimeZone') as zone,current_date::text as day`);
+   // Access previews deliberately bind CURRENT_DATE (canonical0579). A timezone change may
+   // cross the native authority date: refresh the real preview in that zone, never normalize
+   // the caller's authority clock or accept the stale-preview refusal as the positive result.
+   const fresh=await accessConfigurationStore.loadCurrent(tx,ctx);
+   expect(fresh.snapshot.revision).toBe(current.snapshot.revision);
+   if(utc.day!==before.day)expect(fresh.scopeFingerprint).not.toBe(current.scopeFingerprint);
+   else expect(fresh.scopeFingerprint).toBe(current.scopeFingerprint);
+   await commitAccess(tx,fresh,{kind:'setOverride',userId:otherUser,capabilityId:'access.configure',companyId:null,effect:'deny'});
+   await tx.execute(sql`set constraints all immediate`);
+   const [after]=await tx.execute<{zone:string;day:string}>(sql`select current_setting('TimeZone') as zone,current_date::text as day`);
+   expect(after).toEqual(before);expect(after.zone).toBe('Pacific/Kiritimati');
+  });
   const [row]=await owner.db.execute<{state:string;retired:boolean}>(sql`select r.state,(g.retired_at is not null) as retired from app.assistant_own_leave_review r cross join public.access_group g where r.id=${review.actionId}::uuid and g.id=${group}::uuid`);expect(row).toEqual({state:'completed',retired:true});
+  const overrides=Array.from(await owner.db.execute<{effect:string}>(sql`select effect from public.access_user_override where tenant_id=${b.tenantId}::uuid and user_id=${otherUser}::uuid and capability_id='access.configure' and company_id is null and retired_at is null`));expect(overrides).toEqual([{effect:'deny'}]);
  });
 
  it.each(['reset','reopen'] as const)('%s refuses an actual self role revocation after forced IMMEDIATE',async(kind)=>{
