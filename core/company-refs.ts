@@ -141,8 +141,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
 
   // ── payroll: any row refuses ─────────────────────────────────────────────────────────────────────────
   { table: 'information_payslip_snapshot', column: 'company_id', disposition: 'payroll', note: 'Immutable historical payslip display evidence remains with its paying company, including after a legitimate payroll reset.' },
-  { table: 'pay_formula_test', column: 'company_id', disposition: 'payroll', note: 'Immutable saved formula tests retain their selected paying company and private calculation evidence.' },
-  { table: 'pay_formula_evaluation', column: 'company_id', disposition: 'payroll', note: 'Immutable payroll formula evaluations retain the original paying company, including after a payroll reset or draft deletion.' },
+  { table: 'pay_formula_test', column: 'company_id', disposition: 'payroll', existsFunction: 'app.pay_formula_company_in_use', note: 'Immutable saved formula tests retain their selected paying company and private calculation evidence.' },
+  { table: 'pay_formula_evaluation', column: 'company_id', disposition: 'payroll', existsFunction: 'app.pay_formula_company_in_use', note: 'Immutable payroll formula evaluations retain the original paying company, including after a payroll reset or draft deletion.' },
   { table: 'payroll_batch', column: 'company_id', disposition: 'payroll', note: 'A payroll run. Its payslips hang off it, so this is where every payslip is counted.' },
   { table: 'pay_period', column: 'company_id', disposition: 'payroll', note: 'A payroll period opened or closed for the company.' },
   { table: 'pcb_payment', column: 'company_id', disposition: 'payroll', note: 'A recorded PCB tax payment to LHDN. Money that has left the company.' },

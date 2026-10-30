@@ -73,7 +73,7 @@ import { withTenant } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { createMovementEvent } from '../core/movement';
 import {setCompensation} from '../core/comp';
-import {savePayFormula,testPayFormula,setPayFormulaActive,loadActiveFormulaProgramTx,recordFormulaEvaluationTx} from '../core/pay-formula';
+import {savePayFormula,testPayFormula,setPayFormulaActive,loadActiveFormulaProgramTx,recordFormulaEvaluationTx,getPayFormula,getFormulaEvaluation} from '../core/pay-formula';
 import {seedPayComponentCatalog,createBatch,deleteDraftBatch} from '../packs/payroll/service';
 import { saveReplacementHolidayPolicy } from '../core/holiday-replacements';
 import { saveOvertimePatternDraft } from '../packs/attendance/service';
@@ -507,7 +507,7 @@ const CASES: Case[] = [
 ];
 
 describe('Formula evidence retains a company independently of its current employees and runs',()=>{
-  it.each(['test','evaluation'] as const)('refuses native company deletion for a retained formula %s',async kind=>{
+  it.each([['test',true],['test',false],['evaluation',true]] as const)('refuses native company deletion for retained formula %s (passed=%s), including hidden receipts',async(kind,passed)=>{
     await setModule(b.tenantId,'typed_pay_components','active');
     const ctx=await entitledCtx(b),target=await fresh('Retained Formula paying company');
     await seedPayComponentCatalog(ctx);
@@ -524,9 +524,15 @@ describe('Formula evidence retains a company independently of its current employ
       await owner.db.update(schema.assignment).set({companyId:target,departmentId:department.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
     }
     const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:b.tenantId,companyId:testCompany,name:'Fictional Formula test cycle',code:'FORMULA_RETENTION',runType:'regular'}).returning();
-    const saved=await savePayFormula(ctx,{formulaId:'RETAINED_COMPANY',description:'Retained native calculation evidence',method:'write',source:'Return 1'});
+    const privateValue='Fictional private retained nationality';
+    await owner.db.update(schema.person).set({nationality:privateValue}).where(eq(schema.person.id,employee.personId));
+    const saved=await savePayFormula(ctx,{formulaId:'RETAINED_COMPANY',description:'Retained native calculation evidence',method:'write',source:'{#Explain}({#EmployeeInformation}("nationality"))\n'+(passed?'Return 1':'Return 100 / {#Input}')});
     const tested=await testPayFormula(ctx,{...saved,context:{companyId:testCompany,employmentId:employee.employmentId,period:'2026-05',asOf:'2026-05-31',cycleId:cycle.id,currentCode:'OVERTIME',input:'0'}});
-    expect(tested.passed,tested.error??'nonempty saved native test').toBe(true);expect(tested.amount).toBe('1');
+    expect(tested.passed,tested.error??'saved native result').toBe(passed);
+    if(passed){expect(tested.amount).toBe('1');expect(tested.explanations).toContain(privateValue);}
+    else{expect(tested.error).toMatch(/division by zero/i);expect(tested.amount).toBeNull();}
+    expect(tested.readRequirements.categories).toContain('identity');
+    let evaluationId:string|undefined;
     if(kind==='evaluation'){
       await setPayFormulaActive(ctx,{...saved,testId:tested.id,active:true});
       await owner.db.update(schema.employment).set({companyId:target}).where(eq(schema.employment.id,employee.employmentId));
@@ -536,7 +542,7 @@ describe('Formula evidence retains a company independently of its current employ
       // disabled RLS. Its exact constant amount comes from the saved successful native test.
       await withTenant(ctx,async tx=>{
         const formula=await loadActiveFormulaProgramTx(tx,ctx,'RETAINED_COMPANY');
-        await recordFormulaEvaluationTx(tx,ctx,{formula,employmentId:employee.employmentId,companyId:target,batchId,componentCode:'OVERTIME',period:'2026-05',amount:tested.amount!,explanations:tested.explanations,reads:[],sources:[],readRequirements:tested.readRequirements});
+        evaluationId=await recordFormulaEvaluationTx(tx,ctx,{formula,employmentId:employee.employmentId,companyId:target,batchId,componentCode:'OVERTIME',period:'2026-05',amount:tested.amount!,explanations:tested.explanations,reads:[],sources:[],readRequirements:tested.readRequirements});
       });
       // Canonical draft deletion deliberately retains immutable evaluation evidence without a batch FK.
       await deleteDraftBatch(ctx,{batchId});
@@ -561,6 +567,75 @@ describe('Formula evidence retains a company independently of its current employ
     expect(await verdict(ctx,target),'panel must report financial history rather than unused setup').toBe('payroll');
     expect(await attempt(ctx,target),'native delete must refuse before FK/immutable-trigger errors').toBe('payroll');
     expect(await exists(target)).toBe(true);expect(await evidence()).toEqual(before);
+    const retention=async(actor:SessionContext,wanted:string|null)=>withTenant(actor,async tx=>{
+      const [row]=await tx.execute<{retained:boolean}>(sql`select app.pay_formula_company_in_use(${wanted}::uuid) as retained`);
+      return row.retained;
+    });
+    expect(await retention(ctx,target)).toBe(true);
+    const readPrivate=()=>withTenant(ctx,async tx=>kind==='test'
+      ? await tx.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.companyId,target))
+      : await tx.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.companyId,target)));
+    expect(await readPrivate()).toHaveLength(1);
+    // Revoke the real private category while retaining current company administration. The actor
+    // must demonstrably lose BOTH direct RLS and service trace access, but keep the boolean guard.
+    await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:target,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
+    expect(await readPrivate()).toHaveLength(0);
+    if(kind==='test')expect((await getPayFormula(ctx,saved.id))?.tests).toEqual([]);
+    else expect(await getFormulaEvaluation(ctx,evaluationId!)).toBeNull();
+    expect(await retention(ctx,target)).toBe(true);
+    expect(await companyDeleteStatus(ctx,target)).toEqual({canDelete:true,blockedBy:'payroll'});
+    expect(await attempt(ctx,target)).toBe('payroll');
+    expect(await exists(target)).toBe(true);expect(await evidence()).toEqual(before);
+    // A read-only snapshot may read this retention fact, but the helper itself has no side effects.
+    const [readOnly]=await withTenant(ctx,tx=>tx.execute<{retained:boolean;mode:string}>(sql`select app.pay_formula_company_in_use(${target}::uuid) as retained,current_setting('transaction_read_only') as mode`),{readOnlySnapshot:true});
+    expect(readOnly).toEqual({retained:true,mode:'on'});expect(await evidence()).toEqual(before);
+    await owner.db.delete(schema.payrollPermissionGrant).where(and(eq(schema.payrollPermissionGrant.companyId,target),eq(schema.payrollPermissionGrant.permissionKey,'report.read.identity')));
+    expect(await readPrivate()).toHaveLength(1);expect(await evidence()).toEqual(before);
+
+    if(kind==='test'&&passed){
+      const user=async(role:'employee'|'payroll_partner'|'hr_admin',companyId:string|null,personId:string|null=null):Promise<SessionContext>=>{
+        const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,personId,workosUserId:'retention-'+randomUUID()}).returning();
+        await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role,companyId});
+        return {tenantId:b.tenantId,userId:u.id,personId:personId??undefined,roles:[role],grants:[{role,companyId}],entitlements:ctx.entitlements};
+      };
+      const sibling=await bare(),scoped=await user('hr_admin',target),outside=await user('hr_admin',sibling);
+      expect(await retention(scoped,target)).toBe(true);expect(await retention(outside,target)).toBe(false);
+      await owner.db.update(schema.company).set({parentCompanyId:sibling}).where(eq(schema.company.id,target));
+      expect(await retention(outside,target),'existing ancestor grant covers its descendant').toBe(true);
+      await owner.db.update(schema.company).set({parentCompanyId:null}).where(eq(schema.company.id,target));
+      expect(await retention(outside,target)).toBe(false);
+      const foreign=await seedBase();expect(await retention(adminCtx(foreign),target)).toBe(false);
+      expect(await retention(ctx,foreign.companyId)).toBe(false);
+      expect(await retention(ctx,null)).toBe(false);expect(await retention(ctx,randomUUID())).toBe(false);
+      for(const role of ['employee','payroll_partner'] as const){
+        const actor=await user(role,target);expect(await retention(actor,target)).toBe(false);
+        await expect(deleteCompany(actor,{id:target})).rejects.toBeInstanceOf(CompanyDeleteForbiddenError);
+      }
+      const claimed={...outside,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:target}]};
+      expect(await withTenant(claimed,async tx=>{const [r]=await tx.execute<{fresh:boolean}>(sql`select app.principal_snapshot_current() as fresh`);return r.fresh;})).toBe(false);
+      expect(await retention(claimed,target)).toBe(false);
+      await owner.db.delete(schema.roleAssignment).where(eq(schema.roleAssignment.appUserId,scoped.userId!));
+      expect(await retention(scoped,target),'revoked admin grant cannot be replayed').toBe(false);
+      const archived=await user('hr_admin',target);
+      await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,archived.userId!));
+      expect(await retention(archived,target)).toBe(false);
+      const blocked=await user('hr_admin',target,employee.personId);
+      await owner.db.update(schema.employment).set({blacklistedAt:todayInKualaLumpur()}).where(eq(schema.employment.id,employee.employmentId));
+      expect(await withTenant(blocked,async tx=>{const [r]=await tx.execute<{blocked:boolean}>(sql`select app.login_blocked(${blocked.userId!}::uuid) as blocked`);return r.blocked;})).toBe(true);
+      expect(await retention(blocked,target)).toBe(false);
+      expect(await retention({...ctx,userId:undefined,roles:[],grants:[]},target)).toBe(false);
+      expect(await retention({...ctx,userId:randomUUID()},target)).toBe(false);
+      const [agent]=await owner.db.execute<{id:string}>(sql`insert into app.ai_agent_principal(tenant_id) values(${b.tenantId}::uuid) on conflict(tenant_id) do update set tenant_id=excluded.tenant_id returning id`);
+      const agentCtx:SessionContext={tenantId:b.tenantId,roles:[],grants:[],agent:{principalId:agent.id,enablements:[]},entitlements:ctx.entitlements};
+      expect(await withTenant(agentCtx,async tx=>{const [r]=await tx.execute<{id:string|null}>(sql`select app.current_agent_principal() as id`);return r.id;})).toBe(agent.id);
+      expect(await retention(agentCtx,target)).toBe(false);
+      expect(await withTenant(agentCtx,tx=>tx.select().from(schema.payFormulaTest).where(eq(schema.payFormulaTest.companyId,target)))).toHaveLength(0);
+      const [foreignAgent]=await owner.db.execute<{id:string}>(sql`insert into app.ai_agent_principal(tenant_id) values(${foreign.tenantId}::uuid) on conflict(tenant_id) do update set tenant_id=excluded.tenant_id returning id`);
+      expect(await retention({...agentCtx,agent:{principalId:foreignAgent.id,enablements:[]}},target)).toBe(false);
+      await expect(retention({...agentCtx,userId:ctx.userId},target)).rejects.toThrow(/cannot also carry a login/);
+      expect(await exists(target)).toBe(true);expect(await evidence()).toEqual(before);
+    }
+
   });
 });
 
