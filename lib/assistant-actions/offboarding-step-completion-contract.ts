@@ -35,3 +35,14 @@ export const OffboardingStepCompletionNativeReference=z.object({
   ctx.addIssue({code:'custom',message:'Native completion references unavailable.'});
 });
 export const OffboardingStepCompletionConfirmation=z.object({reviewedDigest:digest}).strict();
+export const OFFBOARDING_STEP_ACTION='lifecycle.offboarding.step.complete' as const;
+const base={action:z.literal(OFFBOARDING_STEP_ACTION),contractVersion:z.literal(1)};
+export const OffboardingStepCompletion={action:OFFBOARDING_STEP_ACTION,Human:OffboardingStepCompletionHuman,
+ Confirmation:z.object({...base,actionId:z.guid(),reviewedDigest:digest}).strict(),Retirement:z.object({...base,actionId:z.guid()}).strict(),
+ Prepared:z.object({...base,actionId:z.guid(),reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:OffboardingStepCompletionHuman,review:OffboardingStepCompletionReview}).strict(),
+ Completed:z.object({...base,actionId:z.guid(),state:z.literal('completed'),receipt:OffboardingStepCompletionNativeReference}).strict(),
+ Retired:z.object({...base,actionId:z.guid(),state:z.enum(['discarded','expired','refused'])}).strict(),
+ Index:z.object({kind:z.literal('offboarding_step_review_index'),reviews:z.array(z.object({...base,actionId:z.guid(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25)}).strict(),
+ Selection:z.object({caseNumber:z.string().trim().min(1).max(100)}).strict(),
+ Choices:z.discriminatedUnion('kind',[z.object({kind:z.literal('choices'),cases:z.array(z.object({caseId:z.guid(),caseNumber:z.string(),steps:z.array(z.object({key:z.string(),label:z.string()}).strict()).max(100)}).strict()).max(1),truncated:z.literal(false)}).strict(),z.object({kind:z.literal('unavailable')}).strict()]),
+};

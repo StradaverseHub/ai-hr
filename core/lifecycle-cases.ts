@@ -251,6 +251,21 @@ const BLOCK_MESSAGE: Record<NonNullable<StepView['blocked']>, string> = {
   already_done: 'This step is already done.',
 };
 
+/** Native projection for one offboarding step using existing applicability/completion owners. */
+export async function prepareOffboardingStepTx(tx: Tx, ctx: SessionContext, caseId: string, number: string, key: string, p: TickStepInput = {}) {
+  const c = await loadCase(tx, number, 'offboarding', true);
+  if (c.id !== caseId || key === OFFBOARDING_OUTCOME_STEP) throw new LifecycleError('Step unavailable.', 'conflict');
+  await requireLevel(tx, c.companyId, LEVEL.agent, 'only staff work cases');
+  const views = await stepViews(tx, c), step = views.find(v => v.key === key);
+  if (!step) throw new LifecycleError('Step not found.', 'not_found');
+  if (step.blocked) throw new LifecycleError(BLOCK_MESSAGE[step.blocked], 'conflict');
+  const completed = isCaseComplete(views.map(v => v.key === key ? {...v, done: true} : v), factsOf(c));
+  return {caseId:c.id,caseNumber:c.number,companyId:c.companyId,stepKey:key,stepLabel:step.label,
+    resignationDate:c.resignationDate!,lastWorkingDay:c.lastWorkingDay,
+    before:{done:false as const,caseStatus:c.status},after:{done:true as const,caseStatus:completed?'completed':'in_progress'},
+    reference:clean(p.reference,100),notes:clean(p.notes,2000)};
+}
+
 export type TickStepInput = { reference?: string | null; notes?: string | null };
 /** The same native owner for standalone UI and an enclosing reviewed command. The caller must roll
  * back its whole transaction on failure. Returned identities prove inserts, not transaction commit.
@@ -269,8 +284,10 @@ export async function tickStepTx(
     }
     await tx.insert(lcCaseStep).values({ caseId: c.id, tenantId: ctx.tenantId, stepKey: key, done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: clean(p.notes, 2000) })
       .onConflictDoUpdate({ target: [lcCaseStep.caseId, lcCaseStep.stepKey], set: { done: true, doneBy: ctx.userId ?? null, doneAt: new Date(), reference: clean(p.reference, 100), notes: p.notes !== undefined ? clean(p.notes, 2000) : sql`${lcCaseStep.notes}` } });
+    const [proof] = await tx.execute<{rowHash:string}>(sql`select encode(sha256(convert_to(to_jsonb(a)::text,'UTF8')),'hex') as "rowHash" from lc_case_step a where a.case_id=${c.id}::uuid and a.tenant_id=${ctx.tenantId}::uuid and a.step_key=${key}`);
+    if (!proof) throw new LifecycleError('Step audit unavailable.', 'conflict');
     const stepEventId = randomUUID();
-    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key } });
+    await recordChange(tx, ctx, { eventId: stepEventId, refType: 'case', refId: c.id, action: 'step.done', detail: { step: st.label, key, reference: clean(p.reference, 100) }, eventType: 'lifecycle-case.step-done', subjectEmploymentId: c.employmentId, eventRef: { number, step: key, stepRowHash: proof.rowHash } });
     const completion = { eventId: null as string | null };
     const after = await reconcileCompletion(tx, ctx, c, completion);
     return { status: after.status, caseId: c.id, stepKey: key, stepEventId, completionEventId: completion.eventId };

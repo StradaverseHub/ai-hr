@@ -41,8 +41,8 @@ import {OWN_LEAVE_CONTRACT_VERSION} from '../assistant-actions/own-leave-contrac
 export type AgentActionOwner='personnel'|'organization'|'leave'|'profile'|'knowledge_base'|'payroll'|'attendance'|'claims'|'performance'|'rewards'|'lifecycle'|'country_pack_my'|'notifications'|'system_testing';
 export type AgentActionPhaseStatus='implemented'|'human_workflow_only'|'pending_adapter';
 export type AgentActionPhase=Readonly<{status:AgentActionPhaseStatus;adapter:string|null;inputSchema:string|null;outputSchema:string|null}>;
-export type AgentActionActor='self'|'assigned_approver'|'hr_admin'|'workforce_maintainer'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
-export type AgentActionSubject='own_employment'|'own_user'|'assigned_request'|'other_employment'|'other_person'|'company'|'tenant';
+export type AgentActionActor='lifecycle_staff'|'self'|'assigned_approver'|'hr_admin'|'workforce_maintainer'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
+export type AgentActionSubject='lifecycle_case'|'own_employment'|'own_user'|'assigned_request'|'other_employment'|'other_person'|'company'|'tenant';
 export type AgentActionStoreFamily='dedicated'|'generic_own'|'generic_assigned'|'module_action'|'own_leave'|'human_workflow_only';
 export type AgentActionHandoff='review_page'|'native_workflow'|'none';
 export type AgentActionIdempotencyKey='review_action_id'|'import_attempt_version'|'chase_item_stage_cooldown';
@@ -276,6 +276,14 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'unknown'},evaluationCases:[],
   screen:{native:'app/rewards/[unitId]/page.tsx',entryPoints:['app/rewards/actions.ts#postAction']},review:{route:'/assistant/rewards',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'rewardsPost',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'lifecycle.offboarding.step.complete',module:'lifecycle',owner:'lifecycle',service:'core/lifecycle-cases.ts#tickStepTx',contractVersion:1,
+  prepare:{status:'implemented',adapter:'offboarding_step_review_v1',inputSchema:'OffboardingStepCompletionHuman',outputSchema:'OffboardingStepCompletionPreparedSource'},
+  confirm:{status:'implemented',adapter:'offboarding_step_review_v1',inputSchema:'OffboardingStepCompletionConfirmation',outputSchema:'OffboardingStepCompletionNativeReference'},
+  outcome:'canonical_receipt_required',semantics:'offboarding_step_completed_with_optional_derived_case_completion',humanInputs:['caseId','caseNumber','stepKey','reference','notes','confirmStepCompletion','acceptDerivedCaseCompletion'],
+  permission:{actor:'lifecycle_staff',guard:'core/assistant-actions/offboarding-step-completion-source.ts#withOffboardingStepIntervalTx'},subject:'lifecycle_case',blastRadius:{max:1,unit:'offboarding_step_and_derived_case_completion'},
+  idempotencyKey:'review_action_id',policy:{tier:'confirm',category:'own_work'},reversal:{kind:'entry_point',by:'app/lifecycle/actions.ts#undoStepAction'},evaluationCases:[],
+  screen:{native:'app/lifecycle/offboarding/[number]/page.tsx',entryPoints:['app/lifecycle/actions.ts#tickStepAction']},review:{route:'/assistant/offboarding-step',handoff:'review_page'},
+  store:'dedicated',browserOwner:'offboardingStep',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'lifecycle.acknowledgement.submit',module:'lifecycle',owner:'lifecycle',service:'core/lifecycle-self.ts#submitMyAcknowledgement',contractVersion:1,
   prepare:{status:'implemented',adapter:'module_lifecycle_ack_review_v1',inputSchema:'LifecycleAckReviewPrepare',outputSchema:'LifecycleAckPreparedReview'},
   confirm:{status:'implemented',adapter:'module_lifecycle_ack_review_v1',inputSchema:'LifecycleAckReviewConfirmation',outputSchema:'LifecycleAckCompletedReview'},

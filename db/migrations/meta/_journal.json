@@ -4152,6 +4152,13 @@
       "when": 1793330000055,
       "tag": "0726_assistant_cost_allocation_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 715,
+      "version": "7",
+      "when": 1793330000072,
+      "tag": "0735_assistant_lifecycle_offboarding_step_review",
+      "breakpoints": true
     }
   ]
 }
