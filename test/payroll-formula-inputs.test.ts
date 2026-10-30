@@ -18,7 +18,7 @@ async function component(code:string){const [row]=await owner.db.insert(s.payCom
 const period={periodStart:'2026-10-01',periodEnd:'2026-10-31'};
 describe('shared read-only Native payroll input owners',()=>{
  it('retains exact amounts, source IDs and every Native catalogue flag, with inclusive recurring boundaries and run/employee scope',async()=>{
-  const catalogue=await component('INPUT_OWNER');const [included]=await owner.db.insert(s.employmentPayComponent).values({tenantId:base.tenantId,employmentId:employee,componentId:catalogue.id,amount:'123.45',validFrom:'2026-09-01',validTo:'2026-10-01',prorateOverride:false}).returning();
+  const catalogue=await component('INPUT_OWNER');const [included]=await owner.db.insert(s.employmentPayComponent).values({tenantId:base.tenantId,employmentId:employee,componentId:catalogue.id,amount:'123.45',validFrom:'2026-10-01',validTo:'2026-10-01',prorateOverride:false}).returning();
   await owner.db.insert(s.employmentPayComponent).values([{tenantId:base.tenantId,employmentId:employee,componentId:catalogue.id,amount:'99.99',validFrom:'2026-08-01',validTo:'2026-09-30'},{tenantId:base.tenantId,employmentId:otherEmployee,componentId:catalogue.id,amount:'88.88',validFrom:'2026-10-01'}]);
   const [oneOff]=await owner.db.insert(s.payrollBatchComponent).values({tenantId:base.tenantId,batchId:batch,employmentId:employee,componentId:catalogue.id,amount:'0.01'}).returning();
   await owner.db.insert(s.payrollBatchComponent).values({tenantId:base.tenantId,batchId:otherBatch,employmentId:employee,componentId:catalogue.id,amount:'700.00'});
