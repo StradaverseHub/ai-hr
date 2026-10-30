@@ -107,7 +107,7 @@ describe('purpose-specific protected workload contracts',()=>{
   const symbol={...source,[Symbol('hidden')]:'PRIVATE'};
   const inputs=[accessor,{...source,candidate:candidateAccessor},new Proxy(source,traps),{...source,candidate:new Proxy(candidate,traps)},
    hidden,{...source,candidate:hiddenCandidate},symbol,{...source,question:undefined},{...source,question:new Date()},
-   {...source,question:1n},{...source,question:()=>{invoked++;return 'PRIVATE';}},
+   {...source,question:BigInt(1)},{...source,question:()=>{invoked++;return 'PRIVATE';}},
    {...source,toJSON(){invoked++;return source;}}];
   for(const input of inputs)expect(()=>contract.capture(input)).toThrow();
   expect(invoked).toBe(0);
