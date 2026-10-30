@@ -1,9 +1,10 @@
+import {lockAccessConfigurationTx} from '../access-configuration-lock';
 /** Source adapter only; no model execution. Native lifecycle owns applicability and completion. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {prepareOffboardingStepTx,tickStepTx,getCase} from '../../packs/lifecycle/service';
+import {prepareOffboardingStepTx,tickStepTx,offboardingStepChoicesTx} from '../../packs/lifecycle/service';
 import {withAgentActionGuard} from './agent-action-guard';
 import {OffboardingStepCompletion as C,OffboardingStepCompletionPreparedSource as Prepared,OffboardingStepCompletionNativeReference as Native} from '../../lib/assistant-actions/offboarding-step-completion-contract';
 export const offboardingStepUnavailable=():never=>{throw Error('Offboarding step review unavailable.');};
@@ -32,7 +33,12 @@ export async function reconcileOffboardingStepSourceTx(tx:Tx,ctx:SessionContext,
  const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_offboarding_step_reference(${p.caseId}::uuid,${p.stepKey},${p.stepEventId}::uuid,${p.completionEventId}::uuid) as receipt`);
  return Native.parse(row?.receipt);
 }
-export async function readOffboardingStepChoices(ctx:SessionContext,value:unknown){
- try{const pick=C.Selection.parse(value);await withTenant(ctx,tx=>withAgentActionGuard(tx,ctx,C.action));const view=await getCase(ctx,'offboarding',pick.caseNumber);
- return C.Choices.parse({kind:'choices',cases:[{caseId:view.case.id,caseNumber:view.case.number,steps:view.steps.filter(step=>!step.blocked&&step.key!=='resign_outcome').map(step=>({key:step.key,label:step.label}))}],truncated:false});}catch{return{kind:'unavailable' as const};}
+export async function readOffboardingStepChoices(supplied:SessionContext,value:unknown){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
+ try{const pick=C.Selection.parse(structuredClone(value));return await withTenant(ctx,async tx=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const fresh=await withAgentActionGuard(tx,ctx,C.action);
+  const selected=await offboardingStepChoicesTx(tx,fresh,pick.caseNumber);
+  return C.Choices.parse({kind:'choices',cases:[selected],truncated:false});
+ });}catch{return{kind:'unavailable' as const};}
 }

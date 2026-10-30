@@ -27,13 +27,14 @@ import {
 } from './lifecycle-base';
 
 export type CaseRow = typeof lcCase.$inferSelect;
+type StepCase = Pick<CaseRow,'id'|'kind'|'status'|'laptopRequired'|'carparkRequired'|'outcome'>;
 
 const isUnique = (e: unknown): boolean => {
   const x = e as { code?: string; cause?: { code?: string } };
   return x?.code === '23505' || x?.cause?.code === '23505';
 };
 
-const factsOf = (c: CaseRow): CaseFacts => ({
+const factsOf = (c: StepCase): CaseFacts => ({
   kind: c.kind as CaseKind, status: c.status as CaseFacts['status'], laptopRequired: c.laptopRequired, carparkRequired: c.carparkRequired,
   outcome: c.outcome as CaseFacts['outcome'],
 });
@@ -45,7 +46,7 @@ async function loadCase(tx: Tx, number: string, kind: CaseKind, lock = false): P
   return c;
 }
 
-async function stepViews(tx: Tx, c: CaseRow): Promise<StepView[]> {
+async function stepViews(tx: Tx, c: StepCase): Promise<StepView[]> {
   const [defs, recs] = await Promise.all([
     loadStepDefsTx(tx, c.kind as CaseKind),
     tx.select({ key: lcCaseStep.stepKey, done: lcCaseStep.done }).from(lcCaseStep).where(eq(lcCaseStep.caseId, c.id)),
@@ -207,6 +208,22 @@ export async function listCases(ctx: SessionContext, kind: CaseKind, f: { compan
       return { ...c, progress: progressOf(views), requisitionNumber: req?.number ?? null };
     });
   });
+}
+
+/** Minimal purpose-bound native choices in the caller's guarded transaction. Native company staff
+ * authority is checked before selecting case facts; no private person/contact/notes projection. */
+export async function offboardingStepChoicesTx(tx: Tx, ctx: SessionContext, number: string) {
+  const [scope] = await tx.select({id:lcCase.id,companyId:lcCase.companyId}).from(lcCase)
+    .where(and(eq(lcCase.number,number),eq(lcCase.kind,'offboarding'))).limit(1).for('share',{noWait:true});
+  if(!scope) throw new LifecycleError('Case not found.','not_found');
+  // A row-locking SELECT can be filtered by lc_staff's admin-only UPDATE policy. A short SHARE
+  // table interval instead fences actual staff writers/phantoms without changing row authority.
+  await tx.execute(sql`lock table lc_staff in share mode nowait`);
+  await requireLevel(tx,scope.companyId,LEVEL.agent,'only staff read cases');
+  const [c] = await tx.select({id:lcCase.id,number:lcCase.number,kind:lcCase.kind,status:lcCase.status,laptopRequired:lcCase.laptopRequired,carparkRequired:lcCase.carparkRequired,outcome:lcCase.outcome}).from(lcCase).where(eq(lcCase.id,scope.id));
+  if(!c||c.status!=='in_progress') throw new LifecycleError('Step choices unavailable.','conflict');
+  const views=await stepViews(tx,c);
+  return {caseId:c.id,caseNumber:c.number,steps:views.filter(step=>!step.blocked&&step.key!==OFFBOARDING_OUTCOME_STEP).map(step=>({key:step.key,label:step.label}))};
 }
 
 export async function getCase(ctx: SessionContext, kind: CaseKind, number: string) {
