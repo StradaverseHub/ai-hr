@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import postgres from 'postgres';
 import {describe,expect,it} from 'vitest';
 import {
- assertDisposableDraftDiscardFixture,assertDraftDiscardRoleCatalog,readDraftDiscardRoleCatalog,
+ assertDraftDiscardRehearsalContext,assertDraftDiscardRoleCatalog,readDraftDiscardRoleCatalog,
  DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT,isDraftDiscardFixtureDatabasePath,ensureDraftDiscardTestRoles,validateExistingDraftDiscardRoles,type DraftDiscardCatalogSql,type RoleCatalog,
 } from './helpers/personnel-draft-discard-ci-role-fixture';
 
@@ -146,7 +146,7 @@ it('runs the actual domain preflight and ownership transfers as a restricted aut
  const migrationUrl=process.env.TEST_MIGRATION_DATABASE_URL;
  if(!migrationUrl)throw Error('Missing disposable migration connection.');
  const parsed=new URL(migrationUrl);parsed.pathname='/postgres';const adminUrl=parsed.toString();
- assertDisposableDraftDiscardFixture(adminUrl);
+ const fullCiRehearsal=assertDraftDiscardRehearsalContext(adminUrl);
  const blocks=actualMigrationBlocks();
  const database=`aihr_dd_transfer_${process.env.GITHUB_RUN_ID}_${process.env.GITHUB_RUN_ATTEMPT}_${randomUUID().slice(0,8)}`;
  if(!/^aihr_dd_transfer_[1-9][0-9]*_[1-9][0-9]*_[0-9a-f]{8}$/.test(database)||database.length>63)throw Error('Invalid owned rehearsal database name.');
@@ -252,7 +252,8 @@ it('runs the actual domain preflight and ownership transfers as a restricted aut
   // Metadata only. No URLs/passwords/native records or placeholder bodies are exported.
   const finalRoles=await readDraftDiscardRoleCatalog(admin);assertDraftDiscardRoleCatalog(finalRoles);
   expect(finalRoles).toEqual(catalog);
-  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-draft-discard-role-transfer.json'),JSON.stringify({
+  writeFileSync(fullCiRehearsal?join(fullCiRehearsal.evidenceDirectory,`personnel-dd-full-role-transfer-${fullCiRehearsal.binding.unit}-offset-${fullCiRehearsal.binding.offset}.json`):join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'personnel-draft-discard-role-transfer.json'),JSON.stringify({
+   ...(fullCiRehearsal?{fullCiContext:fullCiRehearsal.binding}:{}),
    kind:'PERSONNEL_DRAFT_DISCARD_RESTRICTED_LOGIN_OWNERSHIP_REHEARSAL',candidate:process.env.AIHR_CI_HEAD,
    controller:process.env.AIHR_CI_CONTROL_HEAD,runId:process.env.GITHUB_RUN_ID,attempt:process.env.GITHUB_RUN_ATTEMPT,
    source:{file:blocks.file,sha256:blocks.sourceHash,preflightSha256:blocks.preflightHash,transferSha256:blocks.transferHash,journalIndex:blocks.journalIndex,journalWhen:blocks.journalWhen,journalTag:blocks.journalTag,journalSha256:blocks.journalHash},
@@ -264,7 +265,7 @@ it('runs the actual domain preflight and ownership transfers as a restricted aut
    forcedTransferFailure:{sqlstate:'42883',rolledBack:true,before:beforeFailure,after:afterFailure},
    rehearsalSourceSha256:hash(readFileSync(fileURLToPath(import.meta.url),'utf8')),
    scope:'actual assigned preflight and ownership transfer only; inert placeholders do not establish native deletion or custody proof',
-  },null,2)+'\n');
+  },null,2)+'\n',fullCiRehearsal?{flag:'wx'}:undefined);
  }finally{
   try{await app?.end({timeout:5});}finally{
    try{await owner?.end({timeout:5});}finally{
@@ -273,3 +274,10 @@ it('runs the actual domain preflight and ownership transfers as a restricted aut
   }
  }
 },60000);
+
+it.each(['AIHR_CI_DISPOSABLE_ROLE_MODE','AIHR_CI_ROLE_UNIT','AIHR_CI_ROLE_BATCH_OFFSET','AIHR_CI_ROLE_EVIDENCE_DIR','AIHR_CI_ROLE_PLAN_FINGERPRINT','AIHR_CI_ROLE_UNKNOWN'])('refuses leaked %s in template/worker setup before any new connection',async key=>{
+ const before=process.env[key];try{process.env[key]='partial';await expect(ensureDraftDiscardTestRoles('postgres://nobody:nothing@127.0.0.1:1/no_database')).rejects.toThrow('must not reach template/worker');}finally{if(before===undefined)delete process.env[key];else process.env[key]=before;}
+});
+it('keeps canonical role catalog and provisioning SQL under one unchanged owner for both disposable profiles',()=>{
+ const text=readFileSync(DRAFT_DISCARD_ROLE_FIXTURE_FINGERPRINT_INPUT,'utf8');expect(text.match(/CREATE ROLE ai_hr_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT/g)).toHaveLength(1);expect(text.match(/CREATE ROLE ai_hr_draft_discard_port NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT/g)).toHaveLength(1);expect(text).toContain("hashtextextended('test:focused:draft-discard-role-fixture',0)");expect(text).toContain('assertDraftDiscardRoleCatalog(before,true)');expect(text).toContain('assertDraftDiscardRoleCatalog(after)');
+});
