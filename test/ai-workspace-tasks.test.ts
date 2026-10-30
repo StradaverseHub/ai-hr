@@ -10,7 +10,7 @@ describe('AI workspace task discovery', () => {
     expect(workspaceTasksFor(['my_payslip_summary', 'my_pay_change'])).toEqual(['payslip']);
     expect(workspaceTasksFor(['employee_profile'])).toEqual([]);
     expect(workspaceTasksFor(['my_module_work', 'employee_profile'])).toEqual(['module_overview','work_profile']);
-    expect(AI_WORKSPACE_TASKS.some(task=>String(task.id)==='pay_change')).toBe(false);
+    expect(AI_WORKSPACE_TASKS.map(task=>task.id)).not.toContain('pay_change');
     expect(workspaceTasksFor(['my_reporting_line', 'employee_profile'])).toEqual(['reporting_line']);
   });
   it('is deterministic, append-aware and does not manufacture bindings for future modules', () => {
