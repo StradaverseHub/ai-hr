@@ -2229,7 +2229,7 @@
         "title": "Import Movement events",
         "guidance": "Each row records a dated Movement for an existing Employee ID in the selected company. Hired is not an importable event.",
         "sequenceHint": "Rows are checked in effective-date order for each employee. One employee’s selected sequence saves together or rolls back together. Other employees are independent.",
-        "blankHint": "Blank cells retain existing values. Only fields supported by that event type may contain values. Explicit clearing stays in Personnel.",
+        "blankHint": "Blank Update cells keep the event’s recorded values. A filled Before cell must match that recorded event. Only fields supported by the selected event type may be entered; use Personnel to clear values.",
         "dateHint": "Dates: DD-MMM-YYYY (for example 06-Jan-2026). Excel date cells and YYYY-MM-DD are also accepted. Blacklist changes use today’s date.",
         "displacedHint": "Card ID and Attendance Photo updates are in Profile import. Contract and notice period settings remain in Personnel → Employment. Direct Superior changes use Movement.",
         "limitsHint": "Maximum 200 rows, 20 rows per employee and 50 employees. Split larger files.",

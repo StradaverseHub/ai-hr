@@ -42,6 +42,13 @@ describe('pending Movement Edit retains its saved target independently of curren
   const {container}=mount({...base,managers:[],edit:edit('reportingLineChange',{managerEmploymentId:'manager-dest'})});
   expect(screen.getByRole('alert')).toBeInTheDocument();expect(container.querySelector('form')).toBeNull();expect(screen.queryByRole('option',{name:'Fictional Destination Manager'})).toBeNull();
  });
+ it('adds closed-payroll acknowledgement when the corrected date reaches an earlier closed month',()=>{
+  const month=today.slice(0,7);
+  const {container}=mount({...base,edit:{...edit('reportingLineChange',{managerEmploymentId:'manager-dest'}),effectiveDate:day(45),availableClosedPayrollPeriods:[month]}});
+  expect(screen.queryByRole('checkbox',{name:messages.people.detail.movement.form.closedPayrollAcknowledge})).toBeNull();
+  fireEvent.change(container.querySelector('input[name="effectiveDate"]')!,{target:{value:month+'-01'}});
+  expect(screen.getByRole('checkbox',{name:messages.people.detail.movement.form.closedPayrollAcknowledge})).toBeRequired();
+ });
  it('wires the actual page to a canonical pending-only edit read, preserving the separate current prop',()=>{
   const source=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
   const start=source.indexOf('const movementEditRow'),end=source.indexOf('const hireCorrectionCard',start);

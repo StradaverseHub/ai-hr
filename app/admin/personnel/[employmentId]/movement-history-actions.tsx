@@ -37,7 +37,7 @@ export function MovementHistoryActions({employmentId, row, eventLabel, canCorrec
         confirmLabel={labels.delete} cancelLabel={labels.keepEvent}
         reasonField={{name:'reason',label:labels.reason,required:true}}
         acknowledgement={row.payrollLocked ? {name:'acknowledgeClosedPayroll',warning:labels.closedWarning,label:labels.closedAcknowledge} : undefined}
-        variant="ghost" size="sm" className="h-auto p-0 text-sm font-normal text-destructive hover:bg-transparent hover:underline">
+        variant="ghost" confirmVariant="destructive" size="sm" className="h-auto p-0 text-sm font-normal text-destructive hover:bg-transparent hover:underline">
         {labels.delete}
       </ConfirmSubmit>
     </form>}

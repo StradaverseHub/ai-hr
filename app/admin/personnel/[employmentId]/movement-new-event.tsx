@@ -131,12 +131,14 @@ export type MovementEditTarget = {
   effectiveDate: string;
   endDate: string | null;
   remarks: string | null;
-  /** Event types this correction may switch to — the same family as the movement it replays. */
+  /** Destination types whose canonical validators will run when the event is replaced. */
   allowedKinds: string[];
   /** A processed (not yet closed) payroll run covered this period; payslips are never reprocessed. */
   payrollWarning: boolean;
   /** 646355e5 — closed 'YYYY-MM' periods a correction would sit behind; non-empty requires acknowledgement. */
   payrollClosedPeriods?: string[];
+  /** All closed months for date/type changes that reach an earlier payroll window. */
+  availableClosedPayrollPeriods?: string[];
   /** Present only for an authorized pending intent; omission must not become today's default. */
   pendingInput?: MovementPendingFormValues;
   pendingUnavailable?: boolean;
@@ -224,6 +226,12 @@ export function MovementNewEvent({
   const behaviourOf = (k: string): string => byCode.get(k)?.behaviourKind ?? k;
   const [kind, setKind] = useState<string>(edit?.kind ?? catalog[0]?.code ?? 'transfer');
   const behaviour = behaviourOf(kind);
+  const [correctionDate, setCorrectionDate] = useState(edit?.effectiveDate ?? today);
+  const proposedMonth = (/^\d{4}-\d{2}-\d{2}$/.test(correctionDate) ? correctionDate : edit?.effectiveDate ?? today).slice(0,7);
+  const correctionClosedPeriods = edit ? [...new Set([
+    ...(edit.payrollClosedPeriods ?? []),
+    ...(edit.availableClosedPayrollPeriods ?? []).filter(period => period >= proposedMonth),
+  ])].sort() : [];
   const saved = edit?.pendingInput;
   const after = {...current,...saved};
   const initialFields=useRef<Map<string,string>|null>(null);
@@ -572,16 +580,16 @@ export function MovementNewEvent({
           {t('form.editHint')}
         </p>
       )}
-      {edit?.payrollWarning && !edit.payrollClosedPeriods?.length && (
+      {edit?.payrollWarning && !correctionClosedPeriods.length && (
         <p className="border-b border-border bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           {t('form.payrollWarning')}
         </p>
       )}
       {/* 646355e5 — a closed run no longer blocks the correction. HR confirms that closed payroll stays as
           issued; the service refuses without this box (MovementClosedPayrollAcknowledgementError). */}
-      {!!edit?.payrollClosedPeriods?.length && (
+      {!!correctionClosedPeriods.length && (
         <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-          <p className="font-medium">{t('form.closedPayrollTitle', { periods: edit.payrollClosedPeriods.join(', ') })}</p>
+          <p className="font-medium">{t('form.closedPayrollTitle', { periods: correctionClosedPeriods.join(', ') })}</p>
           <p className="mt-1">{t('form.closedPayrollBody')}</p>
           <label className="mt-2 flex items-start gap-2">
             <input type="checkbox" name="acknowledgeClosedPayroll" value="1" required className="mt-1" />
@@ -615,6 +623,7 @@ export function MovementNewEvent({
               {...personnelWorkflowControl(movementField('effectiveDate'), 'movement', 'record')}
 
               defaultValue={edit?.effectiveDate ?? today}
+              onChange={event => setCorrectionDate(event.target.value)}
               className={inputCls}
               label={label(movementField('effectiveDate'))}
             />

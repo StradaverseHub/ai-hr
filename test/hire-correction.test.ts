@@ -749,7 +749,8 @@ describe('c063eea9 — the screen and the action', () => {
 
   it('the Hired row offers the action and wears its own badge, not the rolled-back Corrected badge', () => {
     const src = read('app/admin/personnel/[employmentId]/page.tsx');
-    expect(src).toContain("canCreateMovement && m.kind === 'hired'");
+    expect(src).toContain("canCorrect={canCorrectMovement}");
+    expect(read('app/admin/personnel/[employmentId]/movement-history-actions.tsx')).toContain("canCorrect && row.kind === 'hired'");
     expect(src).toContain("t('movement.hireCorrection.action')");
     expect(src).toContain("t('movement.hireCorrection.badge')");
     expect(src).toContain('{hireCorrectionCard}');

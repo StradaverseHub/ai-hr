@@ -49,6 +49,6 @@ describe('canonical Movement date and correction parity',()=>{
   expect((await movementCurrentState(ctx,e.employmentId)).departmentId).toBe(third.id);expect((await movementHistory(ctx,e.employmentId)).find(row=>row.id===original!.id)?.status).toBe('reversed');
   const source=readFileSync(join(process.cwd(),'app/admin/personnel/[employmentId]/actions.ts'),'utf8'),start=source.indexOf('export async function editMovementEventAction'),end=source.indexOf('\n}',start);
   expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start+200);const action=source.slice(start,end);
-  expect(action).toContain('const result=await editMovementEvent(');expect(action).toContain('isComparisonKind(result.behaviourKind)');expect(action).toContain('recomputeEntitlement(s, employmentId');expect(action).not.toContain('isComparisonKind(p.kind)');
+  expect(action).toContain('const result=await editMovementEvent(');expect(action).toContain('movementNeedsEntitlementReprojection(result.behaviourKind)');expect(action).toContain('movementNeedsEntitlementReprojection(result.previousBehaviourKind)');expect(action).toContain('recomputeEntitlement(s, employmentId');expect(action).not.toContain('isComparisonKind(p.kind)');
  });
 });

@@ -296,60 +296,18 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
     ).toBe(false);
   });
 
-  it('SOURCE GUARD: the affordance is Rollback, and every locale has the labels', () => {
-    const page = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
-      'utf8',
-    );
-    // The Employment History row offers Rollback and no longer offers Delete. Scoped to the `movement.`
-    // namespace: other cards on the same page (emergency contacts, qualifications, documents) genuinely
-    // delete rows and keep their own delete labels.
-    expect(page.includes("t('movement.rollback')"), 'the row offers Rollback').toBe(true);
-    expect(page.includes("t('movement.delete')"), 'the row no longer offers Delete').toBe(false);
-    // It posts to the reversal service — the rename must not have become a second, weaker writer.
-    expect(page.includes('reverseMovementEventAction')).toBe(true);
-    // And the "who" the plan promises actually reaches the screen.
-    expect(page.includes("t('movement.reversedBy')")).toBe(true);
-
-    // bd89ccd8 — a PENDING row wears the Cancel wording instead. Same form, same action, same service:
-    // the guard asserts the LABELS branch exists and that no second writer appeared beside it.
-    expect(page.includes("t('movement.cancel')"), 'a pending row offers Cancel').toBe(true);
-    expect(page.includes("t('movement.cancelConfirmTitle')")).toBe(true);
-    expect(page.includes("t('movement.cancelConfirmDescription')")).toBe(true);
-    expect(
-      page.match(/<form action=\{reverseMovementEventAction\}/g)?.length,
-      'exactly ONE reversal form — Cancel is a relabel of Rollback, never a second path',
-    ).toBe(1);
-    // …and no delete action grew beside it.
-    expect(page.includes('deleteMovementEventAction'), 'no second, erasing writer').toBe(false);
-    // bd89ccd8 — the reason is mandatory in the dialog too (the service refuses a blank one regardless).
-    expect(page.includes("reasonField={{ name: 'reason'")).toBe(true);
-    expect(page.includes('required: true'), 'the rollback reason field is mandatory').toBe(true);
-
-    for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
-      const msg = JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${loc}.json`), 'utf8'));
-      const mv = msg?.people?.detail?.movement ?? {};
-      for (const k of [
-        'rollback',
-        'reversedBy',
-        'rollbackConfirmTitle',
-        'rollbackConfirmDescription',
-        'rollbackConfirmPayroll',
-        // bd89ccd8 — the Cancel vocabulary, in every locale (a MISSING_MESSAGE here throws at render).
-        'cancel',
-        'cancelConfirmTitle',
-        'cancelConfirmDescription',
-        'cancelledBadge',
-        // 95d17761 — the hide/show vocabulary. A MISSING_MESSAGE here throws at render while the route
-        // still returns 200, so the pin is the only thing that catches a half-translated tab.
-        'correctedHidden',
-        'showCorrected',
-        'hideCorrected',
-        'empty',
-      ]) {
-        expect(typeof mv[k], `messages/${loc}.json missing movement.${k}`).toBe('string');
-      }
-      expect(mv.delete, `messages/${loc}.json still carries the old movement.delete label`).toBeUndefined();
+  it('SOURCE GUARD: Delete keeps the canonical reversal owner, required reason and translated explanations', () => {
+    const page=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
+    const controls=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/movement-history-actions.tsx'),'utf8');
+    expect(page).toContain("delete:t('movement.delete')");
+    expect(page).toContain('reverseAction={reverseMovementEventAction}');
+    expect(controls.match(/<form action=\{reverseAction\}/g)).toHaveLength(1);
+    expect(controls).toContain("row.status === 'pending' ? labels.deletePendingDescription");
+    expect(controls).toContain("reasonField={{name:'reason',label:labels.reason,required:true}}");
+    expect(page).toContain("t('movement.reversedBy')");expect(page).not.toContain('deleteMovementEventAction');
+    for(const locale of ['en','ms','ta','th','vi','zh']){
+      const mv=JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${locale}.json`),'utf8')).people.detail.movement;
+      for(const key of ['delete','deleteTitle','deleteDescription','deletePendingDescription','correctionReasonLabel','correctionUnavailable','correctionUnsupported','correctionTerminal','hireDeleteRequirements','correctedHidden','showCorrected','hideCorrected','empty'])expect(typeof mv[key],locale+':'+key).toBe('string');
     }
   });
 

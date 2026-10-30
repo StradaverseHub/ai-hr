@@ -1751,8 +1751,8 @@ export async function readMovementAttachment(ctx: SessionContext, employmentId: 
   });
 }
 
-/** Pending Edit alone needs raw picker values. Read the authoritative saved intent under current RLS;
- * do not send a reference the caller can no longer resolve, or hydrate omitted values from today. */
+/** Edit reads recorded picker values under current RLS. Applied movements use their original legs;
+ * pending movements use saved intent. Never hydrate an omitted value from today's mutable profile. */
 export function movementPendingEditInput(ctx:SessionContext,employmentId:string,movementId:string):Promise<{values?:MovementPendingFormValues;unavailable:boolean}|null>{
   assertMovementAdmin(ctx,'correct a movement');
   return withTenant(ctx,async tx=>{
@@ -4059,9 +4059,11 @@ async function reverseMovementTx(
   corrected: boolean,
   /** 646355e5 — set when this rollback only steps back so an earlier movement can be corrected; the
    *  movement is replayed right after, and the history links the two. */
-  opts?: { replayOf?: string },
+  opts?: { replayOf?: string; additionalClosedPayrollPeriods?: string[] },
 ): Promise<void> {
-  const { events, row, group, closedPayrollPeriods } = await reversalGuardTx(tx, ctx, employmentId, movementId);
+  const { events, row, group, closedPayrollPeriods:sourceClosedPeriods } = await reversalGuardTx(tx, ctx, employmentId, movementId);
+  const closedPayrollPeriods = [...new Set([...sourceClosedPeriods,...(opts?.additionalClosedPayrollPeriods ?? [])])].sort();
+  if(closedPayrollPeriods.length && !hasClosedPayrollCorrectionAuthorityTx(tx,employmentId)) throw new MovementClosedPayrollAcknowledgementError(closedPayrollPeriods);
   const snapshotCount = closedPayrollPeriods.length ? await preserveClosedPayrollDocumentsTx(tx, employmentId) : null;
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
@@ -4164,7 +4166,8 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
     await assertWorkforceEmploymentTx(tx,ctx,rawEdit.employmentId,'maintain');
     await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
     await lockEmploymentStatutoryOwnerTx(tx, rawEdit.employmentId);
-    const p = await resolveInputTypeTx(tx, ctx, rawEdit, 'correct', { allowInactive: true });
+    const resolved = await resolveInputTypeTx(tx, ctx, rawEdit, 'correct', { allowInactive: true });
+    const p = resolved.kind === 'blacklist' ? {...resolved,effectiveDate:todayInKualaLumpur()} : resolved;
     if (!isCalendarDate(p.effectiveDate ?? '')) {
       throw new Error('A valid effective date (YYYY-MM-DD) is required.');
     }
@@ -4180,6 +4183,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
 
     let replay: ReplayStep[] = [];
     let previousBehaviourKind: string | null = null;
+    let targetClosedPeriods: string[] = [];
     const correct = async () => {
       const { events, rows, statusOf, today, resolvedTypes } = await projectRows(tx, ctx.tenantId, p.employmentId);
       const row = rows.find((r) => r.id === p.movementId);
@@ -4193,6 +4197,16 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       previousBehaviourKind = rowBehaviour;
       if (p.documents?.length && !isComparisonKind(p.kind)) {
         throw new MovementDocumentError('This event type does not take supporting documents.');
+      }
+      // A new type/date can reach closed months the ORIGINAL movement never touched. Preserve
+      // the issued baseline before the first inverse, even when the original was record-only.
+      if (isComparisonKind(p.kind) || ['resignation','termination','joinDateChange','groupJoinDateCorrection'].includes(p.kind)) {
+        const proposedFrom = [p.effectiveDate!, ...(['resignation','termination'].includes(p.kind) ? [p.endDate,p.resignationEffectiveDate].filter((date):date is string => !!date) : [])].sort()[0];
+        targetClosedPeriods = (await closedPeriodsTx(tx,p.employmentId)).filter(period => overlapsClosedPeriod([period],proposedFrom,null)).sort();
+        if (targetClosedPeriods.length) {
+          if (!hasClosedPayrollCorrectionAuthorityTx(tx,p.employmentId)) throw new MovementClosedPayrollAcknowledgementError(targetClosedPeriods);
+          await preserveClosedPayrollDocumentsTx(tx,p.employmentId);
+        }
       }
       // Revision 2: changing a behaviour is an inverse followed by a NEW validated movement,
       // never a relabel of the old ledger row. The private dispatcher owns destination permissions,
@@ -4213,7 +4227,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
             await reverseMovementTx(tx, ctx, p.employmentId, later.movementId, reason, true, {replayOf:p.movementId});
           }
         }
-        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
         // Judge the replacement against the state AFTER its inverse, not the mistaken exit.
         const [dates] = await tx.select({hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn,lastWorkingDate:employment.lastWorkingDate,resignationDate:employment.resignationDate}).from(employment).where(eq(employment.id,p.employmentId));
         if (!dates) throw new Error('Employment not found.');
@@ -4277,7 +4291,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
           remarks:rawEdit.remarks===undefined?row.remarks:remarks,endDate:rawEdit.endDate===undefined?row.endDate:endDate} as typeof p;
         if(rowBehaviour==='resignation'||p.kind==='resignation'){
           if(rowBehaviour!=='resignation'||p.kind!=='resignation')throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
-          await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
+          await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true,{additionalClosedPayrollPeriods:targetClosedPeriods});
           return recordResignationMovementTx(tx,ctx,corrected);
         }
         // ae9350f2 — a pending TERMINATION is correctable on exactly the same reasoning, and it has to be:
@@ -4289,7 +4303,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
           if (rowBehaviour !== 'termination' || p.kind !== 'termination') {
             throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
           }
-          await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+          await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
           // Planned AFTER the rollback, so the duplicate-termination rule sees the movement being corrected
           // as already reversed rather than as a second termination competing with itself.
           const plan = await planTerminationTx(tx, ctx, corrected, 'create');
@@ -4308,7 +4322,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         if (p.kind === 'employmentTypeChange' && !corrected.employmentType) {
           throw new Error('Select the new employment type.');
         }
-        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
         // 1d58019a Step 2 — the corrected intent meets its type's Field Controls (against today's values: a
         // pending movement wrote nothing), and keeps the documents it already had.
         const carried = await correctionDocumentFieldsTx(tx, ctx, corrected, row.groupId);
@@ -4360,7 +4374,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
           throw new MovementNotCorrectableError('A correction cannot turn this movement into that event type.');
         }
         const recordedReason = (group.find((e) => e.eventType === 'employment.terminated')?.payload as { terminationReasonCode?: unknown } | undefined)?.terminationReasonCode;
-        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
         const plan = await planTerminationTx(tx, ctx, { ...p, remarks: rawEdit.remarks === undefined ? row.remarks : remarks, endDate: rawEdit.endDate === undefined ? row.endDate : endDate }, 'create');
         await assertCorrectedReasonTx(plan, recordedReason);
         return plan.effectiveDate > today
@@ -4374,7 +4388,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         const originalAfter=(original?.payload as {after?:Record<string,unknown>})?.after;
         const submitted={...p,endDate:p.endDate===undefined?row.endDate:p.endDate,remarks:rawEdit.remarks===undefined?row.remarks:p.remarks,tenderResignationDate:p.tenderResignationDate===undefined?originalAfter?.tenderResignationDate as string|null|undefined:p.tenderResignationDate,resignationEffectiveDate:p.resignationEffectiveDate===undefined?originalAfter?.resignationDate as string|null|undefined:p.resignationEffectiveDate};
         if(submitted.effectiveDate===row.effectiveDate&&(submitted.endDate?.trim()||null)===row.endDate&&(submitted.remarks?.trim()||null)===row.remarks&&(submitted.tenderResignationDate??null)===(originalAfter?.tenderResignationDate??null)&&(submitted.resignationEffectiveDate??null)===(originalAfter?.resignationDate??null))throw new MovementNoChangeError();
-        await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true);
+        await reverseMovementTx(tx,ctx,p.employmentId,p.movementId,reason,true,{additionalClosedPayrollPeriods:targetClosedPeriods});
         return recordResignationMovementTx(tx,ctx,submitted);
       }
 
@@ -4396,7 +4410,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         // Record-only movement: the rollback has nothing to undo, so the correction is the reversal plus a
         // fresh record carrying the fixed dates / remarks.
         if (datesUnchanged) throw new MovementNoChangeError();
-        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+        await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
         await appendEvent(tx, {
           tenantId: ctx.tenantId,
           aggregateType: 'employment',
@@ -4454,7 +4468,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       // effective date, so `datesUnchanged` already covers every way it can move.
       if (datesUnchanged && valuesUnchanged) throw new MovementNoChangeError();
 
-      await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true);
+      await reverseMovementTx(tx, ctx, p.employmentId, p.movementId, reason, true, {additionalClosedPayrollPeriods:targetClosedPeriods});
       // 1d58019a Step 2 — the corrected movement meets its type's Field Controls, judged against the state
       // the rollback just restored (the same baseline the re-apply diffs against), and keeps its documents.
       const carried = await correctionDocumentFieldsTx(tx, ctx, p, row.groupId);
@@ -4468,8 +4482,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
         // half-applied rollback must not commit behind a message about "no changes to record".
         if (e instanceof MovementNoChangeError) {
           throw new MovementNoChangeError(
-            // bd89ccd8 — said "use Delete" until now. There has been no Delete since r88 (10fcf6df), so the
-            // one message that still named it was sending HR to look for a button that is not there.
+            // Revision 2 names removal from active history Delete; the ledger remains append-only.
             'The corrected event would leave nothing changed — use Delete to undo the movement instead.',
           );
         }

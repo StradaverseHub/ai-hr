@@ -3267,7 +3267,7 @@ export default async function EmployeePage({
                     unavailable:t('movement.correctionUnavailable'), unsupported:t('movement.correctionUnsupported'),
                     terminal:t('movement.correctionTerminal'), viewOnly:t('movement.correctionViewOnly'),
                     closedWarning:`${t('movement.form.closedPayrollTitle', {periods:m.payrollClosedPeriods.join(', ')})} ${t('movement.form.closedPayrollBody')}`,
-                    closedAcknowledge:t('movement.form.closedPayrollAcknowledge'), processedWarning:t('movement.rollbackConfirmPayroll'),
+                    closedAcknowledge:t('movement.form.closedPayrollAcknowledge'), processedWarning:t('movement.form.payrollWarning'),
                   }}/>
                 {m.payrollLocked && <p className="mt-1 text-xs text-muted-foreground">{t('movement.payrollClosedBadge', {periods:m.payrollClosedPeriods.join(', ')})}</p>}
               </td>
@@ -3570,6 +3570,7 @@ export default async function EmployeePage({
           allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)])),
           payrollWarning: movementEditRow.payrollWarning,
           payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
+          availableClosedPayrollPeriods: closedPayrollPeriods,
         }}
       />
     </Card>

@@ -2229,7 +2229,7 @@
         "title": "Import peristiwa Pergerakan",
         "guidance": "Setiap baris merekodkan Pergerakan bertarikh untuk ID Pekerja sedia ada dalam syarikat yang dipilih. Peristiwa Pengambilan tidak boleh diimport.",
         "sequenceHint": "Baris disemak mengikut tarikh kuat kuasa bagi setiap pekerja. Urutan yang dipilih untuk seorang pekerja disimpan atau dibatalkan bersama. Pekerja lain diproses secara berasingan.",
-        "blankHint": "Sel kosong mengekalkan nilai sedia ada. Hanya medan yang disokong oleh jenis peristiwa itu boleh diisi. Pengosongan nilai dibuat dalam Personel.",
+        "blankHint": "Sel Update yang kosong mengekalkan nilai yang direkodkan bagi peristiwa. Sel Before yang diisi mesti sepadan dengan peristiwa itu. Isi hanya medan yang disokong oleh jenis yang dipilih; gunakan Personel untuk mengosongkan nilai.",
         "dateHint": "Tarikh: DD-MMM-YYYY (contohnya 06-Jan-2026). Sel tarikh Excel dan YYYY-MM-DD juga diterima. Perubahan senarai hitam menggunakan tarikh hari ini.",
         "displacedHint": "ID Kad dan Foto Kehadiran dikemas kini melalui import Profil. Tetapan kontrak dan tempoh notis kekal dalam Personel → Pekerjaan. Perubahan Penyelia Langsung menggunakan Pergerakan.",
         "limitsHint": "Maksimum 200 baris, 20 baris setiap pekerja dan 50 pekerja. Bahagikan fail yang lebih besar.",
