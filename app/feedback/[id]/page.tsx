@@ -5,7 +5,7 @@ import { getFeedback } from '@/core/feedback';
 import { feedbackBoardOpen } from '@/app/feedback/board';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { formatFeedbackDateTime } from '@/lib/feedback-date';
-import { statusTone } from '../page';
+import { feedbackBoardStatus, feedbackStatusTone as statusTone } from '@/lib/feedback-release';
 import {
   answerBlockingQuestionAction,
   approveFeedbackPlanAction,
@@ -111,8 +111,8 @@ export default async function FeedbackDetailPage({
               <span className="uppercase tracking-wide">{t('detailUpdated')}</span>{' '}
               <span className="tabular-nums text-foreground">{fmtDate(fb.updatedAt)}</span>
             </span>
-            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(fb.status)}`}>
-              {t(`status_${fb.status}`)}
+            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${statusTone(feedbackBoardStatus(fb))}`}>
+              {t(feedbackBoardStatus(fb) === 'deployed' ? 'releaseUnverified' : `status_${feedbackBoardStatus(fb)}`)}
             </span>
           </div>
         }
@@ -375,6 +375,9 @@ export default async function FeedbackDetailPage({
             {fb.status === 'building' && t('buildingNote')}
             {fb.status === 'done' && t('doneNote')}
             {fb.status === 'deployed' && t('deployedNote')}
+            {fb.status === 'deployed' && (
+              <Row label={t('releaseProgress')} value={feedbackBoardStatus(fb) === 'deployed' ? t('releaseUnverifiedHint') : t(`releaseHint_${feedbackBoardStatus(fb)}`)} />
+            )}
             {fb.buildRef && (
               <>
                 {' '}

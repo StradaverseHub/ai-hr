@@ -390,3 +390,15 @@ fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to th
 Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
+
+## Feedback Kanban and release evidence — isolated development, 30 October 2026
+
+`codex/feedback-kanban-release-status-20261030` starts at freshly fetched matching main/alpha
+`2ab4f6c120a28692857e93adeed072d463713ab6`. Registered worktree inspection found filenames through
+0726 and sequences through 1793330000064. This development candidate reserves
+`0727_feedback_release_evidence`, idx686 / sequence1793330000065, after its unchanged canonical prefix.
+It adds nullable feedback release evidence without guessing environments for existing records.
+The standard private `aihr-staging` alias was unavailable in this session, so the installed watermark
+has **not** been verified. This is a provisional development/CI position, not an installation allocation.
+Before integration/application, reconcile competing source claims, actual ordered ledger and current
+canonical journal with the release owner. No applied SQL bytes, installation or acceptance are changed.

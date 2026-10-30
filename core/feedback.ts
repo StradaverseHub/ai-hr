@@ -10,6 +10,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
+import type { FeedbackBoardStatus, FeedbackRelease } from '../lib/feedback-release';
 import { DEFAULT_FEEDBACK_SORT, type FeedbackSort } from '../lib/feedback-sort';
 import { resolveActiveAiConfig } from './ai-config';
 import {
@@ -708,7 +709,7 @@ export async function markFeedbackDeployed(
     }
     await tx
       .update(feedbackRequest)
-      .set({ status: 'deployed', buildRef: p.buildRef ?? undefined, decidedAt: sql`now()`, updatedAt: sql`now()` })
+      .set({ status: 'deployed', release: null, buildRef: p.buildRef ?? undefined, decidedAt: sql`now()`, updatedAt: sql`now()` })
       .where(eq(feedbackRequest.id, fb.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
@@ -810,6 +811,8 @@ export type FeedbackRow = {
   category: FeedbackCategory;
   title: string;
   status: FeedbackStatus;
+  release?: FeedbackRelease | null;
+  buildRef?: string | null;
   reporter: string | null;
   reporterUserId?: string | null;
   planRevision: number;
@@ -840,16 +843,29 @@ export type FeedbackRow = {
  */
 export const FEEDBACK_LIST_LIMIT = 200;
 
+/** Same cycle/build guard as feedbackBoardStatus; evaluated before filtering and LIMIT. */
+const boardStatusSql = sql<FeedbackBoardStatus>`CASE WHEN ${feedbackRequest.status} = 'deployed'
+  AND ${feedbackRequest.release}->>'planRevision' = ${feedbackRequest.planRevision}::text
+  AND ${feedbackRequest.release}->>'reopenedCount' = ${feedbackRequest.reopenedCount}::text
+  AND ${feedbackRequest.release}->>'buildRef' = ${feedbackRequest.buildRef}
+  AND ${feedbackRequest.release}->>'stage' IN ('staging', 'production_ready', 'production')
+  THEN ${feedbackRequest.release}->>'stage' ELSE ${feedbackRequest.status}::text END`;
+
+export function feedbackBoardCounts(ctx: SessionContext) {
+  return withTenant(ctx, tx => tx.select({ status: boardStatusSql, count: sql<number>`count(*)::int` })
+    .from(feedbackRequest).groupBy(boardStatusSql));
+}
+
 export function listFeedback(
   ctx: SessionContext,
-  opts: { status?: FeedbackStatus; category?: FeedbackCategory; sort?: FeedbackSort } = {},
+  opts: { status?: FeedbackBoardStatus; category?: FeedbackCategory; sort?: FeedbackSort } = {},
 ): Promise<FeedbackRow[]> {
   // Ordering is SQL, not a browser sort, because the LIMIT below is the whole point: over 517 production
   // rows, sorting the returned page would rank only the 200 most recently CREATED items and an old item
   // touched yesterday would never surface. See lib/feedback-sort.ts.
   const dir = (opts.sort ?? DEFAULT_FEEDBACK_SORT) === 'updated_asc' ? asc : desc;
   const filters = [
-    opts.status ? eq(feedbackRequest.status, opts.status) : undefined,
+    opts.status ? eq(boardStatusSql, opts.status) : undefined,
     opts.category ? eq(feedbackRequest.category, opts.category) : undefined,
   ].filter(Boolean);
   return withTenant(ctx, (tx) =>
@@ -859,6 +875,8 @@ export function listFeedback(
         category: feedbackRequest.category,
         title: feedbackRequest.title,
         status: feedbackRequest.status,
+        release: feedbackRequest.release,
+        buildRef: feedbackRequest.buildRef,
         // 0348 — the display label wins when set. Operator-raised items carry 'CLAUDE AI'; every in-app
         // submission leaves it NULL and falls through to the joined person name, so the board reads the
         // same as it always did for anything a human wrote.

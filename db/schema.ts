@@ -9127,6 +9127,8 @@ export const feedbackRequest = pgTable(
     /** Why it is parked, for the cases blockedById cannot express. Cleared on unblock. */
     blockedReason: text('blocked_reason'),
     buildRef: text('build_ref'), // PR / branch link once a build agent runs (F4)
+    /** Operator-attested release evidence for this exact feedback cycle and build. */
+    release: jsonb('release').$type<import('../lib/feedback-release').FeedbackRelease | null>(),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),

@@ -79,3 +79,46 @@ Logs: `.improve/watch.log` (+ `.improve/launchd.{out,err}.log`). SSH key must be
 > A fully autonomous headless build on the timer (`claude -p --permission-mode bypassPermissions`) was
 > considered and deliberately **not** enabled: an unattended agent with gates off is an explicit opt-in, not
 > a default (see ADR-0045).
+
+## Environment-specific feedback release milestones
+
+The feedback list and Kanban show review/build status and three explicit release milestones.
+The existing `deployed` enum remains compatible with review/refute actions. A nullable `release`
+record on that same RLS-protected feedback row owns the environment claim; an append-only
+`feedback.release.recorded` event preserves each milestone. Historical `deployed` items display
+**Deployment unverified** until an operator checks their environment. No historical item is
+inferred to be in production, and `done` means built, not ready for production.
+
+After independently verifying the target, use `pnpm improve:record-release` with JSON on stdin:
+
+```json
+{
+  "id": "FEEDBACK_UUID",
+  "tenantId": "TENANT_UUID",
+  "reporterEmploymentId": null,
+  "stage": "staging",
+  "sourceSha": "FULL_LOWERCASE_40_CHARACTER_SHA",
+  "buildId": "EXACT_INSTALLED_BUILD_ID",
+  "buildRef": "REVIEWED_PR_OR_COMMIT_REFERENCE",
+  "evidence": "NON_SECRET_RELEASE_RECORD_REFERENCE"
+}
+```
+
+Use the actual reporter employment UUID when present. `null` is only for an existing user-only
+report. Select the private connection to the database that owns this board; a milestone about a
+production target is still recorded in that board database. Do not copy credentials, private
+hostnames, package assets or acceptance transcripts into `evidence`. It is a non-secret pointer
+readable to people authorized to read the item.
+
+Record `staging` only after exact source/build arrival, migrations and health checks. Then record
+`production_ready` only after explicit human staging acceptance **and** verification of the matching
+published private production package. Finally record `production` only after separately authorized
+production installation and independent arrival/health/acceptance checks. See
+[release handoff](../../docs/PRODUCTION-RELEASE-HANDOFF.md). This command records the operator's
+attestation; it does not inspect targets, grant acceptance, publish a package or perform deployment.
+
+The latter two transitions require the preceding milestone for the identical source, build and
+feedback cycle. Recording a new staging build replaces current progress; audit events retain history.
+Replanning, reopening or changing the build cannot carry old production evidence into the new cycle.
+Legacy `mark-deployed` clears current release evidence and therefore returns to **Deployment unverified**.
+No release controls or drag-to-deploy actions are exposed to reporters.

@@ -36,6 +36,7 @@ import {
   markBuildCompleted,
   markBuildStarted,
   markDeployed,
+  recordFeedbackRelease,
   markUnblocked,
   pullApproved,
   pullPlanned,
@@ -208,6 +209,12 @@ async function main() {
       console.log('  Remaining manual step on the server:  sudo systemctl restart aihr');
       break;
     }
+    case 'record-release': {
+      const p = JSON.parse(await readStdin());
+      recordFeedbackRelease(p);
+      console.log(`recorded ${p.id}: ${p.stage}`);
+      break;
+    }
     case 'mark-deployed': {
       const p = JSON.parse(await readStdin());
       markDeployed(p);
@@ -216,7 +223,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed>',
+        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed | record-release>',
       );
       process.exit(2);
   }

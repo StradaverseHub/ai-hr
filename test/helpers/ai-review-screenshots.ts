@@ -15,7 +15,7 @@ async function applicationCss(){
   return result.css+`\n@font-face{font-family:ReviewJakarta;src:url(data:font/woff2;base64,${jakarta}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}@font-face{font-family:ReviewMono;src:url(data:font/woff2;base64,${mono}) format('woff2');font-weight:100 900;font-style:normal;font-display:block;}:root{--font-jakarta:ReviewJakarta;--font-geist-mono:ReviewMono;}`;
  })();return css;
 }
-export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'build-list'|'pay-rule',fixture='real components; fictional data owners; no authenticated server journey'){
+export async function captureAiReviewScreenshots(html:string,locale:string,section:'overview'|'queue'|'probe'|'scheduled-group'|'scheduled-company'|'build-list'|'pay-rule'|'feedback-board',fixture='real components; fictional data owners; no authenticated server journey'){
  const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR;
  if(!evidence)return;
  if(process.env.GITHUB_ACTIONS!=='true')throw Error('Visual capture requires the selected GitHub Actions runner.');
