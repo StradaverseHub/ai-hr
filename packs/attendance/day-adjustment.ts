@@ -1,3 +1,4 @@
+import {captureAttendanceDayReviewStateTx,attendanceDayReviewWitnessTx} from './day-schedule-effects';
 import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, gte, isNull, lte, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../../db/client';
@@ -70,11 +71,7 @@ export type AttendanceDayEdit={employmentId:string;date:string;baseline:string;r
   {kind:'overtime';rows:{key:string;minutes:number|null}[]}
 );
 
-export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit,existingTx?:Tx,options?:{returnEventId:true}):Promise<{version:number;adjustmentId?:string;eventId?:string}>{
-  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
-  if(!['schedule','overtime'].includes(p.kind))throw new Error('Choose a supported attendance correction.');
-  dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw new Error('Explain the correction in at most 500 characters.');
-  return withAttendanceDayTx(ctx,async tx=>{
+async function lockedAttendanceDayEditStateTx(tx:Tx,ctx:SessionContext,p:AttendanceDayEdit){
     await lockAttendanceLeaveDependenciesTx(tx,ctx,[p.employmentId]);
     const employee=await subject(tx,ctx,p.employmentId);if(!employee||employee.self)throw new Error('You cannot correct your own attendance or an employee outside your administrator scope.');
     await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${ctx.tenantId+':'+p.employmentId},0))`);
@@ -84,7 +81,6 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
     await tx.select({id:s.attendance.id}).from(s.attendance).where(and(eq(s.attendance.employmentId,p.employmentId),eq(s.attendance.attendanceDate,p.date))).for('update');
     const current=await readTx(tx,ctx,p.employmentId,p.date);
     if(!current||current.baseline!==p.baseline)throw new Error('This attendance day changed. Reload it before saving.');
-    let shiftId=current.shiftId,dayKind=current.dayKind;const manual:ManualOtRows={...current.adjustment?.manualOtRows};
     if(p.kind==='schedule'){
       if(p.dayKind!==null&&!['workday','off_day','rest_day','holiday'].includes(p.dayKind))throw new Error('Choose a supported day type.');
       if(current.leave.length&&p.dayKind!==current.dayKind)throw new Error('Leave owns this date, including partial-day leave. Manage the leave request instead.');
@@ -93,6 +89,27 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
         if(!sh)throw new Error('Choose an active shift from this organisation.');
         await assertShiftsAllowedForEmploymentsTx(tx,[{employmentId:p.employmentId,shiftId:p.shiftId}]);
       }
+    }
+    return {current,payroll};
+}
+/** Same owner/validation and retained pre-preview locks; schedule mode only. */
+export async function lockAttendanceDayScheduleReviewTx(tx:Tx,ctx:SessionContext,p:Extract<AttendanceDayEdit,{kind:'schedule'}>){
+ p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+ if(p.kind!=='schedule')throw Error('Choose a supported attendance correction.');
+ dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw Error('Explain the correction in at most 500 characters.');
+ assertModuleGate(ctx,'attendance');return lockedAttendanceDayEditStateTx(tx,ctx,p);
+}
+
+export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEdit,existingTx?:Tx,options?:{returnEventId:true;reviewEffects?:true}):Promise<{version:number;adjustmentId?:string;eventId?:string}>{
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
+  if(options?.reviewEffects&&p.kind!=='schedule')throw Error('Reviewed effects support schedule corrections only.');
+  if(!['schedule','overtime'].includes(p.kind))throw new Error('Choose a supported attendance correction.');
+  dateValue(p.date);const reason=p.reason.trim();if(!reason||reason.length>500)throw new Error('Explain the correction in at most 500 characters.');
+  return withAttendanceDayTx(ctx,async tx=>{
+    const {current,payroll}=await lockedAttendanceDayEditStateTx(tx,ctx,p);
+    const beforeReview=options?.reviewEffects?await captureAttendanceDayReviewStateTx(tx,ctx,p,payroll.map(row=>row.batchId),current):null;
+    let shiftId=current.shiftId,dayKind=current.dayKind;const manual:ManualOtRows={...current.adjustment?.manualOtRows};
+    if(p.kind==='schedule'){
       shiftId=p.shiftId;dayKind=p.dayKind;
     }else{
       if(!Array.isArray(p.rows)||!p.rows.length||p.rows.length>100)throw new Error('Select the overtime rows to change.');
@@ -115,9 +132,20 @@ export async function saveAttendanceDayEdit(ctx:SessionContext,p:AttendanceDayEd
       await tx.update(s.attendance).set(figures.columns).where(eq(s.attendance.id,calculated.day.id));
       await refreshOvertimePatternDayTx(tx,ctx,{employmentId:p.employmentId,date:p.date,reason:'Corrected attendance day'});
     }
-    const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'attendance-day-adjustment',aggregateId:saved.id,eventType:'attendance.day.corrected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
-      payload:{date:p.date,kind:p.kind,reason,before:current.adjustment,after:saved,scheduleBefore:current.schedule,scheduleAfter:calculated.schedule,calculationBefore:current.rows,calculationAfter:calculated.rows}},{returnId:options?.returnEventId===true});
-    await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
+    const eventArgs={tenantId:ctx.tenantId,aggregateType:'attendance-day-adjustment',aggregateId:saved.id,eventType:'attendance.day.corrected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
+      payload:{date:p.date,kind:p.kind,reason,before:current.adjustment,after:saved,scheduleBefore:current.schedule,scheduleAfter:calculated.schedule,calculationBefore:current.rows,calculationAfter:calculated.rows}};
+    let eventId:string|undefined;
+    if(options?.reviewEffects){
+      // The reviewed mode attests the ACTUAL completed effects. Default audit ordering/payload is unchanged.
+      await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
+      const afterEditor=await readTx(tx,ctx,p.employmentId,p.date);if(!beforeReview||!afterEditor)throw Error('Native day review is unavailable.');
+      const afterReview=await captureAttendanceDayReviewStateTx(tx,ctx,p,payroll.map(row=>row.batchId),afterEditor);
+      const reviewEffects=await attendanceDayReviewWitnessTx(tx,ctx,p,payroll.map(row=>row.batchId),beforeReview,afterReview);
+      eventId=await appendEvent(tx,{...eventArgs,payload:{...eventArgs.payload,reviewEffects}},{returnId:true});
+    }else{
+      eventId=await appendEvent(tx,eventArgs,{returnId:options?.returnEventId===true});
+      await markAttendancePayrollTx(tx,ctx,payroll,p.employmentId);
+    }
     return eventId?{version:saved.version,adjustmentId:saved.id,eventId}:{version:saved.version};
   },existingTx);
 }
