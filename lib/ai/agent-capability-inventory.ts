@@ -1,3 +1,4 @@
+/** Passport review covers existing MY profiles only. Broad setPassportAction stays backlog:approve for no-row and legacy-country paths. */
 /** Bank Information subset is registered separately. Legacy setBankAction stays backlog:approve because its MY fallback is broader than the supported actual-country review. */
 /** ADR-0151 §4.2 — every human entry point that can change data, classified for the orchestrator.
  * The tier ceiling also constrains runtime preparation and confirmation. Each owning service

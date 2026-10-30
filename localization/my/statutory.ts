@@ -1068,16 +1068,8 @@ export type PassportInput = {
  *     person has no statutory row yet — nothing to clear, no empty row seeded.
  * Remark and issuing country are optional on every path.
  */
-/** Same country-owned passport completeness check for a proposed edit and the actual writer. */
-export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
- const values=[p.passportNumber,p.passportIssueDate,p.passportExpiryDate,p.passportRemark,p.passportIssuingCountry,p.passportIssuingCountryCode].map(value=>(value??'').trim());
- const trioComplete=values.slice(0,3).every(Boolean),anyFieldPresent=values.some(Boolean);
- return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
-}
-export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
-  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
-  outerTx?: Tx) {
-  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+/** The same six-field normalization serves native writes and local reviewed reads. */
+function normalizedPassportValuesMY(p:PassportInput){
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1087,9 +1079,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
   // CODE and a lowercase one would not match a statutory list; NOT derived from `issuingCountry`, which
   // holds a nationality demonym (see db/schema.ts and migration 0450).
   const issuingCountryCode = ((p.passportIssuingCountryCode ?? '').trim() || null)?.toUpperCase() ?? null;
-  const anyFieldPresent = Boolean(number || issue || expiry || remark || issuingCountry || issuingCountryCode);
-  const trioComplete = Boolean(number && issue && expiry);
-  const values = {
+  return {
     passportNumber: number,
     passportIssueDate: issue,
     passportExpiryDate: expiry,
@@ -1097,6 +1087,17 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
     passportIssuingCountry: issuingCountry,
     passportIssuingCountryCode: issuingCountryCode,
   };
+}
+/** Same country-owned passport completeness check for a proposed edit and the actual writer. */
+export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
+ const values=normalizedPassportValuesMY(p),trioComplete=Boolean(values.passportNumber&&values.passportIssueDate&&values.passportExpiryDate),anyFieldPresent=Object.values(values).some(Boolean);
+ return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
+}
+export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+  const values=normalizedPassportValuesMY(p),anyFieldPresent=Object.values(values).some(Boolean);
   const run = async (tx:Tx) => {
     await statutoryWriteIntervalMYTx(tx,ctx);
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
@@ -1526,4 +1527,17 @@ export async function prepareReviewedBankMYTx(tx:Tx,ctx:SessionContext,p:BankInp
  const before={bankName:snapshot.profile.bankName,bankAccountNo:snapshot.profile.bankAccountNo,enableCustomHolderName:snapshot.profile.enableCustomHolderName,customHolderName:snapshot.profile.customHolderName,enableCustomHolderId:snapshot.profile.enableCustomHolderId,customHolderId:snapshot.profile.customHolderId},after=normalizedBankValuesMY(p);
  const [personVersion]=await tx.execute<{revision:string}>(sql`select xmin::text as revision from person where id=${p.personId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
  return {statutoryId:snapshot.profile.id,before,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['bank:MY:v1',snapshot,personVersion,after])).digest('hex')};
+}
+
+/** Minimal country-owned passport snapshot. Never reads IC, bank, tax or sibling statutory values. */
+async function reviewedPassportSnapshotMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase();await lockReviewedStatutoryPersonIdMYTx(tx,ctx,id);
+ const [subject]=await tx.select({nationality:person.nationality,revision:sql<string>`xmin::text`}).from(person).where(and(eq(person.id,id),eq(person.tenantId,ctx.tenantId)));
+ const [row]=await tx.select({statutoryId:employeeStatutoryMy.id,revision:sql<string>`xmin::text`,passportNumber:employeeStatutoryMy.passportNumber,passportIssueDate:employeeStatutoryMy.passportIssueDate,passportExpiryDate:employeeStatutoryMy.passportExpiryDate,passportRemark:employeeStatutoryMy.passportRemark,passportIssuingCountry:employeeStatutoryMy.passportIssuingCountry,passportIssuingCountryCode:employeeStatutoryMy.passportIssuingCountryCode}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,id),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ if(!subject||!row)throw new NoStatutoryProfileError();const {statutoryId,revision,...fields}=row;return{statutoryId,revision,fields,subject};
+}
+export async function readReviewedPassportMYTx(tx:Tx,ctx:SessionContext,personId:string){const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,personId);return{statutoryId:snapshot.statutoryId,fields:snapshot.fields};}
+export async function prepareReviewedPassportMYTx(tx:Tx,ctx:SessionContext,p:PassportInput){
+ p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);if(!validatePassportProfileMY(p,snapshot.subject.nationality))throw new PassportRequiredError();
+ const after=normalizedPassportValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
 }

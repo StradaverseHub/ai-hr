@@ -446,3 +446,9 @@ ordinary-document metadata action to the existing encrypted assigned ledger; eve
 under its prior owner/constraints and the same dynamic outcome bounds.
 
 0721 / idx702 / when1793330000050: employee-code Assistant maintenance, PROVISIONAL SOURCE CLAIM ONLY. Sibling0720 is separately owned; integration must reconcile the actual ordered ledger above the live watermark. No installation priority or deployment authority.
+
+## Existing-profile MY passport review — provisional 30 October 2026
+
+0722_assistant_passport_maintenance / idx703 / when1793330000051 is UNAPPLIED provisional source only.
+0720–0721 sibling packages are not included in this tree. Reconcile all claims above the then-live ordered
+ledger at integration freeze; no installation priority or deployment authority is granted.

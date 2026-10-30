@@ -4117,6 +4117,13 @@
       "when": 1793330000050,
       "tag": "0721_assistant_employee_code_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 703,
+      "version": "7",
+      "when": 1793330000051,
+      "tag": "0722_assistant_passport_maintenance",
+      "breakpoints": true
     }
   ]
 }

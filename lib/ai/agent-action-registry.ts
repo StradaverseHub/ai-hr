@@ -72,6 +72,7 @@ export type AgentActionServiceMember='statutory.set'|'statutory.setBank';
 
 /** The policy field reuses WP2's AgentActionPolicy union, so `{category:'pay',tier:'automatic'}` (or any
  * never-Automatic category paired with Automatic) is a compile error in the entry itself. */
+export type AgentActionServiceMember='statutory.set'|'statutory.setBank'|'statutory.setPassport';
 export type AgentActionDefinition=Readonly<{
  id:string;module:AgentModuleCode;owner:AgentActionOwner;service:Anchor;serviceMember?:AgentActionServiceMember;observations?:'human_actual_only';
  contractVersion:number;prepare:AgentActionPhase;confirm:AgentActionPhase;
@@ -398,6 +399,14 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#updateEmployeeDocumentMetaAction']},review:{route:'/assistant/document-details',handoff:'review_page'},
   store:'generic_assigned',browserOwner:'documentMetadata',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.passport.maintain',module:'employees',owner:'personnel',service:'localization/registry.ts#requirePackFor',serviceMember:'statutory.setPassport',contractVersion:1,
+  prepare:{status:'implemented',adapter:'passport_maintenance_review_v1',inputSchema:'PassportMaintenance.Human',outputSchema:'PassportMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'passport_maintenance_review_v1',inputSchema:'PassportMaintenance.Confirmation',outputSchema:'PassportMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'passport_information_saved_not_ic_dob_pay_or_access',humanInputs:['employmentId','subjectId','fields'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/passport-maintenance-source.ts#withPassportMaintenanceIntervalTx'},subject:'other_person',blastRadius:{max:1,unit:'shared_person_passport_information'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:[]},review:{route:'/assistant/passport',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'passportMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.emergency_contact.maintain',module:'employees',owner:'personnel',service:'core/workforce-registers.ts#addEmergencyContact',contractVersion:1,
   prepare:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Human',outputSchema:'EmergencyContactMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Confirmation',outputSchema:'EmergencyContactMaintenance.Completed'},

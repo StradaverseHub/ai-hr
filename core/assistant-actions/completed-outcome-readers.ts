@@ -1,3 +1,4 @@
+import {passportMaintenanceReviews} from './passport-maintenance-review-store';
 import {employeeCodeMaintenanceReviews} from './employee-code-maintenance-review-store';
 import {familyMaintenanceReviews} from './family-maintenance-review-store';
 import {bankMaintenanceReviews} from './bank-maintenance-review-store';
@@ -61,6 +62,7 @@ const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOut
  'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.code.maintain':(tx,ctx,id)=>employeeCodeMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.passport.maintain':(tx,ctx,id)=>passportMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.bank.maintain':(tx,ctx,id)=>bankMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.document_metadata.maintain':(tx,ctx,id)=>documentMetadataReviews.readCompletedOutcomeTx(tx,ctx,id),
  'employees.emergency_contact.maintain':(tx,ctx,id)=>emergencyContactMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),

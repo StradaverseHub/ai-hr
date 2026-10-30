@@ -103,6 +103,7 @@ export const AGENT_ACTION_PARITY={
  'employees.compensation.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.code.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.workforce_profile.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
+ 'employees.passport.maintain':{kind:'probed',screen:{...HR_ON_EMPLOYMENT,another_company:A},narrowed:{another_company:'The legacy HR-only native setter shares person-level statutory authority across tenant companies. Assistant additionally requires shared-person Workforce maintenance and identity/personnel visibility in every retained company before its minimal snapshot.'}},
  'employees.bank.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.document_metadata.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},
  'employees.emergency_contact.maintain':{kind:'probed',screen:HR_ON_EMPLOYMENT},

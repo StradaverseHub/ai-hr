@@ -1,3 +1,4 @@
+import {passportMaintenanceReviews,readPassportMaintenanceChoices} from '../../core/assistant-actions/passport-maintenance-review-store';
 import {employeeCodeMaintenanceReviews,readEmployeeCodeMaintenanceChoices} from '../../core/assistant-actions/employee-code-maintenance-review-store';
 import {setWorkforceEmployeeCode} from '../../core/workforce-code';
 import {documentMetadataReviews,readDocumentMetadataChoices} from '../../core/assistant-actions/document-metadata-review-store';
@@ -385,6 +386,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.workforce_profile.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,section:'personal',...(item.proposal as {expectedVersion:string;values:Record<string,string|null>})}),
   offered:async(who,item)=>listed(await readWorkforceProfileMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>maintainWorkforceRecord(who,{employmentId:item.employmentId,kind:'person',rowId:null,operation:'update',patch:(item.proposal as {values:Record<string,string|null>}).values,expectedVersion:(item.proposal as {expectedVersion:string}).expectedVersion},tx)},
+ 'employees.passport.maintain':{family:'hr_on_employment',store:passportMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
+  human:item=>({action:'employees.passport.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{passportNumber:'FICTIONAL',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportRemark:null,passportIssuingCountry:null,passportIssuingCountryCode:null}}),
+  offered:async(who,item)=>listed(await readPassportMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>requirePackFor('MY').statutory.setPassport(who,{personId:item.subjectId,passportNumber:'FICTIONAL',passportIssueDate:'2020-01-01',passportExpiryDate:'2030-01-01',passportRemark:null,passportIssuingCountry:null,passportIssuingCountryCode:null},tx)},
  'employees.bank.maintain':{family:'hr_on_employment',store:bankMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>{await requirePackFor('MY').statutory.set(groupOf(h.base),{personId:h.person.personId,icNumber:null});return itemOf(h,h.person.personId);},
   human:item=>({action:'employees.bank.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,fields:{bankName:'Fictional bank',bankAccountNo:'000-FICTIONAL',enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}}),

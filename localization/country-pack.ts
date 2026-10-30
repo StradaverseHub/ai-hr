@@ -411,6 +411,8 @@ export interface CountryPack {
     setIc: MyStatutoryModule['setIcProfileMY'];
     canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
+    /** Minimal six-field, existing-profile local human review. */
+    reviewedPassport?:{read:MyStatutoryModule['readReviewedPassportMYTx'];prepare:MyStatutoryModule['prepareReviewedPassportMYTx']};
     validatePassport:MyStatutoryModule['validatePassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];

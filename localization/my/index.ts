@@ -10,7 +10,7 @@ import { MY_EA_REPORTING } from './ea-reporting';
 import { validateEpfElection } from './epf-election';
 import { convertLegacyEpfTopupsMY } from './epf-topup-conversion-db';
 import { legacyTopupConversionCsv } from './epf-topup-conversion';
-import { prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
+import { readReviewedPassportMYTx,prepareReviewedPassportMYTx,prepareReviewedBankMYTx,readReviewedStatutoryEditableMYTx,reviewedStatutoryChoiceMetadataMYTx,readReviewedStatutoryLabelsMYTx,lockReviewedStatutoryProfileMYTx,withStatutoryProfileWriteMY,prepareReviewedStatutoryProfileMYTx,confirmReviewedStatutoryProfileMYTx,readReviewedStatutoryProfileReferenceMYTx,correctAccidentalHrdfOptOutsMY, defaultSocsoEisNumber, dobFromIC, getStatutoryProfileMY, getStatutoryEditSnapshotMY, isValidIC, normalizeIC, setBankProfileMY, setRegistrationNumbersMY, setIcProfileMY, canApplyIcProfileChangeMY, setOthersStatutoryMY, setPassportProfileMY, validatePassportProfileMY, setStatutoryProfileMY, setTaxProfileMY, setTp3ProfileMY, taxNumberSharedWithMY } from './statutory';
 import { annualEntitlement, entitlement, MY_LEAVE_TYPES } from './leave';
 import { MY_HOLIDAYS_2026, MY_STATES } from './holidays';
 import {
@@ -101,6 +101,7 @@ export const myPack: CountryPack = {
     // Item e3ce0d4d — non-Malaysian identity: save the passport identification block (skips MyKad IC validation).
     // The counterpart to setIc; the identity form on the Profile tab picks one based on the selected nationality.
     setPassport: setPassportProfileMY,
+    reviewedPassport:{read:readReviewedPassportMYTx,prepare:prepareReviewedPassportMYTx},
     validatePassport:validatePassportProfileMY,
     setTax: setTaxProfileMY,
     getTaxSelection:getTaxSelectionMY,
