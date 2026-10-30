@@ -146,6 +146,8 @@ test('Finite fixture reader preserves exact complete inert duration diagnostics 
  try{
   const directory=extract(entries);assert.deepEqual(readdirSync(directory).sort(),['focused.json','nodb.vitest.json']);assert.throws(()=>extract(entries,true));
   assert.deepEqual(readdirSync(extract(basic)).sort(),['focused.json','nodb.vitest.json']);
+  zip(entries);browserExec('python3',['-c','import sys,zipfile;z=zipfile.ZipFile(sys.argv[1],"a");z.writestr("duration-sequence-smoke/proof.json","{}");z.close()',path],{stdio:'pipe'});
+  assert.throws(()=>browserExec('python3',[browserFilePath(new URL('./fixture-repair-extract.py',import.meta.url)),path,join(root,'duplicate-refused')],{stdio:'pipe'}));
   const missing={...entries};delete missing['duration-sequence-smoke/proof.json'];
   for(const e of [missing,{...entries,'duration-sequence-smoke/unknown.json':'{}'},{...entries,'duration-sequence-smoke/../evil.json':'{}'},{...entries,'duration-sequence-smoke/proof.json':'x'.repeat(16*1024*1024+1)},{...entries,'focused.json':JSON.stringify({groups:{NODB:[],DB:['test/db.test.ts']}}),'db.vitest.json':'{}'}])assert.throws(()=>extract(e));
  }finally{rmSync(root,{recursive:true,force:true});}

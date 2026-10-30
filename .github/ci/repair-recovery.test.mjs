@@ -213,8 +213,9 @@ for(const [name,change] of [['missing after',f=>delete f.browsers[0].packets[0].
 
 test('An independently updated reader retains the actual prior PDF execution controller and immutable producer fingerprint',()=>{
  const f=pdfPolicyFixture(),producer=RETAINED_PDF_EXECUTION_CONTROLLER;
- f.verificationController='c'.repeat(40);f.verificationDiagnostic.controller=f.verificationController;
+ f.verificationController='c'.repeat(40);f.verificationDiagnostic.controller=f.verificationController;f.reviewedController=f.verificationController;
  f.impactContext.controller=f.verificationController;f.impactContext.sourceInputsFingerprint=hash({baseTree:f.impactContext.baseTree,headTree:f.impactContext.headTree,controller:f.verificationController,impactPolicy:4});
  const proof=verifyFixtureBrowserRecovery(f);assert.equal(proof.verificationController,f.verificationController);assert.equal(proof.pdfSources[0].executionController,producer);assert.equal(proof.pdfSources[0].codeController,f.plan.controller);
  const wrong=structuredClone(f);wrong.pdf.run.head_sha=wrong.verificationController;assert.throws(()=>verifyFixtureBrowserRecovery(wrong));
+ const staleReview=structuredClone(f);staleReview.reviewedController=producer;assert.throws(()=>verifyFixtureBrowserRecovery(staleReview),/Reviewed verifier identity changed/);
 });
