@@ -5,7 +5,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
 import { credentialByLogin } from '../lib/internal-auth/service';
 import { internalEmailRequest, recoveryMailReady } from '../lib/internal-auth/mail';
-import { readActiveRelayTx } from '../lib/internal-auth/active-relay';
+import { readLifecycleRelayTx, readActiveRelayTx } from '../lib/internal-auth/active-relay';
 import { client } from '../db/client';
 import type { EmailConfig, EmailSettingsView, IdentityEmailActor } from '../lib/identity/email-model';
 const session = vi.hoisted(() => ({ context: null as SessionContext | null, identity: null as {issuer:string;subject:string;email:string;emailVerified:boolean} | null }));
@@ -91,4 +91,21 @@ describe('HR-owned SMTP settings with actual private storage and authority',()=>
     session.identity={issuer:'https://other.test/issuer',subject,email:'owner@example.test',emailVerified:true};
     await expect(internalEmailRequest({op:'view',actor:{...actor,issuer:'https://other.test/issuer',subject}})).rejects.toMatchObject({code:'forbidden'});
   });
+});
+
+it('stores confirmed lifecycle mailbox versions privately and isolates tenant/profile bindings',async()=>{
+ const baseDraft=await draft();await internalEmailRequest({op:'test',actor,draftId:baseDraft.id},async()=>{});await internalEmailRequest({op:'apply',actor,draftId:baseDraft.id,received:true});
+ const original=await readActiveRelayTx(client),initial=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:'new'});
+ const saved=await internalEmailRequest<{connectionId:string}>({op:'save',actor,revision:initial.revision,connectionName:'Fictional HR mailbox',config:{...config,from:'separate-hr@example.test'},password:'fictional-profile-secret'});
+ let selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:saved.connectionId});
+ const apply=()=>internalEmailRequest({op:'apply',actor,connectionId:saved.connectionId,draftId:selected.draft!.id,received:true,lifecycleSender:'hr'});
+ await expect(apply()).rejects.toMatchObject({code:'needsTest'});await internalEmailRequest({op:'test',actor,connectionId:saved.connectionId,draftId:selected.draft!.id},async()=>{});
+ await expect(internalEmailRequest({op:'apply',actor,connectionId:saved.connectionId,draftId:selected.draft!.id,received:false,lifecycleSender:'hr'})).rejects.toMatchObject({code:'needsReceipt'});await apply();
+ const bound=await readLifecycleRelayTx(client,base.tenantId,'hr');expect(bound?.relay.config.from).toBe('separate-hr@example.test');expect(bound?.revision).not.toBe(original?.revision);expect(await readActiveRelayTx(client)).toEqual(original);
+ expect(await readLifecycleRelayTx(client,base.tenantId,'onboarding')).toEqual(original);expect(await readLifecycleRelayTx(client,randomUUID(),'hr')).toEqual(original);
+ selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:saved.connectionId});
+ await internalEmailRequest({op:'save',actor,revision:selected.revision,connectionId:saved.connectionId,connectionName:'Fictional HR mailbox',config:{...config,from:'future-hr@example.test'},password:'fictional-future-secret'});
+ expect(await readLifecycleRelayTx(client,base.tenantId,'hr')).toEqual(bound);const visible=await view();expect(visible.lifecycleSenders?.find(sender=>sender.profile==='hr')).toMatchObject({from:'separate-hr@example.test',hasUnappliedChanges:true});
+ expect(JSON.stringify(visible)).not.toContain('fictional-profile-secret');expect(JSON.stringify(await owner.client`select * from app_internal_auth_record`)).not.toContain('fictional-profile-secret');
+ const events=await owner.client`select event_type,payload from domain_event where event_type='identity-email.lifecycle-sender-applied'`;expect(events).toHaveLength(1);expect(events[0].payload).toMatchObject({profile:'hr',connectionId:saved.connectionId});
 });

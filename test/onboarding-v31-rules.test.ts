@@ -70,6 +70,21 @@ describe('V3.1 intake, selection and checklist rules', () => {
         expect(c.tasks[1]?.failure).toContain(fixtureJoin);
         expect(c.history.some(h => h.action === 'task.assignment_failed')).toBe(true);
     });
+    it('treats a zero group task limit as unlimited while retaining leave and load balancing', () => {
+        config.groups.find(group => group.id === 'people-gbs')!.limit = 0;
+        config.checklists[0]!.tasks = [template('unlimited-pack')];
+        env.taskLoads = { sarah: 1500, farid: 1501 };
+        expect(() => onboardingConfigSchema.parse(config)).not.toThrow();
+        expect(() => M.validateConfig(config)).not.toThrow();
+        M.submitCase(config, c, hr, env);
+        expect(c.tasks[0]?.assignee).toBe('sarah');
+        const task = c.tasks[0]!; task.assignee = null; env.leave.sarah = [task.dueOn];
+        M.assignTask(config, c, task, hr, env);
+        expect(task.assignee).toBe('farid');
+        config.groups.find(group => group.id === 'people-gbs')!.limit = -1;
+        expect(() => onboardingConfigSchema.parse(config)).toThrow();
+        expect(() => M.validateConfig(config)).toThrow('zero means unlimited');
+    });
     it('balances equal loads with least recent automatic assignment', () => {
         config.checklists[0]!.tasks = [template('pack')];
         env.lastTaskAssignment = { sarah: M.dayDate(fixtureToday, -2), farid: M.dayDate(fixtureToday, -30) };
@@ -254,7 +269,7 @@ describe('V3.1 fulfilment, gates, progress and retained history', () => {
         expect(c.history.some(h => h.action === 'case.cancelled')).toBe(true);
     });
     it('rejects work without module, assigned-task or team rights', () => {
-        expect(() => M.submitCase(config, c, tech, env)).toThrow('access');
+        expect(() => M.submitCase(config, c, tech, env)).toThrow('Case actions');
         config.checklists[0]!.tasks = [template('pack')];
         M.submitCase(config, c, hr, env);
         expect(() => M.setTask(config, c, 'pack', 'done', tech, env)).toThrow('assigned');

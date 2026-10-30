@@ -428,6 +428,8 @@
     "myPerformance": "我的绩效",
     "mySystemTesting": "我的测试",
     "myTasks": "我的任务",
+    "onboardingOffboarding": "入职与离职",
+    "myLifecycle": "我的入职与离职",
     "newJoiners": "新入职员工",
     "onboardingRequisitions": "设备与权限申请",
     "allOnboardingRequisitions": "所有申请",
@@ -11152,7 +11154,7 @@
         "onboardingModuleAccess": "只有具有集团级人事管理权限的主管理员可以授予或移除模块访问权。",
         "onboardingRequisitions": "配置的履行组、审批组和系统添加组、模块用户及公司人事可查看申请。操作仍受当前团队、审批步骤或项目权限限制。仅被提及只能查看相应讨论。",
         "onboardingSettings": "入职模块用户维护政策、目录、审批流程和路由。未获模块权限的主管理员只能管理分配组和授权。",
-        "onboardingV31": "需要单独授予入职模块访问权，与人事角色无关。人事专用身份字段还需要相应公司的人员管理权限。",
+        "onboardingV31": "需要入职模块授权或已配置的群组页面访问权。区块可见性与案件操作权限相互独立；人事专用字段还需要相应公司的人事权限。",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "所有人都可打开；只有公司的管理员才能更改。",
@@ -21902,7 +21904,8 @@
     "success": {
       "save": "草稿已保存。当前中继保持不变。",
       "test": "中继已接受测试邮件。启用前请检查收件箱。",
-      "apply": "中继已启用，可用于邀请和密码恢复。"
+      "apply": "中继已启用，可用于邀请和密码恢复。",
+      "sender": "生命周期邮件发件人已更新。账户恢复和安装环境默认值保持不变。"
     },
     "connectionTitle": "SMTP 连接",
     "security": "加密",
@@ -21940,7 +21943,15 @@
     "notRecorded": "未记录",
     "backToConnections": "返回连接列表",
     "saveConnection": "保存连接",
-    "activeChangesHelp": "当前中继继续使用上次启用的设置。请先保存、测试并确认收到邮件，再启用更改。"
+    "activeChangesHelp": "当前中继继续使用上次启用的设置。请先保存、测试并确认收到邮件，再启用更改。",
+    "lifecycleSenderTitle": "入职和离职邮件发件人",
+    "lifecycleSenderHelp": "每个发件人使用已确认的连接。未单独绑定时，使用安装环境当前启用的邮件中继。",
+    "applyTarget": "将此已测试的连接应用于",
+    "applyDefault": "安装环境默认值（账户及其他邮件）",
+    "senderDefault": "使用安装环境默认值",
+    "senderConfirmed": "已于 {at} 确认收件",
+    "senderPending": "此连接有更新的已保存更改。在重新测试并应用前，继续使用已确认的版本发送邮件。",
+    "senderTargetHelp": "测试在 30 分钟后过期。安装环境默认值用于控制账户邮件。生命周期选项仅更改当前租户的对应发件人。编辑连接后，请重新测试并确认收件。"
   },
   "workflowEmail": {
     "letterAccountTitle": "此账户的信函通知",
@@ -26917,6 +26928,7 @@
       "c035edd9bd720": "从组中移除",
       "c5d9c3ec58913": "搜索要添加到此组的人员",
       "c95332e75dac8": "通过“我的任务”处理工作",
+      "v9NoTaskLimit": "不限任务数量",
       "cd1a339556dbb": "未完成任务"
     }
   },

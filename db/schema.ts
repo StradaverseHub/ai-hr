@@ -11276,7 +11276,7 @@ export const lcOnboardingCase = pgTable('lc_onboarding_case', {
 },t=>[uniqueIndex('lc_onboarding_case_source_uq').on(t.tenantId,t.sourceDraftId)]);
 export const lcOnboardingPrivate = pgTable('lc_onboarding_private', {
   caseId:uuid('case_id').primaryKey().references(()=>lcOnboardingCase.id),tenantId:tenantId(),
-  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>}>().notNull(),
+  companyId:uuid('company_id').notNull().references(()=>company.id),data:jsonb('data').$type<{source:Partial<import('../lib/onboarding-model').Facts>;local:Partial<import('../lib/onboarding-model').Facts>;caseValues?:Record<string,string>;caseContactEmail?:string}>().notNull(),
 });
 export const lcOnboardingNote = pgTable('lc_onboarding_note', {
   id:id(),tenantId:tenantId(),caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),
@@ -11303,6 +11303,34 @@ export const lcOnboardingPrivateRevision=pgTable('lc_onboarding_private_revision
  caseId:uuid('case_id').notNull().references(()=>lcOnboardingCase.id),revision:integer('revision').notNull(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),
  data:jsonb('data').$type<typeof lcOnboardingPrivate.$inferSelect.data>().notNull(),createdAt:createdAt(),
 },t=>[primaryKey({columns:[t.caseId,t.revision]})]);
+
+/** V9 case/document executions are additive; previous lifecycle generations retain their history. */
+export const lcV9Config = pgTable('lc_v9_config', {
+  tenantId: tenantId().primaryKey(), revision: integer('revision').notNull().default(1),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Config>().notNull(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const lcV9ConfigRevision = pgTable('lc_v9_config_revision', {
+  tenantId: tenantId(), revision: integer('revision').notNull(), data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Config>().notNull(),
+  actorUserId: uuid('actor_user_id').references(() => appUser.id), createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.tenantId, t.revision] })]);
+export const lcV9Case = pgTable('lc_v9_case', {
+  id: id(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  module: text('module').$type<'onb' | 'off'>().notNull(), number: text('number').notNull(), revision: integer('revision').notNull().default(1),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Case>().notNull(), createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, t => [uniqueIndex('lc_v9_case_number_uq').on(t.tenantId, t.number), index('lc_v9_case_company').on(t.tenantId, t.companyId, t.module)]);
+export const lcV9CaseRevision = pgTable('lc_v9_case_revision', {
+  tenantId: tenantId(), caseId: uuid('case_id').notNull().references(() => lcV9Case.id), companyId: uuid('company_id').notNull().references(() => company.id), revision: integer('revision').notNull(),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').Case>().notNull(), actorUserId: uuid('actor_user_id').references(() => appUser.id), createdAt: createdAt(),
+}, t => [primaryKey({ columns: [t.caseId, t.revision] })]);
+export const lcV9File = pgTable('lc_v9_file', {
+  id: id(), tenantId: tenantId(), caseId: uuid('case_id').notNull().references(() => lcV9Case.id), companyId: uuid('company_id').notNull().references(() => company.id),
+  documentId: text('document_id'), slot: text('slot').notNull(), filename: text('filename').notNull(), mimeType: text('mime_type').notNull(), content: bytea('content').notNull(),
+  uploadedBy: uuid('uploaded_by').notNull().references(() => appUser.id), createdAt: createdAt(),
+});
+export const lcV9PayrollHandover = pgTable('lc_v9_payroll_handover', {
+  id: uuid('id').primaryKey(), tenantId: tenantId(), companyId: uuid('company_id').notNull().references(() => company.id), caseId: uuid('case_id').notNull().references(() => lcV9Case.id), employmentId: uuid('employment_id').notNull().references(() => employment.id),
+  data: jsonb('data').$type<import('../lib/lifecycle-v9-model').FinalFigures>().notNull(), status: text('status').$type<'pending' | 'reviewed' | 'withdrawn'>().notNull().default('pending'), reviewedBy: uuid('reviewed_by').references(() => appUser.id), reviewNote: text('review_note'), createdAt: createdAt(), updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 /** Closed-payroll leave follow-up, not a payroll input or automatic adjustment. */
 export const payrollLeaveException = pgTable('payroll_leave_exception', {

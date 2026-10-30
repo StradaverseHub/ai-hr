@@ -23,3 +23,8 @@ describe('private email Unix socket protocol',()=>{
   await expect(identityEmailRequest({op:'readiness'})).rejects.toMatchObject({code:'unavailable'});
  });
 });
+
+it('refuses lifecycle bindings before reaching a compatibility relay that could interpret Apply globally',async()=>{
+ vi.stubEnv('AUTH_PROVIDER','keycloak');let calls=0;await socket((_req,res)=>{calls++;res.end('{}');});
+ await expect(identityEmailRequest({op:'apply',actor:{userId:'11111111-1111-4111-8111-111111111111',tenantId:'22222222-2222-4222-8222-222222222222',issuer:'https://fixture.test',subject:'fixture'},draftId:'fictional',connectionId:'fictional',received:true,lifecycleSender:'hr'})).rejects.toMatchObject({code:'invalid'});expect(calls).toBe(0);
+});
