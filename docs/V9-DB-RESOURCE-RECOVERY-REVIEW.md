@@ -1,0 +1,11 @@
+# V9 same-source database resource assessment — source review only
+
+This finite reader is not an installation adapter. It produces `V9_SAME_SOURCE_DB_RESOURCE_REVIEW_ONLY`, always with `installationEligible:false` and `releaseAuthorized:false`. No operator, grant, protected-ref, deployment or production route imports it. A separate reviewed admission decision is still required.
+
+The application remains frozen at72a2673af354f382502ecc7799316fac3c19b1ac. Original first-attempt full run41039154492 uses controller/baseline d6cb83d620d8d4380c981a72fc41628780840b4e. Its db-612c0b9a012cdaa1 unit executed all24files/435assertions successfully, then failed the strict resource guard: recorded peak2147491840 exceeds budget2147483648. OOM counters were zero; that does not turn the original failed job or workflow into PASS.
+
+The reader preserves the original failure and requires a later successful first-attempt focused run of the whole same24file unit. Source, controller, runtime, PG160015, JITon,2GiB budget,2workers, file inventory, all435 case identities, healthy resource evidence, capture interval and owned cleanup remain required. No overshoot tolerance, partial batch, assertion omission, native attempt2, resource increase or new whole gate is substituted.
+
+Authenticated API inventories must be complete and stable across pagination and revalidation. Every original ZIP is checked against its API size/digest before bounded extraction; all unaffected original reports, build/compiler/migration/browser prerequisites and the canonical build source binding remain checked. The focused packet has exactly five members. Complete later-run history includes overlapping and already-active executions, and refuses pending, failed or unaccounted superseding work.
+
+Hosted negative controls cover source/controller/attempt/time, foreign artifacts and ZIP tampering, incomplete pagination/history, partial/renamed/skipped assertions, profile/PG drift, OOM/peak rejection, capture ownership, scheduling proof and cleanup. These tests and any successful assessment establish source-review evidence only, not deployment authority.
