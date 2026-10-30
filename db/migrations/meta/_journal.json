@@ -4075,6 +4075,13 @@
       "when": 1793330000200,
       "tag": "0800_pay_formula_builder",
       "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1793330000211,
+      "tag": "0811_pay_formula_company_retention",
+      "breakpoints": true
     }
   ]
 }

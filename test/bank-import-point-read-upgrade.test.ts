@@ -26,10 +26,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
   const budget=()=>expect(performance.now()<deadline,'150-second work budget reserves owned cleanup within 180 seconds').toBe(true);
   const sourceJournalBytes=readFileSync('db/migrations/meta/_journal.json');
   const sourceJournal=JSON.parse(sourceJournalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
-  expect(sourceJournal.entries.length).toBe(582);
-  exact(sourceJournal.entries.slice(581).map(({idx,when,tag})=>({idx,when,tag})),[{idx:696,when:1793330000200,tag:'0800_pay_formula_builder'}],'Only the exact ratified Formula successor follows the immutable Bank proof prefix');
+  expect(sourceJournal.entries.length).toBe(583);
+  exact(sourceJournal.entries.slice(581).map(({idx,when,tag})=>({idx,when,tag})),[{idx:696,when:1793330000200,tag:'0800_pay_formula_builder'},{idx:697,when:1793330000211,tag:'0811_pay_formula_company_retention'}],'Only the exact ratified Formula successors follow the immutable Bank proof prefix');
   expect(sha(readFileSync('db/migrations/0800_pay_formula_builder.sql'))).toBe('f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322');
-  // This fixture proves the Bank policy change in isolation. Actual 582-row source upgrades are
+  expect(sha(readFileSync('db/migrations/0811_pay_formula_company_retention.sql'))).toBe('b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b');
+  // This fixture proves the Bank policy change in isolation. Actual 583-row source upgrades are
   // independently covered by lifecycle-v9-populated-upgrade and pay-formula-upgrade.
   const journal={...sourceJournal,entries:sourceJournal.entries.slice(0,581)};
   const journalBytes=Buffer.from(JSON.stringify(journal,null,2)+'\n');
@@ -178,6 +179,7 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
    exact(readdirSync(directory).filter(name=>name.endsWith('.sql')).sort(),journal.entries.map(entry=>entry.tag+'.sql').sort(),'The ordinary loader receives every one of the exact 581 prefix SQL files');
    for(const entry of journal.entries)expect(sha(readFileSync(join(directory,entry.tag+'.sql')))).toBe(sha(readFileSync('db/migrations/'+entry.tag+'.sql')));
    expect(existsSync(join(directory,'0800_pay_formula_builder.sql')),'The Bank-only rehearsal must not execute Formula SQL').toBe(false);
+   expect(existsSync(join(directory,'0811_pay_formula_company_retention.sql')),'The Bank-only rehearsal must not execute the later retention helper').toBe(false);
    writeFileSync(join(directory,'meta/_journal.json'),journalBytes);
    budget();await migrate(storage.db,{migrationsFolder:directory});budget();
    const applied=await ledger();expect(applied.length).toBe(581);exact(applied.slice(0,boundary),prior,'The complete old 580-row ledger prefix must be immutable');

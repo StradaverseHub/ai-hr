@@ -599,3 +599,35 @@ the draft appends it at idx696 solely to make the cumulative source reviewable. 
 reservation, installation allocation, live-ledger verification or release qualification. Before final
 freeze, refresh actual accepted source/build/ordered ledger, competing claims and the central allocation;
 stop if this provisional slot or watermark is no longer valid. No applied SQL may change.
+
+
+## Formula company retention repair — centrally ratified source append, 31 October 2026
+
+The release coordinator ratified this append after the original combined gate completed.
+Fresh staging metadata at 2026-10-30T17:14:16Z reports healthy source/build
+`f2ca511f4ded441399fd30437bb75553bb92efbb` / `7N7c7Fk5tpJmI7C-5QGwf`,
+no active lease or prepared batch, and all 581 ordered applied hashes/timestamps matching
+that canonical baseline, through1793330000075. Preserve every 581 prefix entry and SQL byte.
+The existing pending 0800 remains idx696 /1793330000200 with unchanged SQL SHA256
+`f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322`.
+
+The fresh claims audit covered 1537 distinct heads, 283 journal blobs and 340 worktrees,
+including both conflicted journal variants without editing them. External 0810 /1793330000210
+remains excluded. No 0811 filename or sequence 211 collision was found. Append exactly:
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|697|1793330000211|0811_pay_formula_company_retention|b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b|
+
+This read-only boolean helper supplies the existing native company deletion guard with
+retention evidence even after private trace permission is revoked. It requires a current
+validated human company administrator and returns no receipt payload, count or identifier.
+It widens no receipt RLS, table grants, financial effect or real account authority.
+The ordinary owner must own both helper and non-FORCE-RLS receipt tables; verify actual
+ownership, ACLs, principal negatives, hidden receipt behavior and clean/populated upgrades
+on the frozen repaired source. The source journal now has 583 entries. Bank's separate
+scoped 580-to581 proof still executes only its immutable 581 prefix.
+
+This allocation authorizes source repair only. No SQL has been applied by this reservation;
+backup/restore, authenticated affected qualification, exact release admission, protected
+integration and the exclusive staging window remain required. Production is untouched.
