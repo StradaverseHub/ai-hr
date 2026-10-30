@@ -59,7 +59,7 @@ export function FunctionAccessGrid({
                 </th>
                 {MATRIX_ROLES.map((role) => {
                   const ok = canReach(role, screen);
-                  const conditional=screen.guard==='requireSecurityCenter'||screen.guard==='requireGroupAdministration'||screen.guard==='assistantSession'||screen.guard==='requireAccessConfiguration'||screen.guard==='requireWorkforceAccess';
+                  const conditional=screen.guard==='requireSecurityCenter'||screen.guard==='requireGroupAdministration'&&ok||screen.guard==='assistantSession'||screen.guard==='requireAccessConfiguration'||screen.guard==='requireWorkforceAccess';
                   const answer=conditional?(note??labels.notAccessible):ok?labels.accessible:labels.notAccessible;
                   return (
                     <td key={role} className="border-t border-border px-3 py-2.5 text-center align-top">

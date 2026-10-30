@@ -31,4 +31,11 @@ describe('effective access is discoverable without misrepresenting a role grant'
   expect(row.querySelectorAll(`[title="${note}"]`)).toHaveLength(MATRIX_ROLES.length);
   expect(row.querySelector('[title="Role allows screen"]')).toBeNull();
  });
+ it('keeps non-administrator roles refused for group-only provisioning while explaining the administrator scope condition',()=>{
+  const note=en.admin.users.scope.createLogin;
+  render(<FunctionAccessGrid roleLabel={role=>role} screenLabel={entry=>entry.screenKey} scopeNote={entry=>entry.screenKey==='createLogin'?note:null} labels={{accessible:'Role allows screen',notAccessible:'Role refuses screen',screenColumn:'Screen'}}/>);
+  const row=screen.getByRole('rowheader',{name:/^createLogin/}).closest('tr')!;
+  expect(Array.from(row.querySelectorAll('td [title]')).map(node=>node.getAttribute('title'))).toEqual(MATRIX_ROLES.map(role=>role==='hr_admin'||role==='super_admin'?note:'Role refuses screen'));
+ });
+
 });
