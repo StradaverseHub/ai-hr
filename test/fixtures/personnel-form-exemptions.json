@@ -513,6 +513,14 @@
       "occurrences": 1,
       "name": "movementId",
       "reason": "Guarded action record/subject pointer (movementId) used by MovementNewEvent; the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "row",
+      "nameExpression": "`document.${field}`",
+      "hidden": false,
+      "occurrences": 1,
+      "reason": "1d58019a Step 2 (ADR-0166) supporting-document upload for a comparison field whose event type enables File; the file is movement evidence stored by core/movement-attachments.ts through the Movement writer, not a Personnel fact."
     }
   ],
   "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [

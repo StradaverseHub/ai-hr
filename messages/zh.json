@@ -1652,7 +1652,8 @@
           "backToHistory": "返回历史",
           "recordedBy": "记录人",
           "recordedAt": "记录时间",
-          "system": "系统"
+          "system": "系统",
+          "documents": "证明文件"
         },
         "field": {
           "company": "公司",
@@ -1750,7 +1751,11 @@
           "resignationLifecycleHint": "离职资料在生效日期开始适用。请分别记录提交辞呈日期、离职日期和最后工作日期。",
           "closedPayrollTitle": "{periods} 的薪资已关闭。",
           "closedPayrollBody": "此更正会更新员工记录及之后的处理。已关闭的薪资、已发布的工资单和法定申报将保留最终数字，不会重新计算。如需调整金额，请使用薪资更正流程。更正后的工资自已关闭薪资之后的第一个月起生效。",
-          "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。"
+          "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。",
+          "mustChange": "必须更改",
+          "mustChangeRefused": "此事件类型要求更改{field}。请输入新值。",
+          "documentOptional": "证明文件（可选）",
+          "documentRequired": "证明文件（更改此项时必需）"
         },
         "edit": "编辑",
         "rollback": "撤销",
@@ -2382,7 +2387,12 @@
           "duplicate_movement_id": "同一异动事件编号出现在多个更新或删除中。每个异动只能指定一次。",
           "increment_amount_not_for_update": "加薪金额不能用于更新异动。请改为填写更正后的基本工资。",
           "event_mismatch": "与此异动事件编号对应的异动不符",
-          "closed_payroll_acknowledgement_required": "此异动的薪资已关闭。请在保存前勾选已关闭薪资的确认"
+          "closed_payroll_acknowledgement_required": "此异动的薪资已关闭。请在保存前勾选已关闭薪资的确认",
+          "movement_field_not_included": "此事件类型不会更改此字段。",
+          "movement_field_not_editable": "此事件类型不允许编辑此字段。",
+          "movement_field_must_change": "此事件类型要求更改此字段。",
+          "movement_document_required": "此更改需要证明文件，而导入无法附带文件。请改在“变动”标签页中记录此变动。",
+          "movement_document_not_enabled": "此事件类型不接受此字段的证明文件。"
         },
         "v2": {
           "type": "人事异动类型",
@@ -16697,12 +16707,39 @@
       "sections": {
         "general": "基本信息",
         "classification": "分类",
-        "description": "说明"
+        "description": "说明",
+        "reasons": "离职原因",
+        "fields": "字段控制"
       },
-      "classificationHint": "由该事件类型的作用决定，无法在此更改。",
+      "classificationHint": "由该事件类型的作用决定：离职会终止雇佣，其他均为非离职。",
       "optional": "（可选）",
       "descriptionHint": "HR 记录新异动时，显示在事件类型下方。",
-      "descriptionPlaceholder": "例如：组织重组后调任新岗位。"
+      "descriptionPlaceholder": "例如：组织重组后调任新岗位。",
+      "classificationLocked": "已锁定：此类型已被已记录的变动使用。",
+      "classificationBuiltIn": "标准事件类型保持其固定分类。",
+      "reasonsHint": "勾选 HR 记录此事件类型时可选择的原因。",
+      "reasonsAllHint": "未勾选任何原因：提供所有启用中的原因。",
+      "reasonsManageHint": "原因在“离职原因”标签页中添加、重命名或关闭。",
+      "fieldsHint": "选择此事件类型会更改哪些雇佣信息。HR 记录时只会看到您包含的字段。",
+      "fieldsNotApplicable": "字段控制适用于会更改雇佣信息的事件类型。此事件类型不会更改。",
+      "fieldsCompanyLocked": "实体调动始终会更改此项。",
+      "fieldColumns": {
+        "field": "字段",
+        "include": "需要更改此项",
+        "edit": "允许编辑",
+        "mustChange": "必须更改",
+        "file": "启用文件"
+      },
+      "fieldGroups": {
+        "organisation": "组织分配",
+        "labels": "其他组织标签",
+        "salary": "基本工资"
+      },
+      "documents": {
+        "none": "关闭",
+        "optional": "可选",
+        "required": "必需"
+      }
     },
     "reasons": {
       "createNew": "+ 新增原因",

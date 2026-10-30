@@ -16,6 +16,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { requireAdmin } from '@/lib/authz';
+import type { MovementFieldRule } from '@/lib/movement-field-rules';
 import {
   deleteMovementEventType,
   saveMovementEventType,
@@ -58,6 +59,31 @@ async function run(write: () => Promise<void>, page: string = PAGE) {
   redirect(`${page}?toast=Saved`);
 }
 
+/**
+ * 1d58019a Step 2 — the Field Controls grid as posted. Shape only (an array of plain rule objects, bounded);
+ * whether each rule is allowed for the type is the service's decision. Absent = leave as stored.
+ */
+function parseFieldRules(raw: FormDataEntryValue | null): MovementFieldRule[] | undefined {
+  if (raw === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch {
+    throw new Error('The Field Controls could not be read. Reload the page and try again.');
+  }
+  if (!Array.isArray(parsed) || parsed.length > 64) throw new Error('The Field Controls could not be read. Reload the page and try again.');
+  return parsed.map((r) => {
+    const o = (r && typeof r === 'object' ? r : {}) as Record<string, unknown>;
+    return {
+      field: String(o.field ?? '') as MovementFieldRule['field'],
+      included: o.included === true,
+      editable: o.editable === true,
+      mustChange: o.mustChange === true,
+      document: String(o.document ?? 'none') as MovementFieldRule['document'],
+    };
+  });
+}
+
 /** What a save tells the form. Returned, never redirected — see below. */
 export type MovementTypeSaveResult = { ok: true } | { ok: false; error: string };
 
@@ -85,6 +111,11 @@ export async function saveMovementEventTypeAction(
       behaviourKind: String(formData.get('behaviourKind') ?? '').trim() || null,
       // 1d58019a — always posted by the configuration page; blank clears it.
       description: String(formData.get('description') ?? ''),
+      // 1d58019a Step 2 — the Termination Reasons card posts its ticks plus a marker, so "none ticked"
+      // (= every active reason) is distinguishable from "card not shown" (= leave as stored).
+      reasonCodes: formData.get('reasonsPosted') === '1' ? formData.getAll('reasonCode').map(String) : undefined,
+      // The Field Controls grid travels as one JSON value; the service validates every entry.
+      fieldRules: parseFieldRules(formData.get('fieldRules')),
     });
   } catch (e) {
     return { ok: false, error: publicErrorMessage(e) };

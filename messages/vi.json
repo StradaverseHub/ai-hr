@@ -1652,7 +1652,8 @@
           "backToHistory": "Quay lại lịch sử",
           "recordedBy": "Người ghi nhận",
           "recordedAt": "Thời điểm ghi nhận",
-          "system": "Hệ thống"
+          "system": "Hệ thống",
+          "documents": "Tài liệu hỗ trợ"
         },
         "field": {
           "company": "Công ty",
@@ -1750,7 +1751,11 @@
           "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng.",
           "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
           "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
-          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi."
+          "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
+          "mustChange": "Bắt buộc thay đổi",
+          "mustChangeRefused": "Loại sự kiện này yêu cầu {field} phải thay đổi. Hãy nhập giá trị mới.",
+          "documentOptional": "Tài liệu hỗ trợ (tùy chọn)",
+          "documentRequired": "Tài liệu hỗ trợ (bắt buộc khi trường này thay đổi)"
         },
         "edit": "Sửa",
         "rollback": "Hoàn tác",
@@ -2382,7 +2387,12 @@
           "duplicate_movement_id": "Cùng một Mã sự kiện biến động xuất hiện ở nhiều hơn một Cập nhật hoặc Xóa. Mỗi biến động chỉ ghi một lần.",
           "increment_amount_not_for_update": "Không thể dùng Số tiền tăng lương để cập nhật biến động. Hãy nhập Lương cơ bản đã sửa.",
           "event_mismatch": "Không khớp với biến động có Mã sự kiện biến động này",
-          "closed_payroll_acknowledgement_required": "Bảng lương của biến động này đã đóng. Hãy đánh dấu xác nhận bảng lương đã đóng trước khi lưu"
+          "closed_payroll_acknowledgement_required": "Bảng lương của biến động này đã đóng. Hãy đánh dấu xác nhận bảng lương đã đóng trước khi lưu",
+          "movement_field_not_included": "Loại sự kiện này không thay đổi trường này.",
+          "movement_field_not_editable": "Không thể sửa trường này cho loại sự kiện này.",
+          "movement_field_must_change": "Loại sự kiện này yêu cầu trường này phải thay đổi.",
+          "movement_document_required": "Thay đổi này cần tài liệu hỗ trợ, mà tệp nhập không thể mang theo. Hãy ghi nhận biến động này ở thẻ Biến động.",
+          "movement_document_not_enabled": "Loại sự kiện này không nhận tài liệu hỗ trợ cho trường này."
         },
         "v2": {
           "type": "Loại Biến động",
@@ -16697,12 +16707,39 @@
       "sections": {
         "general": "Thông tin chung",
         "classification": "Phân loại",
-        "description": "Mô tả"
+        "description": "Mô tả",
+        "reasons": "Lý do chấm dứt",
+        "fields": "Kiểm soát trường"
       },
-      "classificationHint": "Được xác định bởi việc loại sự kiện này làm. Không thể thay đổi tại đây.",
+      "classificationHint": "Được xác định bởi việc loại sự kiện này làm: Chấm dứt sẽ kết thúc việc làm, mọi loại khác là Không chấm dứt.",
       "optional": "(không bắt buộc)",
       "descriptionHint": "Hiển thị cho HR bên dưới loại sự kiện khi ghi nhận biến động mới.",
-      "descriptionPlaceholder": "vd. Điều chuyển sang vai trò mới sau khi tái cấu trúc."
+      "descriptionPlaceholder": "vd. Điều chuyển sang vai trò mới sau khi tái cấu trúc.",
+      "classificationLocked": "Đã khóa: loại này đã được dùng bởi các biến động đã ghi nhận.",
+      "classificationBuiltIn": "Các loại sự kiện tiêu chuẩn giữ phân loại cố định.",
+      "reasonsHint": "Đánh dấu các lý do HR có thể chọn khi ghi nhận loại sự kiện này.",
+      "reasonsAllHint": "Không đánh dấu lý do nào: mọi lý do đang dùng đều được cung cấp.",
+      "reasonsManageHint": "Lý do được thêm, đổi tên hoặc tắt ở thẻ Lý do chấm dứt.",
+      "fieldsHint": "Chọn những thông tin việc làm mà loại sự kiện này thay đổi. HR chỉ thấy các trường bạn đưa vào khi ghi nhận.",
+      "fieldsNotApplicable": "Kiểm soát trường áp dụng cho các loại sự kiện thay đổi thông tin việc làm. Loại sự kiện này không thay đổi.",
+      "fieldsCompanyLocked": "Luôn được thay đổi bởi Điều chuyển pháp nhân.",
+      "fieldColumns": {
+        "field": "Trường",
+        "include": "Muốn thay đổi",
+        "edit": "Cho phép sửa",
+        "mustChange": "Bắt buộc thay đổi",
+        "file": "Bật tệp"
+      },
+      "fieldGroups": {
+        "organisation": "Phân công tổ chức",
+        "labels": "Nhãn tổ chức bổ sung",
+        "salary": "Lương cơ bản"
+      },
+      "documents": {
+        "none": "Tắt",
+        "optional": "Tùy chọn",
+        "required": "Bắt buộc"
+      }
     },
     "reasons": {
       "createNew": "+ Thêm lý do",

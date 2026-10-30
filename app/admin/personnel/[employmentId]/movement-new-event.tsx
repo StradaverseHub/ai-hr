@@ -27,6 +27,7 @@ import { createMovementEventAction, editMovementEventAction } from './actions';
 import {MOVEMENT_FORM_IDS, movementFormFields} from '@/lib/movement-form-contract';
 import {isComparisonKind} from '@/core/movement-kinds';
 import {MOVEMENT_PENDING_INPUT_FIELDS,type MovementPendingFormValues} from '@/lib/movement-pending-input';
+import {MOVEMENT_DOCUMENT_MIME_TYPES,defaultMovementFieldRule,type MovementFieldRule,type MovementRuleField} from '@/lib/movement-field-rules';
 const movementField=(name:keyof typeof MOVEMENT_FORM_IDS)=>MOVEMENT_FORM_IDS[name];
 export type MovementOption = { id: string; name: string };
 /** b7b22514 — a Direct Superior candidate, carrying the company that decides whether an Entity Transfer
@@ -187,7 +188,16 @@ export function MovementNewEvent({
    * asks for. That is how a tenant's own "Redeployment" gets the Transfer form without the form knowing
    * anything about Redeployment.
    */
-  types?: { code: string; label: string | null; behaviourKind: string; description?: string | null }[];
+  types?: {
+    code: string;
+    label: string | null;
+    behaviourKind: string;
+    description?: string | null;
+    /** 1d58019a Step 2 — a Termination type's ticked reasons; null/absent = every active reason. */
+    reasonCodes?: string[] | null;
+    /** 1d58019a Step 2 — a comparison type's Field Controls, present only when it has any (absent = today). */
+    rules?: MovementFieldRule[];
+  }[];
   /**
    * b7b22514 — the legal entities an Entity Transfer may move this employee to: the current one (always
    * first, it is the select's initial value) followed by every company the actor ADMINISTERS. That set is
@@ -207,7 +217,7 @@ export function MovementNewEvent({
   const tPay = useTranslations('people.detail');
   const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')&&tPay.has(key.slice(14))?tPay(key.slice(14)):fallback);
   // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
-  const catalog: { code: string; label: string | null; behaviourKind: string; description?: string | null }[] =
+  const catalog: NonNullable<typeof types> =
     types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
   const byCode = new Map(catalog.map((c) => [c.code, c]));
   /** What a code DOES. Every branch below asks this, never the code itself. */
@@ -292,8 +302,13 @@ export function MovementNewEvent({
   const [terminationReason, setTerminationReason] = useState<string>(saved?.terminationReasonCode ?? '');
   // 1d58019a — a switched-off reason is never offered for a new termination, but one this movement already
   // carries stays selectable so correcting it does not force a different reason. The service enforces both.
+  // 1d58019a Step 2 — and only the reasons THIS Termination type offers, when it ticks a list (the service
+  // refuses any other for a new termination, or for a correction that changes the reason).
+  const typeReasonCodes = byCode.get(kind)?.reasonCodes ?? null;
   const offeredReasons = terminationReasons.filter(
-    (r) => r.active !== false || r.code === saved?.terminationReasonCode,
+    (r) =>
+      r.code === saved?.terminationReasonCode ||
+      (r.active !== false && (!typeReasonCodes || typeReasonCodes.includes(r.code))),
   );
   // "Resignation Date — mandatory for resignation cases" (the reporter's rule). Shown only for that reason,
   // because for a dismissal or a contract expiry there is no resignation to date.
@@ -310,17 +325,64 @@ export function MovementNewEvent({
     id ? (options.find((o) => o.id === id)?.name ?? null) : null;
   const dash = (v: string | null | undefined) => (v == null || v === '' ? '—' : v);
 
+  /**
+   * 1d58019a Step 2 (ADR-0166) — the type's FIELD CONTROLS. Absent (`typeRules` undefined) means the type has
+   * none and the grid is exactly today's. Otherwise: an excluded field is not drawn (so not posted); an
+   * included, non-editable one shows its current value as text and posts nothing; a Required to Change field
+   * is marked and checked before submit; a field with File Enabled gets a document input. The server
+   * enforces every one of these on its own (core/movement.ts assertMovementFieldRulesTx).
+   */
+  const typeRules = isComparisonKind(behaviour) ? byCode.get(kind)?.rules : undefined;
+  const ruleFor = (field: MovementRuleField): MovementFieldRule =>
+    behaviour === 'entityTransfer' && field === 'companyId'
+      ? { field, included: true, editable: true, mustChange: true, document: typeRules?.find((r) => r.field === field)?.document ?? 'none' }
+      : typeRules?.find((r) => r.field === field) ?? defaultMovementFieldRule(field);
+  const [ruleError, setRuleError] = useState<string | null>(null);
+
   /** One comparison row: the field label, the read-only current value, and the editable new value. */
-  const row = (key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => (
-    <div
-      key={key}
-      className="grid grid-cols-1 gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4"
-    >
-      <div className="text-xs font-medium text-muted-foreground">{label}</div>
-      <div className="text-sm text-foreground">{dash(currentDisplay)}</div>
-      <div>{control}</div>
-    </div>
-  );
+  const row = (field: MovementRuleField, key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => {
+    const rule = ruleFor(field);
+    if (!rule.included) return null;
+    const readOnly = !rule.editable;
+    return (
+      <div
+        key={key}
+        data-field={field}
+        data-must-change={rule.mustChange ? 'true' : undefined}
+        className="grid grid-cols-1 gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4"
+      >
+        <div className="text-xs font-medium text-muted-foreground">
+          {label}
+          {rule.mustChange && (
+            <span className="mt-0.5 block font-normal text-primary">{t('form.mustChange')}</span>
+          )}
+        </div>
+        <div className="text-sm text-foreground">{dash(currentDisplay)}</div>
+        <div className="space-y-1.5">
+          {readOnly ? (
+            // Not editable for this type: the current value, read-only, and nothing posted.
+            <span data-testid={`readonly-${field}`} className="text-sm text-muted-foreground">
+              {dash(currentDisplay)}
+            </span>
+          ) : (
+            control
+          )}
+          {!readOnly && rule.document !== 'none' && (
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              {rule.document === 'required' ? t('form.documentRequired') : t('form.documentOptional')}
+              <input
+                type="file"
+                name={`document.${field}`}
+                accept={MOVEMENT_DOCUMENT_MIME_TYPES.join(',')}
+                aria-label={`${label}: ${rule.document === 'required' ? t('form.documentRequired') : t('form.documentOptional')}`}
+                className="text-xs"
+              />
+            </label>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   /**
    * b7b22514 — two things were added here, and both exist only because the option list can now CHANGE
@@ -373,7 +435,7 @@ export function MovementNewEvent({
      * merely an absent control.
      */
     row(
-      'company', label(movementField('companyId')),
+      'companyId', 'company', label(movementField('companyId')),
       current.companyName,
       isEntityTransfer ? (
         <select
@@ -394,26 +456,26 @@ export function MovementNewEvent({
         <span className="text-sm text-muted-foreground">{t('form.companyReadOnly')}</span>
       ),
     ),
-    row('businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
+    row('businessUnitId', 'businessUnit', label(movementField('businessUnitId')), nameOf(businessUnits, current.businessUnitId),
       select('businessUnitId', after.businessUnitId, scoped.businessUnits, t('form.none'))),
-    row('orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', after.orgDivision)),
-    row('department', label(movementField('departmentId')), nameOf(departments, current.departmentId),
+    row('orgDivision', 'orgDivision', label(movementField('orgDivision')), current.orgDivision, text('orgDivision', after.orgDivision)),
+    row('departmentId', 'department', label(movementField('departmentId')), nameOf(departments, current.departmentId),
       select('departmentId', after.departmentId, scoped.departments, null)),
-    row('position', label(movementField('positionId')), nameOf(positions, current.positionId),
+    row('positionId', 'position', label(movementField('positionId')), nameOf(positions, current.positionId),
       select('positionId', after.positionId, scoped.positions, t('form.none'))),
-    row('grade', label(movementField('gradeId')), nameOf(grades, current.gradeId),
+    row('gradeId', 'grade', label(movementField('gradeId')), nameOf(grades, current.gradeId),
       select('gradeId', after.gradeId, grades, t('form.none'))),
-    row('category', label(movementField('employmentCategory')), current.employmentCategory,
+    row('employmentCategory', 'category', label(movementField('employmentCategory')), current.employmentCategory,
       text('employmentCategory', after.employmentCategory)),
-    row('orgRegion', label(movementField('orgRegion')), current.orgRegion, text('orgRegion', after.orgRegion)),
-    row('orgBranch', label(movementField('orgBranch')), current.orgBranch, text('orgBranch', after.orgBranch)),
-    row('orgTeam', label(movementField('orgTeam')), current.orgTeam, text('orgTeam', after.orgTeam)),
-    row('orgSection', label(movementField('orgSection')), current.orgSection, text('orgSection', after.orgSection)),
-    row('orgLine', label(movementField('orgLine')), current.orgLine, text('orgLine', after.orgLine)),
-    row('orgBase', label(movementField('orgBase')), current.orgBase, text('orgBase', after.orgBase)),
-    row('location', label(movementField('locationId')), nameOf(locations, current.locationId),
+    row('orgRegion', 'orgRegion', label(movementField('orgRegion')), current.orgRegion, text('orgRegion', after.orgRegion)),
+    row('orgBranch', 'orgBranch', label(movementField('orgBranch')), current.orgBranch, text('orgBranch', after.orgBranch)),
+    row('orgTeam', 'orgTeam', label(movementField('orgTeam')), current.orgTeam, text('orgTeam', after.orgTeam)),
+    row('orgSection', 'orgSection', label(movementField('orgSection')), current.orgSection, text('orgSection', after.orgSection)),
+    row('orgLine', 'orgLine', label(movementField('orgLine')), current.orgLine, text('orgLine', after.orgLine)),
+    row('orgBase', 'orgBase', label(movementField('orgBase')), current.orgBase, text('orgBase', after.orgBase)),
+    row('locationId', 'location', label(movementField('locationId')), nameOf(locations, current.locationId),
       select('locationId', after.locationId, scoped.locations, t('form.none'))),
-    row('employmentType', label(movementField('employmentType')),
+    row('employmentType', 'employmentType', label(movementField('employmentType')),
       employmentTypes.find((o) => o.value === current.employmentType)?.label ?? null,
       <select {...personnelWorkflowControl(movementField('employmentType'), 'movement', 'edit')} defaultValue={after.employmentType ?? ''} className={inputCls}>
         {employmentTypes.map((o) => (
@@ -422,19 +484,19 @@ export function MovementNewEvent({
           </option>
         ))}
       </select>),
-    row('manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
+    row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
-    row('basicSalary', label(movementField('basicSalary')), current.basicSalary,
+    row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,
       <input
         {...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')}
         defaultValue={after.basicSalary ?? ''}
         className={inputCls}
       />),
-    row('currency', label(movementField('currency')), current.currency,
+    row('currency', 'currency', label(movementField('currency')), current.currency,
       <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={after.currency} />),
     // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather
     // than rendering a raw i18n key (same rule as the event-type label map above).
-    row('payMode', label(movementField('payMode')), payModeLabel(current.payMode),
+    row('payMode', 'payMode', label(movementField('payMode')), payModeLabel(current.payMode),
       <select {...personnelWorkflowControl(movementField('payMode'), 'movement', 'edit')} defaultValue={after.payMode ?? 'monthly'} className={inputCls}>
         {PAY_MODE_OPTIONS.map((m) => (
           <option key={m} value={m}>
@@ -442,7 +504,7 @@ export function MovementNewEvent({
           </option>
         ))}
       </select>),
-    row('paymentTerm', label(movementField('paymentTerm')), paymentTermLabel(current.paymentTerm),
+    row('paymentTerm', 'paymentTerm', label(movementField('paymentTerm')), paymentTermLabel(current.paymentTerm),
       <select {...personnelWorkflowControl(movementField('paymentTerm'), 'movement', 'edit')} defaultValue={after.paymentTerm ?? 'monthly'} className={inputCls}>
         {PAYMENT_TERM_OPTIONS.map((f) => (
           <option key={f} value={f}>
@@ -471,6 +533,24 @@ export function MovementNewEvent({
   return (
     <form action={saved ? submitPendingCorrection : edit ? editMovementEventAction : createMovementEventAction}
       ref={form=>{if(saved&&form&&!initialFields.current)initialFields.current=new Map(Array.from(new FormData(form).entries()).filter((entry):entry is [string,string]=>typeof entry[1]==='string'));}}
+      onSubmit={event=>{
+        // 1d58019a Step 2 — Required to Change, checked before the round trip (the server checks it too).
+        if (!typeRules) return;
+        const data = new FormData(event.currentTarget);
+        const unchanged = typeRules.find((r) => {
+          if (!r.mustChange) return false;
+          const posted = data.get(r.field);
+          if (posted == null) return true;
+          const before = r.field === 'companyId' ? current.companyId : (current as Record<string, string | null>)[r.field] ?? '';
+          return r.field === 'basicSalary'
+            ? Number(String(posted)) === Number(before ?? NaN)
+            : String(posted).trim() === (before ?? '');
+        });
+        if (unchanged) {
+          event.preventDefault();
+          setRuleError(t('form.mustChangeRefused', { field: label(movementField(unchanged.field)) }));
+        } else setRuleError(null);
+      }}
       onChangeCapture={event=>{
         if (!saved) return;
         const target: EventTarget = event.target;
@@ -480,6 +560,11 @@ export function MovementNewEvent({
       }}>
       <input type="hidden" name="employmentId" value={employmentId} />
       {edit && <input type="hidden" name="movementId" value={edit.movementId} />}
+      {ruleError && (
+        <p role="alert" className="border-b border-border bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {ruleError}
+        </p>
+      )}
 
       {edit && (
         // The one thing HR must understand before saving: this does not quietly rewrite the old entry.

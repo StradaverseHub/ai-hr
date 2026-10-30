@@ -1652,7 +1652,8 @@
           "backToHistory": "Back to history",
           "recordedBy": "Recorded by",
           "recordedAt": "Recorded at",
-          "system": "System"
+          "system": "System",
+          "documents": "Supporting documents"
         },
         "field": {
           "company": "Company",
@@ -1750,7 +1751,11 @@
           "resignationLifecycleHint": "Resignation information takes effect on the Effective Date. Record the tender date, resignation date and last working date separately.",
           "closedPayrollTitle": "Payroll for {periods} is already closed.",
           "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process. A corrected salary takes effect from the first month after the closed payroll.",
-          "closedPayrollAcknowledge": "I understand that closed payroll will not change."
+          "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
+          "mustChange": "Required to change",
+          "mustChangeRefused": "{field} must change for this event type. Enter the new value.",
+          "documentOptional": "Supporting document (optional)",
+          "documentRequired": "Supporting document (required when this changes)"
         },
         "edit": "Edit",
         "rollback": "Roll Back",
@@ -2382,7 +2387,12 @@
           "duplicate_movement_id": "The same Movement Event ID appears in more than one Update or Delete. Name each movement once.",
           "increment_amount_not_for_update": "Increment Amount cannot be used to update a movement. Enter the corrected Basic Salary instead.",
           "event_mismatch": "Does not match the movement with this Movement Event ID",
-          "closed_payroll_acknowledgement_required": "Payroll is already closed for this movement. Tick the closed-payroll confirmation before saving"
+          "closed_payroll_acknowledgement_required": "Payroll is already closed for this movement. Tick the closed-payroll confirmation before saving",
+          "movement_field_not_included": "This event type does not change this field.",
+          "movement_field_not_editable": "This field cannot be edited for this event type.",
+          "movement_field_must_change": "This event type requires this field to change.",
+          "movement_document_required": "This change needs a supporting document, which an import cannot carry. Record this movement on the Movement tab instead.",
+          "movement_document_not_enabled": "This event type does not take a supporting document for this field."
         },
         "v2": {
           "type": "Movement type",
@@ -16697,12 +16707,39 @@
       "sections": {
         "general": "General Information",
         "classification": "Classification",
-        "description": "Description"
+        "description": "Description",
+        "reasons": "Termination Reasons",
+        "fields": "Field Controls"
       },
-      "classificationHint": "Set by what the event type does. It cannot be changed here.",
+      "classificationHint": "Set by what the event type does: Termination ends employment, everything else is Non-Termination.",
       "optional": "(optional)",
       "descriptionHint": "Shown to HR under the event type when they record a new movement.",
-      "descriptionPlaceholder": "e.g. Reassignment to a new role after a restructure."
+      "descriptionPlaceholder": "e.g. Reassignment to a new role after a restructure.",
+      "classificationLocked": "Locked: this type is already used by recorded movements.",
+      "classificationBuiltIn": "Standard event types keep their fixed classification.",
+      "reasonsHint": "Tick the reasons HR can choose when recording this event type.",
+      "reasonsAllHint": "None ticked: every active reason is offered.",
+      "reasonsManageHint": "Reasons are added, renamed or switched off on the Termination Reasons tab.",
+      "fieldsHint": "Choose which employment details this event type changes. HR sees only the fields you include when recording it.",
+      "fieldsNotApplicable": "Field Controls apply to event types that change employment details. This event type does not.",
+      "fieldsCompanyLocked": "Always changed by an Entity Transfer.",
+      "fieldColumns": {
+        "field": "Field",
+        "include": "Want to Change This",
+        "edit": "Allow to Edit",
+        "mustChange": "Required to Change",
+        "file": "File Enabled"
+      },
+      "fieldGroups": {
+        "organisation": "Organisation Assignment",
+        "labels": "Additional Organisation Labels",
+        "salary": "Basic Salary"
+      },
+      "documents": {
+        "none": "Off",
+        "optional": "Optional",
+        "required": "Required"
+      }
     },
     "reasons": {
       "createNew": "+ Add Reason",
