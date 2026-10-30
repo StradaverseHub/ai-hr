@@ -29,7 +29,7 @@ it.each(['case_field','reason','step_edit','step_identical_update','step_extra',
   else if(attack==='step_identical_update')await tx.execute(sql`update lc_case_step set notes=notes where case_id=${f.caseId}::uuid`);
   else if(attack==='step_extra')await tx.insert(s.lcCaseStep).values({tenantId:f.b.tenantId,caseId:f.caseId,stepKey:'unexpected-step',done:false});
   else if(attack==='return_edit')await tx.update(s.itRequisition).set({status:'cancelled'}).where(eq(s.itRequisition.id,f.reqId));
-  else if(attack==='return_extra')await tx.insert(s.itRequisition).values({tenantId:f.b.tenantId,caseId:f.caseId,companyId:f.b.companyId,number:'FIC-'+randomUUID(),kind:'return',fullName:'Unexpected return',employeeNo:'UNEXPECTED'});
+  else if(attack==='return_extra')await tx.insert(s.itRequisition).values({tenantId:f.b.tenantId,caseId:f.caseId,companyId:f.b.companyId,number:'FIC-'+randomUUID(),kind:'return',status:'cancelled',fullName:'Unexpected archived return',employeeNo:'UNEXPECTED'});
   else if(attack==='item_edit')await tx.update(s.itRequisitionItem).set({note:'Unreviewed item'}).where(eq(s.itRequisitionItem.requisitionId,f.reqId));
   else if(attack==='item_extra')await tx.insert(s.itRequisitionItem).values({tenantId:f.b.tenantId,requisitionId:f.reqId,itemKey:'unexpected-item',name:'Unexpected item'});
   else if(attack==='asset_edit')await tx.update(s.itAsset).set({location:'Unreviewed hardware move'}).where(eq(s.itAsset.id,f.assetId));
@@ -59,7 +59,7 @@ it('refuses committed historical event substitution and released-child-SAVEPOINT
 it.each(['step','return','item','asset','comment'] as const)('fences actual concurrent %s membership through immediate parent FKs and releases it at commit',async member=>{
  await withTenant(f.ctx,async tx=>{await lockAccessConfigurationTx(tx,f.b.tenantId);await source(tx);let error:unknown;try{await withTenant(f.ctx,async other=>{await other.execute(sql`set local lock_timeout='100ms'`);
   if(member==='step')await other.insert(s.lcCaseStep).values({tenantId:f.b.tenantId,caseId:f.caseId,stepKey:'race-step',done:false});
-  else if(member==='return')await other.insert(s.itRequisition).values({tenantId:f.b.tenantId,caseId:f.caseId,companyId:f.b.companyId,number:'RACE-'+randomUUID(),kind:'return',fullName:'Concurrent return',employeeNo:'RACE'});
+  else if(member==='return')await other.insert(s.itRequisition).values({tenantId:f.b.tenantId,caseId:f.caseId,companyId:f.b.companyId,number:'RACE-'+randomUUID(),kind:'return',status:'cancelled',fullName:'Concurrent archived return',employeeNo:'RACE'});
   else if(member==='item')await other.insert(s.itRequisitionItem).values({tenantId:f.b.tenantId,requisitionId:f.reqId,itemKey:'race-item',name:'Concurrent item'});
   else if(member==='asset')await other.insert(s.itAsset).values({tenantId:f.b.tenantId,companyId:f.b.companyId,requisitionId:f.reqId,code:'RACE-'+randomUUID(),assetType:'laptop'});
   else await other.insert(s.lcComment).values({tenantId:f.b.tenantId,caseId:f.caseId,authorUserId:f.ctx.userId,body:'Concurrent comment'});
@@ -74,8 +74,8 @@ it('refuses actual row-writer/review contention NOWAIT and releases its case/rel
 it('enforces native normalized UTF-16 reason bounds in the definer owner too',async()=>{for(const bad of ['','\t\n','\u00a0','🙂'.repeat(251)]){await assertRefused(prepare(bad));}await prepare('🙂'.repeat(250));});
 
 it('keeps whole-effect commitments portable across UTC/Kuala Lumpur without changing authority TimeZone or current_date',async()=>{
- await withTenant(f.ctx,async tx=>{await tx.execute(sql`set local TimeZone='UTC'`);const [before]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);await tx.execute(sql`select app.assistant_offboarding_case_cancel_review_prepare(${id}::uuid,null::uuid,${f.caseId}::uuid,null::uuid,null::uuid,${f.b.companyId}::uuid,${f.human.reason},${'a'.repeat(64)},${digest},'0123456789abcdef','fictional-wrapped','fictional-cipher')`);const [after]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);expect(after).toEqual(before);});
- await withTenant(f.ctx,async tx=>{await tx.execute(sql`set local TimeZone='Asia/Kuala_Lumpur'`);const [before]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);await source(tx);const r=await native(tx);await complete(tx,r.eventId);const [after]=await tx.execute(sql`select current_setting('TimeZone') zone,current_date::text day`);expect(after).toEqual(before);});
+ await withTenant(f.ctx,async tx=>{await tx.execute(sql`set local TimeZone='UTC'`);const [before]=await tx.execute(sql`select current_setting('TimeZone') as "zone",current_date::text as "day"`);await tx.execute(sql`select app.assistant_offboarding_case_cancel_review_prepare(${id}::uuid,null::uuid,${f.caseId}::uuid,null::uuid,null::uuid,${f.b.companyId}::uuid,${f.human.reason},${'a'.repeat(64)},${digest},'0123456789abcdef','fictional-wrapped','fictional-cipher')`);const [after]=await tx.execute(sql`select current_setting('TimeZone') as "zone",current_date::text as "day"`);expect(after).toEqual(before);});
+ await withTenant(f.ctx,async tx=>{await tx.execute(sql`set local TimeZone='Asia/Kuala_Lumpur'`);const [before]=await tx.execute(sql`select current_setting('TimeZone') as "zone",current_date::text as "day"`);await source(tx);const r=await native(tx);await complete(tx,r.eventId);const [after]=await tx.execute(sql`select current_setting('TimeZone') as "zone",current_date::text as "day"`);expect(after).toEqual(before);});
 });
 
 async function installedTamper(stage:'before_ledger'|'after_ledger'|'before_body'|'after_body'|'deferred_ledger',mutation:string,work:()=>Promise<void>){
@@ -101,7 +101,7 @@ it.each(['case','step','comment','return','item','asset','step_insert','return_i
   if(target==='released_child'){await tx.execute(sql`savepoint after_case_completion`);await tx.execute(sql`release savepoint after_case_completion`);}
   if(target==='constraints_immediate')await tx.execute(sql`set constraints all immediate`);
   if(target==='step_insert')await tx.insert(s.lcCaseStep).values({tenantId:f.b.tenantId,caseId:f.caseId,stepKey:'late-extra',done:false});
-  else if(target==='return_insert')await tx.insert(s.itRequisition).values({tenantId:f.b.tenantId,companyId:f.b.companyId,caseId:f.caseId,number:'LATE-'+randomUUID(),kind:'return',fullName:'Late return',employeeNo:'LATE'});
+  else if(target==='return_insert')await tx.insert(s.itRequisition).values({tenantId:f.b.tenantId,companyId:f.b.companyId,caseId:f.caseId,number:'LATE-'+randomUUID(),kind:'return',status:'cancelled',fullName:'Late archived return',employeeNo:'LATE'});
   else if(target==='item_insert')await tx.insert(s.itRequisitionItem).values({tenantId:f.b.tenantId,requisitionId:f.reqId,itemKey:'late-item',name:'Late item'});
   else if(target==='asset_insert')await tx.insert(s.itAsset).values({tenantId:f.b.tenantId,companyId:f.b.companyId,requisitionId:f.reqId,code:'LATE-'+randomUUID(),assetType:'laptop'});
   else if(target==='comment_insert')await tx.insert(s.lcComment).values({tenantId:f.b.tenantId,caseId:f.caseId,body:'Late comment',authorUserId:f.ctx.userId});
