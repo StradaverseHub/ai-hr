@@ -30,7 +30,7 @@ const confirm=(p:Awaited<ReturnType<typeof previewTaxBasisRecalculation>>)=>conf
 beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'payroll','active');ctx=await entitledCtx(b);
  await owner.db.update(schema.company).set({companyLabel:'TAXCO'}).where(eq(schema.company.id,b.companyId));await seedPayrollCycleCatalog(ctx,b.companyId);
- const [component]=await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'TRV',name:'Travel allowance',kind:'allowance',displayCategory:'allowance',includedInPcb:false,pcbRemunerationType:'normal'}).returning({id:schema.payComponent.id});travel=component.id;
+ const [component]=await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'TRV',name:'Travel allowance',kind:'allowance',displayCategory:'allowance',includedInPcb:false,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'}).returning({id:schema.payComponent.id});travel=component.id;
  employee=(await hireEmployee(ctx,{person:{fullName:'Fictional Aina',primaryEmail:'tax-fixture@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'0007',hiredOn:'2025-01-01'})).employmentId;
  await upload();await owner.db.update(schema.payComponent).set({includedInPcb:true}).where(eq(schema.payComponent.id,travel));
 });
@@ -89,6 +89,7 @@ describe('authorized immutable historical income tax corrections',()=>{
  it('does not silently adopt later TP3 opening values or duplicate annual exemptions',async()=>{
   const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee));
   await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:b.tenantId,personId:subject.personId,tp3Year:2026,tp3ExemptionUsed:{PCB_TRA_BUSINESS:5000}}).onConflictDoUpdate({target:schema.employeeStatutoryMy.personId,set:{tp3Year:2026,tp3ExemptionUsed:{PCB_TRA_BUSINESS:5000}}});
+  const uncapped=await previewTaxBasisRecalculation(ctx,selection());expect(uncapped.eligibleCount).toBe(1);
   await owner.db.update(schema.payComponent).set({pcbExemptionCode:'PCB_TRA_BUSINESS'}).where(eq(schema.payComponent.id,travel));
   const p=await previewTaxBasisRecalculation(ctx,selection());expect(p.blockedCount).toBe(1);expect(p.employees[0].reason).toMatch(/prior-employer/);expect(p.eligibleCount).toBe(0);
   await owner.db.update(schema.employeeStatutoryMy).set({tp3ExemptionUsed:{}}).where(eq(schema.employeeStatutoryMy.personId,subject.personId));
