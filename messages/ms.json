@@ -1638,7 +1638,8 @@
           "endDate": "Tarikh Tamat",
           "remarks": "Catatan",
           "action": "Tindakan",
-          "correctionReason": "Sebab Pembetulan"
+          "correctionReason": "Sebab Pembetulan",
+          "movementId": "ID Peristiwa Pergerakan"
         },
         "detail": {
           "eventInformation": "Maklumat Acara",
@@ -2363,7 +2364,25 @@
           "duplicate_system_field": "Medan Sistem yang sama muncul lebih daripada sekali bagi pergerakan ini.",
           "system_field_required": "Pilih Medan Sistem yang diubah oleh baris ini, atau biarkan Sebelum dan Selepas kosong.",
           "before_mismatch": "Sebelum tidak sepadan dengan rekod semasa pekerja; ia telah berubah sejak fail disediakan. Pekerja ini tidak diimport.",
-          "workbook_old_layout": "Fail ini menggunakan templat Pergerakan lama (satu helaian bagi setiap jenis pergerakan untuk satu syarikat). Muat turun templat baharu dan salin baris anda ke dalamnya."
+          "workbook_old_layout": "Fail ini menggunakan templat Pergerakan lama (satu helaian bagi setiap jenis pergerakan untuk satu syarikat). Muat turun templat baharu dan salin baris anda ke dalamnya.",
+          "unknown_action": "Tindakan mestilah Cipta, Kemas kini atau Padam (biarkan kosong untuk Cipta).",
+          "movement_id_required": "Kemas kini dan Padam memerlukan ID Peristiwa Pergerakan bagi pergerakan yang hendak diubah.",
+          "movement_id_unknown": "Tiada pergerakan dengan ID Peristiwa Pergerakan ini ditemui untuk pekerja ini.",
+          "movement_id_other_employee": "ID Peristiwa Pergerakan ini milik pekerja lain. Semak ID Pekerja pada baris ini.",
+          "movement_already_rolled_back": "Pergerakan ini telah pun dibatalkan.",
+          "movement_superseded": "Pergerakan ini telah diatasi oleh pergerakan kemudian dan tidak pernah berkuat kuasa, jadi tiada apa yang perlu diubah.",
+          "movement_hire_not_supported": "Pengambilan tidak boleh diubah melalui import. Gunakan Betulkan butiran pengambilan pada tab Pergerakan.",
+          "movement_update_not_supported": "Jenis peristiwa ini tidak boleh dikemas kini melalui import. Betulkannya pada tab Pergerakan.",
+          "movement_not_correctable": "Pergerakan ini tidak boleh diubah seperti yang diminta",
+          "movement_id_not_for_create": "Biarkan ID Peristiwa Pergerakan kosong untuk pergerakan baharu, atau pilih Kemas kini atau Padam.",
+          "reason_not_for_create": "Sebab hanya digunakan untuk Kemas kini dan Padam. Gunakan Catatan untuk pergerakan baharu.",
+          "reason_required": "Masukkan Sebab bagi setiap Kemas kini dan Padam.",
+          "not_applicable_on_delete": "Biarkan Medan Sistem, Sebelum dan Selepas kosong pada baris Padam.",
+          "conflicting_values": "Baris untuk pergerakan yang sama memberikan nilai yang berbeza",
+          "duplicate_movement_id": "ID Peristiwa Pergerakan yang sama muncul dalam lebih daripada satu Kemas kini atau Padam. Namakan setiap pergerakan sekali sahaja.",
+          "increment_amount_not_for_update": "Amaun Kenaikan tidak boleh digunakan untuk mengemas kini pergerakan. Masukkan Gaji Pokok yang dibetulkan.",
+          "event_mismatch": "Tidak sepadan dengan pergerakan yang mempunyai ID Peristiwa Pergerakan ini",
+          "closed_payroll_acknowledgement_required": "Gaji untuk pergerakan ini sudah ditutup. Tandakan pengesahan gaji ditutup sebelum menyimpan"
         },
         "v2": {
           "type": "Jenis Pergerakan",
@@ -2456,8 +2475,24 @@
             "eventType": "Jenis Peristiwa",
             "systemField": "Medan Sistem",
             "before": "Sebelum",
-            "after": "Selepas"
-          }
+            "after": "Selepas",
+            "action": "Tindakan",
+            "movementId": "ID Peristiwa Pergerakan",
+            "reason": "Sebab"
+          },
+          "action": {
+            "create": "Cipta",
+            "update": "Kemas kini",
+            "delete": "Padam"
+          },
+          "guideAction": "Tindakan: biarkan kosong atau pilih Cipta untuk merekod pergerakan baharu. Pilih Kemas kini untuk membetulkan pergerakan sedia ada atau Padam untuk membatalkannya. Kemas kini dan Padam memerlukan ID Peristiwa Pergerakan dan Sebab.",
+          "guideMovementId": "ID Peristiwa Pergerakan: salin daripada lajur ID Peristiwa Pergerakan dalam muat turun Sejarah Pekerjaan pekerja (Muat Turun Excel pada tab Pergerakan). Ia mesti milik pekerja dalam baris tersebut.",
+          "guideUpdate": "Kemas kini: masukkan satu baris bagi setiap medan yang hendak dibetulkan, dengan nilai baharu dalam Selepas. Sel kosong mengekalkan nilai yang direkodkan, termasuk Tarikh Berkuat Kuasa atau Jenis Peristiwa yang kosong; tiada apa yang dikosongkan. Padam: satu baris dengan Medan Sistem, Sebelum dan Selepas dibiarkan kosong.",
+          "guideReason": "Sebab: mengapa pergerakan dibetulkan atau dibatalkan. Ia wajib untuk Kemas kini dan Padam dan disimpan dalam sejarah audit. Jika gaji bagi tempoh itu sudah ditutup, anda mengesahkannya pada skrin sebelum menyimpan.",
+          "closedPayrollRow": "Gaji bagi {periods} sudah ditutup.",
+          "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
+          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
+          "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
         }
       },
       "headerAssistance": {
@@ -3168,7 +3203,11 @@
         "movement": "Pergerakan",
         "noMovement": "Tiada entri sejarah",
         "scheduled": "Dijadualkan pada tarikh berkuat kuasa",
-        "rows": "Baris {rows}"
+        "rows": "Baris {rows}",
+        "update": "Kemas kini pergerakan sedia ada",
+        "delete": "Padam: pergerakan dibatalkan",
+        "reason": "Sebab: {reason}",
+        "closedPayroll": "Gaji ditutup disahkan: {periods}"
       },
       "employeeFull": {
         "created": "Dicipta {code} · {name}",
