@@ -3,6 +3,8 @@ import {eq} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {archivePosition,updatePosition} from '../core/admin';
+import {hireEmployee} from '../core/org';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {setLabelCriteria} from '../core/system-labels';
 import {preparePositionArchiveTx,confirmPositionArchiveTx} from '../core/position-archive-review';
 import {POSITION_ARCHIVE_ACTION as action,PositionArchiveHuman} from '../lib/assistant-actions/position-archive-contract';
@@ -22,9 +24,29 @@ describe('position catalogue archive source, pending Assistant custody',()=>{
   const first=await prepare(b);expect(first.review).toMatchObject({positionId:b.positionId,archived:false,afterArchived:true});
   const receipt=await confirm(b,first.reviewedDigest);
   const [event]=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.id,receipt.eventId));
-  expect(event).toMatchObject({tenantId:b.tenantId,aggregateType:'position',aggregateId:b.positionId,eventType:'position.archived'});
+  expect(event).toMatchObject({tenantId:b.tenantId,aggregateType:'position',aggregateId:b.positionId,eventType:'position.updated'});
   const [row]=await owner.db.select().from(schema.position).where(eq(schema.position.id,b.positionId));expect(row.archivedAt).not.toBeNull();
   const restore=human(b,false),next=await prepare(b,restore);expect((await confirm(b,next.reviewedDigest,restore)).archived).toBe(false);
+ });
+ it('refuses metadata normalization rather than silently editing another field',async()=>{
+  await owner.db.update(schema.position).set({description:'  retained spacing  '}).where(eq(schema.position.id,b.positionId));
+  await expect(prepare(b)).rejects.toThrow();
+  const [row]=await owner.db.select().from(schema.position).where(eq(schema.position.id,b.positionId));expect(row).toMatchObject({description:'  retained spacing  ',archivedAt:null});
+ });
+ it('uses a read-stable Criteria epoch and rolls the native preview back',async()=>{
+  const a=await prepare(b),before=await owner.db.select().from(schema.domainEvent);
+  const [rowBefore]=await owner.db.select().from(schema.position).where(eq(schema.position.id,b.positionId));
+  const again=await prepare(b);expect(again.reviewedDigest).toBe(a.reviewedDigest);
+  expect(await owner.db.select().from(schema.domainEvent)).toEqual(before);
+  const [rowAfter]=await owner.db.select().from(schema.position).where(eq(schema.position.id,b.positionId));expect(rowAfter).toEqual(rowBefore);
+ });
+ it('matches the grid in-use guard for any nonsuperseded assignment',async()=>{
+  await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Position Holder'},companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+  await expect(prepare(b)).rejects.toThrow();
+ });
+ it('binds Criteria changes even if the position metadata stays unchanged',async()=>{
+  const a=await prepare(b);await setLabelCriteria({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]},{kind:'position',labelId:b.positionId,isGlobal:false,companyIds:[b.companyId]});
+  await expect(confirm(b,a.reviewedDigest)).rejects.toThrow();
  });
  it('refuses stale title changes without creating an archive effect',async()=>{
   const first=await prepare(b);await updatePosition(adminCtx(b),{id:b.positionId,title:'Changed fictional position'});
