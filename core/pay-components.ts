@@ -1,4 +1,6 @@
+import {normalizeFormulaDecimal} from '../lib/pay-formula-language';
 import {createHash} from 'node:crypto';
+import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
@@ -354,6 +356,7 @@ export type PayComponentInput = {
   prorates: boolean;
   eaFormLine?: string | null;
   roundingMethod?: string;
+  formulaContext?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null;
   // Configurable pay-rule (Payroll Setup). null / undefined / { kind: 'fixed' } ⇒ legacy fixed-amount behaviour.
   rule?: PayRule | null;
   // LHDN PCB 2026 classification (feedback 09b554e9). ALL THREE undefined ⇒ "not supplied" — legacy callers
@@ -427,6 +430,7 @@ export const STATUTORY_RELEVANT_FIELDS = [
   'prorates',
   'roundingMethod',
   'rule',
+  'formulaContext',
   'pendingInputKind',
   'epfBonus2012',
   'pcbRemunerationType',
@@ -489,7 +493,11 @@ export class PayRuleInvalidError extends Error {
   }
 }
 
-const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod) });
+function cleanFormulaContext(value:PayComponentInput['formulaContext']){
+ if(value==null)return null;if(typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(k=>!['ordinaryRate','hoursPerDay','rate'].includes(k)))throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);
+ const result:{ordinaryRate?:string;hoursPerDay?:string;rate?:string}={};for(const key of ['ordinaryRate','hoursPerDay','rate'] as const){if(value[key]===undefined||value[key]==='')continue;try{const v=normalizeFormulaDecimal(value[key]!),n=Number(v);if(n<(key==='rate'?0:0.000000000001)||n>({ordinaryRate:366,hoursPerDay:24,rate:100}[key]))throw new Error();result[key]=v;}catch{throw new PayComponentInputError([{field:'inputKind',code:'OUT_OF_RANGE'}]);}}return result;
+}
+const attrsOf = (p: PayComponentInput) => ({ eaFormLine: cleanEaLine(p.eaFormLine), roundingMethod: cleanRounding(p.roundingMethod),...(p.formulaContext===undefined?{}:{formulaContext:cleanFormulaContext(p.formulaContext)}) });
 // Feedback 3c473773 — payroll category storage. undefined ⇒ the field was not supplied ⇒ {} ⇒ the stored
 // value survives (this is what keeps the seed and the backfills from wiping migration 0393's work). A
 // supplied value is coerced to the closed vocabulary or NULL, so a tampered form never persists a box the
@@ -728,7 +736,7 @@ export function createPayComponentsFromImport(ctx: SessionContext, rows: { input
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
 // app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
-const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
+const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'formulaContext', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
 
 // ── 61bf109d — dependency-graph plumbing ─────────────────────────────────────────────────────────────
 // A pay item may now be a percentage of ANOTHER pay item, or a formula that reads one, so the catalog is a
@@ -828,7 +836,13 @@ function payComponentCreateValues(ctx:SessionContext,p:PayComponentInput,prepare
 
 async function preparePayComponentWriteTx(tx:Tx,ctx:SessionContext,p:PayComponentInput,options:{ createOnly?: boolean; updateOnly?: boolean; archived?: boolean; importFileName?: string; deferResolutionOrder?: boolean; returnCreatedEventId?: boolean }) {
     await lockPayComponentCatalogTx(tx,ctx);
-    const rule = ruleOf(p);
+    const candidate = ruleOf(p);const candidateValidation=validatePayRule(candidate,p.prorates);if(!candidateValidation.ok)throw new PayRuleInvalidError(candidateValidation.code);
+    if(candidate?.kind==='formula_builder'&&p.code.trim().toUpperCase()==='BASIC')throw new PayRuleInvalidError('BAD_KIND');
+    // Retain a byte-identical inactive link for ordinary metadata/settings maintenance. Only a NEW
+    // or changed link must obtain today's active tested revision; the kernel still refuses inactive use.
+    const [stored]=candidate?.kind==='formula_builder'?await tx.select({rule:payComponent.rule}).from(payComponent).where(and(eq(payComponent.tenantId,ctx.tenantId),eq(payComponent.code,p.code))).limit(1):[];
+    const unchanged=stored?.rule?.kind==='formula_builder'&&candidate?.kind==='formula_builder'&&stored.rule.formulaId===candidate.formulaId&&JSON.stringify([...stored.rule.dependencies].sort())===JSON.stringify([...candidate.dependencies].sort());
+    const rule = unchanged ? stored.rule : candidate?.kind==='formula_builder' ? await bindPayFormulaRuleTx(tx,ctx,candidate) : candidate;
     if (p.pendingInputKind != null && (!PENDING_PAY_INPUT_KINDS.includes(p.pendingInputKind) || rule != null))
       throw new PayComponentInputError([{ field: 'inputKind', code: 'invalidPendingCalculation' }]);
     if ((p.pendingInputKind === 'per_day' || p.pendingInputKind === 'per_hour') && p.prorates)
@@ -886,7 +900,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
         if (!(f in next)) return false; // label omitted ⇒ untouched ⇒ not a change
         const a = (next as Record<string, unknown>)[f];
         const b = (existing as unknown as Record<string, unknown>)[f];
-        return f === 'rule' ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
+        return (f === 'rule'||f==='formulaContext') ? JSON.stringify(a ?? null) !== JSON.stringify(b ?? null) : a !== b;
       });
       const nonCashKey = (r: typeof existing) => {
         if (!r.isNonPayable || !r.includedInPcb) return null;
@@ -903,6 +917,7 @@ async function upsertPayComponentTx(tx: Tx, ctx: SessionContext, p: PayComponent
         .returning({ id: payComponent.id });
       id = row.id;
     }
+    if(rule?.kind==='formula_builder'&&!(existing?.rule?.kind==='formula_builder'&&existing.rule.formulaId===rule.formulaId))await recordPayFormulaLinkTx(tx,ctx,{formulaId:rule.formulaId,componentId:id});
     // 61bf109d — RECORD the resolution order for the whole catalog now that the graph has changed. It is
     // recomputed rather than patched because one edited rule can re-rank items that were not touched, and
     // it is written INSIDE the same transaction as the rule, so the order and the rule it was derived from
@@ -1083,6 +1098,7 @@ export function previewPayRule(
   },
 ) {
   return withTenant(ctx, async (tx): Promise<PayRulePreviewResult> => {
+    if(p.rule?.kind==='formula_builder')throw new Error('Use Formula Builder Test Formula with the employee, payroll period and cycle.');
     const code = p.code.trim().toUpperCase();
     const structural = validatePayRule(p.rule, p.prorates);
     if (!structural.ok) return { ok: false, code: structural.code };
@@ -1451,6 +1467,9 @@ export async function deriveIndividualTxnAmountTx(
     if (!item || item.archivedAt != null) return { derived: false };
     assertPayComponentReady(item);
     const rule = item.rule as PayRule | null;
+    // Builder inputs are persisted verbatim and evaluated by the payroll provider in its real cycle.
+    // A one-off entry cannot substitute a guessed cycle or replace its raw input with a preview result.
+    if (rule?.kind==='formula_builder') return { derived: false };
     if (!payRuleDerivesAmount(rule)) return { derived: false };
 
     const inputUnit = payRuleInputUnit(rule);
@@ -1648,7 +1667,8 @@ export function deletePayComponent(ctx: SessionContext, id: string) {
       .select({ n: sql<number>`count(*)::int` })
       .from(payrollBatchComponent)
       .where(eq(payrollBatchComponent.componentId, id));
-    const refs = (rec?.n ?? 0) + (bat?.n ?? 0);
+    const [formulaHistory]=await tx.execute<{n:number}>(sql`select count(*)::int as n from pay_formula_event where tenant_id=${ctx.tenantId}::uuid and component_id=${id}::uuid`);
+    const refs = (rec?.n ?? 0) + (bat?.n ?? 0) + (formulaHistory?.n??0);
     if (refs > 0) throw new PayComponentInUseError(refs);
     await tx.delete(payComponent).where(eq(payComponent.id, id));
     await appendEvent(tx, {

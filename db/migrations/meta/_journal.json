@@ -4068,6 +4068,13 @@
       "when": 1793330000075,
       "tag": "0691_bank_import_point_read",
       "breakpoints": true
+    },
+    {
+      "idx": 696,
+      "version": "7",
+      "when": 1793330000200,
+      "tag": "0800_pay_formula_builder",
+      "breakpoints": true
     }
   ]
 }

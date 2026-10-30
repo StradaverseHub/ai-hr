@@ -1,0 +1,3 @@
+'use client';
+import {useTranslations} from 'next-intl';
+export default function FormulaEvaluationError({reset}:{error:Error&{digest?:string};reset:()=>void}){const t=useTranslations('payFormula');return <section role="alert" className="space-y-4 rounded-xl border border-border bg-card p-5"><h2 className="font-semibold">{t('traceErrorTitle')}</h2><p className="text-sm text-muted-foreground">{t('traceErrorMessage')}</p><button type="button" onClick={reset} className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('traceRetry')}</button></section>;}

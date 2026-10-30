@@ -33,7 +33,8 @@
  *   correction and guarded recovery), `core/payroll-permissions-admin.ts` (payroll permission grants +
  *   step-up), `core/pay-components.ts` (the pay-component catalog + statutory allowlist resolution
  *   via the active country pack — the D6 vocabulary consumer), `core/pay-rule.ts` +
- *   `core/pay-rule-ai.ts` (pay-rule library + AI drafting), `core/cp38.ts` (CP38/CP39 IRB deduction
+ *   `core/pay-rule-ai.ts` (pay-rule library + AI drafting), `core/pay-formula.ts` (immutable formula lifecycle),
+ *   `core/pay-formula-runtime.ts` (authorized source snapshots), `core/payroll-formula-inputs.ts` (shared Native input owners), `core/cp38.ts` (CP38/CP39 IRB deduction
  *   orders), `core/ea-override.ts` (EA-statement field overrides, consuming `pack.eaFields`),
  *   `core/tax-relief.ts` (TP1 tax-relief declarations), `core/loans.ts` + `core/loans-compute.ts`
  *   (staff loans + repayment schedule, deducted through payroll), and `core/statutory-authority.ts`
@@ -268,6 +269,12 @@ export const payrollPack: ModulePack = {
     { table: 'payroll_step_up_challenge', note: 'step-up re-auth challenges guarding sensitive payroll ops' },
     { table: 'payroll_input', note: 'draft-batch input rows: OT/bonus/deductions/claim/allowance/zakat — the PayrollInputContributor write target' },
     { table: 'pay_component', note: 'the tenant pay-component catalog (earning/deduction, taxability, statutory flags)' },
+    { table: 'pay_formula', note: 'stable reusable formula identities' },
+    { table: 'pay_formula_revision', note: 'immutable typed source/program revisions and dependency snapshots' },
+    { table: 'pay_formula_test', note: 'private immutable source-authorized simulation receipts' },
+    { table: 'pay_formula_event', note: 'append-only formula lifecycle and usage decisions' },
+    { table: 'pay_formula_evaluation', note: 'private historical payroll calculation evidence' },
+    { table: 'pay_formula_accumulation', note: 'immutable configured source-group versions' },
     // 4157a498 (migration 0427). Declared rather than left undeclared because a satellite table with no
     // owner is exactly what D5 exists to prevent: it is read only by core/payroll-history-import.ts.
     { table: 'payroll_import_code', note: 'the DOE-code catalog the payroll-history importer validates against, and where each code lands on the folded month' },

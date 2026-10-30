@@ -1,3 +1,5 @@
+import {isModuleEnabled} from '@/core/entitlements';
+import {payFormulaOptions} from '@/packs/payroll/service';
 import { packFor } from '@/localization/registry';
 import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
@@ -63,7 +65,8 @@ export async function ComponentForm({
   // rejects it with SELF_REFERENCE, and the picker should not offer the mistake in the first place) and
   // every statutory line (legislated, out of bounds for a tenant rule).
   const s = await requireAdmin();
-  const [allItems, previewEmployees] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s)]);
+  const builderEnabled=isModuleEnabled(s,'payroll')&&isModuleEnabled(s,'typed_pay_components');
+  const [allItems, previewEmployees, formulaOptions] = await Promise.all([loadPayComponents(s), listPayRulePreviewCandidates(s),builderEnabled?payFormulaOptions(s):Promise.resolve({activeFormulas:[]})]);
   const payItems = allItems
     // In copy mode the source's own code is offered too: the new item is a distinct code and may legitimately
     // reference the one it was copied from (self-exclusion only applies to a rule reading ITSELF, which the
@@ -197,6 +200,9 @@ export async function ComponentForm({
               pendingInputKind={component?.pendingInputKind ?? null}
               aiEnabled={aiEnabled}
               payItems={payItems}
+              activeFormulas={formulaOptions.activeFormulas}
+              builderEnabled={builderEnabled}
+              formulaContext={component?.formulaContext??null}
               previewEmployees={previewEmployees.map((e) => ({
                 employmentId: e.employmentId,
                 name: e.name,

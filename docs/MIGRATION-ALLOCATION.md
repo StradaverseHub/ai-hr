@@ -521,3 +521,81 @@ packet, short401 and full100001 native-save proof with independent cleanup verif
 A complete aggregate witness, populated upgrade, restore readiness, web/native/controller
 journeys and independent review are still required. No protected-ref move, staging claim,
 installation, worker activation, human acceptance or production authority follows from this record.
+
+## Pay Formula Builder — 30 October 2026 (unapplied, review branch)
+
+Feedback `02472802-f445-40b8-b1a3-5defc7c69b59` uses an isolated review branch based on fetched aligned
+`origin/main` and `origin/alpha` `d6cb83d620d8d4380c981a72fc41628780840b4e`. The read-only staging
+source/build and migration ledger were verified at this same revision: 579 installed receipts,
+maximum sequence1793330000063. None of this feature's SQL has been applied.
+
+The initial provisional0741 / sequence1793330000078 collided with another unapplied Rewards owner.
+A fresh scan of1494 distinct local ref heads and307 registered worktrees found external reservations
+through0743 / sequence1793330000080. Formula Builder therefore moves to **0744_pay_formula_builder**,
+**idx694 / sequence1793330000081**, preserving the canonical installed journal prefix exactly.
+The abandoned0741 name is not a migration installed by this feature. Prior Movement0729/…066 and
+Tax0737/…074 remain separate, unapplied review branches and are not included here.
+
+This reserves source only. Recheck competing claims and the live ledger before integration/application;
+no staging/production deployment or protected-branch integration is authorized. Clean and populated
+ordinary journal rehearsals are in `test/pay-formula-upgrade.test.ts` and run in standard Actions.
+
+### Formula reservation superseded again before application
+
+Immediately before the second hosted verification freeze, a fresh fetch still aligned main/alpha at
+`d6cb83d620d8d4380c981a72fc41628780840b4e`; staging still has579 receipts through1793330000063.
+A fresh scan of1501 distinct ref heads and310 registered worktrees discovered a concurrent external
+Payroll reset reservation0744/…081 and newer external0745/…082 claims. Formula Builder therefore
+supersedes its never-applied0744/…081 reservation with **0746_pay_formula_builder / idx694 /
+1793330000083**. No lower reserved/applied migration is changed or included. The migration also keeps
+an immutable durable batch UUID in private evaluation history without a live-batch FK: canonical
+processed→reset→delete-draft cleanup must retain formula evidence without mutating/deleting it.
+The insert binding still verifies a real matching payroll batch/company/period. Native Pay Item deletion
+now uses its existing in-use refusal for a retained formula link instead of exposing a foreign-key error.
+
+These remain source reservations. All future integration/application gates must repeat collision and
+watermark checks; concurrent external branches have twice selected an already-pushed provisional claim.
+
+### Final Formula source reservation with allocation headroom
+
+Before the third hosted freeze, a fresh fetch and scan of1511 distinct ref heads and313 registered
+worktrees found concurrent external reservations through0747 / sequence1793330000084. Main/alpha
+remain aligned at`d6cb83d620d8d4380c981a72fc41628780840b4e`; the last independently read live watermark
+is579 installed receipts through1793330000063. No Formula SQL has been applied. To avoid repeated
+max+1 races, the coordinator authorized a unique higher source reservation with headroom:
+**0800_pay_formula_builder / idx694 / sequence1793330000200**. A complete ref/worktree scan and explicit
+0800/…200 collision check found no prior owner. Noncontiguous filenames/timestamps are permitted by
+the append-only journal: this adds exactly one entry after the unchanged canonical prefix and does not
+create placeholder migrations, fill gaps, or change any applied SQL bytes.
+
+This supersedes every provisional Formula0741/0744/0746 reservation above, all never applied.
+Current SQL SHA256: `f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322`.
+Tenant-binding checks include optional event component/test references. Migration and normal populated
+upgrade witnesses will be rerun on this exact reservation. Final integration/application still requires
+fresh competing-claim, canonical-prefix and live ordered-ledger verification; this is not deployment authority.
+
+The still-unapplied0800 body now distinguishes Native financial subject authority from explicit
+Workforce-purpose source provenance and intersects private-category rights with the current company.
+This changes no default grants and adds no schema columns; immutable requirements JSON carries the
+optional provenance flag. Clean and populated ordinary upgrades are rerun after this final SQL change.
+
+Before the sixth focused verification freeze, a fresh canonical fetch and complete scan of1536 distinct
+ref heads and324 registered worktrees found only Formula-owned claims for0800 /1793330000200.
+Concurrent external source reservations extend through0810 /1793330000210 and remain separate;
+main/alpha still resolve to`d6cb83d620d8d4380c981a72fc41628780840b4e`. A fresh read-only staging ledger
+query still returns579 installed receipts through1793330000063. The0800 SQL hash above is unchanged;
+fifth verification run41047504952 passed both clean and populated ordinary upgrades on these bytes.
+No deployment/application authority is implied by this source-reservation audit.
+
+
+## Next isolated aggregate — source-only provisional draft, 30 October 2026
+
+The release coordinator authorized reversible source-only integration of Onboarding HTML PR138,
+AI DEV PR107, Security Center PR135 and Formula Builder PR140 from exact provisional predecessor
+6bdddf4f84b3ecb693d8fbf29409373e49c73ac9. That predecessor has not been declared accepted by this
+draft. Its complete581-entry journal prefix and all SQL bytes remain unchanged. Formula0800
+retains SQL SHA256 f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322 and when1793330000200;
+the draft appends it at idx696 solely to make the cumulative source reviewable. This is not a
+reservation, installation allocation, live-ledger verification or release qualification. Before final
+freeze, refresh actual accepted source/build/ordered ledger, competing claims and the central allocation;
+stop if this provisional slot or watermark is no longer valid. No applied SQL may change.

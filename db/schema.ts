@@ -4897,7 +4897,8 @@ export type PayRule =
   | { kind: 'per_hour'; rate: number; onlyPullHoursWithinShiftSchedule?: boolean } // rate × attendance hours (component MUST have prorates=false)
   | { kind: 'flat_capped'; value: number; cap: number } //  min(value, cap)
   | { kind: 'qty_rate'; qty: number; rate: number } //      61bf109d — a quantity multiplied by a rate
-  | { kind: 'formula'; start: FormulaOperand; terms: FormulaTerm[] }; // 61bf109d — the restricted formula
+  | { kind: 'formula'; start: FormulaOperand; terms: FormulaTerm[] } // 61bf109d — the restricted formula
+  | { kind: 'formula_builder'; formulaId: string; dependencies: string[]; context?: {ordinaryRate?:string;hoursPerDay?:string;rate?:string} }; // server-owned active IR dependencies
 
 // A reusable named shift for a company (e.g. "Night A", 22:00–06:00). crossesMidnight = endTime ≤ startTime.
 export const shift = pgTable(
@@ -7202,6 +7203,7 @@ export const payComponent = pgTable(
     // existing row stays valid (the compat golden is untouched). Resolved by core/pay-rule.ts and only read
     // inside the kernel's TYPED_PAY_COMPONENTS_ENABLED block — a rule is meaningless with typed components off.
     rule: jsonb('rule').$type<PayRule | null>(),
+    formulaContext: jsonb('formula_context').$type<{ordinaryRate?:string;hoursPerDay?:string;rate?:string}|null>(),
     // 61bf109d — RECORDED resolution order (migration 0330). A `percent_of base:'component'` or `formula`
     // rule makes one pay item depend on another, so the kernel can no longer resolve components in arbitrary
     // query order without risking two runs of the same payroll disagreeing. The dependency graph is
@@ -11615,3 +11617,23 @@ export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{
  companyId:uuid('company_id').notNull().references(()=>company.id),grade:text('grade'),employmentType:text('employment_type'),hiredOn:date('hired_on').notNull(),joinDate:date('join_date'),documentMetadata:jsonb('document_metadata').notNull().$type<Record<string,unknown>>(),
  recordedBy:uuid('recorded_by').notNull().references(()=>appUser.id),recordedAt:createdAt(),
 });
+
+// Reusable formula identities; revisions, tests and lifecycle facts remain append-only.
+export const payFormula=pgTable('pay_formula',{
+ id:id(),tenantId:tenantId(),formulaId:text('formula_id').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('pay_formula_tenant_code_uq').on(t.tenantId,t.formulaId)]);
+export const payFormulaRevision=pgTable('pay_formula_revision',{
+ id:id(),tenantId:tenantId(),formulaId:uuid('formula_id').notNull().references(()=>payFormula.id),ordinal:integer('ordinal').notNull(),description:text('description').notNull(),method:text('method').notNull(),source:text('source').notNull(),program:jsonb('program').notNull().$type<import('../lib/pay-formula-language').FormulaProgram>(),contentHash:text('content_hash').notNull(),dependencies:jsonb('dependencies').notNull().$type<string[]>(),dependencySnapshot:jsonb('dependency_snapshot').notNull(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('pay_formula_revision_ordinal_uq').on(t.formulaId,t.ordinal)]);
+export const payFormulaTest=pgTable('pay_formula_test',{
+ id:id(),tenantId:tenantId(),revisionId:uuid('revision_id').notNull().references(()=>payFormulaRevision.id),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),actorId:uuid('actor_id').notNull().references(()=>appUser.id),context:jsonb('context').notNull().$type<import('../lib/pay-formula-model').PayFormulaContext>(),sourceFingerprint:text('source_fingerprint').notNull(),dependencyFingerprint:text('dependency_fingerprint').notNull(),evaluatorVersion:text('evaluator_version').notNull(),registryVersion:text('registry_version').notNull(),passed:boolean('passed').notNull(),amount:text('amount'),explanations:jsonb('explanations').notNull().$type<string[]>(),error:text('error'),readRequirements:jsonb('read_requirements').notNull().$type<import('../lib/pay-formula-model').FormulaReadRequirements>(),createdAt:createdAt(),
+});
+export const payFormulaEvent=pgTable('pay_formula_event',{
+ id:id(),tenantId:tenantId(),formulaId:uuid('formula_id').notNull().references(()=>payFormula.id),revisionId:uuid('revision_id').references(()=>payFormulaRevision.id),testId:uuid('test_id').references(()=>payFormulaTest.id),componentId:uuid('component_id').references(()=>payComponent.id),kind:text('kind').notNull(),detail:jsonb('detail').notNull(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),sequence:bigserial('sequence',{mode:'number'}).notNull(),createdAt:createdAt(),
+});
+export const payFormulaEvaluation=pgTable('pay_formula_evaluation',{
+ id:id(),tenantId:tenantId(),formulaId:uuid('formula_id').notNull().references(()=>payFormula.id),revisionId:uuid('revision_id').notNull().references(()=>payFormulaRevision.id),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),batchId:uuid('batch_id').notNull(),componentCode:text('component_code').notNull(),period:text('period').notNull(),amount:text('amount').notNull(),payload:jsonb('payload').notNull(),readRequirements:jsonb('read_requirements').notNull().$type<import('../lib/pay-formula-model').FormulaReadRequirements>(),actorId:uuid('actor_id').notNull().references(()=>appUser.id),createdAt:createdAt(),
+});
+export const payFormulaAccumulation=pgTable('pay_formula_accumulation',{
+ id:id(),tenantId:tenantId(),code:text('code').notNull(),ordinal:integer('ordinal').notNull(),members:jsonb('members').notNull().$type<string[]>(),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('pay_formula_accumulation_version_uq').on(t.tenantId,t.code,t.ordinal)]);
