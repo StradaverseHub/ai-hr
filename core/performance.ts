@@ -936,27 +936,33 @@ export async function proposeGoals(ctx: SessionContext, p: { reviewId: string })
   });
 }
 
-/** Manager/admin approves a proposed goal. Never the subject (explicit subject-ban + assertCanDecide). */
-export async function approveGoal(ctx: SessionContext, p: { goalId: string }): Promise<void> {
-  await withTenant(ctx, async (tx) => {
-    const g = await loadGoal(tx, p.goalId);
-    await assertCanDecide(tx, ctx, g.employmentId, 'goal approval');
-    const [subj] = await tx.select({ personId: employment.personId }).from(employment).where(eq(employment.id, g.employmentId)).limit(1);
-    if (ctx.personId != null && subj?.personId === ctx.personId) throw new PerfError('You cannot approve your own goal');
-    if (g.approvalStatus !== 'proposed') throw new PerfError(`Only a proposed goal can be approved (it is ${g.approvalStatus})`);
-    await tx
-      .update(performanceGoal)
-      .set({ approvalStatus: 'approved', approvedByUserId: ctx.userId ?? null, approvedAt: sql`now()`, updatedAt: sql`now()` })
-      .where(eq(performanceGoal.id, g.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'performance-goal',
-      aggregateId: g.id,
-      eventType: 'performance-goal.approved',
-      actor: actorOf(ctx),
-      subjectEmploymentId: g.employmentId,
-    });
-  });
+/** Native approval source under the caller's transaction. The row lock holds the reviewed
+ * goal stable through the effect; current native decision authority is rechecked on every read.
+ * The digest is a private refusal witness, never a model-posted performance fact. */
+export async function readGoalApprovalSourceTx(tx:Tx,ctx:SessionContext,goalId:string){
+  assertModuleEnabled(ctx,'performance');
+  const [g]=await tx.select().from(performanceGoal).where(eq(performanceGoal.id,goalId)).limit(1).for('update');
+  if(!g)throw new PerfError('Goal not found');
+  await assertCanDecide(tx,ctx,g.employmentId,'goal approval');
+  const [subj]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,g.employmentId)).limit(1);
+  if(ctx.personId!=null&&subj?.personId===ctx.personId)throw new PerfError('You cannot approve your own goal');
+  if(g.approvalStatus!=='proposed')throw new PerfError(`Only a proposed goal can be approved (it is ${g.approvalStatus})`);
+  return {goal:g,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,g])).digest('hex')};
+}
+
+/** SAME native effect for browser and reviewed custody callers; the outer transaction owns commit.
+ * Returning an event ID is an insert reference, not proof that the transaction committed. */
+export async function approveGoalTx(tx:Tx,ctx:SessionContext,p:{goalId:string},expectedDigest?:string){
+  const {goal:g,reviewDigest}=await readGoalApprovalSourceTx(tx,ctx,p.goalId);
+  if(expectedDigest!==undefined&&expectedDigest!==reviewDigest)throw new PerfError('The goal changed. Review it again.');
+  await tx.update(performanceGoal).set({approvalStatus:'approved',approvedByUserId:ctx.userId??null,approvedAt:sql`now()`,updatedAt:sql`now()`}).where(eq(performanceGoal.id,g.id));
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-goal',aggregateId:g.id,eventType:'performance-goal.approved',actor:actorOf(ctx),subjectEmploymentId:g.employmentId},{returnId:true});
+  return {goalId:g.id,employmentId:g.employmentId,eventId};
+}
+
+/** Manager/admin approves a proposed goal. Never the subject (including a linked super-admin). */
+export async function approveGoal(ctx:SessionContext,p:{goalId:string}):Promise<void>{
+  await withTenant(ctx,async tx=>{await approveGoalTx(tx,ctx,p);});
 }
 
 /** Lock the goal-setting stage on a review: every cycle-bound goal must be approved first. After

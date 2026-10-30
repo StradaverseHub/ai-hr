@@ -1,0 +1,15 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {readPerformanceNativeHandoffs} from '../core/assistant-actions/performance-native-handoffs';
+import {PERFORMANCE_AREA_TABS,performanceTabState,type PerformanceAreaFacts} from '../packs/performance/onehr/tab-model';
+vi.mock('server-only',()=>({}));
+const source=vi.hoisted(()=>({choices:vi.fn(),facts:vi.fn()}));
+vi.mock('../core/assistant-actions/module-action-server',()=>({readPerformanceModuleActionChoices:source.choices}));
+vi.mock('../packs/performance/service',async()=>({...await import('../packs/performance/onehr/tab-model'),getPerformanceAreaFacts:source.facts}));
+const ctx={tenantId:'10000000-0000-4000-8000-000000000001',userId:'10000000-0000-4000-8000-000000000002',personId:null,roles:[],grants:[]};
+const facts:PerformanceAreaFacts={performanceOn:true,items:[{kind:'review',cycleId:'PRIVATE',view:'mine',module:'pm',stage:'setting',locked:false},{kind:'review',cycleId:'PRIVATE',view:'team',module:'idp',stage:'plan',locked:true}],ownFeedbackReport:'none'};
+beforeEach(()=>{vi.clearAllMocks();source.choices.mockResolvedValue({kind:'choices',items:[],truncated:false});source.facts.mockResolvedValue(facts);});
+it('offers native own KPI setting with no own acknowledgement and omits locked team plans',async()=>{const rows=await readPerformanceNativeHandoffs(ctx);expect(rows).toContainEqual(expect.objectContaining({href:'/performance/my/kpis'}));expect(rows.some(row=>row.href==='/performance/plan/team')).toBe(false);expect(JSON.stringify(rows)).not.toContain('PRIVATE');for(const row of rows)expect(Object.keys(row).sort()).toEqual(['href','id','labelKey']);});
+it('derives every offered route from the native gate and preserves registry order',async()=>{expect(await readPerformanceNativeHandoffs(ctx)).toEqual(PERFORMANCE_AREA_TABS.filter(tab=>tab.strip!=='home'&&performanceTabState(facts,tab.id)==='open').map(({id,href,labelKey})=>({id,href,labelKey})));});
+it('does not load native work after Assistant grant/principal/pause refusal',async()=>{source.choices.mockResolvedValue({kind:'unavailable'});expect(await readPerformanceNativeHandoffs(ctx)).toEqual([]);expect(source.facts).not.toHaveBeenCalled();});
+it('fails closed on source failure without publishing private errors',async()=>{source.facts.mockRejectedValue(Error('PRIVATE'));expect(await readPerformanceNativeHandoffs(ctx)).toEqual([]);});
+it('offers nothing when the native module gate is closed',async()=>{source.facts.mockResolvedValue({...facts,performanceOn:false});expect(await readPerformanceNativeHandoffs(ctx)).toEqual([]);});

@@ -1,3 +1,4 @@
+import {goalApprovalReviews,readGoalApprovalChoices} from '../../core/assistant-actions/goal-approval-review-store';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
 import {tp3OpeningMaintenanceReviews,readTp3OpeningMaintenanceChoices} from '../../core/assistant-actions/tp3-opening-maintenance-review-store';
@@ -156,7 +157,7 @@ type World={
  login(base:Base,person:Person,role:DbRole,companyId:string|null):Promise<{ctx:SessionContext;userId:string}>;
  claimTypes:Map<string,string>;
 };
-type Family='assigned_decision'|'hr_on_employment'|'own';
+type Family='assigned_goal'|'assigned_decision'|'hr_on_employment'|'own';
 type Adapter={
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
@@ -266,6 +267,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
   offered:async(who,item)=>listed(await readAssignedLeaveModuleActionChoices(who),'tasks','leaveRequestId',item.subjectId),screen:(tx,who,item,_actor,o)=>decideLeave(who,{leaveRequestId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{rejectReason:REJECT_REASON}:{})},tx)},
+ 'performance.goal.approve':{family:'assigned_goal',store:goalApprovalReviews,
+  async create(_w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Proposed Goal',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const self=await h.session(),{id}=await perf.createGoal(self,{employmentId:h.person.employmentId,cycleId,title:'Fictional Parity Goal'});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.proposeGoals(self,{reviewId:review.id});return itemOf(h,id);},
+  human:item=>({action:'performance.goal.approve',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,approve:true}),
+  offered:async(who,item)=>{const choices=await readGoalApprovalChoices(who,{query:'',subjectId:item.subjectId});return choices.kind==='choices'&&choices.items.some(row=>row.subjectId===item.subjectId);},
+  screen:(tx,who,item)=>perf.approveGoalTx(tx,who,{goalId:item.subjectId})},
  'performance.review.acknowledge':{family:'own',screenAdmits:ownEmploymentScreen,store:packetStore('performance.review.acknowledge',prepareReviewModuleActionReview,confirmReviewModuleActionReview),
   async create(w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Standard Review',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.submitSelfReview(await h.session(),{reviewId:review.id,selfRating:4});await perf.submitManagerReview(await w.as('manager'),{reviewId:review.id,managerRating:4,overallRating:4});await perf.releaseCycle(group,{cycleId});return itemOf(h,review.id);},
   human:item=>({action:'performance.review.acknowledge',contractVersion:1,intent:{version:1,reviewId:item.subjectId,acknowledge:true}}),offered:async(who,item)=>listed(await readPerformanceModuleActionChoices(who),'items','sourceId',item.subjectId),screen:(tx,who,item)=>perf.acknowledgeReviewTx(tx,who,{reviewId:item.subjectId})},
