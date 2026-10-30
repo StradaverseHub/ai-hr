@@ -168,3 +168,6 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0159: Profile field approval boundaries](0159-profile-field-approval-boundaries.md)
 - [ADR-0160: OCBC generated payment artifacts](0160-ocbc-generated-payment-artifacts.md)
 - [ADR-0161 — Durable Bank & Statutory imports](0161-background-bank-statutory-import.md)
+- [ADR-0164 — Movement corrections behind closed payroll](0164-movement-corrections-behind-closed-payroll.md)
+- [ADR-0165 — Tenant-owned termination reasons and event-type descriptions](0165-tenant-termination-reason-catalogue.md)
+- [ADR-0166 — Custom Termination types, per-type reasons, Field Controls and movement documents](0166-movement-type-controls-and-custom-termination.md)

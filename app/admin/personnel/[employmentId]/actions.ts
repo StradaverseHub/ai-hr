@@ -26,6 +26,7 @@ import {
   MOVEMENT_FLAT_FIELDS,
   MovementNoChangeError,
   reverseMovementEvent,
+  type MovementDocumentUpload,
   type MovementKind,
 } from '@/core/movement';
 import { reprojectEntitlementForEmployment } from '@/core/leave';
@@ -454,6 +455,26 @@ function parseMovementForm(formData: FormData, mode: 'create' | 'edit' = 'create
   };
 }
 
+/**
+ * 1d58019a Step 2 (ADR-0166) — the supporting documents the New Event / Edit form posted, one file input per
+ * comparison field (`document.<field>`). Empty inputs are skipped. Everything else — which fields may carry a
+ * document, which require one, file type and size — is decided by core/movement.ts, which refuses the
+ * movement as a whole rather than saving it without its evidence.
+ */
+async function parseMovementDocuments(formData: FormData): Promise<MovementDocumentUpload[]> {
+  const out: MovementDocumentUpload[] = [];
+  for (const [name, value] of formData.entries()) {
+    if (!name.startsWith('document.') || typeof value === 'string' || value.size === 0) continue;
+    out.push({
+      field: name.slice('document.'.length),
+      fileName: value.name,
+      mimeType: value.type,
+      content: Buffer.from(await value.arrayBuffer()),
+    });
+  }
+  return out;
+}
+
 export async function createMovementEventAction(formData: FormData) {
   const s = await requireAdmin();
   const employmentId = String(formData.get('employmentId'));
@@ -466,7 +487,7 @@ export async function createMovementEventAction(formData: FormData) {
     // row could only ever have named one of the two. One indexed read, on the path that already opens
     // several transactions.
     const gradeBefore = { gradeId: await employmentGradeId(s, employmentId) };
-    const res = await createMovementEvent(s, { employmentId, ...p });
+    const res = await createMovementEvent(s, { employmentId, ...p, documents: await parseMovementDocuments(formData) });
     if (res && 'payrollFlaggedPeriods' in res && Array.isArray(res.payrollFlaggedPeriods)) {
       payrollFlagged = res.payrollFlaggedPeriods as string[];
     }
@@ -550,6 +571,9 @@ export async function editMovementEventAction(formData: FormData) {
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
       ...p,
+      documents: await parseMovementDocuments(formData),
+      // 646355e5 — the closed-payroll confirmation box; the service decides whether it is needed.
+      acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
     });
     // A correction can move the grade just as the original did, and it carries its own effective date.
     if (isComparisonKind(result.behaviourKind))
@@ -581,6 +605,7 @@ export async function reverseMovementEventAction(formData: FormData) {
       employmentId,
       movementId: String(formData.get('movementId') ?? '').trim(),
       reason: orNull(formData.get('reason')),
+      acknowledgeClosedPayroll: formData.get('acknowledgeClosedPayroll') === '1',
     });
     // A rollback moves the grade BACK, and that is a grade change worth naming. It carries no effective
     // date of its own — the reversal takes effect now — so `changeEffectiveOn` is deliberately omitted

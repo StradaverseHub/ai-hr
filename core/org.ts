@@ -1,4 +1,5 @@
 import { hasExitDateAuthorityTx } from './exit-date-authority';
+import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {assertCostAllocationTransferTx} from './employment-cost-allocations';
 import {lockProfileValueWritesTx} from './access-configuration-lock';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx,assertWorkforcePersonTx} from './workforce-access';
@@ -12,7 +13,7 @@ import { isCalendarDate } from '../lib/calendar-date';
  * Effective-dated changes CLOSE + INSERT; we never overwrite history.
  */
 import { randomUUID,createHash } from 'node:crypto';
-import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { appendEvent, actorOf, subjectEmploymentForPerson, type MovementTag } from '../db/events';
@@ -35,8 +36,9 @@ import { lockLabelCriteriaTx, labelUsableByCompany } from './system-labels';
 import { deriveEmploymentStatus } from './employment-status';
 // ae9350f2 — the coded exit reason derives the turnover classification. termination-reason.ts imports only
 // the TerminationType TYPE back from this file, so the cycle is erased at compile time and there is no
-// runtime import loop.
-import { terminationTypeForReason } from './termination-reason';
+// runtime import loop. 1d58019a — resolved through the tenant's catalogue (core/termination-reason-catalog.ts,
+// same type-only back-reference), so a tenant's own reason derives its group's classification.
+import { terminationTypeForReasonTx } from './termination-reason-catalog';
 // Company-change gate (9464bd56): the pre-transaction check lives in core/read.ts (ONE greppable set of
 // module heads). Imported here so the company-change writer re-runs it as its server-side source of truth
 // inside the same transaction. read.ts does not import org.ts, so this adds no import cycle.
@@ -68,6 +70,8 @@ import {
   // R46 79eb7151 — read-only here, to validate the bank-transfer payment method against the person's
   // salary-payment destination. This module never WRITES the statutory row.
   employeeStatutoryMy,
+  // 1d58019a Step 2 — read-only: is a movement tag's custom code one of the tenant's exit types?
+  movementEventType,
 } from '../db/schema';
 
 export type EmploymentTypeValue = (typeof employmentTypeEnum.enumValues)[number];
@@ -709,7 +713,7 @@ export async function terminateEmploymentTx(
   // ae9350f2 — the coded reason is the single source of the classification when it is present. An unknown
   // code resolves to null and falls back to whatever the caller passed, so a tampered form can neither set
   // an arbitrary code (core/movement.ts validates before reaching here) nor silently blank the enum.
-  const derivedType = terminationTypeForReason(p.terminationReasonCode);
+  const derivedType = await terminationTypeForReasonTx(tx, ctx.tenantId, p.terminationReasonCode);
   const terminationPatch={terminated_on:p.terminationDate,termination_type:derivedType??p.terminationType??null,
     termination_reason:p.terminationReason?.trim()||null,
     ...(p.terminationReasonCode!==undefined?{termination_reason_code:p.terminationReasonCode||null}:{}),
@@ -811,6 +815,108 @@ export async function terminateEmploymentTx(
       from: earlierDate(priorExit?.terminatedOn ?? null, p.terminationDate),
     });
   }
+}
+
+/**
+ * 646355e5 — the inverse of terminateEmploymentTx, reached ONLY from a Movement rollback/correction of an
+ * applied termination (core/movement.ts reverseLegTx). It restores exactly what that writer changed:
+ * the termination columns (a termination is recorded only on an employment that was not terminated, so
+ * their prior value is empty), the assignment version it closed at the termination date, and the
+ * administrative reporting lines it ended in the same transaction — each reopened only while it still
+ * ends on that date and nothing newer has replaced it, so a later decision is never undone.
+ * Processed runs from the termination date are marked stale exactly as the forward write marks them.
+ */
+export async function reverseTerminationTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { employmentId: string; terminationDate: string; terminatedAt: Date; movement: MovementTag; reversalOf: string },
+): Promise<{ reopenedAssignmentId: string | null; reopenedReportingLineIds: string[] }> {
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
+  await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
+  const [emp] = await tx
+    .select({ terminatedOn: employment.terminatedOn })
+    .from(employment)
+    .where(eq(employment.id, p.employmentId))
+    .for('update');
+  if (!emp) throw new Error('Employment not found.');
+  if (emp.terminatedOn !== p.terminationDate) {
+    throw new Error('The termination date has changed since this movement. Review the employment record before correcting it.');
+  }
+  await tx
+    .update(employment)
+    .set({ terminatedOn: null, terminationType: null, terminationReason: null, terminationReasonCode: null, terminationNoticeDays: null })
+    .where(eq(employment.id, p.employmentId));
+
+  // The version the termination closed: the newest live version ending on that date, with no later one.
+  const versions = await tx
+    .select({ id: assignment.id, validFrom: assignment.validFrom, validTo: assignment.validTo })
+    .from(assignment)
+    .where(and(eq(assignment.employmentId, p.employmentId), isNull(assignment.supersededAt)))
+    .orderBy(desc(assignment.validFrom));
+  const closed = versions[0]?.validTo === p.terminationDate ? versions[0] : null;
+  if (closed) await tx.update(assignment).set({ validTo: null }).where(eq(assignment.id, closed.id));
+
+  // The lines the forward write ended, identified by its own events (same transaction timestamp).
+  const ended = await tx
+    .select({ lineId: domainEvent.aggregateId })
+    .from(domainEvent)
+    .where(
+      and(
+        eq(domainEvent.tenantId, ctx.tenantId),
+        eq(domainEvent.eventType, 'reporting-line.ended'),
+        eq(domainEvent.occurredAt, p.terminatedAt),
+        sql`${domainEvent.payload}->>'reason' = 'employment.terminated'`,
+        sql`${domainEvent.payload}->>'endDate' = ${p.terminationDate}`,
+      ),
+    );
+  const reopened: string[] = [];
+  for (const { lineId } of ended) {
+    const [line] = await tx
+      .select()
+      .from(reportingLine)
+      .where(and(eq(reportingLine.id, lineId), isNull(reportingLine.supersededAt)))
+      .limit(1);
+    if (!line || line.validTo !== p.terminationDate) continue;
+    if (line.managerEmploymentId !== p.employmentId && line.subordinateEmploymentId !== p.employmentId) continue;
+    const [newer] = await tx
+      .select({ id: reportingLine.id })
+      .from(reportingLine)
+      .where(
+        and(
+          eq(reportingLine.subordinateEmploymentId, line.subordinateEmploymentId),
+          eq(reportingLine.lineType, line.lineType),
+          isNull(reportingLine.supersededAt),
+          or(isNull(reportingLine.validTo), gt(reportingLine.validTo, p.terminationDate)),
+        ),
+      )
+      .limit(1);
+    if (newer) continue;
+    await tx.update(reportingLine).set({ validTo: null }).where(eq(reportingLine.id, line.id));
+    reopened.push(line.id);
+  }
+
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'employment',
+    aggregateId: p.employmentId,
+    eventType: 'employment.termination.reversed',
+    actor: actorOf(ctx),
+    subjectEmploymentId: p.employmentId,
+    payload: {
+      terminationDate: p.terminationDate,
+      reopenedAssignmentId: closed?.id ?? null,
+      reopenedReportingLineIds: reopened,
+      reversalOf: p.reversalOf,
+      movement: p.movement,
+    },
+  });
+  await markPayrollRunsForEmploymentChangeTx(tx, ctx, {
+    employmentIds: [p.employmentId],
+    category: 'termination',
+    from: p.terminationDate,
+  });
+  return { reopenedAssignmentId: closed?.id ?? null, reopenedReportingLineIds: reopened };
 }
 
 /** 3244584c — the earlier of two ISO dates; null only when both are. */
@@ -2949,7 +3055,7 @@ export async function setEmploymentInfo(
   }
 
   const exitAuthority=hasExitDateAuthorityTx(outerTx,p.employmentId);
-  const movement=!exitAuthority&&['resignation','termination'].includes(p.movement?.type??'')?undefined:p.movement;
+  let movement=!exitAuthority&&['resignation','termination'].includes(p.movement?.type??'')?undefined:p.movement;
 
   // Build the write set: only columns the caller actually provided. `undefined` = untouched; a period/text
   // field passed as '' or null clears to NULL. Validate + normalise as we go.
@@ -3050,6 +3156,17 @@ export async function setEmploymentInfo(
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    // 1d58019a Step 2 — the exit-tag rule above, for one of the organisation's OWN Termination types. Its
+    // code is not the string 'termination', so ask the catalogue (the custom row's behaviour). Only the
+    // Movement writer's exit legs, which hold the exit-date authority, may carry an exit type's tag.
+    if (!exitAuthority && movement && !['resignation','termination'].includes(movement.type)) {
+      const [custom] = await tx
+        .select({ behaviourKind: movementEventType.behaviourKind })
+        .from(movementEventType)
+        .where(and(eq(movementEventType.tenantId, ctx.tenantId), eq(movementEventType.code, movement.type)))
+        .limit(1);
+      if (custom && movement.type !== custom.behaviourKind && ['resignation','termination'].includes(custom.behaviourKind)) movement = undefined;
+    }
     const [before] = await tx
       .select({
         hiredOn: employment.hiredOn,
@@ -3287,7 +3404,8 @@ export async function setEmploymentInfo(
         if (w) windows.push(w);
       }
 
-      if (windows.length > 0) {
+      // 646355e5 — an acknowledged Movement correction owns this window (closed-payroll-correction-authority).
+      if (windows.length > 0 && !hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) {
         const closed = await closedPeriodsTx(tx, p.employmentId);
         if (closed.length > 0 && windows.some((w) => overlapsClosedPeriod(closed, w.from, w.to))) {
           // Same sentence pattern, and the same reopen instruction, the Movement correction gives

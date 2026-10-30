@@ -5964,7 +5964,8 @@ async function assertInformationLeavePeriodTx(tx:Tx,asOf:string,scope:{employmen
   scope.employmentIds!==undefined?(scope.employmentIds.length?inArray(employment.id,[...scope.employmentIds]):sql`false`):undefined,
   scope.companyIds?.length?inArray(employment.companyId,[...scope.companyIds]):undefined,
   scope.gradeIds?.length?inArray(employment.gradeId,[...scope.gradeIds]):undefined,
-  sql`exists(select 1 from domain_event ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf})`,
+  // 646355e5 — an acknowledged Movement correction behind closed payroll is the same kind of boundary.
+  sql`exists(select 1 from domain_event ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${employment.id} and ((ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}) or (ev.event_type='employment.movement.reversed' and ev.payload->>'closedPayrollCorrectedOn'>${asOf})))`,
  )).limit(1);
  if(protectedPeriod)throw new Error('Historical leave processing before an information-only correction requires review. Use a current processing date or exclude the corrected employee.');
 }

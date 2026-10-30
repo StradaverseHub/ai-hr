@@ -6,6 +6,7 @@ import { and, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from 'drizzle-or
 import { type SessionContext, type Tx } from '../db/client';
 import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
 import { actorOf, appendEvent, type MovementTag } from '../db/events';
+import { hasClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
 import {
   appUser,
   compensation,
@@ -196,7 +197,7 @@ export class SalaryRemarkRequiredError extends Error {
 }
 
 /** First day of the month AFTER a 'YYYY-MM' pay period — the exclusive end of its date range. */
-const nextMonthStart = (period: string): string => {
+export const nextMonthStart = (period: string): string => {
   const [y, m] = period.split('-').map(Number);
   return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
 };
@@ -343,7 +344,13 @@ export async function setCompensation(
       )
       .limit(1);
     if (cur) {
-      await tx.update(compensation).set({ validTo: p.effectiveFrom }).where(eq(compensation.id, cur.id));
+      // 646355e5 — inside an acknowledged Movement correction, a salary clamped to the first open day can
+      // land on the very day the restored record starts; that record is replaced rather than left empty.
+      if (cur.validFrom === p.effectiveFrom && hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) {
+        await tx.update(compensation).set({ supersededAt: new Date() }).where(eq(compensation.id, cur.id));
+      } else {
+        await tx.update(compensation).set({ validTo: p.effectiveFrom }).where(eq(compensation.id, cur.id));
+      }
     }
     // Carry-forward semantics: undefined allowance keeps the prior figure (or 0 for a brand-new record);
     // an explicit value (incl. 0) sets it. This stops a basic-only revision from silently zeroing allowance.
@@ -692,7 +699,8 @@ export async function supersedeCompensation(
       .limit(1);
     if (!row) throw new Error('Salary record not found');
     if (row.supersededAt !== null) throw new Error('This salary record has already been deleted');
-    const closed = await closedPeriodsTx(tx, p.employmentId);
+    // 646355e5 — an acknowledged Movement correction may supersede it; the closed run keeps its payslip.
+    const closed = hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId) ? [] : await closedPeriodsTx(tx, p.employmentId);
     if (overlapsClosedPeriod(closed, row.validFrom, row.validTo)) {
       throw new Error('This salary record was used by a closed payroll run and cannot be deleted');
     }

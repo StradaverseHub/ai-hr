@@ -9679,6 +9679,8 @@ export const movementEventType = pgTable(
     behaviourKind: text('behaviour_kind').notNull(),
     /** Display text. Null on a built-in override means "use the shipped translation". */
     label: text('label'),
+    /** 1d58019a (migration 0721) — optional note shown under the type on the New Event form. */
+    description: text('description'),
     sortOrder: integer('sort_order').notNull().default(0),
     isActive: boolean('is_active').notNull().default(true),
     createdAt: createdAt(),
@@ -9687,6 +9689,90 @@ export const movementEventType = pgTable(
     index('movement_event_type_tenant_idx').on(t.tenantId),
     uniqueIndex('movement_event_type_tenant_code_uq').on(t.tenantId, t.code),
   ],
+);
+
+// ─────────────── Termination reasons — tenant overlay (1d58019a, migration 0721, ADR-0165) ───────────────
+// The SAME overlay shape as movement_event_type above, for the exit-reason list: the thirteen built-in reasons
+// in core/termination-reason.ts stay the starting list, and a row renames / switches off one of them or adds
+// one of the tenant's own inside one of the three FIXED groups. No stored termination_type: the turnover
+// classification is derived in code (built-in mapping, else the group), so it has exactly one owner.
+// employment.termination_reason_code stays TEXT with no FK, so history keeps whatever code it recorded.
+// RLS (0721): tenant-read for every member, admin-only insert/update/delete.
+export const terminationReason = pgTable(
+  'termination_reason',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    /** Stable identity recorded on employment.termination_reason_code and in the movement payload. */
+    code: text('code').notNull(),
+    /** Display text. Null on a built-in override means "use the shipped translation". */
+    label: text('label'),
+    /** 'voluntary' | 'involuntary' | 'other' — the three fixed groups. */
+    category: text('category').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('termination_reason_tenant_idx').on(t.tenantId),
+    uniqueIndex('termination_reason_tenant_code_uq').on(t.tenantId, t.code),
+  ],
+);
+
+// ─────────────── Movement type controls (1d58019a Step 2, migration 0722, ADR-0166) ───────────────
+// Which termination reasons a Termination type offers (no rows = every active reason), the Field Controls of a
+// comparison type (no rows = today's full grid), and supporting documents on a movement (keyed by the
+// movement's group id). Settings rows: tenant-read, admin-write. Attachments: workforce-view read with the
+// compensation predicate for pay fields; append-only (no UPDATE/DELETE grant).
+export const movementTypeTerminationReason = pgTable(
+  'movement_type_termination_reason',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    typeCode: text('type_code').notNull(),
+    reasonCode: text('reason_code').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('movement_type_termination_reason_uq').on(t.tenantId, t.typeCode, t.reasonCode)],
+);
+
+export const movementTypeFieldRule = pgTable(
+  'movement_type_field_rule',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    typeCode: text('type_code').notNull(),
+    /** One of the comparison fields (lib/movement-field-rules.ts MOVEMENT_RULE_FIELDS). */
+    field: text('field').notNull(),
+    included: boolean('included').notNull(),
+    editable: boolean('editable').notNull(),
+    mustChange: boolean('must_change').notNull(),
+    /** 'none' | 'optional' | 'required'. */
+    document: text('document').notNull().default('none'),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('movement_type_field_rule_uq').on(t.tenantId, t.typeCode, t.field)],
+);
+
+export const movementAttachment = pgTable(
+  'movement_attachment',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    employmentId: uuid('employment_id')
+      .notNull()
+      .references(() => employment.id),
+    /** The MovementTag.groupId every leg of the movement shares (a scheduled movement's too). */
+    movementGroupId: uuid('movement_group_id').notNull(),
+    field: text('field').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    content: bytea('content').notNull(),
+    uploadedBy: uuid('uploaded_by'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('movement_attachment_group_idx').on(t.tenantId, t.employmentId, t.movementGroupId)],
 );
 
 // ─────────────── Personnel — employee import history (feedback cf43c909, migration 0341) ───────────────

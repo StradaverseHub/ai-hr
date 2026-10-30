@@ -4,8 +4,13 @@ import {movementImportRequired} from './movement-import-contract';
 import {movementFormFields,MOVEMENT_FORM_IDS,type MovementFormField} from './movement-form-contract';
 import {personnelFormField} from './personnel-form-contract';
 import {TERMINATION_REASON_CODES} from '../core/termination-reason';
+import type {MovementFieldRule} from './movement-field-rules';
 import {personnelFieldLabel,personnelFieldChoices,type PersonnelLabelResolver} from './personnel-import-contract';
-export type MovementWorkbookType={code:string;label:string|null;behaviour:string};
+/** 1d58019a Step 2 — a type also carries its CONTROLS (core/movement-type.ts activeMovementEventTypeChoicesTx):
+ * a Termination type the reasons it effectively offers, a comparison type its Field Controls when it has any.
+ * The workbook is signed to this list, so a changed reason or rule changes the catalogue fingerprint. */
+export type MovementWorkbookReason={code:string;label:string|null;category:string;builtIn:boolean};
+export type MovementWorkbookType={code:string;label:string|null;behaviour:string;reasons?:MovementWorkbookReason[];rules?:MovementFieldRule[]};
 export type MovementWorkbookColumn={key:string;label:string;role:'identity'|'current'|'input'|'formula';field?:MovementFormField;other?:boolean};
 const main:Record<string,string[]>={increment:['incrementAmount'],salaryAdjustment:['basicSalary'],promotion:['positionId','gradeId','incrementAmount','managerEmploymentId'],demotion:['positionId','gradeId','basicSalary'],confirmation:['incrementAmount'],probationExtension:['endDate'],actingPosition:['endDate'],secondment:['endDate'],transfer:['businessUnitId','departmentId','locationId','managerEmploymentId'],orgAssignmentChange:['businessUnitId','departmentId','positionId','locationId'],entityTransfer:['companyId','businessUnitId','departmentId','positionId','locationId','managerEmploymentId'],employmentTypeChange:['employmentType'],reportingLineChange:['managerEmploymentId'],resignation:['tenderResignationDate','resignationEffectiveDate','endDate'],termination:['terminationReasonCode','resignationDate','terminationNoticeDays','endDate'],blacklist:['blacklisted'],joinDateChange:[],groupJoinDateCorrection:[]};
 const grey:Record<string,string[]>={increment:['departmentId','gradeId','basicSalary','currency'],salaryAdjustment:['basicSalary','currency'],promotion:['positionId','gradeId','basicSalary','currency','managerEmploymentId'],demotion:['positionId','gradeId','basicSalary','currency'],confirmation:['joinDate','probationEndDate','basicSalary','currency'],probationExtension:['joinDate','probationEndDate'],actingPosition:['positionId'],secondment:['departmentId','locationId'],transfer:['businessUnitId','departmentId','locationId','managerEmploymentId'],orgAssignmentChange:['businessUnitId','departmentId','positionId','locationId'],entityTransfer:['companyId','departmentId','positionId','managerEmploymentId'],employmentTypeChange:['employmentType'],reportingLineChange:['managerEmploymentId'],resignation:['joinDate'],termination:['joinDate'],blacklist:['blacklistedAt'],joinDateChange:['joinDate'],groupJoinDateCorrection:['hiredOn']};
@@ -38,6 +43,20 @@ export function movementWorkbookRequirements(type:MovementWorkbookType,columns:M
  return {required,optional,requiredEither};
 }
 
-export function movementWorkbookScalarChoices(field:MovementFormField){
- return field==='terminationReasonCode'?TERMINATION_REASON_CODES.map(value=>({value,labelKey:'people.detail.movement.terminationReason.'+value})):personnelFieldChoices(personnelFormField(MOVEMENT_FORM_IDS[field]));
+/** `label` (when present) is the organisation's own name for the value and wins over `labelKey`. */
+export type MovementWorkbookChoice={value:string;labelKey:string;label?:string};
+/**
+ * 1d58019a Step 2 — termination reasons come from the TENANT's catalogue when the types carry it: the reasons
+ * any of the given Termination types offers, in catalogue order, under the organisation's own names. Without
+ * reasons on the types (a caller that has none), the built-in list as before.
+ */
+export function movementWorkbookScalarChoices(field:MovementFormField,types?:readonly MovementWorkbookType[]):readonly MovementWorkbookChoice[]{
+ if(field!=='terminationReasonCode')return personnelFieldChoices(personnelFormField(MOVEMENT_FORM_IDS[field]));
+ const tenant=(types??[]).filter(type=>type.behaviour==='termination'&&type.reasons);
+ if(!tenant.length)return TERMINATION_REASON_CODES.map(value=>({value,labelKey:'people.detail.movement.terminationReason.'+value}));
+ const seen=new Map<string,MovementWorkbookChoice>();
+ for(const type of tenant)for(const reason of type.reasons!)if(!seen.has(reason.code))seen.set(reason.code,{value:reason.code,labelKey:'people.detail.movement.terminationReason.'+reason.code,...(reason.label?{label:reason.label}:!reason.builtIn?{label:reason.code}:{})});
+ return [...seen.values()];
 }
+/** The text a choice shows: the organisation's own name, else the shipped translation. */
+export const movementWorkbookChoiceLabel=(choice:MovementWorkbookChoice,resolve:PersonnelLabelResolver)=>choice.label??resolve(choice.labelKey,choice.value);

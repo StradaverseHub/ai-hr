@@ -1,7 +1,8 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
-import {buildMovementWorkbook,readMovementSource,readMovementWorkbookRows} from '../lib/movement-workbook.server';
+import {buildMovementWorkbook,movementWorkbookCatalogue,readMovementSource,readMovementWorkbookRows} from '../lib/movement-workbook.server';
+import {signMovementTemplate} from '../lib/movement-workbook-metadata.server';
 import {movementRowsToRecords,movementSystemFields} from '../lib/movement-import-rows';
 import {movementWorkbookLayout} from '../lib/movement-workbook-layout';
 import {parseMovementTypeCsv,movementTypeCsvTemplate,movementInputRecord} from '../lib/movement-type-csv';
@@ -12,20 +13,23 @@ const types=[{code:'increment',label:'Increment',behaviour:'increment'},{code:'c
 const catalog:MovementImportCatalog={types,companies:[{value:a,label:'Fictional A'}],fields:{departmentId:[{value:department,codes:['FIN'],label:'Finance'}],gradeId:[{value:grade,codes:['G8'],label:'G8 · Grade 8'}]}};
 const resolve=(_key:string,fallback:string)=>fallback;
 const HEADER=['Company ID','Employee ID','Employee Name','Effective Date','Event Type','System Fields','Before','After'];
+// 646355e5 slice C — version 4 appends three columns; version 3 (HEADER) still reads as Create only.
+const HEADER4=[...HEADER,'Action','Movement Event ID','Reason'];
 const make=()=>buildMovementWorkbook({tenantId:a,types,companies:[{companyId:a,code:'EXT',name:'Fictional A',catalog}],resolve});
 const rows=(bytes:Buffer,tenantId=a,list=types)=>readMovementWorkbookRows(bytes,{tenantId,types:list});
 async function edit(bytes:Buffer,patch:(wb:XLSX.WorkBook)=>void){const wb=XLSX.read(bytes,{type:'buffer',cellFormula:true});patch(wb);return Buffer.from(XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true}));}
 const fill=(values:string[][])=>(wb:XLSX.WorkBook)=>values.forEach((row,r)=>row.forEach((v,c)=>{wb.Sheets.Movements[XLSX.utils.encode_cell({r:r+1,c})]={t:'s',v};}));
 beforeEach(()=>{vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY',Buffer.alloc(32,7).toString('base64url'));vi.stubEnv('MOVEMENT_IMPORT_WORKBOOK_KEY_ID','public-fixture-only');});afterEach(()=>{vi.unstubAllEnvs();vi.useRealTimers();});
 describe('single-sheet Movement template (ac6645ec)',()=>{
- it('has Instructions, one Movements sheet with the eight columns in order, Reference, hidden lists, drop-downs and no internal id',async()=>{
+ it('has Instructions, one Movements sheet with the eleven columns in order, Reference, hidden lists, drop-downs and no internal id',async()=>{
   const bytes=await make(),wb=XLSX.read(bytes,{type:'buffer'}),zip=await JSZip.loadAsync(bytes);
   expect(wb.SheetNames).toEqual(['Instructions','Movements','Reference','Lists','_meta']);
   expect(wb.Workbook?.Sheets?.filter(s=>['Lists','_meta'].includes(s.name!)).every(s=>s.Hidden===1)).toBe(true);expect(wb.Workbook?.Sheets?.find(s=>s.name==='Reference')?.Hidden??0).toBe(0);
-  expect(HEADER.map((_,c)=>wb.Sheets.Movements[XLSX.utils.encode_cell({r:0,c})].v)).toEqual(HEADER);
+  expect(HEADER4.map((_,c)=>wb.Sheets.Movements[XLSX.utils.encode_cell({r:0,c})].v)).toEqual(HEADER4);
+  expect(JSON.parse(String(wb.Sheets._meta.A1.v)).version).toBe(4);
   for(const entry of Object.values(zip.files).filter(f=>!f.dir&&f.name.endsWith('.xml'))){const text=await entry.async('string');for(const id of [a,department,grade])expect(text).not.toContain(id);}
   const sheet=await zip.file('xl/worksheets/sheet2.xml')!.async('string');
-  expect(sheet).toContain('state="frozen"');expect([...sheet.matchAll(/<dataValidation\b[^>]*sqref="([A-Z]+)2:/g)].map(m=>m[1])).toEqual(['A','E','F']);
+  expect(sheet).toContain('state="frozen"');expect([...sheet.matchAll(/<dataValidation\b[^>]*sqref="([A-Z]+)2:/g)].map(m=>m[1])).toEqual(['A','E','F','I']);
   const reference=XLSX.utils.sheet_to_json<string[]>(wb.Sheets.Reference,{header:1}).map(r=>r.join('|'));
   expect(reference).toContain('EXT|Fictional A');expect(reference).toContain('EXT|'+movementSystemFields(types[3],resolve).find(f=>f.key==='departmentId')!.label+'|FIN|Finance');
   // Duplicate labels fall back to the code in the drop-down and on Reference.
@@ -94,6 +98,67 @@ describe('single-sheet Movement template (ac6645ec)',()=>{
    const old=await readMovementSource('old.csv',Buffer.from(toCsv([header,['E1','100','2026-11-01']])),{tenantId:a,types,resolve});expect(old.fileErrors).toEqual(['workbook_old_layout']);
   }
   expect((await readMovementSource('m.txt',Buffer.from('x'),{tenantId:a,types,resolve})).fileErrors).toEqual(['invalid_file']);
+ });
+});
+const ID='7d1c2e4a-5b6f-4a8b-9c0d-1e2f3a4b5c6d',ID2='8e2d3f5b-6c7a-4b9c-8d1e-2f3a4b5c6d7e';
+const v4=(values:string[][])=>values.map((v,i)=>({row:i+2,values:v}));
+describe('Update and Delete rows (646355e5 slice C)',()=>{
+ it('groups an Update by its Movement Event ID, keeps blank date and type, and accepts the id only in its own column',()=>{
+  const parsed=movementRowsToRecords(v4([
+   ['EXT','E1','','','','gradeId','G7','G8','Update',ID,'Wrong grade keyed'],
+   ['EXT','E1','','','Promotion','positionId','','Senior Executive','update',ID.toUpperCase(),''],
+   ['EXT','E1','','01-Dec-2026','Transfer','','','','Delete',ID2,'Keyed twice'],
+   ['EXT','E2','','2026-12-01','Transfer','departmentId','','FIN','','',''],
+  ]),types,[resolve]);
+  expect(parsed.fileErrors).toEqual([]);expect(parsed.records).toHaveLength(3);
+  const [update,del,create]=parsed.records;
+  expect(update).toMatchObject({action:'update',movementId:ID,reason:'Wrong grade keyed',sourceRows:[2,3],cells:{kind:'promotion',gradeId:'G8',positionId:'Senior Executive'},before:{gradeId:'G7'},errors:[]});
+  expect(update.cells.effectiveDate).toBeUndefined();
+  expect(del).toMatchObject({action:'delete',movementId:ID2,reason:'Keyed twice',cells:{kind:'transfer',effectiveDate:'01-Dec-2026'},errors:[]});
+  expect(create.action).toBeUndefined();expect(create.errors).toEqual([]);
+ });
+ it('reports the row-level errors of Update and Delete',()=>{
+  const parsed=movementRowsToRecords(v4([
+   ['EXT','E1','','','','gradeId','','G8','Update','','No id'],
+   ['EXT','E2','','','','','','','Delete','not-an-id','Bad id'],
+   ['EXT','E3','','','','departmentId','','FIN','Delete',ID,'Delete with fields'],
+   ['EXT','E4','','','','gradeId','','G8','Update',ID2,''],
+   ['EXT','E5','','2026-11-01','Transfer','departmentId','','FIN','',ID,'x'],
+   ['EXT','E6','','','','','','','Rename','',''],
+   ['EXT','E7','','','Promotion','incrementAmount','','100','Update','9e3e4f6c-7d8b-4c0d-9e2f-3a4b5c6d7e8f','More money'],
+   ['EXT','E8','','2026-11-01','','','','','Delete','1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d','x'],['EXT','E8','','2026-11-02','','','','','Delete','1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d','y'],
+   ['EXT','E9','','2026-11-01','Transfer','departmentId','',ID,'','',''],
+  ]),types,[resolve]);
+  const errors=Object.fromEntries(parsed.records.map(r=>[r.employeeCode,r.errors]));
+  expect(errors.E1).toEqual(['movement_id_required']);expect(errors.E2).toEqual(['movement_id_unknown']);
+  expect(errors.E3).toEqual(['not_applicable_on_delete']);expect(errors.E4).toEqual(['reason_required']);
+  expect(errors.E5).toEqual(['movement_id_not_for_create','reason_not_for_create']);expect(errors.E6).toEqual(['unknown_action']);
+  expect(errors.E7).toEqual(['increment_amount_not_for_update']);
+  expect(errors.E8).toEqual(expect.arrayContaining(['conflicting_values:effectiveDate','conflicting_values:reason']));
+  expect(errors.E9).toEqual(['internal_reference_not_allowed']);
+ });
+ it('refuses the same Movement Event ID named by two rows of different actions',()=>{
+  const parsed=movementRowsToRecords(v4([['EXT','E1','','','','gradeId','','G8','Update',ID,'a'],['EXT','E1','','','','','','','Delete',ID,'b']]),types,[resolve]);
+  expect(parsed.records.map(r=>r.errors)).toEqual([['duplicate_movement_id'],['duplicate_movement_id']]);
+ });
+ it('reads a version 4 workbook and an eleven-column CSV',async()=>{
+  const bytes=await edit(await make(),fill([['EXT','E1','','','','gradeId','','G8','Update',ID,'Wrong grade keyed']]));
+  const read=await readMovementSource('m.xlsx',bytes,{tenantId:a,types,resolve});
+  expect(read.fileErrors).toEqual([]);expect(read.records[0]).toMatchObject({action:'update',movementId:ID,reason:'Wrong grade keyed'});
+  const csv=await readMovementSource('m.csv',Buffer.from(toCsv([HEADER4,['EXT','E1','','','','','','','Delete',ID,'Keyed twice']])),{tenantId:a,types,resolve});
+  expect(csv.fileErrors).toEqual([]);expect(csv.records[0]).toMatchObject({action:'delete',movementId:ID});
+ });
+ it('still accepts a version 3 workbook as Create only, and refuses a value beyond its eight columns',async()=>{
+  const v3=await edit(await make(),wb=>{
+   const sheet=wb.Sheets.Movements;for(const c of ['I','J','K'])for(let r=1;r<=201;r++)delete sheet[c+r];sheet['!ref']='A1:H201';
+   const meta=signMovementTemplate({tenantId:a,downloadedAt:new Date().toISOString(),catalogue:movementWorkbookCatalogue({types}),captions:HEADER,version:3});
+   wb.Sheets._meta=XLSX.utils.aoa_to_sheet([[JSON.stringify(meta)]]);
+   fill([['EXT','E1','','01-Dec-2026','Transfer','departmentId','','FIN']])(wb);
+  });
+  const read=await readMovementSource('old.xlsx',v3,{tenantId:a,types,resolve});
+  expect(read.fileErrors).toEqual([]);expect(read.records[0]).toMatchObject({cells:{kind:'transfer',departmentId:'FIN'},errors:[]});expect(read.records[0].action).toBeUndefined();
+  const wider=await edit(v3,wb=>{wb.Sheets.Movements.I2={t:'s',v:'Update'};wb.Sheets.Movements['!ref']='A1:I201';});
+  expect((await readMovementSource('old.xlsx',wider,{tenantId:a,types,resolve})).fileErrors).toEqual(['workbook_columns_changed']);
  });
 });
 // The single-type CSV owner remains for the per-type CSV contract used by other import paths.
