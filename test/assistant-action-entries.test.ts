@@ -53,7 +53,7 @@ describe('live-scope shortcuts fail closed',()=>{
  });
  it('lists nothing administrative for an ordinary employee and every shortcut for a scoped HR admin',async()=>{
   expect(await allowedModuleActionEntries(ctxOf('employee'),AGENT_MODULE_CODES)).toEqual([]);
-  source.companies.mockResolvedValue(['company']);source.rewards.mockResolvedValue(true);source.cancel.mockResolvedValue({units:[{unitId:'u'}]});source.calendar.mockResolvedValue({units:[{unitId:'u'}]});expect(new Set(await allowedModuleActionEntries(ctxOf('hr_admin'),AGENT_MODULE_CODES))).toEqual(new Set(MODULE_ACTION_ENTRIES));
+  source.companies.mockResolvedValue(['company']);source.rewards.mockResolvedValue(true);source.cancel.mockResolvedValue({units:[{unitId:'u'}]});source.calendar.mockResolvedValue({units:[{unitId:'u'}]});source.annualReturn.mockResolvedValue({units:[{unitId:'u'}]});expect(new Set(await allowedModuleActionEntries(ctxOf('hr_admin'),AGENT_MODULE_CODES))).toEqual(new Set(MODULE_ACTION_ENTRIES));
   source.companies.mockResolvedValue([]);source.cancel.mockResolvedValue({units:[]});source.calendar.mockResolvedValue({units:[]});source.annualReturn.mockResolvedValue({units:[]});expect(await allowedModuleActionEntries(ctxOf('manager'),AGENT_MODULE_CODES)).toEqual(['assigned_leave']);
  });
  it('reads nothing for task cards that are not shown',async()=>{
