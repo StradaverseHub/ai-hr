@@ -1,0 +1,16 @@
+{
+  "status": "PRIVATE_UNRUN_SOURCE_PROPOSAL_V4_FROZEN",
+  "sourceValidatorUnchangedFromV3": true,
+  "files": {
+    "README.md": "5e7503ef73da3602ca2ca5e81cdb348c56b69cb511c1d0c56beb04d4c0c0019f",
+    "hosted-column-acl-fixtures.sql": "de5a3dbf8957a1d23a75daf4f9744d10ead9f44a28d190209b25900c51c6a6d9",
+    "prepare-commit.sql": "fd11fe73ee29d0f320abfcf51bc53cce921ab3eee0ded429de3fc7024e56cc1a",
+    "prepare-rehearse.sql": "8f7b4fc4104b10384c8005ec1addc7269fbadaba08d85742273d3379e47301c4",
+    "prepare.sql": "8ad1be00589687786ed0e8646adff9537c115baf321154a5143a580db2578c90",
+    "restricted-owner-rehearsal.sql": "73f63a93b017de950df8e95b0f848af425f7700fe8f74a457ea7c779b3d14ce3",
+    "rollback-preparation.sql": "7ec935dce55fe288c02aa57a4e92518530b824e8024dfbb99f80ed705a4446b3",
+    "snapshot-view.sql": "1feb1d9af6f84f8ab52d9b58f1bb9f642b6014ace7d094e9aa1bf3e182ef5bc9",
+    "snapshot.sql": "cdd440b11407d7793f186bb61e36b626fdf4c785506ef0d7ec1d05eb2eb2ca98",
+    "source-hashes.json": "ccca27d602ad19bea263f642d858de59511541a49d7e7395164af7c19e2759eb"
+  }
+}
