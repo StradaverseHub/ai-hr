@@ -70,7 +70,7 @@ describe('genuine catalogue encrypted custody on the existing ledger',()=>{
  it('keeps dedicated-family receipt columns NULL with otherwise valid foreign keys',async()=>{
   const r=(await reviews.prepare(ctx,intent())).review;
   const [event]=await owner.db.insert(schema.domainEvent).values({tenantId:b.tenantId,aggregateType:'employee-id-config',aggregateId:configId,eventType:'fixture.hybrid',actorType:'user',actorId:ctx.userId,payload:{}}).returning({id:schema.domainEvent.id});
-  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional Hybrid FK',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,configId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
+  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional Hybrid FK',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'});
   for(const statement of [sql`update app.assistant_own_leave_review set notification_event_id=${event.id}::uuid where id=${r.actionId}::uuid`,sql`update app.assistant_own_leave_review set employment_id=${hired.employmentId}::uuid where id=${r.actionId}::uuid`]){
    let error:unknown;try{await owner.db.execute(statement);}catch(caught){error=caught;}expect(pgSqlState(error)).toBe('23514');
   }
@@ -81,7 +81,7 @@ describe('genuine catalogue encrypted custody on the existing ledger',()=>{
   expect(size.bytes).toBeGreaterThan(0);expect(size.constraints).toBeGreaterThan(0);console.info('employee-id-template-status-custody-ledger-constraint-size',JSON.stringify(size));
  });
  it('joins canonical actor privacy erasure without inventing template employee targets',async()=>{
-  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional Template Author',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,configId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'}),userId=await createAppUser(b.tenantId,hired.personId,'hr_admin');await grantAssistant(ctx,{appUserId:userId});
+  const hired=await hireEmployee(ctx,{person:{fullName:'Fictional Template Author',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2025-01-01'}),userId=await createAppUser(b.tenantId,hired.personId,'hr_admin');await grantAssistant(ctx,{appUserId:userId});
   const author={...ctx,userId,personId:hired.personId},r=(await reviews.prepare(author,intent())).review;
   await erasePersonPii(ctx,{subjectEmploymentId:hired.employmentId,scope:'contact',reason:'Fictional catalogue author request',requestRef:'FIC-TEMPLATE-PRIVACY'});
   expect(await stored(r.actionId)).toMatchObject({state:'refused',bodyCount:0,employmentId:null,eventId:null});
