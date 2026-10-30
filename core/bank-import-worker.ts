@@ -81,6 +81,9 @@ export async function processBankImportJob(ctx:SessionContext,id:string):Promise
    await withTenant(ctx,async tx=>{
     const [current]=await tx.execute<QueueRow>(sql`select * from bank_import_row where job_id=${id}::uuid and ordinal=${row.ordinal} for update`);
     if(current?.state!=='valid')return;
+    // Optimization only; the policy retains the same current principal checks.
+    // LOCAL confines it to this canonical HR/audit/checkpoint transaction.
+    await tx.execute(sql`select set_config('app.bank_import_point_read','on',true)`);
     // The same transaction owns this exact row's mutation, immutable audit item and checkpoint.
     const saved=await applyBankImportRowTx(tx,ctx,{record:current.record,binding:current.binding,employmentId:current.employment_id!,companyId:current.company_id!,attemptId:job.attempt_id!,ordinal:row.ordinal});
     await tx.execute(sql`update bank_import_row set state=${saved?'applied':'skipped'} where job_id=${id}::uuid and ordinal=${row.ordinal}`);
