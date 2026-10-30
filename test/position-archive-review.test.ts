@@ -3,6 +3,7 @@ import {eq} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import * as schema from '../db/schema';
 import {archivePosition,updatePosition} from '../core/admin';
+import {setLabelCriteria} from '../core/system-labels';
 import {preparePositionArchiveTx,confirmPositionArchiveTx} from '../core/position-archive-review';
 import {POSITION_ARCHIVE_ACTION as action,PositionArchiveHuman} from '../lib/assistant-actions/position-archive-contract';
 import {adminCtx,owner,resetDb,seedBase,closeAll,type Base} from './harness';
@@ -36,7 +37,7 @@ describe('position catalogue archive source, pending Assistant custody',()=>{
  });
  it('refuses foreign tenant IDs',async()=>{const other=await seedBase();await expect(prepare(b,human(other))).rejects.toThrow();});
  it('refuses a global label whose consequences exceed one company',async()=>{
-  await owner.db.update(schema.position).set({isGlobal:true}).where(eq(schema.position.id,b.positionId));await expect(prepare(b)).rejects.toThrow();
+  await setLabelCriteria({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]},{kind:'position',labelId:b.positionId,isGlobal:true,companyIds:[]});await expect(prepare(b)).rejects.toThrow();
  });
  it('refuses an ordinary employee without treating read visibility as write authority',async()=>{
   const ctx={...adminCtx(b),roles:['employee' as const],grants:[{role:'employee' as const,companyId:b.companyId}]};

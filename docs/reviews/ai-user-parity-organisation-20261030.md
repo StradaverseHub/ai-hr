@@ -5,6 +5,7 @@ Status: native source preparation, NOT a mounted or complete Assistant action.
 ## Native inventory and boundaries
 
 - Company listing/new/detail: app/admin/organization; core/admin owns company creation, general edits, parent, archive/delete. Country statutory identity resolves via localization registry; bank profiles and payroll cycle settings have separate owners. Composite company saves cannot be presented as one implemented isolated effect.
+- Mounted System Labels save: app/admin/settings/system-labels/page.tsx -> saveLabelsGridAction -> core/admin.ts#bulkSaveLabels, which emits position.updated for the composite metadata/archive save. The older per-position archive action exists but is not mounted by the current grid. This checkpoint prepares that legacy archive owner only; mounted grid parity remains pending.
 - System Labels: departments, positions, business units, cost centres and their scope assignments use core/admin and core/system-labels. A position may be global or shared across companies; company_id alone is not its blast radius.
 - Job descriptions: packs/job-descriptions/service owns draft/version/configuration/export and attachments. Binary upload/export remains a native handoff until a complete safe workflow exists.
 - Reporting structure: existing org.reporting.change is implemented in Assistant but targets employment reporting, not catalogue administration.
