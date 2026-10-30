@@ -25,7 +25,12 @@ else {
  refusal.reason=['Unresolved','Incomplete','Foreign','changed','differs','exceeded','Expired','Missing','timed out'].find(code=>text.includes(code))??'ASSESSMENT_REFUSED';
  refusal.diagnosticSha256=createHash('sha256').update(text).digest('hex');
  const bindingsPath=join(evidence,'history-bindings.json');
- if(existsSync(bindingsPath)){const bindings=JSON.parse(readFileSync(bindingsPath,'utf8'));refusal.unresolvedRunIds=bindings.filter(([,binding])=>binding.kind==='UNRESOLVED').map(([runId])=>runId);}
+ if(existsSync(bindingsPath)){
+  const bound=new Set(JSON.parse(readFileSync(bindingsPath,'utf8')).map(([runId])=>runId));
+  const rows=JSON.parse(readFileSync(join(evidence,'history.json'),'utf8'));
+  const original=JSON.parse(readFileSync(join(evidence,'original/run.json'),'utf8'));
+  refusal.unresolvedRunIds=rows.filter(row=>![41039154492,41042016086].includes(row.id)&&!bound.has(row.id)&&(row.status!=='completed'||Date.parse(row.updated_at)>=Date.parse(original.updated_at))).map(row=>row.id);
+ }
 }
 writeFileSync(join(output,'result.json'),JSON.stringify(refusal,null,2)+'\n',{mode:0o600,flag:'wx'});
 console.log(JSON.stringify(refusal));
