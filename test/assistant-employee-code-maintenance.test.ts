@@ -1,10 +1,11 @@
+import {appendEvent} from '../db/events';
 import {createEmployeeDraftWithReservedCode} from '../core/employee-draft';
 /** Real migrated SQL custody and native purpose-bound employee code writer; fictional fixtures, no provider calls.
  * This deliberately tests the definer boundary directly, independently of the TypeScript review adapter. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {createCompany,createDepartment} from '../core/admin';
@@ -84,7 +85,7 @@ describe('native positive employment Employee ID correction',()=>{
   const foreign=await seedBase();await setModule(foreign.tenantId,'assistant','active');const loginForeign=await login(await hire('Foreign code maintainer',foreign),'hr_admin',foreign);expect(await readEmployeeCodeMaintenanceChoices(loginForeign,{query:'',employmentId:subject.employmentId})).toEqual({kind:'unavailable'});
  });
  it('expires or discards saved reviews without a native code effect',async()=>{
-  const who=await positive(),input=await human(who),expired=(await employeeCodeMaintenanceReviews.prepare(who,input)).review,before=await snapshot();await owner.db.execute(sql`update app.assistant_own_leave_review set expires_at=clock_timestamp()-interval '1 second' where id=${expired.actionId}::uuid`);expect(await employeeCodeMaintenanceReviews.confirm(who,confirm(expired))).toMatchObject({kind:'retired',receipt:{state:'expired'}});expect(await snapshot()).toEqual(before);expect(await stored(expired.actionId)).toMatchObject({state:'expired',bodies:0});
+  const who=await positive(),input=await human(who),expired=(await employeeCodeMaintenanceReviews.prepare(who,input)).review,before=await snapshot();await owner.db.execute(sql`update app.assistant_own_leave_review set created_at=clock_timestamp()-interval '2 minutes',expires_at=clock_timestamp()-interval '1 second' where id=${expired.actionId}::uuid`);expect(await employeeCodeMaintenanceReviews.confirm(who,confirm(expired))).toMatchObject({kind:'retired',receipt:{state:'expired'}});expect(await snapshot()).toEqual(before);expect(await stored(expired.actionId)).toMatchObject({state:'expired',bodies:0});
   const r=(await employeeCodeMaintenanceReviews.prepare(who,input)).review;expect(await employeeCodeMaintenanceReviews.discard(who,{actionId:r.actionId})).toMatchObject({kind:'retired',receipt:{state:'discarded'}});expect(await snapshot()).toEqual(before);expect(await stored(r.actionId)).toMatchObject({state:'discarded',bodies:0});
  });
  it('rejects prior native events as completion proof, even for this user and employment',async()=>{
@@ -119,4 +120,52 @@ it.each(['hr_admin','employee'] as const)('keeps a genuine unlinked %s actor sep
  expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,subjectPersonId:subject.personId,state:'completed',bodies:0,encrypted:false});
  const events=(await snapshot()).events.filter(event=>event.eventType==='employment.employee-code.set'&&event.actorId===who.userId);expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:who.userId,subjectEmploymentId:subject.employmentId});
  const next=(await employeeCodeMaintenanceReviews.prepare(who,await human(who,subject.employmentId,'RELINK-42'))).review;await owner.db.update(schema.appUser).set({personId:subject.personId}).where(eq(schema.appUser.id,who.userId!));const relinked=await snapshot();await expect(employeeCodeMaintenanceReviews.reopen(who,next.actionId)).rejects.toThrow();await expect(employeeCodeMaintenanceReviews.confirm(who,confirm(next))).rejects.toThrow();await expect(employeeCodeMaintenanceReviews.reopen({...who,personId:subject.personId},next.actionId)).rejects.toThrow();expect(await snapshot()).toEqual(relinked);expect(await unlinkedCustodyRow(next.actionId)).toMatchObject({actorPersonId:null,subjectPersonId:subject.personId,state:'awaiting_confirmation',bodies:1});
+});
+
+/** The owner returns only a receipt reference; ordinary raw audit/employment RLS remains unchanged. */
+async function currentCodeEvent(tx:Tx,employmentId:string,before:string|null,after:string){
+ const [row]=await tx.execute<{eventId:string}>(sql`select app.assistant_employee_code_current_event(${employmentId}::uuid,${JSON.stringify(before)}::jsonb,${after}) as "eventId"`);return row?.eventId;
+}
+it('locates the exact top-level native event for a positive non-HR maintainer while raw audit and employment remain invisible',async()=>{
+ const who=await positive(),input=await human(who),before=await snapshot();
+ await expect(withTenant(who,async tx=>{
+  await setWorkforceEmployeeCode(who,{employmentId:subject.employmentId,employeeCode:input.employeeCode,expectedCode:input.expectedCode},tx);
+  expect(await tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,subject.employmentId))).toEqual([]);
+  expect(await tx.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,subject.employmentId))).toEqual([]);
+  const eventId=await currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42');expect(eventId).toEqual(expect.any(String));
+  const [receipt]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_employee_code_receipt(${subject.employmentId}::uuid,${eventId}::uuid) as receipt`);expect(receipt.receipt).toMatchObject({employmentId:subject.employmentId,eventId,before:input.expectedCode,after:'HUMAN-42'});
+  throw Error('bounded positive locator rollback');
+ })).rejects.toThrow('bounded positive locator rollback');expect(await snapshot()).toEqual(before);
+});
+it('refuses an old real native event and wrong expected baseline or normalized after value without broad audit disclosure',async()=>{
+ const who=await positive(),input=await human(who);await setWorkforceEmployeeCode(who,{employmentId:subject.employmentId,employeeCode:input.employeeCode,expectedCode:input.expectedCode});const before=await snapshot();
+ await expect(withTenant(who,tx=>currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42'))).rejects.toThrow();
+ for(const [baseline,after]of [[null,'CURRENT-42'],['WRONG-BASELINE','CURRENT-42'],['HUMAN-42','WRONG-AFTER']] as const){
+  await expect(withTenant(who,async tx=>{await setWorkforceEmployeeCode(who,{employmentId:subject.employmentId,employeeCode:'CURRENT-42',expectedCode:'HUMAN-42'},tx);await expect(currentCodeEvent(tx,subject.employmentId,baseline,after)).rejects.toThrow();throw Error('incorrect locator input refused');})).rejects.toThrow('incorrect locator input refused');expect(await snapshot()).toEqual(before);
+ }
+});
+it.each(['actor','aggregate','subject','before','after'] as const)('rejects a current native event whose %s proof was tampered before insertion',async tamper=>{
+ const input=await human(hr),foreign=await login(other,'employee'),before=await snapshot();
+ const statement=tamper==='actor'?`NEW.actor_id:='${foreign.userId}'::uuid;`:tamper==='aggregate'?`NEW.aggregate_id:='${other.employmentId}'::uuid;`:tamper==='subject'?`NEW.subject_employment_id:='${other.employmentId}'::uuid;`:tamper==='before'?`NEW.payload:=jsonb_set(NEW.payload,'{before,employeeCode}','"WRONG-BASELINE"'::jsonb);`:`NEW.payload:=jsonb_set(NEW.payload,'{after,employeeCode}','"WRONG-AFTER"'::jsonb);`;
+ await owner.client.unsafe(`create function public.ai_code_locator_tamper() returns trigger language plpgsql as $$begin if NEW.event_type='employment.employee-code.set' then ${statement} end if;return NEW;end$$`);
+ await owner.client.unsafe('create trigger ai_code_locator_tamper before insert on domain_event for each row execute function public.ai_code_locator_tamper()');
+ try{await expect(withTenant(hr,async tx=>{await setWorkforceEmployeeCode(hr,{employmentId:subject.employmentId,employeeCode:input.employeeCode,expectedCode:input.expectedCode},tx);await expect(currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42')).rejects.toThrow();throw Error('tampered locator proof refused');})).rejects.toThrow('tampered locator proof refused');expect(await snapshot()).toEqual(before);}finally{await owner.client.unsafe('drop trigger ai_code_locator_tamper on domain_event');await owner.client.unsafe('drop function public.ai_code_locator_tamper()');}
+});
+it('refuses multiple matching top-level event UUIDs rather than choosing an arbitrary receipt',async()=>{
+ const input=await human(hr),before=await snapshot();
+ await expect(withTenant(hr,async tx=>{await setWorkforceEmployeeCode(hr,{employmentId:subject.employmentId,employeeCode:input.employeeCode,expectedCode:input.expectedCode},tx);await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employment',aggregateId:subject.employmentId,eventType:'employment.employee-code.set',actor:{type:'user',id:hr.userId},subjectEmploymentId:subject.employmentId,payload:{before:{employeeCode:input.expectedCode},after:{employeeCode:'HUMAN-42'}}});await expect(currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42')).rejects.toThrow();throw Error('ambiguous locator proof refused');})).rejects.toThrow('ambiguous locator proof refused');expect(await snapshot()).toEqual(before);
+});
+it.each([false,true])('refuses released-savepoint native proof even when the employment is later rewritten at top level=%s',async rewriteRow=>{
+ const input=await human(hr),before=await snapshot();
+ await expect(withTenant(hr,async tx=>{
+  await tx.execute(sql`savepoint code_locator_subtransaction`);await setWorkforceEmployeeCode(hr,{employmentId:subject.employmentId,employeeCode:input.employeeCode,expectedCode:input.expectedCode},tx);await tx.execute(sql`release savepoint code_locator_subtransaction`);
+  if(rewriteRow)await tx.update(schema.employment).set({employeeCode:'HUMAN-42'}).where(eq(schema.employment.id,subject.employmentId));
+  const [proof]=await tx.execute<{rowTop:boolean;eventTop:boolean}>(sql`select e.xmin=pg_current_xact_id()::xid as "rowTop",d.xmin=pg_current_xact_id()::xid as "eventTop" from employment e join domain_event d on d.aggregate_id=e.id and d.tenant_id=e.tenant_id where e.id=${subject.employmentId}::uuid and d.event_type='employment.employee-code.set' and d.actor_id=${hr.userId}::uuid`);expect(proof).toEqual({rowTop:rewriteRow,eventTop:false});
+  await expect(currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42')).rejects.toThrow();throw Error('subtransaction locator proof refused');
+ })).rejects.toThrow('subtransaction locator proof refused');expect(await snapshot()).toEqual(before);
+});
+it('refuses direct locator calls for a foreign employment, own person or absent positive authority',async()=>{
+ const who=await positive(),input=await human(who),before=await snapshot();
+ for(const employmentId of [other.employmentId,hrPerson.employmentId,randomUUID()])await expect(withTenant(who,tx=>currentCodeEvent(tx,employmentId,input.expectedCode,'HUMAN-42'))).rejects.toThrow();
+ const denied=await login(other,'employee');await expect(withTenant(denied,tx=>currentCodeEvent(tx,subject.employmentId,input.expectedCode,'HUMAN-42'))).rejects.toThrow();expect(await snapshot()).toEqual(before);
 });

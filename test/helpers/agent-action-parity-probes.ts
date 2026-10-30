@@ -385,7 +385,8 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   offered:async(who,item)=>listed(await readPaymentMethodMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setEmploymentPaymentMethod(who,{employmentId:item.employmentId,paymentMethod:'cash'},tx)},
  'employees.code.maintain':{family:'hr_on_employment',store:employeeCodeMaintenanceReviews,
-  create:async(_w,h)=>{const rows=await readEmployeeCodeMaintenanceChoices(groupOf(h.base),{query:'',employmentId:h.person.employmentId});if(rows.kind!=='choices')throw Error('Native code fixture unavailable');const selected=rows.employees.find(row=>row.employmentId===h.person.employmentId);if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},
+  // Baseline construction is an owner fixture read, before per-role Assistant authority is exercised.
+  create:async(_w,h)=>{const [selected]=await owner.db.select({employeeCode:schema.employment.employeeCode}).from(schema.employment).where(and(eq(schema.employment.id,h.person.employmentId),eq(schema.employment.tenantId,h.base.tenantId)));if(!selected)throw Error('Missing native code fixture');return itemOf(h,h.person.employmentId,{proposal:{expectedCode:selected.employeeCode,employeeCode:'FIC-'+randomUUID().slice(0,8).toUpperCase()}});},
   human:item=>({action:'employees.code.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})}),
   offered:async(who,item)=>listed(await readEmployeeCodeMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setWorkforceEmployeeCode(who,{employmentId:item.employmentId,...(item.proposal as {expectedCode:string|null;employeeCode:string})},tx)},

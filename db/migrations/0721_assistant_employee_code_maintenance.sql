@@ -138,6 +138,36 @@ END $$;
 REVOKE ALL ON FUNCTION app._assistant_generic_review_verify(uuid,uuid) FROM PUBLIC,ai_hr_app;
 REVOKE ALL ON FUNCTION app._assistant_generic_review_verify_0721_previous(uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
+-- A positive Workforce maintainer does not gain raw audit/employee-row visibility. Locate ONLY
+-- this caller's exact native code event, in the current top-level write interval, without broadening RLS.
+CREATE FUNCTION app.assistant_employee_code_current_event(p_employment uuid,p_before jsonb,p_after text) RETURNS uuid
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE events uuid[];x xid:=pg_current_xact_id()::xid;
+BEGIN
+ IF app.current_user_id() IS NULL OR app.principal_snapshot_current() IS NOT TRUE
+  OR app.assistant_employee_code_choice_scope(p_employment) IS NOT TRUE
+  OR p_before IS NULL OR jsonb_typeof(p_before) NOT IN ('string','null')
+  OR p_after IS NULL OR p_after !~ '^[A-Z0-9-]{1,30}$' THEN
+  RAISE EXCEPTION 'Employee ID event unavailable' USING ERRCODE='42501';END IF;
+ SELECT array_agg(d.id) INTO events
+ FROM public.employment e
+ JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN public.company c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
+ JOIN public.domain_event d ON d.tenant_id=e.tenant_id AND d.aggregate_id=e.id
+ WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id()
+  AND app.access_workforce_command_company(c.id) AND e.xmin=x AND e.employee_code=p_after
+  AND NOT EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=app.current_user_id() AND a.tenant_id=e.tenant_id AND a.person_id=p.id)
+  AND d.xmin=x AND d.aggregate_type='employment' AND d.subject_employment_id=e.id
+  AND d.event_type='employment.employee-code.set' AND d.actor_type='user' AND d.actor_id=app.current_user_id()
+  AND d.payload->'before'=jsonb_build_object('employeeCode',p_before)
+  AND d.payload->'after'=jsonb_build_object('employeeCode',p_after)
+  AND p_before IS DISTINCT FROM to_jsonb(p_after);
+ IF coalesce(cardinality(events),0)<>1 THEN RAISE EXCEPTION 'Employee ID event unavailable' USING ERRCODE='42501';END IF;
+ RETURN events[1];
+END $$;
+REVOKE ALL ON FUNCTION app.assistant_employee_code_current_event(uuid,jsonb,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.assistant_employee_code_current_event(uuid,jsonb,text) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.assistant_employee_code_receipt(p_employment uuid,p_event uuid) RETURNS jsonb
  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE receipt jsonb;

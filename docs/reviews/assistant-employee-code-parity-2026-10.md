@@ -67,3 +67,39 @@ assert nullable actor versus nonnull true subject, exact user ownership, sealed-
 foreign-login refusal, one native event and stale/fresh-self refusal after actor relinking.
 The code fixture additionally covers a genuine unlinked non-HR USER granted native Workforce view and maintain.
 No tests, collection, compiler, database, build or server were run for this amendment.
+
+
+## Hosted-failure source repair, 30 October 2026
+
+The isolated repair explicitly retains approved-passport base
+f0389e30784e9a52a87bf73f8a03096910e0ca8d after freshly fetched main/alpha (272 ahead,
+36 behind). Original native run41013029636 and commands run failures remain evidence;
+this source repair makes no runtime PASS claim.
+
+Positive Workforce command authority deliberately does not grant raw employment or audit-table
+reads. The source's invoker SELECT of domain_event therefore hid the successful native event from
+positively granted non-HR users. Provisional0721 now exposes a closed current-event locator returning
+one UUID only. It checks current USER/principal, exact employment company command scope and actual
+person/company ownership, no own person, current top-level employment and event xmin, exact native
+aggregate/subject/user, explicit nullable before and persisted canonical after. Zero or multiple
+matching events refuse. The existing completion verifier is unchanged. No domain_event RLS, native
+0579 SQL/default code command, ledger or HR role is broadened.
+
+Authored unrun fixtures retain all existing native HR/non-HR/null-actor/recovery coverage and add
+raw audit/employment invisibility with successful bounded lookup; historical/current wrong expected
+values; actual native event tampering of actor, aggregate, subject and before/after payload; ambiguous
+UUIDs; released-savepoint row/event xmin contrasts; and direct scope refusals. Negative current-proof
+cases require the native command to finish before the locator refuses, and all outer effects roll
+back. The code expiry fixture now supplies valid created-before-expiry chronology in the past.
+
+The code role adapter's create block now reads only the fixture target's stored employeeCode through
+the fixture owner. Previously it called Assistant choices using groupOf(base) before role/reference
+login setup and failed before all eleven code role cases executed. The offer, screen, own-confirm,
+foreign-custody phases, names, roles and variants remain unchanged and still use each real role's
+current authority.
+
+Only static diff/source inspection and manifest regeneration were performed. No local tests,
+collection, compiler, database, build, server, CI, provider, push or release operation was run.
+Recommended affected hosted checks: assistant-employee-code-maintenance.test.ts; commands parity
+entrypoint including all eleven code roles; existing strict transport/contract and static parity
+guards; whole compiler. Preserve unaffected completed frozen-run evidence.
