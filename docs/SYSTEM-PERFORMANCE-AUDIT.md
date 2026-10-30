@@ -298,3 +298,31 @@ pending when this paragraph was written; they are not recorded as passes.
 Neither0736's provisional successor reservation nor these development receipts resolve
 0726's collision with the AI/V9 allocation. Reconcile both against the accepted ledger before
 any future integration. There is no release witness, deployment or500-user whole-system pass.
+
+Subsequent retained evidence:
+
+- Deduplication alone (1a248026c /41022122955) still serialized156,301,559 decoded bytes
+  for group-HR /admin/personnel (11,341ms) and32,298,992 for company HR (2,365ms).
+  Bounded-preview source7a535ba34 /41022430730 reduced these to1,929,309 (1,061ms)
+  and1,926,742 bytes (427ms). Manager /approvals fell from7,944,132 bytes/2,930ms to
+  1,966,049 bytes/750ms. These are distinct runner samples, not controlled timing ratios.
+-41022430730 completed44 pilot HTTP visits and17 browser visits, but one browser rendered
+  an intentionally unavailable Performance task tab as a streamed404. The driver initially
+  counted this as a heading. It then failed before the500-user phase because an unqualified
+  description selector also matched the page metadata tag.542dcf6a3 repairs those driver bugs,
+  selects the enabled Performance dashboard for fixtures without review assignments, rejects
+  streamed404/500 screens and requires actual fictional rows in Claims/Personnel/Payroll.
+  Original route counts must not be presented as44 fully verified functional screens.
+-019ba0274 /41023273405 passes185 assertions (172DB +13 independent checks) and the
+  whole-repository compiler. The one-million-history service median is309.8ms, maximum328.2ms,
+  with25 rows/12,307 response bytes.1fe2a621d /41023694694 passes203 more assertions
+  (140DB +63 independent checks), including cross-module INSERT/UPDATE equivalence and
+  notification/category/bulk contracts. These are focused development evidence.
+- Controlled baseline–candidate–baseline repeat41023627029 hit the experiment's240second
+  deadline while completing the final baseline; no comparison PASS is claimed. Completed
+  baseline paced p95 values were3598/3567/3548/3322ms (read/create/edit/delete); candidate
+  values were733/713/719/689ms, zero journey errors. This still improves measured latency,
+  but misses the500ms write target and disproves treating the first28ms sample as a universal
+  capacity guarantee. Baseline-after burst timings returned to the original slow range.
+  Increase only the experiment's completion budget to480seconds; endpoint latency thresholds
+  remain unchanged. Keep this original timeout and all partial reports.

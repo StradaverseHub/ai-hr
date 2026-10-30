@@ -28,4 +28,4 @@ it('compares repeated permission planning against a connection-local cached plan
   candidate:JSON.parse(readFileSync(join(out,'claims-500-sessions-cache-candidate.json'),'utf8'))};
  writeFileSync(join(out,'claims-plan-cache-comparison.json'),JSON.stringify(result,null,2));
  expect(result.candidate.phases.paced.errors).toBe(0);
-},240000);
+},480000);
