@@ -2,7 +2,7 @@ import {readFileSync} from 'node:fs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {validateTransportMetadata,validateTransportProvenance,compareCjkRasters,assertTransportConsumerInvocation} from './build-transport.mjs';
-import {STAGING_BUILD_RUNTIME} from './build-production.mjs';
+import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE} from './build-production.mjs';
 const sha='a'.repeat(40),digest='b'.repeat(64);
 const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_RUN_ID:'123',GITHUB_RUN_ATTEMPT:'1',AIHR_CI_HEAD:sha,AIHR_CI_CONTROL_HEAD:sha,GITHUB_SHA:sha,AIHR_BUILD_DIAGNOSTIC:'transport-producer',RUNNER_NAME:'consumer',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging-diagnostics.yml@refs/heads/codex/test-suite-efficiency-review-20261025',AIHR_BUILD_ARTIFACT_ID:'456',AIHR_BUILD_ARTIFACT_DIGEST:digest};
 const run={id:123,run_attempt:1,event:'workflow_dispatch',head_sha:sha,path:'.github/workflows/alpha-staging-diagnostics.yml',head_branch:'codex/test-suite-efficiency-review-20261025',repository:{id:1333414856,full_name:'StradaverseHub/ai-hr'}};
@@ -14,7 +14,7 @@ test('actual run/attempt/source/controller/job/artifact binding refuses mismatch
  for(const jobs of [[],[job,job],[{...job,conclusion:'failure'}],[{...job,run_attempt:2}],[{...job,status:'in_progress'}]])assert.throws(()=>validateTransportMetadata({run,jobs,artifact},env));
  for(const [key,value]of Object.entries({id:9,name:'other',expired:true,digest:'sha256:'+'c'.repeat(64),size_in_bytes:281*1024**2,workflow_run:{id:9,head_sha:sha}}))assert.throws(()=>validateTransportMetadata({run,jobs:[job],artifact:{...artifact,[key]:value}},env));
 });
-const p={format:1,kind:'diagnostic-system-testing-build-not-release',releaseAuthorized:false,source:sha,controller:sha,repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:123,runAttempt:1,workflowRef:env.GITHUB_WORKFLOW_REF,runtime:{...STAGING_BUILD_RUNTIME},buildRecordId:'00000000-0000-4000-8000-000000000001',nextBuildId:'fixture',diagnosticRunner:{name:'producer',sourcePath:'/producer/source',bootSha256:'c'.repeat(64)},...Object.fromEntries(['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'].map(k=>[k,digest]))};
+const p={format:2,capacityProfile:{...BUILD_CAPACITY_PROFILE},archiveBytes:123,kind:'diagnostic-system-testing-build-not-release',releaseAuthorized:false,source:sha,controller:sha,repository:'StradaverseHub/ai-hr',repositoryId:1333414856,runId:123,runAttempt:1,workflowRef:env.GITHUB_WORKFLOW_REF,runtime:{...STAGING_BUILD_RUNTIME},buildRecordId:'00000000-0000-4000-8000-000000000001',nextBuildId:'fixture',diagnosticRunner:{name:'producer',sourcePath:'/producer/source',bootSha256:'c'.repeat(64)},...Object.fromEntries(['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'].map(k=>[k,digest]))};
 const consumer={name:'consumer',sourcePath:'/consumer/recipient',bootSha256:'d'.repeat(64)};
 test('fresh VM and exact runtime/provenance are mandatory; diagnostic cannot grant release',()=>{
  assert.equal(validateTransportProvenance(p,env,{...STAGING_BUILD_RUNTIME},consumer),true);
@@ -50,4 +50,14 @@ test('consumer-only repair binds retained origin separately from actual current 
  for(const [key,value]of Object.entries({GITHUB_SHA:'f'.repeat(40),AIHR_BUILD_PRODUCER_RUN_ID:'999',AIHR_BUILD_PRODUCER_CONTROL_HEAD:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'2',GITHUB_REPOSITORY:'other/repo',AIHR_CI_HEAD:'bad'}))assert.throws(()=>assertTransportConsumerInvocation({...repair,[key]:value}));
  assert.throws(()=>validateTransportProvenance({...p,runId:999},repair,{...STAGING_BUILD_RUNTIME},consumer));
  assert.throws(()=>validateTransportProvenance({...p,controller:repair.AIHR_CI_CONTROL_HEAD},repair,{...STAGING_BUILD_RUNTIME},consumer));
+});
+
+
+test('diagnostic transport keeps the unchanged outer ZIP bound and strict current capacity identity',()=>{
+ assert.equal(validateTransportMetadata({run,jobs:[job],artifact:{...artifact,size_in_bytes:293601280}},env),job);
+ assert.throws(()=>validateTransportMetadata({run,jobs:[job],artifact:{...artifact,size_in_bytes:293601281}},env));
+ for(const changed of [{...p,format:1},{...p,capacityProfile:undefined},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:1}},
+  {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456}},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,zipMaxBytes:293601281}},
+  {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,extra:true}},{...p,archiveBytes:276824065}])
+  assert.throws(()=>validateTransportProvenance(changed,env,{...STAGING_BUILD_RUNTIME},consumer));
 });

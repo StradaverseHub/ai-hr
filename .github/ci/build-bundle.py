@@ -14,7 +14,9 @@ import time
 
 MAX_FILES = 40000
 MAX_UNPACKED = 2 * 1024**3
-MAX_ARCHIVE = 256 * 1024**2
+CAPACITY_PROFILE = {"profileVersion": 2, "archiveMaxBytes": 276824064, "zipMaxBytes": 293601280}
+MAX_ARCHIVE = CAPACITY_PROFILE["archiveMaxBytes"]
+MAX_ZIP = CAPACITY_PROFILE["zipMaxBytes"]
 MAX_FILE = 256 * 1024**2
 MAX_MANIFEST = 16 * 1024**2
 MAX_PACKAGE = 32 * 1024**2
@@ -239,7 +241,7 @@ def pack(source, output):
         regular(archive, MAX_ARCHIVE, context="compressed-build-archive", root=output)
         build_id = (source / ".next/BUILD_ID").read_text().strip()
         require(build_id and len(build_id.encode()) <= 512 and not any(ord(c) < 32 or ord(c) == 127 for c in build_id), "invalid production build ID")
-        manifest = {"format": 1, "kind": "next-build-byte-bundle", "platform": sys.platform, "nextBuildId": build_id,
+        manifest = {"format": 2, "capacityProfile": dict(CAPACITY_PROFILE), "kind": "next-build-byte-bundle", "platform": sys.platform, "nextBuildId": build_id,
             "files": rows, "directories": dirs, "aliases": aliases, "unpackedBytes": sum(r["size"] for r in rows),
             "archiveBytes": archive.stat().st_size, "archiveSha256": digest_file(archive)}
         validate_manifest(manifest)
@@ -253,9 +255,16 @@ def pack(source, output):
     finally:
         owned.close()
 
+def validate_capacity_profile(profile):
+    require(isinstance(profile, dict) and set(profile) == set(CAPACITY_PROFILE)
+            and all(type(profile[key]) is int and profile[key] == value for key, value in CAPACITY_PROFILE.items()),
+            "capacity profile differs")
+    return profile
+
 def validate_manifest(m):
-    require(isinstance(m, dict) and set(m) == {"format", "kind", "platform", "nextBuildId", "files", "directories", "aliases", "unpackedBytes", "archiveBytes", "archiveSha256"}, "manifest shape differs")
-    require(type(m["format"]) is int and m["format"] == 1 and m["kind"] == "next-build-byte-bundle" and m["platform"] in {"linux", "darwin"}, "manifest kind/platform differs")
+    require(isinstance(m, dict) and set(m) == {"format", "capacityProfile", "kind", "platform", "nextBuildId", "files", "directories", "aliases", "unpackedBytes", "archiveBytes", "archiveSha256"}, "manifest shape differs")
+    require(type(m["format"]) is int and m["format"] == 2 and m["kind"] == "next-build-byte-bundle" and m["platform"] in {"linux", "darwin"}, "manifest kind/platform differs")
+    validate_capacity_profile(m["capacityProfile"])
     require(isinstance(m["nextBuildId"], str) and 0 < len(m["nextBuildId"].encode()) <= 512 and not any(ord(c)<32 or ord(c)==127 for c in m["nextBuildId"]), "invalid manifest build ID")
     require(type(m["archiveBytes"]) is int and 0 < m["archiveBytes"] <= MAX_ARCHIVE and isinstance(m['archiveSha256'],str) and re.fullmatch('[a-f0-9]{64}',m["archiveSha256"]) is not None, "invalid archive binding")
     files, dirs, aliases = m["files"], m["directories"], m["aliases"]
@@ -394,7 +403,7 @@ if __name__=='__main__':
         if mode == 'pack':
             pack_started = time.monotonic(); pack_cpu_started = time.process_time()
         result=pack(*args) if mode=='pack' else verify_directory(*args,allow_runtime_cache=mode=='verify-active-directory') if mode in {'verify-directory','verify-active-directory'} else unpack(*args)
-        print(json.dumps({'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False,**({'runtimeCacheExcluded':True} if mode=='verify-active-directory' else {})}))
+        print(json.dumps({'format':result['format'],'capacityProfile':result['capacityProfile'],'kind':result['kind'],'files':len(result['files']),'archiveBytes':result['archiveBytes'],'unpackedBytes':result['unpackedBytes'],'releaseAuthorized':False,**({'runtimeCacheExcluded':True} if mode=='verify-active-directory' else {})}))
     except (ValueError,OSError,KeyError,TypeError,json.JSONDecodeError,tarfile.TarError,EOFError) as error:
         print(str(error),file=sys.stderr);sys.exit(1)
     finally:

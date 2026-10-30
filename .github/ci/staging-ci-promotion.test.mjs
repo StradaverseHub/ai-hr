@@ -1,6 +1,7 @@
 /** Private promotion transport seams only. Never authenticate fabricated evidence against GitHub. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {BUILD_CAPACITY_PROFILE} from './build-production.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {installHash,installJson} from './ci-install-grant.mjs';
 import {stagingInstallerCommand,validateInstallAcknowledgement,transferAndLaunchCiBuild,validateInstalledArrival,validatePrelaunchState} from './staging-ci-promotion.mjs';
@@ -53,11 +54,13 @@ test('ready and pending deployment facts remain distinct without relaxing baseli
 test('fresh actual build/service/source/ledger tuple is mandatory; a health200 alone is insufficient',()=>{
  const {grant}=seams(),expected=[{tag:'001_fixture',hash:'f'.repeat(64),created_at:'1'}],base={source:grant.source,installId:grant.installId,buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,authorizationSha256:ack(grant).authorizationSha256};
  const value={releaseAuthorized:false,authorizationSha256:base.authorizationSha256,verified:{...base},activated:{...base,afterActivationMonotonicUs:100},
-  runtime:{...base,healthStatus:200,compiledByteInventory:{kind:'next-build-byte-bundle',files:4,releaseAuthorized:false,runtimeCacheExcluded:true},pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
+  runtime:{...base,healthStatus:200,compiledByteInventory:{format:2,capacityProfile:{...BUILD_CAPACITY_PROFILE},kind:'next-build-byte-bundle',files:4,releaseAuthorized:false,runtimeCacheExcluded:true},pid:'123',startedMonotonicUs:101,verifiedAt:new Date().toISOString(),migrationLedger:{kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',releaseAuthorized:false,rows:1,expectedSha256:installHash(installJson(expected)),actualSha256:'a'.repeat(64)}}};
  assert.equal(validateInstalledArrival(value,grant,expected).nextBuildId,grant.build.nextBuildId);
  for(const mutate of [v=>v.runtime.nextBuildId='other',v=>v.runtime.healthStatus=401,v=>v.runtime.pid='0',v=>v.runtime.startedMonotonicUs=99,
   v=>v.runtime.verifiedAt=new Date(Date.now()-61000).toISOString(),v=>v.runtime.migrationLedger.rows=0,v=>v.runtime.migrationLedger.expectedSha256='b'.repeat(64),
-  v=>v.authorizationSha256='b'.repeat(64),v=>v.activated.buildRecordId=grant.installId]){
+  v=>v.authorizationSha256='b'.repeat(64),v=>v.activated.buildRecordId=grant.installId,
+  v=>v.runtime.compiledByteInventory.format=1,v=>delete v.runtime.compiledByteInventory.capacityProfile,
+  v=>v.runtime.compiledByteInventory.capacityProfile.archiveMaxBytes=268435456,v=>v.runtime.compiledByteInventory.capacityProfile.zipMaxBytes++]){
   const copy=structuredClone(value);mutate(copy);assert.throws(()=>validateInstalledArrival(copy,grant,expected));
  }
 });

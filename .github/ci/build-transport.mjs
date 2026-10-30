@@ -11,12 +11,12 @@ import {Transform} from 'node:stream';
 import {pipeline} from 'node:stream/promises';
 import {isDeepStrictEqual} from 'node:util';
 import {brotliDecompressSync} from 'node:zlib';
-import {assertBuildRuntime,assertDiagnosticBuildInvocation,assertSuccessfulObservation} from './build-production.mjs';
+import {assertBuildRuntime,assertDiagnosticBuildInvocation,assertSuccessfulObservation,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
 
 const controller=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr',WORKFLOW='.github/workflows/alpha-staging-diagnostics.yml';
 const NAME='diagnostic-build-transport-producer';
-const MAX_ZIP=280*1024**2;
+const MAX_ZIP=BUILD_CAPACITY_PROFILE.zipMaxBytes;
 const hash=data=>createHash('sha256').update(data).digest('hex');
 const fail=message=>{throw Error('Build transport refused: '+message);};
 const requireValue=(value,message)=>{if(!value)fail(message);};
@@ -57,9 +57,11 @@ export function validateTransportMetadata({run,jobs,artifact},env){
 }
 export function validateTransportProvenance(p,env,runtime,localRunner){
  assertTransportConsumerInvocation(env);assertBuildRuntime(runtime,env);
- requireValue(p?.format===1&&p.kind==='diagnostic-system-testing-build-not-release'&&p.releaseAuthorized===false
+ assertBuildCapacityProfile(p?.capacityProfile);
+ requireValue(p?.format===2&&p.kind==='diagnostic-system-testing-build-not-release'&&p.releaseAuthorized===false
   &&p.source===env.AIHR_CI_HEAD&&p.controller===originController(env)&&p.repository===REPO&&p.repositoryId===1333414856
   &&p.runId===originRunId(env)&&p.runAttempt===1&&p.workflowRef===env.GITHUB_WORKFLOW_REF
+  &&Number.isSafeInteger(p.archiveBytes)&&p.archiveBytes>0&&p.archiveBytes<=BUILD_CAPACITY_PROFILE.archiveMaxBytes
   &&isDeepStrictEqual(p.runtime,runtime)&&/^[a-f0-9-]{36}$/.test(p.buildRecordId)&&typeof p.nextBuildId==='string'&&p.nextBuildId.length>0,'producer provenance');
  for(const k of ['lockSha256','packageSha256','preparedSha256','successfulObservationSha256','manifestSha256','archiveSha256'])requireValue(/^[a-f0-9]{64}$/.test(p[k]),'provenance digest');
  requireValue(p.diagnosticRunner&&typeof p.diagnosticRunner.name==='string'&&p.diagnosticRunner.name.length
@@ -171,7 +173,7 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const producer=validateTransportMetadata({run,jobs:jobsResponse.jobs,artifact},env);
   for(const [name,value]of Object.entries({run,consumerRun,jobs:jobsResponse,artifact}))writeFileSync(join(output,name+'.json'),JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
   const archive=join(output,'authenticated-build.zip'),digest=artifact.digest.slice(7),downloadStart=Date.now();
-  const downloadedBytes=await download(artifact.id,archive,digest);phases.downloadMs=Date.now()-downloadStart;
+  const downloadedBytes=await download(artifact.id,archive,digest);requireValue(downloadedBytes===artifact.size_in_bytes,'authenticated ZIP size differs');phases.downloadMs=Date.now()-downloadStart;
   execFileSync('python3',[join(controller,'.github/ci/build-transport-extract.py'),archive,join(output,'packet'),digest],{stdio:'inherit'});
   const packet=join(output,'packet'),p=JSON.parse(readFileSync(join(packet,'build-provenance.json')));
   const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync(join(source,'node_modules/next/package.json'))).version};
@@ -186,7 +188,9 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const observation=JSON.parse(readFileSync(join(packet,'successful-build.json')));
   assertSuccessfulObservation(observation,prepared,preparedBytes,p.nextBuildId,Date.parse(run.run_started_at),Date.parse(producer.completed_at));
   const manifest=JSON.parse(readFileSync(join(packet,'bytes/build-bundle-files.json')));
-  requireValue(manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId&&manifest.archiveBytes===p.archiveBytes&&manifest.archiveSha256===p.archiveSha256,'manifest provenance differs');
+  assertBuildCapacityProfile(manifest.capacityProfile);
+  assertBuildPacketAggregate(['build-provenance.json','system-testing.json','successful-build.json','bytes/build-bundle-files.json','bytes/build-bundle.tar.gz'].map(name=>lstatSync(join(packet,name)).size));
+  requireValue(manifest.format===2&&manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId&&manifest.archiveBytes===p.archiveBytes&&manifest.archiveSha256===p.archiveSha256,'manifest provenance differs');
   const packageEvidence=execFileSync('python3',[join(controller,'.github/ci/build-package-diagnostic.py'),source,p.diagnosticRunner.sourcePath],{maxBuffer:1024*1024});
   writeFileSync(join(output,'runtime-packages.json'),packageEvidence,{flag:'wx',mode:0o600});
   originalMode=lstatSync(source).mode&0o777;chmodSync(source,0o700);
@@ -204,7 +208,7 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const sourceStatus={source:git(source,['status','--porcelain','--untracked-files=all']),controller:git(controller,['status','--porcelain','--untracked-files=all'])};
   writeFileSync(join(output,'source-status.json'),JSON.stringify(sourceStatus)+'\n',{flag:'wx',mode:0o600});
   requireValue(!sourceStatus.source&&!sourceStatus.controller,'source/controller cleanliness changed during consumer');
-  const result={format:1,kind:'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:consumerRun.id,producerRunId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner:p.diagnosticRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false};
+  const result={format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:consumerRun.id,producerRunId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner:p.diagnosticRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false};
   writeFileSync(join(output,'transport.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
   // Keep only small audit/runtime evidence; the authenticated producer artifact retains build bytes.
   rmSync(archive);rmSync(join(packet,'bytes/build-bundle.tar.gz'));

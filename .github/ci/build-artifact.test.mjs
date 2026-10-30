@@ -1,11 +1,12 @@
 /** Private byte/refusal probes only; no application build, DB, compiler or deployment. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,realpathSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,rmSync,symlinkSync,realpathSync,truncateSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
-import {inspectCiBuildPacket,bindCiBuildSource,BUILD_ARTIFACT,BUILD_ZIP_MAX} from './build-artifact.mjs';
-import {buildPacketFixture} from './build-artifact-test-fixture.mjs';
+import {inspectCiBuildPacket,bindCiBuildSource,BUILD_ARTIFACT,BUILD_ARCHIVE_MAX,BUILD_ZIP_MAX} from './build-artifact.mjs';
+import {BUILD_CAPACITY_PROFILE} from './build-production.mjs';
+import {buildPacketFixture,fixtureHash} from './build-artifact-test-fixture.mjs';
 import {requiredEvidence} from './manifest.mjs';
 import {validateArtifacts} from './release-policy.mjs';
 function fixture(){
@@ -17,6 +18,7 @@ test('matching packet binds authentic identity/digests; canonical source is sepa
  const f=fixture();
  try{
   const packet=inspectCiBuildPacket(f.directory,f.expected);
+  assert.equal(packet.format,2);assert.deepEqual(packet.capacityProfile,BUILD_CAPACITY_PROFILE);
   assert.equal(packet.releaseAuthorized,false);assert.equal(packet.activeServiceVerified,false);assert.equal(packet.archiveMembersVerified,false);
   assert.equal(packet.canonicalCandidateInputsVerified,undefined);
   assert.equal(bindCiBuildSource(packet,f.source).canonicalCandidateInputsVerified,true);
@@ -52,7 +54,7 @@ test('v4 requires the build artifact; only that namespace has the binary bound a
  return import('./manifest.mjs').then(({buildUnits})=>{
   const suite=['test/db.test.ts','test/plain.test.ts'],plan={suite,units:buildUnits(suite,{db:[suite[0]],nodb:[suite[1]]},['test/ui.browser.test.tsx'])};
   const p={runId:123,controller:'c'.repeat(40),controllerBranch:'main'};
-  const artifacts=requiredEvidence(plan).artifacts.map((name,n)=>({id:n+1,name,size_in_bytes:name===BUILD_ARTIFACT?180*1024**2:2,digest:'sha256:'+'a'.repeat(64),expired:false,
+  const artifacts=requiredEvidence(plan).artifacts.map((name,n)=>({id:n+1,name,size_in_bytes:name===BUILD_ARTIFACT?BUILD_ZIP_MAX:2,digest:'sha256:'+'a'.repeat(64),expired:false,
    workflow_run:{id:123,repository_id:1333414856,head_repository_id:1333414856,head_sha:p.controller,head_branch:'main'}}));
   assert.equal(validateArtifacts(artifacts,p,plan),true);
   assert.throws(()=>validateArtifacts(artifacts.filter(a=>a.name!==BUILD_ARTIFACT),p,plan));
@@ -61,4 +63,27 @@ test('v4 requires the build artifact; only that namespace has the binary bound a
    const a=structuredClone(artifacts);a.find(x=>x.name===name).size_in_bytes=name===BUILD_ARTIFACT?BUILD_ZIP_MAX+1:64*1024**2+1;assert.throws(()=>validateArtifacts(a,p,plan));
   }
  });
+});
+
+
+test('only current manifest and provenance format/profile admit even when record hashes are freshly bound',()=>{
+ const changes=[v=>v.format=1,v=>delete v.capacityProfile,v=>v.capacityProfile.profileVersion=1,
+  v=>v.capacityProfile.archiveMaxBytes=268435456,v=>v.capacityProfile.zipMaxBytes++,v=>v.capacityProfile.extra=true];
+ for(const owner of ['manifest','provenance'])for(const mutate of changes){
+  const f=fixture();try{
+   const path=join(f.directory,'bytes/build-bundle-files.json'),provenance=structuredClone(f.provenance);
+   if(owner==='manifest'){
+    const value=JSON.parse(readFileSync(path));mutate(value);const bytes=Buffer.from(JSON.stringify(value)+'\n');writeFileSync(path,bytes);provenance.manifestSha256=fixtureHash(bytes);
+   }else mutate(provenance);
+   writeFileSync(join(f.directory,'build-provenance.json'),JSON.stringify(provenance)+'\n');
+   assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),undefined,owner);
+  }finally{f.close();}
+ }
+});
+test('archive capacity is264MiB while outer ZIP remains280MiB; oversized actual archive refuses',()=>{
+ assert.equal(BUILD_ARCHIVE_MAX,276824064);assert.equal(BUILD_ZIP_MAX,293601280);
+ const f=fixture();try{
+  truncateSync(join(f.directory,'bytes/build-bundle.tar.gz'),BUILD_ARCHIVE_MAX+1);
+  assert.throws(()=>inspectCiBuildPacket(f.directory,f.expected),/oversized packet member/);
+ }finally{f.close();}
 });
