@@ -1,7 +1,7 @@
 /** Same-channel normal cleanup driver. Failed/unknown transport never retries mutation. */
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
-import {installJson} from './ci-install-grant.mjs';
+import {installJson,installHash} from './ci-install-grant.mjs';
 import {createCleanupRequest} from './staging-cleanup-protocol.mjs';
 import {validateReady,createCommit,RESULT_KIND} from './normal-cleanup-session.mjs';
 import {cleanupFrames} from './normal-cleanup-io.mjs';
@@ -10,7 +10,7 @@ export function openNormalCleanupChannel(args,{launch=spawn}={}){
  child.stderr.on('data',chunk=>{errorBytes+=chunk.length;if(errorBytes<=65536)stderr.push(chunk);});
  const completed=new Promise((accept,reject)=>{child.once('error',reject);child.once('close',code=>code===0?accept():reject(Error('Cleanup transport failed; reconcile state and retain lease')));});completed.catch(()=>{});
  child.stdin.on('error',()=>{});
- return {frames,stdin:child.stdin,success:async()=>{await completed;assert(errorBytes<=65536,'Cleanup stderr exceeds bound');frames.finish();},stderr:()=>Buffer.concat(stderr).toString('utf8')};
+ return {frames,stdin:child.stdin,success:async()=>{await completed;assert(errorBytes<=65536,'Cleanup stderr exceeds bound');frames.finish();},stderr:()=>({bytes:errorBytes,capturedSha256:installHash(Buffer.concat(stderr))})};
 }
 export async function driveNormalCleanup({channel,grant,arrival,checksum,frozen,save,now=()=>Date.now()}){
  try{

@@ -26,3 +26,5 @@ test('READY and COMMIT refuse foreign selection, unknown fields, stale/old proof
  for(const mutate of [c=>c.nonce='a'.repeat(64),c=>c.extra=true,c=>c.readySha256='b'.repeat(64),c=>c.proof.checkedAt=new Date(Date.now()-61000).toISOString()]){const c=structuredClone(commit);mutate(c);assert.throws(()=>validateCommit(c,ready,f.grant));}
  assert.throws(()=>validateReady({...ready,selection:{...ready.selection,source:'e'.repeat(40)}},f.grant));return commit;};await runNormalCleanupSession(f.options);
 });
+
+test('grant expiry during post-removal full audit refuses final success without replaying engine',async()=>{const f=fixture();let audits=0;f.options.audit=async()=>{if(++audits===2)f.advance(31*60000);return {};};await assert.rejects(runNormalCleanupSession(f.options));assert.equal(f.events.filter(e=>e==='engine').length,1);assert.equal(f.events.filter(e=>e==='consumed').length,1);});
