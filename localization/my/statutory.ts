@@ -1,3 +1,4 @@
+import {assertWorkforcePersonTx,assertWorkforceEmploymentTx,WorkforceAccessError} from '../../core/workforce-access';
 import {isDeepStrictEqual} from 'node:util';
 import {captureStatutorySourceContext as captureStatutoryContext,lockStatutorySourceTx as statutoryWriteIntervalMYTx,lockReviewedStatutorySourceTx} from '../../core/statutory-source-lock';
 import {createHash} from 'node:crypto';
@@ -12,7 +13,7 @@ import {saveTaxSelectionMYTx,selectedSchemeOk,TaxSelectionError,taxSelectionCont
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../../db/client';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../../db/events';
-import { company,companyStatutoryMy, domainEvent, employeeStatutoryMy, employment, person } from '../../db/schema';
+import { company,companyStatutoryMy, domainEvent, employeeStatutoryMy, employeeTp3, employment, person } from '../../db/schema';
 import { CHILD_RELIEF_CATEGORY_KEYS, DEFAULT_MY_STATUTORY, type HrdfStatus } from './statutory-tables';
 import { MY_STATES } from './holidays';
 import { customHolderGaps, IncompleteCustomHolderError } from '../../lib/custom-holder';
@@ -484,6 +485,20 @@ export type Tp3Input = {
   tp3PcbPaid?: number | null;
 };
 
+/** One normalization owner: retain the native Number/toFixed/null behavior for ordinary callers. */
+function normalizedTp3OpeningValuesMY(p:Tp3Input){
+  const money = (v: number | null | undefined) =>
+    v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
+  return {
+    tp3Year: p.tp3Year ?? null,
+    tp3NetRemuneration: money(p.tp3NetRemuneration),
+    tp3EpfClaimed: money(p.tp3EpfClaimed),
+    tp3PcbPaid: money(p.tp3PcbPaid),
+  };
+}
+/** Closed private ancillary proof; never expose the underlying Zakat/LP/exemption values. */
+const tp3AncillaryHashMY=sql<string>`encode(sha256(convert_to(jsonb_build_object('tp3ZakatPaid',${employeeStatutoryMy.tp3ZakatPaid},'tp3Lp',${employeeStatutoryMy.tp3Lp},'tp3ExemptionUsed',${employeeStatutoryMy.tp3ExemptionUsed})::text,'UTF8')),'hex')`;
+
 /**
  * Partial update of ONLY the four TP3 opening-balance columns on employee_statutory_my, leaving the
  * rest of the statutory row (IC, EPF, SOCSO/EIS, bank, zakat election, tp3ZakatPaid) untouched. This is
@@ -492,21 +507,14 @@ export type Tp3Input = {
  * existing statutory row (TP3 has no meaning without an IC on file) — throws NoStatutoryProfileError
  * otherwise. Appends an `employee.tp3.updated` DomainEvent (before/after) per substrate discipline.
  */
-export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
+export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input,outerTx?:Tx) {
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
-  const money = (v: number | null | undefined) =>
-    v == null || Number.isNaN(Number(v)) ? null : Number(v).toFixed(2);
-  const values = {
-    tp3Year: p.tp3Year ?? null,
-    tp3NetRemuneration: money(p.tp3NetRemuneration),
-    tp3EpfClaimed: money(p.tp3EpfClaimed),
-    tp3PcbPaid: money(p.tp3PcbPaid),
-  };
-  return withTenant(ctx, async (tx) => {
+  const values=normalizedTp3OpeningValuesMY(p);
+  const run=async (tx:Tx) => {
     await statutoryWriteIntervalMYTx(tx,ctx);
     const [existing] = await tx
       .select({
-        id: employeeStatutoryMy.id,
+        id: employeeStatutoryMy.id,ancillaryHash:tp3AncillaryHashMY,
         tp3Year: employeeStatutoryMy.tp3Year,
         tp3NetRemuneration: employeeStatutoryMy.tp3NetRemuneration,
         tp3EpfClaimed: employeeStatutoryMy.tp3EpfClaimed,
@@ -514,13 +522,14 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
-      .limit(1);
+      .limit(1).for('update');
     if (!existing) throw new NoStatutoryProfileError();
-    await tx
+    const [written]=await tx
       .update(employeeStatutoryMy)
       .set({ ...values, updatedAt: sql`now()` })
-      .where(eq(employeeStatutoryMy.id, existing.id));
-    await appendEvent(tx, {
+      .where(eq(employeeStatutoryMy.id, existing.id)).returning({ancillaryHash:tp3AncillaryHashMY});
+    if(!written||written.ancillaryHash!==existing.ancillaryHash)throw new Error('TP3 ancillary source changed');
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory',
       aggregateId: existing.id,
@@ -538,11 +547,11 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input) {
           tp3EpfClaimed: existing.tp3EpfClaimed,
           tp3PcbPaid: existing.tp3PcbPaid,
         },
-        after: values,
+        after: values,ancillaryAfterHash:written.ancillaryHash,
       },
-    });
-    return { id: existing.id };
-  });
+    },{returnId:true});
+    return { id: existing.id,eventId };
+  };return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** A custom-holder switch was turned on without its required value (item ef720d3a). `field` names which.
@@ -555,6 +564,8 @@ export { IncompleteCustomHolderError };
  *  dedicated Bank Information card, which saves independently of the full statutory row. */
 export type BankInput = {
   personId: string;
+  /** Optional Personnel nomination; its current employment/person ownership is resolved in the owner Tx. */
+  employmentId?: string;
   bankName?: string | null;
   bankAccountNo?: string | null;
   enableCustomHolderName?: boolean;
@@ -571,10 +582,7 @@ export type BankInput = {
  * throws NoStatutoryProfileError otherwise. Validates require-when-enabled for both custom-holder fields.
  * Appends an `employee.bank.updated` DomainEvent (before/after) per substrate discipline.
  */
-export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
-  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
-  outerTx?: Tx) {
-  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+function normalizedBankValuesMY(p:BankInput){
   const enableName = p.enableCustomHolderName ?? false;
   const enableId = p.enableCustomHolderId ?? false;
   const holderName = (p.customHolderName ?? '').trim() || null;
@@ -588,7 +596,7 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     customHolderId: holderId,
   });
   if (gap) throw new IncompleteCustomHolderError(gap);
-  const values = {
+  return {
     bankName: (p.bankName ?? '').trim() || null,
     bankAccountNo: (p.bankAccountNo ?? '').trim() || null,
     // When a switch is off we null its stored value so a disabled holder can't linger and be resolved later.
@@ -597,8 +605,44 @@ export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
     enableCustomHolderId: enableId,
     customHolderId: enableId ? holderId : null,
   };
+}
+/** Interactive partial bank/passport writes retain the native HR floor and join the shared-person Workforce owner.
+ * No-user provisioning retains its existing RLS/service behavior. A genuine unlinked USER still
+ * takes every interactive check: absence of PERSON is never treated as a system principal. */
+async function statutoryMaintenanceSubjectMYTx(tx:Tx,ctx:SessionContext,p:{personId:string;employmentId?:string}){
+ await statutoryWriteIntervalMYTx(tx,ctx);
+ if(ctx.userId){
+  const [floor]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() and app.can_see_person(${p.personId}::uuid) as allowed`);
+  if(floor?.allowed!==true)throw new WorkforceAccessError();
+  await assertWorkforcePersonTx(tx,ctx,p.personId,'maintain');
+ }
+ if(p.employmentId!==undefined){
+  if(ctx.userId){await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'view');await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');}
+  const [selected]=await tx.select({personId:employment.personId}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('share');
+  if(!selected||selected.personId!==p.personId.toLowerCase())throw new WorkforceAccessError();
+ }
+}
+/** Authority/identity metadata only: no bank or sibling statutory value is read for editor admission. */
+export async function canMaintainBankProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+ const ctx=captureStatutoryContext(supplied);p=structuredClone(p);
+ try{return await withTenant(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p);return true;});}catch{return false;}
+}
+export async function setBankProfileMY(ctx: SessionContext, p: BankInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+  const values = normalizedBankValuesMY(p);
   const run = async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    // Only the native ESS caller's enclosing transaction may use its protected bank purpose.
+    // Entry precedes the private bank read; the existing deferred delta/audit guards own completion.
+    let directBank = false;
+    if (outerTx) {
+      await statutoryWriteIntervalMYTx(tx,ctx);
+      const [purpose] = await tx.execute<{allowed:boolean}>(sql`select app.profile_direct_bank_person(${p.personId}::uuid)
+        and (${p.employmentId??null}::uuid is null or app.profile_direct_subject(${p.employmentId??null}::uuid)) as allowed`);
+      directBank = purpose?.allowed === true;
+    }
+    if (!directBank) await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     const [existing] = await tx
       .select({
         id: employeeStatutoryMy.id,
@@ -1038,6 +1082,8 @@ export class PassportRequiredError extends Error {
 
 export type PassportInput = {
   personId: string;
+  /** Optional nomination; native authority and true ownership are rechecked in the same transaction. */
+  employmentId?:string;
   passportNumber?: string | null;
   passportIssueDate?: string | null;
   passportExpiryDate?: string | null;
@@ -1065,16 +1111,8 @@ export type PassportInput = {
  *     person has no statutory row yet — nothing to clear, no empty row seeded.
  * Remark and issuing country are optional on every path.
  */
-/** Same country-owned passport completeness check for a proposed edit and the actual writer. */
-export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
- const values=[p.passportNumber,p.passportIssueDate,p.passportExpiryDate,p.passportRemark,p.passportIssuingCountry,p.passportIssuingCountryCode].map(value=>(value??'').trim());
- const trioComplete=values.slice(0,3).every(Boolean),anyFieldPresent=values.some(Boolean);
- return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
-}
-export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
-  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
-  outerTx?: Tx) {
-  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+/** The same six-field normalization serves native writes and local reviewed reads. */
+function normalizedPassportValuesMY(p:PassportInput){
   const number = (p.passportNumber ?? '').trim() || null;
   const issue = (p.passportIssueDate ?? '').trim() || null;
   const expiry = (p.passportExpiryDate ?? '').trim() || null;
@@ -1084,9 +1122,7 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
   // CODE and a lowercase one would not match a statutory list; NOT derived from `issuingCountry`, which
   // holds a nationality demonym (see db/schema.ts and migration 0450).
   const issuingCountryCode = ((p.passportIssuingCountryCode ?? '').trim() || null)?.toUpperCase() ?? null;
-  const anyFieldPresent = Boolean(number || issue || expiry || remark || issuingCountry || issuingCountryCode);
-  const trioComplete = Boolean(number && issue && expiry);
-  const values = {
+  return {
     passportNumber: number,
     passportIssueDate: issue,
     passportExpiryDate: expiry,
@@ -1094,8 +1130,24 @@ export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput
     passportIssuingCountry: issuingCountry,
     passportIssuingCountryCode: issuingCountryCode,
   };
+}
+/** Same country-owned passport completeness check for a proposed edit and the actual writer. */
+export function validatePassportProfileMY(p:PassportInput,nationality:string|null|undefined){
+ const values=normalizedPassportValuesMY(p),trioComplete=Boolean(values.passportNumber&&values.passportIssueDate&&values.passportExpiryDate),anyFieldPresent=Object.values(values).some(Boolean);
+ return trioComplete||(isMalaysianNationality(nationality)&&!anyFieldPresent);
+}
+/** Passport editor admission metadata only; the SAME native guard reads no government-ID fields. */
+export async function canMaintainPassportProfileMY(supplied:SessionContext,p:{personId:string;employmentId:string}):Promise<boolean>{
+ const ctx=captureStatutoryContext(supplied);p=structuredClone(p);
+ try{return await withTenant(ctx,async tx=>{await statutoryMaintenanceSubjectMYTx(tx,ctx,p);return true;});}catch{return false;}
+}
+export async function setPassportProfileMY(ctx: SessionContext, p: PassportInput,
+  /** Explicit enclosing transaction; ordinary callers retain their owned transaction. */
+  outerTx?: Tx) {
+  ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+  const values=normalizedPassportValuesMY(p),anyFieldPresent=Object.values(values).some(Boolean);
   const run = async (tx:Tx) => {
-    await statutoryWriteIntervalMYTx(tx,ctx);
+    await statutoryMaintenanceSubjectMYTx(tx,ctx,p);
     // Nationality is derived from the person RECORD inside the same RLS tx — never from the caller.
     const [subject] = await tx
       .select({ nationality: person.nationality })
@@ -1514,3 +1566,42 @@ export async function readReviewedStatutoryEditableMYTx(tx:Tx,ctx:SessionContext
 /** Purpose-authorized labels only. Caller has checked granular fields for the complete company set. */
 export async function reviewedStatutoryChoiceMetadataMYTx(tx:Tx,ctx:SessionContext,supplied:readonly string[],limit=21){ctx=captureStatutoryContext(ctx);const companyIds=[...new Set(supplied.map(id=>z.uuid().parse(id).toLowerCase()))].sort();if(!companyIds.length)return[];if(companyIds.length>100||!Number.isInteger(limit)||limit<1||limit>21||!ctx.userId)throw new Error('Statutory choices unavailable');await lockReviewedStatutorySourceTx(tx,ctx);return tx.select({employmentId:employment.id,personId:person.id,employeeCode:employment.employeeCode,name:person.fullName,companyId:employment.companyId,companyName:company.legalName}).from(employment).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(employeeStatutoryMy,and(eq(employeeStatutoryMy.personId,employment.personId),eq(employeeStatutoryMy.tenantId,employment.tenantId))).where(and(eq(employment.tenantId,ctx.tenantId),inArray(employment.companyId,companyIds),eq(company.country,'MY'),sql`app.principal_snapshot_current() and app.is_admin() and app.can_see_person(${person.id}) and app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`)).orderBy(asc(employment.id)).limit(limit);}
 export async function readReviewedStatutoryLabelsMYTx(tx:Tx,ctx:SessionContext,employmentId:string,personId:string){ctx=captureStatutoryContext(ctx);await lockReviewedStatutoryProfileMYTx(tx,ctx,personId);const [row]=await tx.select({employmentId:employment.id,personId:person.id,employeeCode:employment.employeeCode,name:person.fullName,companyName:company.legalName}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.id,employmentId),eq(person.id,personId),eq(employment.tenantId,ctx.tenantId),eq(company.country,'MY'),sql`app.is_admin_for(${company.id}) and app.can_admin_payroll_employment(${employment.id}) and app.access_workforce_employment(${employment.id},'workforce.maintain')`));if(!row)throw new Error('Statutory labels unavailable');return row;}
+
+/** Country-owned exact Bank Information partial command preview. No write is performed here; both
+ * review and the native setter use normalizedBankValuesMY, including disabled-holder clearing. */
+export async function prepareReviewedBankMYTx(tx:Tx,ctx:SessionContext,p:BankInput){
+ ctx=captureStatutoryContext(ctx);p=structuredClone(p);
+ const snapshot=await lockReviewedStatutoryPersonMYTx(tx,ctx,p.personId);if(!snapshot)throw new NoStatutoryProfileError();
+ const before={bankName:snapshot.profile.bankName,bankAccountNo:snapshot.profile.bankAccountNo,enableCustomHolderName:snapshot.profile.enableCustomHolderName,customHolderName:snapshot.profile.customHolderName,enableCustomHolderId:snapshot.profile.enableCustomHolderId,customHolderId:snapshot.profile.customHolderId},after=normalizedBankValuesMY(p);
+ const [personVersion]=await tx.execute<{revision:string}>(sql`select xmin::text as revision from person where id=${p.personId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ return {statutoryId:snapshot.profile.id,before,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['bank:MY:v1',snapshot,personVersion,after])).digest('hex')};
+}
+
+/** Minimal country-owned passport snapshot. Never reads IC, bank, tax or sibling statutory values. */
+async function reviewedPassportSnapshotMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase();await lockReviewedStatutoryPersonIdMYTx(tx,ctx,id);
+ const [subject]=await tx.select({nationality:person.nationality,revision:sql<string>`xmin::text`}).from(person).where(and(eq(person.id,id),eq(person.tenantId,ctx.tenantId)));
+ const [row]=await tx.select({statutoryId:employeeStatutoryMy.id,revision:sql<string>`xmin::text`,passportNumber:employeeStatutoryMy.passportNumber,passportIssueDate:employeeStatutoryMy.passportIssueDate,passportExpiryDate:employeeStatutoryMy.passportExpiryDate,passportRemark:employeeStatutoryMy.passportRemark,passportIssuingCountry:employeeStatutoryMy.passportIssuingCountry,passportIssuingCountryCode:employeeStatutoryMy.passportIssuingCountryCode}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,id),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ if(!subject||!row)throw new NoStatutoryProfileError();const {statutoryId,revision,...fields}=row;return{statutoryId,revision,fields,subject};
+}
+export async function readReviewedPassportMYTx(tx:Tx,ctx:SessionContext,personId:string){const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,personId);return{statutoryId:snapshot.statutoryId,fields:snapshot.fields};}
+export async function prepareReviewedPassportMYTx(tx:Tx,ctx:SessionContext,p:PassportInput){
+ p=structuredClone(p);const snapshot=await reviewedPassportSnapshotMYTx(tx,ctx,p.personId);if(!validatePassportProfileMY(p,snapshot.subject.nationality))throw new PassportRequiredError();
+ const after=normalizedPassportValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['passport:MY:existing:v1',snapshot,after])).digest('hex')};
+}
+
+/** Existing hand opening balances only. Matching form membership uses the same person/year axis as
+ * saveTp3 and payroll's year gate; even an undeclared/blank matching form belongs to that owner. */
+async function reviewedTp3OpeningSnapshotMYTx(tx:Tx,ctx:SessionContext,personId:string){
+ ctx=captureStatutoryContext(ctx);const id=z.uuid().parse(personId).toLowerCase();await lockReviewedStatutoryPersonIdMYTx(tx,ctx,id);
+ const [row]=await tx.select({statutoryId:employeeStatutoryMy.id,revision:sql<string>`xmin::text`,ancillaryHash:tp3AncillaryHashMY,tp3Year:employeeStatutoryMy.tp3Year,tp3NetRemuneration:employeeStatutoryMy.tp3NetRemuneration,tp3EpfClaimed:employeeStatutoryMy.tp3EpfClaimed,tp3PcbPaid:employeeStatutoryMy.tp3PcbPaid}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,id),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).for('update',{noWait:true});
+ if(!row||row.tp3Year==null)throw new Error('Open TP3 on the native Personnel screen.');
+ const forms=await tx.select({id:employeeTp3.id,revision:sql<string>`xmin::text`}).from(employeeTp3).where(and(eq(employeeTp3.personId,id),eq(employeeTp3.tenantId,ctx.tenantId),eq(employeeTp3.assessmentYear,row.tp3Year))).orderBy(employeeTp3.id).for('share',{noWait:true});
+ if(forms.length)throw new Error('Use the native Form TP3 owner for this person and year.');
+ const {statutoryId,revision,ancillaryHash,...fields}=row;return{statutoryId,revision,ancillaryHash,formMembership:{personId:id,assessmentYear:row.tp3Year,forms},fields};
+}
+export async function readReviewedTp3OpeningMYTx(tx:Tx,ctx:SessionContext,personId:string){const snapshot=await reviewedTp3OpeningSnapshotMYTx(tx,ctx,personId);return{statutoryId:snapshot.statutoryId,fields:snapshot.fields};}
+export async function prepareReviewedTp3OpeningMYTx(tx:Tx,ctx:SessionContext,p:Tp3Input){
+ p=structuredClone(p);const snapshot=await reviewedTp3OpeningSnapshotMYTx(tx,ctx,p.personId);if(p.tp3Year!==snapshot.fields.tp3Year)throw new Error('TP3 year changes require native Personnel review.');
+ const after=normalizedTp3OpeningValuesMY(p);return{statutoryId:snapshot.statutoryId,before:snapshot.fields,after,reviewedDigest:createHash('sha256').update(JSON.stringify(['tp3-opening:MY:hand:v1',snapshot,after])).digest('hex')};
+}

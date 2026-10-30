@@ -104,8 +104,13 @@ describe('central AI allowance admission and durable accounting',()=>{
   await owner.db.delete(schema.tenantSetting).where(eq(schema.tenantSetting.key,'performance.ai_360_enabled'));
   vi.stubEnv('OPENAI_API_KEY','fixture-never-sent');
   try{
-   const row=(await aiManagementView(group)).features.find(f=>f.id==='performance_360')!;expect(row.enabled).toBe(true);expect(row.state).toBe('ready');
+   // Owner decision 3 (WP6): an unset Performance AI switch resolves to its catalogue default, OFF, in status and admission alike.
+   const row=(await aiManagementView(group)).features.find(f=>f.id==='performance_360')!;expect(row.enabled).toBe(false);expect(row.state).toBe('paused');
    await owner.db.insert(schema.tenantSetting).values({tenantId:base.tenantId,key:'performance.ai_360_enabled',value:sql`'null'::jsonb`,source:'platform'});
+   expect((await aiManagementView(group)).features.find(f=>f.id==='performance_360')).toMatchObject({enabled:false,state:'paused'});
+   await expect((await cfg(group,'performance_360')).governance!.run({operation:'draft',reservedTokens:100},async()=> 'must not run')).rejects.toThrow('paused');
+   await owner.db.update(schema.tenantSetting).set({value:true}).where(eq(schema.tenantSetting.key,'performance.ai_360_enabled'));
+   expect((await aiManagementView(group)).features.find(f=>f.id==='performance_360')).toMatchObject({enabled:true,state:'ready'});
    await expect((await cfg(group,'performance_360')).governance!.run({operation:'draft',reservedTokens:100},async()=> 'draft')).resolves.toBe('draft');
    await setModule(base.tenantId,'notifications','active');
    await setTenantSetting(group,{key:'notifications.readiness_nudge_enabled',value:true});

@@ -14,6 +14,7 @@ import { governedAiConfig } from '../core/ai-governance';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { syntheticConsentFor, syntheticProviderTransport, evaluateSyntheticCandidate, activateSyntheticCandidate } from './provider-evaluation-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { acceptBaselineFixture, activateDirectProviderFixture } from './ai-provider-change-fixture';
 let base: Base;
 beforeAll(migrateTestDb);
 beforeEach(async () => {
@@ -38,7 +39,7 @@ async function evaluateWithSyntheticSpend(...args:Parameters<typeof evaluateProv
 describe('explicit candidate evaluation and activation', () => {
   it('saves/edit candidates without changing live configuration or admitting model work', async () => {
     const ctx = adminCtx(base);
-    await saveAiProviderConfig(ctx,{provider:'openai',model:'fictional-direct',apiKey:'fixture-live-key',makeActive:true});
+    await activateDirectProviderFixture(ctx,{provider:'openai',model:'fictional-direct',apiKey:'fixture-live-key'});
     await candidate();
     expect(await config()).toMatchObject({provider:'openai',apiKey:'fixture-live-key'});
     const view = await getAiConfigView(ctx), card = view.providers.find(p => p.provider==='openrouter')!;
@@ -93,6 +94,10 @@ describe('explicit candidate evaluation and activation', () => {
     expect(actual.every(row => row.featureId==='provider_evaluation' && row.state==='completed' && row.actualTokens===0)).toBe(true);
     expect(proof.summary).toMatchObject({calls:3,usageReportedCalls:3,inputTokens:0,accountChargeCredits:null});
     expect(await config()).toBeNull();
+    // WP14: the receipt alone is not enough; the baseline gate of this exact candidate version is also required.
+    await expect(setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
+    expect((await receipts())[0].consumed_at).toBeNull(); expect(await config()).toBeNull();
+    await acceptBaselineFixture(ctx,{kind:'openrouter_candidate'});
     await setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt});
     expect(await config()).toMatchObject({provider:'openrouter',model:'fictional/model',apiKey:'fixture-only-key'});
     const before = await receipts(); expect(before[0].consumed_at).not.toBeNull(); expect(before[0].promoted_at).not.toBeNull();
@@ -105,6 +110,7 @@ describe('explicit candidate evaluation and activation', () => {
     await candidate(); const ctx=adminCtx(base), proof=await evaluateSyntheticCandidate(ctx);
     await saveAiProviderConfig(ctx,{provider:'openrouter',model:kind==='model'?'fictional/new':'fictional/model',
       ...(kind==='key'?{apiKey:'fixture-rotated-key'}:{}),providerOptions:options(kind==='routes'?'approved-b':'approved-a')});
+    await acceptBaselineFixture(ctx,{kind:'openrouter_candidate'}); // the refusal below is the receipt's, not the baseline gate's
     await expect(setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
     expect(await config()).toBeNull(); expect((await receipts())[0].consumed_at).toBeNull();
   });
@@ -138,6 +144,7 @@ describe('explicit candidate evaluation and activation', () => {
   });
   it('revalidates actual group authority and refuses cross-tenant receipt or stale admin roles', async () => {
     await candidate(); const ctx=adminCtx(base), consent=await syntheticConsentFor(ctx), proof=await evaluateSyntheticCandidate(ctx), other=await seedBase();
+    await acceptBaselineFixture(ctx,{kind:'openrouter_candidate'});
     await expect(setActiveProvider(adminCtx(other),{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
     await owner.db.delete(schema.roleAssignment).where(and(eq(schema.roleAssignment.appUserId,base.adminUserId),eq(schema.roleAssignment.tenantId,base.tenantId)));
     const mock=syntheticProviderTransport();
@@ -149,6 +156,7 @@ describe('explicit candidate evaluation and activation', () => {
   });
   it('binds the receipt to the exact reviewing user even when another user is a current group admin', async () => {
     await candidate(); const proof=await evaluateSyntheticCandidate(adminCtx(base));
+    await acceptBaselineFixture(adminCtx(base),{kind:'openrouter_candidate'});
     const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'fixture-second-reviewer',personId:null}).returning();
     await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,companyId:null,role:'hr_admin'});
     const other={...adminCtx(base),userId:user.id};
@@ -184,6 +192,7 @@ describe('explicit candidate evaluation and activation', () => {
   });
   it('rolls receipt consumption back if actual promotion storage fails, allowing the same proof after repair', async () => {
     await candidate(); const ctx=adminCtx(base), proof=await evaluateSyntheticCandidate(ctx);
+    await acceptBaselineFixture(ctx,{kind:'openrouter_candidate'});
     await owner.db.execute(sql`create function test_provider_promotion_failure() returns trigger language plpgsql as $$begin raise exception 'fixture injection'; end$$`);
     await owner.db.execute(sql`create trigger test_provider_promotion_failure before insert or update on ai_provider_config for each row execute function test_provider_promotion_failure()`);
     try {

@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "candidateIdentity": "exact frozen commit containing this plan; expected_sha must be recorded before dispatch",
+  "base": "3ae665924a37caae2ce3e028546b455637d59f1d",
+  "status": "SOURCE ONLY / UNVERIFIED / root and independent review before publication",
+  "humanAuthorization": "Root relayed direct human confirmation:0717\u20130725 never applied, development drafts only (replycall_2fdf99c3d21a4b5798b61df84ea64d04). No other migration history amendment authorized.",
+  "scope": "Nine generic_columns assignment substitutions only, additive11-case hosted component proof, generated manifest and this plan. No native owner/other constraint/SQL/journal/resource change.",
+  "runner": "standard public GitHub-hosted ubuntu-24.04",
+  "postgresMemoryGiB": 2,
+  "vitestWorkers": 2,
+  "releaseEligible": false,
+  "classification": "DB: all34 files import the real harness/native owner (new fixture imports harness and db/client). Exact candidate classifier remains authoritative at hosted dispatch; no classifier/collection/test ran locally.",
+  "proofMeaning": "Catalog CHECK isolated on a temporary typed CTAS with ONLY assistant_review_kind_columns: no FK/NOT NULL/RLS/other guard can shadow poison23514. Nine real package suites retain full-ledger/custody/native authority proof. Malformed tuples intentionally allowed only in isolation for SQL UNKNOWN semantics.",
+  "newProof": "9kinds\u00d78 typed UUID poison CHECK failures with exact named23514; full256mask matrix per9kinds and frozen0622+0670/71/77+0713\u201316 predecessor TRUE/FALSE/UNKNOWN; all9kind markers and qualification marker occur once in stored expression.",
+  "affectedFiles": 34,
+  "originalBlockedFiles": 23,
+  "groups": [
+    {
+      "id": "personnel-guard-profile-bank",
+      "tests": [
+        "test/assistant-personnel-kind-columns-equivalence.test.ts",
+        "test/assistant-qualification-custody.test.ts",
+        "test/assistant-emergency-contact-maintenance.test.ts",
+        "test/assistant-workforce-profile-maintenance.test.ts",
+        "test/assistant-bank-maintenance.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "personnel-family-document-code-passport",
+      "tests": [
+        "test/assistant-family-maintenance.test.ts",
+        "test/assistant-document-metadata.test.ts",
+        "test/assistant-employee-code-maintenance.test.ts",
+        "test/assistant-passport-maintenance.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "personnel-payment-fixed-tp3-rejection",
+      "tests": [
+        "test/assistant-payment-method-maintenance.test.ts",
+        "test/assistant-fixed-item-archive.test.ts",
+        "test/assistant-tp3-opening-maintenance.test.ts",
+        "test/assistant-profile-request-rejection.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "rewards-native",
+      "tests": [
+        "test/rewards-cancel-custody.test.ts",
+        "test/rewards-calendar-custody.test.ts",
+        "test/rewards-config-list.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "lifecycle-native",
+      "tests": [
+        "test/lifecycle.test.ts",
+        "test/offboarding-step-choices-interval.test.ts",
+        "test/offboarding-step-review-store.test.ts",
+        "test/offboarding-step-undo-native.test.ts",
+        "test/offboarding-step-undo-review-store.test.ts",
+        "test/offboarding-step-custody-shape.test.ts",
+        "test/offboarding-step-undo-custody-shape.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "shared-consumers",
+      "tests": [
+        "test/assistant-action-catalogue.test.ts",
+        "test/assistant-action-entries.test.ts",
+        "test/assistant-conversation-review-links.dom.test.tsx",
+        "test/module-action-server-choices.test.ts",
+        "test/module-jobs.dom.test.tsx"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "original-rewards-lifecycle-roles",
+      "tests": [
+        "test/agent-action-permission-parity-rewards.test.ts",
+        "test/agent-action-permission-parity-rewards-calendar.test.ts",
+        "test/agent-action-permission-parity-lifecycle.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "commands-roles",
+      "tests": [
+        "test/agent-action-permission-parity-commands.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "reviews-roles",
+      "tests": [
+        "test/agent-action-permission-parity-reviews.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    },
+    {
+      "id": "personnel-roles",
+      "tests": [
+        "test/agent-action-permission-parity-personnel.test.ts"
+      ],
+      "run_typecheck": true,
+      "candidate_ref": "NEW unique immutable alias to be allocated at approved dispatch"
+    }
+  ],
+  "retainedEvidence": {
+    "678": "234NODBpass/4wholeTCpass; originalDB0OOM",
+    "c6": "6inventoryNODBpass/4wholeTCpass; DB0OOM",
+    "bd25": "4wholeTCpass/DB0OOM",
+    "3ae": "4wholeTCpass/DB0OOM at0742; all planned runs terminal per root"
+  },
+  "invalidatedProof": "Prior affected9custody/hybrid/Personnel role pass records remain historically true at their own SHAs; all34selectedfiles need new actual candidate evidence. No aggregate648case or combinedPASS claim.",
+  "recovery": "Wait ALL10planned groups terminal before any repair; retain actual unaffected evidence, rerun only failed/affected groups. No resource increase or hidden test selection/filtering."
+}

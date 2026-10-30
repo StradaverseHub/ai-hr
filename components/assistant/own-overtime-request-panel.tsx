@@ -20,10 +20,12 @@ const fail=()=>Error('Overtime request unavailable.');
 /** ADR-0151 §4.3 inline card: the date and planned window the person named in chat. The employment is
  * preselected only when the caller's own fresh choices hold exactly one; the reason and remark stay empty. */
 export type OwnOvertimeProposalPrefill=Readonly<{date:string;plannedStartTime:string;plannedEndTime:string}>;
-export function OwnOvertimeRequestPanel({resumeActionId,prefill}:{resumeActionId?:string;prefill?:OwnOvertimeProposalPrefill}){
+export function OwnOvertimeRequestPanel({resumeActionId,prefill,onSettled}:{resumeActionId?:string;prefill?:OwnOvertimeProposalPrefill;onSettled?:(settled:boolean)=>void}){
  const t=useTranslations('assistant.workspace.overtimeActions'),f=useFormatter(),id=useId();
  const [choices,setChoices]=useState<Choices>({kind:'loading'});
  const [state,setState]=useState<State>(()=>resumeActionId?{kind:'uncertain',actionId:z.uuid().safeParse(resumeActionId).success?resumeActionId:null}:{kind:'selection'});
+ // An inline chat card (review R6) drops its suggestion chrome once the review is confirmed or retired.
+ useEffect(()=>{onSettled?.(state.kind==='completed'||state.kind==='retired');},[state.kind,onSettled]);
  const [employmentId,setEmploymentId]=useState(''),[date,setDate]=useState(prefill?.date??''),[start,setStart]=useState(prefill?.plannedStartTime??''),[end,setEnd]=useState(prefill?.plannedEndTime??''),[reason,setReason]=useState(''),[remark,setRemark]=useState('');
  const [consent,setConsent]=useState(false),[confirm,setConfirm]=useState(false),[busy,setBusy]=useState<string|null>(null),[error,setError]=useState(''),[index,setIndex]=useState<Row[]|null>(null),[now,setNow]=useState(()=>Date.now());
  const flight=useRef(false),alive=useRef(true),sequence=useRef(0),abort=useRef<AbortController|null>(null),status=useRef<HTMLParagraphElement>(null);

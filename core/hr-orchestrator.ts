@@ -12,6 +12,8 @@ import type { ReadinessAction } from '../lib/readiness-correction-actions';
 import { triagePendingClaims } from './input-triage';
 import { digestOf } from './agent-proposal';
 import { HR_HARNESS_VERSION, readinessTransition, runOrchestrationPass, summarizeOrchestrationPass } from './orchestrator-harness';
+import {runAutomaticFollowups} from './automatic-followups';
+import { AutomaticChaserRefusal, runApprovalChasers, runReviewChasers, type ChaserRunOptions } from './automatic-chasers';
 
 /** Run state is administrative. Employee self-service continues through its existing services.
  *  The tenant's agent principal may run the pass (ADR-0151 §4.5) but never reads the admin queue. */
@@ -141,6 +143,28 @@ export async function runHrOrchestrator(ctx: SessionContext) {
       payload: { scheduled: isAgentContext(ctx), scopeDigest: scopeDigest(ctx), ...trace, ...agentStamp(ctx) },
     })),
   });
+}
+
+/**
+ * WP13 (R18; ADR-0151 §4.5) — the Automatic-tier reminders, beside the readiness pass rather than inside its
+ * harness: they are separate specialists with their own switches, observe no readiness cases and need no case
+ * trace. Only the tenant's agent principal runs them, and each runs only behind its own attributed switch.
+ * A failure in one does not suppress the other; neither retries an effect.
+ */
+export async function runAutomaticChasers(ctx: SessionContext, opts: ChaserRunOptions) {
+  if (!isAgentContext(ctx)) throw new AutomaticChaserRefusal('not_agent');
+  // The cause is the error class and message only (bounded); sources never put names or HR values in them.
+  const attempt = async <T>(run: () => Promise<T>) => {
+    try { return { status: 'succeeded' as const, value: await run() }; }
+    catch (e) {
+      const error = e instanceof Error ? { name: e.constructor.name || e.name, message: e.message.slice(0, 200) } : { name: typeof e, message: '' };
+      return { status: 'failed' as const, error };
+    }
+  };
+  const approvals = await attempt(() => runApprovalChasers(ctx, opts));
+  const reviews = await attempt(() => runReviewChasers(ctx, opts));
+  const followups = await attempt(() => runAutomaticFollowups(ctx, opts));
+  return { approvals, reviews, followups, failed: approvals.status === 'failed' || reviews.status === 'failed' || followups.status === 'failed' };
 }
 
 /** Scope follows the source employment even after a transfer. Never expose tenant-wide aggregates. */

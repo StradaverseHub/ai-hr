@@ -4,15 +4,13 @@ import {z} from 'zod';
 import {sql} from 'drizzle-orm';
 import {pgSqlState} from '../../lib/db-error';
 import type {SessionContext,Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
+import {assertModuleEnabled} from '../entitlements';
 import {lockReviewedRewardPostSourceTx,prepareReviewedRewardPostTx,postReviewedRewardUnitTx,readReviewedRewardPostReferenceTx} from '../../packs/rewards/service';
 import {ReviewedRewardsPostHumanContent as Human,ReviewedRewardsPostConfirmation as Confirmation,ReviewedRewardsPostPreparedSource as Prepared,ReviewedRewardsPostSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-rewards-post-contract';
 export class ReviewedRewardsPostUnavailable extends Error{constructor(){super('That Rewards handoff needs another look. Please reopen the approved review.');this.name='ReviewedRewardsPostUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertReviewedRewardsPostActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'rewards');assertModuleEnabled(fresh,'payroll');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertReviewedRewardsPostActorTx(tx:Tx,supplied:SessionContext){const fresh=await withAgentActionGuard(tx,capture(supplied),'rewards.post','approve');assertModuleEnabled(fresh,'rewards');assertModuleEnabled(fresh,'payroll');return fresh;}
 const selection=(p:z.infer<typeof Human>)=>({unitId:p.unitId,revision:p.revision,batchId:p.batchId});
 const receipt=(native:NonNullable<Awaited<ReturnType<typeof readReviewedRewardPostReferenceTx>>>,replayed:boolean)=>Receipt.parse({kind:'posted',...native,proof:'historical_post_current_unit',semantics:'salary_grade_and_draft_payroll_inputs_not_processed_or_paid',replayed});
 export async function prepareReviewedRewardsPostSourceTx(tx:Tx,supplied:SessionContext,value:unknown):Promise<z.infer<typeof Prepared>>{

@@ -6,12 +6,14 @@ import { getBrowserCommandSession } from '@/lib/session';
 import {
   AiConfigError,
   disableAi,
+  discardPendingAiProviderChange,
   removeAiProviderConfig,
   saveAiProviderConfig,
   setActiveProvider,
   testConnection,
 } from '@/core/ai-config';
 import { evaluateProviderCandidate } from '@/core/ai-provider-readiness';
+import { acceptProviderBaselineFailure, runProviderBaseline } from '@/core/ai-provider-baseline';
 import { getTranslations } from 'next-intl/server';
 
 
@@ -53,7 +55,7 @@ export async function saveAiProviderConfigAction(formData: FormData) {
 
 export async function setActiveProviderAction(formData: FormData) {
   try {
-    const input={provider:String(formData.get('provider')),evaluationReceipt:str(formData.get('evaluationReceipt'))};
+    const input={provider:String(formData.get('provider')),evaluationReceipt:str(formData.get('evaluationReceipt')),pendingVersion:str(formData.get('pendingVersion'))};
     const s=await getBrowserCommandSession();await setActiveProvider(s,input);
   } catch {
     await commandFailure();
@@ -68,6 +70,41 @@ export async function disableAiAction() {
     await commandFailure();
   }
   back(undefined, (await getTranslations('admin.ai'))('providerDeactivated'));
+}
+
+/** WP14: drop a direct provider's pending change; the live configuration is unchanged. */
+export async function discardPendingProviderChangeAction(formData: FormData) {
+  try {
+    const input={provider:String(formData.get('provider'))};const s=await getBrowserCommandSession();await discardPendingAiProviderChange(s,input);
+  } catch {
+    await commandFailure();
+  }
+  back(undefined, 'Pending change discarded');
+}
+
+/** WP14: run or continue the fixed baseline holdout suites against one pending target, on the administrator's own
+ * allowance. Only closed target fields and an explicit consent cross; no prompt, output or verdict is accepted. */
+export async function runProviderBaselineAction(formData: FormData) {
+  try {
+    const kind=String(formData.get('kind'));
+    if(kind!=='pending'&&kind!=='openrouter_candidate'&&kind!=='environment')throw new AiConfigError('Unknown baseline target.');
+    const input={kind,provider:str(formData.get('provider')),targetId:str(formData.get('targetId'))??null,targetVersion:str(formData.get('targetVersion'))??null,consent:formData.get('consent')==='true'} as const;
+    const s=await getBrowserCommandSession();await runProviderBaseline(s,input);
+  } catch {
+    await commandFailure();
+  }
+  back(undefined, 'Baseline checks recorded');
+}
+
+/** WP14: a group administrator accepts a failed or unfinished baseline run with a recorded reason. */
+export async function acceptProviderBaselineAction(formData: FormData) {
+  try {
+    const input={runId:String(formData.get('runId')??''),reason:String(formData.get('reason')??'')};
+    const s=await getBrowserCommandSession();await acceptProviderBaselineFailure(s,input);
+  } catch {
+    await commandFailure();
+  }
+  back(undefined, 'Baseline failure accepted');
 }
 
 export async function removeAiProviderConfigAction(formData: FormData) {

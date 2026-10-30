@@ -24,9 +24,11 @@ import { isGroupAdmin } from '../lib/authz-model';
 import { encryptSecret, decryptSecret, isSecretStorable } from '../lib/ai/crypto';
 import { AiGatewayError } from '../lib/ai/types';
 import { MODULE_AGENT_SOURCE_DIGEST } from '../lib/ai/module-agent-source-manifest';
-import { applyTypedRouteCandidate, captureTypedModulePlan, captureTypedRouteCandidate,
-  ROUTING_ENGINE_DIGEST, ROUTING_POLICY_DIGEST, ROUTING_INPUT_DIGEST, ROUTING_SUITE_DIGEST, ROUTING_POLICY,
-  routingDigest, ROUTING_CANONICAL_PLANS,type TypedRouteCandidate } from '../lib/ai/module-agent-routing';
+// WP11: the typed routing candidate kind was deleted (it could never be promoted: both arms did the same
+// canonical work). Legacy typed_route_priority_v1 rows stay stored and parseable, are never current, and
+// expire through the normal promotion maintenance and job retention.
+import { captureTypedModulePlan, captureTypedRouteCandidate,
+  ROUTING_ENGINE_DIGEST, ROUTING_POLICY_DIGEST, routingDigest } from '../lib/ai/module-agent-routing';
 import { assertAiPrincipalTx,isAiPrincipalCurrentTx } from './ai-principal';
 import { assertMayUseAssistant } from './assistant-grant';
 import { assertAiActionUnpausedTx } from './ai-governance';
@@ -41,6 +43,8 @@ import { executePromptHoldout,promptMeasuredComparison,type PromptHoldoutReport,
 import {draftInputDigest} from '../lib/ai/draft-input';
 import {HUMAN_PLAN_HOLDOUTS,HUMAN_PLAN_SUITE_DIGEST} from '../lib/ai/human-plan-holdouts';
 import { generateDraft } from '../lib/ai';
+import {isAgentPromotionScope,type AgentPromotionScope} from '../lib/ai/agent-promotion-scope';
+import {promotionOutcomeKinds,outcomeWindow,earlierWindow,outcomeRegressed,type OutcomeCountRow} from '../lib/ai/promotion-outcome-regression';
 import { assistantSourceDigest } from '../lib/ai/assistant-disclosure';
 type AgentReadResult=Awaited<ReturnType<AssistantReadSession['moduleWork']>>;
 const baselineDigest = routingDigest(['direct-module-order-v1', ROUTING_ENGINE_DIGEST]);
@@ -71,11 +75,12 @@ function binding(row: CandidateRow) {
 function assertCurrent(row: CandidateRow) {
  if(row.kind==='assistant_answer_prompt_v1'){const configuration=captureAssistantConversationCandidate(row.configuration);if(row.module_code!=='assistant'||row.source_digest!==MODULE_AGENT_SOURCE_DIGEST||row.engine_digest!==ASSISTANT_CONVERSATION_ENGINE_DIGEST||row.policy_digest!==ASSISTANT_CONVERSATION_POLICY_DIGEST||row.input_digest!==ASSISTANT_CONVERSATION_INPUT_DIGEST||row.baseline_digest!==conversationBaselineDigest||row.candidate_digest!==routingDigest(binding(row)))return fail();return configuration;}
   if(row.kind==='canonical_specialist_v1'){const configuration=SpecialistCandidate.parse(row.configuration);if(row.module_code!==configuration.module||row.source_digest!==MODULE_AGENT_SOURCE_DIGEST||row.engine_digest!==specialistModuleEngineDigest(configuration.module)||row.policy_digest!==SPECIALIST_POLICY_DIGEST||row.input_digest!==specialistInputDigest(configuration.module)||row.baseline_digest!==specialistBaselineDigest(configuration.module)||row.candidate_digest!==routingDigest(binding(row)))return fail();return configuration;}
- const prompt=row.kind==='read_plan_prompt_v1';
-  const configuration=prompt?capturePromptPlanCandidate(row.configuration):captureTypedRouteCandidate(row.configuration);
+ // A removed typed routing row (WP11) is retained history only: never current, evaluable or promotable.
+ if(row.kind!=='read_plan_prompt_v1')return fail();
+  const configuration=capturePromptPlanCandidate(row.configuration);
   if (row.module_code !== 'assistant' || configuration.kind!==row.kind || row.source_digest !== MODULE_AGENT_SOURCE_DIGEST ||
-    row.engine_digest !== (prompt?PROMPT_ENGINE_DIGEST:ROUTING_ENGINE_DIGEST) ||
-    row.baseline_digest!==(prompt?routingDigest(['paired-prompt-baseline-v1',PROMPT_BASELINE,PROMPT_ENGINE_DIGEST]):baselineDigest)||row.policy_digest !== (prompt?PROMPT_POLICY_DIGEST:ROUTING_POLICY_DIGEST) || row.input_digest !== (prompt?PROMPT_INPUT_DIGEST:ROUTING_INPUT_DIGEST) ||
+    row.engine_digest !== PROMPT_ENGINE_DIGEST ||
+    row.baseline_digest!==routingDigest(['paired-prompt-baseline-v1',PROMPT_BASELINE,PROMPT_ENGINE_DIGEST])||row.policy_digest !== PROMPT_POLICY_DIGEST || row.input_digest !== PROMPT_INPUT_DIGEST ||
     row.candidate_digest !== routingDigest(binding(row))) return fail();
   return configuration;
 }
@@ -120,6 +125,12 @@ async function agentReleaseIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,ex
   sql`select pg_try_advisory_xact_lock(hashtextextended(${key},0)) as owned`:sql`select pg_try_advisory_xact_lock_shared(hashtextextended(${key},0)) as owned`);
  if(row?.owned!==true&&required)return fail();return row?.owned===true;
 }
+/** WP11 promotion scope (0695). A 'user' promotion applies to its owner only; a 'company' or 'tenant'
+ * promotion applies to every current principal the database scope helper covers, owner included only
+ * when covered. Kept as one SQL predicate so every selection, consumption and recheck agrees. */
+const promotionAppliesToCaller=(ctx:SessionContext)=>sql`((p.scope='user' and p.owner_user_id=${ctx.userId}::uuid) or (p.scope<>'user' and app.ai_agent_scope_covers_current_user(p.tenant_id,p.scope,p.company_id)))`;
+/** Most specific first: an own promotion wins over a company one, which wins over a tenant one. */
+const promotionSpecificity=sql`case p.scope when 'user' then 0 when 'company' then 1 else 2 end`;
 class AgentSignalBusy extends Error{}
 async function signalIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusive=false){
  const key='agent-signals:'+ctx.tenantId+':'+ownerId;const [row]=await tx.execute<{owned:boolean}>(exclusive?
@@ -128,8 +139,12 @@ async function signalIntervalTx(tx:Tx,ctx:SessionContext,ownerId:string,exclusiv
 async function assertCandidateSignalsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow,deferNativeCustody=false){
  await signalIntervalTx(tx,ctx,candidate.owner_user_id);const refs=captureSignalRefs(candidate.signal_refs),nativeRefs=captureNativeCandidateSignals(candidate.native_signal_refs);
  if(!candidate.signal_receipt)return fail();const proof=open('candidate-signals',ctx.tenantId,candidate.id,candidate.signal_receipt);
+ // A covered consumer of a company/tenant promotion is neither the owner nor a custodian administrator.
+ // 0695 admits wider scopes for signal-free candidates only, so no personal custody is read on its behalf.
+ const custodian=candidate.owner_user_id===ctx.userId||isGroupAdmin(ctx);if(!custodian&&(refs.length||nativeRefs.length))return fail();
  if(!exact(proof,['version','candidateDigest','ownerId','sourceDigest','refs',...(nativeRefs.length?['nativeRefs']:[])])||proof.version!==(nativeRefs.length?2:1)||proof.candidateDigest!==candidate.candidate_digest||proof.ownerId!==candidate.owner_user_id||
   proof.sourceDigest!==MODULE_AGENT_SOURCE_DIGEST||routingDigest(captureSignalRefs(proof.refs))!==routingDigest(refs)||routingDigest(captureNativeCandidateSignals(proof.nativeRefs))!==routingDigest(nativeRefs))return fail();
+ if(!custodian)return 0;
  const [current]=await tx.execute<{allowed:boolean}>(sql`select app.agent_candidate_signals_current(${candidate.id}::uuid) as allowed`);if(current?.allowed!==true)return fail();
  if(nativeRefs.length&&!deferNativeCustody){
   // A competing erasure/retention interval is transient busy, not evidence of source retirement.
@@ -171,90 +186,6 @@ async function ownNativeCandidateSignalsTx(tx:Tx,ctx:SessionContext,ids:readonly
  const refs=captureNativeCandidateSignals([proof.reference]);if(module&&refs[0].module!==module)return fail();return refs;
 }
 
-export async function createRoutingAgentCandidate(ctx: SessionContext, input: { version: number; configuration: unknown;signalIds?:readonly string[];nativeSignalIds?:readonly string[] },server:NativeOutcomeServerContext={}) {
-  const current = capture(ctx), configuration = captureTypedRouteCandidate(input.configuration), version = input.version,signalIds=captureSignalIds(input.signalIds),nativeSignalIds=captureNativeCandidateSignalIds(input.nativeSignalIds),capability=Object.freeze({notificationIdentity:server.notificationIdentity});
-  if (!exact(input, ['version','configuration',...(input.signalIds===undefined?[]:['signalIds']),...(input.nativeSignalIds===undefined?[]:['nativeSignalIds'])]) || !Number.isSafeInteger(version) || version < 1) return fail();
-  try { return await withTenant(current, async tx => {
-    if(nativeSignalIds.length)await boundNativeOutcomeTransactionTx(tx);await guard(tx, current, true);
-    const id = randomUUID(),native_signal_refs=await ownNativeCandidateSignalsTx(tx,current,nativeSignalIds,undefined,capability),signal_refs=await ownSignalRefsTx(tx,current,signalIds);
-    const row: CandidateRow = { id, owner_user_id: current.userId!, author_user_id: current.userId!, module_code: 'assistant',
-      version, kind:'typed_route_priority_v1', configuration, candidate_digest: '', baseline_digest: baselineDigest, source_digest: MODULE_AGENT_SOURCE_DIGEST,
-      engine_digest: ROUTING_ENGINE_DIGEST, policy_digest: ROUTING_POLICY_DIGEST, input_digest: ROUTING_INPUT_DIGEST,signal_refs,signal_receipt:null,native_signal_refs };
-    row.candidate_digest = routingDigest(binding(row));
-    await tx.execute(sql`insert into public.ai_agent_candidate(id,tenant_id,owner_user_id,author_user_id,module_code,version,kind,
-      configuration,candidate_digest,baseline_digest,source_digest,engine_digest,policy_digest,input_digest)
-      values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${current.userId}::uuid,'assistant',${version},'typed_route_priority_v1',
-      ${JSON.stringify(configuration)}::jsonb,${row.candidate_digest},${baselineDigest},${MODULE_AGENT_SOURCE_DIGEST},${ROUTING_ENGINE_DIGEST},${ROUTING_POLICY_DIGEST},${ROUTING_INPUT_DIGEST})`);
-    await persistCandidateSignalsTx(tx,current,row);
-    return { candidateId: id, candidateDigest: row.candidate_digest, state: 'unevaluated' as const };
-  }); } catch { return fail(); }
-}
-/** Only this owner can issue an in-process evaluation proof, and only after executing the fixed suite. */
-const issued = new WeakMap<object, { candidate: CandidateRow; evaluatorId: string; report: RoutingEvaluationReport; id: string }>();
-export async function evaluateRoutingAgentCandidate(ctx: SessionContext, candidateId: string) {
-  const current = capture(ctx), id = String(candidateId);
-  try {
-    const evidence = await withTenant(current, async tx => {
-      await tx.execute(sql`SET TRANSACTION READ ONLY`); const fresh = await guard(tx,current,true);
-      const candidate = await candidateTx(tx,current,id);
-      if (candidate.kind!=='typed_route_priority_v1'||candidate.author_user_id === current.userId) return fail();
-      const report = await withAssistantReadTx(fresh,tx,read => executeRoutingHoldout(candidate.configuration,read));
-      const proof = Object.freeze({}); issued.set(proof,{ candidate,evaluatorId:current.userId!,report,id:randomUUID() });
-      return proof;
-    });
-    return await withTenant(current,async tx => {
-      await guard(tx,current,true); const proof = issued.get(evidence); if (!proof) return fail();
-      issued.delete(evidence); const candidate = await candidateTx(tx,current,id);
-      if (candidate.candidate_digest !== proof.candidate.candidate_digest || proof.evaluatorId !== current.userId) return fail();
-      const receipt = seal('evaluation',current.tenantId,proof.id,{ version:1, candidateDigest:candidate.candidate_digest,
-        binding:binding(candidate), evaluatorId:proof.evaluatorId, report:proof.report });
-      await tx.execute(sql`insert into public.ai_agent_evaluation(id,tenant_id,candidate_id,evaluator_user_id,suite_digest,receipt)
-        values(${proof.id}::uuid,${current.tenantId}::uuid,${id}::uuid,${current.userId}::uuid,${ROUTING_SUITE_DIGEST},${receipt})`);
-      return { evaluationId:proof.id,coverage:proof.report.coverage,securityFailures:proof.report.securityFailures,
-        qualityFailures:proof.report.qualityFailures,comparison:proof.report.comparison,state:proof.report.securityFailures===0&&proof.report.qualityFailures===0?'passed-contract':'failed-contract' };
-    });
-  } catch { return fail(); }
-}
-function verifiedEvaluation(row: { id: string; evaluator_user_id: string; suite_digest: string; receipt: string }, candidate: CandidateRow, tenant: string) {
-  const proof = open('evaluation',tenant,row.id,row.receipt);
-  if (!exact(proof,['version','candidateDigest','binding','evaluatorId','report']) || proof.version!==1 ||
-    proof.candidateDigest!==candidate.candidate_digest || routingDigest(proof.binding)!==routingDigest(binding(candidate)) ||
-    proof.evaluatorId!==row.evaluator_user_id || row.evaluator_user_id===candidate.author_user_id || row.suite_digest!==ROUTING_SUITE_DIGEST) return fail();
-  const report = proof.report as RoutingEvaluationReport;
-  if (!report || !exact(report,['version','suiteDigest','inputDigest','coverage','securityFailures','qualityFailures','cases','ownSubjects','observedDigest','baseline','candidate','comparison'])||report.version!==2 || report.suiteDigest!==ROUTING_SUITE_DIGEST || report.inputDigest!==ROUTING_INPUT_DIGEST ||
-    report.coverage!=='typed-routing-contract-only' || report.securityFailures!==0 || report.qualityFailures!==0 || report.ownSubjects<1 ||
-    !Array.isArray(report.cases) || report.cases.length!==27 || report.cases.some(row=>!exact(row,['id','passed'])||row.passed!==true)||new Set(report.cases.map(row=>row.id)).size!==27) return fail();
-  const expectedCases=[...Array.from({length:8},(_,index)=>'heldout-order-'+index),...Array.from({length:8},(_,index)=>'heldout-set-'+index),...Array.from({length:9},(_,index)=>'security-invalid-plan-'+index),'actual-canonical-data-preserved','nonempty-authorized-own-fixture'];
-  if(routingDigest(report.cases.map(row=>row.id).sort())!==routingDigest(expectedCases.sort()))return fail();
-  const ids=ROUTING_CANONICAL_PLANS.map((_,index)=>'canonical-'+index),baseline=captureMeasuredCases(report.baseline,ids),changed=captureMeasuredCases(report.candidate,ids),comparison=compareMeasuredQuality(baseline,changed,ids.length);
-  if(routingDigest(comparison)!==routingDigest(report.comparison)||!comparison.qualityImproved||baseline.some((row,index)=>row.readCount!==ROUTING_CANONICAL_PLANS[index].length||row.tokens!==0||row.costCredits!==0)||changed.some((row,index)=>row.readCount!==ROUTING_CANONICAL_PLANS[index].length||row.tokens!==0||row.costCredits!==0))return fail();
-  return { id:row.id,evaluatorId:row.evaluator_user_id,receiptDigest:routingDigest(row.receipt) };
-}
-export async function promoteRoutingAgentCandidate(ctx: SessionContext,input:{candidateId:string;maxJobs:number;hours:number}) {
-  const current=capture(ctx),p={candidateId:input.candidateId,maxJobs:input.maxJobs,hours:input.hours};
-  if(!exact(input,['candidateId','maxJobs','hours'])||!Number.isSafeInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>ROUTING_POLICY.maxJobs||
-    !Number.isSafeInteger(p.hours)||p.hours<1||p.hours>ROUTING_POLICY.maxHours)return fail();
-  try{return await withTenant(current,async tx=>{
-    await guard(tx,current,true);const nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.owner_user_id!==nominated.owner_user_id)return fail();
-    if(candidate.kind!=='typed_route_priority_v1'||candidate.author_user_id===current.userId)return fail();
-    const evaluations=Array.from(await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,suite_digest,receipt
-      from public.ai_agent_evaluation where tenant_id=${current.tenantId}::uuid and candidate_id=${candidate.id}::uuid order by evaluator_user_id`));
-    const checked=evaluations.map(row=>verifiedEvaluation(row,candidate,current.tenantId));
-    if(checked.length<2||checked.length>8||new Set(checked.map(row=>row.evaluatorId)).size!==checked.length)return fail();
-    const [lock]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'agent-release:' + current.tenantId + ':' + candidate.owner_user_id},0)) as owned`);
-    if(lock?.owned!==true)return fail();
-    const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1' where p.tenant_id=${current.tenantId}::uuid
-      and p.owner_user_id=${candidate.owner_user_id}::uuid and p.module_code='assistant' and p.expires_at>now() and p.used_jobs<p.max_jobs
-      and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)) as present`);
-    if(prior?.present)return fail();
-    const id=randomUUID();const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(hours=>${p.hours}))::text as expires`);
-    const receipt=seal('promotion',current.tenantId,id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),
-      approverId:current.userId,evaluations:checked,maxJobs:p.maxJobs,createdAt:clock.now,expiresAt:clock.expires});
-    await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,expires_at)
-      values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,'assistant',${current.userId}::uuid,${receipt},${p.maxJobs},${clock.expires}::timestamptz)`);
-    return {promotionId:id,candidateDigest:candidate.candidate_digest,coverage:'typed-routing-contract-only',maxJobs:p.maxJobs,expiresAt:clock.expires};
-  });}catch{return fail();}
-}
 export async function rollbackAssistantPromotion(ctx:SessionContext,input:{promotionId:string;reason:'human'|'security_regression'|'quality_regression'}) {
  const current=capture(ctx),p={...input};if(!exact(p,['promotionId','reason'])||!uuid(p.promotionId)||!['human','security_regression','quality_regression'].includes(p.reason))return fail();
  try{await withTenant(current,async tx=>{
@@ -290,8 +221,10 @@ function verifiedGovernedJob(row:GovernedJobRow,ctx:SessionContext){
 }
 async function assertGovernedJobCandidateTx(tx:Tx,ctx:SessionContext,job:GovernedJobRow,completed:ReturnType<typeof verifiedGovernedJob>,deferNativeCustody=false){
  if(completed.planning)await currentPlanningBindingTx(tx,ctx,completed.planning,deferNativeCustody);
- if(job.promotion_id&&completed.jobKind==='module_plan'){const[promotion]=await tx.execute<{candidate_id:string}>(sql`select candidate_id from public.ai_agent_promotion where id=${job.promotion_id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid`);if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);if(candidate.kind!=='typed_route_priority_v1'||candidate.candidate_digest!==completed.candidateDigest)return fail();}
- for(const selection of completed.specialists){if(selection.mode==='baseline')continue;const[promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select id,candidate_id,receipt,max_jobs,expires_at::text from public.ai_agent_promotion where id=${selection.promotionId}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and module_code=${selection.binding.configuration.module}`);if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);checkedSpecialistPromotion(candidate,promotion,ctx.tenantId);if(candidate.kind!=='canonical_specialist_v1'||candidate.version!==selection.version||candidate.candidate_digest!==selection.candidateDigest||routingDigest(candidate.configuration)!==routingDigest(selection.binding.configuration))return fail();}
+ // A historical module plan promoted by the deleted typed routing kind is never current again: it
+ // refuses reopen/feedback/provenance and expires with ordinary job retention (no destructive SQL).
+ if(job.promotion_id&&completed.jobKind==='module_plan')return fail();
+ for(const selection of completed.specialists){if(selection.mode==='baseline')continue;const[promotion]=await tx.execute<SpecialistPromotionRow>(sql`select p.id,p.candidate_id,p.owner_user_id,p.receipt,p.max_jobs,p.expires_at::text,p.scope,p.company_id from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and ${promotionAppliesToCaller(ctx)} and p.module_code=${selection.binding.configuration.module}`);if(!promotion)return fail();const candidate=await candidateTx(tx,ctx,promotion.candidate_id,true,deferNativeCustody);checkedSpecialistPromotion(candidate,promotion,ctx.tenantId);if(candidate.kind!=='canonical_specialist_v1'||candidate.version!==selection.version||candidate.candidate_digest!==selection.candidateDigest||routingDigest(candidate.configuration)!==routingDigest(selection.binding.configuration))return fail();}
 }
 /** Historical command provenance for a distinct human-linked native outcome. This is neither
  * feedback truth nor new promoted-run admission. A native action may intentionally change read
@@ -376,43 +309,26 @@ async function runGovernedReadJob(ctx:SessionContext,proposed:unknown,command:{n
      await assertGovernedJobCandidateTx(tx,current,existing,proof);const specialists=await currentSpecialistAssessmentsTx(tx,current,proof,results);
      return {version:1 as const,jobId:existing.id,candidateDigest:proof.candidateDigest,mode:kind==='specialist'?specialists[0].work.mode:proof.mode,results,specialists,...(kind==='specialist'?{specialist:specialists[0].assessment}:{}),effects:[],replayed:true};}
     if(reviewed?.row.consumed_job_id)return fail();
-    const [promotion]=kind==='module_plan'?await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;used_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.used_jobs,p.expires_at::text
-      from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='typed_route_priority_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${current.userId}::uuid and p.module_code='assistant'
-      and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
-      order by p.created_at desc,p.id desc limit 1 for update of p nowait`):[];
-    let selected=plan,candidateDigest=baselineDigest;let activePromotion:typeof promotion|undefined=promotion;
-    if(promotion){const candidate=await candidateTx(tx,current,promotion.candidate_id,false);
-      let currentSource=true;try{assertCurrent(candidate);await assertCandidateSignalsTx(tx,current,candidate,true);}catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;currentSource=false;}
-      if(!currentSource){
-        await tx.execute(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
-          values(${current.tenantId}::uuid,${promotion.id}::uuid,${current.userId}::uuid,'source_changed') on conflict(promotion_id) do nothing`);
-        activePromotion=undefined;
-      }
-    }
-    if(activePromotion){const candidate=await candidateTx(tx,current,activePromotion.candidate_id,true,true);const proof=open('promotion',current.tenantId,activePromotion.id,activePromotion.receipt);
-      if(proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||
-        proof.maxJobs!==activePromotion.max_jobs||new Date(String(proof.expiresAt)).getTime()!==new Date(activePromotion.expires_at).getTime())return fail();
-      selected=applyTypedRouteCandidate(candidate.configuration,plan);candidateDigest=candidate.candidate_digest;
-      await tx.execute(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${activePromotion.id}::uuid and tenant_id=${current.tenantId}::uuid`);
-    }
+    // WP11: module plans always execute the requested baseline order. The typed routing kind that
+    // used to reorder them was deleted; only specialist selections below may be promoted.
+    const selected=plan,candidateDigest=baselineDigest;
     const admissions:SpecialistAdmission[]=[];for(const module of [...selected.modules].sort()){assertModuleEnabled(fresh,module);admissions.push(await nominateSpecialistTx(tx,current,module));}
     const results=await withAssistantJobReadsTx(fresh,tx,async read=>{
       const rows:AgentReadResult[]=[];for(const module of selected.modules)rows.push(await read.moduleWork(module));return rows;
     });
     const completed=await completeSpecialistsTx(tx,current,admissions,results),specialists=selected.modules.map(module=>completed.find(row=>row.selection.binding.configuration.module===module)!);
-    if(activePromotion)await assertCandidateSignalsTx(tx,current,await candidateTx(tx,current,activePromotion.candidate_id,false));
     if(reviewed)await currentPlanningBindingTx(tx,current,reviewed.binding);
     const id=randomUUID();const [clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(secs=>${GOVERNED_JOB_RETENTION_DAYS*86400}))::text as expires`);
-    const mode=kind==='specialist'?specialists[0].selection.mode:activePromotion?'promoted' as const:'baseline' as const;
-    if(kind==='specialist')candidateDigest=specialists[0].selection.candidateDigest;const promotionId=kind==='specialist'?specialists[0].selection.promotionId:activePromotion?.id??null;
+    const mode=kind==='specialist'?specialists[0].selection.mode:'baseline' as const;
+    const jobCandidateDigest=kind==='specialist'?specialists[0].selection.candidateDigest:candidateDigest,promotionId=kind==='specialist'?specialists[0].selection.promotionId:null;
     const receipt=seal('governed-job-v2',current.tenantId,id,{version:3,jobKind:kind,stage:'completed',tenantId:current.tenantId,userId:current.userId,commandNonce:nonce,
-     mode,candidateDigest,promotionId,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:kind==='specialist'?specialistModuleEngineDigest(selected.modules[0]):ROUTING_ENGINE_DIGEST,policyDigest:kind==='specialist'?SPECIALIST_POLICY_DIGEST:ROUTING_POLICY_DIGEST,specialists:specialists.map(row=>row.selection),
+     mode,candidateDigest:jobCandidateDigest,promotionId,sourceDigest:MODULE_AGENT_SOURCE_DIGEST,engineDigest:kind==='specialist'?specialistModuleEngineDigest(selected.modules[0]):ROUTING_ENGINE_DIGEST,policyDigest:kind==='specialist'?SPECIALIST_POLICY_DIGEST:ROUTING_POLICY_DIGEST,specialists:specialists.map(row=>row.selection),
      requestedPlan:plan,executedPlan:selected,requestedPlanDigest:routingDigest(plan),executedPlanDigest:routingDigest(selected),resultDigest:assistantSourceDigest(results),
      createdAt:clock.now,expiresAt:clock.expires,elapsedMs:Math.max(0,Date.now()-started),...(reviewed?{planning:reviewed.binding}:{})});
     await tx.execute(sql`insert into public.ai_agent_job_receipt(id,tenant_id,user_id,promotion_id,request_nonce,requested_plan_digest,expires_at,receipt)
       values(${id}::uuid,${current.tenantId}::uuid,${current.userId}::uuid,${promotionId}::uuid,${nonce}::uuid,${routingDigest(plan)},${clock.expires}::timestamptz,${receipt})`);
     if(reviewed){const linked=await tx.execute<{id:string}>(sql`update public.ai_agent_plan_proposal set consumed_job_id=${id}::uuid where id=${reviewed.row.id}::uuid and tenant_id=${current.tenantId}::uuid and user_id=${current.userId}::uuid and consumed_job_id is null returning id`);if(linked.length!==1||linked[0].id!==reviewed.row.id)return fail();}
-    return {version:1 as const,jobId:id,candidateDigest,mode,results,specialists:specialists.map(row=>({module:row.assessment.module,assessment:row.assessment,work:compactSpecialistWork(row.assessment,{mode:row.selection.mode,version:row.selection.version,configuration:row.selection.binding.configuration})})),...(kind==='specialist'?{specialist:specialists[0].assessment}:{}),effects:[],replayed:false};
+    return {version:1 as const,jobId:id,candidateDigest:jobCandidateDigest,mode,results,specialists:specialists.map(row=>({module:row.assessment.module,assessment:row.assessment,work:compactSpecialistWork(row.assessment,{mode:row.selection.mode,version:row.selection.version,configuration:row.selection.binding.configuration})})),...(kind==='specialist'?{specialist:specialists[0].assessment}:{}),effects:[],replayed:false};
   });}catch{return fail();}
 }
 
@@ -431,7 +347,7 @@ export async function withGovernedSpecialistReadBatch<T>(supplied:SessionContext
    assertModuleEnabled(fresh,module);if(!prior){admissions.push(await nominateSpecialistTx(tx,ctx,module));continue;}
    const selection=prior.specialists.find(row=>row.binding.configuration.module===module)!;let candidate:CandidateRow|null=null,promotion:SpecialistAdmission['promotion']=null;
    if(selection.mode==='promoted'){
-    const[row]=await tx.execute<NonNullable<SpecialistAdmission['promotion']>>(sql`select id,candidate_id,receipt,max_jobs,expires_at::text from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)`);
+    const[row]=await tx.execute<SpecialistPromotionRow>(sql`select p.id,p.candidate_id,p.owner_user_id,p.receipt,p.max_jobs,p.expires_at::text,p.scope,p.company_id from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and ${promotionAppliesToCaller(ctx)} and p.module_code=${module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)`);
     if(row){promotion=row;candidate=await candidateTx(tx,ctx,row.candidate_id,true,true);checkedSpecialistPromotion(candidate,row,ctx.tenantId);}
    }
    admissions.push({module,candidate,promotion});
@@ -455,24 +371,63 @@ export async function withGovernedSpecialistReadBatch<T>(supplied:SessionContext
  });
 }
 
-/** Administrative expiry/exhaustion receipts; no source data or impersonation is returned. */
-export async function maintainModuleAgentReleases(ctx:SessionContext,limit=100){
+/** WP11: one maintenance owner for the administrator command and the scheduled agent principal.
+ * Retires (a) expired promotions, (b) exhausted typed/specialist permits and (c) LIVE promotions whose
+ * measured action outcomes regressed (lib/ai/promotion-outcome-regression.ts, PR #34 counts). Every
+ * retirement takes the owner's exclusive release interval and skips a busy owner rather than waiting.
+ * Deterministic and model-free; it returns counts only. */
+type MaintenanceActor=Readonly<{kind:'user';userId:string}|{kind:'agent';principalId:string}>;
+export type ModuleAgentMaintenance=Readonly<{retired:number;outcomeRegressed:number}>;
+const dueRetirement=sql`(p.expires_at<=now() or (p.used_jobs>=p.max_jobs and exists(select 1 from public.ai_agent_candidate c where c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind in('typed_route_priority_v1','canonical_specialist_v1'))))`;
+async function retirePromotionTx(tx:Tx,ctx:SessionContext,actor:MaintenanceActor,promotionId:string,reason:'expired'|'exhausted'|'outcome_regression'){
+ const actorColumns=actor.kind==='user'?sql`${actor.userId}::uuid,null`:sql`null,${actor.principalId}::uuid`;
+ const inserted=await tx.execute<{id:string}>(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,actor_agent_principal_id,reason)
+  values(${ctx.tenantId}::uuid,${promotionId}::uuid,${actorColumns},${reason}) on conflict(promotion_id) do nothing returning id`);
+ return inserted.length;
+}
+async function maintainPromotionsTx(tx:Tx,ctx:SessionContext,actor:MaintenanceActor,limit:number):Promise<ModuleAgentMaintenance>{
+ const rows=await tx.execute<{id:string;owner_user_id:string}>(sql`select p.id,p.owner_user_id from public.ai_agent_promotion p
+  where p.tenant_id=${ctx.tenantId}::uuid and ${dueRetirement}
+  and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
+  order by p.owner_user_id,p.created_at,p.id limit ${limit}`);
+ let retired=0,regressed=0;
+ for(const row of rows){if(!await agentReleaseIntervalTx(tx,ctx,row.owner_user_id,true,false))continue;
+  const [fresh]=await tx.execute<{id:string;reason:'expired'|'exhausted'}>(sql`select p.id,case when p.expires_at<=now() then 'expired' else 'exhausted' end as reason from public.ai_agent_promotion p
+   where p.id=${row.id}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${row.owner_user_id}::uuid and ${dueRetirement}
+   and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
+  if(!fresh)continue;retired+=await retirePromotionTx(tx,ctx,actor,fresh.id,fresh.reason);
+ }
+ const live=await tx.execute<{id:string;owner_user_id:string;module_code:string;created_at:string}>(sql`select p.id,p.owner_user_id,p.module_code,p.created_at::text from public.ai_agent_promotion p
+  where p.tenant_id=${ctx.tenantId}::uuid and p.expires_at>now() and p.created_at<now()
+  and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
+  order by p.created_at,p.id limit ${limit}`);
+ for(const row of live){const kinds=promotionOutcomeKinds(row.module_code);if(!kinds.length)continue;
+  const during=await tx.execute<OutcomeCountRow>(sql`select action_kind,completed,discarded,expired,refused,reversed from app.assistant_action_outcome_summary(${row.created_at}::timestamptz)`);
+  const wide=await tx.execute<OutcomeCountRow>(sql`select action_kind,completed,discarded,expired,refused,reversed from app.assistant_action_outcome_summary(${row.created_at}::timestamptz-(now()-${row.created_at}::timestamptz))`);
+  const measured=outcomeWindow(Array.from(during),kinds),before=earlierWindow(outcomeWindow(Array.from(wide),kinds),measured);
+  if(!outcomeRegressed(before,measured))continue;
+  if(!await agentReleaseIntervalTx(tx,ctx,row.owner_user_id,true,false))continue;
+  const [still]=await tx.execute<{id:string}>(sql`select p.id from public.ai_agent_promotion p where p.id=${row.id}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.expires_at>now()
+   and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
+  if(!still)continue;const n=await retirePromotionTx(tx,ctx,actor,still.id,'outcome_regression');retired+=n;regressed+=n;
+ }
+ return Object.freeze({retired,outcomeRegressed:regressed});
+}
+/** Administrator command (group administrator, current login). */
+export async function maintainModuleAgentReleases(ctx:SessionContext,limit=100):Promise<ModuleAgentMaintenance>{
  const current=capture(ctx);if(!Number.isSafeInteger(limit)||limit<1||limit>100)return fail();
- try{return await withTenant(current,async tx=>{await guard(tx,current,true,false);
-  const rows=await tx.execute<{id:string;owner_user_id:string}>(sql`select p.id,p.owner_user_id from public.ai_agent_promotion p
-   where p.tenant_id=${current.tenantId}::uuid and(p.expires_at<=now() or (p.used_jobs>=p.max_jobs and exists(select 1 from public.ai_agent_candidate c where c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind in('typed_route_priority_v1','canonical_specialist_v1'))))
-   and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)
-   order by p.owner_user_id,p.created_at,p.id limit ${limit}`);
-  let retired=0;
-  for(const row of rows){if(!await agentReleaseIntervalTx(tx,current,row.owner_user_id,true,false))continue;
-   const [fresh]=await tx.execute<{id:string;reason:'expired'|'exhausted'}>(sql`select p.id,case when p.expires_at<=now() then 'expired' else 'exhausted' end as reason from public.ai_agent_promotion p
-    where p.id=${row.id}::uuid and p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${row.owner_user_id}::uuid and(p.expires_at<=now() or (p.used_jobs>=p.max_jobs and exists(select 1 from public.ai_agent_candidate c where c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind in('typed_route_priority_v1','canonical_specialist_v1'))))
-    and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id and r.tenant_id=p.tenant_id)`);
-   if(!fresh)continue;const inserted=await tx.execute<{id:string}>(sql`insert into public.ai_agent_rollback(tenant_id,promotion_id,actor_user_id,reason)
-    values(${current.tenantId}::uuid,${fresh.id}::uuid,${current.userId}::uuid,${fresh.reason}) on conflict(promotion_id) do nothing returning id`);retired+=inserted.length;
-  }
-  return {retired};
- });}catch{return fail();}
+ try{return await withTenant(current,async tx=>{await guard(tx,current,true,false);return maintainPromotionsTx(tx,current,{kind:'user',userId:current.userId!},limit);});}catch{return fail();}
+}
+/** Scheduled sweep (scripts/review-sweep.ts): the tenant's named agent principal (0672), no login, no
+ * grant and no model spend (owner decision 2). The database confirms the principal before any read. */
+export async function maintainModuleAgentReleasesAsScheduledAgent(ctx:SessionContext,limit=100):Promise<ModuleAgentMaintenance>{
+ const current=capture(ctx),principalId=ctx.agent?.principalId;
+ if(!Number.isSafeInteger(limit)||limit<1||limit>100||current.userId||typeof principalId!=='string'||!uuid(principalId))return fail();
+ return withTenant(current,async tx=>{
+  const [row]=await tx.execute<{principal:string|null}>(sql`select app.current_agent_principal()::text as principal`);
+  if(!row?.principal||row.principal!==principalId)return fail();
+  return maintainPromotionsTx(tx,current,{kind:'agent',principalId},limit);
+ });
 }
 
 /** Explicit consent is for the fixed synthetic suite only; no caller-authored HR prompt is sent. */
@@ -605,6 +560,8 @@ export async function promotePromptAgentCandidate(ctx:SessionContext,input:{cand
     report.completedCases!==PROMPT_HOLDOUTS.length||report.cases.length!==2*PROMPT_HOLDOUTS.length||!report.comparison.qualityImproved||report.cases.some(row=>row.arm==='candidate'&&row.state!=='passed'))return fail();
    return {id:row.id,evaluatorId:row.evaluator_user_id,receiptDigest:routingDigest(row.receipt)};
   });
+  // S8: the promoter is independent of every counted evaluation, not only of the author.
+  if(checked.some(row=>row.evaluatorId===current.userId))return fail();
   const [lock]=await tx.execute<{owned:boolean}>(sql`select pg_try_advisory_xact_lock(hashtextextended(${'prompt-agent-release:'+current.tenantId+':'+candidate.owner_user_id},0)) as owned`);if(lock?.owned!==true)return fail();
   const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id
    where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${candidate.owner_user_id}::uuid and c.kind='read_plan_prompt_v1' and p.expires_at>now() and p.used_jobs<p.max_jobs
@@ -963,12 +920,17 @@ function captureSpecialistSelections(value:unknown):readonly SpecialistSelection
   return Object.freeze({binding,mode:item.mode as 'baseline'|'promoted',candidateDigest:item.candidateDigest,promotionId:item.promotionId as string|null,version:item.version});
  });if(new Set(rows.map(row=>row.binding.configuration.module)).size!==rows.length)return fail();return Object.freeze(rows);
 }
-type SpecialistAdmission={module:AgentModuleCode;candidate:CandidateRow|null;promotion:{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}|null;assessment?:SpecialistAssessment};
+type SpecialistPromotionRow={id:string;candidate_id:string;owner_user_id:string;receipt:string;max_jobs:number;expires_at:string;scope:AgentPromotionScope;company_id:string|null};
+type SpecialistAdmission={module:AgentModuleCode;candidate:CandidateRow|null;promotion:SpecialistPromotionRow|null;assessment?:SpecialistAssessment};
 /** All metadata nomination happens BEFORE the first canonical source. Native privacy custody is
  * deliberately deferred until ALL canonical reads finish; this is not a late source/configuration lock. */
 async function nominateSpecialistTx(tx:Tx,ctx:SessionContext,module:AgentModuleCode):Promise<SpecialistAdmission>{
- const [promotion]=await tx.execute<{id:string;candidate_id:string;receipt:string;max_jobs:number;expires_at:string}>(sql`select p.id,p.candidate_id,p.receipt,p.max_jobs,p.expires_at::text from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${module} and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by p.created_at desc,p.id desc limit 1 for update of p nowait`);
- if(!promotion)return{module,candidate:null,promotion:null};const candidate=await candidateTx(tx,ctx,promotion.candidate_id,false);
+ const [promotion]=await tx.execute<SpecialistPromotionRow>(sql`select p.id,p.candidate_id,p.owner_user_id,p.receipt,p.max_jobs,p.expires_at::text,p.scope,p.company_id from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${ctx.tenantId}::uuid and ${promotionAppliesToCaller(ctx)} and p.module_code=${module} and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) order by ${promotionSpecificity},p.created_at desc,p.id desc limit 1 for update of p nowait`);
+ if(!promotion)return{module,candidate:null,promotion:null};
+ // A shared promotion is published/rolled back under its OWNER's release interval; a covered consumer
+ // holds that interval shared for the whole job, exactly as an owner holds its own.
+ if(promotion.owner_user_id!==ctx.userId)await agentReleaseIntervalTx(tx,ctx,promotion.owner_user_id,false);
+ const candidate=await candidateTx(tx,ctx,promotion.candidate_id,false);
  try{assertCurrent(candidate);if(candidate.kind!=='canonical_specialist_v1'||candidate.module_code!==module||SpecialistCandidate.parse(candidate.configuration).playbook==='canonical_domain_v1')return fail();await assertCandidateSignalsTx(tx,ctx,candidate,true);checkedSpecialistPromotion(candidate,promotion,ctx.tenantId);}
  catch(error){if(error instanceof AgentSignalBusy||!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;await retireSpecialistTx(tx,ctx,promotion.id,'source_changed');return{module,candidate:null,promotion:null};}
  return{module,candidate,promotion};
@@ -997,7 +959,7 @@ async function completeSpecialistsTx(tx:Tx,ctx:SessionContext,admissions:readonl
     await retireSpecialistTx(tx,ctx,admission.promotion.id,'source_changed');admission.candidate=null;admission.promotion=null;delete admission.assessment;}}
   else if(admission.candidate)await assertCandidateSignalsTx(tx,ctx,admission.candidate);
   const assessment=await assessSpecialistTx(tx,ctx,admission,result),candidate=admission.candidate,promotion=admission.promotion,configuration=candidate?SpecialistCandidate.parse(candidate.configuration):baselineConfiguration(admission.module);
-  if(candidate&&promotion){const updated=await tx.execute<{id:string}>(sql`update public.ai_agent_promotion set used_jobs=used_jobs+1 where id=${promotion.id}::uuid and tenant_id=${ctx.tenantId}::uuid and owner_user_id=${ctx.userId}::uuid and used_jobs<max_jobs and expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=${promotion.id}::uuid) returning id`);if(updated.length!==1)return fail();}
+  if(candidate&&promotion){const updated=await tx.execute<{id:string}>(sql`update public.ai_agent_promotion p set used_jobs=used_jobs+1 where p.id=${promotion.id}::uuid and p.tenant_id=${ctx.tenantId}::uuid and ${promotionAppliesToCaller(ctx)} and p.used_jobs<p.max_jobs and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=${promotion.id}::uuid) returning p.id`);if(updated.length!==1)return fail();}
   const selection=captureSpecialistSelections([{binding:{configuration,nativeContractDigest:specialistNativeContractDigest(admission.module),suiteDigest:specialistSuiteDigest(admission.module),assessmentDigest:routingDigest(assessment)},mode:candidate?'promoted':'baseline',candidateDigest:candidate?.candidate_digest??specialistBaselineDigest(admission.module),promotionId:promotion?.id??null,version:candidate?.version??0}])[0];completed.push({selection,assessment});
  }
  return completed;
@@ -1022,17 +984,33 @@ function checkedSpecialistEvaluation(row:{id:string;evaluator_user_id:string;sui
  return {evaluationId:row.id,evaluatorId:row.evaluator_user_id,report};
 }
 async function specialistEvaluationsTx(tx:Tx,ctx:SessionContext,candidate:CandidateRow){const module=SpecialistCandidate.parse(candidate.configuration).module,rows=await tx.execute<{id:string;evaluator_user_id:string;suite_digest:string;receipt:string}>(sql`select distinct on(evaluator_user_id) id,evaluator_user_id,suite_digest,receipt from public.ai_agent_evaluation where tenant_id=${ctx.tenantId}::uuid and candidate_id=${candidate.id}::uuid and suite_digest=${specialistSuiteDigest(module)} order by evaluator_user_id,completed_at desc,id desc`);return Array.from(rows).map(row=>checkedSpecialistEvaluation(row,candidate,ctx.tenantId));}
-export async function promoteCanonicalSpecialistCandidate(ctx:SessionContext,input:{candidateId:string;maxJobs:number;hours:number}){
- const current=capture(ctx),p={candidateId:input.candidateId,maxJobs:input.maxJobs,hours:input.hours};if(!exact(input,['candidateId','maxJobs','hours'])||typeof p.candidateId!=='string'||!uuid(p.candidateId)||!Number.isInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>SPECIALIST_POLICY.maxJobs||!Number.isInteger(p.hours)||p.hours<1||p.hours>SPECIALIST_POLICY.maxHours)return fail();
+/** WP11 (R5/S8): the approver chooses the scope. A wider scope needs a signal-free candidate (0695 admits
+ * no other), company scope names a company of this tenant, and the approver may be neither the author nor
+ * any counted evaluator. One active promotion per (module, scope target). */
+export async function promoteCanonicalSpecialistCandidate(ctx:SessionContext,input:{candidateId:string;maxJobs:number;hours:number;scope?:AgentPromotionScope;companyId?:string}){
+ const current=capture(ctx),scope=input.scope??'user',companyId=scope==='company'?input.companyId:undefined,p={candidateId:input.candidateId,maxJobs:input.maxJobs,hours:input.hours};
+ if(!exact(input,['candidateId','maxJobs','hours',...(input.scope===undefined?[]:['scope']),...(input.companyId===undefined?[]:['companyId'])])||typeof p.candidateId!=='string'||!uuid(p.candidateId)||!Number.isInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>SPECIALIST_POLICY.maxJobs||!Number.isInteger(p.hours)||p.hours<1||p.hours>SPECIALIST_POLICY.maxHours||
+  !isAgentPromotionScope(scope)||(scope==='company')!==(typeof companyId==='string'&&uuid(companyId))||(scope!=='company'&&input.companyId!==undefined))return fail();
  try{return await withTenant(current,async tx=>{const fresh=await guard(tx,current,true),nomination=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nomination.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.kind!=='canonical_specialist_v1'||candidate.owner_user_id!==nomination.owner_user_id||candidate.author_user_id===current.userId)return fail();const module=SpecialistCandidate.parse(candidate.configuration).module;assertModuleEnabled(fresh,module);const evaluations=await specialistEvaluationsTx(tx,current,candidate);if(evaluations.length<2||evaluations.length>8||evaluations.some(row=>!row.report.diagnosticComparison.improved||row.report.state!=='complete'||row.report.nativeEvidence!=='present'||row.report.securityFailures!==0||row.report.qualityFailures!==0||row.report.cases.some(item=>!item.passed)))return fail();
- const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${candidate.owner_user_id}::uuid and p.module_code=${module} and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as present`);if(prior?.present)return fail();const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(hours=>${p.hours}))::text as expires`),receipt=seal('specialist-promotion',current.tenantId,id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),approverId:current.userId,evaluations:evaluations.map(row=>({evaluationId:row.evaluationId,evaluatorId:row.evaluatorId})),maxJobs:p.maxJobs,createdAt:clock.now,expiresAt:clock.expires});
- await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,${module},${current.userId}::uuid,${receipt},${p.maxJobs},${clock.expires}::timestamptz)`);return{promotionId:id,module,coverage:'canonical_domain_guidance_only' as const,maxJobs:p.maxJobs,expiresAt:clock.expires};});}catch{return fail();}
+  // S8: the promoter is independent of every counted evaluation, not only of the author.
+  if(evaluations.some(row=>row.evaluatorId===current.userId))return fail();
+  if(scope!=='user'&&(captureSignalRefs(candidate.signal_refs).length||captureNativeCandidateSignals(candidate.native_signal_refs).length))return fail();
+  if(scope==='company'){const [company]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.company where id=${companyId!}::uuid and tenant_id=${current.tenantId}::uuid) as present`);if(company?.present!==true)return fail();}
+  const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid and p.module_code=${module} and p.scope=${scope}
+   and case ${scope}::text when 'user' then p.owner_user_id=${candidate.owner_user_id}::uuid when 'company' then p.company_id=${companyId??null}::uuid else true end
+   and p.expires_at>now() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as present`);if(prior?.present)return fail();
+  const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select now()::text as now,(now()+make_interval(hours=>${p.hours}))::text as expires`),receipt=seal('specialist-promotion',current.tenantId,id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),approverId:current.userId,evaluations:evaluations.map(row=>({evaluationId:row.evaluationId,evaluatorId:row.evaluatorId})),maxJobs:p.maxJobs,createdAt:clock.now,expiresAt:clock.expires,scope,companyId:companyId??null});
+  await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,expires_at,scope,company_id) values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,${module},${current.userId}::uuid,${receipt},${p.maxJobs},${clock.expires}::timestamptz,${scope},${companyId??null}::uuid)`);return{promotionId:id,module,scope,companyId:companyId??null,coverage:'canonical_domain_guidance_only' as const,maxJobs:p.maxJobs,expiresAt:clock.expires};});}catch{return fail();}
 }
-function checkedSpecialistPromotion(candidate:CandidateRow,promotion:{id:string;receipt:string;max_jobs:number;expires_at:string},tenant:string){if(SpecialistCandidate.parse(candidate.configuration).playbook==='canonical_domain_v1')return fail();const proof=open('specialist-promotion',tenant,promotion.id,promotion.receipt);if(!exact(proof,['version','candidateDigest','binding','approverId','evaluations','maxJobs','createdAt','expiresAt'])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.maxJobs!==promotion.max_jobs||new Date(String(proof.expiresAt)).getTime()!==new Date(promotion.expires_at).getTime()||typeof proof.approverId!=='string'||proof.approverId===candidate.author_user_id||!Array.isArray(proof.evaluations)||proof.evaluations.length<2||proof.evaluations.length>8||new Set(proof.evaluations.map(row=>row.evaluatorId)).size!==proof.evaluations.length)return fail();return proof;}
+function checkedSpecialistPromotion(candidate:CandidateRow,promotion:SpecialistPromotionRow,tenant:string){if(SpecialistCandidate.parse(candidate.configuration).playbook==='canonical_domain_v1')return fail();const proof=open('specialist-promotion',tenant,promotion.id,promotion.receipt);
+ // Receipts sealed before WP11 carry no scope and are user-scoped; a sealed scope must match the row exactly.
+ const sealedScope=proof.scope===undefined?'user':proof.scope,sealedCompany=proof.companyId===undefined?null:proof.companyId;
+ if(sealedScope!==promotion.scope||sealedCompany!==promotion.company_id||(proof.scope===undefined)!==(proof.companyId===undefined))return fail();
+ if(!exact(proof,['version','candidateDigest','binding','approverId','evaluations','maxJobs','createdAt','expiresAt',...(proof.scope===undefined?[]:['scope','companyId'])])||proof.version!==1||proof.candidateDigest!==candidate.candidate_digest||routingDigest(proof.binding)!==routingDigest(binding(candidate))||proof.maxJobs!==promotion.max_jobs||new Date(String(proof.expiresAt)).getTime()!==new Date(promotion.expires_at).getTime()||typeof proof.approverId!=='string'||proof.approverId===candidate.author_user_id||!Array.isArray(proof.evaluations)||proof.evaluations.length<2||proof.evaluations.length>8||new Set(proof.evaluations.map(row=>row.evaluatorId)).size!==proof.evaluations.length||(proof.scope!==undefined&&proof.evaluations.some(row=>row.evaluatorId===proof.approverId)))return fail();return proof;}
 async function currentSpecialistAssessmentsTx(tx:Tx,ctx:SessionContext,completed:ReturnType<typeof verifiedGovernedJob>,results:readonly AgentReadResult[]){
  const current:{module:AgentModuleCode;assessment:SpecialistAssessment;work:ReturnType<typeof compactSpecialistWork>}[]=[];
  for(const selection of completed.specialists){const module=selection.binding.configuration.module,result=results.find(row=>row.module===module);if(!result)return fail();let active=selection.mode==='promoted';
-  if(active){const[row]=await tx.execute<{active:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.owner_user_id=${ctx.userId}::uuid and p.module_code=${module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as active`);active=row?.active===true;}
+  if(active){const[row]=await tx.execute<{active:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p where p.id=${selection.promotionId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and ${promotionAppliesToCaller(ctx)} and p.module_code=${module} and p.expires_at>now() and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as active`);active=row?.active===true;}
   const configuration=active?selection.binding.configuration:baselineConfiguration(module),assessment=executeCanonicalSpecialist(configuration,result);current.push({module,assessment,work:compactSpecialistWork(assessment,{mode:active?'promoted':'baseline',version:active?selection.version:0,configuration})});
  }
  return current;
@@ -1044,9 +1022,14 @@ export async function runGovernedSpecialistJob(ctx:SessionContext,input:{module:
 }
 export async function specialistReviewWorkspaceTx(tx:Tx,ctx:SessionContext){const current=capture(ctx);await assertAiPrincipalTx(tx,current);if(!isGroupAdmin(current))return null;const [admin]=await tx.execute<{allowed:boolean}>(sql`select app.is_group_admin() as allowed`);if(admin?.allowed!==true)return null;const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};
  const versions=await tx.execute<{module:string;version:number}>(sql`select module_code as module,max(version)::int as version from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and owner_user_id=${current.userId}::uuid group by module_code`),modules=AGENT_MODULE_CODES.filter(module=>{try{assertModuleEnabled(fresh,module);return true;}catch{return false;}}).map(module=>({module,nextVersion:(versions.find(row=>row.module===module)?.version??0)+1}));
- const rows=await tx.execute<{id:string;module:AgentModuleCode;version:number;playbook:SpecialistCandidate['playbook'];own:boolean}>(sql`select id,module_code as module,version,configuration->>'playbook' as playbook,owner_user_id=app.current_user_id() as own from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and kind='canonical_specialist_v1' order by created_at desc,id desc limit 40`),candidates:{id:string;module:AgentModuleCode;version:number;playbook:SpecialistCandidate['playbook'];own:boolean;evaluations:number|null;passingEvaluators:number|null;incompleteEvaluators:number|null}[]=[];
- for(const row of rows){if(!isAgentModuleCode(row.module))continue;let evaluations:number|null=null,passingEvaluators:number|null=null,incompleteEvaluators:number|null=null;try{const candidate=await candidateTx(tx,current,row.id),checked=await specialistEvaluationsTx(tx,current,candidate);evaluations=checked.length;passingEvaluators=checked.filter(e=>e.report.diagnosticComparison.improved&&e.report.state==='complete'&&e.report.securityFailures===0&&e.report.qualityFailures===0&&e.report.cases.every(item=>item.passed)).length;incompleteEvaluators=checked.filter(e=>e.report.state==='incomplete').length;}catch(error){if(!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;}candidates.push({...row,evaluations,passingEvaluators,incompleteEvaluators});}
- const promotions=await tx.execute<{id:string;module:AgentModuleCode;version:number;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,p.module_code as module,c.version,p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) as retired from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid order by p.created_at desc,p.id desc limit 40`);const signals=await ownSpecialistSignalChoicesTx(tx,current),nativeSignals=await ownNativeCandidateSignalChoicesTx(tx,current);return{modules,candidates,promotions:Array.from(promotions),ownSignalChoices:signals.choices,signalChoicesTruncated:signals.truncated,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated};
+ const rows=await tx.execute<{id:string;module:AgentModuleCode;version:number;playbook:SpecialistCandidate['playbook'];own:boolean}>(sql`select id,module_code as module,version,configuration->>'playbook' as playbook,owner_user_id=app.current_user_id() as own from public.ai_agent_candidate where tenant_id=${current.tenantId}::uuid and kind='canonical_specialist_v1' order by created_at desc,id desc limit 40`),candidates:{id:string;module:AgentModuleCode;version:number;playbook:SpecialistCandidate['playbook'];own:boolean;evaluations:number|null;passingEvaluators:number|null;incompleteEvaluators:number|null;personalSignals:boolean|null}[]=[];
+ for(const row of rows){if(!isAgentModuleCode(row.module))continue;let evaluations:number|null=null,passingEvaluators:number|null=null,incompleteEvaluators:number|null=null,personalSignals:boolean|null=null;try{const candidate=await candidateTx(tx,current,row.id);
+  // WP11: wider promotion scopes are refused for candidates with personal signal provenance (0695).
+  personalSignals=captureSignalRefs(candidate.signal_refs).length+captureNativeCandidateSignals(candidate.native_signal_refs).length>0;const checked=await specialistEvaluationsTx(tx,current,candidate);evaluations=checked.length;passingEvaluators=checked.filter(e=>e.report.diagnosticComparison.improved&&e.report.state==='complete'&&e.report.securityFailures===0&&e.report.qualityFailures===0&&e.report.cases.every(item=>item.passed)).length;incompleteEvaluators=checked.filter(e=>e.report.state==='incomplete').length;}catch(error){if(!(error instanceof AiGatewayError)&&!(error instanceof Error&&error.name==='ZodError'))throw error;}candidates.push({...row,evaluations,passingEvaluators,incompleteEvaluators,personalSignals});}
+ const promotions=await tx.execute<{id:string;module:AgentModuleCode;version:number;used:number;maximum:number;expiresAt:string;retired:boolean}>(sql`select p.id,p.module_code as module,c.version,p.used_jobs as used,p.max_jobs as maximum,p.expires_at::text as "expiresAt",exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id) as retired from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id and c.kind='canonical_specialist_v1' where p.tenant_id=${current.tenantId}::uuid order by p.created_at desc,p.id desc limit 40`);const signals=await ownSpecialistSignalChoicesTx(tx,current),nativeSignals=await ownNativeCandidateSignalChoicesTx(tx,current);
+ // WP11: the companies a group administrator may name for a company-scoped promotion (names only).
+ const companies=Array.from(await tx.execute<{id:string;name:string}>(sql`select id::text as id,legal_name as name from public.company where tenant_id=${current.tenantId}::uuid order by legal_name,id`));
+ return{modules,candidates,companies,promotions:Array.from(promotions),ownSignalChoices:signals.choices,signalChoicesTruncated:signals.truncated,ownNativeSignalChoices:nativeSignals.choices,nativeSignalChoicesTruncated:nativeSignals.truncated};
 }
 
 /** A per-module candidate may use only explicit own feedback from a verified job of THAT module.
@@ -1156,6 +1139,8 @@ async function verifiedConversationEvaluationsTx(tx:Tx,ctx:SessionContext,candid
 export async function promoteConversationAgentCandidate(ctx:SessionContext,input:{candidateId:string;maxJobs:number;hours:number}){
  const current=capture(ctx),p={...input};if(!exact(p,['candidateId','maxJobs','hours'])||!Number.isSafeInteger(p.maxJobs)||p.maxJobs<1||p.maxJobs>100||!Number.isSafeInteger(p.hours)||p.hours<1||p.hours>24)return fail();
  return withTenant(current,async tx=>{const fresh=await guard(tx,current,true),nominated=await candidateTx(tx,current,p.candidateId,false);await agentReleaseIntervalTx(tx,current,nominated.owner_user_id);const candidate=await candidateTx(tx,current,p.candidateId);if(candidate.kind!=='assistant_answer_prompt_v1'||candidate.author_user_id===current.userId||candidate.owner_user_id!==nominated.owner_user_id)return fail();const snapshot=await resolveAiProviderSnapshotTx(tx,fresh);if(!snapshot)return fail();const evaluations=await verifiedConversationEvaluationsTx(tx,current,candidate,snapshot.fingerprint);
+  // S8: the promoter is independent of every counted evaluation, not only of the author.
+  if(evaluations.some(row=>row.evaluatorId===current.userId))return fail();
   const [prior]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from public.ai_agent_promotion p join public.ai_agent_candidate c on c.id=p.candidate_id and c.tenant_id=p.tenant_id where p.tenant_id=${current.tenantId}::uuid and p.owner_user_id=${candidate.owner_user_id}::uuid and c.kind='assistant_answer_prompt_v1' and p.expires_at>clock_timestamp() and p.used_jobs<p.max_jobs and not exists(select 1 from public.ai_agent_rollback r where r.promotion_id=p.id)) as present`);if(prior?.present)return fail();const id=randomUUID(),[clock]=await tx.execute<{now:string;expires:string}>(sql`select clock_timestamp()::text as now,(clock_timestamp()+make_interval(hours=>${p.hours}))::text as expires`),receipt=seal('conversation-promotion',current.tenantId,id,{version:1,candidateDigest:candidate.candidate_digest,binding:binding(candidate),approverId:current.userId,evaluations,providerFingerprint:snapshot.fingerprint,maxJobs:p.maxJobs,createdAt:clock.now,expiresAt:clock.expires});
   await tx.execute(sql`insert into public.ai_agent_promotion(id,tenant_id,candidate_id,owner_user_id,module_code,approver_user_id,receipt,max_jobs,created_at,expires_at) values(${id}::uuid,${current.tenantId}::uuid,${candidate.id}::uuid,${candidate.owner_user_id}::uuid,'assistant',${current.userId}::uuid,${receipt},${p.maxJobs},${clock.now}::timestamptz,${clock.expires}::timestamptz)`);return{promotionId:id,maxJobs:p.maxJobs,expiresAt:clock.expires,coverage:'synthetic-canonical-terminal-plans-and-tool-minimality' as const};
  });
@@ -1214,6 +1199,3 @@ export async function eraseOwnConversationStrategyMetadata(ctx:SessionContext){c
  * transaction rollback retains the opaque binding and pending DB marker for an honest retry; the
  * completed DB state already refuses reuse even before this in-memory retirement. */
 export function retireAssistantConversationStrategyCapability(capability:AssistantConversationStrategyCapability):void{conversationStrategyUses.delete(capability);}
-
-/** Compatibility for in-flight review callers; rollback applies to every candidate kind. */
-export const rollbackRoutingAgent=rollbackAssistantPromotion;

@@ -172,6 +172,30 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         <li>{o('limitUnrecorded')}</li><li>{o('limitReversed')}</li><li>{o('limitScope')}</li>
       </ul>
     </Card>
+    {/* WP13 (R18) — the Automatic-tier reminders the scheduled agent sent, beside the Assistant's actions. */}
+    <Card className="overflow-hidden">
+      <SectionHeader title={o('automaticTitle')} subtitle={o('automaticSubtitle', { from: day(outcomes.from) })} />
+      {outcomes.automatic.some(a => a.chased > 0) ? <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-muted/50 text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="px-4 py-2 font-medium">{o('colAction')}</th>
+              {(['colReminders', 'colItems', 'colActed', 'colStillWaiting'] as const).map(k => <th key={k} className="px-3 py-2 text-right font-medium">{o(k)}</th>)}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {outcomes.automatic.filter(a => a.chased > 0).map(a => <tr key={a.action}>
+              <td className="px-4 py-2.5"><span className="block">{kindLabel(a.action)}</span><span className="font-mono text-xs text-muted-foreground">{a.action}</span></td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.chased)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.items)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.acted)}</td>
+              <td className="px-3 py-2.5 text-right tabular-nums">{n(a.waiting)}</td>
+            </tr>)}
+          </tbody>
+        </table>
+      </div> : <p className="px-4 py-3 text-sm text-muted-foreground">{o('automaticNone')}</p>}
+      <p className="max-w-4xl border-t border-border px-4 py-3 text-xs text-muted-foreground">{o('automaticLimit')} {o('limitScope')}</p>
+    </Card>
     <Card className="p-5">
       <SectionHeader title={o('coverageTitle')} subtitle={o('coverageSubtitle')} />
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 rounded-lg bg-muted/40 p-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-x-0">

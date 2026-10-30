@@ -21,6 +21,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {saveAiProviderConfig,resolveActiveAiConfig,setActiveProvider} from '../core/ai-config';
+import {acceptBaselineFixture,activateDirectProviderFixture} from './ai-provider-change-fixture';
 import {bindStrictAiSpendRoot} from '../core/ai-governance';
 import {AI_SPEND_CONTROL_REFUSALS} from '../core/ai-spend-capability';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
@@ -55,7 +56,7 @@ function http(){let sequence=0;vi.stubGlobal('fetch',vi.fn(async(input:RequestIn
  }));}
 // This is the ACTUAL native issuer used by bindAiSpendTaskTx, not an owner INSERT or posted UUID.
 async function configured(provider:Exclude<AiProvider,'openrouter'>='openai',feature:'hr_assistant'|'pay_rule_draft'='hr_assistant',native=true){
- await saveAiProviderConfig(a,{provider,model:'fictional-model',apiKey:'fictional-'+randomUUID(),makeActive:true});
+ await activateDirectProviderFixture(a,{provider,model:'fictional-model',apiKey:'fictional-'+randomUUID()});
  return withTenant(a,async tx=>{const cfg=await resolveActiveAiConfig(tx,a,feature);if(!cfg)throw Error('Missing actual issued fixture config');if(!native)return{cfg,root:null};
   const[row]=await tx.execute<{root:string}>(sql`select app.ai_spend_task_issue('hr_assistant','assistant_question',null::uuid,'question') as root`);
   return{cfg:bindStrictAiSpendRoot(cfg,{rootTaskId:row.root,kind:'agent'}),root:row.root};
@@ -163,6 +164,6 @@ describe('actual optional USD policy with mandatory nonmoney controls',()=>{
   http();const options=readOpenRouterOptions({version:1,routing:{allowedProviders:['approved-a'],allowFallbacks:false,sort:'latency'}});await saveAiProviderConfig(a,{provider:'openrouter',model:'fictional/model',apiKey:'fictional-only-key',providerOptions:options});
   const receipt=await evaluateProviderCandidate(a,await syntheticConsentFor(a));expect(fetch).toHaveBeenCalledTimes(3);expect(receipt.summary.calls).toBe(3);
   const scopes=await modeRows();expect(scopes).toHaveLength(3);expect(scopes.every(row=>row.money_mode==='uncapped'&&row.feature_id==='provider_evaluation')).toBe(true);expect(new Set(scopes.map(row=>row.root_id)).size).toBe(1);expect(await holds()).toEqual([]);
-  await setActiveProvider(a,{provider:'openrouter',evaluationReceipt:receipt.receipt});expect(await withTenant(a,tx=>resolveActiveAiConfig(tx,a))).toMatchObject({provider:'openrouter',model:'fictional/model'});await expect(setActiveProvider(a,{provider:'openrouter',evaluationReceipt:receipt.receipt})).rejects.toThrow();expect(fetch).toHaveBeenCalledTimes(3);
+  await acceptBaselineFixture(a,{kind:'openrouter_candidate'});await setActiveProvider(a,{provider:'openrouter',evaluationReceipt:receipt.receipt});expect(await withTenant(a,tx=>resolveActiveAiConfig(tx,a))).toMatchObject({provider:'openrouter',model:'fictional/model'});await expect(setActiveProvider(a,{provider:'openrouter',evaluationReceipt:receipt.receipt})).rejects.toThrow();expect(fetch).toHaveBeenCalledTimes(3);
  });
 });

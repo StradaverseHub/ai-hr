@@ -28,6 +28,7 @@ import {
   MessageSquareText,
   Megaphone,
   Network,
+  Layers,
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
@@ -304,6 +305,8 @@ const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
   activeMatch: 'children',
   defaultHref: '/control-tower/agents',
   children: [
+    // WP12 (R8): the one AI inventory comes first.
+    { href: '/control-tower/agents/inventory', labelKey: 'aiManagementInventory', icon: Layers, adminOnly: true },
     { href: '/control-tower/agents', labelKey: 'aiManagementOverview', icon: Gauge, adminOnly: true, exactHref: true },
     { href: '/control-tower/agents/provider', labelKey: 'aiManagementProvider', icon: Settings2, adminOnly: true },
     { href: '/control-tower/agents/assistant', labelKey: 'aiManagementAssistant', icon: MessageSquareText, adminOnly: true },

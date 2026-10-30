@@ -12,6 +12,7 @@ import {routingDigest} from '../lib/ai/module-agent-routing';
 import {ASSISTANT_CONVERSATION_HOLDOUTS} from '../lib/ai/assistant-conversation-holdouts';
 import {ASSISTANT_CONVERSATION_BASELINE,assistantConversationCandidateSystem,captureAssistantConversationCandidate,nextAssistantConversationArms,scoreAssistantConversationTrial,type ConversationArm,type ConversationToolObservation,type ConversationCaseResult} from '../lib/ai/assistant-conversation-candidate';
 import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
+import {assistantProposalCatalogue,syntheticAssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 // The actual product metadata is offered, but its executable tools are NEVER called here.
 // Each fixture's closed synthetic dispatch supplies only its permitted canonical source.
 const tools:AiToolSpec[]=ASSISTANT_TOOLS.map(tool=>({...tool.spec,inputSchema:structuredClone(tool.spec.inputSchema)}));

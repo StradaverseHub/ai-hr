@@ -1,8 +1,10 @@
 /** Authored UNRUN: needs reviewed private Country0622 patch applied by its integration owner.
  * No inline SQL installation, native authority stub, real HR data or provider invocation. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,sql} from 'drizzle-orm';
 import {beforeAll,beforeEach,afterAll,afterEach,describe,it,expect,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
@@ -64,4 +66,28 @@ describe('shared encrypted Country Personnel EPF/SOCSO review custody',()=>{
  it('refuses corrupted encrypted content without native effects and still permits login-only privacy retirement',async()=>{const r=await prepare(),before=await state(),raw=await custody(r.actionId);if(typeof raw.ciphertext!=='string')throw Error('Missing private body');await owner.db.execute(sql`update app.assistant_own_leave_review_content set ciphertext=${raw.ciphertext.slice(0,-3)+'ABC'} where action_id=${r.actionId}::uuid`);await expect(confirm(r)).rejects.toThrow();expect(await state()).toEqual(before);await discardCountryStatutoryReview(ctx,retirement(r));expect(await custody(r.actionId)).toMatchObject({state:'discarded',bodies:0,intent_digest:null,reviewed_digest:null});});
  it('keeps legacy own-kind PERSON constraints and raw table privileges closed while admitting the new nullable actor binding only through its source owner',async()=>{const r=await prepare(),raw=await custody(r.actionId);for(const kind of ['leave.apply','country-my.statutory.update']){let failure:unknown;try{await owner.db.execute(sql`insert into app.assistant_own_leave_review(action_kind,id,tenant_id,user_id,person_id,employment_id,company_id,country_statutory_id,intent_digest,reviewed_digest,state,created_at,expires_at) values(${kind},${randomUUID()}::uuid,${b.tenantId}::uuid,${ctx.userId}::uuid,null,${employmentId}::uuid,${b.companyId}::uuid,${kind==='leave.apply'?null:raw.country_statutory_id}::uuid,${'a'.repeat(64)},${'b'.repeat(64)},'awaiting_confirmation',clock_timestamp(),clock_timestamp()+interval '10 minutes')`);}catch(error){failure=error;}expect(pgSqlState(failure)).toBe('23514');}let denied:unknown;try{await withTenant(ctx,tx=>tx.execute(sql`update app.assistant_own_leave_review set action_kind='system_testing.execution.save' where id=${r.actionId}::uuid`));}catch(error){denied=error;}expect(pgSqlState(denied)).toBe('42501');expect(await custody(r.actionId)).toEqual(raw);});
 
+});
+
+async function retainedCountryReview(){return withTenant(ctx,tx=>nativeSource.withReviewedCountryStatutoryIntervalTx(tx,ctx,employmentId,async(fresh,source)=>{
+ const native=await nativeSource.prepareReviewedCountryStatutorySourceTx(tx,fresh,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId??null,employmentId:source.employmentId,companyId:source.companyId,subjectPersonId:source.personId,statutoryId:source.statutoryId,country:source.country},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_country_statutory_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${binding.subjectPersonId}::uuid,${binding.statutoryId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained statutory profile custody',()=>{
+ it('completes an old sealed statutory review once and preserves protected fields',async()=>{
+  const before=await state(),old=await retainedCountryReview(),packet={action,contractVersion:1,...old};expect((await reopenCountryStatutoryReview(ctx,old.actionId.toUpperCase())).kind).toBe('prepared');
+  await expect(confirmCountryStatutoryReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmCountryStatutoryReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmCountryStatutoryReview(ctx,packet)).toEqual(done);expect(await reopenCountryStatutoryReview(ctx,old.actionId)).toEqual(done);const after=await state();expect(after.profiles).toHaveLength(before.profiles.length);expect(after.inputs).toEqual(before.inputs);expect(after.slips).toEqual(before.slips);expect(after.profiles[0].bankAccountNo).toBe(before.profiles[0].bankAccountNo);
+ });
+ it('retires an old pending statutory review without decrypting after grant removal',async()=>{
+  const old=await retainedCountryReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardCountryStatutoryReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a lost committed reply without a second statutory write',async()=>{
+  const before=await state(),review=await prepare(),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const after=await state(),done=await reopenCountryStatutoryReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);expect(await state()).toEqual(after);expect(after.events.filter(row=>!before.events.some(old=>old.id===row.id)&&row.eventType==='statutory.my.updated')).toHaveLength(1);
+ });
 });

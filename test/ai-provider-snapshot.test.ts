@@ -23,6 +23,7 @@ import { defaultModelFor } from '../lib/ai/registry';
 import { openrouterAdapter } from '../lib/ai/providers/openrouter';
 import { readOpenRouterOptions } from '../lib/ai/providers/openrouter-configuration';
 import { activateSyntheticCandidate } from './provider-evaluation-fixture';
+import { activateDirectProviderFixture } from './ai-provider-change-fixture';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 let base: Base;
 beforeAll(migrateTestDb);
@@ -78,7 +79,7 @@ describe('prepared provider configuration binding', () => {
     if (change === 'key') await saveAiProviderConfig(ctx, { provider: 'openrouter', model: 'fictional/model', apiKey: 'fixture-rotated-key' });
     if (change === 'routes') await saveAiProviderConfig(ctx, { provider: 'openrouter', model: 'fictional/model', providerOptions: routes('approved-b') });
     if (['model','key','routes'].includes(change)) await evaluatedActivation();
-    if (change === 'provider') await saveAiProviderConfig(ctx, { provider: 'openai', model: 'fictional-direct-model', apiKey: 'fixture-other-key', makeActive: true });
+    if (change === 'provider') await activateDirectProviderFixture(ctx, { provider: 'openai', model: 'fictional-direct-model', apiKey: 'fixture-other-key' });
     if (change === 'disabled') await disableAi(ctx);
     const callback = vi.fn();
     await expect(run(cfg, callback)).rejects.toThrow('current AI configuration');
@@ -89,7 +90,7 @@ describe('prepared provider configuration binding', () => {
   });
   it('distinguishes stored-key origin from identical environment parameters in both directions', async () => {
     const fallback = await prepared(), ctx = adminCtx(base);
-    await saveAiProviderConfig(ctx, { provider: 'openai', model: defaultModelFor('openai'), apiKey: 'fixture-platform-key', makeActive: true });
+    await activateDirectProviderFixture(ctx, { provider: 'openai', model: defaultModelFor('openai'), apiKey: 'fixture-platform-key' });
     const stored = await prepared(), callback = vi.fn();
     expect(stored.apiKey).toBe(fallback.apiKey); expect(stored.model).toBe(fallback.model);
     await expect(run(fallback, callback)).rejects.toThrow('current AI configuration');

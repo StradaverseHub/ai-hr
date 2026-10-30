@@ -22,7 +22,7 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { appUser, employeeDocument, person,letterArtifact,letterRecord } from '../db/schema';
+import { appUser, employeeDocument, person,employment,letterArtifact,letterRecord } from '../db/schema';
 
 export class EmployeeDocumentError extends Error {
   constructor(message: string) {
@@ -191,43 +191,45 @@ export async function addEmployeeDocument(
   });
 }
 
-/** Edit a document's metadata (title/category/description) — the attachment is untouched. Admin-only. */
+export type EmployeeDocumentMetadataInput={title:string;category?:string|null;description?:string|null};
+/** One native normalization owner for the form, reviewed preparation and actual mutation. */
+export function normalizeEmployeeDocumentMetadata(p:EmployeeDocumentMetadataInput){return{title:cleanTitle(p.title),category:p.category?.trim()||null,description:p.description?.trim()||null};}
+/** Nomination only, then the actual stored-employment authority, before private metadata is read.
+ * This is not an Assistant permission or self rule; ordinary native HR callers retain their course. */
+export async function employeeDocumentMetadataSubjectTx(tx:Tx,ctx:SessionContext,documentId:string){
+ assertAdmin(ctx);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const [row]=await tx.select({id:employeeDocument.id,employmentId:employeeDocument.employmentId,letterArtifactId:employeeDocument.letterArtifactId}).from(employeeDocument).where(eq(employeeDocument.id,documentId)).limit(1);
+ if(!row)throw new EmployeeDocumentError('Document not found (or not visible).');
+ await assertWorkforceEmploymentTx(tx,ctx,row.employmentId,'maintain');
+ if(row.letterArtifactId)throw new EmployeeDocumentError('Issued letters must be maintained in the letter register.');
+ const [binding]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(eq(employment.id,row.employmentId)).limit(1);
+ if(!binding)throw new EmployeeDocumentError('Document subject unavailable.');return{...row,...binding};
+}
+/** Closed ordinary-document review snapshot. SELECT deliberately excludes content and any byte hash.
+ * xmin is an opaque revision of the same attachment row, so replacing bytes invalidates the review. */
+export async function prepareEmployeeDocumentMetadataTx(tx:Tx,ctx:SessionContext,p:{documentId:string}&EmployeeDocumentMetadataInput){
+ const subject=await employeeDocumentMetadataSubjectTx(tx,ctx,p.documentId);
+ const [row]=await tx.select({title:employeeDocument.title,category:employeeDocument.category,description:employeeDocument.description,fileName:employeeDocument.fileName,mimeType:employeeDocument.mimeType,sizeBytes:employeeDocument.sizeBytes,revision:sql<string>`xmin::text`}).from(employeeDocument).where(and(eq(employeeDocument.id,p.documentId),sql`${employeeDocument.letterArtifactId} is null`)).for('update');
+ if(!row)throw new EmployeeDocumentError('Document not found (or not visible).');
+ const {title,category,description,...attachment}=row;return{subject,before:{title,category,description},after:normalizeEmployeeDocumentMetadata(p),attachment};
+}
+/** Edit only metadata. Default native transaction/normalization remains; an enclosing review may own
+ * the transaction and receive this exact native event. Raw description stays out of the audit. */
 export async function updateEmployeeDocumentMeta(
-  ctx: SessionContext,
-  p: { documentId: string; title: string; category?: string | null; description?: string | null },
-): Promise<{ id: string }> {
-  assertAdmin(ctx);
-  const title = cleanTitle(p.title);
-  return withTenant(ctx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
-    const [existing] = await tx
-      .select({ id: employeeDocument.id, employmentId: employeeDocument.employmentId })
-      .from(employeeDocument)
-      .where(eq(employeeDocument.id, p.documentId))
-      .limit(1);
-    if (!existing) throw new EmployeeDocumentError('Document not found (or not visible).');
-    await assertWorkforceEmploymentTx(tx, ctx, existing.employmentId, 'maintain');
-    await tx
-      .update(employeeDocument)
-      .set({
-        title,
-        category: p.category?.trim() || null,
-        description: p.description?.trim() || null,
-        updatedByUserId: ctx.userId ?? null,
-        updatedAt: sql`now()`,
-      })
-      .where(eq(employeeDocument.id, p.documentId));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'employee-document',
-      aggregateId: p.documentId,
-      eventType: 'employee-document.updated',
-      actor: actorOf(ctx),
-      subjectEmploymentId: existing.employmentId,
-      payload: { title, category: p.category?.trim() || null },
-    });
-    return { id: p.documentId };
-  });
+ ctx:SessionContext,p:{documentId:string}&EmployeeDocumentMetadataInput,outerTx?:Tx,
+):Promise<{id:string;eventId:string}>{
+ ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};p=structuredClone(p);
+ assertAdmin(ctx);const values=normalizeEmployeeDocumentMetadata(p);
+ const run=async(tx:Tx)=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  const [existing]=await tx.select({id:employeeDocument.id,employmentId:employeeDocument.employmentId}).from(employeeDocument).where(eq(employeeDocument.id,p.documentId)).limit(1);
+  if(!existing)throw new EmployeeDocumentError('Document not found (or not visible).');
+  await assertWorkforceEmploymentTx(tx,ctx,existing.employmentId,'maintain');
+  const [written]=await tx.update(employeeDocument).set({...values,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`}).where(eq(employeeDocument.id,p.documentId)).returning({metadataAfterHash:sql<string>`encode(sha256(convert_to(jsonb_build_object('title',${employeeDocument.title},'category',${employeeDocument.category},'description',${employeeDocument.description})::text,'UTF8')),'hex')`});
+  if(!written)throw new EmployeeDocumentError('Document not found (or not visible).');
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employee-document',aggregateId:p.documentId,eventType:'employee-document.updated',actor:actorOf(ctx),subjectEmploymentId:existing.employmentId,payload:{title:values.title,category:values.category,metadataAfterHash:written.metadataAfterHash}},{returnId:true});
+  return{id:p.documentId,eventId};
+ };return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** Replace a document's attachment (new file bytes) while keeping its metadata + id. Admin-only. */

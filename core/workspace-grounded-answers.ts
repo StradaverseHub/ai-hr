@@ -9,23 +9,39 @@ import {openAssistantAnswerDisclosure,type AssistantDisclosureBinding} from '../
 import {loadCanonicalToolJob,loadGovernedSpecialistToolJob,type CanonicalModuleJobView} from './workspace-module-jobs';
 import {isGroundedToolName,GROUNDED_TOOL_MODULES} from '../lib/ai/grounded-tool-presentation';
 import {assistantAnswerExplanationAvailability,type AssistantAnswerExplanation} from '../lib/ai/assistant-answer-explanations';
-import {adjudicateAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
+import {adjudicateAssistantAnswerPlan,captureAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
-import {assistantReadableModules} from './assistant-readable-modules';
+import {assistantProposalCatalogue,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 export type AssistantConversationSegment=Readonly<{kind:'fact';view:CanonicalModuleJobView;card:number;fact:number}>|Readonly<{kind:'explanation';view:CanonicalModuleJobView;explanation:AssistantAnswerExplanation}>;
-export type AssistantConversationView=Readonly<{plan:AssistantAnswerPlan;clarificationAllowed?:false;segments?:readonly AssistantConversationSegment[];facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
+/** Review R6, for a sealed well-formed proposal that is NOT currently offered (never prepared from):
+ * `proposalStale` — the caller's current catalogue was read and no longer offers it (authority, module, tier
+ * or pause changed): refused, with a refresh;
+ * `proposalUnverified` — the catalogue or the replayed sources could not be checked right now: a neutral,
+ * retryable state. Never both. */
+export type AssistantConversationView=Readonly<{plan:AssistantAnswerPlan;clarificationAllowed?:false;proposalStale?:true;proposalUnverified?:true;segments?:readonly AssistantConversationSegment[];facts:readonly Readonly<{view:CanonicalModuleJobView;card:number;fact:number}>[]}>;
 export type GroundedWorkspaceAnswer=Readonly<{mode:'grounded'|'generic'|'unavailable';views:readonly CanonicalModuleJobView[];fallbackModules:readonly AgentModuleCode[];partial:boolean;tools:readonly string[];conversation?:AssistantConversationView|null}>;
-export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx){
+export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantReadSession,tx?:Tx,proposalCaller:AssistantProposalCaller|null=null){
  let remaining=32;const cache=new Map<string,Promise<CanonicalModuleJobView>>();
- // A sealed proposal is re-adjudicated against the caller's CURRENT module read set on every replay.
- const caller=(plan:AssistantAnswerPlan,question:string)=>({question,...(plan.mode==='propose'?{readableModules:assistantReadableModules(ctx)}:{})});
+ // A sealed proposal is re-adjudicated against the caller's CURRENT registry-derived catalogue on every
+ // replay; the owner passes facts read in this same request (absent facts offer nothing).
+ const caller=(plan:AssistantAnswerPlan,question:string)=>({question,...(plan.mode==='propose'&&proposalCaller?{proposalCaller}:{})});
+ /** A structurally valid sealed proposal that the current catalogue no longer offers is shown as stale:
+  * refused, with a refresh. A proposal whose catalogue or sources could not be checked (null caller facts, or
+  * any other replay failure) is "unverified" instead: neutral and retryable. Neither is a preparable card. */
+ const notCurrent=(plan:AssistantAnswerPlan):AssistantConversationView|null=>{
+  if(plan.mode!=='propose')return null;
+  let captured:AssistantAnswerPlan;try{captured=captureAssistantAnswerPlan(plan);}catch{return null;}
+  if(captured.mode!=='propose')return null;
+  const stale=proposalCaller!==null&&!assistantProposalCatalogue(proposalCaller).includes(captured.action);
+  return Object.freeze({plan:captured,...(stale?{proposalStale:true as const}:{proposalUnverified:true as const}),facts:Object.freeze([])});
+ };
  return async(binding:AssistantDisclosureBinding,receipt:unknown):Promise<GroundedWorkspaceAnswer>=>{
   const empty=(mode:'generic'|'unavailable'):GroundedWorkspaceAnswer=>Object.freeze({mode,views:Object.freeze([]),fallbackModules:Object.freeze([]),partial:false,tools:Object.freeze([])});
   try{await withAssistantRead(ctx,null,async()=>undefined,session);}catch{return empty('unavailable');}
   if(binding.tenantId!==ctx.tenantId||binding.userId!==ctx.userId)return empty('unavailable');
   const disclosure=openAssistantAnswerDisclosure(binding,receipt);if(disclosure===null)return empty('unavailable');
   const {reads,plan}=disclosure;
-  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan,binding.question)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{return empty('unavailable');}return empty('generic');}
+  if(reads.length===0){if(plan)try{return Object.freeze({...empty('generic'),conversation:Object.freeze({plan:adjudicateAssistantAnswerPlan(plan,[],caller(plan,binding.question)),...(plan.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),facts:Object.freeze([])})});}catch{const view=notCurrent(plan);return view?Object.freeze({...empty('generic'),conversation:view}):empty('unavailable');}return empty('generic');}
   const answerReads:AssistantAnswerRead[]=[],indexedViews=new Map<number,CanonicalModuleJobView>();
   const views:CanonicalModuleJobView[]=[],fallback=new Set<AgentModuleCode>(),tools:string[]=[],seen=new Set<string>();let partial=reads.length>8;
   for(const [read,source] of reads.slice(0,8).entries()){
@@ -49,7 +65,7 @@ export function workspaceGroundedAnswers(ctx:SessionContext,session:AssistantRea
    const facts=segments.flatMap(segment=>segment.kind==='fact'?[Object.freeze({view:segment.view,card:segment.card,fact:segment.fact})]:[]);
    conversation=Object.freeze({plan:checked,...(checked.mode==='clarify'&&!canClarifyAssistantQuestion(binding.question)?{clarificationAllowed:false as const}:{}),
     ...(segments.some(segment=>segment.kind==='explanation')?{segments:Object.freeze(segments)}:{}),facts:Object.freeze(facts)});
-  }catch{return empty('unavailable');}
+  }catch{conversation=notCurrent(plan);if(!conversation)return empty('unavailable');}
   return Object.freeze({conversation,mode:views.length?'grounded':'unavailable',views:Object.freeze(views),fallbackModules:Object.freeze([...fallback]),partial,tools:Object.freeze(tools)});
  };
 }

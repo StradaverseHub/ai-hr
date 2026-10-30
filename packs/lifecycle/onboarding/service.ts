@@ -553,6 +553,14 @@ async function lockOnboardingTx(tx: Tx, tenantId: string) {
     await tx.execute(sql `select pg_advisory_xact_lock(hashtext('audit-chain:' || ${tenantId}::uuid::text))`);
     await tx.execute(sql `select pg_advisory_xact_lock(hashtextextended(${tenantId + ':onboarding'},0))`);
 }
+/** Read-only activation dependency metadata under the SAME owner lock. The first Personnel review
+ * hands configured synchronization to the native workflow instead of hiding case/task side effects. */
+export async function onboardingDraftActivationContextTx(ctx:SessionContext,tx:Tx):Promise<{willSynchronize:boolean;revision:number|null}>{
+    if(ctx.entitlementsExempt||ctx.entitlementsError||!isModuleEnabled(ctx,'lifecycle'))return {willSynchronize:false,revision:null};
+    await lockOnboardingTx(tx,ctx.tenantId);
+    const {revision}=await configTx(tx,ctx);
+    return {willSynchronize:revision>0,revision};
+}
 export async function onboardingSyncDraftTx(ctx: SessionContext, tx: Tx, draftId: string, mode: 'save' | 'active' | 'discard', active?: {
     employmentId: string;
     personId: string;

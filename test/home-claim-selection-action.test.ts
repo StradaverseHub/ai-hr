@@ -28,4 +28,17 @@ describe('Home claim selected employment at the server action',()=>{
   const data=form();data.set('id','record');data.append('draftIds','record');await expect(action(data)).rejects.toThrow('employmentId='+own);
   if(kind==='bulk')expect(state.bulk).toHaveBeenCalledWith(state.session,{ids:['record'],employmentId:own});else expect(state[kind]).toHaveBeenCalledWith(state.session,'record',own);
  });
+ it('binds cancellation without a posted selector to the caller’s resolved own employment',async()=>{
+  const data=form();data.delete('employmentId');data.set('id','claim');await expect(cancelClaimAction(data)).rejects.toThrow('toast=Claim+cancelled');
+  expect(state.cancel).toHaveBeenCalledWith(state.session,'claim','legacy-first');
+ });
+ it('refuses an unposted cancellation when there is no linked own employment, before calling the native service',async()=>{
+  state.legacy.mockResolvedValue(null);const data=form();data.delete('employmentId');data.set('id','other-person-claim');
+  await expect(cancelClaimAction(data)).rejects.toThrow('error=No+active+employment');expect(state.cancel).not.toHaveBeenCalled();
+ });
+ it('refuses a foreign posted employment on cancellation before calling the native service',async()=>{
+  const data=form();data.set('employmentId','016b74cd-734f-40a1-8284-09f1e788d96a');data.set('id','other-person-claim');
+  await expect(cancelClaimAction(data)).rejects.toThrow('error=No+active+employment');expect(state.cancel).not.toHaveBeenCalled();
+ });
+
 });

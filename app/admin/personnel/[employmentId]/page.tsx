@@ -1019,6 +1019,7 @@ export default async function EmployeePage({
     payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
   };
 
+  const canEditPassport=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const profilePanel = admin ? (
     <>
       {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
@@ -1148,6 +1149,8 @@ export default async function EmployeePage({
           countryOptions={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
           setIcAction={setIcAction}
           setPassportAction={setPassportAction}
+          passportDisabled={!canEditPassport}
+          passportReadOnlyMessage={tAccess('workforceReadOnly')}
         />
       </Card>
       </IdentityProvider>
@@ -2882,7 +2885,11 @@ export default async function EmployeePage({
   // name is now a pick-from-catalog select and the card adds the custom-payment-holder function (pay salary
   // to a third party's account). It's a client island (interactive reveal/require) rendered as JSX only, so
   // the RSC server/client boundary is respected.
+  const canEditBank=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
   const bankCard = admin ? (
+    <>
+    {!canEditBank&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
+    <fieldset disabled={!canEditBank} className="min-w-0">
     <BankInfoCard
       action={setBankAction}
       employmentId={emp.employmentId}
@@ -2896,6 +2903,8 @@ export default async function EmployeePage({
         customHolderId: statutory?.customHolderId ?? null,
       }}
     />
+    </fieldset>
+    </>
   ) : null;
 
   // Item df09f22a — the standalone Identification & Tax card (item 8b5334db) was merged into the Statutory

@@ -39,7 +39,7 @@ import {hireEmployee,setEmploymentInfo} from './workforce-commands';
  * and the failure mode is a half-entered person appearing in a headcount or a payroll run.
  */
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { onboardingSyncDraftTx } from '../packs/lifecycle/service';
+import { onboardingSyncDraftTx,onboardingDraftActivationContextTx } from '../packs/lifecycle/service';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import {
   company, employeeDraft, employeeIdConfig, person, tenantCounter, department, position,
@@ -728,15 +728,18 @@ async function releaseReservedNumber(
 /** Save exactly this caller's input under the Draft lock, then activate in an inner savepoint.
  * Business failure rolls back all activation owners while committing the attempted Draft for reopening.
  * Throw only AFTER the outer save commits; a failed savepoint rollback aborts the outer transaction. */
-export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:string;data:EmployeeDraftData;currentStep:number}):Promise<{employmentId:string}> {
+export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:string;data:EmployeeDraftData;currentStep:number},outerTx?:Tx):Promise<{employmentId:string}> {
   p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   if(!(ctx.roles??[]).some(role=>role==='super_admin'||role==='hr_admin'))throw new DraftActivationValidationError('permission',[]);
   if(p.id&&!UUID_RE.test(p.id))throw new DraftActivationValidationError('draft_unavailable',[]);
-  const outcome=await withTenant(ctx,async tx=>{
+  const run=async(tx:Tx)=>{
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // saveEmployeeDraft acquires and retains this exact row's lock before pinning or saving input.
     const saved=await saveEmployeeDraft(ctx,p,tx);
+    // Explicit custody owns the whole transaction: no activation savepoint may hide a failure or
+    // give the native rows/event a subtransaction xmin instead of its top-level receipt witness.
+    if(outerTx)return {ok:true as const,value:await completeEmployeeDraftTx(tx,ctx,saved.id)};
     try {
       const value=await tx.transaction(activationTx=>completeEmployeeDraftTx(activationTx,ctx,saved.id));
       return {ok:true as const,value};
@@ -745,9 +748,38 @@ export async function saveAndCompleteEmployeeDraft(ctx:SessionContext,p:{id?:str
       // survives a typed refusal or a late SQL/audit failure; only the saved Draft remains available.
       return {ok:false as const,error};
     }
-  });
+  };
+  // Default wizard behaviour still commits the attempted Draft after a failed activation savepoint.
+  // An enclosing Assistant custody owner instead throws before its top-level transaction can commit.
+  const outcome=outerTx?await run(outerTx):await withTenant(ctx,run);
   if(!outcome.ok)throw outcome.error;
   return outcome.value;
+}
+
+/** Exact native initial facts, excluding generated IDs, audit timestamps and speculative counters.
+ * Every supported activation owner below uses the supplied Tx: hire/assignment/tax/compensation/leave,
+ * Draft save/delete and audit/outbox rows. No provider/network/file effect is invoked. Rollback leaves
+ * normal database sequence gaps possible, but no business row/event or ID reservation is committed. */
+export type EmployeeDraftActivationPreview={
+ compensation:{basicSalary:string;monthlyAllowance:string;currency:string;payMode:string;paymentTerm:string;rateAmount:string|null;validFrom:string;remarks:string|null};
+ openingLeaveGrants:{leaveTypeId:string;code:string;name:string;entryType:string;days:string;effectiveOn:string}[];
+};
+export async function previewSavedEmployeeDraftActivationTx(tx:Tx,supplied:SessionContext,p:{id:string;data:EmployeeDraftData;currentStep:number}):Promise<EmployeeDraftActivationPreview>{
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
+ // Configuration and retained source locks precede the rollback-only savepoint, so they survive it.
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);await lockLabelCriteriaTx(tx,ctx.tenantId);
+ const [draft]=await tx.select({id:employeeDraft.id}).from(employeeDraft).where(and(eq(employeeDraft.id,p.id),eq(employeeDraft.tenantId,ctx.tenantId))).for('update');if(!draft)throw new DraftActivationValidationError('draft_unavailable',[]);
+ const lifecycle=await onboardingDraftActivationContextTx(ctx,tx);if(lifecycle.willSynchronize)throw new DraftActivationValidationError('invalid_data',[]);
+ await tx.execute(sql`savepoint ai_employee_draft_activation_preview`);
+ try{
+  const done=await saveAndCompleteEmployeeDraft(ctx,p,tx);
+  const compensationRows=await tx.execute<EmployeeDraftActivationPreview['compensation']>(sql`select basic_salary as "basicSalary",monthly_allowance as "monthlyAllowance",currency,pay_mode as "payMode",payment_term as "paymentTerm",rate_amount as "rateAmount",valid_from::text as "validFrom",remarks from compensation where tenant_id=${ctx.tenantId}::uuid and employment_id=${done.employmentId}::uuid and valid_to is null and superseded_at is null`);if(compensationRows.length!==1)throw new DraftActivationValidationError('payroll_invalid',[]);
+  const grantRows=await tx.execute<EmployeeDraftActivationPreview['openingLeaveGrants'][number]>(sql`select l.leave_type_id as "leaveTypeId",t.code,t.name,l.entry_type::text as "entryType",l.days,l.effective_on::text as "effectiveOn" from leave_ledger l join leave_type t on t.id=l.leave_type_id and t.tenant_id=l.tenant_id where l.tenant_id=${ctx.tenantId}::uuid and l.employment_id=${done.employmentId}::uuid order by l.leave_type_id,l.entry_type,l.effective_on,l.days`);
+  return{compensation:{...compensationRows[0]},openingLeaveGrants:Array.from(grantRows).map(row=>({...row}))};
+ }finally{
+  await tx.execute(sql`rollback to savepoint ai_employee_draft_activation_preview`);
+  await tx.execute(sql`release savepoint ai_employee_draft_activation_preview`);
+ }
 }
 
 /** Activate one locked Draft through canonical owners in a single explicit transaction.

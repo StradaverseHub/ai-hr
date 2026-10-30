@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {QualificationMaintenance as C} from '../../lib/assistant-actions/qualification-maintenance-contract';
+import {withQualificationMaintenanceSubjectTx,prepareQualificationMaintenanceSourceTx,confirmQualificationMaintenanceSourceTx,reconcileQualificationMaintenanceSourceTx,readQualificationMaintenanceChoicesTx,qualificationMaintenanceUnavailable} from './qualification-maintenance-source';
+export const qualificationMaintenanceReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withQualificationMaintenanceSubjectTx,prepare:prepareQualificationMaintenanceSourceTx,confirm:confirmQualificationMaintenanceSourceTx,reconcile:reconcileQualificationMaintenanceSourceTx,unavailable:qualificationMaintenanceUnavailable});
+export async function readQualificationMaintenanceChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readQualificationMaintenanceChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

@@ -321,6 +321,8 @@ These are listed in review §7.2:
 
 Packages blocked on a decision say so above.
 
+**Resolved 29 Oct 2026.** The owner answered all five in chat: (1) order (a) overdue-approver chasers, (b) probation/contract-end reminders, (c) missing clock-in nudges, (d) expiring documents, (e) lifecycle step chasing, all deterministic; (2) no model spend for the scheduled agent principal; (3) performance AI switches default off; (4) naming as already approved; (5) bulk manager decisions approved in principle, to be designed as its own package outside WP6–WP14. Recorded in [ADR-0151, Owner decisions — 29 October 2026](../adr/0151-orchestrator-action-layer-and-system-learning.md#owner-decisions--29-october-2026).
+
 ## 8. Prompt for the implementing agent
 
 Copy the block below.

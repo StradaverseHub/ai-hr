@@ -153,7 +153,7 @@ it('connects assigned Leave decisions without granting models decision inputs or
 
 it('connects ADR-0151 wave 1b overtime requests and assigned decisions as human-selected, model-uncallable reviews',()=>{
  expect(MODULE_AGENT_ACTIONS.approvals.actions.map(row=>row.id)).toEqual(['approvals.leave.decide','approvals.claim.decide','approvals.attendance.decide','approvals.toil.decide']);
- expect(MODULE_AGENT_ACTIONS.attendance.actions.map(row=>row.id)).toEqual(['attendance.correction.request','attendance.overtime.request']);
+ expect(MODULE_AGENT_ACTIONS.attendance.actions.map(row=>row.id)).toEqual(['attendance.correction.request','attendance.overtime.request','attendance.schedule_group.maintain']);
  const rows=[['attendance','attendance.overtime.request','module_overtime_request_review_v1','attendance','submitted_not_approved'],['approvals','approvals.claim.decide','module_claim_decision_review_v1','claims','canonical_receipt_required'],
   ['approvals','approvals.attendance.decide','module_attendance_decision_review_v1','attendance','canonical_receipt_required'],['approvals','approvals.toil.decide','module_toil_decision_review_v1','leave','canonical_receipt_required']] as const;
  for(const [module,action,adapter,owner,outcome] of rows){
@@ -169,7 +169,7 @@ it('connects ADR-0151 wave 1b overtime requests and assigned decisions as human-
 it('connects ADR-0151 HR-prepared leave adjustment, movement and Leave Credit as human-selected reviews the model cannot fill in',()=>{
  expect(MODULE_AGENT_ACTIONS.toil.actions.map(row=>row.id)).toEqual(['toil.replacement.request','toil.credit.grant']);
  expect(MODULE_AGENT_ACTIONS.leave.actions.map(row=>row.id)).toEqual(['leave.apply','leave.cancel','leave.edit','leave.adjustment.apply']);
- expect(MODULE_AGENT_ACTIONS.employees.actions.map(row=>row.id)).toEqual(['employees.import','employees.movement.transfer']);
+ expect(MODULE_AGENT_ACTIONS.employees.actions.map(row=>row.id)).toEqual(['employees.import','employees.movement.transfer','employees.compensation.maintain','employees.profile_request.reject','employees.code.maintain','employees.workforce_profile.maintain','employees.bank.maintain','employees.document_metadata.maintain','employees.fixed_item.archive','employees.cost_allocation.maintain','employees.payment_method.maintain','employees.tp3_opening.maintain','employees.passport.maintain','employees.emergency_contact.maintain','employees.family.maintain','employees.qualification.maintain','employees.draft.activate']);
  const rows=[['leave','leave.adjustment.apply','module_leave_adjustment_review_v1','leave'],['employees','employees.movement.transfer','module_movement_transfer_review_v1','personnel'],['toil','toil.credit.grant','module_leave_credit_review_v1','leave']] as const;
  for(const [module,action,adapter,owner] of rows){
   expect(getModuleAgentAction(module,action)).toMatchObject({owner,outcome:'canonical_receipt_required',prepare:{status:'implemented',adapter},confirm:{status:'implemented',adapter}});

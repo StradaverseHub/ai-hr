@@ -1,5 +1,8 @@
 /** Authored UNRUN. Requires coordinated review-store and Testing metadata drafts, never installs them. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import * as vault from '../lib/pii/vault';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -10,7 +13,7 @@ import {hireEmployee} from '../core/org';
 import {erasePersonPii} from '../core/pdpa';
 import {type InstructionDefinition} from '../lib/system-testing/model';
 import {OwnTestingExecutionIntent} from '../lib/assistant-actions/own-testing-execution-contract';
-import {prepareOwnTestingExecutionTx,confirmOwnTestingExecutionTx} from '../core/assistant-actions/own-testing-execution-source';
+import {withOwnTestingExecutionIntervalTx,prepareOwnTestingExecutionTx,confirmOwnTestingExecutionTx} from '../core/assistant-actions/own-testing-execution-source';
 import {prepareTestingModuleActionReview,confirmTestingModuleActionReview,reopenTestingModuleActionReview,discardTestingModuleActionReview,listTestingModuleActionReviews} from '../core/assistant-actions/module-action-review-store';
 import {MODULE_TESTING_EXECUTION_ACTION,TestingModuleActionConfirmation} from '../lib/assistant-actions/module-action-review-contract';
 import {adminCtx,closeAll,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -62,4 +65,12 @@ describe('same physical USER-scoped human Testing custody',()=>{
  await expect(confirm(a,r)).rejects.toThrow();const result=await discardTestingModuleActionReview(a.ctx,confirmation(r));expect(result.receipt.state).toBe('discarded');expect(await custody(r.actionId)).toMatchObject({state:'discarded',bodies:0,intent_digest:null,reviewed_digest:null});expect(await state()).toEqual(before);});
  it('refuses completed discard explicitly without relabeling or mutating the native effect or terminal receipt',async()=>{const a=await fixture(),r=await prepare(a),done=await confirm(a,r),before=await state(),stored=await custody(r.actionId);await expect(discardTestingModuleActionReview(a.ctx,confirmation(r))).rejects.toThrow('little detour');expect(await state()).toEqual(before);expect(await custody(r.actionId)).toEqual(stored);expect(await reopenTestingModuleActionReview(a.ctx,r.actionId)).toEqual(done);});
 
+});
+
+async function retainedTestingReview(a:Awaited<ReturnType<typeof fixture>>){return withTenant(a.ctx,tx=>withOwnTestingExecutionIntervalTx(tx,a.ctx,a.execution.executionId,async actor=>{const native=await prepareOwnTestingExecutionTx(tx,actor,a.intent),{humanObservation,...review}=native;void humanObservation;const body={reviewNonce:newPrivateReviewNonce(),intent:a.intent,review};
+ const binding={tenantId:actor.tenantId,userId:actor.userId!,personId:actor.personId??null,employmentId:null,companyId:null,executionId:a.execution.executionId},actionId=randomUUID(),action=MODULE_TESTING_EXECUTION_ACTION,intentDigest=createHash('sha256').update(JSON.stringify(body.intent)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_testing_action_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.executionId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest,action,contractVersion:1 as const};}finally{dek.fill(0);}}));}
+describe('WP9 retained USER testing observation custody',()=>{
+ it('opens and completes the exact original writer with NULL staff identity once',async()=>{const a=await fixture(),old=await retainedTestingReview(a);expect((await reopenTestingModuleActionReview(a.ctx,old.actionId)).kind).toBe('prepared');await expect(confirmTestingModuleActionReview(a.ctx,{...old,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();const done=await confirmTestingModuleActionReview(a.ctx,old);expect(done.kind).toBe('completed');const after=await state();expect(await confirmTestingModuleActionReview(a.ctx,old)).toEqual(done);expect(await reopenTestingModuleActionReview(a.ctx,old.actionId)).toEqual(done);expect(await state()).toEqual(after);});
+ it('retires original pending custody after grant removal without crypto or observation effects',async()=>{const a=await fixture(),old=await retainedTestingReview(a);await revokeAssistant(a.admin,{appUserId:a.ctx.userId});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');try{expect((await discardTestingModuleActionReview(a.ctx,{action:MODULE_TESTING_EXECUTION_ACTION,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);}finally{unwrap.mockRestore();}});
+ it('reconciles an actual committed observation after transaction reply loss',async()=>{const a=await fixture(),r=await prepare(a),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(a,r)).rejects.toThrow();}finally{spy.mockRestore();}const after=await state(),done=await reopenTestingModuleActionReview(a.ctx,r.actionId);expect(done.kind).toBe('completed');expect(await confirm(a,r)).toEqual(done);expect(await state()).toEqual(after);});
 });

@@ -19,6 +19,7 @@ import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
 import { adminCtx, closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
+import { switchOnPerformanceAi } from './performance-ai-switches-fixture';
 import { saveNotificationEmailPolicy,saveNotificationEmailPreferences,retryNotificationEmail } from '../core/notification-email';
 import { deliverNotificationEmails,type NotificationEmailTransport } from '../core/notification-email-delivery';
 import { dispatchNotifications,dispatchNotificationsFromSweep,notificationStillTargets } from '../core/notifications';
@@ -50,7 +51,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
   beforeEach(async()=>{
     vi.stubEnv('OPENAI_API_KEY','fictional-unit-transport-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
     vi.mocked(readImage).mockReset().mockResolvedValue('Verified 15.9 units.');vi.mocked(generateDraft).mockReset().mockResolvedValue('{"items":[0]}');vi.mocked(resolveActiveAiConfig).mockReset().mockResolvedValue(null);
-    await resetDb();b=await seedBase();a=adminCtx(b);await setModule(b.tenantId,'performance','active');await setModule(b.tenantId,'rewards','active');a=await entitledCtx(b);
+    await resetDb();b=await seedBase();a=adminCtx(b);await setModule(b.tenantId,'performance','active');await switchOnPerformanceAi(b.tenantId);await setModule(b.tenantId,'rewards','active');a=await entitledCtx(b);
     subject=await hire('Assessment subject');manager=await hire('Assessment manager');
     const ctx=async(personId:string,role:'employee'|'manager'):Promise<SessionContext>=>({...a,userId:await createAppUser(b.tenantId,personId,role),personId,roles:[role],grants:undefined});
     self=await ctx(subject.personId,'employee');mgr=await ctx(manager.personId,'manager');
@@ -244,8 +245,12 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect((await perf.askPerformanceGuide(self,'my review')).mode).toBe('search');expect(generateDraft).toHaveBeenCalledOnce();
     await expect(withTenant(mgr,tx=>tx.select().from(schema.assessmentGuideUse))).resolves.toEqual([]);
   });
-  it('preserves six independent default-on assistance controls with central group-wide authorization',async()=>{
+  it('preserves six independent default-off assistance controls with central group-wide authorization',async()=>{
     const groupAdmin={...a,grants:[{role:'hr_admin',companyId:null}]};
+    // Owner decision 3 (WP6): with no stored value every switch is OFF; a stored value is honoured as written.
+    await owner.db.delete(schema.tenantSetting).where(and(eq(schema.tenantSetting.tenantId,b.tenantId),sql`${schema.tenantSetting.key} like 'performance.ai\\_%'`));
+    expect(await perf.getAssessmentAiSwitches(groupAdmin)).toMatchObject({switches:{'360':false,tc:false,pm:false,review:false,idp:false,calib:false}});
+    await switchOnPerformanceAi(b.tenantId);
     const state=await perf.getAssessmentAiSwitches(groupAdmin);
     expect(state).toMatchObject({mayWrite:true,providerConfigured:false,switches:{'360':true,tc:true,pm:true,review:true,idp:true,calib:true},features:{'360':false,tc:false,pm:false,review:false,idp:false,calib:false}});
     await expect(perf.getAssessmentAiSwitches(self)).rejects.toThrow(/administrators/);

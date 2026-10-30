@@ -7,7 +7,7 @@ import { withAssistantRead, type AssistantReadSession } from '../core/assistant-
 import { grantAssistant, revokeAssistant } from '../core/assistant-grant';
 import { hireEmployee } from '../core/org';
 import * as canonical from '../core/read';
-import { runModuleReadPlan } from '../core/module-agent-orchestrator';
+import { runModuleReadPlan } from './module-read-plan';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, resetDb, seedBase, setModule, type Base } from './harness';
 let base: Base;
 beforeAll(migrateTestDb);

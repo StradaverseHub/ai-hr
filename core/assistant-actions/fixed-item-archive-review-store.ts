@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {FixedItemArchive as C} from '../../lib/assistant-actions/fixed-item-archive-contract';
+import {withFixedItemArchiveSubjectTx,prepareFixedItemArchiveSourceTx,confirmFixedItemArchiveSourceTx,reconcileFixedItemArchiveSourceTx,readFixedItemArchiveChoicesTx,fixedItemArchiveUnavailable} from './fixed-item-archive-source';
+export const fixedItemArchiveReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withFixedItemArchiveSubjectTx,prepare:prepareFixedItemArchiveSourceTx,confirm:confirmFixedItemArchiveSourceTx,reconcile:reconcileFixedItemArchiveSourceTx,unavailable:fixedItemArchiveUnavailable});
+export async function readFixedItemArchiveChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readFixedItemArchiveChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { AI_FEATURES } from '../lib/ai/features';
+import { AI_FEATURES, TEMPLATE_ONLY_AI_FEATURES, isTemplateOnlyAiFeature } from '../lib/ai/features';
 import { MODULE_CATALOG, SETTING_CATALOG } from '../packs/catalog';
 const read=(p:string)=>readFileSync(p,'utf8');
 const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(?:[cm]?[jt]sx?)$/.test(e.name)?[join(p,e.name)]:[]);
@@ -24,6 +24,8 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-prompt-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-releases.ts':{features:['module_agent_evaluation','module_agent_planning'],seams:[/governedAiConfig\([^()]*'module_agent_evaluation'\)/,/governedAiConfig\([^()]*'module_agent_planning'\)/,/withAiAdmissionLifecycle\([^,()]*,\s*'module_agent_planning'/]},
+ // WP14: baseline holdouts against a pending provider change, issued for provider_evaluation on the run's own spend root.
+ 'core/ai-provider-baseline.ts':{features:['provider_evaluation'],seams:[/governedAiConfig\(ctx,\s*snapshot,\s*'provider_evaluation'\)/,/bindStrictAiSpendRoot\(governedAiConfig/]},
  'core/personnel-import-assistance.ts':{features:['personnel_import_mapping'],seams:[/const FEATURE\s*=\s*'personnel_import_mapping'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/]},
 };
 // Shared Performance provider seam: it resolves no configuration of its own and admits every call under the
@@ -90,8 +92,11 @@ describe('complete AI management inventory and boundary',()=>{
   // feature through the live control context (0621), which refuses every unlisted feature.
   const admitAt=admit.lastIndexOf('FUNCTION app.ai_admit('),admitBody=admit.slice(admitAt,admit.indexOf('END $$',admitAt));
   expect(admitAt).toBeGreaterThanOrEqual(0);expect(admitBody.length).toBeGreaterThan(500);expect(admitBody).toContain('app._ai_control_context(wanted_feature,');
-  for(const feature of AI_FEATURES){expect(context).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
-  for(const [source,marker,expected] of [[guard,'NEW.feature_id',AI_FEATURES.filter(f=>f.setting===null)],[context,'wanted_feature',AI_FEATURES]] as const){
+  // WP13: template-only scheduled agents (no model call) are deliberately absent from model admission.
+  for(const feature of TEMPLATE_ONLY_AI_FEATURES)expect(context).not.toContain(`'${feature}'`);
+  const admitted=AI_FEATURES.filter(f=>!isTemplateOnlyAiFeature(f.id));
+  for(const feature of admitted){expect(context).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
+  for(const [source,marker,expected] of [[guard,'NEW.feature_id',AI_FEATURES.filter(f=>f.setting===null)],[context,'wanted_feature',admitted]] as const){
    const lists=[...source.matchAll(new RegExp(`${marker.replace('.','\\.')} NOT IN \\(([^)]+)\\)`,'g'))];expect(lists,marker).toHaveLength(1);
    expect([...lists[0][1].matchAll(/'([^']+)'/g)].map(m=>m[1]).sort()).toEqual(expected.map(f=>f.id).sort());
   }

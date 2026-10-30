@@ -1,7 +1,9 @@
 /** Authored UNRUN. Requires both coordinated Lifecycle source/shared-custody drafts. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import * as vault from '../lib/pii/vault';
@@ -11,7 +13,7 @@ import {hireEmployee} from '../core/org';
 import {erasePersonPii} from '../core/pdpa';
 import {createOnboardingCase,tickStep,undoStep,updateCase,cancelCase} from '../packs/lifecycle/service';
 import {ONBOARDING_STEPS} from '../core/lifecycle-defaults';
-import {prepareOwnLifecycleAcknowledgementSourceTx,confirmOwnLifecycleAcknowledgementSourceTx} from '../core/assistant-actions/own-lifecycle-acknowledgement-source';
+import {withOwnLifecycleAcknowledgementIntervalTx,prepareOwnLifecycleAcknowledgementSourceTx,confirmOwnLifecycleAcknowledgementSourceTx} from '../core/assistant-actions/own-lifecycle-acknowledgement-source';
 import {prepareLifecycleAckReview,confirmLifecycleAckReview,reopenLifecycleAckReview,discardLifecycleAckReview,listLifecycleAckReviews} from '../core/assistant-actions/lifecycle-ack-review-store';
 import {OWN_LIFECYCLE_ACKNOWLEDGEMENT_ACTION as action,type OwnLifecycleAcknowledgementHumanContent} from '../lib/assistant-actions/own-lifecycle-acknowledgement-contract';
 import {LifecycleAckReviewConfirmation} from '../lib/assistant-actions/lifecycle-ack-review-contract';
@@ -74,4 +76,29 @@ describe('same physical native email-owned Lifecycle acknowledgement custody',()
 
  it('erases pending review text through the actual actor-person privacy owner for a genuinely linked employee',async()=>{const email=randomUUID()+'@fixture.test',h=await hireEmployee(admin(),{person:{fullName:'Fictional linked privacy recipient',primaryEmail:email},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}),userId=await createAppUser(b.tenantId,h.personId,'employee');await grantAssistant(admin(),{appUserId:userId});const who={...ctx,userId,personId:h.personId},c=await readyCase(email,h.personId,h.employmentId),r=await prepare(who,content(c.id));await erasePersonPii(admin(),{subjectEmploymentId:h.employmentId,scope:'contact',requestRef:'FICTIONAL-LIFECYCLE-ACTOR-ERASURE',reason:'Fictional canonical actor review erasure'});expect(await custody(r.actionId)).toMatchObject({person_id:h.personId,state:'refused',bodies:0,intent_digest:null,reviewed_digest:null});expect((await state()).history.filter(row=>row.action==='daa.submitted')).toHaveLength(0);});
 
+});
+
+/** Original sealed wire includes caseNumber between content and native digest. Do not normalize it away. */
+async function retainedLifecycleReview(){return withTenant(ctx,tx=>withOwnLifecycleAcknowledgementIntervalTx(tx,ctx,human.caseId,async(fresh,source)=>{
+ const native=await prepareOwnLifecycleAcknowledgementSourceTx(tx,fresh,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,caseNumber:native.caseNumber,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId??null,employmentId:source.employmentId,companyId:source.companyId,caseId:source.caseId,casePersonId:source.casePersonId},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_lifecycle_ack_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.caseId}::uuid,${binding.casePersonId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained lifecycle acknowledgement custody',()=>{
+ it('reopens the retained case number and completes an old unlinked prehire review once',async()=>{
+  const old=await retainedLifecycleReview(),packet={action,contractVersion:1,...old};const opened=await reopenLifecycleAckReview(ctx,old.actionId);expect(opened.kind).toBe('prepared');if(opened.kind==='prepared')expect(opened.review.caseNumber).toBe(number);
+  await expect(confirmLifecycleAckReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmLifecycleAckReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmLifecycleAckReview(ctx,packet)).toEqual(done);expect(await reopenLifecycleAckReview(ctx,old.actionId)).toEqual(done);expect(await custody(old.actionId)).toMatchObject({employment_id:null,lifecycle_case_person_id:null,state:'completed'});
+ });
+ it('retires an old pending acknowledgement after grant removal without decrypting it',async()=>{
+  const old=await retainedLifecycleReview();await revokeAssistant(admin(),{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardLifecycleAckReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a lost committed reply without submitting another acknowledgement',async()=>{
+  const review=await prepare(),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const after=await state(),done=await reopenLifecycleAckReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);expect(await state()).toEqual(after);
+ });
 });

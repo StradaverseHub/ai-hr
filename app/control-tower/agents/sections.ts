@@ -3,7 +3,7 @@
  * and listed in lib/permissions.ts. Provider setup moved here from Administration › AI, and the Assistant
  * reviews moved here from the employee Assistant page. A section the session cannot use (spending without a
  * spend policy, provider setup without group-wide authority) is not offered, and opening it goes to the Overview rather than rendering an empty page. */
-export const AI_MANAGEMENT_SECTIONS = ['overview','provider','assistant','features','allowances','spending','orchestrator','runs'] as const;
+export const AI_MANAGEMENT_SECTIONS = ['inventory','overview','provider','assistant','features','allowances','spending','orchestrator','runs'] as const;
 export type AiManagementSection = (typeof AI_MANAGEMENT_SECTIONS)[number];
 export const AI_MANAGEMENT_PAGE = '/control-tower/agents';
 export function availableAiManagementSections(scope:{spend:boolean;provider:boolean}):AiManagementSection[]{
@@ -11,7 +11,7 @@ export function availableAiManagementSections(scope:{spend:boolean;provider:bool
 }
 /** Path suffix of each section's page. */
 export const AI_MANAGEMENT_PATHS: Readonly<Record<AiManagementSection,string>> = {
-  overview:'',provider:'/provider',assistant:'/assistant',features:'/features',allowances:'/allowances',spending:'/spending',orchestrator:'/orchestrator',runs:'/runs',
+  inventory:'/inventory',overview:'',provider:'/provider',assistant:'/assistant',features:'/features',allowances:'/allowances',spending:'/spending',orchestrator:'/orchestrator',runs:'/runs',
 };
 /** Closed save outcomes; the page translates them. Free text from a query string is never displayed. */
 export type AiManagementToast='saved'|'default'|'bulk';

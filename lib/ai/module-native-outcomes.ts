@@ -1,43 +1,16 @@
 /** Closed evidence links, not an executor, permission oracle, quality score or causal credit. */
 import {z} from 'zod';
-import type {ModuleEffectActionId} from './module-agent-actions';
 import type {AgentModuleCode} from './module-agents';
+import {AGENT_ACTIONS,type AgentAction,type AgentActionOf,type AgentReviewActionId} from './agent-action-registry';
 const Id=z.guid().transform(value=>value.toLowerCase());
-const entry=<M extends AgentModuleCode>(module:M,semantics:string)=>Object.freeze({module,semantics});
-export const NATIVE_OUTCOME_ACTIONS=Object.freeze({
- 'employees.import':entry('employees','canonical_import_committed_not_quality_certified'),
- 'org.reporting.change':entry('org','reporting_change_recorded'),
- 'leave.apply':entry('leave','submitted_not_approved'),
- 'leave.cancel':entry('leave','pending_leave_withdrawn_no_balance_effect'),
- 'leave.edit':entry('leave','pending_leave_edited_still_not_approved'),
- 'ess.profile.request':entry('ess','submitted_not_approved_or_applied'),
- 'approvals.leave.decide':entry('approvals','decision_recorded_current_request_state_separate'),
- 'approvals.claim.decide':entry('approvals','claim_decision_recorded_payment_separate'),
- 'approvals.attendance.decide':entry('approvals','attendance_decision_recorded_request_may_remain_pending'),
- 'approvals.toil.decide':entry('approvals','replacement_leave_decision_recorded_credit_on_approval_only'),
- 'knowledge_base.article.create':entry('knowledge_base','article_created_not_content_certified'),
- 'payroll.close':entry('payroll','batch_close_recorded_not_payment'),
- 'attendance.correction.request':entry('attendance','correction_requested_not_approved'),
- 'attendance.overtime.request':entry('attendance','overtime_requested_not_approved'),
- 'claims.draft.save':entry('claims','draft_saved_not_submitted_or_reimbursed'),
- 'claims.submit':entry('claims','submitted_not_approved_or_reimbursed'),
- 'claims.cancel':entry('claims','pending_claim_cancelled_no_payment_effect'),
- 'performance.review.acknowledge':entry('performance','review_acknowledged_not_rating_endorsement'),
- 'performance.onehr.plan.acknowledge':entry('performance','career_conversation_acknowledged_not_rating_endorsement'),
- 'rewards.post':entry('rewards','posted_to_payroll_inputs_not_processed_or_paid'),
- 'lifecycle.acknowledgement.submit':entry('lifecycle','equipment_acknowledgement_recorded'),
- 'toil.replacement.request':entry('toil','replacement_request_submitted_not_approved'),
- 'multi_cycle_payroll.create_run':entry('multi_cycle_payroll','draft_run_created_not_processed_or_paid'),
- 'typed_pay_components.create':entry('typed_pay_components','component_created_not_pay_calculated'),
- 'country-my.statutory.update':entry('country-my','statutory_record_saved_not_filed'),
- 'notifications.email_preferences.save':entry('notifications','historical_event_current_preferences_not_delivery'),
- 'system_testing.execution.save':entry('system_testing','human_reported_observation_not_independent_verification'),
- 'leave.adjustment.apply':entry('leave','hr_adjustment_written_balance_from_effective_date'),
- 'employees.movement.transfer':entry('employees','hr_assignment_movement_applied_or_scheduled'),
- 'toil.credit.grant':entry('toil','hr_leave_credit_banked_overtime_on_date_not_paid'),
-} satisfies Record<ModuleEffectActionId,Readonly<{module:AgentModuleCode;semantics:string}>>);
+type NativeEffectActionId=Exclude<AgentAction,{readonly outcome:'notification_only'}>['id'];
+type NativeOutcomeEntry<K extends NativeEffectActionId>=Readonly<{module:AgentActionOf<K>['module'];semantics:string}>;
+/** Human native effects only, in registry order. Automatic reminders have separate event evidence;
+ * they cannot become human-linked native effect receipts. */
+export const NATIVE_OUTCOME_ACTIONS=Object.freeze(Object.fromEntries(AGENT_ACTIONS.filter(action=>action.outcome!=='notification_only').map(action=>[action.id,Object.freeze({module:action.module,semantics:action.semantics})]))) as {readonly [K in NativeEffectActionId]:NativeOutcomeEntry<K>} satisfies Readonly<Record<NativeEffectActionId,Readonly<{module:AgentModuleCode;semantics:string}>>>;
 export type NativeOutcomeAction=keyof typeof NATIVE_OUTCOME_ACTIONS;
-export const NATIVE_REVIEW_ACTIONS=Object.freeze(Object.keys(NATIVE_OUTCOME_ACTIONS).filter((action):action is Exclude<NativeOutcomeAction,'employees.import'>=>action!=='employees.import'));
+/** Every action with a prepared-review store row; the human import workflow is its own source below. */
+export const NATIVE_REVIEW_ACTIONS:readonly AgentReviewActionId[]=Object.freeze(AGENT_ACTIONS.filter(action=>action.store!=='human_workflow_only').map(action=>action.id as AgentReviewActionId));
 export const NativeOutcomeReference=z.discriminatedUnion('source',[
  z.object({source:z.literal('review'),action:z.enum(NATIVE_REVIEW_ACTIONS as [typeof NATIVE_REVIEW_ACTIONS[number],...typeof NATIVE_REVIEW_ACTIONS[number][]]),actionId:Id}).strict(),
  z.object({source:z.literal('employee_import'),action:z.literal('employees.import'),attemptId:Id,attemptVersion:z.number().int().positive(),companyId:Id}).strict(),

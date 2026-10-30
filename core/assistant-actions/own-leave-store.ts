@@ -1,3 +1,5 @@
+import {assertAgentActionUnpausedTx} from '../agent-action-pause';
+import {settleReviewCustodyTx} from './review-lifecycle';
 import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
 import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
@@ -101,7 +103,7 @@ export async function prepareOwnLeaveReviewTx(tx: Tx, supplied: SessionContext,
   const ctx = captureContext(supplied);
   const outcome = await readOwnLeaveCandidateTx(tx, ctx, nomination, selection, humanText, locale);
   if (outcome.kind !== 'candidate') return outcome;
-  await assertAiActionUnpausedTx(tx, ctx, 'hr_assistant');
+  await assertAiActionUnpausedTx(tx, ctx, 'hr_assistant');await assertAgentActionUnpausedTx(tx,'leave.apply');
   const candidate = outcome.candidate;
   const now = new Date();
   // SQL owns actual creation/expiry. The cipher binds owner/id/digests, not these provisional times.
@@ -127,7 +129,7 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   await boundNativeOutcomeTransactionTx(tx);
   const actor = await readOwnLeaveActorTx(tx, ctx);
   if (!actor || !isModuleEnabled(actor,'leave')) throw new OwnLeaveContentUnavailable();
-  await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
+  await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');await assertAgentActionUnpausedTx(tx,'leave.apply');
   // The nomination helper deliberately refuses foreign custody at SQL level. Keep that refusal
   // on the same bounded content boundary as the subsequent encrypted read; caller must roll back.
   let subjectId:string;
@@ -141,15 +143,14 @@ export async function reopenOwnLeaveReviewTx(tx: Tx, supplied: SessionContext, a
   if (stored.metadata.actionId !== actionId.data
     || stored.metadata.binding.tenantId !== actor.tenantId || stored.metadata.binding.userId !== actor.userId
     || stored.metadata.binding.personId !== actor.personId || stored.metadata.binding.employmentId!==subject.data) throw new OwnLeaveContentUnavailable();
-  if(stored.metadata.state==='awaiting_confirmation'){
+  return settleReviewCustodyTx(stored,{kind:'reopen'},{completed:row=>completed(tx,actor,row),retired,pending:async()=>{
     const saved=unsealOwnLeaveReview(stored.metadata,stored.sealed),intent=saved.review.nomination;
     // Saved visibility is not a permission. Rebuild the exact canonical permitted projection under
     // the same current authority/config/subject interval BEFORE returning any saved values.
     const fresh=await readOwnLeaveCandidateTx(tx,actor,intent,{employmentId:subject.data,leaveTypeId:intent.leaveTypeId},saved.review.humanText,locale);
     if(fresh.kind!=='candidate'||ownLeaveReviewedDigest(fresh.candidate)!==stored.metadata.reviewedDigest||fresh.candidate.intentDigest!==stored.metadata.intentDigest||fresh.privateAvailableBalance!==saved.availableBalance)throw new OwnLeaveContentUnavailable();
     return publicReview(stored);
-  }
-  return stored.metadata.state === 'completed' ? completed(tx, actor, stored) : retired(stored);
+  },unavailable:():never=>{throw new OwnLeaveContentUnavailable();}});
 }
 
 /** Privacy-only retirement for the SAME login, tenant AND person (ADR-0131), still available after
@@ -228,7 +229,7 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
       await boundNativeOutcomeTransactionTx(tx);
       const actor = await readOwnLeaveActorTx(tx, ctx);
       if (!actor || !isModuleEnabled(actor,'leave')) throw new OwnLeaveContentUnavailable();
-      await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');
+      await assertAiActionUnpausedTx(tx, actor, 'hr_assistant');await assertAgentActionUnpausedTx(tx,'leave.apply');
       const [nominated] = await tx.execute<{ subject: unknown }>(sql`select
         app.assistant_own_leave_review_subject(${confirmation.actionId}::uuid) as subject`);
       const subject = z.guid().safeParse(nominated?.subject);
@@ -240,9 +241,8 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
         || m.binding.tenantId !== actor.tenantId || m.binding.userId !== actor.userId
         || m.binding.personId !== actor.personId || m.binding.employmentId !== subject.data)
         throw new OwnLeaveContentUnavailable();
-      if (m.state === 'completed') return completed(tx, actor, stored);
-      if (m.state !== 'awaiting_confirmation') return retired(stored);
-      if (m.reviewedDigest !== confirmation.reviewedDigest || m.intentDigest === null) throw new OwnLeaveContentUnavailable();
+      return settleReviewCustodyTx(stored,{kind:'confirm',expectedDigest:confirmation.reviewedDigest},{completed:row=>completed(tx,actor,row),retired,pending:async()=>{
+      if(m.intentDigest===null)throw new OwnLeaveContentUnavailable();
       const saved = unsealOwnLeaveReview(m, stored.sealed), intent = saved.review.nomination;
       const fresh = await readOwnLeaveCandidateTx(tx, actor, intent,
         { employmentId: m.binding.employmentId, leaveTypeId: intent.leaveTypeId }, saved.review.humanText, locale);
@@ -265,6 +265,7 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
         || recorded.receipt.leaveRequestId !== written.leaveRequestId
         || recorded.receipt.submissionEventId !== written.submittedEventId) throw new OwnLeaveContentUnavailable();
       return completed(tx, actor, recorded);
+      },unavailable:():never=>{throw new OwnLeaveContentUnavailable();}});
     });
   } catch {
     // Source/Drizzle errors can retain private text or encrypted parameters. Bound every outward
@@ -298,7 +299,7 @@ export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promi
 /** Completed-only actual-Tx evidence path. Never unseals/returns a pending body or retries a request. */
 export async function readCompletedOwnLeaveOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
  const ctx=captureContext(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);const actor=await readOwnLeaveActorTx(tx,ctx);if(!actor||!isModuleEnabled(actor,'leave'))throw new OwnLeaveContentUnavailable();
- await assertAiActionUnpausedTx(tx,actor,'hr_assistant');
+ await assertAiActionUnpausedTx(tx,actor,'hr_assistant');await assertAgentActionUnpausedTx(tx,'leave.apply');
  const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed('leave.apply',${id}::uuid) as completed`);if(terminal?.completed!==true)throw new OwnLeaveContentUnavailable();
  const [nomination]=await tx.execute<{subject:unknown}>(sql`select app.assistant_own_leave_review_subject(${id}::uuid) as subject`),subject=z.guid().parse(nomination?.subject);await lockLeaveDependenciesTx(tx,actor.tenantId,[subject]);
  const stored=await storedReviewTx(tx,sql`select app.assistant_own_leave_review_read(${id}::uuid) as review`);

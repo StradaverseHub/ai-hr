@@ -1,0 +1,6 @@
+import {withTenant,type SessionContext} from '../../db/client';
+import {createGenericAssignedReviewStore} from './generic-assigned-review-store';
+import {CompensationMaintenance as C} from '../../lib/assistant-actions/compensation-maintenance-contract';
+import {withCompensationMaintenanceSubjectTx,prepareCompensationMaintenanceSourceTx,confirmCompensationMaintenanceSourceTx,reconcileCompensationMaintenanceSourceTx,readCompensationMaintenanceChoicesTx,compensationMaintenanceUnavailable} from './compensation-maintenance-source';
+export const compensationMaintenanceReviews=createGenericAssignedReviewStore({action:C.action,human:C.Human,consequence:C.consequence,prepared:C.Prepared,completed:C.Completed,retired:C.Retired,index:C.Index,indexKind:C.indexKind,withSubject:withCompensationMaintenanceSubjectTx,prepare:prepareCompensationMaintenanceSourceTx,confirm:confirmCompensationMaintenanceSourceTx,reconcile:reconcileCompensationMaintenanceSourceTx,unavailable:compensationMaintenanceUnavailable});
+export async function readCompensationMaintenanceChoices(supplied:SessionContext,selection?:unknown){const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};try{return await withTenant(ctx,tx=>readCompensationMaintenanceChoicesTx(tx,ctx,selection));}catch{return{kind:'unavailable' as const};}}

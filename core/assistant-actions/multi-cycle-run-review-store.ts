@@ -1,21 +1,13 @@
-import {assertHumanReviewedActionTier} from '../../lib/ai/agent-action-tier-guard';
-import {captureNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
-import {boundNativeOutcomeTransactionTx} from '../module-native-outcome-bounds';
-/** Human-reviewed Multi-cycle draft creation custody. One new native draft, no processing/closing/money/payment. */
-import {createHash,randomUUID} from 'node:crypto';
-import {sql,type SQL} from 'drizzle-orm';
+/** WP9: generic OWN company/month/cycle draft custody with installed peek/preflight protocol. */
+import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {PrivateReviewNonce,newPrivateReviewNonce,privateReviewCommitment} from './private-review-commitment';
-import {masterKeyAvailable,newDek,newKid,sealUnderDek,unsealUnderDek,unwrapDek,wrapDek} from '../../lib/pii/vault';
+import {createGenericOwnCompatibilityStore} from './generic-own-review-store';
 import {OwnLeaveSealedReview} from './own-leave-content';
-import {REVIEWED_MULTI_CYCLE_RUN_ACTION as action,ReviewedMultiCycleRunHumanContent as Human,ReviewedMultiCycleRunPreparedSource} from '../../lib/assistant-actions/reviewed-multi-cycle-run-contract';
-import {MultiCycleRunReviewPrepare,MultiCycleRunReviewConfirmation,MultiCycleRunReviewRetirement,MultiCycleRunPreparedReview,MultiCycleRunCompletedReview,MultiCycleRunRetiredReview,MultiCycleRunReviewIndex} from '../../lib/assistant-actions/multi-cycle-run-review-contract';
+import {REVIEWED_MULTI_CYCLE_RUN_ACTION as action,ReviewedMultiCycleRunHumanContent as Human} from '../../lib/assistant-actions/reviewed-multi-cycle-run-contract';
+import {MultiCycleRunReviewConfirmation,MultiCycleRunReviewRetirement,MultiCycleRunPreparedReview,MultiCycleRunCompletedReview,MultiCycleRunRetiredReview,MultiCycleRunReviewIndex} from '../../lib/assistant-actions/multi-cycle-run-review-contract';
 import {assertReviewedMultiCycleRunActorTx,withReviewedMultiCycleRunSourceIntervalTx,prepareReviewedMultiCycleRunSourceTx,confirmReviewedMultiCycleRunSourceTx,reconcileReviewedMultiCycleRunSourceTx} from './reviewed-multi-cycle-run-source';
 export class MultiCycleRunReviewUnavailable extends Error{constructor(){super('That Payroll draft needs another look. Please reopen the reviewed cycle.');this.name='MultiCycleRunReviewUnavailable';}}
-const fail=():never=>{throw new MultiCycleRunReviewUnavailable();},hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex'),digest=z.string().regex(/^[a-f0-9]{64}$/);
-const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
+const fail=():never=>{throw new MultiCycleRunReviewUnavailable();},digest=z.string().regex(/^[a-f0-9]{64}$/);
 const Binding=z.object({tenantId:z.guid(),userId:z.guid(),personId:z.guid().nullable(),employmentId:z.null(),companyId:z.guid(),payPeriod:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),payrollCycleId:z.guid(),runType:z.enum(['off_cycle','bonus','adjustment'])}).strict();
 const Metadata=z.object({actionId:z.guid(),action:z.literal(action),contractVersion:z.literal(1),binding:Binding,intentDigest:digest.nullable(),reviewedDigest:digest.nullable(),state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict();type Meta=z.infer<typeof Metadata>;
 const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),eventId:z.guid().nullable(),batchId:z.guid().nullable()}).strict().refine(value=>
@@ -23,51 +15,41 @@ const Stored=z.object({metadata:Metadata,sealed:OwnLeaveSealedReview.nullable(),
  &&(value.metadata.state==='completed')===(value.eventId!==null&&value.batchId!==null)
  &&((value.eventId===null)===(value.batchId===null))
  &&(value.metadata.state==='awaiting_confirmation'||(value.sealed===null&&value.metadata.intentDigest===null&&value.metadata.reviewedDigest===null)));
-type Stored=z.infer<typeof Stored>;type NativePrepared=z.infer<typeof ReviewedMultiCycleRunPreparedSource>;
-// Capture human content ONCE. Re-derive the outward native review only after its private source
-// digest matches, rather than retaining another copy of canonical/derived entitlement values.
-const Body=z.object({reviewNonce:PrivateReviewNonce,content:Human,nativeReviewedDigest:digest}).strict();type Body=z.infer<typeof Body>;
-function identity(m:Meta){if(m.state!=='awaiting_confirmation'||!m.intentDigest||!m.reviewedDigest)return fail();return JSON.stringify([1,m.action,m.actionId,m.binding,m.intentDigest,m.reviewedDigest]);}
-const reviewed=(binding:z.infer<typeof Binding>,body:Body)=>privateReviewCommitment([1,action,binding],body);
-function checked(m:Meta,value:unknown){const body=Body.parse(value);if(body.content.input.companyId.toLowerCase()!==m.binding.companyId||body.content.input.payPeriod!==m.binding.payPeriod||body.content.input.payrollCycleId.toLowerCase()!==m.binding.payrollCycleId||body.content.input.runType!==m.binding.runType||hash(body.content)!==m.intentDigest||reviewed(m.binding,body)!==m.reviewedDigest)return fail();return body;}
-function seal(m:Meta,body:Body){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(m),text=JSON.stringify(checked(m,body));if(Buffer.byteLength(text)>45000)return fail();dek=newDek();const kid=newKid();return OwnLeaveSealedReview.parse({formatVersion:1,kid,wrappedDek:wrapDek(dek,'assistant:module-action:key:'+id),ciphertext:sealUnderDek(dek,kid,text,'assistant:module-action:body:'+id)});}finally{dek?.fill(0);}}
-function unseal(stored:Stored){let dek:Buffer|undefined;try{if(!masterKeyAvailable())return fail();const id=identity(stored.metadata),sealed=OwnLeaveSealedReview.parse(stored.sealed);dek=unwrapDek(sealed.wrappedDek,'assistant:module-action:key:'+id);if(dek.length!==32)return fail();const text=unsealUnderDek(dek,sealed.ciphertext,'assistant:module-action:body:'+id);if(Buffer.byteLength(text)>45000)return fail();return checked(stored.metadata,JSON.parse(text));}finally{dek?.fill(0);}}
-// Drizzle expands raw arrays as tuples; preserve UUID members as individually bound values.
+type Stored=z.infer<typeof Stored>;
+type Selection={companyId:string;payPeriod:string;payrollCycleId:string;runType:'off_cycle'|'bonus'|'adjustment'};
+const Selection=Binding.pick({companyId:true,payPeriod:true,payrollCycleId:true,runType:true}).strict();
 const uuidArray=(ids:readonly string[])=>sql`ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
-async function read(tx:Tx,query:SQL){const [row]=await tx.execute<{review:unknown}>(query);return Stored.parse(row?.review);}
-function bound(stored:Stored,ctx:SessionContext,id:string,source:{companyId:string;payPeriod:string;payrollCycleId:string}){const m=stored.metadata;if(m.actionId!==id||m.binding.tenantId!==ctx.tenantId||m.binding.userId!==ctx.userId||m.binding.personId!==(ctx.personId??null)||m.binding.companyId!==source.companyId||m.binding.payPeriod!==source.payPeriod||m.binding.payrollCycleId!==source.payrollCycleId)return fail();}
-function pending(stored:Stored,current:NativePrepared){const m=stored.metadata,body=unseal(stored);if(current.reviewedDigest!==body.nativeReviewedDigest||JSON.stringify(current.content)!==JSON.stringify(body.content))return fail();return {kind:'prepared' as const,review:MultiCycleRunPreparedReview.parse({action,contractVersion:1,actionId:m.actionId,reviewedDigest:m.reviewedDigest,createdAt:m.createdAt,expiresAt:m.expiresAt,content:body.content,review:current.review})};}
-function retired(stored:Stored){return{kind:'retired' as const,receipt:MultiCycleRunRetiredReview.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:stored.metadata.state})};}
-async function completed(tx:Tx,ctx:SessionContext,stored:Stored){if(stored.metadata.state!=='completed'||!stored.eventId||!stored.batchId)return fail();const receipt=await reconcileReviewedMultiCycleRunSourceTx(tx,ctx,{batchId:stored.batchId,createdEventId:stored.eventId});const binding=stored.metadata.binding;if(receipt.companyId!==binding.companyId||receipt.payPeriod!==binding.payPeriod||receipt.createdPayrollCycleId!==binding.payrollCycleId||receipt.runType!==binding.runType)return fail();return {kind:'completed' as const,receipt:MultiCycleRunCompletedReview.parse({action,contractVersion:1,actionId:stored.metadata.actionId,state:'completed',receipt})};}
-async function subject(tx:Tx,id:string){const [row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_multi_cycle_run_review_subject(${id}::uuid) as subject`);return Binding.pick({companyId:true,payPeriod:true,payrollCycleId:true,runType:true}).strict().parse(row?.subject);}
-async function peek(tx:Tx,id:string){const [row]=await tx.execute<{peek:unknown}>(sql`select app.assistant_multi_cycle_run_review_peek(${id}::uuid) as peek`);return z.object({review:Stored,pendingExpired:z.boolean()}).strict().parse(row?.peek);}
-function sameSnapshot(before:Stored,after:Stored){if(JSON.stringify(before)!==JSON.stringify(after))return fail();}
-
-export async function prepareMultiCycleRunReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'multi_cycle_payroll.create_run','approve');const ctx=capture(supplied),parsed=MultiCycleRunReviewPrepare.safeParse(input);if(!parsed.success)return fail();const human=parsed.data;try{return await withTenant(ctx,tx=>withReviewedMultiCycleRunSourceIntervalTx(tx,ctx,human.input,async(fresh,source)=>{
- const native=await prepareReviewedMultiCycleRunSourceTx(tx,fresh,human),body=Body.parse({reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest}),binding=Binding.parse({tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null,employmentId:null,companyId:source.companyId,payPeriod:source.payPeriod,payrollCycleId:source.payrollCycleId,runType:human.input.runType}),now=new Date(),m=Metadata.parse({actionId:randomUUID(),action,contractVersion:1,binding,intentDigest:hash(body.content),reviewedDigest:reviewed(binding,body),state:'awaiting_confirmation',createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600000).toISOString()}),sealed=seal(m,body);
- const stored=await read(tx,sql`select app.assistant_multi_cycle_run_review_prepare(${m.actionId}::uuid,${binding.personId}::uuid,${binding.companyId}::uuid,${binding.payPeriod},${binding.payrollCycleId}::uuid,${binding.runType},${uuidArray(native.erasureEmploymentIds)},${uuidArray(native.erasurePersonIds)},${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);bound(stored,fresh,m.actionId,source);return pending(stored,native);
- }));}catch{return fail();}}
-/** Own encrypted nomination is not authority. Canonical Access/exclusive config/company-month/cycle ownership precedes
- * custody; actual pending preflight runs before action-row lock. Completed retry never creates another run. */
-async function existing(supplied:SessionContext,id:string,expected:string|undefined,confirm:boolean){const ctx=capture(supplied);return withTenant(ctx,async tx=>{const actor=await assertReviewedMultiCycleRunActorTx(tx,ctx),selection=await subject(tx,id);return withReviewedMultiCycleRunSourceIntervalTx(tx,actor,selection,async(fresh,source)=>{
- const initial=await peek(tx,id),before=initial.review;bound(before,fresh,id,source);
- if(before.metadata.state!=='awaiting_confirmation'||initial.pendingExpired){const stored=await read(tx,sql`select app.assistant_multi_cycle_run_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);if(initial.pendingExpired){if(stored.metadata.state!=='expired')return fail();return retired(stored);}sameSnapshot(before,stored);return stored.metadata.state==='completed'?completed(tx,fresh,stored):retired(stored);}
- if(confirm&&before.metadata.reviewedDigest!==expected)return fail();const body=unseal(before),native=await prepareReviewedMultiCycleRunSourceTx(tx,fresh,body.content);if(native.reviewedDigest!==body.nativeReviewedDigest)return fail();
- const stored=await read(tx,sql`select app.assistant_multi_cycle_run_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);sameSnapshot(before,stored);if(!confirm)return pending(stored,native);
- const receipt=await confirmReviewedMultiCycleRunSourceTx(tx,fresh,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest});if(receipt.companyId!==source.companyId||receipt.payPeriod!==source.payPeriod||receipt.createdPayrollCycleId!==source.payrollCycleId||receipt.runType!==stored.metadata.binding.runType)return fail();
- await captureNativeOutcomeTargetsTx(tx,fresh,{action:action,sourceId:id,eventId:receipt.createdEventId,targets:[...native.erasurePersonIds.map(id=>({kind:'person' as const,id})),...native.erasureEmploymentIds.map(id=>({kind:'employment' as const,id}))]});
- const done=await read(tx,sql`select app.assistant_multi_cycle_run_review_complete(${id}::uuid,${expected},${receipt.batchId}::uuid,${receipt.createdEventId}::uuid) as review`);bound(done,fresh,id,source);if(done.eventId!==receipt.createdEventId||done.batchId!==receipt.batchId)return fail();return completed(tx,fresh,done);
- });});}
-export async function confirmMultiCycleRunReview(supplied:SessionContext,input:unknown){assertHumanReviewedActionTier(supplied,'multi_cycle_payroll.create_run','approve');const ctx=capture(supplied),parsed=MultiCycleRunReviewConfirmation.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await existing(ctx,p.actionId,p.reviewedDigest,true);}catch{return fail();}}
-export async function reopenMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=z.guid().safeParse(input);if(!parsed.success)return fail();try{return await existing(ctx,parsed.data,undefined,false);}catch{return fail();}}
-export async function discardMultiCycleRunReview(supplied:SessionContext,input:unknown){const ctx=capture(supplied),parsed=MultiCycleRunReviewRetirement.safeParse(input);if(!parsed.success)return fail();const p=parsed.data;try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_multi_cycle_run_review_discard(${p.actionId}::uuid) as receipt`);return{kind:'retired' as const,receipt:MultiCycleRunRetiredReview.parse(row?.receipt)};});}catch{return fail();}}
-export async function listMultiCycleRunReviews(supplied:SessionContext){const ctx=capture(supplied);try{return await withTenant(ctx,async tx=>{await assertAiPrincipalTx(tx,ctx);const rows=await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_multi_cycle_run_reviews_index()`);return MultiCycleRunReviewIndex.parse({kind:'multi_cycle_run_review_index',reviews:Array.from(rows)});});}catch{return fail();}}
-
-/** Completed-only evidence adapter. Same caller Tx/authority/native reconciliation; no pending
- * decryption, prepare, confirmation or nested commit. Any refusal requires caller rollback. */
-export async function readCompletedMultiCycleRunOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown){
- const ctx=capture(supplied),id=z.guid().parse(value);await boundNativeOutcomeTransactionTx(tx);
- const [terminal]=await tx.execute<{completed:boolean}>(sql`select app.native_outcome_review_completed(${'multi_cycle_payroll.create_run'},${id}::uuid) as completed`);
- if(terminal?.completed!==true)return fail();
- const actor=await assertReviewedMultiCycleRunActorTx(tx,ctx),selection=await subject(tx,id);return withReviewedMultiCycleRunSourceIntervalTx(tx,actor,selection,async(fresh,source)=>{const stored=await read(tx,sql`select app.assistant_multi_cycle_run_review_read(${id}::uuid) as review`);bound(stored,fresh,id,source);const completion=await completed(tx,fresh,stored);return{completion,eventId:z.guid().parse(stored.eventId)};});
-}
+export const multiCycleRunReviews=createGenericOwnCompatibilityStore<
+ z.infer<typeof Human>,z.infer<typeof Binding>,Stored,Selection,
+ Awaited<ReturnType<typeof prepareReviewedMultiCycleRunSourceTx>>,Awaited<ReturnType<typeof confirmReviewedMultiCycleRunSourceTx>>,
+ z.infer<typeof MultiCycleRunPreparedReview>,z.infer<typeof MultiCycleRunCompletedReview>,z.infer<typeof MultiCycleRunRetiredReview>,z.infer<typeof MultiCycleRunReviewIndex>
+>({
+ action,tier:'approve',maxBodyBytes:45000,human:Human,metadata:Metadata,stored:Stored,
+ confirmation:MultiCycleRunReviewConfirmation,retirement:MultiCycleRunReviewRetirement,retired:MultiCycleRunRetiredReview,index:MultiCycleRunReviewIndex,indexKind:'multi_cycle_run_review_index',
+ async withInterval(tx,ctx,nomination,work){const actor=await assertReviewedMultiCycleRunActorTx(tx,ctx);let selection:Selection;
+  if(nomination.human){const input=nomination.human.input;selection=Selection.parse({companyId:input.companyId,payPeriod:input.payPeriod,payrollCycleId:input.payrollCycleId,runType:input.runType});}else{const id=z.guid().parse(nomination.actionId),[row]=await tx.execute<{subject:unknown}>(sql`select app.assistant_multi_cycle_run_review_subject(${id}::uuid) as subject`);selection=Selection.parse(row?.subject);}
+  return withReviewedMultiCycleRunSourceIntervalTx(tx,actor,selection,(fresh,source)=>work(fresh,{...source,runType:selection.runType}));
+ },
+ binding:(ctx,source)=>Binding.parse({tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId??null,employmentId:null,...source}),
+ assertSubjectBinding:(binding,source)=>{if(binding.companyId!==source.companyId||binding.payPeriod!==source.payPeriod||binding.payrollCycleId!==source.payrollCycleId||binding.runType!==source.runType)return fail();},
+ assertHumanBinding:(binding,human)=>{if(human.input.companyId.toLowerCase()!==binding.companyId||human.input.payPeriod!==binding.payPeriod||human.input.payrollCycleId.toLowerCase()!==binding.payrollCycleId||human.input.runType!==binding.runType)return fail();},
+ prepareNative:(tx,ctx,human)=>prepareReviewedMultiCycleRunSourceTx(tx,ctx,human),
+ confirmNative:(tx,ctx,body)=>confirmReviewedMultiCycleRunSourceTx(tx,ctx,body.content,{action,contractVersion:1,reviewedDigest:body.nativeReviewedDigest}),
+ pending:(row,body,current)=>MultiCycleRunPreparedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,reviewedDigest:row.metadata.reviewedDigest,createdAt:row.metadata.createdAt,expiresAt:row.metadata.expiresAt,content:body.content,review:current.review}),
+ async completed(tx,ctx,row){if(!row.batchId||!row.eventId)return fail();const receipt=await reconcileReviewedMultiCycleRunSourceTx(tx,ctx,{batchId:row.batchId,createdEventId:row.eventId}),b=row.metadata.binding;if(receipt.companyId!==b.companyId||receipt.payPeriod!==b.payPeriod||receipt.createdPayrollCycleId!==b.payrollCycleId||receipt.runType!==b.runType)return fail();return MultiCycleRunCompletedReview.parse({action,contractVersion:1,actionId:row.metadata.actionId,state:'completed',receipt});},
+ event:row=>row.eventId,nativeEvent:native=>native.createdEventId,
+ assertCompletion:(row,native)=>{const b=row.metadata.binding;if(row.batchId!==native.batchId||row.eventId!==native.createdEventId||native.companyId!==b.companyId||native.payPeriod!==b.payPeriod||native.createdPayrollCycleId!==b.payrollCycleId||native.runType!==b.runType)return fail();},
+ targets:(_source,_native,current)=>{if(!current)return fail();return[...current.erasurePersonIds.map(id=>({kind:'person' as const,id})),...current.erasureEmploymentIds.map(id=>({kind:'employment' as const,id}))];},
+ async prepareRow(tx,m,sealed,_source,_human,current){const b=m.binding;const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_multi_cycle_run_review_prepare(${m.actionId}::uuid,${b.personId}::uuid,${b.companyId}::uuid,${b.payPeriod},${b.payrollCycleId}::uuid,${b.runType},${uuidArray(current.erasureEmploymentIds)},${uuidArray(current.erasurePersonIds)},${m.intentDigest},${m.reviewedDigest},${sealed.kid},${sealed.wrappedDek},${sealed.ciphertext}) as review`);return row?.review;},
+ async peekRow(tx,id){const [row]=await tx.execute<{peek:unknown}>(sql`select app.assistant_multi_cycle_run_review_peek(${id}::uuid) as peek`);return z.object({review:Stored,pendingExpired:z.boolean()}).strict().parse(row?.peek);},
+ async readRow(tx,id){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_multi_cycle_run_review_read(${id}::uuid) as review`);return row?.review;},
+ async completeRow(tx,id,expected,native){const [row]=await tx.execute<{review:unknown}>(sql`select app.assistant_multi_cycle_run_review_complete(${id}::uuid,${expected},${native.batchId}::uuid,${native.createdEventId}::uuid) as review`);return row?.review;},
+ async discardRow(tx,id){const [row]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_multi_cycle_run_review_discard(${id}::uuid) as receipt`);return row?.receipt;},
+ async indexRows(tx){return Array.from(await tx.execute(sql`select action,1 as "contractVersion",action_id as "actionId",state,to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "createdAt",to_char(expires_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "expiresAt" from app.assistant_multi_cycle_run_reviews_index()`));},unavailable:fail,
+});
+export const prepareMultiCycleRunReview=multiCycleRunReviews.prepare;
+export const confirmMultiCycleRunReview=multiCycleRunReviews.confirm;
+export const reopenMultiCycleRunReview=multiCycleRunReviews.reopen;
+export const discardMultiCycleRunReview=multiCycleRunReviews.discard;
+export const listMultiCycleRunReviews=multiCycleRunReviews.list;
+export const readCompletedMultiCycleRunOutcomeTx=multiCycleRunReviews.readCompletedOutcomeTx;

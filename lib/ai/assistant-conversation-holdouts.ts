@@ -8,6 +8,7 @@ import {presentGroundedToolOutcome} from './grounded-tool-presentation';
 import {type PromptHoldoutLocale} from './module-agent-prompt-holdouts';
 import {routingDigest} from './module-agent-routing';
 import {adjudicateAssistantAnswerPlan,type AssistantAnswerPlan,type AssistantAnswerRead} from './assistant-answer-plan';
+import {syntheticAssistantProposalCaller} from './assistant-action-catalogue';
 import {ASSISTANT_CONVERSATION_ENGINE_DIGEST,ASSISTANT_CONVERSATION_POLICY_DIGEST,type ConversationCaseContract} from './assistant-conversation-candidate';
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const locales:readonly PromptHoldoutLocale[]=['en','ms','zh','ta','th','vi'];
@@ -149,7 +150,7 @@ const domain={
 } as const satisfies Record<AgentModuleCode,readonly[string,string|null,string]>;
 export type AssistantConversationHoldout=ConversationCaseContract&Readonly<{locale:PromptHoldoutLocale;module:AgentModuleCode|null;question:string;category:'domain'|'clarify'|'human_review'|'privacy'|'unsupported'|'empty'|'propose';source:unknown}>;
 const cases:AssistantConversationHoldout[]=[];
-function add(input:Omit<AssistantConversationHoldout,'sourceFingerprint'>){adjudicateAssistantAnswerPlan(input.expected,input.reads,{readableModules:input.readableModules??[]});cases.push(freeze({...input,sourceFingerprint:routingDigest({source:input.source,reads:input.reads,tools:input.expectedTools})}));}
+function add(input:Omit<AssistantConversationHoldout,'sourceFingerprint'>){adjudicateAssistantAnswerPlan(input.expected,input.reads,{proposalCaller:syntheticAssistantProposalCaller(input.readableModules??[])});cases.push(freeze({...input,sourceFingerprint:routingDigest({source:input.source,reads:input.reads,tools:input.expectedTools})}));}
 for(const module of AGENT_MODULE_CODES){
  const [id,field,finding]=domain[module],fixture=SPECIALIST_HOLDOUTS.find(row=>row.id===module+':'+id);if(!fixture)throw Error('Missing independent conversation fixture');
  const source={module,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1],scope:'current-caller',data:fixture.data},assessment=executeCanonicalSpecialist({kind:'canonical_specialist_v1',module,playbook:'canonical_domain_v1'},source),presentation=presentGroundedToolOutcome('my_module_work',{ok:true,...source,humanActions:assessment.humanActions})!,explanations=assistantAnswerExplanationAvailability(specialistAnswerExplanations(assessment,presentation));

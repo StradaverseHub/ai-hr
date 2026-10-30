@@ -34,9 +34,9 @@ const currentEvent=sql`d.actor_type='user' and d.xmin=pg_current_xact_id()::xid`
 
 // Claims
 type ClaimRow=z.infer<typeof AssignedClaimDecision.Item>&{companyId:string;subjectPersonId:string;status:string};
-const claimSql=sql`select q.id as "subjectId",q.employment_id as "employmentId",e.company_id as "companyId",e.person_id as "subjectPersonId",p.full_name as "employeeName",e.employee_code as "employeeCode",
+const claimSql=sql`select q.id as "subjectId",q.employment_id as "employmentId",e.company_id as "companyId",e.person_id as "subjectPersonId",e.employee as "employeeName",e.employee_code as "employeeCode",
  t.name as "claimTypeName",i.name as "itemName",to_char(q.incurred_on,'YYYY-MM-DD') as "incurredOn",to_char(q.amount,'FM999999999990.00') as amount,q.description,q.status::text as status
- from public.claim_request q join public.employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id
+ from public.claim_request q cross join lateral app.delegated_approval_subject(q.employment_id,'claims','claims.claim') e
  join public.claim_type t on t.id=q.claim_type_id and t.tenant_id=q.tenant_id left join public.claim_item i on i.id=q.claim_item_id`;
 const claimItem=(row:ClaimRow)=>AssignedClaimDecision.Item.parse({employmentId:row.employmentId,subjectId:row.subjectId,employeeName:row.employeeName,employeeCode:row.employeeCode,claimTypeName:row.claimTypeName,itemName:row.itemName,incurredOn:row.incurredOn,amount:row.amount,description:row.description});
 async function claimRow(tx:Tx,fresh:SessionContext,id:string){return rowsOf<ClaimRow>(await tx.execute(sql`${claimSql} where q.id=${z.guid().parse(id)}::uuid and q.tenant_id=${fresh.tenantId}::uuid`))[0];}
@@ -57,7 +57,7 @@ export async function confirmAssignedClaimSourceTx(tx:Tx,fresh:SessionContext,hu
  if(digestOf(await claimReview(tx,fresh,human))!==reviewedDigest)return fail();
  const decider=(await myOwnEmploymentSubjectsTx(tx,fresh))[0]?.employmentId??null;
  // decideClaimTx takes the limit lock, then the row lock, and re-reads the claim before deciding.
- const done=await decideClaimTx(tx,fresh,{claimRequestId:human.subjectId,decision:human.decision==='approved'?'approve':'reject',deciderEmploymentId:decider});
+ const done=await decideClaimTx(tx,fresh,{claimRequestId:human.subjectId,decision:human.decision==='approved'?'approve':'reject',deciderEmploymentId:decider,...human.decision==='rejected'&&human.note!==undefined?{rejectReason:human.note}:{}});
  if(done.employmentId!==human.employmentId||done.status!==human.decision)return fail();
  return{eventId:done.eventId,receipt:await reconcileAssignedClaimSourceTx(tx,fresh,{subjectId:human.subjectId,eventId:done.eventId,employmentId:human.employmentId})};
 }
@@ -132,13 +132,13 @@ export async function reconcileAssignedAttendanceSourceTx(tx:Tx,fresh:SessionCon
 
 // Replacement leave (TOIL)
 type ToilRow=z.infer<typeof AssignedToilDecision.Item>&{companyId:string;subjectPersonId:string;status:string};
-const toilSql=sql`select q.id as "subjectId",q.employment_id as "employmentId",e.company_id as "companyId",e.person_id as "subjectPersonId",p.full_name as "employeeName",e.employee_code as "employeeCode",
+const toilSql=sql`select q.id as "subjectId",q.employment_id as "employmentId",e.company_id as "companyId",e.person_id as "subjectPersonId",e.employee as "employeeName",e.employee_code as "employeeCode",
  to_char(q.submitted_on,'YYYY-MM-DD') as "submittedOn",q.total_days::float8 as "totalDays",q.total_hours::float8 as "totalHours",
  (select count(*)::int from public.replacement_leave_request_date l where l.request_id=q.id) as lines,q.reason,q.status::text as status
- from public.replacement_leave_request q join public.employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id join public.person p on p.id=e.person_id and p.tenant_id=e.tenant_id`;
+ from public.replacement_leave_request q cross join lateral app.delegated_approval_subject(q.employment_id,'leave','leave.replacement') e`;
 const toilItem=(row:ToilRow)=>AssignedToilDecision.Item.parse({employmentId:row.employmentId,subjectId:row.subjectId,employeeName:row.employeeName,employeeCode:row.employeeCode,submittedOn:row.submittedOn,totalDays:Number(row.totalDays),totalHours:Number(row.totalHours),lines:row.lines,reason:row.reason});
 async function toilRow(tx:Tx,fresh:SessionContext,id:string){return rowsOf<ToilRow>(await tx.execute(sql`${toilSql} where q.id=${z.guid().parse(id)}::uuid and q.tenant_id=${fresh.tenantId}::uuid`))[0];}
-const toilAuthority=(tx:Tx,fresh:SessionContext,row:{employmentId:string})=>assertCanDecide(tx,fresh,row.employmentId,'replacement leave request');
+const toilAuthority=(tx:Tx,fresh:SessionContext,row:{employmentId:string})=>assertCanDecide(tx,fresh,row.employmentId,'replacement leave request',scopeOf('leave.replacement'));
 export async function readAssignedToilChoicesTx(tx:Tx,supplied:SessionContext){
  const fresh=await actor(tx,supplied,'toil'),rows=rowsOf<ToilRow>(await tx.execute(sql`${toilSql} where q.tenant_id=${fresh.tenantId}::uuid and q.status='pending' and not app.is_self_person(e.person_id) order by q.created_at,q.id limit 60`));
  const items=[];for(const row of rows){if(row.subjectPersonId===fresh.personId||row.lines<1)continue;try{await toilAuthority(tx,fresh,row);}catch{continue;}items.push(toilItem(row));if(items.length>25)break;}

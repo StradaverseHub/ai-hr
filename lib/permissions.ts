@@ -1165,6 +1165,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
       // "may the role open the screen at all", by design.)
       '/control-tower/agents',
+      // WP12 (R8, ADR-0151 §4.7) — the AI inventory. Opens for any administrator (requireAdmin): a group
+      // administrator sees the full inventory and may pause one agent action; a company HR administrator sees the
+      // read-only registry/tier view (core/ai-inventory.ts decides the scope from fresh database authority).
+      '/control-tower/agents/inventory',
       // AI management sub-menu: each section is its own page behind the same requireAdmin guard. The
       // Provider page sits in the aiConfig column below, because it is the screen that column governs.
       '/control-tower/agents/assistant',

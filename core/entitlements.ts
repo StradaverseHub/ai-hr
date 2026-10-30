@@ -318,8 +318,9 @@ const SETTING_OWNER = new Map(SETTING_CATALOG.map((s) => [s.key, s.moduleCode]))
  * exist in the same primitive that replaces them, not one slice later.
  *
  * SETTING_KILL forces the CATALOG DEFAULT, never a value. Same asymmetry as MODULE_KILL, for the same
- * reason: an operator must not be able to hand a tenant a behaviour they never configured. Defaults vary: the six performance AI switches default true. This forces the shipped catalogue
- * value, which is not necessarily off. Module entitlement still gates use.
+ * reason: an operator must not be able to hand a tenant a behaviour they never configured. Every catalogued
+ * boolean default is false (the six performance AI switches since owner decision 3, WP6), so a killed switch reads
+ * OFF; a non-boolean setting reads its shipped catalogue value. Module entitlement still gates use.
  *
  * MODULE_KILL is TRANSITIVE onto that module's settings (`SETTING_OWNER`): killing `payroll` forces
  * `payroll.*` back to their defaults, because a setting is a behaviour OF a module and leaving one
@@ -865,7 +866,7 @@ export function isModuleEnabledOrFalse(ctx: EntitledContext, code: string, compa
  *
  * The CATALOG DEFAULT, not a hardcoded `false`, because that is what "this value was never decided for
  * this tenant" already means everywhere else in this file (`getSetting` falls back to it when a tenant
- * has no row). Every catalogued default is `false` today, so the two coincide; expressing it as the
+ * has no row). Every catalogued BOOLEAN default is `false` today (test/ai-feature-switch-owner.test.ts pins it), so the two coincide; expressing it as the
  * default keeps them coinciding for the right reason rather than by accident, and keeps a future
  * default-on setting from silently switching off during an incident.
  *

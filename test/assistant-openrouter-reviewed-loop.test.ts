@@ -19,6 +19,7 @@ import {openrouterAdapter,createOpenRouterAdapter} from '../lib/ai/providers/ope
 import {evaluateSyntheticCandidate} from './provider-evaluation-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
+import {acceptBaselineFixture} from './ai-provider-change-fixture';
 let base:Base,admin:SessionContext,ctx:SessionContext,employmentId:string;
 const endpoint='fictional/exact-endpoint',key='fictional-loop-key',signer='fictional-loop-signer',secret='ab'.repeat(32);
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
@@ -34,7 +35,7 @@ beforeEach(async()=>{
 });
 async function setup(kind:'free'|'metered'){
  const model=kind==='free'?'fictional/assistant:free':'fictional/assistant-metered',options=readOpenRouterOptions({version:1,routing:{allowedProviders:[endpoint],allowFallbacks:false,sort:'latency'}});
- await saveAiProviderConfig(admin,{provider:'openrouter',model,apiKey:key,providerOptions:options});const evaluation=await evaluateSyntheticCandidate(admin);await setActiveProvider(admin,{provider:'openrouter',evaluationReceipt:evaluation.receipt});
+ await saveAiProviderConfig(admin,{provider:'openrouter',model,apiKey:key,providerOptions:options});const evaluation=await evaluateSyntheticCandidate(admin);await acceptBaselineFixture(admin,{kind:'openrouter_candidate'});await setActiveProvider(admin,{provider:'openrouter',evaluationReceipt:evaluation.receipt});
  const cfg=await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx,'hr_assistant'));if(!cfg)throw Error('Expected actual active fictional candidate');
  const configurationDigest=aiSpendConfigurationDigest(cfg),capability=createHash('sha256').update(randomUUID()).digest('hex'),source=kind==='free'?FIXED_FREE_CARRIER_SOURCE_DIGEST:FIXED_METERED_CARRIER_SOURCE_DIGEST,reserved=kind==='free'?'1':'129024000';
  // Explicit owner-only fictional provisioning, never a consent/read-only helper or real record.

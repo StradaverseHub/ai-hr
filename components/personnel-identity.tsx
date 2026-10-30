@@ -143,6 +143,8 @@ export function IdentityFields({
   countryOptions,
   setIcAction,
   setPassportAction,
+  passportDisabled=false,
+  passportReadOnlyMessage,
 }: {
   employmentId: string;
   personId: string;
@@ -161,6 +163,9 @@ export function IdentityFields({
   countryOptions: ComboboxOption[];
   setIcAction: (formData: FormData) => void | Promise<void>;
   setPassportAction: (formData: FormData) => void | Promise<void>;
+  /** Personnel-only metadata; other callers retain their existing controls by default. */
+  passportDisabled?:boolean;
+  passportReadOnlyMessage?:string;
 }) {
   const t = useTranslations('people.detail');
   const { nationality } = useIdentity();
@@ -205,6 +210,8 @@ export function IdentityFields({
           only for non-Malaysians; the server re-derives requiredness from the person record (a Malaysian's
           passport is optional but all-or-nothing). Issuing country + remark are always optional. */}
       <form action={setPassportAction} data-save-section="passport" className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4">
+        {passportDisabled&&passportReadOnlyMessage&&<p role="status" className="text-sm text-muted-foreground sm:col-span-4">{passportReadOnlyMessage}</p>}
+        <fieldset disabled={passportDisabled} aria-label={t('passportInfoTitle')} className="contents">
         <input type="hidden" name="employmentId" value={employmentId} />
         <input type="hidden" name="personId" value={personId} />
         <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('passportInfoTitle')}</p>
@@ -224,6 +231,7 @@ export function IdentityFields({
           remarkClassName="sm:col-span-4"
         />
         <p className="text-xs text-muted-foreground sm:col-span-4">{t('passportHint')}</p>
+        </fieldset>
       </form>
     </>
   );

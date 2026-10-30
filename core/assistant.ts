@@ -30,8 +30,11 @@ import {AiPrivacyGateError} from '../lib/ai/provider-privacy-request';
  *
  * THE SYSTEM PROMPT AND THE CACHE KEY MUST STAY STABLE. The cacheable prefix is `tools` + `system`, so a
  * single volatile byte — a clock value, a locale, a user id, anything tenant-shaped — invalidates the
- * prefix for every later request and quietly multiplies the cost of the feature. Both are built from
- * constants plus the authorized catalogue and the caller’s versioned conversation strategy. Read the comment on SYSTEM before adding a line to it.
+ * prefix for every later request and quietly multiplies the cost of the feature. The prefix is ordered most
+ * stable first: the module-filtered read tools, the constant system blocks, then the caller's versioned
+ * conversation strategy, then the caller's registry-derived proposal catalogue (review R6). The last two are
+ * per USER, not "stable per (tenant, role)". Read the comment on buildAssistantConversationSystem before
+ * adding a block.
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
@@ -64,6 +67,8 @@ import {isAgentModuleCode,type AgentModuleCode} from '../lib/ai/module-agents';
 import { ASSISTANT_PUBLIC_REPLIES, assistantPublicToolResult } from '../lib/ai/assistant-public-replies';
 import { ASSISTANT_TOOLS, toolsFor,specsFor, type AssistantTool, type ToolOutcome } from './assistant-tools';
 import { assistantReadableModules } from './assistant-readable-modules';
+import { assistantProposalCallerTx } from './assistant-action-catalogue';
+import { assistantProposalCatalogue, CLOSED_PROPOSAL_CALLER, type AssistantProposalCaller } from '../lib/ai/assistant-action-catalogue';
 
 /**
  * §2.5 fixes this at 8: enough for a genuinely multi-part question ("who on my team is on leave next
@@ -211,6 +216,12 @@ export async function askAssistant(
   // ONE list, computed once: what the model is offered and what dispatch may run are the same array, so
   // a tool outside the tenant's modules cannot be reached by the model simply naming it.
   const offered = toolsFor(ctx);
+  // Review R6: the proposal catalogue is derived from the action registry and filtered for THIS caller
+  // (authority ∩ registry ∩ tier ∩ switches and pauses), read once before any provider call. The same
+  // snapshot is offered in the prompt and adjudicates the terminal plan, so a proposal can only name an
+  // action this caller was offered. No tool result or model text is an input to it. Unreadable facts
+  // offer nothing.
+  const proposalCaller: AssistantProposalCaller = await withTenant(ctx, (tx) => assistantProposalCallerTx(tx, ctx)).catch(() => CLOSED_PROPOSAL_CALLER);
   const tools = offered.map((t) => t.spec);
   // Own-row context is interpreted only by the closed LOCAL grammar. Human wording, prior
   // answers, tenant labels and provider continuation state never enter a provider request.
@@ -233,7 +244,7 @@ export async function askAssistant(
   try {
     if(Date.now()>=deadline)throw new AssistantError('provider_error');
     if(intent.social){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'social',code:intent.social},[],{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
-    else if(proposal){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'propose',action:proposal.action,hints:proposal.hints},[],{question:humanQuestion,readableModules:assistantReadableModules(ctx)});stop='end';answer=JSON.stringify(answerPlan);}
+    else if(proposal){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'propose',action:proposal.action,hints:proposal.hints},[],{question:humanQuestion,proposalCaller});stop='end';answer=JSON.stringify(answerPlan);}
     else if(!intent.intent){answerPlan={version:1,mode:'clarify',slot:clarification?.slot??'module'};stop='end';answer=JSON.stringify(answerPlan);}
     else if(intent.intent==='pay_change'){answerPlan=adjudicateAssistantAnswerPlan({version:1,mode:'insufficient',code:'unsupported_explanation'},[],{question:humanQuestion});stop='end';answer=JSON.stringify(answerPlan);}
     else{
@@ -284,7 +295,7 @@ export async function askAssistant(
           // Preserve terminal refusal/truncation/unknown feedback and observed usage. A model asking
           // for tools it was never offered receives a truthful non-answer; no call is dispatched.
           if(res.toolCalls.length||res.stop==='tool_use')stop='other';
-          if(stop==='end')try{answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(res.text,prepared.local),answerReads,{question:humanQuestion,readableModules:assistantReadableModules(ctx)});}catch{answerPlan=undefined;}
+          if(stop==='end')try{answerPlan=adjudicateAssistantAnswerPlan(adjudicatePrivateAssistantTerminal(res.text,prepared.local),answerReads,{question:humanQuestion,proposalCaller});}catch{answerPlan=undefined;}
           // Raw text remains audit-only under the existing custody/retention owner. Canonical display
           // needs the adjudicated plan; no failed model output is silently relabelled a valid answer.
         }finally{prepared.dispose();}

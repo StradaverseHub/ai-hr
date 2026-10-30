@@ -27,7 +27,7 @@ describe('AI Control Tower sidebar menu',()=>{
   rail(null);
   const panel=openTower();
   expect(hrefs(panel)).toEqual(['/control-tower','/control-tower/readiness','/control-tower/exceptions','/control-tower/actions','/control-tower/opportunities','/control-tower/how-it-works',
-   '/control-tower/agents','/control-tower/agents/provider','/control-tower/agents/assistant','/control-tower/agents/features','/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/orchestrator','/control-tower/agents/runs']);
+   '/control-tower/agents/inventory','/control-tower/agents','/control-tower/agents/provider','/control-tower/agents/assistant','/control-tower/agents/features','/control-tower/agents/allowances','/control-tower/agents/spending','/control-tower/agents/orchestrator','/control-tower/agents/runs']);
   // The same names the tab row used, so nothing is renamed by moving.
   for(const [href,label] of [['/control-tower/readiness','Employee data'],['/control-tower/exceptions','Payroll exceptions'],['/control-tower/actions','Approvals']] as const)
    expect(within(panel).getByRole('link',{name:label}).getAttribute('href')).toBe(href);

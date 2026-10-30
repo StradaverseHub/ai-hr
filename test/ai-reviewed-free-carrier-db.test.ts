@@ -17,6 +17,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi} from 'vit
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {saveAiProviderConfig,setActiveProvider,resolveActiveAiConfig} from '../core/ai-config';
+import {acceptBaselineFixture} from './ai-provider-change-fixture';
 import {resolveAiProviderCandidateSnapshotTx} from '../core/ai-provider-snapshot';
 import {aiSpendStatusTx} from '../core/ai-spend-management';
 import {governedAiConfig,bindStrictAiSpendRoot} from '../core/ai-governance';
@@ -113,7 +114,7 @@ describe('conditional private reviewed monetary carrier',()=>{
  });
  it('admits ONLY the optional free native model suffix while preserving save/promotion consent and exact receipt invariants',async()=>{
   await candidate();for(const bad of ['fictional/model:online','fictional/model:free:online','openrouter/free','openrouter/auto','fictional/model:nitro'])await expect(saveAiProviderConfig(ctx,{provider:'openrouter',model:bad,apiKey:key,providerOptions})).rejects.toThrow();
-  await expect(setActiveProvider(ctx,{provider:'openrouter'})).rejects.toThrow();const proof=await evaluateSyntheticCandidate(ctx);await setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt});
+  await expect(setActiveProvider(ctx,{provider:'openrouter'})).rejects.toThrow();const proof=await evaluateSyntheticCandidate(ctx);await acceptBaselineFixture(ctx,{kind:'openrouter_candidate'});await setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt});
   expect(await withTenant(ctx,tx=>resolveActiveAiConfig(tx,ctx))).toMatchObject({model,apiKey:key});for(const invalid of ['fictional/model:online','fictional/model:free:online','openrouter/free','fictional/'+ 'x'.repeat(201),' fictional/model:free']){await expect(withTenant(ctx,tx=>tx.execute(sql`update public.ai_provider_candidate set model=${invalid} where tenant_id=${base.tenantId}::uuid`))).rejects.toThrow();await expect(withTenant(ctx,tx=>tx.execute(sql`update public.ai_provider_config set model=${invalid} where tenant_id=${base.tenantId}::uuid and provider='openrouter'`))).rejects.toThrow();}await expect(setActiveProvider(ctx,{provider:'openrouter',evaluationReceipt:proof.receipt})).rejects.toThrow();
  });
 });

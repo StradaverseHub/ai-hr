@@ -207,13 +207,14 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
 export const SETTING_CATALOG: SettingCatalogEntry[] = [
   { key: 'performance.reminder_words', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: 'null', defaultOnInstall: null, customerVisible: false, description: 'Historical assessment wording, migrated to Email templates; no longer editable.', sortOrder: 217 },
   { key: 'performance.reminder_rules', moduleCode: 'performance', scope: 'tenant', valueType: 'string', defaultValue: '{"enabled":false,"onOpen":true,"daysBefore":[7,3,1],"everyDays":0,"sendTime":"09:00"}', defaultOnInstall: null, customerVisible: true, description: 'Assessment reminder schedule in Malaysia time. Validated by the Performance settings writer.', sortOrder: 216 },
-  // Assisted drafting is on by default, as in the migrated source; a configured provider is still required.
-  { key: 'performance.ai_360_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft colleague feedback comments.', sortOrder: 210 },
-  { key: 'performance.ai_tc_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft technical competency and potential review remarks.', sortOrder: 211 },
-  { key: 'performance.ai_pm_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Draft performance results, scorecards and supporting insights.', sortOrder: 212 },
-  { key: 'performance.ai_review_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Prepare guided review summaries and record trends.', sortOrder: 213 },
-  { key: 'performance.ai_idp_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Suggest development goals and career plan drafts.', sortOrder: 214 },
-  { key: 'performance.ai_calib_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: true, defaultOnInstall: true, customerVisible: true, description: 'Assist calibration summaries, conversations and curve fit.', sortOrder: 215 },
+  // Owner decision 3 (29 Oct 2026, ADR-0116 WP6 amendment): assisted drafting is OFF until a group administrator
+  // switches it on. A tenant with an explicit stored value keeps it; there is no backfill. A provider is still required.
+  { key: 'performance.ai_360_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Draft colleague feedback comments.', sortOrder: 210 },
+  { key: 'performance.ai_tc_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Draft technical competency and potential review remarks.', sortOrder: 211 },
+  { key: 'performance.ai_pm_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Draft performance results, scorecards and supporting insights.', sortOrder: 212 },
+  { key: 'performance.ai_review_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Prepare guided review summaries and record trends.', sortOrder: 213 },
+  { key: 'performance.ai_idp_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Suggest development goals and career plan drafts.', sortOrder: 214 },
+  { key: 'performance.ai_calib_enabled', moduleCode: 'performance', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Assist calibration summaries, conversations and curve fit.', sortOrder: 215 },
   { key: 'payroll.reset_enabled', moduleCode: 'payroll', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow payroll reset and employee removal on processed runs. Group admins control this tenant-wide setting; changes are audited.', sortOrder: 10 },
   { key: 'payroll.unlock_enabled', moduleCode: 'payroll', scope: 'platform', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Allow unlocking a closed payroll run back to processed. Reverses the statutory freeze; enabling is an audited platform action.', sortOrder: 20 },
   // `defaultOnInstall: true` — the ONLY entry that differs from its bare default, and deliberately so
@@ -239,6 +240,14 @@ export const SETTING_CATALOG: SettingCatalogEntry[] = [
   // arrive with the module. `scope: 'tenant'` so 0313's tenant_setting_write policy lets an admin change
   // it; `defaultOnInstall: false` so buying notifications never starts a chaser nobody asked for.
   { key: 'notifications.readiness_nudge_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system chase incomplete employee records on a schedule — the employee for their own bank details, HR for everything only HR can key in.', sortOrder: 120 },
+  // WP13 (R18) — the two Automatic-tier reminder switches, OFF for the nudge's reasons: they message real approvers
+  // on a schedule with nobody pressing send. Turned on in AI management, which records the administrator the
+  // agent principal then runs under. Fixed templates only; no model and no spend.
+  { key: 'notifications.approval_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system remind approvers about claims, attendance corrections and replacement leave requests that have waited too long for a decision. Reminders only; nothing is approved or rejected.', sortOrder: 121 },
+  { key: 'notifications.review_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Let the system remind the manager or HR when a probation, contract or internship review is still undecided after its end date. Reminders only; nothing is decided.', sortOrder: 122 },
+  { key: 'notifications.missing_clock_reminders_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Remind employees when no clock-in is recorded for the previous scheduled working day. This never attests work or changes Attendance.', sortOrder: 123 },
+  { key: 'notifications.passport_expiry_reminders_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Remind the employee and authorised HR about a recorded passport expiry within 30 calendar days. No file is read or changed.', sortOrder: 124 },
+  { key: 'notifications.lifecycle_step_chasers_enabled', moduleCode: 'notifications', scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false, customerVisible: true, description: 'Remind current lifecycle staff about actionable incomplete steps after three working days without a workflow transition. No task is completed.', sortOrder: 125 },
   // ADR-0084 §2.6 — the hypothesis layer's switch, OFF for the same two reasons the nudge agent's is.
   // It spends the tenant's own provider budget (ADR-0023, BYOK) on a nightly schedule nobody triggered,
   // and it puts rows in their exceptions queue that a MODEL chose to put there. Both are opt-in. The
@@ -466,6 +475,12 @@ export const LEGACY_SETTING_ENV_GATES: Readonly<Record<string, string | null>> =
   // legacy value to honour — and null keeps it out of `legacyEnabledSettingsIn`, which is the correct
   // outcome: an automated chaser must never arrive switched on by a backfill.
   'notifications.readiness_nudge_enabled': null,
+  // WP13 — new scheduled reminders, never a deployment flag; no backfill may switch them on.
+  'notifications.approval_chasers_enabled': null,
+  'notifications.review_chasers_enabled': null,
+  'notifications.missing_clock_reminders_enabled': null,
+  'notifications.passport_expiry_reminders_enabled': null,
+  'notifications.lifecycle_step_chasers_enabled': null,
   // `null` for the same reason as the row above: ADR-0084 §2.6 is NEW rather than migrated from a
   // deployment flag, so there is no legacy value to honour — and null keeps it out of
   // `legacyEnabledSettingsIn`, which is the correct outcome. A backfill must never switch on something

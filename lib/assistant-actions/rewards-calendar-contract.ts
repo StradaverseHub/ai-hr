@@ -1,0 +1,14 @@
+import {z} from 'zod';
+import {rewardCalendarSchema} from '../../packs/rewards/calendar';
+export const REWARDS_CALENDAR_ACTION='rewards.calendar.update' as const;
+const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),base={action:z.literal(REWARDS_CALENDAR_ACTION),contractVersion:z.literal(1)};
+export const RewardsCalendarHuman=z.object({...base,unitId:id,cycleId:id,companyId:id,calendarId:id.nullable(),revision:z.number().int().nonnegative(),values:rewardCalendarSchema,confirmSharedCalendar:z.literal(true)}).strict();
+export const RewardsCalendarReview=z.object({unitId:id,cycleId:id,companyId:id,companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),calendarId:id.nullable(),revision:z.number().int().nonnegative(),before:rewardCalendarSchema,after:rewardCalendarSchema,consequence:z.literal('all_reviews_in_cycle_and_company_display_deadlines_only')}).strict();
+export const RewardsCalendarReceipt=z.object({kind:z.literal('calendar_saved'),unitId:id,cycleId:id,companyId:id,calendarId:id,eventId:id,savedRevision:z.number().int().positive(),currentRevision:z.number().int().positive(),proof:z.literal('historical_calendar_update_current_calendar')}).strict();
+export const RewardsCalendarConfirmation=z.object({...base,actionId:id,reviewedDigest:digest}).strict();
+export const RewardsCalendarRetirement=z.object({...base,actionId:id}).strict();
+export const RewardsCalendarPrepared=z.object({...base,actionId:id,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:RewardsCalendarHuman,review:RewardsCalendarReview}).strict().refine(r=>r.content.unitId===r.review.unitId&&r.content.cycleId===r.review.cycleId&&r.content.companyId===r.review.companyId&&r.content.calendarId===r.review.calendarId&&r.content.revision===r.review.revision&&JSON.stringify(r.content.values)===JSON.stringify(r.review.after));
+export const RewardsCalendarCompleted=z.object({...base,actionId:id,state:z.literal('completed'),receipt:RewardsCalendarReceipt}).strict();
+export const RewardsCalendarRetired=z.object({...base,actionId:id,state:z.enum(['discarded','expired','refused'])}).strict();
+export const RewardsCalendarIndex=z.object({kind:z.literal('rewards_calendar_review_index'),reviews:z.array(z.object({...base,actionId:id,state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(r=>new Set(r.map(x=>x.actionId)).size===r.length)}).strict();
+export const RewardsCalendarChoices=z.object({kind:z.literal('choices'),units:z.array(z.object({unitId:id,cycleId:id,companyId:id,companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),calendarId:id.nullable(),revision:z.number().int().nonnegative(),values:rewardCalendarSchema}).strict()).max(20),truncated:z.boolean()}).strict();

@@ -4034,13 +4034,17 @@ export async function decideAttendanceCorrection(
     }
     let restoreIdentity: { userId: string; roles: string; grants: string } | undefined;
     let delegatedIdentity: {user_id:string;roles:string;grants:unknown} | undefined;
-    if (workflowStage.delegatedFinalStageIndex != null) {
-      const identities = await tx.execute(sql`select * from app.attendance_workflow_effect_identity(${cor.id}::uuid,${workflowStage.delegatedFinalStageIndex})`) as unknown as {user_id:string;roles:string;grants:unknown}[];
+    if (workflowStage.delegatedFinalStageIndex != null || (!workflowStage.routed && p.decision==='approved')) {
+      const identities = workflowStage.delegatedFinalStageIndex != null
+        ? await tx.execute(sql`select * from app.attendance_workflow_effect_identity(${cor.id}::uuid,${workflowStage.delegatedFinalStageIndex})`) as unknown as {user_id:string;roles:string;grants:unknown}[]
+        : await tx.execute(sql`select * from app.delegated_request_effect_identity(${cor.id}::uuid,'attendance')`) as unknown as {user_id:string;roles:string;grants:unknown}[];
       delegatedIdentity = identities[0];
-      if (!delegatedIdentity) throw new Error('The assigned manager no longer has a live login and attendance authority for this request. Ask an authorised HR administrator to complete this stage on their behalf.');
+      if (workflowStage.delegatedFinalStageIndex != null && !delegatedIdentity) throw new Error('The assigned manager no longer has a live login and attendance authority for this request. Ask an authorised HR administrator to complete this stage on their behalf.');
+      if(delegatedIdentity){
       const settings = await tx.execute(sql`select current_setting('app.user_id',true) as "userId",current_setting('app.roles',true) as roles,current_setting('app.grants',true) as grants`) as unknown as {userId:string;roles:string;grants:string}[];
       restoreIdentity = settings[0];
       await tx.execute(sql`SAVEPOINT attendance_workflow_effect`);
+      }
     }
     try {
       if (workflowStage.versionedFinalEffect) {

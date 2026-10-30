@@ -39,6 +39,9 @@ export async function evaluateSyntheticCandidate(ctx: SessionContext) {
 export async function activateSyntheticCandidate(ctx: SessionContext) {
   const { setActiveProvider } = await import('../core/ai-config');
   const result = await evaluateSyntheticCandidate(ctx);
+  // WP14: the baseline gate also binds OpenRouter promotion; this fixture accepts it without a provider call.
+  const { acceptBaselineFixture } = await import('./ai-provider-change-fixture');
+  await acceptBaselineFixture(ctx, { kind: 'openrouter_candidate' });
   await setActiveProvider(ctx, { provider: 'openrouter', evaluationReceipt: result.receipt });
   return result;
 }

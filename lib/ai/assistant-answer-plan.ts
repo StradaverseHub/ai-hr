@@ -5,17 +5,19 @@
  * their values. No provider, storage, arithmetic, URL, effect, permission or free-prose surface.
  */
 import {JOB_FACT_FIELDS,type JobPresentation} from './module-jobs';
-import {isAgentModuleCode} from './module-agents';
+import {AGENT_MODULE_CODES,isAgentModuleCode} from './module-agents';
 import {moduleHumanActionHandoffs} from './module-human-handoffs';
 import {parseModuleAgentActionNomination,getModuleAgentAction} from './module-agent-actions';
 import {ASSISTANT_PROPOSAL_MODULE,ASSISTANT_PROPOSAL_PROTOCOL,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
-import type {AgentModuleCode} from './module-agents';
+import {assistantProposalCatalogue,type AssistantProposalCaller} from './assistant-action-catalogue';
 import {SPECIALIST_FINDINGS,type SpecialistFinding} from './module-specialists';
 import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
 import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
 import {ENTITLEMENT_STATUS_LABEL_KEY,type EntitlementStatus,type EligibilityRuleNotice} from '../entitlement-status';
 
-export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,presentationCards:26,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
+// Fixed review routes are registry-owned metadata, never extra selectable HR facts.
+const FACT_CARD_LIMIT=25,MAX_FIXED_REVIEW_ROUTES=Math.max(0,...AGENT_MODULE_CODES.map(module=>new Set(moduleHumanActionHandoffs(module).map(row=>row.route)).size));
+export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:FACT_CARD_LIMIT,presentationCards:FACT_CARD_LIMIT+MAX_FIXED_REVIEW_ROUTES,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
 export const ASSISTANT_LEAVE_ELIGIBILITY_CODES=Object.freeze(['not_active','no_rules','no_match','undated_axes'] as const);
 export const ASSISTANT_LEAVE_RULE_STATES=Object.freeze(['matched','in_force','expired','not_yet','table_stopped'] as const satisfies readonly EligibilityRuleNotice['state'][]);
 export type AssistantExplanationCode=`leave_status:${EntitlementStatus}`|`leave_eligibility:${typeof ASSISTANT_LEAVE_ELIGIBILITY_CODES[number]}`|`leave_rule:${typeof ASSISTANT_LEAVE_RULE_STATES[number]}`|`specialist_finding:${SpecialistFinding}`|`specialist_followup:${FollowupCode}`|`leave_summary:${LeaveSummaryExplainKey}`;
@@ -37,11 +39,12 @@ export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonl
  Readonly<{version:1;mode:'insufficient';code:'no_verified_facts'|'unsupported_explanation'}>|
  Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>|
  /** ADR-0151 §4.3: a suggestion only. It names a declared, implemented, proposable action and typed
-  * selectors; it prepares nothing, carries no ID or human text, and is adjudicated against the modules
-  * the caller can currently read. The card resolves hints against the caller's own fresh choices. */
+  * selectors; it prepares nothing, carries no ID or human text, and is adjudicated against the caller's
+  * current registry-derived catalogue (assistant-action-catalogue.ts). The card resolves hints against the
+  * caller's own fresh choices. */
  Readonly<{version:1;mode:'propose';action:AssistantProposableAction;hints:AssistantProposalHints}>;
-/** Current caller facts the propose mode needs; built by the caller's own source owner, never posted. */
-export type AssistantAnswerAdjudication=Readonly<{readableModules?:readonly AgentModuleCode[];question?:string}>;
+/** Fresh source-owned caller context; absent catalogue facts offer no proposal. */
+export type AssistantAnswerAdjudication=Readonly<{question?:string;proposalCaller?:AssistantProposalCaller}>;
 export type AssistantAnswerRead=Readonly<{read:number;presentation:JobPresentation;
  explanations:readonly Readonly<{card:number|null;code:AssistantExplanationCode}>[]}>;
 
@@ -160,11 +163,14 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
   const row=object(value);exact(row,['read','presentation','explanations']);const read=ordinal(row.read,ANSWER_PLAN_LIMITS.reads);if(seen.has(read))return fail();seen.add(read);
   const p=object(row.presentation);exact(p,['module','cards','truncated',...(Object.hasOwn(p,'hasEmployment')?['hasEmployment']:[])]);
   if(!isAgentModuleCode(p.module)||typeof p.truncated!=='boolean'||Object.hasOwn(p,'hasEmployment')&&typeof p.hasEmployment!=='boolean')return fail();
-  const cards:CurrentRead['cards'][number][]=[];
+  const cards:CurrentRead['cards'][number][]=[],handoffRoutes=new Set<string>();
   for(const value of array(p.cards,ANSWER_PLAN_LIMITS.presentationCards)){
    const card=object(value);
-   // The actual module presenter appends one deduplicated, source-owned human handoff. It is
-   // not a 26th fact selector or effect capability; future/unknown extra cards fail closed.
+   if(card.linkPurpose==='human_review'){
+    if(!Array.isArray(card.facts)||card.facts.length!==0||typeof card.href!=='string'||!moduleHumanActionHandoffs(p.module).some(handoff=>handoff.route===card.href)||handoffRoutes.has(card.href))return fail();handoffRoutes.add(card.href);
+   }
+   // The actual module presenter appends deduplicated, source-owned human handoffs. It is
+   // not extra fact selectors or effect capability; future/unknown extra cards fail closed.
    if(cards.length>=ANSWER_PLAN_LIMITS.cards&&(!Array.isArray(card.facts)||card.facts.length!==0||card.linkPurpose!=='human_review'||typeof card.href!=='string'||!moduleHumanActionHandoffs(p.module).some(handoff=>handoff.route===card.href)))return fail();if(card.withheld!==undefined&&typeof card.withheld!=='boolean')return fail();
    const facts:Readonly<{known:boolean}>[]=[];
    for(const value of array(card.facts,ANSWER_PLAN_LIMITS.factsPerCard)){
@@ -195,8 +201,9 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
 export function adjudicateAssistantAnswerPlan(value:unknown,current:readonly AssistantAnswerRead[],caller:AssistantAnswerAdjudication={}):AssistantAnswerPlan{
  const plan=captureAssistantAnswerPlan(value),reads=currentReads(current),byRead=new Map(reads.map(read=>[read.read,read]));
  if(plan.mode==='social'){if(reads.length!==0||assistantSocialIntent(caller.question)!==plan.code)return fail();return plan;}
- // A proposal fails closed like any other unsupported plan unless the current caller can read its module.
- if(plan.mode==='propose'){const readable=caller.readableModules;if(!Array.isArray(readable)||!readable.includes(ASSISTANT_PROPOSAL_MODULE[plan.action]))return fail();return plan;}
+ // A proposal fails closed like any other unsupported plan unless it is in the caller's CURRENT catalogue:
+ // caller authority ∩ registry ∩ tier ∩ switches and pauses. The catalogue has no model or record input.
+ if(plan.mode==='propose'){if(!assistantProposalCatalogue(caller.proposalCaller).includes(plan.action))return fail();return plan;}
  if(plan.mode==='answer')for(const block of plan.blocks){
   const read=byRead.get(block.read);if(!read)return fail();
   if(block.kind==='fact'){const card=read.cards[block.card];if(!card||!card.facts[block.fact]?.known)return fail();}

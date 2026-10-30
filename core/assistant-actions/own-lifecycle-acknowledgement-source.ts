@@ -6,15 +6,12 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {normalizeMyAcknowledgement,submitReviewedMyAcknowledgementTx} from '../../packs/lifecycle/service';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
 import {OwnLifecycleAcknowledgementHumanContent as Human,OwnLifecycleAcknowledgementConfirmation as Confirmation,OwnLifecycleAcknowledgementPreparedSource as Prepared,OwnLifecycleAcknowledgementSourceReceipt as Receipt} from '../../lib/assistant-actions/own-lifecycle-acknowledgement-contract';
 export class OwnLifecycleAcknowledgementUnavailable extends Error{constructor(){super('Your equipment acknowledgement is unavailable.');this.name='OwnLifecycleAcknowledgementUnavailable';}}
 const Source=z.object({caseId:z.guid(),caseNumber:z.string().min(1).max(100),caseRevision:z.string().regex(/^\d+$/),distributionRevision:z.string().regex(/^\d+$/)}).strict();
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-export async function assertOwnLifecycleAcknowledgementActorTx(tx:Tx,supplied:SessionContext){const ctx=capture(supplied);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'lifecycle');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertOwnLifecycleAcknowledgementActorTx(tx:Tx,supplied:SessionContext){return withAgentActionGuard(tx,capture(supplied),'lifecycle.acknowledgement.submit');}
 async function prepare(tx:Tx,ctx:SessionContext,humanValue:unknown){
  const fresh=await assertOwnLifecycleAcknowledgementActorTx(tx,ctx),human=Human.parse(humanValue),normalized=normalizeMyAcknowledgement(human);
  const [row]=await tx.execute<{source:unknown}>(sql`select app.lc_my_daa_review_source() as source`),source=Source.parse(row?.source);

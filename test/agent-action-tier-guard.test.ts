@@ -1,12 +1,20 @@
 import {describe,expect,it,vi,expectTypeOf} from 'vitest';
+import {withAgentActionGuard} from '../core/assistant-actions/agent-action-guard';
 import {assertAgentActionTier,assertHumanReviewedActionTier} from '../lib/ai/agent-action-tier-guard';
 import {assertAgentTierPolicy,NEVER_AUTOMATIC_CATEGORIES,type AgentActionPolicy} from '../lib/ai/agent-action-tiers';
 import {AGENT_ACTION_TIER_CEILING,AGENT_ACTION_CATEGORY} from '../lib/ai/agent-capability-inventory';
 
 describe('runtime action tier enforcement (R17)',()=>{
- it('refuses unknown actions, handoffs, and every currently registered action in an Automatic executor',()=>{
+ it('refuses unknown actions and handoffs, admitting only explicitly Automatic registry entries',()=>{
   expect(()=>assertAgentActionTier('unknown','confirm')).toThrow('tier unavailable');
-  for(const id of Object.keys(AGENT_ACTION_TIER_CEILING))expect(()=>assertAgentActionTier(id,'automatic'),id).toThrow();
+  // Independent approved catalogue: a future Automatic entry needs its own reviewed expectation.
+  expect(Object.keys(AGENT_ACTION_TIER_CEILING).filter(id=>AGENT_ACTION_TIER_CEILING[id as keyof typeof AGENT_ACTION_TIER_CEILING]==='automatic').sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','attendance.missing_clock.remind','employees.passport_expiry.remind','employees.review_overdue.remind','lifecycle.step.chase']);
+  for(const id of Object.keys(AGENT_ACTION_TIER_CEILING) as (keyof typeof AGENT_ACTION_TIER_CEILING)[]){
+   if(AGENT_ACTION_TIER_CEILING[id]==='automatic'){
+    expect(['read','reminder','chaser']).toContain(AGENT_ACTION_CATEGORY[id]);
+    expect(()=>assertAgentActionTier(id,'automatic'),id).not.toThrow();
+   }else expect(()=>assertAgentActionTier(id,'automatic'),id).toThrow();
+  }
   expect(()=>assertAgentActionTier('employees.import','confirm')).toThrow();
  });
  it('refuses Confirm execution of Approve entries but preserves human approval and stricter review',()=>{
@@ -61,6 +69,14 @@ describe('merged assigned-review tier boundaries',()=>{
   const ctx={tenantId:'tenant',...(action==='employees.import'?{userId:'human'}:{})} as SessionContext;
   await expect(store.prepare(ctx,{})).rejects.toThrow('tier unavailable');
   await expect(store.confirm(ctx,{actionId:'unused',reviewedDigest:'unused'})).rejects.toThrow('tier unavailable');
+  expect(db.withTenant).not.toHaveBeenCalled();
+ });
+});
+
+describe('Automatic reminders have no human review adapter',()=>{
+ it.each(['approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind','attendance.missing_clock.remind','employees.passport_expiry.remind','lifecycle.step.chase'] as const)('refuses %s before transaction/native authority',async action=>{
+  const tx={} as Parameters<typeof withAgentActionGuard>[0],ctx={tenantId:'tenant',userId:'human'} as SessionContext;
+  await expect(withAgentActionGuard(tx,ctx,action)).rejects.toThrow('no human review adapter');
   expect(db.withTenant).not.toHaveBeenCalled();
  });
 });

@@ -2,6 +2,8 @@ import {normalizeFormulaDecimal} from '../lib/pay-formula-language';
 import {createHash} from 'node:crypto';
 import {bindPayFormulaRuleTx,recordPayFormulaLinkTx} from './pay-formula';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {tryLockPayrollHistoryReadTx} from './payroll-history-lock';
+import {isCarrierPrincipalCurrentTx} from './carrier-principal';
 import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import { classifyNonCashBenefit, NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
 /**
@@ -2463,11 +2465,50 @@ async function assertNoClosedRunCovers(
  * payroll, no longer shown" semantics (ticket point #11). No hard delete: the row is preserved for audit /
  * replay, consistent with the effective-dated log design.
  */
+/** Native archive and reviewed preview share the existing EXCLUSIVE tenant Access phase:
+ * payroll create/close/process membership owners use this exact access-configuration:<tenant> key/mode.
+ * History acquisition is TRY-only after Access; a busy source must abort the WHOLE caller transaction.
+ * Locks are acquired BEFORE any preview savepoint and survive its rollback. No table/global locks. */
+export async function lockFixedItemArchiveIntervalTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ if(ctx.userId&&!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new FixedTransactionNotFoundError();
+ await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);
+ const rows=await tx.execute<{componentId:string;companyId:string}>(sql`select q.component_id as "componentId",e.company_id as "companyId" from employment_pay_component q join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where q.id=${p.id}::uuid and q.employment_id=${p.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid for update of q,e nowait`);
+ if(rows.length!==1)throw new FixedTransactionNotFoundError();
+ await tx.execute(sql`select p.id from person p join employment e on e.person_id=p.id and e.tenant_id=p.tenant_id where e.id=${p.employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid for share of p nowait`);
+ await tx.execute(sql`select id from company where id=${rows[0].companyId}::uuid and tenant_id=${ctx.tenantId}::uuid for share nowait`);
+ await tx.execute(sql`select id from pay_component where id=${rows[0].componentId}::uuid and tenant_id=${ctx.tenantId}::uuid for share nowait`);
+ // Access prevents new native drafts, close/create/process/reset/delete membership changes. These
+ // physical locks additionally retain existing relevant payroll tuples against direct competing writes.
+ const batches=await tx.execute(sql`select b.id from payroll_batch b join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=b.tenant_id where (b.company_id=${rows[0].companyId}::uuid or exists(select 1 from payslip subject_slip where subject_slip.batch_id=b.id and subject_slip.tenant_id=b.tenant_id and subject_slip.employment_id=${p.employmentId}::uuid)) and b.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by b.id limit 2001 for share of b nowait`);
+ if(batches.length>2000)throw Error('Fixed item payroll history is too large for review.');
+ const slips=await tx.execute(sql`select p.id from payslip p join payroll_batch b on b.id=p.batch_id and b.tenant_id=p.tenant_id join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=p.tenant_id where p.employment_id=${p.employmentId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by p.id limit 2001 for share of p nowait`);
+ if(slips.length>2000)throw Error('Fixed item payroll history is too large for review.');
+}
+export const FIXED_ARCHIVE_FIELDS_SQL=sql`jsonb_build_object('componentId',q.component_id,'code',c.code,'name',c.name,'amount',q.amount::text,'currency',q.currency,'validFrom',q.valid_from,'validTo',q.valid_to,'prorateOverride',q.prorate_override,'remarks',q.remarks,'runType',q.run_type,'payrollCycleId',q.payroll_cycle_id,'archived',q.superseded_at is not null)`;
+async function fixedArchiveSnapshotTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ const [row]=await tx.execute<{fields:unknown;revision:string;catalogRevision:string}>(sql`select ${FIXED_ARCHIVE_FIELDS_SQL} as fields,q.xmin::text as revision,c.xmin::text as "catalogRevision" from employment_pay_component q join pay_component c on c.id=q.component_id and c.tenant_id=q.tenant_id where q.id=${p.id}::uuid and q.employment_id=${p.employmentId}::uuid and q.tenant_id=${ctx.tenantId}::uuid`);
+ if(!row)throw new FixedTransactionNotFoundError();return row;
+}
+/** SAME native command, rollback-only. Never digest speculative timestamps, generated event IDs or xids. */
+export async function prepareFixedItemArchiveTx(tx:Tx,ctx:SessionContext,p:{id:string;employmentId:string}){
+ await lockFixedItemArchiveIntervalTx(tx,ctx,p);const before=await fixedArchiveSnapshotTx(tx,ctx,p);
+ const payroll=await tx.execute<{id:string;payPeriod:string;status:string;revision:string}>(sql`select b.id,b.pay_period as "payPeriod",b.status,b.xmin::text as revision from payroll_batch b join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=b.tenant_id join employment e on e.id=q.employment_id and e.tenant_id=q.tenant_id where (b.company_id=e.company_id or exists(select 1 from payslip subject_slip where subject_slip.batch_id=b.id and subject_slip.tenant_id=b.tenant_id and subject_slip.employment_id=${p.employmentId}::uuid)) and b.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by b.id limit 2001`);
+ const slips=await tx.execute(sql`select p.id,p.batch_id,p.xmin::text as revision from payslip p join payroll_batch b on b.id=p.batch_id and b.tenant_id=p.tenant_id join employment_pay_component q on q.id=${p.id}::uuid and q.tenant_id=p.tenant_id where p.employment_id=${p.employmentId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and b.pay_period>=left(q.valid_from::text,7) and (q.valid_to is null or b.pay_period<=left(q.valid_to::text,7)) order by p.id limit 2001`);
+ await tx.execute(sql`SAVEPOINT native_fixed_archive_preview`);let after:unknown;
+ try{await archiveEmploymentPayComponent(ctx,p,tx);after=(await fixedArchiveSnapshotTx(tx,ctx,p)).fields;}
+ finally{await tx.execute(sql`ROLLBACK TO SAVEPOINT native_fixed_archive_preview`);await tx.execute(sql`RELEASE SAVEPOINT native_fixed_archive_preview`);}
+ return{before:before.fields,after,revision:before.revision,catalogRevision:before.catalogRevision,payroll:Array.from(payroll),payslips:Array.from(slips)};
+}
+
 export function archiveEmploymentPayComponent(
   ctx: SessionContext,
   p: { id: string; employmentId: string },
+  outerTx?:Tx,
 ) {
-  return withTenant(ctx, async (tx) => {
+  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};p={...p};
+  const run=async(tx:Tx)=>{
+    await lockFixedItemArchiveIntervalTx(tx,ctx,p);
     const [row] = await tx
       .select({
         id: employmentPayComponent.id,
@@ -2497,21 +2538,20 @@ export function archiveEmploymentPayComponent(
       validTo: row.validTo,
     });
     if (closedPeriod) throw new FixedTransactionPaidError(row.code, closedPeriod);
-    await tx
-      .update(employmentPayComponent)
-      .set({ supersededAt: new Date() })
-      .where(eq(employmentPayComponent.id, p.id));
-    await appendEvent(tx, {
+    const [written]=await tx.update(employmentPayComponent).set({supersededAt:new Date()})
+      .where(eq(employmentPayComponent.id,p.id)).returning({archiveRowHash:sql<string>`encode(sha256(convert_to(to_jsonb(employment_pay_component)::text,'UTF8')),'hex')`});
+    if(!written)throw new FixedTransactionNotFoundError();
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment-pay-component',
       aggregateId: p.id,
       eventType: 'employment-pay-component.archived',
       actor: actorOf(ctx),
       subjectEmploymentId: p.employmentId,
-      payload: { employmentId: p.employmentId },
-    });
-    return { id: p.id };
-  });
+      payload: { employmentId: p.employmentId,archiveRowHash:written.archiveRowHash },
+    },{returnId:true});
+    return { id: p.id,eventId };
+  };return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 // ───────────────────── Per-batch one-off ─────────────────────

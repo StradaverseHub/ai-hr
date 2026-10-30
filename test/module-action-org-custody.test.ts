@@ -1,9 +1,11 @@
 import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
 /** Authored UNRUN: actual app-role non-own custody, native graph/events and real erasure owner.
  * Source/static checks are not concurrency/security proof; no route or production activation. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import * as vault from '../lib/pii/vault';
@@ -73,4 +75,31 @@ it('preserves HR actor, subordinate and BOTH original manager people/employments
  const managers=await owner.db.select({id:s.employment.id,personId:s.employment.personId}).from(s.employment).where(sql`${s.employment.id} in (${manager.employmentId}::uuid,${oldManager.employmentId}::uuid)`).orderBy(s.employment.id);
  await expectNativeSourceCapture(r.actionId,done.receipt.receipt.setEventId,[{kind:'person',id:scoped.personId!},{kind:'person',id:sub.personId},{kind:'employment',id:sub.employmentId},...managers.flatMap(m=>[{kind:'person' as const,id:m.personId},{kind:'employment' as const,id:m.id}])]);
  expect(await custody(r.actionId)).toMatchObject({state:'completed',manager:null,prior:null});
+});
+
+/** Independent original org writer: cached review, manager snapshots and org-specific AAD purposes. */
+async function retainedOrgReview(){return withTenant(scoped,async tx=>{
+ const native=await prepareReviewedReportingLineSourceTx(tx,scoped,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest};
+ const lookup=async(id:string)=>{const [row]=await tx.select({personId:s.employment.personId,companyId:s.employment.companyId}).from(s.employment).where(eq(s.employment.id,id));if(!row)throw Error('Fictional owned subject missing');return row;};
+ const target=await lookup(human.subordinateEmploymentId),next=await lookup(human.managerEmploymentId),prior=native.review.before?await lookup(native.review.before.managerEmploymentId):null;
+ const binding={tenantId:scoped.tenantId,userId:scoped.userId!,personId:scoped.personId??null,employmentId:human.subordinateEmploymentId,companyId:target.companyId,subjectPersonId:target.personId},actionId=randomUUID(),managerPersonId=next.personId,previousManagerPersonId=prior?.personId??null;
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding,managerPersonId,previousManagerPersonId],body),identity=JSON.stringify([1,action,actionId,binding,managerPersonId,previousManagerPersonId,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_org_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${binding.subjectPersonId}::uuid,${human.managerEmploymentId}::uuid,${native.review.before?.managerEmploymentId??null}::uuid,${human.lineType},${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:org-review:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:org-review:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+});}
+describe('WP9 retained org reporting custody',()=>{
+ it('reopens the old cached review and completes its exact commitment once',async()=>{
+  const before=await state(),old=await retainedOrgReview(),packet={action,contractVersion:1,...old};expect((await reopenOrgActionReview(scoped,old.actionId)).kind).toBe('prepared');
+  await expect(confirmOrgActionReview(scoped,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmOrgActionReview(scoped,packet);expect(done.kind).toBe('completed');expect(await confirmOrgActionReview(scoped,packet)).toEqual(done);expect(await reopenOrgActionReview(scoped,old.actionId)).toEqual(done);expect((await state()).lines.length-before.lines.length).toBe(1);
+ });
+ it('retires an old pending graph review after grant removal without decrypting it',async()=>{
+  const old=await retainedOrgReview();await revokeAssistant(group(),{appUserId:scoped.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardOrgActionReview(scoped,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a lost committed reporting reply without another graph change',async()=>{
+  const before=await state(),review=(await prepare()).review,real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const after=await state(),done=await reopenOrgActionReview(scoped,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);expect(await state()).toEqual(after);expect(after.lines.length-before.lines.length).toBe(1);
+ });
 });
