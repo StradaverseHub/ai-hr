@@ -281,10 +281,18 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     }
     await tx.execute(sql`insert into lc_v9_config_revision(tenant_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${revision},${JSON.stringify(previous)}::jsonb,${ctx.userId}::uuid)`);
     const who = await actor(tx, ctx);
+    const [nativeAccess] = await tx.execute<{data: NativeConfig}>(sql`select data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    for (const before of previous.checklists) {
+      const next = config.checklists.find(checklist => checklist.id === before.id);
+      if ((!next || next.ownerUserId && next.ownerUserId !== before.ownerUserId) && before.ownerUserId && before.ownerUserId !== who.id) throw new M.V9Error('Only the current owner may transfer or delete this checklist.', 'forbidden');
+    }
     for (const checklist of config.checklists) {
-      const before = previous.checklists.find(before => before.id === checklist.id), owner = before?.ownerUserId;
-      if (owner && checklist.ownerUserId && checklist.ownerUserId !== owner) throw new M.V9Error('Keep the checklist owner while editing its settings.');
-      checklist.ownerUserId = owner ?? who.id; checklist.createdAt = before?.createdAt ?? new Date().toISOString();
+      const before = previous.checklists.find(before => before.id === checklist.id);
+      if (before && checklist.module !== before.module) throw new M.V9Error('A checklist cannot change module.');
+      const owner = before ? checklist.ownerUserId ?? before.ownerUserId ?? who.id : who.id;
+      if (before && owner !== before.ownerUserId && (!users.some(user => user.id === owner) || !nativeAccess?.data.access[checklist.module === 'onb' ? 'onboarding' : 'offboarding'].includes(owner))) throw new M.V9Error('The new owner must be an available user with access to this module.');
+      if (before && owner !== before.ownerUserId) { const [available] = await tx.execute<{ok:boolean}>(sql`select not app.login_blocked(${owner}::uuid) as ok`); if (!available?.ok) throw new M.V9Error('The new owner must be an available user with access to this module.'); }
+      checklist.ownerUserId = owner; checklist.createdAt = before?.createdAt ?? new Date().toISOString();
     }
     for (const template of config.templates) for (const version of template.versions) {
       const before = previous.templates.find(t => t.id === template.id)?.versions.find(v => v.version === version.version);
@@ -295,6 +303,15 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     if (!v9Equal(beforeChecklists, nextChecklists) || !v9Equal(previous.caseForms?.onb, config.caseForms?.onb)) {
       const definitions = await onboardingV9DefinitionsChangedTx(ctx, tx, config.groupsRevision!, nextChecklists, config.revision);
       config.groupsRevision = definitions.revision;
+    }
+    const deletedChecklists = previous.checklists.filter(checklist => !config.checklists.some(next => next.id === checklist.id)).map(checklist => checklist.id);
+    if (deletedChecklists.length) {
+      const pending = await tx.execute<Row>(sql`select id,revision,company_id,data from lc_v9_case where tenant_id=${ctx.tenantId}::uuid and data->>'state'='pending' order by id for update`);
+      for (const row of pending) if (deletedChecklists.includes(row.data.override)) {
+        const next = structuredClone(row.data); next.override = 'automatic';
+        M.appendLog(next, await environment(tx, ctx, next, config), 'checklist.override_removed', 'Deleted checklist; returned to automatic matching.');
+        await store(tx, ctx, row, next, 'checklist_override_removed');
+      }
     }
     await tx.execute(sql`update lc_v9_config set data=${JSON.stringify(config)}::jsonb,revision=${config.revision},updated_at=now() where tenant_id=${ctx.tenantId}::uuid`);
     await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-config', aggregateId: ctx.tenantId, eventType: 'lifecycle-v9.configurationChanged', actor: actorOf(ctx), payload: { revision: config.revision } });
@@ -339,7 +356,7 @@ export type Command = CaseNoteCommand
   | { type: 'documentSave'; id: string; values: Record<string, string> }
   | { type: 'documentSignatory'; id:string; userId:string }
   | { type: 'documentSign'; id: string; signature: Pick<M.Signature, 'method' | 'value' | 'consent'> }
-  | { type: 'documentRefresh'; id: string }
+  | { type: 'documentRefresh' | 'documentRegenerate'; id: string }
   | { type: 'clear'; sourceRevision: string; reason: string }
   | { type: 'settlementOptions'; options: NonNullable<M.Case['settlementOptions']>; reason: string }
   | { type: 'cancel' | 'reopen'; reason: string }
@@ -374,6 +391,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('documentSignatory'),id:commandId,userId:z.string().uuid()}).strict(),
   z.object({ type: z.literal('documentSign'), id: commandId, signature: z.object({ method: z.enum(['typed', 'drawn']), value: z.string().min(1).max(500000), consent: z.literal(true) }).strict() }).strict(),
   z.object({ type: z.literal('documentRefresh'), id: commandId }).strict(),
+  z.object({ type: z.literal('documentRegenerate'), id: commandId }).strict(),
   z.object({ type: z.literal('clear'), sourceRevision: z.string().regex(/^[a-f0-9]{64}$/), reason: reasonText }).strict(),
   z.object({ type: z.literal('settlementOptions'), reason: reasonText.min(1), options: z.object({ keepSourceDate: z.boolean(), offsetLeave: z.boolean(), override: z.object({ date: z.string().refine(M.validDate), reason: reasonText.min(1), kind: z.enum(['earlyRelease', 'waived', 'payInLieu', 'immediate', 'other']) }).strict().nullable(), reduceEncashment: z.object({ days: z.number().min(0).max(10000), reason: reasonText.min(1) }).strict().nullable() }).strict() }).strict(),
   z.object({ type: z.literal('cancel'), reason: reasonText }).strict(), z.object({ type: z.literal('reopen'), reason: reasonText }).strict(),
@@ -389,7 +407,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
@@ -468,6 +486,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       }
     }
     else if (command.type === 'task') M.completeTask(c, command.id, command.status, command.reason, env);
+    else if (command.type === 'documentRegenerate') M.regenerate(c, config, command.id, env);
     else if (command.type === 'generate') M.generate(c, config, command.template, env);
     else if (command.type === 'testWorkflow') M.testWorkflowMessages(c,config,command.workflowId,env);
     else if (command.type === 'emailSend' || command.type === 'emailTest') M.queueEmail(c, config, command.emailId, env, command.type === 'emailTest');

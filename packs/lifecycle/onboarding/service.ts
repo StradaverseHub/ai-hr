@@ -1261,8 +1261,11 @@ export async function onboardingV9DefinitionsChangedTx(ctx: SessionContext, tx: 
     const env: M.Environment = { now, today, id: randomUUID, nextNumber: () => '', leave: {}, taskLoads: {}, lastTaskAssignment: {}, pendingApprovals: {}, lifetimeApprovals: {}, users: [] };
     for (const row of list) {
         const c = structuredClone(row.data);
-        if (c.personnelStatus !== 'Draft' || c.state !== 'submitted') continue;
-        if (isDeepStrictEqual(M.matchChecklist(config, c).checklist, M.matchChecklist(next, c).checklist)) continue;
+        if (c.personnelStatus !== 'Draft' || !['pending','submitted'].includes(c.state)) continue;
+        const removedOverride = c.checklistOverride && c.checklistOverride !== 'none' && !next.checklists.some(checklist => checklist.id === c.checklistOverride);
+        if (removedOverride) { c.checklistOverride = null; M.log(c, actor, env, 'checklist.override_removed', 'Deleted checklist; returned to automatic matching.'); }
+        if (c.state === 'pending') { if (removedOverride) { await storeTx(tx, ctx, row, c, false); await auditTx(tx, ctx, c, 'checklist_override_removed'); } continue; }
+        if (!removedOverride && isDeepStrictEqual(M.matchChecklist(config, c).checklist, M.matchChecklist(next, c).checklist)) continue;
         c.reconcileNeeded = true;
         M.log(c, actor, env, 'configuration.changed', 'Shared V9 checklist changed; review the task reconciliation.');
         await storeTx(tx, ctx, row, c, false);

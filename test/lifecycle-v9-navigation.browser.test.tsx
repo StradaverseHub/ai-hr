@@ -19,8 +19,10 @@ vi.mock('next/link',async()=>{const React=await import('react');return {default:
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),saveOnboardingConfig:vi.fn(),saveOnboardingChecklistTasks:vi.fn(),writeOnboardingNote:vi.fn(),setupOnboarding:vi.fn(),loadOnboardingTask:vi.fn(),markOnboardingSeen:vi.fn()}));
+const {RequestRecords}=await import('../app/lifecycle/v9/request-records');
+const {useState}=await import('react');
 const {Sidebar}=await import('../components/sidebar');
-const {V9Workspace}=await import('../app/lifecycle/v9/workspace');
+const {V9Workspace,ChecklistEditor}=await import('../app/lifecycle/v9/workspace');
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');await page.viewport(1280,720);});
 it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the same V9 hierarchy/content sections in a real browser',async theme=>{
  await page.viewport(1440,1000);document.documentElement.setAttribute('data-ui-theme',theme);
@@ -42,7 +44,7 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  const palette=document.createElement('div');palette.style.backgroundColor='var(--card)';palette.style.color='var(--foreground)';workspace.appendChild(palette);
  const documents=screen.getByRole('region',{name:'Document templates'}),emails=screen.getByRole('region',{name:'Email templates'});
  expect(getComputedStyle(documents).backgroundColor).toBe(getComputedStyle(palette).backgroundColor);
- expect(getComputedStyle(workspace).color).toBe(getComputedStyle(palette).color);palette.remove();
+ await expect.poll(() => getComputedStyle(workspace).color).toBe(getComputedStyle(palette).color);palette.remove();
  expect(documents.getBoundingClientRect().top).toBeLessThan(emails.getBoundingClientRect().top);
  expect(Math.abs(documents.getBoundingClientRect().left-emails.getBoundingClientRect().left)).toBeLessThan(1);
  expect(screen.getByRole('button',{name:'New template'}).getBoundingClientRect().right).toBeLessThanOrEqual(documents.getBoundingClientRect().right+1);
@@ -50,4 +52,23 @@ it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the
  const shot=await page.screenshot({path:`../.vitest-attachments/v9-navigation-${theme}.png`,animations:'disabled',base64:true,scale:'css'});
  console.info('V9_DERIVED_NAV_SCREENSHOT '+JSON.stringify({theme,fixture:'fictional',base64:shot.base64}));
  fireEvent.keyDown(document,{key:'Escape'});
+});
+
+function ChecklistFixture(){
+ const [config,setConfig]=useState(()=>{const c=v9Defaults();c.checklists=[{id:'fixture-checklist',name:'Fictional clearance',module:'off',ownerUserId:'fictional-hr',rules:{caseType:['Resignation']},tasks:[]}];return c;});
+ const [selected,select]=useState('fixture-checklist');
+ return <div className="v9-workspace v9-workspace-global"><ChecklistEditor config={config} module="off" selected={selected} select={select} actor={{id:'fictional-hr',name:'Fictional HR'}} users={[{id:'fictional-hr',name:'Fictional HR'}]} editable edit={change=>setConfig(old=>{const next=structuredClone(old);change(next);return next;})}/></div>;
+}
+it.each(['classic','monolith','atelier'] as const)('keeps checklist controls and filtered CSV usable in %s at mobile width and dark mode',async theme=>{
+ await page.viewport(390,844);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.add('dark');
+ const view=render(<ChecklistFixture/>);
+ const newButton=screen.getByRole('button',{name:'New checklist'}),card=screen.getByRole('button',{name:/Fictional clearance/});
+ expect(newButton.getBoundingClientRect().top).toBeLessThan(card.getBoundingClientRect().top);
+ expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(391);
+ fireEvent.click(screen.getByRole('button',{name:'Duplicate'}));expect(screen.getByRole('textbox',{name:'Checklist name'})).toHaveValue('Copy of Fictional clearance');
+ fireEvent.click(screen.getByRole('button',{name:'Delete checklist'}));expect(screen.getByRole('alertdialog',{name:'Confirm checklist deletion'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.queryByRole('alertdialog')).toBeNull();
+ const shot=await page.screenshot({path:`../.vitest-attachments/v9-checklist-${theme}-dark-mobile.png`,animations:'disabled',base64:true,scale:'css'});console.info('V9_DERIVED_NAV_SCREENSHOT '+JSON.stringify({theme,view:'checklist',mode:'dark',fixture:'fictional',base64:shot.base64}));
+ view.unmount();render(<div className="v9-workspace"><RequestRecords cases={[]} native={null} labels={{}} company="" search="" openCase={()=>{}}/></div>);
+ fireEvent.click(screen.getByRole('button',{name:'Export (CSV)'}));expect(screen.getByRole('textbox',{name:'Request records CSV'})).toBeInTheDocument();expect(screen.getByRole('button',{name:'Download CSV'}).getBoundingClientRect().right).toBeLessThanOrEqual(391);
 });

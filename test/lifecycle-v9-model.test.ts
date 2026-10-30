@@ -523,3 +523,29 @@ it('previews the first task owner and tests that same notification output only t
 it.each(['onb','off'] as const)('uses the %s managed sender for a notification self-test and renders the empty pending summary',module=>{
  const {c,config,environment}=fixture(module);const definition=workflow({module,steps:[{id:'notify',type:'notify',to:'employee',cc:[],subject:'{pending.count} pending',body:'{owner.name}\n{pending.tasks}'}]});config.workflows=[definition];const step=definition.steps[0];if(step.type!=='notify')throw Error('Expected notification');const preview=M.previewWorkflowNotification(c,config,step,environment);expect(preview).toMatchObject({subject:'0 pending',body:'\nNothing pending'});M.testWorkflowMessages(c,config,definition.id,environment);expect(c.mails[0].delivery?.sender).toBe(module==='onb'?'onboarding':'hr');expect(c.mails[0].body).toBe(preview.body);
 });
+
+it('explicitly regenerates the latest published version while retaining a released copy and its answers', () => {
+  const {c,config,environment} = fixture(); config.templates=[template()];
+  const old=M.generate(c,config,'exit',environment); old.status='sent';old.sentAt=environment.now;old.values.answer='Saved answer';
+  config.templates[0].versions.push({...structuredClone(config.templates[0].versions[0]),version:2});
+  const replacement=M.regenerate(c,config,old.id,environment);
+  expect(replacement).toMatchObject({version:2,status:'draft',employeeSignature:null,hrSignature:null});
+  expect(old).toMatchObject({status:'superseded',supersededBy:replacement.id,values:{answer:'Saved answer'}});
+  expect(c.documents).toHaveLength(2);expect(M.activeDocument(c,'exit')).toBe(replacement);
+  expect(c.log.at(-1)).toMatchObject({action:'document.regenerated'});
+});
+it('replaces an unsigned draft and refuses regeneration without mutation for completed, countersign, closed and delivery-reserved documents', () => {
+  const {c,config,environment}=fixture();config.templates=[template()];
+  const draft=M.generate(c,config,'exit',environment), replacement=M.regenerate(c,config,draft.id,environment);
+  expect(c.documents.map(document=>document.id)).toEqual([replacement.id]);
+  for(const status of ['completed','signed','acknowledged','countersign','superseded','withdrawn'] as const){replacement.status=status;const before=JSON.stringify(c);expect(()=>M.regenerate(c,config,replacement.id,environment)).toThrow();expect(JSON.stringify(c)).toBe(before);}
+  replacement.status='sent';c.state='cleared';expect(()=>M.regenerate(c,config,replacement.id,environment)).toThrow();
+  c.state='submitted';c.mails=[{test:false,status:'pending',documentIds:[replacement.id]} as M.Mail];expect(()=>M.regenerate(c,config,replacement.id,environment)).toThrow();
+});
+
+it('retains a draft referenced by failed or test delivery history and permits an open pending draft to regenerate',()=>{
+ const {c,config,environment}=fixture();config.templates=[template()];const draft=M.generate(c,config,'exit',environment);
+ c.mails=[{test:true,status:'pending',documentIds:[draft.id]} as M.Mail];c.state='pending';const next=M.regenerate(c,config,draft.id,environment);
+ expect(c.documents).toHaveLength(2);expect(draft).toMatchObject({status:'superseded',supersededBy:next.id});expect(c.mails[0].documentIds).toEqual([draft.id]);
+ next.status='draft';c.mails.push({test:false,status:'failed',documentIds:[next.id]} as M.Mail);M.regenerate(c,config,next.id,environment);expect(c.documents.find(document=>document.id===next.id)?.status).toBe('superseded');
+});

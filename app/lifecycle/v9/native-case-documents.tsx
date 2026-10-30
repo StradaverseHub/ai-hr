@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 import type { Actor, Case, Config } from '@/lib/lifecycle-v9-model';
-import { matches, currentVersion } from '@/lib/lifecycle-v9-model';
+import { matches, currentVersion, canRegenerate } from '@/lib/lifecycle-v9-model';
 import type { LifecycleV9Command } from '@/packs/lifecycle/service';
 import { commandV9, readV9Case } from './actions';
 import { CaseFiles } from './case-files';
@@ -36,7 +36,7 @@ export function NativeCaseDocuments({ initial, config, actor, writableKeys, user
     {error && <p role="alert" className="v9-notice v9-error">{error}</p>}{notice && <p role="status" className="v9-notice">{notice}</p>}
     <section className="v9-panel v9-stack"><div className="v9-heading"><h2>Documents</h2><span className="v9-muted">{c.number}</span></div>
       {!c.documents.length && <p className="v9-muted">No documents generated yet.</p>}
-      <ul className="v9-list">{c.documents.map(document => <li key={document.id}><div className="v9-heading"><div><strong>{document.name}</strong><p className="v9-muted">v{document.version} · {document.status}</p></div><button type="button" className="v9-button" onClick={() => select(document.id)}>Open {document.name}</button></div></li>)}</ul>
+      <ul className="v9-list">{c.documents.map(document => <li key={document.id}><div className="v9-heading"><div><strong>{document.name}</strong><p className="v9-muted">v{document.version} · {document.status}</p></div><button type="button" className="v9-button" onClick={() => select(document.id)}>Open {document.name}</button>{canRegenerate(c,document) && <button type="button" className="v9-button" disabled={busy} onClick={() => void command({type: 'documentRegenerate', id: document.id})}>Regenerate {document.name}</button>}</div></li>)}</ul>
       <div className="v9-actions">{templates.map(template => <button key={template.id} type="button" className="v9-button" disabled={busy || c.state !== 'submitted'} onClick={() => void command({ type: 'generate', template: template.id })}>Generate {template.name}</button>)}</div>
       {c.state === 'pending' && <p className="v9-notice">Submit the onboarding case to start its documents.</p>}
     </section>
