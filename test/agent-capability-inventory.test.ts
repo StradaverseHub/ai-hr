@@ -86,7 +86,7 @@ describe('ADR-0151 agent capability inventory',()=>{
   const expectations:[string,string,string][]=[
    ['app/admin/actions.ts','assignRoleAction','handoff:access_and_authentication'],
    ['app/admin/privacy/actions.ts','erasePersonPiiAction','handoff:privacy_erasure'],
-   ['app/payroll/actions.ts','resetAction','handoff:payroll_reversal'],
+   ['app/payroll/actions.ts','resetAction','registered:payroll.reset'],
    ['app/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
    ['app/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
    ['app/operator/actions.ts','setCustomerFeedbackMenuAction','handoff:platform_operator'],
