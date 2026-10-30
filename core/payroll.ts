@@ -12445,3 +12445,74 @@ export async function reviewedPayrollReopenChoiceMetadataTx(tx:Tx,ctx:SessionCon
  }
  return choices;
 }
+
+/** Private native reset preview. Membership/row locks are acquired before the SAVEPOINT and survive
+ * its rollback. This invokes the same sequential native loan/claim owner, never a second calculator.
+ * It is not an Assistant action, receipt or permission to commit; the closed custody proof is separate. */
+export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContext,p:{batchId:string;reason:string}) {
+ const ctx=capturePayrollCloseContext(supplied),batchId=z.guid().parse(p.batchId).toLowerCase();
+ if(!ctx.userId)throw new PayrollPermissionDeniedError('payroll.rollback');
+ await lockPayrollBatchPeriodTx(tx,ctx,batchId,true);
+ const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
+ if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.rollback');
+ const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId)).for('update',{noWait:true});
+ if(!batch)throw new BatchNotResettableError();
+ await assertPayrollPermission(tx,ctx,'payroll.rollback',batch.companyId);
+ if(batch.status!=='processed')throw new BatchNotResettableError();
+ if(!settingEnabled(ctx,'payroll.reset_enabled'))throw new SettingNotEnabledError('payroll.reset_enabled','Payroll reset is not enabled.');
+ if(!p.reason.trim())throw new ResetReasonRequiredError();
+ const budget=(sets:readonly (readonly unknown[])[])=>{
+  if(sets.reduce((n,rows)=>n+rows.length,0)>10000||Buffer.byteLength(JSON.stringify(sets),'utf8')>1000000)throw new Error('Payroll reset requires native handoff');
+ };
+ const applied=await tx.select({loanId:loanRepayment.loanId}).from(loanRepayment).where(and(eq(loanRepayment.appliedBatchId,batchId),eq(loanRepayment.status,'applied'))).limit(10001);
+ budget([applied]);
+ const loanIds=[...new Set(applied.map(row=>row.loanId))].sort();
+ // Loan amendments/settlement/prefill do not share the Payroll period key. Parent FOR UPDATE fences
+ // schedule FK inserts; NOWAIT on all existing schedules refuses reverse-order writer contention.
+ const loans=loanIds.length?await tx.select().from(employeeLoan).where(inArray(employeeLoan.id,loanIds)).orderBy(employeeLoan.id).limit(10001).for('update',{noWait:true}):[];
+ const schedules=loanIds.length?await tx.select().from(loanRepayment).where(inArray(loanRepayment.loanId,loanIds)).orderBy(loanRepayment.id).limit(10001).for('update',{noWait:true}):[];
+ budget([loans,schedules]);
+ const lockSources=async()=>{
+  const slips=await tx.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id).limit(10001).for('update',{noWait:true});
+  // Lock every batch claim, including currently approved rows: status can change without changing FK.
+  const claims=await tx.select().from(claimRequest).where(eq(claimRequest.payrollBatchId,batchId)).orderBy(claimRequest.id).limit(10001).for('update',{noWait:true});
+  const individuals=await tx.select().from(payrollIndividualTxn).where(or(eq(payrollIndividualTxn.batchId,batchId),eq(payrollIndividualTxn.consumedBatchId,batchId))).orderBy(payrollIndividualTxn.id).limit(10001).for('update',{noWait:true});
+  const inputs=await tx.select().from(payrollInput).where(eq(payrollInput.batchId,batchId)).orderBy(payrollInput.id).limit(10001).for('update',{noWait:true});
+  const components=await tx.select().from(payrollBatchComponent).where(eq(payrollBatchComponent.batchId,batchId)).orderBy(payrollBatchComponent.id).limit(10001).for('update',{noWait:true});
+  const adjustments=await tx.select().from(payrollStatutoryAdjustment).where(eq(payrollStatutoryAdjustment.batchId,batchId)).orderBy(payrollStatutoryAdjustment.id).limit(10001).for('update',{noWait:true});
+  budget([loans,schedules,slips,claims,individuals,inputs,components,adjustments]);
+  return{slips,claims,individuals,inputs,components,adjustments};
+ };
+ const locked=await lockSources();
+ const snapshot=async()=>{
+  const [currentBatch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const parents=await tx.select().from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId));
+  const siblings=await tx.select().from(payrollBatch).where(and(eq(payrollBatch.payPeriodId,batch.payPeriodId),ne(payrollBatch.id,batchId))).orderBy(payrollBatch.id).limit(10001);
+  const source=await lockSources();
+  const currentLoans=loanIds.length?await tx.select().from(employeeLoan).where(inArray(employeeLoan.id,loanIds)).orderBy(employeeLoan.id).limit(10001):[];
+  const currentSchedules=loanIds.length?await tx.select().from(loanRepayment).where(inArray(loanRepayment.loanId,loanIds)).orderBy(loanRepayment.id).limit(10001):[];
+  const reports=await tx.select().from(statutoryReport).where(and(eq(statutoryReport.companyId,batch.companyId),eq(statutoryReport.periodKey,batch.payPeriod))).orderBy(statutoryReport.id).limit(10001);
+  budget([currentLoans,currentSchedules,...Object.values(source),siblings,reports]);
+  return{batch:currentBatch,parents,siblings,...source,loans:currentLoans,schedules:currentSchedules,reports};
+ };
+ const before=await snapshot();
+ // Re-read membership after every lock wait. A source loan disappearing behind RLS is preserved as
+ // native missing/invisible-loan semantics, never widened with SECURITY DEFINER reads.
+ const freshApplied=await tx.select({loanId:loanRepayment.loanId}).from(loanRepayment).where(and(eq(loanRepayment.appliedBatchId,batchId),eq(loanRepayment.status,'applied'))).limit(10001);
+ if(JSON.stringify(freshApplied.map(row=>row.loanId).sort())!==JSON.stringify(applied.map(row=>row.loanId).sort()))throw new Error('Payroll reset source membership changed');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const sourceDigest=hash(before);
+ await tx.execute(sql`SAVEPOINT payroll_reset_native_preview`);
+ try{
+  const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason:p.reason});
+  const after=await snapshot();
+  const counts={payslipsCleared:native.payslipsCleared,loanInstalmentsReversed:native.loanInstalmentsReversed,loansReopened:native.loansReopened,claimsReverted:native.claimsReverted};
+  // Preview UUIDs are deliberately discarded; only actual top-transaction effects may complete custody.
+  return{sourceDigest,effectDigest:hash(after),counts,sourceCounts:{payslipsToDelete:locked.slips.length,appliedRepaymentRows:applied.length,affectedLoans:loans.length,paidClaimsToRevert:locked.claims.filter(row=>row.status==='paid').length,consumedItemsToRelease:locked.individuals.filter(row=>row.consumedBatchId===batchId).length,recalculationMarked:batch.needsRecalcAt!==null}};
+ }finally{
+  // Reset and its complete call graph write only through this supplied Tx (including appendEvent).
+  // Native exceptions must be rolled back here before any subsequent SQL; caller still aborts its Tx.
+  await tx.execute(sql`ROLLBACK TO SAVEPOINT payroll_reset_native_preview`);
+  await tx.execute(sql`RELEASE SAVEPOINT payroll_reset_native_preview`);
+ }
+}

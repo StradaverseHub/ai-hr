@@ -17,7 +17,7 @@
  *      instalment reversed + claim reverted to 'approved', a payroll_status_history 'rollback' row is
  *      written (from/to/actor/trimmed-reason), and the payroll-batch.reset event carries the reason.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -28,6 +28,7 @@ import {
   generatePayslips,
   resetProcessedBatch,
   resetProcessedBatchTx,
+  previewReviewedPayrollResetTx,
   setPayrollInput,
 } from '../core/payroll';
 import { createLoan, prefillLoansForBatch } from '../core/loans';
@@ -245,6 +246,64 @@ describe('Payroll Reset — mandatory reason (resetProcessedBatch)', () => {
     expect((await owner.db.select().from(schema.loanRepayment).where(eq(schema.loanRepayment.id,repId)))[0]).toEqual(beforeRep);
     expect((await owner.db.select().from(schema.employeeLoan).where(eq(schema.employeeLoan.id,beforeRep.loanId)))[0]).toEqual(beforeLoan);
     expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId)))[0].status).toBe('paid');
+    expect(await rollbackHistoryRows(batchId)).toHaveLength(0);
+    expect(await eventTypesFor(base.tenantId,batchId)).not.toContain('payroll-batch.reset');
+  });
+
+  it('d. native SAVEPOINT preview leaves loan, claim, payslip and audit state unchanged and discards preview references', async () => {
+    const {batchId,claimId,repId}=await processedBatchWithSideEffects('2026-08');
+    const beforeBatch=await batchRow(batchId),beforeHistory=await rollbackHistoryRows(batchId);
+    const beforeEvents=await eventTypesFor(base.tenantId,batchId);
+    const beforeSlips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+    const [beforeRep]=await owner.db.select().from(schema.loanRepayment).where(eq(schema.loanRepayment.id,repId));
+    const [beforeLoan]=await owner.db.select().from(schema.employeeLoan).where(eq(schema.employeeLoan.id,beforeRep.loanId));
+    const [beforeClaim]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId));
+    await withTenant(ctx,async tx=>{
+      const first=await previewReviewedPayrollResetTx(tx,ctx,{batchId,reason:'Preview native effect'});
+      expect(first.counts).toEqual({payslipsCleared:beforeSlips.length,loanInstalmentsReversed:1,loansReopened:0,claimsReverted:1});
+      expect(first.sourceCounts).toMatchObject({payslipsToDelete:beforeSlips.length,appliedRepaymentRows:1,affectedLoans:1,paidClaimsToRevert:1});
+      expect(Object.keys(first).sort()).toEqual(['counts','effectDigest','sourceCounts','sourceDigest']);
+      const second=await previewReviewedPayrollResetTx(tx,ctx,{batchId,reason:'Preview native effect'});
+      expect(second).toEqual(first);
+      const [batch]=await tx.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
+      expect(batch).toEqual(beforeBatch);
+    });
+    expect(await batchRow(batchId)).toEqual(beforeBatch);
+    expect(await rollbackHistoryRows(batchId)).toEqual(beforeHistory);
+    expect(await eventTypesFor(base.tenantId,batchId)).toEqual(beforeEvents);
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(beforeSlips);
+    expect((await owner.db.select().from(schema.loanRepayment).where(eq(schema.loanRepayment.id,repId)))[0]).toEqual(beforeRep);
+    expect((await owner.db.select().from(schema.employeeLoan).where(eq(schema.employeeLoan.id,beforeRep.loanId)))[0]).toEqual(beforeLoan);
+    expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId)))[0]).toEqual(beforeClaim);
+  });
+
+  it('e. a native failure inside preview rolls back every earlier effect and releases the savepoint', async () => {
+    const {batchId,claimId,repId}=await processedBatchWithSideEffects('2026-09');
+    const beforeBatch=await batchRow(batchId);
+    const beforeSlips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+    const [beforeRep]=await owner.db.select().from(schema.loanRepayment).where(eq(schema.loanRepayment.id,repId));
+    const [beforeLoan]=await owner.db.select().from(schema.employeeLoan).where(eq(schema.employeeLoan.id,beforeRep.loanId));
+    const [beforeClaim]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId));
+    await owner.db.execute(sql`create function app.fictional_reset_preview_failure() returns trigger language plpgsql as $$begin if NEW.action='rollback' then raise exception 'Fictional reset preview refusal';end if;return NEW;end$$`);
+    await owner.db.execute(sql`create trigger fictional_reset_preview_failure before insert on public.payroll_status_history for each row execute function app.fictional_reset_preview_failure()`);
+    try {
+      await withTenant(ctx,async tx=>{
+        await expect(previewReviewedPayrollResetTx(tx,ctx,{batchId,reason:'Preview failure cleanup'})).rejects.toThrow();
+        const [batch]=await tx.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
+        expect(batch).toEqual(beforeBatch);
+        // A subsequent real SAVEPOINT must work; the failed preview did not leave an aborted scope.
+        await tx.execute(sql`SAVEPOINT fictional_after_preview`);
+        await tx.execute(sql`RELEASE SAVEPOINT fictional_after_preview`);
+      });
+    } finally {
+      await owner.db.execute(sql`drop trigger fictional_reset_preview_failure on public.payroll_status_history`);
+      await owner.db.execute(sql`drop function app.fictional_reset_preview_failure()`);
+    }
+    expect(await batchRow(batchId)).toEqual(beforeBatch);
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(beforeSlips);
+    expect((await owner.db.select().from(schema.loanRepayment).where(eq(schema.loanRepayment.id,repId)))[0]).toEqual(beforeRep);
+    expect((await owner.db.select().from(schema.employeeLoan).where(eq(schema.employeeLoan.id,beforeRep.loanId)))[0]).toEqual(beforeLoan);
+    expect((await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,claimId)))[0]).toEqual(beforeClaim);
     expect(await rollbackHistoryRows(batchId)).toHaveLength(0);
     expect(await eventTypesFor(base.tenantId,batchId)).not.toContain('payroll-batch.reset');
   });
