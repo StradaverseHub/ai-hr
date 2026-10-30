@@ -3,6 +3,7 @@
  * candidate activation uses the explicit synthetic transport fixture. No live route is certified. */
 import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
+import * as schema from '../db/schema';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {askAssistant} from '../core/assistant';
@@ -16,7 +17,8 @@ import {FIXED_FREE_CARRIER_SOURCE_DIGEST,FIXED_FREE_INVARIANTS} from '../lib/ai/
 import {FIXED_METERED_CARRIER_SOURCE_DIGEST,FIXED_METERED_INVARIANTS} from '../lib/ai/providers/openrouter-fixed-metered-carrier';
 import {openrouterAdapter,createOpenRouterAdapter} from '../lib/ai/providers/openrouter';
 import {evaluateSyntheticCandidate} from './provider-evaluation-fixture';
-import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base,admin:SessionContext,ctx:SessionContext,employmentId:string;
 const endpoint='fictional/exact-endpoint',key='fictional-loop-key',signer='fictional-loop-signer',secret='ab'.repeat(32);
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
@@ -26,6 +28,7 @@ beforeEach(async()=>{
  // for it. Assert the canonical tool's module is genuinely on rather than writing a row that cannot exist.
  expect(isModuleEnabled(admin,'leave'),'core Leave module must be enabled for the canonical tool round trip').toBe(true);
  const employee=await hireEmployee(admin,{person:{fullName:'Fictional Reviewed Loop',primaryEmail:`${randomUUID()}@fixture.test`},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});employmentId=employee.employmentId;
+ await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId,leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});
  const userId=await createAppUser(base.tenantId,employee.personId,'employee');await grantAssistant(admin,{appUserId:userId});ctx={...await entitledCtx(base,['employee']),userId,personId:employee.personId,grants:[{role:'employee',companyId:null}]};
  vi.stubEnv('AI_CONFIG_SECRET','fictional-reviewed-loop-custody');for(const name of ['OPENAI_API_KEY','ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY','AI_SPEND_RECEIPT_KEY_ID','AI_SPEND_RECEIPT_SIGNING_KEY'])vi.stubEnv(name,'');
 });
@@ -43,17 +46,17 @@ async function setup(kind:'free'|'metered'){
  return{model,capability,reserved};
 }
 describe('actual reviewed OpenRouter Assistant loop',()=>{
- it.each(['free','metered'] as const)('%s omits cache BEFORE immutable preparation and keeps one real task root through a canonical tool round trip',async kind=>{
+ it.each(['free','metered'] as const)('%s omits cache BEFORE immutable preparation and keeps one real task root through a local canonical read and private selector request',async kind=>{
   const fixture=await setup(kind),cost=kind==='free'?0:0.000018;let posts=0;const bodies:Record<string,unknown>[]=[];
   const fetcher=vi.fn<typeof fetch>().mockImplementation(async(_url,init)=>{
-   if(init?.method==='POST'){posts++;bodies.push(JSON.parse(String(init.body)));return new Response(JSON.stringify({id:`gen-reviewed-loop-${posts}`,model:fixture.model,choices:[{index:0,finish_reason:posts===1?'tool_calls':'stop',message:posts===1?{role:'assistant',content:'',tool_calls:[{id:'fixture-call',type:'function',function:{name:'my_leave_balances',arguments:'{}'}}]}:{role:'assistant',content:'Your recorded leave details are available.'}}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2,cost}}),{headers:{'content-type':'application/json'}});}
+   if(init?.method==='POST'){posts++;const body=JSON.parse(String(init.body));bodies.push(body);const user=(body.messages as {role:string;content:string}[]).find(message=>message.role==='user');expect(user).toBeTruthy();const catalogue=JSON.parse(user!.content),read=catalogue.reads[0],card=read.cards.find((card:{facts:{field:string;available:boolean}[]})=>card.facts.some(fact=>fact.field==='available'&&fact.available)),fact=card.facts.find((fact:{field:string;available:boolean})=>fact.field==='available'&&fact.available);expect(fact).toBeTruthy();return new Response(JSON.stringify({id:`gen-reviewed-loop-${posts}`,model:fixture.model,choices:[{index:0,finish_reason:'stop',message:{role:'assistant',content:JSON.stringify({version:1,mode:'answer',blocks:[{kind:'fact',read:read.read,card:card.card,fact:fact.fact}]})}}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2,cost}}),{headers:{'content-type':'application/json'}});}
    return new Response(JSON.stringify({data:{id:`gen-reviewed-loop-${posts}`,model:fixture.model,is_byok:false,streamed:false,total_cost:cost}}),{headers:{'content-type':'application/json'}});
   });
   const adapter=createOpenRouterAdapter(fetcher);vi.spyOn(openrouterAdapter,'converse').mockImplementation((configuration,args)=>adapter.converse!(configuration,args));
-  const result=await askAssistant(ctx,{question:'Please show my recorded leave balances.'});expect(result).toMatchObject({stop:'end',turns:2,toolsUsed:['my_leave_balances']});expect(posts).toBe(2);expect(fetcher).toHaveBeenCalledTimes(4);
+  const result=await askAssistant(ctx,{question:'My leave balance'});expect(result).toMatchObject({stop:'end',turns:1,toolsUsed:['my_leave_balances']});expect(posts).toBe(1);expect(fetcher).toHaveBeenCalledTimes(2);
   for(const body of bodies){expect(body).not.toHaveProperty('cacheKey');expect(body).not.toHaveProperty('cache_control');expect(body.provider).toMatchObject({only:[endpoint],order:[endpoint],allow_fallbacks:false,zdr:true,data_collection:'deny',max_price:{prompt:kind==='free'?0:3,completion:kind==='free'?0:15,request:0}});}
-  const tool=(bodies[1].messages as {role:string;content:string}[]).find(message=>message.role==='tool');expect(tool?.content).toContain(employmentId);expect(JSON.stringify(bodies)).not.toContain('providerState');
+  expect((bodies[0].messages as {role:string}[]).some(message=>message.role==='tool')).toBe(false);for(const secret of [employmentId,'113.75','Annual Leave','Fictional Reviewed Loop','My leave balance','providerState'])expect(JSON.stringify(bodies)).not.toContain(secret);
   const tasks=await owner.db.execute<{id:string;source_kind:string}>(sql`select id,source_kind from app.ai_spend_task where tenant_id=${base.tenantId}::uuid and created_by=${ctx.userId}::uuid and source_kind='assistant_question'`);expect(tasks).toHaveLength(1);
-  const runs=await owner.db.execute<{root:string;state:string;reserved:string;actual:string}>(sql`select root_id::text as root,state,reserved_nanos::text as reserved,confirmed_nanos::text as actual from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid and capability_digest=${fixture.capability} order by run_id`);expect(runs).toHaveLength(2);expect(new Set(runs.map(row=>row.root))).toEqual(new Set([tasks[0].id]));for(const row of runs)expect(row).toMatchObject({state:'confirmed',reserved:fixture.reserved,actual:kind==='free'?'0':'18000'});
+  const runs=await owner.db.execute<{root:string;state:string;reserved:string;actual:string}>(sql`select root_id::text as root,state,reserved_nanos::text as reserved,confirmed_nanos::text as actual from app.ai_spend_reservation where tenant_id=${base.tenantId}::uuid and capability_digest=${fixture.capability} order by run_id`);expect(runs).toHaveLength(1);expect(new Set(runs.map(row=>row.root))).toEqual(new Set([tasks[0].id]));for(const row of runs)expect(row).toMatchObject({state:'confirmed',reserved:fixture.reserved,actual:kind==='free'?'0':'18000'});
  });
 });
