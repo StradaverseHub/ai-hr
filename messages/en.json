@@ -19882,7 +19882,7 @@
         "invalid": "Check the profile values or reopen the latest version before continuing.",
         "section": "Profile section",
         "sharedNote": "These details belong to the person and are shared across their employments. This updates that shared profile.",
-        "maritalStatusProvenance": "This marital status change clears any link to the approved profile request that previously set it.",
+        "maritalStatusProvenance": "This marital status change clears any link to the approved marriage leave request that previously set it.",
         "consequence": "This saves the reviewed profile section. It does not change employment terms, pay or access, or run payroll.",
         "doneMessage": "The profile section was updated.",
         "sections": {

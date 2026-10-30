@@ -19882,7 +19882,7 @@
         "invalid": "Kiểm tra các giá trị hoặc mở lại phiên bản mới nhất trước khi tiếp tục.",
         "section": "Phần hồ sơ",
         "sharedNote": "Các chi tiết này thuộc về cá nhân và được dùng chung cho mọi quan hệ việc làm của họ. Thao tác này cập nhật hồ sơ dùng chung đó.",
-        "maritalStatusProvenance": "Thay đổi tình trạng hôn nhân này sẽ xóa mọi liên kết tới yêu cầu hồ sơ đã được phê duyệt từng thiết lập trạng thái đó.",
+        "maritalStatusProvenance": "Thay đổi tình trạng hôn nhân này sẽ xóa mọi liên kết tới đơn nghỉ kết hôn đã được phê duyệt từng thiết lập trạng thái đó.",
         "consequence": "Thao tác này lưu phần hồ sơ đã xem lại. Không thay đổi điều kiện làm việc, lương hoặc quyền truy cập và không chạy bảng lương.",
         "doneMessage": "Đã cập nhật phần hồ sơ.",
         "sections": {

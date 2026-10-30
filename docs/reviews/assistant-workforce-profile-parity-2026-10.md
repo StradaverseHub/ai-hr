@@ -20,7 +20,7 @@ The SQL owner is `app.access_workforce_maintain_record` in migration0579. It loc
 selected employment and the real shared Person, enforces `expectedVersion` against that Person's xmin,
 normalizes only the finite command fields, writes one exact private intent and appends `person.updated`
 with `via='workforce-maintenance'` and field NAMES only. Personal marital-status changes retain the
-native clearing of its old source-request cause. When canonical personal before/after values change marital status, the review explains this provenance consequence in all six locales without exposing a request ID. Unchanged marital status and other sections show no such note. This package does not calculate pay, reproject benefits,
+native clearing of its old approved marriage-leave source-request cause (migration0485); it does not refer to a profile-change proposal. When canonical personal before/after values change marital status, the review explains this provenance consequence in all six locales without exposing a request ID. Unchanged marital status and other sections show no such note. This package does not calculate pay, reproject benefits,
 change access or introduce a separate HR fact owner. Register kinds are not executed by its preview.
 
 The exported `saveWorkforceRecordAction` ALSO reaches qualification/emergency/dependent commands. Its
