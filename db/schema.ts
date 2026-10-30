@@ -11613,3 +11613,19 @@ export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{
  companyId:uuid('company_id').notNull().references(()=>company.id),grade:text('grade'),employmentType:text('employment_type'),hiredOn:date('hired_on').notNull(),joinDate:date('join_date'),documentMetadata:jsonb('document_metadata').notNull().$type<Record<string,unknown>>(),
  recordedBy:uuid('recorded_by').notNull().references(()=>appUser.id),recordedAt:createdAt(),
 });
+
+/** Append-only input corrections; these never own payslip money or replace payroll snapshots. */
+export const payrollTaxBasisPreview=pgTable('payroll_tax_basis_preview',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),createdBy:uuid('created_by').notNull().references(()=>appUser.id),
+ preview:jsonb('preview').notNull().$type<import('../lib/payroll-tax-basis').TaxBasisPreview>(),selection:jsonb('selection').notNull().$type<import('../lib/payroll-tax-basis').TaxBasisSelection>(),
+ previewHash:text('preview_hash').notNull(),expiresAt:timestamp('expires_at',{withTimezone:true}).notNull(),createdAt:createdAt(),
+});
+export const payrollTaxBasisBatch=pgTable('payroll_tax_basis_batch',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),previewId:uuid('preview_id').notNull().references(()=>payrollTaxBasisPreview.id),createdBy:uuid('created_by').notNull().references(()=>appUser.id),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_tax_basis_batch_preview_id_key').on(t.previewId)]);
+export const payrollTaxBasisEvent=pgTable('payroll_tax_basis_event',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),batchId:uuid('batch_id').notNull().references(()=>payrollTaxBasisBatch.id),employmentId:uuid('employment_id').references(()=>employment.id),actorId:uuid('actor_id').notNull().references(()=>appUser.id),kind:text('kind').notNull(),detail:jsonb('detail').notNull(),createdAt:createdAt(),
+});
+export const payrollTaxBasisRevision=pgTable('payroll_tax_basis_revision',{
+ id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),payslipId:uuid('payslip_id').notNull().references(()=>payslip.id),period:text('period').notNull(),sourceHash:text('source_hash').notNull(),ordinal:integer('ordinal').notNull(),batchId:uuid('batch_id').notNull().references(()=>payrollTaxBasisBatch.id),basis:jsonb('basis').notNull().$type<import('../lib/payroll-tax-basis').TaxBasisValue>(),supersedes:uuid('supersedes').array().notNull().default(sql`'{}'::uuid[]`),createdAt:createdAt(),
+},t=>[uniqueIndex('payroll_tax_basis_revision_payslip_id_ordinal_key').on(t.payslipId,t.ordinal),uniqueIndex('payroll_tax_basis_revision_batch_id_payslip_id_key').on(t.batchId,t.payslipId)]);

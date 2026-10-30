@@ -51,7 +51,7 @@ function checkWorkbook(bytes:Buffer){
  }
  if(position!==offset+size)fail('The workbook archive directory is invalid.');
 }
-async function parseSource(name:string,bytes:Buffer):Promise<PayrollHistoryRecord[]>{
+export async function parsePayrollHistorySource(name:string,bytes:Buffer):Promise<PayrollHistoryRecord[]>{
  if(bytes.length>10485760)fail('Choose a file no larger than 10 MB.');
  let text:string;
  if(/\.xlsx?$/i.test(name)){
@@ -236,7 +236,7 @@ export async function previewPayrollHistoryUpload(ctx:SessionContext,input:{name
  if(input.content.length>10485760)fail('Choose a file no larger than 10 MB.');
  const sourceHash=hash(input.content),operationKey=input.operationKey&&uuid.test(input.operationKey)?input.operationKey:randomUUID();
  let records:PayrollHistoryRecord[]=[],parseError:string|undefined;
- try{records=await parseSource(name,input.content);}catch(error){parseError=error instanceof PayrollHistoryRevisionError?error.message:'This source file could not be read.';}
+ try{records=await parsePayrollHistorySource(name,input.content);}catch(error){parseError=error instanceof PayrollHistoryRevisionError?error.message:'This source file could not be read.';}
  return withTenant(ctx,async tx=>{
   await lockPayrollHistoryReadTx(tx,ctx.tenantId);await principal(tx,ctx);
   const [prior]=await tx.select({id:attempt.id,sourceHash:attempt.sourceHash,plan:attempt.plan}).from(attempt).where(and(eq(attempt.createdBy,ctx.userId!),eq(attempt.operationKey,operationKey)));
@@ -281,7 +281,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:{atte
   const employmentIds=[...new Set(source.plan.rows.map(row=>row.employmentId).filter(Boolean))].sort(),cycleIds=[...new Set(source.plan.rows.map(row=>row.cycleId).filter(Boolean))].sort();
   if(employmentIds.length)await tx.select({id:employment.id}).from(employment).where(inArray(employment.id,employmentIds)).orderBy(asc(employment.id)).for('share');
   if(cycleIds.length)await tx.select({id:payrollCycle.id}).from(payrollCycle).where(inArray(payrollCycle.id,cycleIds)).orderBy(asc(payrollCycle.id)).for('share');
-  const fresh=await planRows(tx,ctx,await parseSource(source.sourceName,source.sourceContent),source.sourceHash);
+  const fresh=await planRows(tx,ctx,await parsePayrollHistorySource(source.sourceName,source.sourceContent),source.sourceHash);
   if(fresh.previewHash!==source.plan.previewHash||fresh.counts.invalid)fail('The source, master data, permissions or target revisions changed. Validate a new attempt.');
   const changes:HistoryRevisionChange[]=[];
   const groups=new Map<string,HistoryRevisionRow[]>();

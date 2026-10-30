@@ -1342,6 +1342,9 @@ export function statutory(
     socsoWageDeduction?: number;
     /** Deduction money to take OUT of the PCB remuneration base (item ticked "subject to PCB"). */
     pcbWageDeduction?: number;
+    /** Explicit reviewed history basis; affects PCB alone, never cash/EPF/SOCSO/EIS/HRDF. */
+    pcbCashNormalOverride?: number;
+    pcbAdditionalOverride?: number;
     /** PCB-only taxable normal remuneration; never an agency/cash wage. */
     pcbNonCashNormal?: NonCashAmounts;
   },
@@ -1373,7 +1376,10 @@ export function statutory(
   );
   /** The cash remuneration PCB is charged on. Identical to `cashWage` unless a ticked deduction says
    *  some of that wage was never earned this month (unpaid leave / absence / short notice). */
-  const pcbCashWage = Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
+  for (const override of [opts?.pcbCashNormalOverride,opts?.pcbAdditionalOverride])
+    if (override!==undefined && (!Number.isFinite(override)||override<0)) throw new StatutoryRulesetMalformedError('Invalid reviewed PCB remuneration basis');
+  const pcbCashWage = opts?.pcbCashNormalOverride ?? Math.max(0, round2(cashWage - Math.max(0, opts?.pcbWageDeduction ?? 0)));
+  const pcbAdditional = opts?.pcbAdditionalOverride ?? additional;
   const benefit = opts?.pcbNonCashNormal;
   if (benefit && (![benefit.bik,benefit.vola].every(n=>Number.isFinite(n)&&n>=0))) throw new StatutoryRulesetMalformedError('Invalid PCB non-cash normal remuneration');
   const pcbWage = round2(pcbCashWage + (benefit?.bik ?? 0) + (benefit?.vola ?? 0));
@@ -1418,8 +1424,8 @@ export function statutory(
   const flatRate = scheme === 'non_resident' || (opts?.calculationScheme == null && opts?.flatTaxRate === 0.3) ? 0.3 : null;
   if (flatRate != null) {
     // Non-resident MTD, spec §D.a: taxable remuneration × 30%, without resident reliefs.
-    const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + additional) * flatRate)));
-    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(additional * flatRate)));
+    const pcbAll = rm10Floor(ceil5sen(trunc2((pcbWage + pcbAdditional) * flatRate)));
+    const pcbBonusOnly = rm10Floor(ceil5sen(trunc2(pcbAdditional * flatRate)));
     return {
       epfEmployee: e.employee,
       epfEmployer: e.employer,
@@ -1444,7 +1450,7 @@ export function statutory(
         nonResident: flatRate === 0.3,
         flatRate,
         rate: flatRate,
-        trace: { remuneration: pcbWage, additional, rate: flatRate },
+        trace: { remuneration: pcbWage, additional:pcbAdditional, rate: flatRate },
       },
       version: rules.version,
     };
@@ -1460,7 +1466,7 @@ export function statutory(
     month: pcbCtx?.month ?? 1,
     profile,
     acc: pcbCtx?.acc,
-    additional,
+    additional: pcbAdditional,
     epfOnAdditional: epfOnBonus,
     lpCurrent: pcbCtx?.lpCurrent,
     zakatCurrent: pcbCtx?.zakatCurrent,

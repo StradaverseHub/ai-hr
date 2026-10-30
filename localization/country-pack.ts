@@ -492,6 +492,7 @@ export interface CountryPack {
      * they were two copies and the copy drifted twice. See the function's header in my/payroll.ts.
      */
     foldPriorSlipIntoAccumulators: MyPayrollModule['foldPriorSlipIntoAccumulators'];
+    replayTaxBasis: typeof import('./my/tax-basis-replay').replayMyTaxBasis;
     /** r356 — its twin: the year's opening balances from a previous employer's TP3, on the seam for the
      *  same reason. */
     openingAccumulatorsFromTp3: MyPayrollModule['openingAccumulatorsFromTp3'];

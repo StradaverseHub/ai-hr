@@ -411,3 +411,14 @@ fresh exact-SHA full gate. Its older focused/full-gate evidence stays tied to th
 Other unapplied lower-timestamp claims likewise require a fresh coordinated append above the actual
 installed watermark before their own release. V9's eight drafts remain unallocated. This allocation
 grants no production deployment or human staging acceptance.
+
+## Historical income-tax basis corrections — 30 October 2026
+
+Unapplied reservation for approved feedback929ea296, owned by codex/taxable-income-recalc-20261030.
+Fresh canonical main/alpha d6cb83d62 ends at idx693/when1793330000063. An independent scan
+of1997 local/origin refs,252 unique journal blobs and501 registered worktrees found claims
+through0736 and1793330000073. Staging's read-only watermark was571 rows/max1793330000051.
+Append0737_payroll_tax_basis_corrections at idx694 on this branch, when1793330000074.
+The parent Movement0729 reservation at1793330000066 remains owned separately; this reservation
+does not waive integration of earlier allocated predecessors or authorize installation. Reconcile
+journal position and all intervening claims at source freeze without changing applied bytes.

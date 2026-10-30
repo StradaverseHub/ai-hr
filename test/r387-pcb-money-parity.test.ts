@@ -60,7 +60,9 @@ describe('r387 complete monetary parity against original calculation',()=>{
     const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batch.batchId));
     const row=slips.find(x=>x.employmentId===e.employmentId);expect(row).toBeTruthy();
     const {id,batchId,tenantId,employmentId,createdAt,...saved}=row!;
-    const {pcbExemptions,...statutory}=saved.statutory as any;
+    const {pcbExemptions,taxBasisOpeningExemptionYear,taxBasisOpeningExemptionUsed,...statutory}=saved.statutory as any;
+    expect(taxBasisOpeningExemptionYear).toBe(year);
+    expect(taxBasisOpeningExemptionUsed).toEqual({PCB_TRA_BUSINESS:5950});
     snapshots.push(normalized({...saved,statutory}));
   }
   if(process.env.R387_WRITE_BASELINE){writeFileSync(process.env.R387_WRITE_BASELINE,JSON.stringify(snapshots,null,2)+'\n');}
