@@ -1022,7 +1022,13 @@ export async function markRunsAffectedByPayComponent(
   ctx: SessionContext,
   p: { componentId: string; code: string },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
-  return withTenant(ctx, async (tx) => {
+  return withTenant(ctx,tx=>markRunsAffectedByPayComponentTx(tx,ctx,p));
+}
+
+/** Same native stale-marker owner for a caller already holding the calculation configuration transaction. */
+export async function markRunsAffectedByPayComponentTx(
+  tx:Tx,ctx:SessionContext,p:{componentId:string;code:string},
+):Promise<{batchId:string;employmentIds:string[]}[]> {
     const open = await tx
       .select({ id: payrollBatch.id })
       .from(payrollBatch)
@@ -1083,7 +1089,6 @@ export async function markRunsAffectedByPayComponent(
       marked.push({ batchId, employmentIds });
     }
     return marked;
-  });
 }
 
 /**

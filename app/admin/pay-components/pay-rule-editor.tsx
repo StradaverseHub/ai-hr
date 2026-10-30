@@ -430,8 +430,10 @@ export function PayRuleEditor({
           <Field label={t('builderFormula')}><select value={formulaId} onChange={e=>setFormulaId(e.target.value)} className={inputCls} required><option value="">{t('builderNoFormula')}</option>{initialRule?.kind==='formula_builder'&&!activeFormulas.some(f=>f.formulaId===initialRule.formulaId)&&<option value={initialRule.formulaId}>{initialRule.formulaId}</option>}{activeFormulas.map(f=><option key={f.formulaId} value={f.formulaId}>{f.formulaId} — {f.description}</option>)}</select></Field>
 
         </>}
+        <details className="rounded-lg border border-border p-3 sm:col-span-3" open={kind==='formula_builder'||undefined}><summary className="cursor-pointer text-sm font-medium">{t('builderManage')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-3">
           {(['ordinaryRate','hoursPerDay','rate'] as const).map(key=><Field key={key} label={t(key==='ordinaryRate'?'builderOrdinaryRate':key==='hoursPerDay'?'builderHoursPerDay':'builderRate')}><input name={key==='ordinaryRate'?'formulaOrdinaryRate':key==='hoursPerDay'?'formulaHoursPerDay':'formulaRate'} type="text" inputMode="decimal" value={builderContext[key]??''} onChange={e=>setBuilderContext(v=>({...v,[key]:e.target.value}))} className={inputCls}/></Field>)}
           <p className="text-xs text-muted-foreground sm:col-span-3">{t('builderContextHint')} <Link href="/payroll/formula-builder" className="underline">{t('builderManage')}</Link></p>
+        </div></details>
         {kind === 'percent_of' && (
           <>
             <Field label={t('pctLabel')}>
