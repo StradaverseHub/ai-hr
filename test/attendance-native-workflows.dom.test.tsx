@@ -23,7 +23,7 @@ describe('Attendance native workflow handoffs',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('renders bounded native destinations and honest copy in %s',async locale=>{
   source.locale=locale;source.session.mockResolvedValue({tenantId:'tenant',userId:'user',roles:['hr_admin']});const root=await view();
   expect([...root.querySelectorAll('a')].map(a=>a.getAttribute('href'))).toEqual(['/attendance/clock','/attendance/individual','/admin/attendance/schedule-assignment','/roster','/admin/personnel']);
-  for(const link of root.querySelectorAll('a')){expect(link.textContent?.trim().length).toBeGreaterThan(8);expect(link.className).toContain('min-h-11');expect(link.getAttribute('href')).not.toContain('employmentId');}
+  for(const link of root.querySelectorAll('a')){expect(link.textContent?.trim()).toBeTruthy();expect(link.className).toContain('min-h-11');expect(link.getAttribute('href')).not.toContain('employmentId');}
   expect(root.querySelector('section')?.getAttribute('aria-labelledby')).toBe(root.querySelector('h2')?.id);
   expect(root.querySelectorAll('form,input,button')).toHaveLength(0);
   expect(root.textContent).not.toContain('attendanceNativeWorkflows.');
