@@ -7,6 +7,6 @@ export type NativeInsightOutline=Readonly<{operation:'native_outline_selection';
 export function nativeParagraphOutline(text:string,kind:NativeOutlineSection['kind']='summary'):readonly NativeOutlineSection[]{
  if(typeof text!=='string'||!text.trim()||text.length>65536||!NATIVE_OUTLINE_KINDS.includes(kind))throw Error('Invalid native outline paragraph.');
  const pieces:string[]=[];let start=0,quoted=false;
- for(let index=0;index<text.length;index++){const c=text[index];if(c==='“')quoted=true;else if(c==='”')quoted=false;else if(c==='"')quoted=!quoted;if(!quoted&&/[.!?]/.test(c)&&/\s/.test(text[index+1]??'')&&pieces.length<23){const sentence=text.slice(start,index+1).trim();if(sentence)pieces.push(sentence);start=index+1;}}
+ for(let index=0;index<text.length;index++){const c=text[index];if(c==='“')quoted=true;else if(c==='”')quoted=false;else if(c==='"')quoted=!quoted;const end=/[.!?]/.test(c)||(c==='”'||c==='"')&&/[.!?]/.test(text[index-1]??'');if(!quoted&&end&&/\s/.test(text[index+1]??'')&&pieces.length<23){const sentence=text.slice(start,index+1).trim();if(sentence)pieces.push(sentence);start=index+1;}}
  const tail=text.slice(start).trim();if(tail)pieces.push(tail);return Object.freeze(pieces.map((text,index)=>Object.freeze({index,kind,text})));
 }
