@@ -20,7 +20,7 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 let b:Base;
 type Kind='goal'|'cancel'|'preserve'|'replace';
 const group=()=>({...adminCtx(b),grants:[{role:'hr_admin' as const,companyId:null}]});
-const hire=(name:string)=>hireEmployee(group(),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+const hire=(name:string,departmentId=b.deptA)=>hireEmployee(group(),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId,employmentType:'full_time',hiredOn:'2026-01-01'});
 async function login(personId:string,role:'employee'|'manager'):Promise<SessionContext>{const userId=await createAppUser(b.tenantId,personId,role);await grantAssistant(group(),{appUserId:userId});return{...await entitledCtx(b,[role]),userId,personId,grants:[{role,companyId:null}]};}
 type Packet={actionId:string;reviewedDigest:string};
 async function fixture(kind:Kind){
@@ -98,13 +98,13 @@ for(const completed of [false,true])it(`canonical erasure clears sensitive proof
  const events=await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.eventType,'pii.erased'));expect(events.length).toBeGreaterThan(0);
 });
 it('documents the genuine functional-partner native-positive and bounded Assistant-negative goal door',async()=>{
- const a=await fixture('goal'),partner=await hire('Fictional Functional Partner');
+ const a=await fixture('goal'),partner=await hire('Fictional Functional Partner',b.deptB);
  const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:partner.personId}).returning({id:schema.appUser.id});
  await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:b.companyId,role:'performance_comp_partner'});await grantAssistant(group(),{appUserId:u.id});
  const ctx:SessionContext={...await entitledCtx(b,['performance_comp_partner']),userId:u.id,personId:partner.personId,grants:[{role:'performance_comp_partner',companyId:b.companyId}]};
  // Both are genuine managers at the native delegation write-time level. The partner manages a
- // DIFFERENT employee; this creates no administrative visibility of the original goal's subject.
- const separateReport=await hire('Fictional Partner Separate Direct Report');
+ // DIFFERENT employee in sibling deptB, so native HOD visibility does not include the deptA subject.
+ const separateReport=await hire('Fictional Partner Separate Direct Report',b.deptB);
  await setReportingLine(group(),{subordinateEmploymentId:separateReport.employmentId,managerEmploymentId:partner.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
  await setReportingLine(group(),{subordinateEmploymentId:a.manager.employmentId,managerEmploymentId:partner.employmentId,lineType:'delegate',validFrom:'2026-01-01',reason:'Fictional whole-scope stand-in'});
  const scopes=await withTenant(ctx,tx=>tx.execute<{general:boolean;functional:boolean}>(sql`select app.can_see_employment(${a.employee.employmentId}::uuid) as general,app.can_admin_perfcomp_employment(${a.employee.employmentId}::uuid) as functional`));expect(scopes[0]).toEqual({general:false,functional:true});
