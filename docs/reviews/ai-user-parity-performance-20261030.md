@@ -26,3 +26,9 @@ These are handoffs, not new action registry effects or a claim that any review w
 Five focused unit cases authored for native own/leader gates, disabled plans, registry projection, grant/pause refusal, module closure and read errors. Existing specialist section composition tests selected alongside them. Hosted results recorded in the exclusive phase status file; no local tests/compiler/build/DB executed.
 
 No migration required for this slice. Additional mutation slices need per-action native transactional/event seams and shared custody allocation; do not assign migration slots independently. Remaining work: detailed per-command participant/state inventory and reviewed mutation adapters for goals/check-ins/review decisions; this inventory is a first checkpoint, not complete phase parity. No installation, acceptance or release claim.
+
+## Goal approval transactional groundwork
+
+The native approveGoal wrapper now delegates to approveGoalTx, preserving native decision and unconditional subject-ban rules. The transactional source locks the goal, verifies proposed state and returns a private actor-bound content digest. Optional reviewed calls refuse changed goals before any effect. The one native event returns its exact inserted UUID; that UUID is not proof of commit. Existing native callers still receive void and retain their normal wrapper transaction/module gate. No Assistant goal effect is registered or browser-enabled yet.
+
+Focused native lifecycle coverage adds changed-content refusal, effect/event rollback on completion failure, exact event/subject/actor binding and refusal of a second approval. Existing manager/peer, goal lock and lifecycle cases remain selected. Migration allocation for assigned goal review custody is requested only in the exclusive phase status file.
