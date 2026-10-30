@@ -93,6 +93,8 @@ jobs:
       - name: Install frozen source reader dependencies only
         working-directory: source
         run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Check bounded refusal metadata controls
+        run: node --test wrapper/.github/ci/v9-hosted-refusal.test.mjs
       - name: Assess actual authenticated evidence without installation authority
         run: node wrapper/.github/ci/v9-hosted-assessment.mjs
         env:

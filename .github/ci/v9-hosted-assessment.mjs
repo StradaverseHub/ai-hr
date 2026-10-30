@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdirSync,readFileSync,writeFileSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {createHash} from 'node:crypto';
+import {publicRefusal} from './v9-hosted-refusal.mjs';
 const root=resolve(process.env.GITHUB_WORKSPACE),temp=resolve(process.env.RUNNER_TEMP);
 const reader=join(root,'reader'),source=join(root,'source'),wrapper=join(root,'wrapper');
 const output=join(temp,'v9-review-public'),evidence=join(temp,'v9-review-private');
@@ -26,8 +26,9 @@ const refusal={...identity,exitCode:result.status,signal:result.signal,error:res
 if(refusal.assessmentProduced){const proof=JSON.parse(readFileSync(join(evidence,'review-only-assessment.json'),'utf8'));assert(proof.installationEligible===false&&proof.releaseAuthorized===false,'Noninstallable boundary required');refusal.assessment={kind:proof.kind,candidate:proof.candidate,tests:proof.tests,history:proof.history};}
 else {
  const text=result.stderr??'';
- refusal.reason=['Unresolved','Incomplete','Foreign','changed','differs','exceeded','Expired','Missing','timed out'].find(code=>text.includes(code))??'ASSESSMENT_REFUSED';
- refusal.diagnosticSha256=createHash('sha256').update(text).digest('hex');
+ const trackedScripts=[...new Set([reader,source].flatMap(cwd=>execFileSync('git',['ls-files','.github/ci','scripts/improve','lib/system-testing'],{cwd,encoding:'utf8'}).trim().split('\n')))];
+ Object.assign(refusal,publicRefusal(text,trackedScripts));
+ refusal.collectionStage={originalMetadata:existsSync(join(evidence,'original/run.json')),originalDownloads:existsSync(join(evidence,'original/downloads.json')),originalAssessment:existsSync(join(evidence,'original-assessment.json')),focusedMetadata:existsSync(join(evidence,'focused/run.json')),focusedDownloads:existsSync(join(evidence,'focused/downloads.json')),history:existsSync(join(evidence,'history.json'))};
  const bindingsPath=join(evidence,'history-bindings.json');
  if(existsSync(bindingsPath)){
   const bound=new Set(JSON.parse(readFileSync(bindingsPath,'utf8')).map(([runId])=>runId));
