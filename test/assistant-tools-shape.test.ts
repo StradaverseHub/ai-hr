@@ -21,6 +21,7 @@
  * If it fires, open the flagged file and check whether the match is inside a comment before believing it.
  */
 import { readFileSync } from 'node:fs';
+import {ASSISTANT_TOOL_CATALOGUE} from '../lib/ai/assistant-tool-catalogue';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
@@ -142,6 +143,8 @@ describe('ADR-0082 §2.3 — the registry cannot do what it must not do', () => 
 
 describe('ADR-0082 §2.2 mechanic 4 — every tool spec is strict-shaped', () => {
   it('pins the append-only tool prefix and canonical module suffix, IN THIS ORDER', () => {
+    expect(ASSISTANT_TOOLS.map(tool=>tool.spec)).toEqual(ASSISTANT_TOOL_CATALOGUE);
+    ASSISTANT_TOOLS.forEach((tool,index)=>expect(tool.spec).toBe(ASSISTANT_TOOL_CATALOGUE[index]));
     // ORDER IS PINNED, not just membership. `tools` renders before `system` in the cacheable prefix and
     // caching is a PREFIX match, so a reordering silently multiplies the cost of every request while
     // changing no behaviour and failing no other assertion. New tools are APPENDED to this list.

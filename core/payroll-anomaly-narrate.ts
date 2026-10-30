@@ -38,6 +38,8 @@ import { and, eq, isNull,sql } from 'drizzle-orm';
 import { withTenant, type SessionContext,type Tx } from '../db/client';
 import * as schema from '../db/schema';
 import { generateDraft } from '../lib/ai';
+import {preparePrivateAiTask} from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import { digestOf,recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 
@@ -153,9 +155,19 @@ export async function narrateVerdict(
   for (const f of findings) {
     let prose: string;
     try {
-      prose = (
-        await (()=>{const args=Object.freeze({system:SYSTEM,prompt:`Check: ${f.detectorId}\nNumbers: ${factsAsText(f.facts)}`,maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),bound=withAiAdmissionCheck(cfg,'payroll_explanation',async(tx,request)=>{if(request.operation!=='draft'||request.inputDigest!==expectedInput||digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');});return generateDraft(bound,args);})()
-      ).trim();
+      const allowed=['netPay','grossPay','totalDeductions','actual','cap','excess','pcb','attendanceDays','approvedLeaveDays','daysWorked','periodDays','otherEmployments','previous','current','delta','changePct','amount','priorAmount'];
+      const fields=Object.keys(f.facts).filter(key=>allowed.includes(key)&&(typeof f.facts[key]==='number'&&Number.isFinite(f.facts[key])||typeof f.facts[key]==='string'&&/^-?\d+(?:\.\d+)?$/.test(f.facts[key] as string)));
+      if(!fields.length)continue;
+      let expectedInput:string|undefined;
+      const bound=withAiAdmissionCheck(cfg,'payroll_explanation',async(tx,request)=>{if(request.operation!=='draft'||request.inputDigest!==expectedInput||digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');});
+      const task=await preparePrivateAiTask(bound,'payroll_detector_explanation_v1',async tx=>{if(digestOf(await narrationSourceTx(tx,ctx,p.verdictId))!==sourceDigest)throw Error('Current payroll source unavailable.');return {detector:f.detectorId,fields,source:sourceDigest};});
+      try{
+       if(task.operation!=='draft')throw Error('Protected payroll explanation unavailable.');expectedInput=draftInputDigest(task.args as GenerateArgs);
+       const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
+       if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='fields'||!Array.isArray((selected as {fields:unknown}).fields))throw Error('Protected payroll selection unavailable.');
+       const chosen=(selected as {fields:unknown[]}).fields;if(!chosen.length||chosen.length>5||new Set(chosen).size!==chosen.length||chosen.some(key=>typeof key!=='string'||!fields.includes(key)))throw Error('Protected payroll selection unavailable.');
+       prose=chosen.map(key=>`Recorded ${String(key).replace(/([a-z])([A-Z])/g,'$1 $2').toLowerCase()}: ${f.facts[key as string]}.`).join(' ');
+      }finally{task.dispose();}
     } catch {
       // Provider down, timed out, refused. The finding keeps its facts and can be asked again later.
       continue;

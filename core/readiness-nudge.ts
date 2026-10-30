@@ -41,6 +41,8 @@ import { recordDecision, recordProposal } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import { generateDraft } from '../lib/ai';
+import {preparePrivateAiTask} from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 
 /** The audience is resolved from current request permissions and pending submissions (ADR-0111). */
 export type NudgeAudience = 'employee' | 'hr';
@@ -163,15 +165,16 @@ async function draftBody(
 
   let draft = '';
   try {
-    draft = (
-      await generateDraft(cfg, {
-        system: SYSTEM,
-        prompt:
-          `Missing from the record: ${gap.replace(/_/g, ' ')}. ` +
-          `The reader is ${audience === 'employee' ? 'the employee themselves; ask them to submit a correction from My Profile for HR approval, never to apply or approve it' : 'an HR administrator'}.`,
-        maxTokens: 160,
-      })
-    ).trim();
+    const task=await preparePrivateAiTask(cfg,'readiness_message_v1',async()=>({gap,audience}));
+    try{
+      if(task.operation!=='draft')throw Error('Protected reminder operation unavailable.');
+      const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
+      if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='tone'||!['direct','supportive'].includes(String((selected as {tone:unknown}).tone)))throw Error('Protected reminder choice unavailable.');
+      // Model-selected tone never becomes model-authored HR text. Both variants retain the native
+      // missing-gap/action wording and the employee's requirement for human review.
+      draft=fallbackBody(gap,audience);
+      if((selected as {tone:string}).tone==='supportive')draft='Please '+draft.charAt(0).toLowerCase()+draft.slice(1);
+    }finally{task.dispose();}
   } catch {
     // Provider down or refused. Same outcome as no provider: the template goes out.
     return fallbackBody(gap, audience);

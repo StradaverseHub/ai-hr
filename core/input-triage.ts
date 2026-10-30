@@ -3,6 +3,8 @@ import { agentHolds, isAgentContext } from './agent-principal';
 import {withAiAdmissionCheck} from './ai-governance';
 import {bindAiSpendTaskTx} from './ai-spend-task';
 import {draftInputDigest} from '../lib/ai/draft-input';
+/** Current protected variant: native-proven description completeness only. Full private narrative
+ * category/date/subject interpretation remains unavailable; it cannot mark those claims as OK. */
 /**
  * ADR-0084 §2.7 / §3 item 4 — INPUT-SIDE TRIAGE. The largest untouched surface in the product.
  *
@@ -49,6 +51,8 @@ import { withTenant, type SessionContext,type Tx } from '../db/client';
 import { appendEvent } from '../db/events';
 import * as schema from '../db/schema';
 import { generateDraft, redactPII } from '../lib/ai';
+import {preparePrivateAiTask} from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import { digestOf, recordProposal, type Adjudication } from './agent-proposal';
 import { resolveActiveAiConfig } from './ai-config';
 import { settingEnabled } from './entitlements';
@@ -257,7 +261,7 @@ export type TriageRun = {
   disabled: boolean;
   /** Compatibility flag; modelBlockReason distinguishes absence of a provider from admission. */
   notConfigured: boolean;
-  modelBlockReason: 'no_provider' | 'principal_not_admitted' | null;
+  modelBlockReason: 'no_provider' | 'principal_not_admitted' | 'privacy_variant_unavailable' | null;
   /** Pending claims inside the window that have not been triaged before. */
   candidates: number;
   /** Provider calls actually made. */
@@ -391,17 +395,26 @@ export async function triagePendingClaims(ctx: SessionContext): Promise<TriageRu
       amount: Number(c.amount),
       incurredOn: c.incurredOn,
       submittedOn: c.createdAt.toISOString().slice(0, 10),
-      // The employee's own words, minus anything `redactPII` can find. See the file header on why the
-      // description itself cannot be withheld and what that costs.
-      description: redactPII(c.description ?? ''),
+      // The employee's exact words stay local for the deterministic completeness check.
+      description: c.description ?? '', // Local adjudication only; never part of the protected payload.
     };
 
     let raw = '';
+    // Free-form category/date/subject interpretation needs a separate local semantic transform.
+    // A nonempty description is not evidence that a masked narrative is safe or that a claim is OK.
+    if(facts.description.trim().length>=THIN_DESCRIPTION_CHARS){out.modelBlockReason='privacy_variant_unavailable';continue;}
     try {
-      const args=Object.freeze({system:SYSTEM,prompt:claimAsText(facts),maxTokens:MAX_TOKENS}),expectedInput=draftInputDigest(args),expectedSource=digestOf(c);
+      let expectedInput:string|undefined;const expectedSource=digestOf(c);
       const bound=withAiAdmissionCheck(cfg,'claims_triage',async(tx,request)=>{const [current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(request.operation!=='draft'||request.inputDigest!==expectedInput||!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');});
       const rooted=await withTenant(ctx,async tx=>{const[current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');return bindAiSpendTaskTx(tx,ctx,bound,{kind:'claim_request',sourceId:c.id});});
-      raw=await generateDraft(rooted,args);
+      const task=await preparePrivateAiTask(rooted,'claim_detail_triage_v1',async tx=>{const[current]=await pendingClaimAiSourceTx(tx,ctx,since,c.id);if(!current||digestOf(current)!==expectedSource)throw Error('Current claim source unavailable.');return {detail:facts.description.trim()?'brief':'missing',source:expectedSource};});
+      try{
+       if(task.operation!=='draft')throw Error('Protected claim operation unavailable.');expectedInput=draftInputDigest(task.args as GenerateArgs);
+       const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
+       if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='requestDetail'||typeof(selected as {requestDetail:unknown}).requestDetail!=='boolean')throw Error('Protected claim choice unavailable.');
+       if(!(selected as {requestDetail:boolean}).requestDetail)continue;
+       raw=JSON.stringify({verdict:'query',policyRuleId:'claim.detail_insufficient',reason:'Please add enough detail about this expense for a person to review it.'});
+      }finally{task.dispose();}
     } catch {
       // Provider down, timed out, refused. Nothing proposed, nothing recorded; the next pass re-asks
       // because no ledger row was written for this claim.

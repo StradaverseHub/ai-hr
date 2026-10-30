@@ -2,7 +2,8 @@
  * the exact issued provider, source, suite and authorization; no model self-rating or HR data. */
 import {generateDraft} from '../lib/ai';
 import type {ResolvedAiConfig} from '../lib/ai/types';
-import {withAiAdmissionLifecycle,type AiAdmissionLifecycle} from './ai-governance';
+import {withAiAdmissionLifecycle,preparePrivateAiTask,type AiAdmissionLifecycle} from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import {adjudicatePromptReadPlan,capturePromptPlanCandidate,promptCandidateSystem,PROMPT_HOLDOUTS,PROMPT_BASELINE,
  PROMPT_SUITE_DIGEST,PROMPT_INPUT_DIGEST,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
 import {routingDigest} from '../lib/ai/module-agent-routing';
@@ -31,7 +32,8 @@ export async function executePromptHoldout(configuration:unknown,cfg:ResolvedAiC
    // This wrapper accepts only the real server-issued capability and composes all existing checks.
    // Neither a copied raw config nor a posted observation can acquire admission authority.
    const observed=withAiAdmissionLifecycle(cfg,'module_agent_evaluation',{async settled(_tx,event){observation.settled=event;}});
-   text=await generateDraft(observed,Object.freeze({system:promptCandidateSystem(arm==='baseline'?PROMPT_BASELINE:candidate),prompt:fixture.question,maxTokens:384,timeoutMs:15000}));
+   const task=await preparePrivateAiTask(observed,'synthetic_read_plan_v1',async()=>({candidate:arm==='baseline'?PROMPT_BASELINE:candidate,fixtureId:fixture.id}));
+   try{if(task.operation!=='draft')throw Error('Synthetic evaluation operation unavailable.');text=await generateDraft(task.configuration,task.args as GenerateArgs);}finally{task.dispose();}
   }catch{unavailableAttempts++;if(!outcomes.has(key(fixture.id,arm)))outcomes.set(key(fixture.id,arm),{id:fixture.id,arm,state:'unavailable'});break;}
   completedRequests++;let passed=false,securityFailure=false;
   try{const plan=adjudicatePromptReadPlan(text);passed=plan.decision===fixture.decision&&[...plan.modules].sort().join(',')===[...fixture.modules].sort().join(',');if(!passed&&fixture.security)securityFailure=true;}catch{/* Malformed output is refused by the adjudicator and fails quality. */}

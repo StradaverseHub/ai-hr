@@ -1,7 +1,9 @@
 import { sql } from 'drizzle-orm';
 import { assertAiPrincipalTx } from './ai-principal';
 import { resolveEntitlementsTx, isModuleEnabled } from './entitlements';
-import { withAiAdmissionCheck } from './ai-governance';
+import { withAiAdmissionCheck,preparePrivateAiTask } from './ai-governance';
+import {protectedReportColumns} from '../lib/ai/provider-workload-policy';
+import type {GenerateArgs} from '../lib/ai/types';
 import { draftInputDigest } from '../lib/ai/draft-input';
 /**
  * AI Report Designer (ADR-0074, feedback c440b365). DRAFT-ONLY, one-shot. Natural language → the SAME
@@ -10,9 +12,8 @@ import { draftInputDigest } from '../lib/ai/draft-input';
  * Mirrors core/pay-rule-ai.ts line for line:
  *   - short read-tx to resolveActiveAiConfig (null ⇒ feature OFF when unconfigured → typed error → the
  *     UI button simply doesn't light up: the feature FAILS CLOSED when no provider is configured);
- *   - the prompt contains ONLY the closed field catalogue + the admin's sentence through redactPII — NO
- *     employee row data is read for it (schema out, never data). redactPII masks emails, MY IC numbers and
- *     phone-like runs only, so a name the admin types into the request still leaves the tenant;
+ *   - the prompt contains only canonical dataset/column identifiers from a closed local intent;
+ *     descriptions, private filters, names and employee rows stay local;
  *   - generateDraft OUTSIDE any tx, small maxTokens;
  *   - ONE shot: an invalid/unparseable output ⇒ a single typed error (no retry, no 2nd call);
  *   - NEVER writes a report — returns the spec + one-line explanation for the human to review/adjust/save;
@@ -108,7 +109,7 @@ export async function draftReportSpec(
 ): Promise<ReportDraftResult> {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
   if(typeof p?.datasetId!=='string'||typeof p?.description!=='string'||!p.description.trim()||p.description.length>4000)throw new ReportDraftError('invalid_output');
-  p=Object.freeze({datasetId:p.datasetId,description:redactPII(p.description.trim())});
+  p=Object.freeze({datasetId:p.datasetId,description:p.description.trim()});
   // Master uses a company/category-scoped catalogue; the retired global AI catalogue is not a door into it.
   if(p.datasetId==='master')throw new ReportDraftError('forbidden');
   const ds = getDataset(p.datasetId);
@@ -117,17 +118,23 @@ export async function draftReportSpec(
   const cfg=await withTenant(ctx,async tx=>{await assertReportDraftAuthorTx(tx,ctx,p.datasetId);return resolveActiveAiConfig(tx,ctx,'report_insight');});
   if (!cfg) throw new ReportDraftError('not_configured');
 
-  // Only the catalogue for the chosen dataset + the request (emails/IC/phone masked; names are not) leaves
-  // the tenant. No employee rows are read for the prompt.
-  const prompt=JSON.stringify({catalogue:catalogueFor(p.datasetId),untrustedRequest:p.description});
-  const args=Object.freeze({system:SYSTEM,prompt,maxTokens:768}),expected=draftInputDigest(args);
+  // Only an explicit canonical column intent is eligible. Free narrative and filters need a separate
+  // local semantic transform; unknown requests retain the native manual report builder.
+  const requestedColumns=protectedReportColumns(p.description,ds.fields.map(field=>field.id));let expected:string|undefined;
   let authorityUnconfirmed=false;
   const bound=withAiAdmissionCheck(cfg,'report_insight',async(tx,request)=>{
     try{await assertReportDraftAuthorTx(tx,ctx,p.datasetId);}catch(error){authorityUnconfirmed=true;throw error;}
     if(request.operation!=='draft'||request.inputDigest!==expected)throw new ReportDraftError('invalid_output');
   });
   let raw:string;
-  try{raw=await generateDraft(bound,args);}catch(error){
+  try{
+    const task=await preparePrivateAiTask(bound,'authored_report_plan_v1',async tx=>{await assertReportDraftAuthorTx(tx,ctx,p.datasetId);return {dataset:p.datasetId,columns:requestedColumns};});
+    try{if(task.operation!=='draft')throw new ReportDraftError('invalid_output');expected=draftInputDigest(task.args as GenerateArgs);const selected:unknown=JSON.parse(await generateDraft(task.configuration,task.args as GenerateArgs));
+      if(!selected||typeof selected!=='object'||Array.isArray(selected)||Object.keys(selected).join(',')!=='columns'||!Array.isArray((selected as {columns:unknown}).columns))throw new ReportDraftError('invalid_output');
+      const columns=(selected as {columns:unknown[]}).columns;if(columns.length!==requestedColumns.length||new Set(columns).size!==columns.length||columns.some(c=>typeof c!=='string'||!requestedColumns.includes(c)))throw new ReportDraftError('invalid_output');
+      raw=JSON.stringify({spec:{datasetId:p.datasetId,columns},explanation:'Prepared your selected report columns in a suggested reading order. Review the report before saving.',recommendations:{}});
+    }finally{task.dispose();}
+  }catch(error){
     if(!authorityUnconfirmed)try{await withTenant(ctx,tx=>assertReportDraftAuthorTx(tx,ctx,p.datasetId));}catch{authorityUnconfirmed=true;}
     if(authorityUnconfirmed)throw new ReportDraftError('forbidden');throw error;
   }

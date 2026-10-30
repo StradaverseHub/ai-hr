@@ -61,6 +61,8 @@ import { setPayrollInput } from './payroll';
 import { assertCanDecide, assertAssignedWorkPrincipalTx } from './approvals';
 import type {AssignedPersonalTaskMetadata} from '../lib/assigned-work';
 import { generateDraft, redactPII } from '../lib/ai';
+import {preparePrivateAiTask} from './ai-governance';
+import type {GenerateArgs} from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -2971,9 +2973,8 @@ export async function draftManagerReview(
     return {...source,aiCfg};
   });
 
-  // 2) Build the prompt — the employee is referred to generically and peer notes carry no author, but
-  //    free text (self-assessment, goals, peer notes) is sent with only emails/IC/phone runs masked; a
-  //    name written inside it is NOT masked.
+  // 2) Build local source passages. The provider sees only passage kinds, coarse lengths and ordinal
+  //    references; text and human ratings remain inside the authorized native owner.
   const { review, cycle, scale, goals, prior, peers, aiCfg } = gathered;
   const lines: string[] = [
     `Review cycle: ${redactPII(cycle.name)} (${cycle.periodStart} to ${cycle.periodEnd}).`,
@@ -3017,12 +3018,13 @@ export async function draftManagerReview(
     'Do not emit prose, new facts, a final rating, pay decisions or actions.',
     'Select at most 30 passages totalling at most 4000 characters. A person reviews and edits the draft.',
   ].join(' ');
-  const args=Object.freeze({system,prompt:JSON.stringify({untrustedContext:lines,passages:facts.map((text,index)=>({index,text}))}),maxTokens:600});
-  const expectedSource=managerDraftSourceDigest(gathered),expectedInput=draftInputDigest(args);
+  const expectedSource=managerDraftSourceDigest(gathered);let expectedInput:string|undefined;
   const bound=withAiAdmissionCheck(aiCfg,'performance_pm',async(tx,request)=>{
     if(request.operation!=='draft'||request.inputDigest!==expectedInput||managerDraftSourceDigest(await managerReviewDraftSourceTx(tx,ctx,p.reviewId))!==expectedSource)throw new PerfError('Current review source is unavailable.');
   });
-  const raw=await generateDraft(bound,args);
+  const task=await preparePrivateAiTask(bound,'performance_narrative_selection_v1',async tx=>{if(managerDraftSourceDigest(await managerReviewDraftSourceTx(tx,ctx,p.reviewId))!==expectedSource)throw new PerfError('Current review source is unavailable.');return {task:'manager_review',passages:facts.map((text,index)=>({index,kind:text.startsWith('Employee self-assessment:')?'self':text.startsWith('- Strength:')||text.startsWith('- To improve:')?'peer':text.startsWith('Goals ')||text.startsWith('- ')?'goal':'evidence',text}))};});
+  let raw:string;
+  try{if(task.operation!=='draft')throw new PerfError('Protected review operation unavailable.');expectedInput=draftInputDigest(task.args as GenerateArgs);raw=await generateDraft(task.configuration,task.args as GenerateArgs);}finally{task.dispose();}
   const checked=adjudicateNarrative(raw,facts);
   if(!checked.ok)throw new PerfError('AI drafting could not produce a verified draft.');
   const draft=checked.draft;
