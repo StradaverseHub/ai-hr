@@ -2,7 +2,7 @@
  *
  * This file DECLARES, per registry entry, what the owning screen allows each role to do to one fixture
  * subject. It is not a permission model and nothing in the product reads it. The DB harness
- * (test/agent-action-permission-parity.test.ts) runs the owning screen's own admission and service for each
+ * (test/helpers/agent-action-parity-probes.ts, registered by three tracked DB wrappers) runs the owning screen's own admission and service for each
  * role, and the Assistant's offer, prepare and confirm paths for the same role and subject, and requires:
  *   1. the observed screen outcome equals the value declared here (an independent expected value);
  *   2. every agent phase equals the screen outcome, except where a role is listed in `narrowed` (the agent
