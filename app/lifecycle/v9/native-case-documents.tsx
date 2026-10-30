@@ -42,7 +42,7 @@ export function NativeCaseDocuments({ initial, config, actor, writableKeys, user
     </section>
     <PersonnelReview c={c} busy={busy} writableKeys={writableKeys} command={value => void command(value)}/>
     <CaseFiles key={c.id} c={c} config={config} readOnly/>
-    <CaseWorkflows c={c} config={config} busy={busy} command={value=>void command(value)}/>
+    <CaseWorkflows c={c} config={config} busy={busy} command={command}/>
     <CaseEmails c={c} config={config} busy={busy} command={command}/><CaseMailHistory caseId={c.id} mails={c.mails} open={c.state === 'submitted'} busy={busy} command={command}/>
     {document && <dialog className="v9-dialog" aria-label={document.name} ref={dialog} onCancel={() => select(null)}><header><h2>{document.name}</h2><button type="button" className="v9-button" aria-label="Close document" onClick={() => select(null)}><X size={18}/></button></header><CaseDocument key={`${document.id}:${c.revision}`} c={c} document={document} eligibleSignatoryIds={eligibleSignatoryIds} template={config.templates.find(template => template.id === document.templateId)} actor={actor} config={config} users={users} busy={busy} command={command}/></dialog>}
   </div></section>;

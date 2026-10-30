@@ -36,3 +36,5 @@ export const v9OwnEquipmentReceipt: Service['v9OwnEquipmentReceipt'] = async (..
 export const v9PreviewUpdatedEmail: Service['v9PreviewUpdatedEmail'] = async (...args) => (await load()).v9PreviewUpdatedEmail(...args);
 
 export const v9OwnItem: Service['v9OwnItem'] = async (...args) => (await load()).v9OwnItem(...args);
+
+export const v9PreviewWorkflow: Service['v9PreviewWorkflow'] = async (...args) => (await load()).v9PreviewWorkflow(...args);

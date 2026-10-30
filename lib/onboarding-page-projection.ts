@@ -2,11 +2,12 @@ import type {Actor,Case,Config,Facts} from './onboarding-model';
 import {inGroup} from './onboarding-model';
 /** Redact at the service boundary, before any case is serialized into a client component. */
 export function projectJoinerPage(c:Case,config:Config,actor:Actor):Case {
- const sections=actor.sections;if(actor.module||!sections)return c;
+ const sections=actor.sections;
  const result=structuredClone(c);
  if(!actor.hr){for(const key of ['ic','passport','costCentre','finalConfirmationDate','confirmationDate','probationEndDate','provisionalEndOn'] as const){delete result.source[key];delete result.local[key];}}
  const factKeys:Record<string,keyof Facts>={name:'fullName',empNo:'employeeId',joinInput:'joinDate',position:'title',dept:'department',company:'company',group:'businessGroup',supervisor:'supervisor',ta:'gbsTa',email:'email',costCentre:'costCentre',icNo:'ic',passportNo:'passport'};
  for(const field of config.v9CaseFields??[]){if(field.hrOnly&&!actor.hr){const key=factKeys[field.key];if(key){delete result.source[key];delete result.local[key];}if(result.caseValues)delete result.caseValues[field.key];if(field.key==='email')delete result.caseContactEmail;const scalar={hireType:'hiring',replacing:'replacedEmployee',floor:'floor',notes:'notes'} as const;if(field.key in scalar)(result as unknown as Record<string,unknown>)[scalar[field.key as keyof typeof scalar]]='';}}
+ if(actor.module||!sections)return result;
  if(sections.case==='hidden'){
   const identity=(facts:Partial<Facts>)=>Object.fromEntries(Object.entries(facts).filter(([key])=>['fullName','employeeId','joinDate','businessGroup','company','title'].includes(key)));
   result.source=identity(result.source);result.local=identity(result.local);delete result.caseValues;delete result.caseContactEmail;result.hiring='';result.replacedEmployee='';result.floor='';result.deviceType='';result.notes='';result.cancelNote='';result.cancelReason=null;

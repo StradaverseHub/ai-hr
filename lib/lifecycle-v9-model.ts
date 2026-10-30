@@ -586,6 +586,25 @@ export function queueEmail(c: Case, config: Config, emailId: string, env: Enviro
   const held = enqueue(c, config, { id: key, type: 'email', template: emailId, to: 'employee', cc: [] }, key, null, env, test);
   if (held) throw new V9Error(held);
 }
+export function previewWorkflowNotification(c: Case, config: Config, step: Extract<Step,{type:'notify'}>, env: Environment) {
+ const role=Array.isArray(step.to)?step.to[0]:step.to;
+ const target=recipients(c,config,role)[0];
+ const tasks=pendingPre(c).filter(task=>role!=='taskOwners'||task.assignee===target);
+ const values={...env.mergeValues,'owner.name':target?recipientName(target,env):'', 'pending.tasks':tasks.map(task=>`${task.name} (due ${task.dueOn})`).join('\n')};
+ return {subject:merge(step.subject,values,emailSensitiveKeys(config)).text,body:merge(step.body,values,emailSensitiveKeys(config)).text};
+}
+/** A workflow test queues only its message steps to the actor, never advancing a run or employee work. */
+export function testWorkflowMessages(c: Case, config: Config, workflowId: string, env: Environment): void {
+  if (c.state !== 'submitted') throw new V9Error('Only an open case can send a test.', 'conflict');
+  const workflow = config.workflows.find(workflow => workflow.id === workflowId && workflow.module === c.module);
+  if (!workflow) throw new V9Error('Workflow not found.', 'not_found');
+  const messages = workflow.steps.filter((step): step is Extract<Step, {type: 'email' | 'notify'}> => step.type === 'email' || step.type === 'notify');
+  if (!messages.length) throw new V9Error('This workflow has no message to test.');
+  for (const step of messages.slice(0, 1)) {
+    const hold = enqueue(c, config, step, `test:${env.nextId()}`, null, env, true);
+    if (hold) throw new V9Error(hold);
+  }
+}
 /** Source dry run: inspect every step against current data, independent of submission/date eligibility. */
 export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: Pick<Environment, 'today' | 'userName'>): { matches: boolean; lines: { text: string; ok: boolean }[] } {
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];

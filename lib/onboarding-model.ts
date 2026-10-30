@@ -727,6 +727,13 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
         if (patch.caseValues !== undefined) c.caseValues = { ...c.caseValues, ...structuredClone(patch.caseValues) };
         if (patch.caseContactEmail !== undefined) c.caseContactEmail = patch.caseContactEmail;
     }
+    if (!a.hr) {
+        const fieldKeys = { hiring: 'hireType', replacedEmployee: 'replacing', floor: 'floor', notes: 'notes', deviceType: 'deviceType' } as const;
+        for (const [key, fieldKey] of Object.entries(fieldKeys)) {
+            if (patch[key as keyof CasePatch] !== undefined && config.v9CaseFields?.some(field => field.key === fieldKey && field.hrOnly))
+                fail('Company HR access is required for this case field.', 'forbidden');
+        }
+    }
     const priorChecklist = JSON.stringify(matchChecklist(config, c).checklist);
     for (const [key, value] of Object.entries(patch.local ?? {})) {
         if (config.v9CaseFields && value !== effectiveFacts(c)[key as keyof Facts]) fail('This field comes from Personnel Management. Edit it there.');

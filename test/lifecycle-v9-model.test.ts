@@ -505,3 +505,9 @@ it('keeps a document answer mapped from a case merge out of Personnel proposals'
   M.signDocument(c,config,document.id,'employee',{by:environment.actor,at:environment.now,method:'typed',value:'Fictional employee',consent:true},environment);
   expect(c.pmChanges).toEqual([]);expect(document.values.answer).toBe('Document answer');expect(document.mergeValues?.['case.review']).toBe('Original case answer');
 });
+
+it('tests the first workflow message to the current actor without advancing work or copying real CC',()=>{
+ const {c,config,environment}=fixture();const definition=workflow({steps:[{id:'notify',type:'notify',subject:'Hi {employee.name}',body:'For {owner.name}',to:'employee',cc:['supervisor']}]});config.workflows=[definition];
+ const work=JSON.stringify({tasks:c.tasks,items:c.items,runs:c.runs,documents:c.documents});M.testWorkflowMessages(c,config,definition.id,environment);
+ expect(c.mails).toHaveLength(1);expect(c.mails[0]).toMatchObject({to:['hr'],cc:[],test:true,workflowId:null});expect(JSON.stringify({tasks:c.tasks,items:c.items,runs:c.runs,documents:c.documents})).toBe(work);
+});

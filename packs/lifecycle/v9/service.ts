@@ -148,6 +148,19 @@ export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailI
   });
 }
 
+export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, workflowId: string) {
+  workflowId=z.string().min(1).max(120).parse(workflowId);
+  return withLifecycleTenant(ctx, async tx => {
+    const row=await load(tx,ctx,caseId), config=await configTx(tx,ctx);
+    const workflow=config?.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module);
+    if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
+    const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
+    const messages=workflow.steps.flatMap<{id:string;emailId:string|null;name:string;subject:string;body:string}>(step=>step.type==='email'?[{id:step.id,emailId:step.template,...M.previewEmail(c,config,step.template,env)}]:step.type==='notify'?[{id:step.id,emailId:null,name:'Notification',...M.previewWorkflowNotification(c,config,step,env)}]:[]);
+    const documents=workflow.steps.flatMap(step=>step.type==='doc'?[M.generate(c,config,step.template,env)]:[]);
+    return {workflow, messages, documents};
+  });
+}
+
 export type UpdatedEmailPreview={sourceRevision:string;subject:string;body:string;to:string[];cc:string[];documents:{name:string;version:number}[];files:string[]};
 function updatedEmailRevision(c:M.Case,config:M.Config,env:M.Environment,plan:ReturnType<typeof M.updatedDeliveryPlan>):string {
   const documentRef=(id:string)=>{const document=plan.case.documents.find(candidate=>candidate.id===id);return document?{templateId:document.templateId,version:document.version}:null;};
@@ -331,7 +344,7 @@ export type Command = CaseNoteCommand
   | { type: 'emailRetry'; id: string; reason: string }
   | {type:'emailReplace';id:string;reason:string;sourceRevision:string}
   | { type: 'runWorkflows' }
-  | { type: 'retryWorkflow' | 'startWorkflow'; workflowId: string }
+  | { type: 'retryWorkflow' | 'startWorkflow' | 'testWorkflow'; workflowId: string }
   | { type: 'override'; checklist: string }
   | {type:'returnSelections';ids:string[]}
   | { type: 'assign' | 'assignItem'; id: string; userId: string }
@@ -347,6 +360,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('startWorkflow'), workflowId: commandId }).strict(),
+  z.object({ type: z.literal('testWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
   z.object({ type: z.literal('generate'), template: commandId }).strict(),
   z.object({ type: z.literal('emailSend'), emailId: commandId }).strict(), z.object({ type: z.literal('emailTest'), emailId: commandId }).strict(),
@@ -373,7 +387,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
@@ -453,6 +467,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     }
     else if (command.type === 'task') M.completeTask(c, command.id, command.status, command.reason, env);
     else if (command.type === 'generate') M.generate(c, config, command.template, env);
+    else if (command.type === 'testWorkflow') M.testWorkflowMessages(c,config,command.workflowId,env);
     else if (command.type === 'emailSend' || command.type === 'emailTest') M.queueEmail(c, config, command.emailId, env, command.type === 'emailTest');
     else if (command.type === 'emailRetry') {
       const [receipt] = await tx.execute<{ allowed: boolean }>(sql`select app.lc_v9_email_retryable(${c.id}::uuid,${command.id}) as allowed`);
