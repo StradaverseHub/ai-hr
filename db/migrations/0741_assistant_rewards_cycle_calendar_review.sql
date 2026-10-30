@@ -1,11 +1,41 @@
 -- UNAPPLIED PROVISIONAL DEVELOPMENT ONLY. Coordinator idx720 / when1793330000078.
 -- Same encrypted ledger; truthful cycle/company fact owner and native unit entry witness.
-ALTER TABLE app.assistant_own_leave_review
- ADD COLUMN rewards_calendar_unit_id uuid,
- ADD COLUMN rewards_calendar_cycle_id uuid,
- ADD COLUMN rewards_calendar_id uuid,
- ADD COLUMN rewards_calendar_event_id uuid UNIQUE,
- ADD COLUMN rewards_calendar_revision integer CHECK(rewards_calendar_revision>0);
+-- Separate nullable column additions and equivalent validated constraints. The combined ADD
+-- exceeded the hosted memory bound after composition; no predecessor guard is removed or changed.
+-- Report only stored catalogue sizes, never deparse unrelated predecessor expressions here.
+DO $$ DECLARE checks bigint;largest integer;total bigint; BEGIN
+ SELECT count(*),max(pg_column_size(conbin)),sum(pg_column_size(conbin)) INTO checks,largest,total
+ FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c';
+ RAISE NOTICE '0741 DDL start: CHECK count %, largest stored bytes %, total stored bytes %',checks,largest,total;
+END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_unit_id uuid;
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 1/7 complete: unit column';END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_cycle_id uuid;
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 2/7 complete: cycle column';END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_id uuid;
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 3/7 complete: calendar column';END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_event_id uuid;
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 4/7 complete: event column';END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD COLUMN rewards_calendar_revision integer;
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 5/7 complete: revision column';END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_own_leave_review_rewards_calendar_event_id_key UNIQUE (rewards_calendar_event_id);
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 6/7 complete: event uniqueness';END $$;
+--> statement-breakpoint
+ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_own_leave_review_rewards_calendar_revision_check CHECK (rewards_calendar_revision>0);
+--> statement-breakpoint
+DO $$ BEGIN RAISE NOTICE '0741 DDL 7/7 complete: positive revision';END $$;
 --> statement-breakpoint
 INSERT INTO app.assistant_action_kind(id,module,tier_ceiling,category,review_kind) VALUES('rewards.calendar.update','rewards','approve','pay','rewards.calendar.update');
 --> statement-breakpoint
