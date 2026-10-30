@@ -59,8 +59,8 @@ it('hands assigned Leave, claim, attendance and replacement-leave decisions to h
  for(const extra of [{leaveRequestId:'other'},{currentStepId:'other'},{decision:'approved'},{rejectReason:'model reason'},{confirmAssignedDecision:true},{route:'/assistant/approvals?task=other'}])expect(()=>checkedModuleHumanHandoffs('approvals',rows.map(row=>({...row,...extra})))).toThrow();
 });
 
-it('offers only the fixed own Attendance human page without carrying source baselines or work claims',()=>{
- const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.overtime.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
+it('offers fixed Attendance request and Schedule Group review pages without carrying source baselines or work claims',()=>{
+ const rows=moduleHumanActionHandoffs('attendance');expect(rows).toEqual([{module:'attendance',action:'attendance.correction.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.overtime.request',route:'/assistant/attendance',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'},{module:'attendance',action:'attendance.schedule_group.maintain',route:'/assistant/schedule-group',requiresHumanSelection:true,effect:'none',authority:'rechecked_on_review_page'}]);
  for(const extra of [{employmentId:'other'},{baseline:'private'},{clockChanges:{}},{requestedOtMinutes:60},{approved:true},{route:'/assistant/attendance?employee=other'}])expect(()=>checkedModuleHumanHandoffs('attendance',rows.map(row=>({...row,...extra})))).toThrow();
 });
 
