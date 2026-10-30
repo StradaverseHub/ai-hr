@@ -9,9 +9,83 @@ from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest.mock import patch
+import zipfile
 
 spec=importlib.util.spec_from_file_location('resource_lifecycle_subject',Path(__file__).with_name('bank_import_worker_throughput_proof.py'))
 p=importlib.util.module_from_spec(spec);spec.loader.exec_module(p)
+
+def kernel_closure_controls(case):
+    """Nested in the existing scope group: real tiny ZIP/files, no native execution."""
+    def load(name,path):
+        spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
+    directory=Path(__file__).resolve().parent
+    kernel=load('kernel_closure_controls',directory/'ci-bank-import-worker-kernel-cleanup-probe.py')
+    fmt=load('kernel_closure_real_format',directory.parent/'deploy/systemd/bank_import_worker_format.py')
+    package='node_modules/.pnpm/esbuild@0.28.2/node_modules/esbuild'
+    native='node_modules/.pnpm/@esbuild+linux-x64@0.28.2/node_modules/@esbuild/linux-x64'
+    other='node_modules/.pnpm/@esbuild+linux-x64@0.18.20/node_modules/@esbuild/linux-x64'
+    js_binding='node_modules/esbuild';native_binding='node_modules/.pnpm/esbuild@0.28.2/node_modules/@esbuild/linux-x64'
+    meta={'name':'esbuild','version':'0.28.2','main':'lib/main.js','optionalDependencies':{'@esbuild/linux-x64':'0.28.2'}}
+    native_meta={'name':'@esbuild/linux-x64','version':'0.28.2','os':['linux'],'cpu':['x64']}
+    files={'package.json':b'{"name":"fictional-closure"}\n','pnpm-lock.yaml':b'fictional-lock\n','tsconfig.json':b'{}\n','scripts/bank-import-runner.ts':b'// never executed\n','node_modules/tsx/package.json':b'{"name":"tsx"}\n','i18n/config.ts':b'// fictional\n','localization/registry.ts':b'// fictional\n',package+'/package.json':p.canonical(meta),package+'/lib/main.js':b'// never executed esbuild JS\n',package+'/bin/esbuild':b'#!/bin/sh\n# never executed wrapper\n',package+'/node_modules/.bin/esbuild':b'#!/bin/sh\n# unused producer wrapper bytes retained\n',native+'/package.json':p.canonical(native_meta),native+'/bin/esbuild':b'fictional native bytes NEVER executed\n',other+'/package.json':p.canonical({**native_meta,'version':'0.18.20'}),other+'/bin/esbuild':b'unselected older binary NEVER executed\n'}
+    links={js_binding:'.pnpm/esbuild@0.28.2/node_modules/esbuild',native_binding:'../../../@esbuild+linux-x64@0.28.2/node_modules/@esbuild/linux-x64'}
+    def manifest_for(data=files,symlinks=links):
+        rows=[{'path':name,'type':'file','size':len(raw),'sha256':p.digest(raw),'mode':0o755 if name.endswith('/bin/esbuild') or name.endswith('/.bin/esbuild') else 0o644} for name,raw in data.items()]
+        rows += [{'path':name,'type':'symlink','target':target} for name,target in symlinks.items()]
+        parents={ancestor.as_posix() for name in [*data,*symlinks] for ancestor in Path(name).parents if str(ancestor)!='.'}
+        rows += [{'path':name,'type':'directory'} for name in parents]
+        return {'format':2,'kind':'bank-import-worker-package-v2','source':'a'*40,'controllerSource':'b'*40,'producerSha256':'1'*64,'formatSha256':'2'*64,'runtime':fmt.RUNTIME,'packageSha256':p.digest(data['package.json']),'lockSha256':p.digest(data['pnpm-lock.yaml']),'entries':sorted(rows,key=lambda row:row['path'])}
+    with tempfile.TemporaryDirectory(prefix='kernel-closure-controls-') as temporary:
+        root=Path(temporary);archive=root/'packet.zip';manifest=manifest_for()
+        def write_packet(value=manifest,data=files,extra=False,missing=None):
+            with zipfile.ZipFile(archive,'w') as packet:
+                packet.writestr('worker-manifest.json',fmt.canonical(value))
+                for name,raw in data.items():
+                    if name!=missing: packet.writestr('payload/'+name,raw)
+                if extra: packet.writestr('payload/node_modules/foreign',b'foreign')
+        write_packet();plan=kernel.closure_plan(archive,manifest,fmt)
+        chosen={row['path'] for row in plan['entries']}
+        case.assertIn(package+'/node_modules/.bin/esbuild',chosen);case.assertNotIn(other,chosen)
+        destination=root/'valid';destination.mkdir()
+        kernel.materialize_closure(archive,destination,plan,manifest,fmt)
+        case.assertEqual((destination/package/'node_modules/.bin/esbuild').read_bytes(),files[package+'/node_modules/.bin/esbuild'])
+        case.assertEqual(len(kernel.h.auxiliary_contracts(destination,{'entries':plan['entries']})),1)
+        case.assertEqual({path.relative_to(destination).as_posix() for path in destination.rglob('*')},chosen)
+        case.assertEqual(os.readlink(destination/js_binding),links[js_binding])
+        case.assertEqual((destination/native/'bin/esbuild').stat().st_mode&0o777,0o555)
+        # The temp owner restores directory write bits solely for fixture disposal.
+        for path in destination.rglob('*'):
+            if path.is_dir() and not path.is_symlink(): path.chmod(0o700)
+        destination.chmod(0o700)
+        for variant in ['extra-member','missing-member','binary-tamper','metadata-tamper','missing-binding','cycle','escape','extra-package-link','version','dependency','extra-plan','missing-plan','nonempty-destination','byte-cap','entry-cap']:
+            with case.subTest(closure=variant):
+                changed=copy.deepcopy(files);changed_links=dict(links);expected=manifest
+                if variant=='cycle': changed_links[js_binding]='esbuild'
+                if variant=='escape': changed_links[js_binding]='../../outside'
+                if variant=='missing-binding': del changed_links[native_binding]
+                if variant=='extra-package-link': changed_links[package+'/unexpected']='../../../@esbuild+linux-x64@0.18.20/node_modules/@esbuild/linux-x64'
+                if variant=='version': changed[native+'/package.json']=p.canonical({**native_meta,'version':'0.25.12'})
+                if variant=='dependency': changed[package+'/package.json']=p.canonical({**meta,'dependencies':{'unexpected':'1.0.0'}})
+                if variant in ['missing-binding','cycle','escape','extra-package-link','version','dependency']: expected=manifest_for(changed,changed_links)
+                if variant=='binary-tamper': changed[native+'/bin/esbuild']=b'X'+files[native+'/bin/esbuild'][1:]
+                if variant=='metadata-tamper': changed[native+'/package.json']=b'X'+files[native+'/package.json'][1:]
+                write_packet(expected,changed,extra=variant=='extra-member',missing=native+'/bin/esbuild' if variant=='missing-member' else None)
+                target=root/variant;target.mkdir()
+                if variant=='nonempty-destination': (target/'foreign').write_bytes(b'preserve')
+                with case.assertRaises(ValueError):
+                    if variant=='byte-cap':
+                        with patch.object(kernel,'CLOSURE_BYTES',1): kernel.closure_plan(archive,expected,fmt)
+                    elif variant=='entry-cap':
+                        with patch.object(kernel,'CLOSURE_ENTRIES',1): kernel.closure_plan(archive,expected,fmt)
+                    else:
+                        candidate=kernel.closure_plan(archive,expected,fmt)
+                        if variant=='extra-plan': candidate['entries'].append(next(row for row in manifest['entries'] if row['path']==other+'/bin/esbuild'))
+                        if variant=='missing-plan': candidate['entries'].pop()
+                        kernel.materialize_closure(archive,target,candidate,expected,fmt)
+                if variant=='nonempty-destination': case.assertEqual((target/'foreign').read_bytes(),b'preserve')
+                for path in target.rglob('*'):
+                    if path.is_dir() and not path.is_symlink(): path.chmod(0o700)
+                target.chmod(0o700)
 
 @contextmanager
 def fixture():
@@ -42,6 +116,7 @@ class ResourceLifecycle(unittest.TestCase):
         p.check_gate_namespace(Path('/opt/aihr-throughput-123-1-kernel-eof'),'kernel-eof')
         for path,scope in [('/opt/aihr-throughput-123-1-kernel-eof',None),('/opt/aihr-throughput-123-1-kernel-orphan','kernel-eof'),('/tmp/aihr-throughput-123-1-kernel-eof','kernel-eof')]:
             with self.assertRaises(ValueError): p.check_gate_namespace(Path(path),scope)
+        kernel_closure_controls(self)
 
     def test_area_intent_precedes_failed_allocation(self):
         with fixture() as (registry,snapshots,opt,proc):
