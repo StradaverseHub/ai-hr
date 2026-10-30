@@ -5,22 +5,39 @@ ALTER TABLE app.assistant_own_leave_review ADD COLUMN payroll_reopen_batch_id uu
 --> statement-breakpoint
 -- Preserve every predecessor CHECK verbatim for every predecessor action. New kind uses the
 -- same truthful USER/company/run/period binding shape with its OWN named columns.
-DO $$ DECLARE c record;strict_nulls text;newexpr text;
+DO $$ DECLARE c record;strict_nulls text;scope_name text;matches integer;previous text;newexpr text;original jsonb;item record;after_hash text;changed text[];
 BEGIN
- -- Explicit shape: ONLY actor/common lifecycle and the four reopening columns are admitted.
- -- Every other legacy dedicated column is NULL; never copy or constant-fold a predecessor tree.
+ SELECT jsonb_object_agg(conname,encode(sha256(convert_to(conbin::text,'UTF8')),'hex')) INTO original FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c';
+ -- Select the genuine actor-scope CHECK by its column dependency set, BEFORE deparsing any tree.
+ SELECT count(*),min(conname) INTO matches,scope_name FROM pg_constraint q WHERE q.conrelid='app.assistant_own_leave_review'::regclass AND q.contype='c'
+ AND q.conkey @> ARRAY(SELECT attnum FROM pg_attribute WHERE attrelid=q.conrelid AND attname IN('action_kind','person_id','employment_id','company_id','testing_execution_id'))::smallint[]
+ AND NOT (SELECT attnum FROM pg_attribute WHERE attrelid=q.conrelid AND attname='state')=ANY(q.conkey);
+ IF matches<>1 THEN RAISE EXCEPTION '0734 actor scope drift: %',matches;END IF;
+ changed:=ARRAY[scope_name,'assistant_review_kind_columns'];
+ IF EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname='assistant_review_action_kind' AND contype='c') OR NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname='assistant_review_action_kind_registered' AND contype='f' AND confrelid='app.assistant_action_kind'::regclass) OR NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname='assistant_review_kind_columns' AND contype='c') THEN RAISE EXCEPTION '0734 ordered kind schema drift';END IF;
+ FOR c IN SELECT conname,conbin FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND conname=ANY(changed) ORDER BY conname LOOP
+  RAISE NOTICE '0734 target % rawConbinBytes % beforeSHA256 %',c.conname,octet_length(c.conbin::text),original->>c.conname;
+  SELECT pg_get_expr(conbin,conrelid) INTO previous FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=c.conname;
+  newexpr:=CASE WHEN c.conname=scope_name THEN 'employment_id IS NULL AND company_id IS NOT NULL AND testing_execution_id IS NULL AND testing_run_id IS NULL AND testing_event_id IS NULL'
+   WHEN c.conname='assistant_review_kind_columns' THEN 'leave_request_id IS NULL AND submission_event_id IS NULL AND notification_event_id IS NULL AND profile_request_id IS NULL AND profile_requested_event_id IS NULL AND claim_draft_id IS NULL AND claim_saved_event_id IS NULL AND performance_ack_event_id IS NULL'
+   ELSE 'true' END;
+  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
+  EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK(CASE WHEN action_kind=''payroll.reopen'' THEN (%s) ELSE (%s) END)',c.conname,newexpr,previous);
+ END LOOP;
+ IF (SELECT count(*) FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=ANY(changed) AND contype='c')<>2 THEN RAISE EXCEPTION '0734 admission constraint inventory drift';END IF;
+ -- A finite, strict new-kind shape. Every predecessor dedicated column remains forbidden.
  SELECT string_agg(format('%I IS NULL',attname),' AND ' ORDER BY attnum) INTO strict_nulls
  FROM pg_attribute WHERE attrelid='app.assistant_own_leave_review'::regclass AND attnum>0 AND NOT attisdropped
  AND attname NOT IN('action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','payroll_reopen_batch_id','payroll_reopen_period_id','payroll_reopened_event_id','payroll_reopen_person_ids');
- IF strict_nulls IS NULL THEN RAISE EXCEPTION 'Reopening dedicated column inventory unavailable';END IF;
+ IF strict_nulls IS NULL THEN RAISE EXCEPTION '0734 dedicated column inventory unavailable';END IF;
  newexpr:='employment_id IS NULL AND company_id IS NOT NULL AND payroll_reopen_batch_id IS NOT NULL AND payroll_reopen_period_id IS NOT NULL AND ((state=''completed'')=(payroll_reopened_event_id IS NOT NULL)) AND (payroll_reopen_person_ids IS NULL OR array_position(payroll_reopen_person_ids,NULL) IS NULL) AND '||strict_nulls;
- FOR c IN SELECT conname,pg_get_expr(conbin,conrelid) expr FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND contype='c' AND position('action_kind' in pg_get_expr(conbin,conrelid))>0 LOOP
-  EXECUTE format('ALTER TABLE app.assistant_own_leave_review DROP CONSTRAINT %I',c.conname);
-  EXECUTE format('ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT %I CHECK(CASE WHEN action_kind=''payroll.reopen'' THEN (%s) ELSE (%s) END)',c.conname,newexpr,c.expr);
+ EXECUTE 'ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_payroll_reopen_columns CHECK(CASE WHEN action_kind=''payroll.reopen'' THEN ('||newexpr||') ELSE payroll_reopen_batch_id IS NULL AND payroll_reopen_period_id IS NULL AND payroll_reopened_event_id IS NULL AND payroll_reopen_person_ids IS NULL END)';
+ FOR item IN SELECT key,value FROM jsonb_each_text(original) WHERE NOT key=ANY(changed) LOOP
+  SELECT encode(sha256(convert_to(conbin::text,'UTF8')),'hex') INTO after_hash FROM pg_constraint WHERE conrelid='app.assistant_own_leave_review'::regclass AND conname=item.key AND contype='c';
+  IF after_hash IS DISTINCT FROM item.value THEN RAISE EXCEPTION '0734 predecessor changed: %',item.key;END IF;
+  RAISE NOTICE '0734 unchanged CHECK % SHA256 %',item.key,after_hash;
  END LOOP;
 END $$;
---> statement-breakpoint
-ALTER TABLE app.assistant_own_leave_review ADD CONSTRAINT assistant_payroll_reopen_columns CHECK(action_kind='payroll.reopen' OR (payroll_reopen_batch_id IS NULL AND payroll_reopen_period_id IS NULL AND payroll_reopened_event_id IS NULL AND payroll_reopen_person_ids IS NULL));
 --> statement-breakpoint
 CREATE FUNCTION app._assistant_payroll_reopen_review_identity(p_person uuid,p_bind boolean DEFAULT true,p_write boolean DEFAULT true) RETURNS void
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
