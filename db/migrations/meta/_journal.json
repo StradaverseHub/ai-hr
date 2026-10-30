@@ -4061,6 +4061,20 @@
       "when": 1793330000042,
       "tag": "0713_assistant_qualification_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 696,
+      "version": "7",
+      "when": 1793330000044,
+      "tag": "0715_assistant_compensation_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 697,
+      "version": "7",
+      "when": 1793330000045,
+      "tag": "0716_assistant_emergency_contact_maintenance",
+      "breakpoints": true
     }
   ]
 }

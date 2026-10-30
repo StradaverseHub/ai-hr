@@ -5,6 +5,15 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Personnel compensation parity — 30 October 2026 (provisional source claim)
+
+`codex/ai-user-parity-personnel-comp-20261030` reserves
+`0715_assistant_compensation_maintenance`, idx696 / when1793330000044. Position695/0714
+is another personnel package's provisional claim; composition must preserve both claims.
+This is unapplied source only, with no installation priority or deployment authority.
+Re-freeze above the then-live ordered ledger and coordinate competing allocations before integration.
+All previously applied SQL bytes and journal identities remain immutable.
+
 ## Personnel qualification parity — 30 October 2026 (provisional source claim)
 
 `codex/ai-user-parity-personnel-custody-20261030` appends
@@ -393,3 +402,11 @@ Only unapplied AI files are renamed below; their complete SQL bytes, including h
 | 0702_delegated_leave_review_receipts | 0712_delegated_leave_review_receipts | 693 | 1793330000041 | f3c8b4704c1100bc2449b753b470605826e01687a16ac1223dc8115f5b3b25b9 |
 
 The isolated candidate must pass exact-SHA focused ordering and populated568→578 upgrade checks, plus affected source/control/parity checks. Full release gates, deployments, protected-ref movement, GitHub PR merges and Bank/Board releases remain separately authorized actions.
+
+## Emergency contact maintenance parity — provisional 30 October 2026
+
+Source-only claim `0716_assistant_emergency_contact_maintenance`, idx697 / when1793330000045.
+This follows the parent-reserved sibling claims0714–0715; those packages are not silently included here.
+Every number/index/timestamp remains PROVISIONAL until integration freezes above the then-live ordered ledger.
+No installation priority, migration application, protected-ref move or deployment is authorized.
+The action uses the existing encrypted assigned ledger with person-keyed receipts and retains its selected employment binding.

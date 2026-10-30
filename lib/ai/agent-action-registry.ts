@@ -42,7 +42,7 @@ export type AgentActionOwner='personnel'|'organization'|'leave'|'profile'|'knowl
 export type AgentActionPhaseStatus='implemented'|'human_workflow_only'|'pending_adapter';
 export type AgentActionPhase=Readonly<{status:AgentActionPhaseStatus;adapter:string|null;inputSchema:string|null;outputSchema:string|null}>;
 export type AgentActionActor='self'|'assigned_approver'|'hr_admin'|'tenant_admin'|'payroll_admin'|'rewards_admin'|'assigned_tester'|'agent_principal';
-export type AgentActionSubject='own_employment'|'own_user'|'assigned_request'|'other_employment'|'company'|'tenant';
+export type AgentActionSubject='own_employment'|'own_user'|'assigned_request'|'other_employment'|'other_person'|'company'|'tenant';
 export type AgentActionStoreFamily='dedicated'|'generic_own'|'generic_assigned'|'module_action'|'own_leave'|'human_workflow_only';
 export type AgentActionHandoff='review_page'|'native_workflow'|'none';
 export type AgentActionIdempotencyKey='review_action_id'|'import_attempt_version'|'chase_item_stage_cooldown';
@@ -355,6 +355,22 @@ export const AGENT_ACTIONS=Object.freeze([
   idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'entry_point',by:'app/admin/personnel/[employmentId]/actions.ts#reverseMovementEventAction'},evaluationCases:[],
   screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#createMovementEventAction']},review:{route:'/assistant/hr?flow=movement',handoff:'none'},
   store:'generic_assigned',browserOwner:'movementTransfer',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.compensation.maintain',module:'employees',owner:'personnel',service:'core/comp.ts#executeReviewedCompensationCommandTx',contractVersion:1,
+  prepare:{status:'implemented',adapter:'compensation_maintenance_review_v1',inputSchema:'CompensationMaintenance.Human',outputSchema:'CompensationMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'compensation_maintenance_review_v1',inputSchema:'CompensationMaintenance.Confirmation',outputSchema:'CompensationMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'salary_history_changed_not_payroll_generated_approved_or_paid',humanInputs:['employmentId','subjectId','operation','compensationId','fields'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/compensation-maintenance-source.ts#withCompensationMaintenanceSubjectTx'},subject:'other_employment',blastRadius:{max:102,unit:'salary_records_and_existing_payroll_run_markers'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'pay'},reversal:{kind:'entry_point',by:'app/admin/personnel/[employmentId]/actions.ts#supersedeCompensationAction'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/actions.ts#setCompensationAction','app/admin/personnel/[employmentId]/actions.ts#editCompensationAction','app/admin/personnel/[employmentId]/actions.ts#supersedeCompensationAction']},review:{route:'/assistant/compensation',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'compensationMaintenance',pauseKey:'hr_assistant'}),
+ defineAgentAction({id:'employees.emergency_contact.maintain',module:'employees',owner:'personnel',service:'core/workforce-registers.ts#addEmergencyContact',contractVersion:1,
+  prepare:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Human',outputSchema:'EmergencyContactMaintenance.Prepared'},
+  confirm:{status:'implemented',adapter:'emergency_contact_maintenance_review_v1',inputSchema:'EmergencyContactMaintenance.Confirmation',outputSchema:'EmergencyContactMaintenance.Completed'},
+  outcome:'canonical_receipt_required',semantics:'shared_person_emergency_register_changed_not_employment_or_pay',humanInputs:['employmentId','subjectId','operation','contactId','fields'],
+  permission:{actor:'hr_admin',guard:'core/assistant-actions/emergency-contact-maintenance-source.ts#withEmergencyContactMaintenanceIntervalTx'},subject:'other_person',blastRadius:{max:2,unit:'emergency_contact_and_previous_primary_priority'},
+  idempotencyKey:'review_action_id',policy:{tier:'approve',category:'personnel'},reversal:{kind:'repeat'},evaluationCases:[],
+  screen:{native:'app/admin/personnel/[employmentId]/page.tsx',entryPoints:['app/admin/personnel/[employmentId]/emergency-contact-actions.ts#addEmergencyContactAction','app/admin/personnel/[employmentId]/emergency-contact-actions.ts#editEmergencyContactAction','app/admin/personnel/[employmentId]/emergency-contact-actions.ts#deleteEmergencyContactAction']},review:{route:'/assistant/emergency-contacts',handoff:'review_page'},
+  store:'generic_assigned',browserOwner:'emergencyContactMaintenance',pauseKey:'hr_assistant'}),
  defineAgentAction({id:'employees.qualification.maintain',module:'employees',owner:'personnel',service:'core/workforce-registers.ts#addQualification',contractVersion:1,
   prepare:{status:'implemented',adapter:'qualification_maintenance_review_v1',inputSchema:'QualificationMaintenance.Human',outputSchema:'QualificationMaintenance.Prepared'},
   confirm:{status:'implemented',adapter:'qualification_maintenance_review_v1',inputSchema:'QualificationMaintenance.Confirmation',outputSchema:'QualificationMaintenance.Completed'},

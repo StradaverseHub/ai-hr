@@ -119,12 +119,12 @@ it('actual25 fact cards plus canonical deduplicated handoff allow facts0to24 but
 });
 
 
-it('accepts 25 Personnel fact cards plus two DISTINCT fixed reviews while preserving selector and duplicate guards',()=>{
+it('accepts 25 Personnel fact cards plus registry-owned DISTINCT fixed reviews while preserving selector and duplicate guards',()=>{
  const source={ok:true,module:'employees',data:{rows:Array.from({length:25},()=>({employeeCode:'Fictional staff',company:'Fictional company',hiredOn:'2020-01-01',terminatedOn:null,status:'active'})),truncated:false},humanActions:moduleHumanActionHandoffs('employees')};
  const presentation=presentGroundedToolOutcome('my_module_work',source)!;
- expect(presentation.cards).toHaveLength(27);expect(presentation.cards.slice(25).map(card=>card.href)).toEqual(['/admin/personnel/import','/assistant/qualifications']);
+ expect(presentation.cards).toHaveLength(29);expect(presentation.cards.slice(25).map(card=>card.href)).toEqual(['/admin/personnel/import','/assistant/compensation','/assistant/emergency-contacts','/assistant/qualifications']);
  const current:AssistantAnswerRead[]=[{read:0,presentation,explanations:[]}],plan={version:1,mode:'answer',blocks:[{kind:'fact',read:0,card:24,fact:0}]};
  expect(adjudicateAssistantAnswerPlan(plan,current)).toEqual(plan);
- for(const card of [25,26])expect(()=>adjudicateAssistantAnswerPlan({...plan,blocks:[{...plan.blocks[0],card}]},current)).toThrow();
+ for(const card of [25,26,27,28])expect(()=>adjudicateAssistantAnswerPlan({...plan,blocks:[{...plan.blocks[0],card}]},current)).toThrow();
  expect(()=>adjudicateAssistantAnswerPlan(plan,[{...current[0],presentation:{...presentation,cards:[...presentation.cards.slice(0,26),presentation.cards[25]]}}])).toThrow();
 });

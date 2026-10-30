@@ -4,7 +4,8 @@
  */
 import { and, desc, eq, gt, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
-import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
+import { withPayrollHistoryTenant as withTenant,tryLockPayrollHistoryReadTx } from './payroll-history-lock';
+import {randomUUID} from 'node:crypto';
 import { actorOf, appendEvent, type MovementTag } from '../db/events';
 import {
   appUser,
@@ -488,10 +489,11 @@ export async function updateCompensation(
     /** New effective date (7c7c2f80) — open row only; overlap + closed-period rules apply. */
     validFrom?: string;
   },
+  outerTx?:Tx,
 ) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   p={...p};
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
     const [row] = await tx
       .select()
@@ -648,7 +650,8 @@ export async function updateCompensation(
       await markPayrollRunsForCompensationTx(tx, ctx, { employmentIds: [p.employmentId], category: 'compensation', from });
     }
     return { compensationId: row.id };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /**
@@ -926,4 +929,56 @@ export async function issueLegacyEmployeeCode(
     })
     .returning({ value: tenantCounter.value });
   return { code: `EMP-${String(row.value).padStart(4, '0')}`, number: row.value };
+}
+
+/** Human-reviewed compensation uses the SAME commands and transactional locks as Personnel.
+ * All three writers and payroll stale marking are transaction-local database writes/events. There is
+ * no provider, notification dispatch, outbox or independently committed transaction in this interval. */
+export type ReviewedCompensationCommand=
+ |{operation:'set';input:Parameters<typeof setCompensation>[1]}
+ |{operation:'edit';input:Parameters<typeof updateCompensation>[1]}
+ |{operation:'supersede';input:Parameters<typeof supersedeCompensation>[1]};
+export async function withReviewedCompensationIntervalTx<T>(tx:Tx,ctx:SessionContext,employmentId:string,work:()=>Promise<T>):Promise<T>{
+ await tx.execute(sql`select app.access_workforce_write_lock()`);
+ // Assistant custody already owns Access: never wait for a History writer owning History→Access.
+ await tryLockPayrollHistoryReadTx(tx,ctx.tenantId);await ownCompensationDependenciesTx(tx,ctx,employmentId);
+ return work();
+}
+export type ReviewedCompensationFields={basicSalary:string;currency:string;monthlyAllowance:string;payMode:PayMode;paymentTerm:string;rateAmount:string|null;remarks:string|null;validFrom:string;validTo:string|null;superseded:boolean};
+export type ReviewedCompensationRow={id:string;fields:ReviewedCompensationFields;revision:string};
+export async function reviewedCompensationHistoryTx(tx:Tx,ctx:SessionContext,employmentId:string):Promise<ReviewedCompensationRow[]>{
+ const rows=await tx.execute<{id:string;fields:ReviewedCompensationFields;revision:string}>(sql`select c.id,jsonb_build_object('basicSalary',c.basic_salary::text,'currency',c.currency,'monthlyAllowance',c.monthly_allowance::text,'payMode',c.pay_mode,'paymentTerm',c.payment_term,'rateAmount',c.rate_amount::text,'remarks',c.remarks,'validFrom',c.valid_from,'validTo',c.valid_to,'superseded',c.superseded_at is not null) as fields,c.xmin::text as revision from public.compensation c where c.tenant_id=${ctx.tenantId}::uuid and c.employment_id=${employmentId}::uuid order by c.valid_from,c.id limit 101`);
+ if(rows.length>100)throw Error('Salary history exceeds the bounded review.');return Array.from(rows);
+}
+async function reviewedCompensationPayrollStateTx(tx:Tx,ctx:SessionContext,employmentId:string){
+ // Retain these locks outside the preview savepoint. Status or stale-marker writers cannot replace
+ // the source between preview and actual execution; NOWAIT refuses a busy payroll instead of deadlocking.
+ const rows=await tx.execute<{id:string;period:string;status:string;revision:string;needsRecalc:string|null;employmentIds:string[]|null}>(sql`select b.id,b.pay_period as period,b.status::text,b.xmin::text as revision,b.needs_recalc_at::text as "needsRecalc",b.recalc_employment_ids as "employmentIds" from public.payroll_batch b where b.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from public.payslip p where p.batch_id=b.id and p.tenant_id=b.tenant_id and p.employment_id=${employmentId}::uuid) order by b.id limit 101 for update nowait`);
+ if(rows.length>100)throw Error('Payroll history exceeds the bounded review.');return Array.from(rows);
+}
+export async function executeReviewedCompensationCommandTx(tx:Tx,ctx:SessionContext,command:ReviewedCompensationCommand){
+ const [boundary]=await tx.execute<{sequence:string}>(sql`select coalesce(max(sequence),0)::text as sequence from public.domain_event where tenant_id=${ctx.tenantId}::uuid and subject_employment_id=${command.input.employmentId}::uuid`);
+ const result=command.operation==='set'?await setCompensation(ctx,{...command.input,movement:{type:'salaryAdjustment',groupId:randomUUID()}},tx):command.operation==='edit'?await updateCompensation(ctx,command.input,tx):await supersedeCompensation(ctx,command.input,tx);
+ const eventType=command.operation==='set'?'compensation.set':command.operation==='edit'?'compensation.updated':'compensation.superseded';
+ const events=await tx.execute<{eventId:string}>(sql`select id as "eventId" from public.domain_event where tenant_id=${ctx.tenantId}::uuid and aggregate_type='compensation' and aggregate_id=${result.compensationId}::uuid and event_type=${eventType} and subject_employment_id=${command.input.employmentId}::uuid and actor_type='user' and actor_id=${ctx.userId}::uuid and sequence>${boundary.sequence}::bigint`);
+ // Savepoint previews use a subtransaction xmin. The fresh event boundary identifies the native
+ // command's event here; the ledger completion independently requires outer-transaction xmin proof.
+ if(events.length!==1)throw Error('The salary command produced no unique current transaction receipt.');return{...result,eventId:events[0].eventId};
+}
+export async function previewReviewedCompensationCommandTx(tx:Tx,ctx:SessionContext,command:ReviewedCompensationCommand){
+ return withReviewedCompensationIntervalTx(tx,ctx,command.input.employmentId,async()=>{
+  const before=await reviewedCompensationHistoryTx(tx,ctx,command.input.employmentId),payroll=await reviewedCompensationPayrollStateTx(tx,ctx,command.input.employmentId);
+  await tx.execute(sql`savepoint ai_compensation_native_preview`);
+  try{
+   await executeReviewedCompensationCommandTx(tx,ctx,command);
+   const after=await reviewedCompensationHistoryTx(tx,ctx,command.input.employmentId),afterPayroll=await reviewedCompensationPayrollStateTx(tx,ctx,command.input.employmentId);
+   const recalculationPeriods=[...new Set(afterPayroll.filter(row=>row.revision!==payroll.find(old=>old.id===row.id)?.revision).map(row=>row.period))].sort();
+   const changes=after.filter(row=>{const previous=before.find(old=>old.id===row.id);return !previous||JSON.stringify(previous.fields)!==JSON.stringify(row.fields);}).map(row=>{const previous=before.find(old=>old.id===row.id);return{id:previous?row.id:null,before:previous?.fields??null,after:row.fields};});
+   if(changes.length===0||changes.length>2)throw Error('Salary command exceeds its reviewed history bound.');
+   return{before,payroll,changes,recalculationPeriods};
+  }finally{
+   // Includes native failures: no compensation row/event/payroll marker from preparation can survive.
+   await tx.execute(sql`rollback to savepoint ai_compensation_native_preview`);await tx.execute(sql`release savepoint ai_compensation_native_preview`);
+  }
+ });
 }

@@ -5,7 +5,7 @@
  * their values. No provider, storage, arithmetic, URL, effect, permission or free-prose surface.
  */
 import {JOB_FACT_FIELDS,type JobPresentation} from './module-jobs';
-import {isAgentModuleCode} from './module-agents';
+import {AGENT_MODULE_CODES,isAgentModuleCode} from './module-agents';
 import {moduleHumanActionHandoffs} from './module-human-handoffs';
 import {parseModuleAgentActionNomination,getModuleAgentAction} from './module-agent-actions';
 import {ASSISTANT_PROPOSAL_MODULE,ASSISTANT_PROPOSAL_PROTOCOL,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction,type AssistantProposalHints} from './assistant-action-proposal-hints';
@@ -15,7 +15,9 @@ import {FOLLOWUP_CODES,type FollowupCode} from './module-specialist-followup';
 import {LEAVE_SUMMARY_EXPLAIN_KEYS,type LeaveSummaryExplainKey} from '../leave-summary-explain';
 import {ENTITLEMENT_STATUS_LABEL_KEY,type EntitlementStatus,type EligibilityRuleNotice} from '../entitlement-status';
 
-export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:25,presentationCards:27,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
+// Fixed review routes are registry-owned metadata, never extra selectable HR facts.
+const FACT_CARD_LIMIT=25,MAX_FIXED_REVIEW_ROUTES=Math.max(0,...AGENT_MODULE_CODES.map(module=>new Set(moduleHumanActionHandoffs(module).map(row=>row.route)).size));
+export const ANSWER_PLAN_LIMITS=Object.freeze({bytes:8192,reads:128,blocks:16,cards:FACT_CARD_LIMIT,presentationCards:FACT_CARD_LIMIT+MAX_FIXED_REVIEW_ROUTES,factsPerCard:64,explanationsPerRead:512,textBytes:2000});
 export const ASSISTANT_LEAVE_ELIGIBILITY_CODES=Object.freeze(['not_active','no_rules','no_match','undated_axes'] as const);
 export const ASSISTANT_LEAVE_RULE_STATES=Object.freeze(['matched','in_force','expired','not_yet','table_stopped'] as const satisfies readonly EligibilityRuleNotice['state'][]);
 export type AssistantExplanationCode=`leave_status:${EntitlementStatus}`|`leave_eligibility:${typeof ASSISTANT_LEAVE_ELIGIBILITY_CODES[number]}`|`leave_rule:${typeof ASSISTANT_LEAVE_RULE_STATES[number]}`|`specialist_finding:${SpecialistFinding}`|`specialist_followup:${FollowupCode}`|`leave_summary:${LeaveSummaryExplainKey}`;

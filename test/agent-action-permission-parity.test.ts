@@ -1,3 +1,5 @@
+import {emergencyContactMaintenanceReviews,readEmergencyContactMaintenanceChoices} from '../core/assistant-actions/emergency-contact-maintenance-review-store';
+import {addEmergencyContact} from '../core/workforce-registers';
 /** ADR-0151 §7 "Parity", review R16 (WP8) — the generic per-entry role matrix, driven by the agent action
  * registry through test/helpers/agent-action-parity-matrix.ts.
  *
@@ -43,6 +45,7 @@ import {resolveEntitlementsTx} from '../core/entitlements';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequestTx,applyLeaveAdjustmentBatchTx,grantLeaveCreditRowsTx,requestLeave,cancelOwnLeaveTx,editLeaveRequestTx} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
 import {leaveCancellationReviews,leaveEditReviews,readLeaveChangeChoices} from '../core/assistant-actions/leave-change-review-store';
+import {compensationMaintenanceReviews,readCompensationMaintenanceChoices} from '../core/assistant-actions/compensation-maintenance-review-store';
 import {qualificationMaintenanceReviews,readQualificationMaintenanceChoices} from '../core/assistant-actions/qualification-maintenance-review-store';
 import {addQualification} from '../core/workforce-registers';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews,readLeaveAdjustmentChoices,readMovementTransferChoices,readLeaveCreditChoices} from '../core/assistant-actions/hr-prepared-review-store';
@@ -346,12 +349,23 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   // Its subject is the employment itself: the choices list the employments the caller may request for.
   offered:async(who,item)=>listed(await readOvertimeRequestChoices(who),'employments','employmentId',item.employmentId),
   screen:(tx,who,item)=>requestAttendanceCorrectionTx(tx,who,{employmentId:item.employmentId,date:item.date!,requestedOtMinutes:120,reason:'Fictional release preparation',remark:'Fictional optional note',plannedStartTime:'18:00',plannedEndTime:'20:00'})},
- // HR screens: the server actions call requireAdmin() (isAdmin) before the service. The subject IS the employment.
+ // HR screens call requireAdmin() before the native service. Some registers target the employment;
+ // shared-person registers keep that profile binding while targeting its true person owner.
  'leave.adjustment.apply':{family:'hr_on_employment',store:leaveAdjustmentReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:HR_LEAVE_ADJUSTMENT_ACTION,contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,leaveTypeId:item.leaveTypeId,direction:'add',days:'1.5',effectiveOn:todayInKualaLumpur(),reason:'Fictional correction of a missed carry-forward'}),
   offered:async(who,item)=>listed(await readLeaveAdjustmentChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>applyLeaveAdjustmentBatchTx(tx,who,{targetMode:'individual',employmentIds:[item.employmentId],leaveTypeIds:[item.leaveTypeId],days:1.5,effectiveOn:todayInKualaLumpur(),reason:'Fictional correction of a missed carry-forward'})},
+ 'employees.compensation.maintain':{family:'hr_on_employment',store:compensationMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.employmentId),
+  human:item=>({action:'employees.compensation.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'set',compensationId:null,fields:{basicSalary:'2500.25',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()}}),
+  offered:async(who,item)=>listed(await readCompensationMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>setCompensation(who,{employmentId:item.employmentId,basicSalary:2500.25,currency:'MYR',payMode:'monthly',paymentTerm:'monthly',rateAmount:null,remarks:'Fictional human salary',effectiveFrom:todayInKualaLumpur()},tx)},
+ 'employees.emergency_contact.maintain':{family:'hr_on_employment',store:emergencyContactMaintenanceReviews,screenAdmits:isAdmin,
+  create:async(_w,h)=>itemOf(h,h.person.personId),
+  human:item=>({action:'employees.emergency_contact.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',contactId:null,fields:{fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'}}),
+  offered:async(who,item)=>listed(await readEmergencyContactMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
+  screen:(tx,who,item)=>addEmergencyContact(who,{personId:item.subjectId,fullName:'Fictional Emergency Contact',relationship:null,mobilePhone:'000-FICTIONAL',homePhone:null,address:null,remarks:'Fictional human note',priority:'primary'},tx)},
  'employees.qualification.maintain':{family:'hr_on_employment',store:qualificationMaintenanceReviews,screenAdmits:isAdmin,
   create:async(_w,h)=>itemOf(h,h.person.employmentId),
   human:item=>({action:'employees.qualification.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,operation:'add',qualificationId:null,fields:{qualification:'Bachelor',description:'Fictional human-entered qualification',fromYm:'2018-01',toYm:'2021-12',institute:'Fictional Institute',major:null,graduationDate:'2021-12-15',result:null,isHighest:true}}),
