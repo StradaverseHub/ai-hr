@@ -315,6 +315,13 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await expect(perf.sendReviewMessage(self,reviewId,'setting',conversation.revision,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/unavailable/);
   });
 
+  it('refuses an invented protected starter reference without charging quota or writing a scorecard',async()=>{
+    await owner.db.insert(schema.performanceKpiLibrary).values({tenantId:b.tenantId,companyId:b.companyId,name:'Only eligible starter',template:{title:'Only eligible starter',description:'Native governed definition',category:'Delivery',unit:'units',weightBp:10000,scoring:{mechanism:'A',method:'more',target:100,rates:[80,90,100,110,120]}}});
+    vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);vi.mocked(generateDraft).mockResolvedValue('{"items":[999]}');
+    await expect(perf.sendReviewMessage(self,reviewId,'setting',null,randomUUID(),'Suggest a starter scorecard','starter')).rejects.toThrow(/usable scorecard/);
+    expect(generateDraft).toHaveBeenCalledOnce();expect((await view(self)).kpis).toEqual([]);expect(await owner.db.select().from(schema.assessmentAiUse)).toEqual([]);expect((await owner.db.select().from(schema.agentProposal)).some(row=>row.adjudication==='rejected')).toBe(true);
+  });
+
   it('edits KPI setup from chat through the form writer and rolls back when conversation revision is stale',async()=>{
     const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},moderatorEmploymentId:manager.employmentId}]);
     await prepareMockedSpend('performance_assistant');vi.mocked(resolveActiveAiConfig).mockImplementation(issuedFixtureConfig);
@@ -418,7 +425,7 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(await perf.sendReviewMessage(self,reviewId,'results',null,request,text)).toEqual(result);expect(generateDraft).toHaveBeenCalledOnce();
     const [ledger]=await owner.db.select().from(schema.agentProposal);expect(ledger.proposalType).toBe('performance_draft_command');expect(JSON.stringify(ledger.proposal)).not.toContain(text);
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'kpi_result',id,target:{start:7,end:15},actual:{start:19,end:22},approved:true}]}));
-    const rejected=await perf.sendReviewMessage(self,reviewId,'results',result.revision,randomUUID(),text);expect(rejected.draftUpdated).toBe(false);expect((await view(self)).drafts.find(d=>d.kind==='results')?.revision).toBe(1);
+    const rejected=await perf.sendReviewMessage(self,reviewId,'results',result.revision,randomUUID(),text);expect(rejected.draftUpdated).toBe(false);expect((await view(self)).drafts.find(d=>d.kind==='results')?.revision).toBe(1);expect((await owner.db.select().from(schema.agentProposal)).some(row=>row.adjudication==='rejected')).toBe(true);
     const conversation=await perf.getReviewConversation(self,reviewId,'results');
     vi.mocked(generateDraft).mockResolvedValue(JSON.stringify({commands:[{action:'overall_remark',text:{start:0,end:5}}]}));
     await expect(perf.sendReviewMessage(self,reviewId,'results',0,randomUUID(),'Ready to review.')).rejects.toThrow(/conversation changed/);
