@@ -155,7 +155,7 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
     const workflow=config?.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module);
     if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
     const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
-    const messages=workflow.steps.flatMap<{id:string;emailId:string|null;name:string;subject:string;body:string}>(step=>step.type==='email'?[{id:step.id,emailId:step.template,...M.previewEmail(c,config,step.template,env)}]:step.type==='notify'?[{id:step.id,emailId:null,name:'Notification',...M.previewWorkflowNotification(c,config,step,env)}]:[]);
+    const messages=workflow.steps.flatMap<{id:string;emailId:string|null;name:string;subject:string;body:string}>(step=>step.type==='email'?[{id:step.id,...M.previewEmail(c,config,step.template,env)}]:step.type==='notify'?[{id:step.id,emailId:null,name:'Notification',...M.previewWorkflowNotification(c,config,step,env)}]:[]);
     const documents=workflow.steps.flatMap(step=>step.type==='doc'?[M.generate(c,config,step.template,env)]:[]);
     return {workflow, messages, documents};
   });
