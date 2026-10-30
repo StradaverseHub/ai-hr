@@ -31,7 +31,7 @@ type Row = { id: string; revision: number; company_id: string; data: M.Case; nat
 export type DirectoryUser = { id: string; name: string };
 export type Options = { users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[] };
-export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'items' | 'documents'> & { own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
+export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'documents'> & { items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[] };
 export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -530,7 +530,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       if (item.kind === 'device' && item.sourceId && command.status === 'done' && item.status !== 'done') {
         const assets = await issuedToTx(tx, c.facts.employeeNo, c.facts.company), asset = assets.find(a => a.id === item.sourceId);
         if (!asset) throw new M.V9Error('The asset register changed. Review who holds this device before marking it returned.', 'conflict');
-        await returnAssetTx(tx, ctx, asset.code, { requisitionNumber: c.number });
+        await returnAssetTx(tx, ctx, asset.code, { requisitionNumber: c.number,expectedHolder:{companyId:c.facts.company,employeeNo:c.facts.employeeNo} });
       }
       if (item.nativeSource && command.status === 'done' && item.status !== 'done') await onboardingRecoverHoldingTx(ctx, tx, c.facts.employmentId!, c.facts.company, item.nativeSource, c.id, command.reason);
       if ((item.sourceId || item.nativeSource) && item.status === 'done' && command.status !== 'done') throw new M.V9Error('This recovery is already recorded on its issuing record. Correct that record before reopening the item.');
@@ -696,6 +696,19 @@ export async function v9OwnTask(ctx: SessionContext, input: { caseId: string; re
     if (!result?.employment) throw new M.V9Error('Task not available.', 'not_found');
     await record(tx, ctx, input.caseId, result.employment, 'assignedTaskUpdated');
   });
+}
+/** Only the current assigned providing-team member can update an item, through its issuing owner. */
+export async function v9OwnItem(ctx:SessionContext,input:{caseId:string;revision:number;itemId:string;status:'todo'|'progress'|'done';reason:string}):Promise<void>{
+ input=z.object({caseId:z.string().uuid(),revision:z.number().int().positive(),itemId:commandId,status:z.enum(['todo','progress','done']),reason:reasonText}).strict().parse(input);
+ await withLifecycleTenant(ctx,async tx=>{
+  await lockTx(tx,ctx);await actor(tx,ctx);
+  const [result]=await tx.execute<{scope:{companyId:string;employmentId:string;employeeNo:string;number:string;item:M.Item}}>(sql`select app.lc_v9_assigned_item(${input.caseId}::uuid,${input.revision},${input.itemId}) as scope`);const scope=result.scope,item=scope.item;
+  if(input.status==='done'&&item.status!=='done'){
+   if(item.sourceId){const asset=(await issuedToTx(tx,scope.employeeNo,scope.companyId)).find(asset=>asset.id===item.sourceId);if(!asset)throw new M.V9Error('The asset register changed. Review its holder.','conflict');await returnAssetTx(tx,ctx,asset.code,{requisitionNumber:scope.number,expectedHolder:{companyId:scope.companyId,employeeNo:scope.employeeNo}});}
+   if(item.nativeSource)await onboardingRecoverHoldingTx(ctx,tx,scope.employmentId,scope.companyId,item.nativeSource,input.caseId,input.reason,{revision:input.revision,itemId:input.itemId});
+  }
+  const [written]=await tx.execute<{employment:string}>(sql`select app.lc_v9_fulfil_item(${input.caseId}::uuid,${input.revision},${input.itemId},${input.status},${input.reason}) as employment`);await record(tx,ctx,input.caseId,written.employment,'providingTeamItemUpdated');
+ });
 }
 /** A subject reports a device return; only the providing team/HR records actual recovery. */
 export async function v9ReportOwnReturn(ctx: SessionContext, input: {caseId:string;revision:number;itemId:string;note:string}): Promise<void> {

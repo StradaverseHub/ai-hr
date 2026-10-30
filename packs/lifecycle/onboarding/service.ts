@@ -1335,11 +1335,19 @@ export async function onboardingHoldingsTx(ctx: SessionContext, tx: Tx, employme
     const source = await tx.select().from(cases).where(and(eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).orderBy(asc(cases.id));
     return source.flatMap(row => row.data.requisitions.flatMap(request => request.items.filter(item => !item.recovery && (item.state === 'handed' && !!request.handedAt || item.revokeNeeded)).map(item => ({ caseId: row.id, requestId: request.id, requestNumber: request.number, itemId: item.id, catalogueId:item.catalogueId, name: item.name, kind: item.type, group: item.team }))));
 }
-/** Records HR's confirmed recovery on the issuing owner, in the same transaction as offboarding. */
-export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string) {
-    await holdingAuthorityTx(ctx, tx, companyId);
-    const [exit] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from lc_v9_case c cross join lateral jsonb_array_elements(c.data->'items') i where c.id=${offboardingCaseId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.company_id=${companyId}::uuid and c.employment_id=${employmentId}::uuid and c.module='off' and c.data->>'state'='submitted' and i->'nativeSource'->>'caseId'=${source.caseId} and i->'nativeSource'->>'requestId'=${source.requestId} and i->'nativeSource'->>'itemId'=${source.itemId}) as ok`);
-    if (!exit?.ok) M.fail('The open offboarding case does not contain this issued item.', 'conflict');
+/** Records a confirmed recovery on the issuing owner, in the same transaction as offboarding. */
+export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, employmentId: string, companyId: string, source: Pick<OnboardingHolding, 'caseId' | 'requestId' | 'itemId'>, offboardingCaseId: string, reason: string, assigned?:{revision:number;itemId:string}) {
+    let permitted=false, assignedGroup:string|null=null;
+    if(assigned){
+      const [bound]=await tx.execute<{scope:{companyId:string;employmentId:string;item:{group:string|null;nativeSource?:{caseId:string;requestId:string;itemId:string}}}}>(sql`select app.lc_v9_assigned_item(${offboardingCaseId}::uuid,${assigned.revision},${assigned.itemId}) as scope`);
+      const match=bound.scope.item.nativeSource;permitted=bound.scope.companyId===companyId&&bound.scope.employmentId===employmentId&&!!match&&match.caseId===source.caseId&&match.requestId===source.requestId&&match.itemId===source.itemId;
+      assignedGroup=bound.scope.item.group;
+    }else{
+      await holdingAuthorityTx(ctx, tx, companyId);
+      const [exit] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from lc_v9_case c cross join lateral jsonb_array_elements(c.data->'items') i where c.id=${offboardingCaseId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.company_id=${companyId}::uuid and c.employment_id=${employmentId}::uuid and c.module='off' and c.data->>'state'='submitted' and i->'nativeSource'->>'caseId'=${source.caseId} and i->'nativeSource'->>'requestId'=${source.requestId} and i->'nativeSource'->>'itemId'=${source.itemId}) as ok`);
+      permitted=!!exit?.ok;
+    }
+    if(!permitted)M.fail('The open offboarding case does not contain this issued item.','conflict');
     await lockOnboardingTx(tx, ctx.tenantId);
     const [row] = await tx.select().from(cases).where(and(eq(cases.id, source.caseId), eq(cases.tenantId, ctx.tenantId), eq(cases.companyId, companyId), eq(cases.employmentId, employmentId))).for('update');
     if (!row) M.fail('The issuing onboarding record is no longer linked to this employment.', 'conflict');
@@ -1350,9 +1358,10 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
         M.fail('Another case has already recorded this item recovery.', 'conflict');
     }
     const { config } = await configTx(tx, ctx), actor = await actorTx(tx, ctx, config, companyId), now = new Date().toISOString();
+    if(assigned&&(item.team!==assignedGroup||!M.inGroup(config,item.team,actor.id)))M.fail('The issuing providing team changed. Review the recovery assignment.','conflict');
     item.recovery = { offboardingCaseId, outcome: item.type === 'system' ? 'revoked' : 'returned', at: now, by: actor.id, reason: reason.trim() };
     item.revokeNeeded = false;
-    M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by HR on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);
+    M.log(c, actor, { now, id: randomUUID } as M.Environment, 'holding.' + item.recovery.outcome, `${item.name} · confirmed by ${assigned?'the assigned providing team':'HR'} on offboarding case ${offboardingCaseId}${reason.trim() ? ' · ' + reason.trim() : ''}`);
     await storeTx(tx, ctx, row, c, false);
     await auditTx(tx, ctx, c, 'holding_' + item.recovery.outcome);
 }

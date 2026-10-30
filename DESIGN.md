@@ -157,9 +157,18 @@ Dark Atelier overrides the same semantic variables in app/atelier.css: lifted ne
 
 ## Layout
 
+
 The authenticated shell runs edge to edge. Its rail is 15.5rem and header is 3rem at desktop widths. Main content has 1.75rem top, 2rem horizontal and 2.5rem bottom padding. Below 640px, the gutter is 1rem and the header wraps scope and account controls onto separate rows. Existing page layouts and width contracts remain; Home's operational grid reaches 72rem while its opening sections stay within 53.75rem.
 
 Public sign-in uses a 1.04:1 two-column split, at least one dynamic viewport tall. Each panel has fluid padding; the form is centered within a maximum 28rem column. Below 768px the welcome panel is hidden and a compact AIHR wordmark precedes the form, with 1.5rem side gutters. The built maximum is 28rem (448px at a 16px root), rather than the brief's approximate 440px. This is a surface composition, not the global page grid.
+
+## V9 lifecycle reference override
+
+The V9 onboarding/offboarding workspace and its employee work controls follow the owner's supplied Admin V9 HTML. Its `.v9-workspace` rules take precedence over conflicting Atelier defaults within that surface: Plus Jakarta Sans, indigo `#4f46e5`, ground `#e8ebf2`, white panels, `#d5d9e3` borders, `#1b1d29` text and `#565b6b` secondary text. The layout uses 16px insets/gaps and rounded panels, a 232px navigation column, four case-summary panels and a 280px case aside. Dates display day/month/year while retaining ISO storage and the shared Malaysia business clock.
+
+Employee return declarations and assigned-team recovery confirmation are separate controls. Team confirmation is shown only with a fresh item capability; errors retain the entered note and announce recovery guidance. View-only case groups have disabled fields and no case-action buttons. These visibility rules accompany service and database authorization.
+
+The surface contract is recorded in [.impeccable/surfaces/lifecycle-v9.md](.impeccable/surfaces/lifecycle-v9.md). Current finish verdict: **pending**. Fictional rendered case, group and employee journeys establish working interactions; the original reference-file render remains unavailable, so exact visual parity and final integrated acceptance are not established. No new shipping raster assets are introduced by this surface.
 
 ## Elevation & Depth
 

@@ -202,9 +202,10 @@ export async function issueAssetTx(
 }
 
 /** Mark an Issued asset Returned. The holder is cleared; the history keeps who had it. */
-export async function returnAssetTx(tx: Tx, ctx: SessionContext, code: string, link: { requisitionNumber?: string }): Promise<AssetRow> {
+export async function returnAssetTx(tx: Tx, ctx: SessionContext, code: string, link: { requisitionNumber?: string; expectedHolder?:{companyId:string;employeeNo:string} }): Promise<AssetRow> {
   const a = await loadByCode(tx, code);
   await requireLevel(tx, a.companyId, LEVEL.agent, 'only IT staff receive returned assets');
+  if(link.expectedHolder&&(a.companyId!==link.expectedHolder.companyId||!link.expectedHolder.employeeNo.trim()||a.userEmployeeNo?.toLocaleLowerCase()!==link.expectedHolder.employeeNo.toLocaleLowerCase()))throw new LifecycleError('The asset holder changed. Review the issuing record before returning it.','conflict');
   if (a.status !== 'issued') throw new LifecycleError(`Asset ${code} is not issued, so it cannot be returned.`, 'conflict');
   const [u] = await tx.update(itAsset).set({ status: 'returned', userName: null, userEmployeeNo: null, userDepartment: null, userEmail: null, issuedOn: null }).where(eq(itAsset.id, a.id)).returning();
   await recordChange(tx, ctx, {

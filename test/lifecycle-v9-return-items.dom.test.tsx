@@ -17,3 +17,19 @@ it('does not let assigned colleagues declare the subject’s return or change re
   render(<ReturnItems items={[device,{...device,id:'done',status:'done'},{...device,id:'missing',status:'notReturned'}]} own={false} open busy={false} report={vi.fn()}/>);
   expect(screen.queryByRole('button')).not.toBeInTheDocument();expect(screen.getByText('Returned',{exact:true})).toBeVisible();expect(screen.getByText('Marked not returned')).toBeVisible();
 });
+
+it('shows team confirmation only for a current assigned-item capability and retains rejected work',async()=>{
+  const complete=vi.fn().mockResolvedValueOnce({ok:false,error:'Refresh your assignment.'}).mockResolvedValueOnce({ok:true});
+  render(<ReturnItems items={[{...device,canFulfil:true},{...device,id:'viewer',name:'Read-only item'},{...device,id:'done',status:'done',canFulfil:true}]} own={false} open busy={false} report={vi.fn()} complete={complete}/>);
+  expect(screen.queryByRole('button',{name:'I returned this item'})).not.toBeInTheDocument();
+  expect(screen.getAllByRole('button',{name:/Update return work for/})).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button',{name:'Update return work for Fictional device'}));
+  fireEvent.change(screen.getByRole('combobox',{name:'Work status'}),{target:{value:'done'}});
+  fireEvent.change(screen.getByRole('textbox',{name:'Team recovery note (optional)'}),{target:{value:'Fictional recovery receipt'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save return work'}));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Refresh your assignment.');
+  expect(screen.getByRole('textbox')).toHaveValue('Fictional recovery receipt');
+  fireEvent.click(screen.getByRole('button',{name:'Save return work'}));
+  await waitFor(()=>expect(screen.queryByRole('textbox')).not.toBeInTheDocument());
+  expect(complete).toHaveBeenLastCalledWith('device','done','Fictional recovery receipt');
+});

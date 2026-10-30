@@ -8,7 +8,7 @@ import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
-import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
+import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
@@ -1011,7 +1011,40 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(await withTenant(admin,tx=>onboardingHoldingsTx(admin,tx,active.employmentId,base.companyId))).toHaveLength(2);
   expect(currentReq((await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!.case)!.items.every(item=>!item.recovery)).toBe(true);
   await expect(v9ReportOwnReturn(holder,{caseId:first.id,revision:declared.revision,itemId:device.id,note:'Duplicate'})).rejects.toThrow();
-  for (const item of first.items) {
+  const assigned = first.items[0], workInput={caseId:first.id,revision:declared.revision,itemId:assigned.id,status:'progress' as const,reason:'Fictional provider recovery'};
+  expect((await v9OwnWork(employee)).find(row=>row.id===first.id)?.items).toEqual([expect.objectContaining({id:assigned.id,canFulfil:true})]);
+  expect((await v9OwnWork(holder)).find(row=>row.id===first.id)?.items.every(item=>!item.canFulfil)).toBe(true);
+  await expect(v9CaseDetail(employee,first.id)).rejects.toThrow();
+  await expect(v9OwnItem(holder,workInput)).rejects.toThrow();
+  await expect(v9OwnItem(other,workInput)).rejects.toThrow();
+  await expect(v9OwnItem(employee,{...workInput,itemId:first.items[1].id})).rejects.toThrow();
+  await expect(v9OwnItem(employee,{...workInput,revision:first.revision})).rejects.toThrow();
+  for(const [revision,status] of [[null,'done'],[declared.revision,null],[declared.revision,'notNeeded'],[declared.revision,'done']] as const){
+    await expect(withTenant(employee,tx=>tx.execute(sql`select app.lc_v9_fulfil_item(${first.id}::uuid,${revision},${assigned.id},${status},'')`))).rejects.toThrow();
+  }
+  // A real source-owner update is rolled back with the caller's failed transaction.
+  await expect(withTenant(employee,async tx=>{
+    await onboardingRecoverHoldingTx(employee,tx,active.employmentId,base.companyId,assigned.nativeSource!,first.id,'Fictional rollback',{revision:declared.revision,itemId:assigned.id});
+    throw new Error('Fictional transaction rollback');
+  })).rejects.toThrow('Fictional transaction rollback');
+  expect(currentReq((await onboardingList(admin)).find(row=>row.case.id===joiner.case.id)!.case)!.items.every(item=>!item.recovery)).toBe(true);
+  const revoked=await onboardingContext(admin);revoked.config.groups.find(group=>group.id===assigned.group)!.members=[admin.userId!];await onboardingSaveConfig(admin,revoked.revision,revoked.config);
+  expect((await v9OwnWork(employee)).find(row=>row.id===first.id)?.items[0].canFulfil).toBe(false);
+  await expect(v9OwnItem(employee,workInput)).rejects.toThrow();
+  const restored=await onboardingContext(admin);restored.config.groups.find(group=>group.id===assigned.group)!.members=[admin.userId!,employee.userId!];await onboardingSaveConfig(admin,restored.revision,restored.config);
+  await expect(withTenant({...employee,tenantId:randomUUID()},tx=>tx.execute(sql`select app.lc_v9_assigned_item(${first.id}::uuid,${declared.revision},${assigned.id})`))).rejects.toThrow();
+  await owner.client`update app_user set archived_at=now() where id=${employee.userId}::uuid`;
+  await expect(v9OwnItem(employee,workInput)).rejects.toThrow();
+  await owner.client`update app_user set archived_at=null where id=${employee.userId}::uuid`;
+  await v9OwnItem(employee,workInput);
+  await expect(v9OwnItem(employee,{...workInput,status:'done'})).rejects.toThrow();
+  let fresh=(await v9CaseDetail(admin,first.id)).case;
+  await v9OwnItem(employee,{...workInput,revision:fresh.revision,status:'done'});
+  fresh=(await v9CaseDetail(admin,first.id)).case;
+  expect(fresh.items[0]).toMatchObject({status:'done',reason:workInput.reason});
+  expect(fresh.log.at(-1)).toMatchObject({action:'item.teamUpdated',actor:{id:employee.userId}});
+  await expect(v9OwnItem(employee,{...workInput,revision:fresh.revision,status:'todo'})).rejects.toThrow();
+  for (const item of first.items.slice(1)) {
     expect(item.sourceId).toBeNull(); expect(item.nativeSource).toMatchObject({ caseId: joiner.case.id, requestId: currentReq(joiner.case)!.id });
     const fresh = (await v9CaseDetail(admin, first.id)).case;
     await v9Command(admin, first.id, fresh.revision, { type: 'item', id: item.id, status: 'done', reason: 'HR confirmed the recovery with the fulfilling team.' });
@@ -1023,10 +1056,45 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(currentReq(recovered.case)!.items.map(item => item.recovery?.outcome).sort()).toEqual(['returned', 'revoked']);
   expect(currentReq(recovered.case)!.items.every(item => item.recovery?.offboardingCaseId === first.id)).toBe(true);
   expect(recovered.case.history.filter(event => event.action.startsWith('holding.'))).toHaveLength(2);
+  expect(currentReq(recovered.case)!.handedAt).toBe(receiptItem.handedAt);
+  expect(currentReq(recovered.case)!.items.find(item=>item.id===receiptItem.id)?.employeeReceipt).toMatchObject({status:'received',by:holder.userId});
   const finished = (await v9CaseDetail(admin, first.id)).case;
   await expect(v9Command(admin, first.id, finished.revision, { type: 'item', id: first.items[0].id, status: 'todo', reason: '' })).rejects.toThrow('issuing record');
   await v9Command(admin, first.id, finished.revision, { type: 'cancel', reason: 'Fictional duplicate-case recovery check.' });
+  await expect(v9OwnItem(employee,{...workInput,revision:finished.revision+1,status:'done'})).rejects.toThrow();
   expect((await exit(true)).items).toEqual([]);
+});
+
+it('keeps team asset recovery behind existing IT authority, locked holder checks and atomic issuing history',async()=>{
+  const native=await onboardingContext(admin);native.config.groups.find(group=>group.id===native.config.techGroup)!.members=[employee.userId!];await onboardingSaveConfig(admin,native.revision,native.config);
+  const config=(await v9Workspace(admin)).config!;for(const workflow of config.workflows)workflow.status='draft';await v9SaveConfig(admin,config.revision,config);
+  const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
+  let c=(await v9CaseDetail(admin,id)).case;
+  expect(c.facts.employeeNo).toBeTruthy();
+  const asset=await registerAsset(admin,{companyId:base.companyId,assetType:'laptop',status:'issued',userName:c.facts.name,userEmployeeNo:c.facts.employeeNo});
+  await v9Command(admin,id,c.revision,{type:'submit'});c=(await v9CaseDetail(admin,id)).case;
+  expect(c.items).toHaveLength(1);expect(c.items[0]).toMatchObject({sourceId:asset.id,assignee:employee.userId});
+  const input={caseId:id,revision:c.revision,itemId:c.items[0].id,status:'done' as const,reason:'Fictional desk recovery'};
+  await expect(v9OwnItem(employee,input)).rejects.toThrow();
+  expect((await getAsset(admin,asset.code)).status).toBe('issued');
+  // Test-only IT authority, never a real account grant.
+  await owner.client`insert into lc_staff(tenant_id,user_id,company_id,level) values(${base.tenantId}::uuid,${employee.userId}::uuid,${base.companyId}::uuid,'agent')`;
+  await expect(withTenant(employee,tx=>tx.execute(sql`select app.lc_v9_fulfil_item(${id}::uuid,${c.revision},${input.itemId},'done','')`))).rejects.toThrow();
+  await expect(withTenant(employee,tx=>returnAssetTx(tx,employee,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:'FICTIONAL-WRONG-HOLDER'}}))).rejects.toThrow('holder changed');
+  await expect(withTenant(employee,async tx=>{
+    await returnAssetTx(tx,employee,asset.code,{requisitionNumber:c.number,expectedHolder:{companyId:base.companyId,employeeNo:c.facts.employeeNo}});
+    await tx.execute(sql`select app.lc_v9_fulfil_item(${id}::uuid,${c.revision-1},${input.itemId},'done','')`);
+  })).rejects.toThrow();
+  expect((await getAsset(admin,asset.code)).status).toBe('issued');
+  expect((await assetHistory(admin,asset.code)).filter(event=>event.action==='asset.returned')).toHaveLength(0);
+  await v9OwnItem(employee,input);
+  expect(await getAsset(admin,asset.code)).toMatchObject({status:'returned',userEmployeeNo:null});
+  expect((await assetHistory(admin,asset.code)).filter(event=>event.action==='asset.returned')).toMatchObject([{actorUserId:employee.userId,detail:expect.objectContaining({requisition:c.number})}]);
+  const done=(await v9CaseDetail(admin,id)).case;expect(done.items[0].status).toBe('done');
+  await expect(v9OwnItem(employee,{...input,revision:done.revision,status:'todo'})).rejects.toThrow();
+  await withTenant(admin,tx=>issueAssetTx(tx,admin,asset.code,{name:'Fictional subsequent holder',employeeNo:'V9-ANOTHER',department:null,email:null},{}));
+  await expect(withTenant(employee,tx=>returnAssetTx(tx,employee,asset.code,{expectedHolder:{companyId:base.companyId,employeeNo:c.facts.employeeNo}}))).rejects.toThrow('holder changed');
+  expect(await getAsset(admin,asset.code)).toMatchObject({status:'issued',userEmployeeNo:'V9-ANOTHER'});
 });
 
 it('applies live equipment bulk changes atomically and keeps completed items and group-scoped operators intact', async () => {
