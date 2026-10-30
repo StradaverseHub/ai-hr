@@ -26028,7 +26028,8 @@
       "review_required": "Semakan sumber, identiti atau kecacatan dipautkan diperlukan.",
       "invalid": "Semak medan, hasil dijangka dan keputusan dipilih.",
       "limit": "Had saiz atau rekod disokong telah dilebihi.",
-      "module_unavailable": "System Testing tidak didayakan untuk akaun ini."
+      "module_unavailable": "System Testing tidak didayakan untuk akaun ini.",
+      "feedback_unavailable": "Maklum balas dimatikan untuk akaun ini."
     },
     "updateReasons": {
       "new_reviewed_guide": "Panduan disemak baharu",
@@ -28636,6 +28637,14 @@
     }
   },
   "operatorWorkspace": {
+    "feedbackMenu": "Menu Maklum Balas",
+    "shown": "Dipaparkan",
+    "hidden": "Disembunyikan",
+    "feedbackMenuOnHelp": "Kakitangan pelanggan ini boleh melihat menu Maklum Balas dan menghantar maklum balas. Menyembunyikannya membuang menu dan menutup halaman Maklum Balas; maklum balas sedia ada dikekalkan.",
+    "feedbackMenuOffHelp": "Menu Maklum Balas disembunyikan untuk pelanggan ini dan halamannya ditutup. Maklum balas sedia ada dikekalkan dan muncul semula apabila menu dipaparkan.",
+    "feedbackMenuHide": "Sembunyikan menu Maklum Balas",
+    "feedbackMenuShow": "Paparkan menu Maklum Balas",
+    "feedbackMenuSaved": "Menu Maklum Balas dikemas kini.",
     "workspace": "Ruang kerja operator",
     "customers": "Pelanggan",
     "provisioning": "Penyediaan",

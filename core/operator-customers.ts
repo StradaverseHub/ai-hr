@@ -65,3 +65,14 @@ export async function requestOperatorModuleChange(ctx:SessionContext,input:{tena
   if(input.disposition && (Object.keys(input.disposition).length>10 || Object.values(input.disposition).some(v=>typeof v!=='string'||v.length>1000)))throw new Error('Keep each decision under 1,000 characters.');
   await readable(()=>withTenant(ctx,tx=>tx.execute(sql`select app.operator_request_module_change(${uuid(input.tenantId)}::uuid,${input.moduleCode},${input.action},${input.purchaseReference??null},${JSON.stringify(input.disposition??null)}::jsonb)`)));
 }
+/** Whether this customer's people see the Feedback menu and board (0696). No setting row means on. */
+export async function operatorCustomerFeedbackMenu(ctx:SessionContext,tenantId:string):Promise<boolean> {
+  assertOperator(ctx);
+  const [row]=await readable(()=>withTenant(ctx,tx=>tx.execute<{enabled:boolean}>(sql`select app.operator_customer_feedback_menu(${uuid(tenantId)}::uuid) as enabled`)));
+  return row?.enabled!==false;
+}
+/** Turn the customer's Feedback menu on or off. Platform-scoped, so the customer's admins cannot override it. */
+export async function setOperatorCustomerFeedbackMenu(ctx:SessionContext,tenantId:string,enabled:boolean):Promise<void> {
+  assertOperator(ctx);
+  await readable(()=>withTenant(ctx,tx=>tx.execute(sql`select app.operator_set_customer_feedback_menu(${uuid(tenantId)}::uuid,${enabled})`)));
+}

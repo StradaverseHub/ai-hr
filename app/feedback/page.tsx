@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
+import { notFound } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { FEEDBACK_LIST_LIMIT, feedbackStatusCounts, listFeedback, type FeedbackRow } from '@/core/feedback';
+import { feedbackBoardOpen } from '@/app/feedback/board';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { DEFAULT_FEEDBACK_SORT, parseFeedbackSort } from '@/lib/feedback-sort';
 import type { FeedbackCategory, FeedbackStatus } from '@/db/schema';
@@ -55,6 +57,7 @@ export default async function FeedbackPage({
   }>;
 }) {
   const s = await getSession();
+  if (!feedbackBoardOpen(s)) notFound();
   const t = await getTranslations('feedback');
   const { error, toast, toastKey, count, action, skipped, status, sort } = await searchParams;
   const activeStatus = (BOARD_STATUSES as readonly string[]).includes(status ?? '')
