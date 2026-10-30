@@ -2281,22 +2281,27 @@ export async function completeCheckIn(ctx: SessionContext, p: { checkinId: strin
   });
 }
 
-/** Cancel a scheduled check-in. Manager-or-admin. */
-export async function cancelCheckIn(ctx: SessionContext, p: { checkinId: string }): Promise<void> {
-  await withTenant(ctx, async (tx) => {
-    const c = await loadCheckin(tx, p.checkinId);
-    if (c.status !== 'scheduled') throw new PerfError(`This check-in is ${c.status}`);
-    await assertCanDecide(tx, ctx, c.subjectEmploymentId, 'check-in');
-    await tx.update(performanceCheckin).set({ status: 'cancelled' }).where(eq(performanceCheckin.id, c.id));
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'performance-checkin',
-      aggregateId: c.id,
-      eventType: 'performance-checkin.cancelled',
-      actor: actorOf(ctx),
-      subjectEmploymentId: c.subjectEmploymentId,
-    });
-  });
+/** Native current-decision source. Keep assertCanDecide's real super-admin self exception;
+ * managerEmploymentId is historical context, never a replacement permission oracle. */
+export async function readCheckInCancellationSourceTx(tx:Tx,ctx:SessionContext,checkinId:string){
+  assertModuleEnabled(ctx,'performance');
+  const [checkin]=await tx.select({id:performanceCheckin.id,tenantId:performanceCheckin.tenantId,subjectEmploymentId:performanceCheckin.subjectEmploymentId,managerEmploymentId:performanceCheckin.managerEmploymentId,scheduledOn:performanceCheckin.scheduledOn,status:performanceCheckin.status,version:sql<string>`${performanceCheckin}.xmin::text`}).from(performanceCheckin).where(eq(performanceCheckin.id,checkinId)).limit(1).for('update');
+  if(!checkin)throw new PerfError('Check-in not found');
+  if(checkin.status!=='scheduled')throw new PerfError(`This check-in is ${checkin.status}`);
+  await assertCanDecide(tx,ctx,checkin.subjectEmploymentId,'check-in');
+  return{checkin,reviewDigest:createHash('sha256').update(JSON.stringify([1,ctx.tenantId,ctx.userId??null,ctx.personId??null,checkin])).digest('hex')};
+}
+/** One SAME supplied transaction for the native cancellation and its exact event reference. */
+export async function cancelCheckInTx(tx:Tx,ctx:SessionContext,p:{checkinId:string},expectedDigest?:string){
+  const {checkin:c,reviewDigest}=await readCheckInCancellationSourceTx(tx,ctx,p.checkinId);
+  if(expectedDigest!==undefined&&expectedDigest!==reviewDigest)throw new PerfError('The check-in changed. Review it again.');
+  await tx.update(performanceCheckin).set({status:'cancelled'}).where(eq(performanceCheckin.id,c.id));
+  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'performance-checkin',aggregateId:c.id,eventType:'performance-checkin.cancelled',actor:actorOf(ctx),subjectEmploymentId:c.subjectEmploymentId},{returnId:true});
+  return{checkinId:c.id,employmentId:c.subjectEmploymentId,eventId};
+}
+/** Cancel a scheduled check-in. Native current manager/admin rules, including the super-admin exception. */
+export async function cancelCheckIn(ctx:SessionContext,p:{checkinId:string}):Promise<void>{
+  await withTenant(ctx,async tx=>{await cancelCheckInTx(tx,ctx,p);});
 }
 
 const checkinSelect = () => ({

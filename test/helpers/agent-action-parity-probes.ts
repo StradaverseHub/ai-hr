@@ -1,3 +1,4 @@
+import {checkInCancellationReviews,readCheckInCancellationChoices} from '../../core/assistant-actions/checkin-cancellation-review-store';
 import {goalApprovalReviews,readGoalApprovalChoices} from '../../core/assistant-actions/goal-approval-review-store';
 import {fixedItemArchiveReviews,readFixedItemArchiveChoices} from '../../core/assistant-actions/fixed-item-archive-review-store';
 import {archiveEmploymentPayComponent,setEmploymentPayComponent,seedPayComponentCatalog,listPayComponents} from '../../packs/payroll/service';
@@ -157,7 +158,7 @@ type World={
  login(base:Base,person:Person,role:DbRole,companyId:string|null):Promise<{ctx:SessionContext;userId:string}>;
  claimTypes:Map<string,string>;
 };
-type Family='assigned_goal'|'assigned_decision'|'hr_on_employment'|'own';
+type Family='assigned_checkin'|'assigned_goal'|'assigned_decision'|'hr_on_employment'|'own';
 type Adapter={
  family:Family;store:Store;independentScreen?:boolean;pageAdmits?:(who:SessionContext)=>boolean;
  /** The page/route admission the screen's server action calls before its service (e.g. requireAdmin → isAdmin). */
@@ -267,6 +268,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   async create(w,h){const item=await pendingLeave(w,h);const steps=await owner.db.select().from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,item.subjectId)).orderBy(schema.leaveApprovalStep.stepIndex);return {...item,stepId:steps.find(row=>row.status==='pending')?.id??null};},
   human:(item,o)=>({action:'approvals.leave.decide',contractVersion:1,leaveRequestId:item.subjectId,currentStepId:item.stepId??null,decision:o.decision,rejectReason:o.decision==='rejected'?REJECT_REASON:null,confirmAssignedDecision:true}),
   offered:async(who,item)=>listed(await readAssignedLeaveModuleActionChoices(who),'tasks','leaveRequestId',item.subjectId),screen:(tx,who,item,_actor,o)=>decideLeave(who,{leaveRequestId:item.subjectId,decision:o.decision,...(o.decision==='rejected'?{rejectReason:REJECT_REASON}:{})},tx)},
+ 'performance.checkin.cancel':{family:'assigned_checkin',store:checkInCancellationReviews,
+  async create(w,h){const {id}=await perf.scheduleCheckIn(await w.as('manager'),{subjectEmploymentId:h.person.employmentId,scheduledOn:calendarDate(10),notes:'Fictional shared check-in notes'});return itemOf(h,id);},
+  human:item=>({action:'performance.checkin.cancel',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,cancel:true}),
+  offered:async(who,item)=>{const choices=await readCheckInCancellationChoices(who,{query:'',subjectId:item.subjectId});return choices.kind==='choices'&&choices.items.some(row=>row.subjectId===item.subjectId);},
+  screen:(tx,who,item)=>perf.cancelCheckInTx(tx,who,{checkinId:item.subjectId})},
  'performance.goal.approve':{family:'assigned_goal',store:goalApprovalReviews,
   async create(_w,h){const year=Number(todayInKualaLumpur().slice(0,4)),group=groupOf(h.base),{cycleId}=await perf.createCycle(group,{name:'Fictional Proposed Goal',companyId:h.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`,assessmentWorkflow:false});await perf.openCycle(group,{cycleId});const self=await h.session(),{id}=await perf.createGoal(self,{employmentId:h.person.employmentId,cycleId,title:'Fictional Parity Goal'});const [review]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,h.person.employmentId)));await perf.proposeGoals(self,{reviewId:review.id});return itemOf(h,id);},
   human:item=>({action:'performance.goal.approve',contractVersion:1,employmentId:item.employmentId,subjectId:item.subjectId,approve:true}),
