@@ -47,17 +47,26 @@ export function validateRepairDelta({cwd,original,candidate}){
 }
 export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){
  const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId]);
+ assert(Number.isFinite(Date.parse(after))&&Array.isArray(rows)&&rows.length<=8000,'Invalid or unbounded repair history');
  assert(source.run.display_title?.startsWith('Alpha CI · '),'Original workflow title must identify its frozen branch');
  const titles=new Set([source.run.display_title,`Alpha CI · ${candidateBranch}`,`Canonical build only · ${candidateBranch}`,`Focused only · ${candidateBranch}`]);
  // An overlapping run may start before the original completes and fail afterwards. Creation-time
  // filtering alone would silently discard that later failure. Bind completion/update history too.
- const relevant=rows.filter(r=>r.id!==source.run.id&&titles.has(r.display_title)&&Date.parse(r.updated_at)>=Date.parse(after));
- assert(relevant.length===known.size&&new Set(relevant.map(r=>r.id)).size===known.size&&relevant.every(r=>known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.run_attempt===1),'Unaccounted, pending, failed or superseding repair execution');
- return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.map(r=>({id:r.id,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,updatedAt:r.updated_at})).sort((a,b)=>a.id-b.id))};
+ const matching=new Map();
+ for(const r of rows){if(r.id===source.run.id||!titles.has(r.display_title))continue;
+  assert(Number.isSafeInteger(r.id)&&r.id>0&&Number.isFinite(Date.parse(r.created_at))&&Number.isFinite(Date.parse(r.updated_at))&&Date.parse(r.updated_at)>=Date.parse(r.created_at)&&['queued','in_progress','waiting','requested','pending','completed'].includes(r.status),'Malformed relevant history execution');
+  const record={id:r.id,display_title:r.display_title,controller:r.head_sha,status:r.status,conclusion:r.conclusion,attempt:r.run_attempt,createdAt:r.created_at,updatedAt:r.updated_at};
+  assert(!matching.has(r.id)||isDeepStrictEqual(matching.get(r.id),record),'Conflicting history API snapshots; retry after stabilization');matching.set(r.id,record);
+ }
+ const relevant=[...matching.values()].filter(r=>r.status!=='completed'||Date.parse(r.updatedAt)>=Date.parse(after));
+ assert(relevant.length===known.size&&relevant.every(r=>known.has(r.id)&&r.status==='completed'&&r.conclusion==='success'&&r.attempt===1),'Unaccounted, pending, failed or superseding repair execution');
+ return {kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:source.run.id,after,runIds:relevant.map(r=>r.id).sort((a,b)=>a-b),metadataFingerprint:hash(relevant.sort((a,b)=>a.id-b.id))};
 }
 function latestHistory({source,focusedWorkflowId,candidateBranch,focusedRunIds,buildRunId}){
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),query='created='+encodeURIComponent('>='+since);
  const rows=[...pages(`actions/workflows/${WORKFLOW_ID}/runs?${query}`,'workflow_runs'),...pages(`actions/workflows/${focusedWorkflowId}/runs?${query}`,'workflow_runs')];
+ // Active executions must not disappear merely because they were queued before the lookback.
+ for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages(`actions/runs?status=${status}`,'workflow_runs').filter(r=>[WORKFLOW_ID,focusedWorkflowId].includes(r.workflow_id)));
  return validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId});
 }
 export async function verifyRepairedCi({candidatePath,originalPath,runId,baseline,focusedRunIds,buildRunId,candidateBranch,evidenceDirectory,reuse=false}){
