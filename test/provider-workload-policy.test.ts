@@ -56,7 +56,7 @@ describe('purpose-specific protected workload contracts',()=>{
   const source={task:'manager_review',passages:[{index:0,kind:'self',text},{index:1,kind:'goal',text:'Another private goal'}]};
   const output=bytes('performance_narrative_selection_v1',source);expect(output).toContain('manager_review');expect(output).toContain('self');expect(output).not.toContain('Alice');expect(output).not.toContain('9999');
   const layout=descriptor('performance_text_layout_v1').capture({draft:text,instruction:'format as bullets',forwardLooking:false});expect(JSON.stringify(layout)).not.toContain(text);expect(layout.local).toEqual({requested:'bullets'});
-  expect(()=>descriptor('performance_text_layout_v1').capture({draft:text,instruction:'make up achievements',forwardLooking:false})).toThrow();expect(()=>descriptor('performance_text_layout_v1').capture({draft:text,instruction:'polish',forwardLooking:true})).toThrow();
+  expect(()=>descriptor('performance_text_layout_v1').capture({draft:text,instruction:'make up achievements',forwardLooking:false})).toThrow();expect(descriptor('performance_text_layout_v1').capture({draft:text,instruction:'polish',forwardLooking:true}).local).toEqual({requested:'paragraph'});expect(()=>descriptor('performance_text_layout_v1').capture({draft:'',instruction:'polish',forwardLooking:true})).toThrow();
  });
  it('withholds reporter requests and accepts only a known feedback category',()=>{
   expect(bytes('feedback_task_outline_v1',{category:'issue',contested:true,source:'PRIVATE REPORTER TEXT'})).not.toContain('PRIVATE REPORTER TEXT');

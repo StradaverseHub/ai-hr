@@ -2,12 +2,23 @@
 import type {SessionContext,Tx} from '../../../db/client';
 import {withAiAdmissionCheck,preparePrivateAiTask} from '../../../core/ai-governance';
 import {ProviderWorkloadUnavailableError} from '../../../lib/ai/provider-workload-policy';
+import {captureWorkloadSource,captureNativeOutlineSections,adjudicateNativeOutlineSelection,type NativeOutlineSection,type PerformanceNativeOutlinePurpose} from '../../../lib/ai/provider-workload-policy';
 import {withPerformanceTenant} from '../../../core/module-gate';
 import {draftInputDigest} from '../../../lib/ai/draft-input';
 import {generateDraft,type ResolvedAiConfig} from '../../../lib/ai';
 import type {GenerateArgs} from '../../../lib/ai/types';
 import {assessmentAiFeatureEnabledTx,type AssessmentAiFeature} from './ai-settings';
 import {assertPerformanceProviderSourceTx} from './provider-source-authority';
+/** Distinct native-output presentation operation. No raw GenerateArgs is constructed. The full
+ * native object is captured locally, replayed with the caller's current source check, and restored
+ * unchanged; the only provider proposal is an exhaustive ordering of opaque section references. */
+export async function generatePerformanceNativeOutline<T extends object>(cfg:ResolvedAiConfig,supplied:SessionContext,feature:'tc'|'review'|'idp',purpose:PerformanceNativeOutlinePurpose,native:T,sections:readonly NativeOutlineSection[],replay:(tx:Tx)=>Promise<void>){
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},snapshot=captureWorkloadSource(native) as T,source=captureNativeOutlineSections(sections);let expected:string|undefined;
+ const verify=async(tx:Tx)=>{await assertPerformanceProviderSourceTx(tx,ctx);if(!await assessmentAiFeatureEnabledTx(tx,ctx,feature))throw Error('Current Performance source could not be confirmed.');await replay(tx);};
+ const bound=withAiAdmissionCheck(cfg,`performance_${feature}`,async(tx,request)=>{await verify(tx);if(request.operation!=='draft'||request.inputDigest!==expected)throw Error('Current Performance request could not be confirmed.');});
+ const task=await preparePrivateAiTask(bound,'performance_native_outline_v1',async tx=>{await verify(tx);return {purpose,native:snapshot,sections:source};});
+ try{if(task.operation!=='draft')throw new ProviderWorkloadUnavailableError('unsupported_native_outline_operation');expected=draftInputDigest(task.args);return adjudicateNativeOutlineSelection(snapshot,source,await generateDraft(task.configuration,task.args));}finally{task.dispose();}
+}
 export async function generatePerformanceSourceDraft(cfg:ResolvedAiConfig,supplied:SessionContext,feature:AssessmentAiFeature|'assistant',args:GenerateArgs,replay:(tx:Tx)=>Promise<void>){
  const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))},captured=Object.freeze({...args});let expected:string|undefined;
  const bound=withAiAdmissionCheck(cfg,`performance_${feature}`,async(tx,request)=>{
