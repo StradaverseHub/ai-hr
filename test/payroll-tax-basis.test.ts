@@ -78,13 +78,26 @@ describe('authorized immutable historical income tax corrections',()=>{
  });
  it('records a failed employee outside its rolled-back transaction and requires a fresh preview to retry',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection());const failedSlip=p.employees[0].months[1].payslipId;
-  await owner.db.execute(sql.raw(`create function public.test_tax_basis_failure() returns trigger language plpgsql as $$ begin if new.payslip_id='${failedSlip}'::uuid then raise exception 'fixture failure';end if;return new;end $$; create trigger test_tax_basis_failure before insert on payroll_tax_basis_revision for each row execute function public.test_tax_basis_failure();`));
+  await owner.db.execute(sql.raw(`create function public.test_tax_basis_failure() returns trigger language plpgsql as $$ begin if new.payslip_id='${failedSlip}'::uuid then raise exception 'fixture failure';end if;return new;end $$;`));
+  await owner.db.execute(sql.raw(`create trigger test_tax_basis_failure before insert on payroll_tax_basis_revision for each row execute function public.test_tax_basis_failure();`));
   try{
    const batch=await confirm(p);expect((await getTaxBasisBatch(ctx,batch.id))?.status).toBe('failed');expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(0);
-   await owner.db.execute(sql.raw('drop trigger test_tax_basis_failure on payroll_tax_basis_revision;drop function public.test_tax_basis_failure();'));
+   await owner.db.execute(sql.raw('drop trigger test_tax_basis_failure on payroll_tax_basis_revision;'));await owner.db.execute(sql.raw('drop function public.test_tax_basis_failure();'));
    expect(await confirm(p)).toEqual(batch);expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(0);
    const fresh=await previewTaxBasisRecalculation(ctx,selection());const done=await confirm(fresh);expect((await getTaxBasisBatch(ctx,done.id))?.completedCount).toBe(1);expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(3);
-  }finally{await owner.db.execute(sql.raw('drop trigger if exists test_tax_basis_failure on payroll_tax_basis_revision;drop function if exists public.test_tax_basis_failure();'));}
+  }finally{await owner.db.execute(sql.raw('drop trigger if exists test_tax_basis_failure on payroll_tax_basis_revision;'));await owner.db.execute(sql.raw('drop function if exists public.test_tax_basis_failure();'));}
+ });
+ it('recovers an interrupted batch under current authority and requires a new preview',async()=>{
+  const p=await previewTaxBasisRecalculation(ctx,selection()),batchId=randomUUID();
+  await withTenant(ctx,async tx=>{
+   await tx.execute(sql`insert into payroll_tax_basis_batch(id,tenant_id,company_id,preview_id,created_by,created_at) values(${batchId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${p.previewId}::uuid,${ctx.userId!}::uuid,now()-interval '10 minutes')`);
+   await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,actor_id,kind,created_at) values(${b.tenantId}::uuid,${b.companyId}::uuid,${batchId}::uuid,${ctx.userId!}::uuid,'pending',now()-interval '10 minutes')`);
+  });
+  expect((await getTaxBasisBatch(ctx,batchId))?.recoverable).toBe(true);
+  expect(await recoverTaxBasisBatch(ctx,batchId)).toEqual({id:batchId});
+  expect((await getTaxBasisBatch(ctx,batchId))?.status).toBe('failed');
+  await continueTaxBasisBatch(ctx,batchId);expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(0);
+  const fresh=await previewTaxBasisRecalculation(ctx,selection());await confirm(fresh);expect(await owner.db.select().from(schema.payrollTaxBasisRevision)).toHaveLength(3);
  });
  it('keeps immutable correction records tenant-bound and refuses active-batch recovery',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection()),done=await confirm(p);
