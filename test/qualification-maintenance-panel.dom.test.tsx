@@ -12,7 +12,7 @@ import viMessages from '../messages/vi.json';
 import th from '../messages/th.json';
 import ta from '../messages/ta.json';
 const translation=vi.hoisted(()=>({messages:null as null|Record<string,unknown>}));
-vi.mock('next-intl',()=>({useTranslations:()=>((key:string,values?:Record<string,string>)=>{let text:unknown=translation.messages;for(const part of key.split('.'))text=(text as Record<string,unknown>)?.[part];if(typeof text!=='string')return key;return text.replace(/\{(\w+)\}/g,(_,name:string)=>values?.[name]??name);}),useFormatter:()=>({dateTime:(date:Date)=>date.toISOString().slice(0,10)})}));
+vi.mock('next-intl',()=>({useTranslations:()=>((key:string,values?:Record<string,string>)=>{let text:unknown=translation.messages;for(const part of key.split('.'))text=(text as Record<string,unknown>)?.[part];if(typeof text!=='string')return values?.name??key;return text.replace(/\{(\w+)\}/g,(_,name:string)=>values?.[name]??name);}),useFormatter:()=>({dateTime:(date:Date)=>date.toISOString().slice(0,10)})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.AnchorHTMLAttributes<HTMLAnchorElement>)=><a {...props}>{children}</a>}));
 const employmentId='60000000-0000-4000-8000-000000000002',qualificationId='60000000-0000-4000-8000-000000000003',actionId='60000000-0000-4000-8000-000000000004',eventId='60000000-0000-4000-8000-000000000005';
 const person={employmentId,employeeName:'Fictional Dana',employeeCode:'E-7',companyName:'Fictional Company'};

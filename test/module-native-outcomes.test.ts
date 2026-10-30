@@ -13,7 +13,7 @@ describe('closed native outcome association contract',()=>{
    expect(Object.hasOwn(NATIVE_OUTCOME_ACTIONS,action)).toBe(false);
    expect(NativeOutcomeReference.safeParse({source:'review',action,actionId:randomUUID()}).success).toBe(false);
   }
-  expect(NATIVE_REVIEW_ACTIONS).toHaveLength(29);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(30);
+  expect(NATIVE_REVIEW_ACTIONS).toHaveLength(30);expect(Object.keys(NATIVE_OUTCOME_ACTIONS)).toHaveLength(31);
   expect(NON_EFFECT_OBSERVATIONS).toEqual({system_explorer:'authorized_schema_observation',assistant:'authorized_orchestration_read_execution'});
  });
  it('accepts only explicit consent, closed references and server-owned import versions',()=>{

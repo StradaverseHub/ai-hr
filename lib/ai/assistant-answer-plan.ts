@@ -148,9 +148,12 @@ function currentReads(input:readonly AssistantAnswerRead[]):readonly CurrentRead
   const row=object(value);exact(row,['read','presentation','explanations']);const read=ordinal(row.read,ANSWER_PLAN_LIMITS.reads);if(seen.has(read))return fail();seen.add(read);
   const p=object(row.presentation);exact(p,['module','cards','truncated',...(Object.hasOwn(p,'hasEmployment')?['hasEmployment']:[])]);
   if(!isAgentModuleCode(p.module)||typeof p.truncated!=='boolean'||Object.hasOwn(p,'hasEmployment')&&typeof p.hasEmployment!=='boolean')return fail();
-  const cards:CurrentRead['cards'][number][]=[];
+  const cards:CurrentRead['cards'][number][]=[],handoffRoutes=new Set<string>();
   for(const value of array(p.cards,ANSWER_PLAN_LIMITS.presentationCards)){
    const card=object(value);
+   if(card.linkPurpose==='human_review'){
+    if(!Array.isArray(card.facts)||card.facts.length!==0||typeof card.href!=='string'||!moduleHumanActionHandoffs(p.module).some(handoff=>handoff.route===card.href)||handoffRoutes.has(card.href))return fail();handoffRoutes.add(card.href);
+   }
    // The actual module presenter appends deduplicated, source-owned human handoffs. It is
    // not extra fact selectors or effect capability; future/unknown extra cards fail closed.
    if(cards.length>=ANSWER_PLAN_LIMITS.cards&&(!Array.isArray(card.facts)||card.facts.length!==0||card.linkPurpose!=='human_review'||typeof card.href!=='string'||!moduleHumanActionHandoffs(p.module).some(handoff=>handoff.route===card.href)))return fail();if(card.withheld!==undefined&&typeof card.withheld!=='boolean')return fail();
