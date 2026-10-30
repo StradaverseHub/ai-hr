@@ -1,0 +1,37 @@
+/** Optional audit labels have independent current permissions; financial evidence keeps its original requirements. */
+import {eq} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import * as schema from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {setCompensation} from '../core/comp';
+import {setStatutoryProfileMY} from '../localization/my/statutory';
+import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
+import {createBatch,generatePayslips} from '../core/payroll';
+import {savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,getPayFormula} from '../core/pay-formula';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+let base:Base;
+beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();});afterAll(closeAll);
+it('identifies the paying company and independently redacts employee name/code without hiding permitted financial evidence',async()=>{
+ await setModule(base.tenantId,'typed_pay_components','active');const ctx=await entitledCtx(base);
+ await owner.db.update(schema.company).set({legalName:'Fictional Paying Company'}).where(eq(schema.company.id,base.companyId));
+ const employee=await hireEmployee(ctx,{person:{fullName:'Fictional Audit Employee',primaryEmail:'formula-audit-context@example.invalid'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
+ await owner.db.update(schema.employment).set({employeeCode:'AUDIT_001'}).where(eq(schema.employment.id,employee.employmentId));
+ await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:'2026-01-01'});
+ await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);
+ const item={code:'AUDIT_VALUE',name:'Fictional audit item',label:'Audit item',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false};
+ await upsertPayComponent(ctx,item);const [cycle]=await owner.db.insert(schema.payrollCycle).values({tenantId:base.tenantId,companyId:base.companyId,name:'Audit cycle',code:'AUDIT',runType:'regular'}).returning();
+ const context={companyId:base.companyId,employmentId:employee.employmentId,period:'2026-10',asOf:'2026-10-31',cycleId:cycle.id,currentCode:item.code,input:'1'};
+ const saved=await savePayFormula(ctx,{formulaId:'AUDIT_FIXED',description:'Fictional financial evidence',method:'write',source:'Return 1'}),test=await testPayFormula(ctx,{...saved,context});expect(test.passed,test.error??'test').toBe(true);
+ await setPayFormulaActive(ctx,{...saved,testId:test.id,active:true});const component=await upsertPayComponent(ctx,{...item,rule:{kind:'formula_builder',formulaId:'AUDIT_FIXED',dependencies:[]}});
+ await setEmploymentPayComponent(ctx,{employmentId:employee.employmentId,componentId:component.id,amount:1,effectiveFrom:'2026-10-01'});
+ const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:cycle.id});await generatePayslips(ctx,{batchId});
+ const [evidence]=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));
+ expect(await getFormulaEvaluation(ctx,evidence.id)).toMatchObject({companyName:'Fictional Paying Company',employeeCode:'AUDIT_001',employeeName:'Fictional Audit Employee',amount:'1'});
+ expect((await getPayFormula(ctx,saved.id))?.evaluations).toEqual([expect.objectContaining({companyName:'Fictional Paying Company',employeeCode:'AUDIT_001',employeeName:'Fictional Audit Employee'})]);
+ await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:base.tenantId,companyId:base.companyId,permissionKey:'report.read.identity',role:'hr_admin',allowed:false});
+ expect(await getFormulaEvaluation(ctx,evidence.id)).toMatchObject({companyName:'Fictional Paying Company',employeeCode:'AUDIT_001',employeeName:null,amount:'1'});
+ await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:base.tenantId,companyId:base.companyId,permissionKey:'report.read.personnel',role:'hr_admin',allowed:false});
+ expect(await getFormulaEvaluation(ctx,evidence.id)).toMatchObject({companyName:'Fictional Paying Company',employeeCode:null,employeeName:null,amount:'1'});
+ expect((await getPayFormula(ctx,saved.id))?.evaluations).toEqual([expect.objectContaining({employeeCode:null,employeeName:null,amount:'1'})]);
+ expect((await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.id,evidence.id)))[0]).toEqual(evidence);
+});
