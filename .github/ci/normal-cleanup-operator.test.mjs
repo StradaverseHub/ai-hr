@@ -20,7 +20,7 @@ for(const dirty of [false,true])test('actual parent driver and server orchestrat
 });
 test('actual canonical release filter imports under installed tsx and parses every exclusion',()=>{
  const script=`import {deploymentRsyncArgs} from './scripts/improve/release.ts';console.log(JSON.stringify(deploymentRsyncArgs('/fictional/source')));`;
- const result=spawnSync(process.execPath,['--import','tsx','--input-type=module','-e',script],{cwd:root,encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr);
+ const result=spawnSync(process.execPath,['--import','tsx','--input-type=module','-e',script],{cwd:process.cwd(),encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr);
  const args=JSON.parse(result.stdout),excluded=canonicalSourceExclusions(args);
  for(const path of ['.env.production','.next','node_modules','nested/node_modules','mobile/android','mobile/secret.pem','docs/adr','scratchpad','.improve'])assert.ok(excluded(path),path);
  for(const path of ['app/layout.tsx','.github/ci/staging-build-install.mjs','mobile/app/index.tsx','docs/current.md'])assert.ok(!excluded(path),path);
