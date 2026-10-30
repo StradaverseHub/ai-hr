@@ -44,6 +44,8 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tierFor } from '../gate-tier-git';
+import { readLease, guardCommand, guardedRsync, leasePhase, redactLeaseError } from '../staging/lease.mjs';
+import { strictPendingCommand } from '../../.github/ci/staging-transport.mjs';
 import { decideReleaseGate, type DeployedVerdict, type GateReceipt } from './release-gate';
 import { markDeployed } from './remote';
 import { readyProductionBaseline } from '../gate-impact-git';
@@ -397,6 +399,7 @@ export function deployedVerdict(worktree: string): DeployedVerdict {
  * `releaseBuiltItem` is now this plus the board write, so the two cannot drift.
  */
 export async function deployWorktree(p: { worktree: string }): Promise<void> {
+ try {
   if (!p.worktree || !existsSync(p.worktree)) {
     throw new Error(`worktree not found: ${p.worktree}`);
   }
@@ -411,6 +414,8 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   //   • missing, unreadable, non-PASS or for another sha → refused, with the gate command to run.
   // tsc still always runs (seconds).
   const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: p.worktree, encoding: 'utf8' }).trim();
+  const stagingLease=readLease(head);
+  const protectedSsh=(command: string)=>sshArgs(guardCommand(stagingLease,command));
   let receipt: GateReceipt | null = null;
   let receiptError: string | undefined;
   try {
@@ -463,32 +468,33 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
   try { previousRef=parseDeployStatus(execFileSync('ssh',sshArgs(`cd ${DIR} && deploy/deploy-state.sh status`),{encoding:'utf8',timeout:30000})).built_ref; }
   catch { console.warn('  Release-learning baseline unavailable; full gate evidence remains authoritative.'); }
 
-  // 2. Announce the release on the box BEFORE a single byte of source moves. See buildPendingCommand.
+  leasePhase(stagingLease,(command: string, options: Record<string, unknown>)=>execFileSync('ssh',sshArgs(command),{encoding:'utf8',timeout:30000,...options}),'installing');
+
+  // 2. Announce BEFORE source transfer. strictPendingCommand hardens the legacy bootstrap helper
+  // by checking the actual marker instead of inheriting the bootstrap-only success fallback.
   console.log(`→ announcing ${head.slice(0, 7)} on the server (so an interrupted rsync is detectable)`);
   try {
-    execFileSync('ssh', sshArgs(buildPendingCommand(head)), { stdio: 'inherit', maxBuffer: 1024 * 1024 });
+    execFileSync('ssh', protectedSsh(strictPendingCommand(head,DIR,DEPLOY_STATE_DIR)), { stdio: 'inherit', maxBuffer: 1024 * 1024 });
   } catch {
-    // Not fatal: the box may predate r291, and the deploy itself still records its own outcome. The
-    // only thing lost is detection of an rsync interrupted before deploy.sh starts.
-    console.log('  (could not announce — continuing; the server may predate r291)');
+    throw new Error('Staging lease/pending announcement refused; no source transferred.');
   }
 
   // 3. rsync the worktree → server (same excludes as deploy; .env.production preserved on the box).
   const src = p.worktree.replace(/\/?$/, '/');
   if (stableTestingJson(prepareSystemTestingBuild({ worktree: p.worktree, candidate: head, buildRecordId: testingBuild.identity.buildRecordId })) !== stableTestingJson(testingBuild)) throw new Error('System Testing release source changed before rsync.');
   console.log(`→ rsync ${src} → ${TARGET}:${DIR}/`);
-  run('rsync', deploymentRsyncArgs(src));
+  run('rsync', guardedRsync(stagingLease,deploymentRsyncArgs(src)));
 
   // Receiver verifies actual installed catalogue/source bytes and publishes under its fixed private
   // home directory. Its refusal stops before launch, migration or any board transition.
-  execFileSync('ssh', sshArgs(buildTestingRecordCommand(head, testingBuild.identity.buildRecordId)), {
+  execFileSync('ssh', protectedSsh(buildTestingRecordCommand(head, testingBuild.identity.buildRecordId)), {
     input: stableTestingJson(testingBuild) + '\n', stdio: ['pipe', 'inherit', 'inherit'], maxBuffer: 1024 * 1024, timeout: 30000,
   });
 
   // 4. deploy.sh on the server, DETACHED (build + migrate; the restart still needs the user's sudo,
   //    by design), then followed by polling. See the header for why.
   console.log('→ deploy.sh on the server — detached (setsid nohup); following by polling');
-  const launch = execFileSync('ssh', sshArgs(buildLaunchCommand(head, DIR, DEPLOY_STATE_DIR, testingBuild.identity.buildRecordId)), {
+  const launch = execFileSync('ssh', protectedSsh(buildLaunchCommand(head, DIR, DEPLOY_STATE_DIR, testingBuild.identity.buildRecordId)), {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024,
   });
@@ -534,6 +540,7 @@ export async function deployWorktree(p: { worktree: string }): Promise<void> {
     console.warn('⚠ release learning needs attention: '+String(e));
   }
 
+ } catch(error) { throw redactLeaseError(error); }
 }
 
 export async function releaseBuiltItem(p: {
