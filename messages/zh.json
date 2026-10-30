@@ -30637,6 +30637,11 @@
     "traceLoading": "正在加载已保存计算…",
     "traceErrorTitle": "无法加载此计算",
     "traceErrorMessage": "请刷新后重试，每次访问均会核查当前权限。",
-    "traceRetry": "重试"
+    "traceRetry": "重试",
+    "traceCompany": "支付公司",
+    "traceEmployee": "员工",
+    "traceEmployeeProtected": "员工信息受限或不可用",
+    "traceCompanyUnavailable": "公司信息不可用",
+    "traceContextHint": "公司与员工标签按照当前权限显示。"
   }
 }

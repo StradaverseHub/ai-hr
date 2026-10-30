@@ -30637,6 +30637,11 @@
     "traceLoading": "Memuatkan pengiraan tersimpan…",
     "traceErrorTitle": "Tidak dapat memuatkan pengiraan ini",
     "traceErrorMessage": "Muat semula paparan ini untuk mencuba lagi. Akses semasa disemak setiap kali.",
-    "traceRetry": "Cuba lagi"
+    "traceRetry": "Cuba lagi",
+    "traceCompany": "Syarikat pembayar",
+    "traceEmployee": "Pekerja",
+    "traceEmployeeProtected": "Maklumat pekerja terhad atau tidak tersedia",
+    "traceCompanyUnavailable": "Syarikat tidak tersedia",
+    "traceContextHint": "Label syarikat dan pekerja mengikut akses semasa anda."
   }
 }
