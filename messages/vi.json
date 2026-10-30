@@ -20248,7 +20248,7 @@
         "description": "Xem xét một yêu cầu đang chờ và lý do từ chối.",
         "intro": "Chọn yêu cầu đang chờ. Đọc yêu cầu trên màn hình Nhân sự rồi tự nhập lý do. Yêu cầu ảnh, tệp đính kèm và sổ đăng ký vẫn dùng quy trình gốc.",
         "invalid": "Chọn yêu cầu phù hợp và nhập lý do tối đa 2.000 ký tự.",
-        "consequence": "Yêu cầu chuyển sang bị từ chối và nhân viên có thể đọc lý do. Không áp dụng trường hồ sơ đề xuất nào. Thông báo trong ứng dụng và email quy trình đủ điều kiện tuân theo cài đặt tổ chức và tùy chọn của nhân viên.",
+        "consequence": "Yêu cầu chuyển sang bị từ chối và nhân viên có thể đọc lý do. Không áp dụng trường hồ sơ đề xuất nào. Khi bật Thông báo, nhân viên có thể nhận thông báo trong ứng dụng. Email quy trình còn phụ thuộc vào chính sách email của tổ chức, sự đồng ý của nhân viên và dịch vụ chuyển tiếp email hoạt động.",
         "doneMessage": "Yêu cầu gốc đã bị từ chối. Không áp dụng trường hồ sơ đề xuất nào.",
         "reason": "Lý do từ chối",
         "reasonHelp": "Bắt buộc. Nhân viên sẽ thấy lý do này.",

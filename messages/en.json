@@ -20248,7 +20248,7 @@
         "description": "Review one pending request and your reason for rejection.",
         "intro": "Choose an existing pending request. Read it on the native Personnel screen, then enter the reason yourself. Photo, attachment and register requests stay in the native workflow.",
         "invalid": "Choose an eligible request and enter a reason of up to 2,000 characters.",
-        "consequence": "The request becomes rejected and the employee can read your reason. No proposed profile fields are applied. Existing in-app notifications and eligible workflow email follow your organisation's settings and the employee's preferences.",
+        "consequence": "The request becomes rejected and the employee can read your reason. No proposed profile fields are applied. When Notifications is enabled, the employee can receive an in-app notice. Workflow email also depends on your organisation's email policy, the employee's consent and an active email relay.",
         "doneMessage": "The native request was rejected. No proposed profile fields were applied.",
         "reason": "Reason for rejection",
         "reasonHelp": "Required. The employee will see this reason.",
