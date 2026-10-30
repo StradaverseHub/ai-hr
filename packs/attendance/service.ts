@@ -111,3 +111,6 @@ export {setOfflineClockingPolicy,readOfflineClockingSettings,readOfflineClocking
 
 // Assistant receipt mode remains in the same native roster owner and transaction.
 export {setEmploymentScheduleGroupTx,currentShiftIdsForEmploymentTx} from '../../core/roster';
+
+export {previewAttendanceDayScheduleTx,readAttendanceDayScheduleEvidenceTx} from './day-schedule-preview';
+export {lockAttendanceDayScheduleIntervalTx} from './day-adjustment';

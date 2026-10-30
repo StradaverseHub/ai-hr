@@ -1,0 +1,20 @@
+/** Native owner seam only; no new Assistant action, migration or policy. Hosted verification only. */
+import {randomUUID} from 'node:crypto';
+import {eq,sql} from 'drizzle-orm';
+import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
+import {withTenant} from '../db/client';
+import * as s from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {attendanceDayEditor,saveAttendanceDayEdit} from '../packs/attendance/service';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+let b:Base,employmentId:string;
+const date=()=>todayInKualaLumpur();
+beforeAll(migrateTestDb);afterAll(closeAll);
+beforeEach(async()=>{await resetDb();b=await seedBase();employmentId=(await hireEmployee(adminCtx(b),{person:{fullName:'Fictional native day employee',primaryEmail:randomUUID()+'@fixture.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'})).employmentId;});
+async function input(){const editor=await attendanceDayEditor(adminCtx(b),employmentId,date());if(!editor)throw Error('Missing native day baseline');return{employmentId,date:date(),baseline:editor.baseline,reason:'Fictional verified day schedule',confirmPayrollRecalculation:false,kind:'schedule' as const,shiftId:null,dayKind:'rest_day' as const};}
+async function effects(){return{adjustments:await owner.db.select().from(s.attendanceDayAdjustment).where(eq(s.attendanceDayAdjustment.employmentId,employmentId)).orderBy(s.attendanceDayAdjustment.id),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.subjectEmploymentId,employmentId)).orderBy(s.domainEvent.sequence)};}
+it('preserves the default native version-only return shape and existing audit',async()=>{expect(await saveAttendanceDayEdit(adminCtx(b),await input())).toEqual({version:1});const after=await effects();expect(after.adjustments).toHaveLength(1);expect(after.adjustments[0].dayKind).toBe('rest_day');expect(after.events.filter(e=>e.eventType==='attendance.day.corrected')).toHaveLength(1);});
+it('reads its own native write and returns the exact row/event UUID in the same top transaction only when opted in',async()=>{const proposal=await input();await withTenant(adminCtx(b),async tx=>{const receipt=await saveAttendanceDayEdit(adminCtx(b),proposal,tx,{returnEventId:true});expect(receipt.eventId).toEqual(expect.any(String));expect(receipt.adjustmentId).toEqual(expect.any(String));const editor=await attendanceDayEditor(adminCtx(b),employmentId,date(),tx);expect(editor?.dayKind).toBe('rest_day');const [proof]=await tx.execute<{id:string}>(sql`select d.id from attendance_day_adjustment a join domain_event d on d.aggregate_id=a.id and d.tenant_id=a.tenant_id where a.id=${receipt.adjustmentId}::uuid and a.employment_id=${employmentId}::uuid and a.xmin=pg_current_xact_id()::xid and d.id=${receipt.eventId}::uuid and d.xmin=pg_current_xact_id()::xid and d.event_type='attendance.day.corrected' and d.subject_employment_id=a.employment_id and d.payload->'after'->>'id'=a.id::text`);expect(proof.id).toBe(receipt.eventId);expect((await effects()).adjustments).toEqual([]);});expect((await effects()).adjustments).toHaveLength(1);});
+it('outer rollback erases both the native correction and its exact event',async()=>{const proposal=await input(),before=await effects();await expect(withTenant(adminCtx(b),async tx=>{await saveAttendanceDayEdit(adminCtx(b),proposal,tx,{returnEventId:true});throw Error('Fictional outer refusal');})).rejects.toThrow('Fictional outer refusal');expect(await effects()).toEqual(before);});
+it('the existing transaction cannot bypass the same Attendance module gate',async()=>{const proposal=await input();await setModule(b.tenantId,'attendance','disabled');const denied=await entitledCtx(b,['hr_admin']),before=await effects();await expect(withTenant(denied,tx=>attendanceDayEditor(denied,employmentId,date(),tx))).rejects.toThrow();await expect(withTenant(denied,tx=>saveAttendanceDayEdit(denied,proposal,tx,{returnEventId:true}))).rejects.toThrow();expect(await effects()).toEqual(before);});

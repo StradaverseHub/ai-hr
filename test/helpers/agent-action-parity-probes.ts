@@ -1,3 +1,5 @@
+import {dayScheduleCorrectionReviews,readDayScheduleCorrectionChoices} from '../../core/assistant-actions/day-schedule-correction-review-store';
+import {attendanceDayEditor,saveAttendanceDayEdit} from '../../packs/attendance/service';
 import {scheduleGroupMaintenanceReviews,readScheduleGroupMaintenanceChoices} from '../../core/assistant-actions/schedule-group-maintenance-review-store';
 import {ensureStandardRule} from '../../packs/attendance/service';
 import {setEmploymentScheduleGroupTx} from '../../core/roster';
@@ -397,6 +399,11 @@ const ADAPTERS:Record<ProbedActionId,Adapter>={
   human:item=>({action:'employees.payment_method.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,expectedMethod:null,paymentMethod:'cash'}),
   offered:async(who,item)=>listed(await readPaymentMethodMaintenanceChoices(who,{query:item.name}),'employees','employmentId',item.employmentId),
   screen:(tx,who,item)=>setEmploymentPaymentMethod(who,{employmentId:item.employmentId,paymentMethod:'cash'},tx)},
+ 'attendance.day_schedule.correct':{family:'hr_on_employment',screenAdmits:isAdmin,store:packetStore('attendance.day_schedule.correct',dayScheduleCorrectionReviews.prepare,dayScheduleCorrectionReviews.confirm),
+  create:async(_w,h)=>{const date=todayInKualaLumpur(),editor=await attendanceDayEditor(groupOf(h.base),h.person.employmentId,date);if(!editor)throw Error('Missing native Attendance day fixture');return itemOf(h,h.person.employmentId,{date,proposal:{date,baseline:editor.baseline,reason:'Fictional reviewed dated schedule',confirmPayrollRecalculation:false,shiftId:null,dayKind:'rest_day'}});},
+  human:item=>({action:'attendance.day_schedule.correct',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as object)}),
+  offered:async(who,item)=>{const result=await readDayScheduleCorrectionChoices(who,{query:item.name,employmentId:item.employmentId,date:item.date});return result.kind==='choices'&&result.day!==null&&listed(result,'employees','employmentId',item.employmentId);},
+  screen:(tx,who,item)=>saveAttendanceDayEdit(who,{employmentId:item.employmentId,kind:'schedule',...(item.proposal as {date:string;baseline:string;reason:string;confirmPayrollRecalculation:boolean;shiftId:null;dayKind:'rest_day'})},tx)},
  'attendance.schedule_group.maintain':{family:'hr_on_employment',screenAdmits:isAdmin,store:scheduleGroupMaintenanceReviews,
   create:async(_w,h)=>{const rule=await ensureStandardRule(groupOf(h.base));await owner.db.update(schema.employment).set({attendanceRuleId:rule.id}).where(and(eq(schema.employment.id,h.person.employmentId),eq(schema.employment.tenantId,h.base.tenantId)));return itemOf(h,h.person.employmentId,{proposal:{expectedGroupId:rule.id,attendanceRuleId:null}});},
   human:item=>({action:'attendance.schedule_group.maintain',contractVersion:1,employmentId:item.employmentId,subjectId:item.employmentId,...(item.proposal as {expectedGroupId:string;attendanceRuleId:null})}),

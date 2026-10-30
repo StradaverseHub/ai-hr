@@ -1,0 +1,14 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+import {render,screen} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {NextIntlClientProvider} from 'next-intl';
+import {AttendanceDateSchedule} from '../components/attendance-day-editor';
+import type {AttendanceDayEditorData} from '../packs/attendance/service';
+import en from '../messages/en.json';
+const {schedule,overtime}=vi.hoisted(()=>({schedule:vi.fn(async(_fd:FormData)=>({ok:true})),overtime:vi.fn(async(_fd:FormData)=>({ok:true}))}));
+vi.mock('../app/attendance/individual/[date]/actions',()=>({saveAttendanceDayScheduleAction:schedule,saveAttendanceDayChangesAction:overtime,adminCorrectAttendanceDayAction:vi.fn(),rejectAttendanceDayApplicationAction:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
+vi.mock('sonner',()=>({toast:{success:vi.fn()}}));
+const data={baseline:'native',shiftId:null,dayKind:null,closed:false,self:false,processed:false,leave:[],schedule:{shiftCode:'BASE',dayKind:'workday'},shifts:[],rows:[],history:[],applications:[]} as unknown as AttendanceDayEditorData;
+beforeEach(()=>vi.clearAllMocks());
+it('the real native schedule form mounts the schedule-only adapter, preserving its explicit schedule payload',async()=>{const user=userEvent.setup();render(<NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}><AttendanceDateSchedule data={data} employmentId="target" date="2026-10-30"/></NextIntlClientProvider>);await user.click(screen.getByRole('button',{name:en.attendance.dayEdit.edit}));await user.type(screen.getByRole('textbox',{name:en.attendance.dayEdit.reason}),'Fictional reviewed date');await user.click(screen.getByRole('button',{name:en.attendance.dayEdit.saveSchedule}));expect(schedule).toHaveBeenCalledTimes(1);expect(schedule.mock.calls[0][0].get('kind')).toBe('schedule');expect(overtime).not.toHaveBeenCalled();});

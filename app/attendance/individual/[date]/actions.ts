@@ -58,6 +58,14 @@ export async function saveAttendanceDayChangesAction(formData:FormData){
   }catch(e){return {ok:false as const,message:publicErrorMessage(e)};}
 }
 
+/** Mounted schedule-only adapter. Native admission/calculation/audit/revalidation remain in the
+ * original owner; the overtime form and compatibility composite retain their existing route. */
+export async function saveAttendanceDayScheduleAction(formData:FormData){
+  if(formData.get('kind')!=='schedule')return {ok:false as const,message:'Choose a supported attendance correction.'};
+  const captured=new FormData();formData.forEach((value,key)=>captured.append(key,value));
+  return saveAttendanceDayChangesAction(captured);
+}
+
 /** A complete staged punch set goes through the existing request/decision workflow. */
 export async function saveAttendanceClockDataAction(formData: FormData) {
   const {s,scopeIds}=await scopedAdmin();
