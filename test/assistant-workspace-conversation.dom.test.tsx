@@ -13,6 +13,11 @@ function show(initialTurn?:{id:string;question:string;answer:React.ReactNode}){r
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
 beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('captures the real in-place conversation at its actual page reading width',async()=>{
+  const view=show({id:'fictional-checked',question:'How much leave do I have?',answer:<p>Annual leave: 12 days</p>});
+  await captureAiReviewScreenshots('<div class="mx-auto max-w-3xl">'+aiReviewDomHtml(view.container)+'</div>','en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
+ },30_000);
+
  it('drops erased local content and ignores a response finishing after privacy reset or another history selection',async()=>{
   let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const view=show();send('Private pending question');
   view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1"/></NextIntlClientProvider>);
@@ -31,13 +36,12 @@ describe('in-place Assistant conversation',()=>{
   await screen.findByText('Annual balance: 12 days');expect(screen.getByText('How much leave?')).toBeInTheDocument();expect(state.ask).toHaveBeenCalledWith({question:'Annual leave',clarificationExchangeId:'needs-clarification'});expect(window.location.search).toBe('');
  });
  it('shows the question and waiting reply immediately, keeps earlier replies and passes the opaque continuation only after success',async()=>{
-  let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));const view=show();
+  let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));show();
   send('How much leave do I have?');
-  expect(screen.getByRole('log')).toHaveTextContent('How much leave do I have?');expect(screen.getByRole('log')).toHaveTextContent(chat.thinking);
+  expect(screen.getByRole('log')).toHaveTextContent('How much leave do I have?');expect(screen.getByRole('region',{name:chat.title}).className).toContain('flex-col');expect(screen.getByRole('log').className).toContain('flex-1');expect(screen.getByRole('log')).toHaveTextContent(chat.thinking);
   expect(screen.getByRole('button',{name:copy.workspace.working})).toBeDisabled();expect(state.ask).toHaveBeenCalledTimes(1);
   expect(state.ask).toHaveBeenCalledWith({question:'How much leave do I have?'});
   await act(async()=>resolve({ok:true,exchangeId:'exchange-1',conversationToken:'opaque-1',answer:<p>Annual leave: 12 days</p>}));
-  await captureAiReviewScreenshots('<div class="mx-auto max-w-3xl">'+aiReviewDomHtml(view.container)+'</div>','en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'exchange-2',conversationToken:'opaque-2',answer:<p>Pending leave: 2 days</p>});send('And how much is pending?');
   await waitFor(()=>expect(screen.getByText('Pending leave: 2 days')).toBeInTheDocument());
   expect(screen.getByText('Annual leave: 12 days')).toBeInTheDocument();expect(state.ask).toHaveBeenLastCalledWith({question:'And how much is pending?',previousExchangeId:'exchange-1',previousConversationToken:'opaque-1'});

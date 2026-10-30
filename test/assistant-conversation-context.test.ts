@@ -8,6 +8,7 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {askAssistant} from '../core/assistant';
+import {loadAiWorkspace} from '../core/ai-workspace';
 import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
 import {ownAssistantConversationContext as readOwnedContext,issueAssistantConversationToken,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,ASSISTANT_CHAT_CONTEXT_LIMITS} from '../core/assistant-conversation-context';
 import * as contextOwner from '../core/assistant-conversation-context';
@@ -107,6 +108,12 @@ describe('same-login human chat context owner',()=>{
 });
 
 describe('ordinary follow-up admission uses current human context only',()=>{
+ it('records and reopens a genuine greeting without reading HR records or claiming missing facts',async()=>{
+  provider();const {ctx}=await actor();const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({...end,text:JSON.stringify({version:1,mode:'social',code:'greeting'})});
+  const answer=await askAssistant(ctx,{question:'Hello!'});expect(answer.toolsUsed).toEqual([]);expect(transport).toHaveBeenCalledOnce();
+  const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:answer.exchangeId,includeGovernance:false});
+  expect(workspace.history.find(row=>row.id===answer.exchangeId)?.grounded?.conversation).toEqual({plan:{version:1,mode:'social',code:'greeting'},facts:[]});
+ });
  it('passes human context on every fresh provider call, persists only the new question and links the own exchange',async()=>{
   provider();const {ctx}=await actor(),first=await exchange(ctx),second=await exchange(ctx,'Which dates are public holidays?',first);
   const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValueOnce(tool).mockResolvedValueOnce(end);

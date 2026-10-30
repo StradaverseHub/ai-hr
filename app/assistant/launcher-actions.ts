@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
+import {assistantSocialIntent} from '@/lib/ai/assistant-answer-plan';
 import {AssistantClarificationError} from '@/core/assistant-clarification';
 import { askAssistant, AssistantError } from '@/core/assistant';
 import { loadAiWorkspace } from '@/core/ai-workspace';
@@ -27,7 +28,7 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
   const question = typeof input.question === 'string' ? input.question.trim() : '';
   const context = resolvePageContext(input.path);
   let text = question;
-  if (context && input.clarificationExchangeId===undefined) {
+  if (context && input.clarificationExchangeId===undefined && !assistantSocialIntent(question)) {
     const areas = await getTranslations('assistant.launcher.areas');
     text = `${question}\n\n[${t('launcher.contextNote', { area: areas(context.area) })}${context.recordId ? ` · ${context.recordId}` : ''}]`;
   }

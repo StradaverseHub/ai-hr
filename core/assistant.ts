@@ -269,7 +269,7 @@ export async function askAssistant(
         // prepared or written here. It also needs the caller's current module read set, read only for it.
         if (res.stop === 'end' && sourcesComplete) try {
           const parsed = parseAssistantAnswerPlan(res.text);
-          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {});
+          answerPlan = adjudicateAssistantAnswerPlan(parsed, answerReads, {question:humanQuestion,...(parsed.mode === 'propose' ? { readableModules: assistantReadableModules(ctx) } : {})});
         } catch { answerPlan = undefined; }
         break;
       }
