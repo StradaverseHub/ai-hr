@@ -9,6 +9,7 @@
   record marker and its admission lock, the dedicated `MOVEMENT_IMPORT_WORKBOOK_KEY` custody contract) stand.
 - **Builds on:** [ADR-0155](0155-shared-import-history-and-revert.md) (shared import history and revert).
 - **Migration:** none.
+- **Amended by:** [ADR-0164](0164-movement-corrections-behind-closed-payroll.md) slice C (template version 4: Action, Movement Event ID and Reason columns; Update and Delete rows and their revert).
 
 ## 1. Context
 
