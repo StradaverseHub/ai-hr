@@ -1,0 +1,5959 @@
+{
+  "version": 9,
+  "revision": 1,
+  "checklists": [
+    {
+      "id": "c1",
+      "name": "Standard onboarding",
+      "module": "onb",
+      "rules": {
+        "department": [],
+        "grade": [],
+        "businessGroup": [],
+        "company": [],
+        "employmentType": []
+      },
+      "tasks": [
+        {
+          "id": "s1",
+          "name": "Send contract pack and confirm offer acceptance",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -7,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "s5",
+          "name": "Day 1 orientation & HR briefing",
+          "by": "group",
+          "group": "g-gbsta",
+          "mode": "rr",
+          "opens": 1,
+          "due": 1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "s6",
+          "name": "Office tour",
+          "by": "group",
+          "group": "g-gbsta",
+          "mode": "rr",
+          "opens": 1,
+          "due": 1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "s8",
+          "name": "Confirm email, AD and system access are live",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "s9",
+          "name": "Device Acceptance Acknowledgement form",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 3,
+          "required": false,
+          "documentTemplate": "tdev",
+          "documentAction": "signed"
+        },
+        {
+          "id": "s10",
+          "name": "Onboarding Satisfaction Survey",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 7,
+          "due": 14,
+          "required": false,
+          "documentTemplate": "tsv",
+          "documentAction": "signed"
+        }
+      ]
+    },
+    {
+      "id": "c2",
+      "name": "Site staff onboarding",
+      "module": "onb",
+      "rules": {
+        "department": [],
+        "grade": [],
+        "businessGroup": [
+          "CHCE"
+        ],
+        "company": [],
+        "employmentType": [
+          "Contract"
+        ]
+      },
+      "tasks": [
+        {
+          "id": "p1",
+          "name": "Send contract pack and confirm offer acceptance",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -7,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p4",
+          "name": "Site safety induction",
+          "by": "group",
+          "group": "g-facility",
+          "mode": "rr",
+          "opens": 1,
+          "due": 1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p6",
+          "name": "Device Acceptance Acknowledgement form",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 3,
+          "required": false,
+          "documentTemplate": "tdev",
+          "documentAction": "signed"
+        },
+        {
+          "id": "p7",
+          "name": "Onboarding Satisfaction Survey",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 7,
+          "due": 14,
+          "required": false,
+          "documentTemplate": "tsv",
+          "documentAction": "signed"
+        }
+      ]
+    },
+    {
+      "id": "c3",
+      "name": "Leadership onboarding",
+      "module": "onb",
+      "rules": {
+        "department": [],
+        "grade": [
+          "M2",
+          "S1"
+        ],
+        "businessGroup": [],
+        "company": [],
+        "employmentType": []
+      },
+      "tasks": [
+        {
+          "id": "l1",
+          "name": "Send contract pack and confirm offer acceptance",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -14,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "l5",
+          "name": "Leadership welcome session",
+          "by": "group",
+          "group": "g-people",
+          "mode": "manual",
+          "opens": 1,
+          "due": 3,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "l6",
+          "name": "Meet business group heads",
+          "by": "manager",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 10,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "l7",
+          "name": "Onboarding Satisfaction Survey",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 7,
+          "due": 14,
+          "required": false,
+          "documentTemplate": "tsv",
+          "documentAction": "signed"
+        },
+        {
+          "id": "l8",
+          "name": "Confirm email, AD and system access are live",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "l9",
+          "name": "Device Acceptance Acknowledgement form",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 3,
+          "required": false,
+          "documentTemplate": "tdev",
+          "documentAction": "signed"
+        }
+      ]
+    },
+    {
+      "id": "c4",
+      "name": "Marketing onboarding",
+      "module": "onb",
+      "rules": {
+        "department": [
+          "Marketing"
+        ],
+        "grade": [],
+        "businessGroup": [
+          "CHBM"
+        ],
+        "company": [],
+        "employmentType": []
+      },
+      "tasks": [
+        {
+          "id": "m1",
+          "name": "Send contract pack and confirm offer acceptance",
+          "by": "group",
+          "group": "g-people",
+          "mode": "manual",
+          "opens": null,
+          "due": -7,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "m5",
+          "name": "Brand and marketing tools walkthrough",
+          "by": "manager",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 5,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "m6",
+          "name": "Onboarding Satisfaction Survey",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 7,
+          "due": 14,
+          "required": false,
+          "documentTemplate": "tsv",
+          "documentAction": "signed"
+        },
+        {
+          "id": "m7",
+          "name": "Confirm email, AD and system access are live",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "m8",
+          "name": "Device Acceptance Acknowledgement form",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": 1,
+          "due": 3,
+          "required": false,
+          "documentTemplate": "tdev",
+          "documentAction": "signed"
+        }
+      ]
+    },
+    {
+      "id": "oc1",
+      "name": "Standard offboarding",
+      "module": "off",
+      "rules": {
+        "department": [],
+        "grade": [],
+        "businessGroup": [],
+        "company": [],
+        "employmentType": []
+      },
+      "tasks": [
+        {
+          "id": "o1",
+          "name": "Agree handover plan",
+          "by": "manager",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -10,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o8",
+          "name": "Review and send acceptance of resignation letter",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -25,
+          "required": false,
+          "documentTemplate": "t4",
+          "documentAction": "sent"
+        },
+        {
+          "id": "o2",
+          "name": "Knowledge handover completed",
+          "by": "manager",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -1,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o3",
+          "name": "Conduct exit interview",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -3,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o4",
+          "name": "Return your company items",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": 0,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o9",
+          "name": "Upload your handover notes",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -5,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o10",
+          "name": "Book your exit interview",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -7,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o12",
+          "name": "Complete your exit interview form",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -5,
+          "required": false,
+          "documentTemplate": "txi",
+          "documentAction": "signed"
+        },
+        {
+          "id": "o11",
+          "name": "Offboarding survey (confidential)",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -1,
+          "required": false,
+          "documentTemplate": "txs",
+          "documentAction": "signed"
+        },
+        {
+          "id": "o5",
+          "name": "Confirm final pay and leave balance",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": 0,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o6",
+          "name": "Issue certificate of service",
+          "by": "group",
+          "group": "g-people",
+          "mode": "manual",
+          "opens": null,
+          "due": 5,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "o7",
+          "name": "Submit EPF and SOCSO cessation forms",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": 7,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        }
+      ]
+    },
+    {
+      "id": "oc2",
+      "name": "Site staff offboarding",
+      "module": "off",
+      "rules": {
+        "department": [],
+        "grade": [],
+        "businessGroup": [
+          "CHCE"
+        ],
+        "company": [],
+        "employmentType": []
+      },
+      "tasks": [
+        {
+          "id": "p1",
+          "name": "Agree handover plan",
+          "by": "manager",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -10,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p7",
+          "name": "Review and send acceptance of resignation letter",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -25,
+          "required": false,
+          "documentTemplate": "t4",
+          "documentAction": "sent"
+        },
+        {
+          "id": "p2",
+          "name": "Site handover walkthrough",
+          "by": "manager",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -2,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p3",
+          "name": "Conduct exit interview",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": -3,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p8",
+          "name": "Complete your exit interview form",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -5,
+          "required": false,
+          "documentTemplate": "txi",
+          "documentAction": "signed"
+        },
+        {
+          "id": "p9",
+          "name": "Offboarding survey (confidential)",
+          "by": "employee",
+          "group": null,
+          "mode": "manual",
+          "opens": null,
+          "due": -1,
+          "required": false,
+          "documentTemplate": "txs",
+          "documentAction": "signed"
+        },
+        {
+          "id": "p4",
+          "name": "Collect PPE and site safety equipment",
+          "by": "group",
+          "group": "g-facility",
+          "mode": "rr",
+          "opens": null,
+          "due": 0,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p5",
+          "name": "Confirm final pay and leave balance",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": 0,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        },
+        {
+          "id": "p6",
+          "name": "Submit EPF and SOCSO cessation forms",
+          "by": "group",
+          "group": "g-people",
+          "mode": "rr",
+          "opens": null,
+          "due": 7,
+          "required": false,
+          "documentTemplate": null,
+          "documentAction": "completed"
+        }
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "t1",
+      "name": "Staff Personal Detail Form",
+      "module": "onb",
+      "type": "Form",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": []
+      },
+      "hrStep": "none",
+      "employeeAck": false,
+      "retired": true,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Staff Personal Detail Form",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Please complete this form before your first day. Details we already hold in Personnel Management are filled in for you. Contact the Human Resource Department if anything is wrong.",
+              "section": ""
+            },
+            {
+              "id": "f_company",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "company"
+            },
+            {
+              "id": "f_location",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "location"
+            },
+            {
+              "id": "b5",
+              "type": "subheading",
+              "text": "Personal details",
+              "section": ""
+            },
+            {
+              "id": "f_name",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "name"
+            },
+            {
+              "id": "f_icNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "icNo"
+            },
+            {
+              "id": "f_marital",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "marital"
+            },
+            {
+              "id": "f_address",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "address"
+            },
+            {
+              "id": "f_race",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "race"
+            },
+            {
+              "id": "f_religion",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "religion"
+            },
+            {
+              "id": "f_gender",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "gender"
+            },
+            {
+              "id": "f_nationality",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "nationality"
+            },
+            {
+              "id": "f_mobile",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "mobile"
+            },
+            {
+              "id": "f_homePhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "homePhone"
+            },
+            {
+              "id": "f_workEmail",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "workEmail"
+            },
+            {
+              "id": "b7",
+              "type": "subheading",
+              "text": "Income tax, EPF and bank",
+              "section": ""
+            },
+            {
+              "id": "f_taxNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "taxNo"
+            },
+            {
+              "id": "f_epfNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "epfNo"
+            },
+            {
+              "id": "f_bankName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "bankName"
+            },
+            {
+              "id": "f_bankAcc",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "bankAcc"
+            },
+            {
+              "id": "f_hobbies",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "hobbies"
+            },
+            {
+              "id": "b10",
+              "type": "subheading",
+              "text": "In case of emergency, contact my family / relative",
+              "section": ""
+            },
+            {
+              "id": "f_emName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emName"
+            },
+            {
+              "id": "f_emRel",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emRel"
+            },
+            {
+              "id": "f_emPhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emPhone"
+            },
+            {
+              "id": "b12",
+              "type": "subheading",
+              "text": "If married: spouse and children (for income tax PCB)",
+              "section": ""
+            },
+            {
+              "id": "f_spName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spName"
+            },
+            {
+              "id": "f_spIc",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spIc"
+            },
+            {
+              "id": "f_spJob",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spJob"
+            },
+            {
+              "id": "f_spPhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spPhone"
+            },
+            {
+              "id": "f_spTax",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spTax"
+            },
+            {
+              "id": "f_kids",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "kids"
+            },
+            {
+              "id": "f_children",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "children"
+            },
+            {
+              "id": "b15",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm that the information above is true and complete."
+            }
+          ],
+          "fields": [
+            {
+              "id": "company",
+              "label": "Company name",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "company",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "employment",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "location",
+              "label": "Branch / factory / plant location",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "floor",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "employment",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "name",
+              "label": "Name (as per NRIC / passport)",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "name",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "icNo",
+              "label": "NRIC / passport no.",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "icNo",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "marital",
+              "label": "Marital status",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "marital",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Single",
+                "Married",
+                "Divorced",
+                "Widowed"
+              ],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "address",
+              "label": "Home address",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": "address",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "race",
+              "label": "Race",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "race",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "religion",
+              "label": "Religion",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "religion",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "gender",
+              "label": "Gender",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "gender",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Male",
+                "Female"
+              ],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "nationality",
+              "label": "Nationality",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "nationality",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "mobile",
+              "label": "Handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "mobile",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "homePhone",
+              "label": "House phone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "homePhone",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "workEmail",
+              "label": "Company email address",
+              "type": "email",
+              "owner": "pmLocked",
+              "pmKey": "email",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "taxNo",
+              "label": "Income tax no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "taxNo",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "epfNo",
+              "label": "EPF no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "epfNo",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "bankName",
+              "label": "Bank name",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "bankName",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Maybank",
+                "CIMB Bank",
+                "Public Bank",
+                "RHB Bank",
+                "Hong Leong Bank",
+                "AmBank",
+                "Bank Islam",
+                "Other"
+              ],
+              "section": "statutory",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "bankAcc",
+              "label": "Bank account no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "bankAcc",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "hobbies",
+              "label": "Hobbies / interests (list up to 3, sports or non-sports)",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "interests",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emName",
+              "label": "Name",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "emName",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emRel",
+              "label": "Relationship",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "emRel",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emPhone",
+              "label": "Handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "emPhone",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spName",
+              "label": "Name of spouse (as per NRIC)",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spName",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spIc",
+              "label": "Spouse NRIC no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spIc",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spJob",
+              "label": "Occupation",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spPhone",
+              "label": "Spouse handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spTax",
+              "label": "Spouse income tax no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spTax",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "kids",
+              "label": "Total no. of children",
+              "type": "number",
+              "owner": "employee",
+              "pmKey": "kids",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "children",
+              "label": "Children",
+              "type": "table",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "children",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "full",
+              "columns": [
+                "Name",
+                "NRIC",
+                "Gender (M/F)",
+                "Studying (Y/N)"
+              ]
+            }
+          ]
+        },
+        {
+          "version": 2,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Staff Personal Detail Form",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Please complete this form before your first day. Details we already hold in Personnel Management are filled in for you. Contact the Human Resource Department if anything is wrong.",
+              "section": ""
+            },
+            {
+              "id": "f_company",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "company"
+            },
+            {
+              "id": "f_location",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "location"
+            },
+            {
+              "id": "b5",
+              "type": "subheading",
+              "text": "Personal details",
+              "section": ""
+            },
+            {
+              "id": "f_name",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "name"
+            },
+            {
+              "id": "f_icNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "icNo"
+            },
+            {
+              "id": "f_marital",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "marital"
+            },
+            {
+              "id": "f_address",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "address"
+            },
+            {
+              "id": "f_race",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "race"
+            },
+            {
+              "id": "f_religion",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "religion"
+            },
+            {
+              "id": "f_gender",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "gender"
+            },
+            {
+              "id": "f_nationality",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "nationality"
+            },
+            {
+              "id": "f_mobile",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "mobile"
+            },
+            {
+              "id": "f_homePhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "homePhone"
+            },
+            {
+              "id": "f_workEmail",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "workEmail"
+            },
+            {
+              "id": "f_personalEmail",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "personalEmail"
+            },
+            {
+              "id": "b7",
+              "type": "subheading",
+              "text": "Income tax, EPF and bank",
+              "section": ""
+            },
+            {
+              "id": "f_taxNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "taxNo"
+            },
+            {
+              "id": "f_epfNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "epfNo"
+            },
+            {
+              "id": "f_bankName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "bankName"
+            },
+            {
+              "id": "f_bankAcc",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "bankAcc"
+            },
+            {
+              "id": "f_hobbies",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "hobbies"
+            },
+            {
+              "id": "b10",
+              "type": "subheading",
+              "text": "In case of emergency, contact my family / relative",
+              "section": ""
+            },
+            {
+              "id": "f_emName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emName"
+            },
+            {
+              "id": "f_emRel",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emRel"
+            },
+            {
+              "id": "f_emPhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emPhone"
+            },
+            {
+              "id": "b12",
+              "type": "subheading",
+              "text": "If married: spouse and children (for income tax PCB)",
+              "section": ""
+            },
+            {
+              "id": "f_spName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spName"
+            },
+            {
+              "id": "f_spIc",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spIc"
+            },
+            {
+              "id": "f_spJob",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spJob"
+            },
+            {
+              "id": "f_spPhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spPhone"
+            },
+            {
+              "id": "f_spTax",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spTax"
+            },
+            {
+              "id": "f_kids",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "kids"
+            },
+            {
+              "id": "f_children",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "children"
+            },
+            {
+              "id": "b15",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm that the information above is true and complete."
+            }
+          ],
+          "fields": [
+            {
+              "id": "company",
+              "label": "Company name",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "company",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "employment",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "location",
+              "label": "Branch / factory / plant location",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "floor",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "employment",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "name",
+              "label": "Name (as per NRIC / passport)",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "name",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "icNo",
+              "label": "NRIC / passport no.",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "icNo",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "marital",
+              "label": "Marital status",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "marital",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Single",
+                "Married",
+                "Divorced",
+                "Widowed"
+              ],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "address",
+              "label": "Home address",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": "address",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "race",
+              "label": "Race",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "race",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "religion",
+              "label": "Religion",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "religion",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "gender",
+              "label": "Gender",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "gender",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Male",
+                "Female"
+              ],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "nationality",
+              "label": "Nationality",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "nationality",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "mobile",
+              "label": "Handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "mobile",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "homePhone",
+              "label": "House phone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "homePhone",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "workEmail",
+              "label": "Company email address",
+              "type": "email",
+              "owner": "pmLocked",
+              "pmKey": "email",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "personalEmail",
+              "label": "Personal email address",
+              "type": "email",
+              "owner": "employee",
+              "pmKey": "personalEmail",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "taxNo",
+              "label": "Income tax no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "taxNo",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "epfNo",
+              "label": "EPF no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "epfNo",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "bankName",
+              "label": "Bank name",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "bankName",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Maybank",
+                "CIMB Bank",
+                "Public Bank",
+                "RHB Bank",
+                "Hong Leong Bank",
+                "AmBank",
+                "Bank Islam",
+                "Other"
+              ],
+              "section": "statutory",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "bankAcc",
+              "label": "Bank account no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "bankAcc",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "hobbies",
+              "label": "Hobbies / interests (list up to 3, sports or non-sports)",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "interests",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emName",
+              "label": "Name",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "emName",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emRel",
+              "label": "Relationship",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "emRel",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emPhone",
+              "label": "Handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "emPhone",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spName",
+              "label": "Name of spouse (as per NRIC)",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spName",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spIc",
+              "label": "Spouse NRIC no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spIc",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spJob",
+              "label": "Occupation",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spPhone",
+              "label": "Spouse handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spTax",
+              "label": "Spouse income tax no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spTax",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "kids",
+              "label": "Total no. of children",
+              "type": "number",
+              "owner": "employee",
+              "pmKey": "kids",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "children",
+              "label": "Children",
+              "type": "table",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "children",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "full",
+              "columns": [
+                "Name",
+                "NRIC",
+                "Gender (M/F)",
+                "Studying (Y/N)"
+              ]
+            }
+          ]
+        },
+        {
+          "version": 3,
+          "state": "draft",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Staff Personal Detail Form",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Please complete this form before your first day. Details we already hold in Personnel Management are filled in for you. Salaries are paid into Maybank accounts by default; choose another bank only if HR has agreed it. Contact the Human Resource Department if anything is wrong.",
+              "section": ""
+            },
+            {
+              "id": "f_company",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "company"
+            },
+            {
+              "id": "f_location",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "location"
+            },
+            {
+              "id": "b5",
+              "type": "subheading",
+              "text": "Personal details",
+              "section": ""
+            },
+            {
+              "id": "f_name",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "name"
+            },
+            {
+              "id": "f_icNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "icNo"
+            },
+            {
+              "id": "f_marital",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "marital"
+            },
+            {
+              "id": "f_address",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "address"
+            },
+            {
+              "id": "f_race",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "race"
+            },
+            {
+              "id": "f_religion",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "religion"
+            },
+            {
+              "id": "f_gender",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "gender"
+            },
+            {
+              "id": "f_nationality",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "nationality"
+            },
+            {
+              "id": "f_mobile",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "mobile"
+            },
+            {
+              "id": "f_homePhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "homePhone"
+            },
+            {
+              "id": "f_workEmail",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "workEmail"
+            },
+            {
+              "id": "f_personalEmail",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "personalEmail"
+            },
+            {
+              "id": "b7",
+              "type": "subheading",
+              "text": "Income tax, EPF and bank",
+              "section": ""
+            },
+            {
+              "id": "f_taxNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "taxNo"
+            },
+            {
+              "id": "f_epfNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "epfNo"
+            },
+            {
+              "id": "f_bankName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "bankName"
+            },
+            {
+              "id": "f_bankAcc",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "bankAcc"
+            },
+            {
+              "id": "f_hobbies",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "hobbies"
+            },
+            {
+              "id": "b10",
+              "type": "subheading",
+              "text": "In case of emergency, contact my family / relative",
+              "section": ""
+            },
+            {
+              "id": "f_emName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emName"
+            },
+            {
+              "id": "f_emRel",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emRel"
+            },
+            {
+              "id": "f_emPhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "emPhone"
+            },
+            {
+              "id": "b12",
+              "type": "subheading",
+              "text": "If married: spouse and children (for income tax PCB)",
+              "section": ""
+            },
+            {
+              "id": "f_spName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spName"
+            },
+            {
+              "id": "f_spIc",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spIc"
+            },
+            {
+              "id": "f_spJob",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spJob"
+            },
+            {
+              "id": "f_spPhone",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spPhone"
+            },
+            {
+              "id": "f_spTax",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "spTax"
+            },
+            {
+              "id": "f_kids",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "kids"
+            },
+            {
+              "id": "f_children",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "children"
+            },
+            {
+              "id": "b15",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm that the information above is true and complete."
+            }
+          ],
+          "fields": [
+            {
+              "id": "company",
+              "label": "Company name",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "company",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "employment",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "location",
+              "label": "Branch / factory / plant location",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "floor",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "employment",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "name",
+              "label": "Name (as per NRIC / passport)",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "name",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "icNo",
+              "label": "NRIC / passport no.",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "icNo",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "marital",
+              "label": "Marital status",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "marital",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Single",
+                "Married",
+                "Divorced",
+                "Widowed"
+              ],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "address",
+              "label": "Home address",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": "address",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "race",
+              "label": "Race",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "race",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "religion",
+              "label": "Religion",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "religion",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "gender",
+              "label": "Gender",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "gender",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Male",
+                "Female"
+              ],
+              "section": "personal",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "nationality",
+              "label": "Nationality",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "nationality",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "mobile",
+              "label": "Handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "mobile",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "homePhone",
+              "label": "House phone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "homePhone",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "workEmail",
+              "label": "Company email address",
+              "type": "email",
+              "owner": "pmLocked",
+              "pmKey": "email",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "personalEmail",
+              "label": "Personal email address",
+              "type": "email",
+              "owner": "employee",
+              "pmKey": "personalEmail",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "personal",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "taxNo",
+              "label": "Income tax no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "taxNo",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "epfNo",
+              "label": "EPF no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "epfNo",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "bankName",
+              "label": "Bank name",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": "bankName",
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Maybank",
+                "CIMB Bank",
+                "Public Bank",
+                "RHB Bank",
+                "Hong Leong Bank",
+                "AmBank",
+                "Bank Islam",
+                "Other"
+              ],
+              "section": "statutory",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "bankAcc",
+              "label": "Bank account no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "bankAcc",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "statutory",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "hobbies",
+              "label": "Hobbies / interests (list up to 3, sports or non-sports)",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "interests",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emName",
+              "label": "Name",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "emName",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emRel",
+              "label": "Relationship",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "emRel",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "emPhone",
+              "label": "Handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "emPhone",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "emergency",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spName",
+              "label": "Name of spouse (as per NRIC)",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spName",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spIc",
+              "label": "Spouse NRIC no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spIc",
+              "required": true,
+              "sensitive": true,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spJob",
+              "label": "Occupation",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spPhone",
+              "label": "Spouse handphone no.",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "spTax",
+              "label": "Spouse income tax no.",
+              "type": "text",
+              "owner": "employee",
+              "pmKey": "spTax",
+              "required": false,
+              "sensitive": true,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "kids",
+              "label": "Total no. of children",
+              "type": "number",
+              "owner": "employee",
+              "pmKey": "kids",
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "spouse",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "children",
+              "label": "Children",
+              "type": "table",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "children",
+              "when": {
+                "field": "marital",
+                "value": "Married"
+              },
+              "width": "full",
+              "columns": [
+                "Name",
+                "NRIC",
+                "Gender (M/F)",
+                "Studying (Y/N)"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "t2",
+      "name": "Acceptance of the Company Code of Conduct",
+      "module": "onb",
+      "type": "Acknowledgement",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": []
+      },
+      "hrStep": "none",
+      "employeeAck": false,
+      "retired": true,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Acceptance of the Company Code of Conduct",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "I, {employee.name} of NRIC No. {employee.icNo}, hereby have read and understand the content of Major and Minor Misconduct listing as below.",
+              "section": ""
+            },
+            {
+              "id": "b4",
+              "type": "subheading",
+              "text": "a) Minor Misconduct – 1st time misconduct (becoming major if repeated)",
+              "section": ""
+            },
+            {
+              "id": "b5",
+              "type": "table",
+              "text": "",
+              "section": "",
+              "columns": "No., Misconduct, Type of disciplinary action",
+              "rows": "1 | Tardiness and absence – failure to be at workstation at proper time / reporting late for work / leaving early | \n2 | Absence from work without prior permission from Superior or without reasonable excuses | \n3 | Failure to report for pre-arranged overtime | \n4 | Excessive Sick Leave i.e. habitual sick leave taken on certain work days e.g. Fridays / Mondays / before or after Public Holidays | \n5 | Disorderly conduct i.e. interfering with the work of other employees | \n6 | Abuse of Emergency Leave / Compassionate Leave | \n7 | Posting and/or removing and/or tampering with the Company Notice Board without Authorization | \n8 | Inattention to duties – Deliberate loafing on the job such as idling, neglect of job assignments, deliberately delaying to complete a job assignment, visiting in other departments, stopping work before scheduled rest period, lunch hour or quitting time* | \n9 | Sleeping on duty* | \n10 | Smoking in unauthorized areas or premises of Company* | \n11 | Trespass into restricted areas within premises of the Company* | \n12 | Any act contrary and prejudicial to Company Standard Operating Procedures (SOPs)* | \n13 | Failure to abide by safety rules and disregard for safety devices on equipment, refusal to conform to safety rules given by authorized personnel or any behavior of an unsafe manner incl. maintaining the cleanliness of work area* | \n14 | Condonation by immediate superior or supervisor i.e. failure to enforce discipline in conformance with set standards and SOPs* | "
+            },
+            {
+              "id": "b6",
+              "type": "text",
+              "text": "*Misconduct no. 8 – 14 may be considered as a major misconduct even if the employee committed it for the 1st time, where the impact of offence is huge (sizable) e.g. Company loss, possible high risk to the Company, tarnishing Company's image, Company has lost confidence and trust on the employee, etc.",
+              "section": ""
+            },
+            {
+              "id": "b7",
+              "type": "subheading",
+              "text": "b) Major Misconduct – 1st time misconduct",
+              "section": ""
+            },
+            {
+              "id": "b8",
+              "type": "table",
+              "text": "",
+              "section": "",
+              "columns": "No., Misconduct, Type of disciplinary action",
+              "rows": "1 | Insubordination i.e. failure to obey lawful or reasonable orders that are consistent with the terms and conditions of employment | \n2 | Quarrelling / Fighting with other employees / company's clients | \n3 | Consumption of Liquor on Company Premises / Intoxication / drug taking / drug selling | \n4 | Punching the time card for a friend | \n5 | Theft and embezzlement | \n6 | Sexual Harassment | \n7 | Possession / Dissemination / editing of pornographic materials in company premises | \n8 | Conflict of Interest | \n9 | Bribery / Corruption | \n10 | Breach of Fiduciary Duty i.e. failure to fulfill fiduciary duty to the Company or shareholders e.g. higher positions employee or board members acting on the best interest of himself rather than on the best interest of the Company and shareholders | \n11 | Cheating | \n12 | Misuse of Company Electronic Equipment | \n13 | Indecent behaviour – use of foul language, indecent attire, immoral act, etc. | \n14 | Assault / threaten others (verbally or physically) | \n15 | Damaging property belonging to the company, employees and clients | \n16 | Improper or illegal disclosure of Company's proprietary information | \n17 | Falsifying / alteration of any Company's document / record or information | \n18 | Loss of Company's property through negligence | \n19 | Making false reports | \n20 | Gambling | \n21 | Misappropriation i.e. abuse of position / power / authority in using Company's property and premises entrusted to him/her | \n22 | Sale of illegal drugs on Company premises | \n23 | Unauthorized possession of offensive weapons e.g. firearms or explosive | \n24 | Unauthorized possession of Company's property | \n25 | Remaining absent for more than two (2) consecutive working days [Section 15 (2) of employment ordinance] | \n26 | Misrepresentation – Deliberate concealment or misrepresentation of past history or other important matters | \n27 | Accepting other employment without the permission of the Company | \n28 | Accepting Money or Gifts – Taking advantage of one's position to accept money or property from others | \n29 | Other – any individual act or pattern of acts, conducts or expressions which are detrimental to the welfare of the Company, its employee or products. | \n30 | Conviction for Felony – a conviction or sentence for any crime under local and national statutes e.g. murder, rape, kidnapping, robbery, abetment of sizable offences, terrorism, etc. | "
+            },
+            {
+              "id": "b9",
+              "type": "text",
+              "text": "Note for item 30: All such cases shall be referred to the relevant authority.",
+              "section": ""
+            },
+            {
+              "id": "b10",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I have read and understood the Major and Minor Misconduct listing above."
+            }
+          ],
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "t4",
+      "name": "Acceptance of Resignation Letter",
+      "module": "off",
+      "type": "Letter",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": [
+          "Resignation"
+        ]
+      },
+      "hrStep": "before",
+      "employeeAck": true,
+      "retired": false,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "text",
+              "text": "Date: {today}\n\nPRIVATE AND CONFIDENTIAL\n{employee.name}\nNRIC No.: {employee.icNo}\n{employee.position}, {employee.department}",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "heading",
+              "text": "Acceptance of resignation",
+              "section": ""
+            },
+            {
+              "id": "b4",
+              "type": "text",
+              "text": "Dear {employee.name},\n\nWe refer to your letter of resignation dated {leaver.noticeDate}. The Company accepts your resignation, and your last working day with {company.name} will be {leaver.lastDay}.",
+              "section": ""
+            },
+            {
+              "id": "b5",
+              "type": "text",
+              "text": "As at your last working day you will have {leave.remaining} days of annual leave remaining. {leave.encashDays} days will be paid as leave encashment of {leave.encashAmount} (daily rate {leave.dailyRate}), together with your final salary on {pay.finalPayDate}.",
+              "section": ""
+            },
+            {
+              "id": "b6",
+              "type": "text",
+              "text": "Please hand over your work to your supervisor, {employee.supervisor}, return all Company property and complete the exit clearance by your last working day.",
+              "section": ""
+            },
+            {
+              "id": "b7",
+              "type": "text",
+              "text": "We thank you for your contributions to the Company and wish you every success in your future endeavours.",
+              "section": ""
+            },
+            {
+              "id": "b8",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "hr",
+              "label": "Yours sincerely,"
+            },
+            {
+              "id": "b9",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I acknowledge receipt of this letter."
+            }
+          ],
+          "fields": []
+        }
+      ]
+    },
+    {
+      "id": "tdev",
+      "name": "Device Acceptance Acknowledgement form",
+      "module": "onb",
+      "type": "Form",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": []
+      },
+      "hrStep": "none",
+      "employeeAck": false,
+      "retired": false,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Device Acceptance Acknowledgement (End User Acceptance Form)",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Please complete this form on the day you receive your IT equipment from TechGBS personnel. / Sila lengkapkan borang ini pada hari anda menerima peralatan IT.",
+              "section": ""
+            },
+            {
+              "id": "b4",
+              "type": "subheading",
+              "text": "Your details / Maklumat anda",
+              "section": ""
+            },
+            {
+              "id": "f_company",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "company"
+            },
+            {
+              "id": "f_empNo",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "empNo"
+            },
+            {
+              "id": "f_mobile",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "mobile"
+            },
+            {
+              "id": "b6",
+              "type": "subheading",
+              "text": "IT equipment received / Peralatan IT yang diterima",
+              "section": ""
+            },
+            {
+              "id": "f_backpack",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "backpack"
+            },
+            {
+              "id": "f_mouse",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "mouse"
+            },
+            {
+              "id": "f_pcType",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "pcType"
+            },
+            {
+              "id": "b8",
+              "type": "subheading",
+              "text": "Acknowledgement & acceptance / Pengakuan & penerimaan",
+              "section": ""
+            },
+            {
+              "id": "b9",
+              "type": "text",
+              "text": "As a new user, I acknowledge that:\n• I have received my assigned IT equipment and access credentials.\n• I will keep my password confidential and will not share my account with others.\n• I will comply with the organization's IT Security Policy, Acceptable Use Policy, and Data Protection Policy.\n• I understand that company devices, email, and network activities may be monitored.\n• I will immediately report any lost devices, suspected security incidents, or unauthorized access.\n• I will use company resources only for authorized business purposes.\n• I understand that software installation requires IT approval.\n• I acknowledge that all company data remains the property of the organization.",
+              "section": ""
+            },
+            {
+              "id": "f_acceptPolicy",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "acceptPolicy"
+            },
+            {
+              "id": "b11",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm I received the equipment above and accept the Onboarding User Acceptance Policy."
+            }
+          ],
+          "fields": [
+            {
+              "id": "company",
+              "label": "Company name / Nama syarikat",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "company",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "empNo",
+              "label": "Employee ID / ID pekerja",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "empNo",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "mobile",
+              "label": "Contact number, e.g. 012 3456 7890 / Nombor telefon",
+              "type": "phone",
+              "owner": "employee",
+              "pmKey": "mobile",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "backpack",
+              "label": "Backpack received from TechGBS today? / Beg galas diterima?",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Yes – received",
+                "No – not received"
+              ],
+              "section": "kit",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "mouse",
+              "label": "Wireless or wired mouse received today? / Tetikus diterima?",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Yes – received",
+                "No – not received"
+              ],
+              "section": "kit",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "pcType",
+              "label": "Type of PC received from TechGBS today / Jenis PC yang diterima",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Company laptop with charger",
+                "Company tablet with charger",
+                "Company desktop set with monitor"
+              ],
+              "section": "kit",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "acceptPolicy",
+              "label": "I have read and understood the Onboarding User Acceptance Policy above / Saya telah membaca dan memahami polisi di atas",
+              "type": "checkbox",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "ack",
+              "when": null,
+              "width": "half",
+              "columns": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tsv",
+      "name": "Onboarding Satisfaction Survey",
+      "module": "onb",
+      "type": "Form",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": []
+      },
+      "hrStep": "none",
+      "employeeAck": false,
+      "retired": false,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "New Joiner Onboarding Satisfaction Survey",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Two-week follow-up survey. It takes about 10 minutes. Your answers help us improve onboarding for future new joiners at Chin Hin Group.",
+              "section": ""
+            },
+            {
+              "id": "b4",
+              "type": "subheading",
+              "text": "Respondent information",
+              "section": ""
+            },
+            {
+              "id": "f_svName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "svName"
+            },
+            {
+              "id": "f_svPosition",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "svPosition"
+            },
+            {
+              "id": "f_svGroup",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "svGroup"
+            },
+            {
+              "id": "f_svCompany",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "svCompany"
+            },
+            {
+              "id": "b6",
+              "type": "subheading",
+              "text": "A. Recruiter & Pre-Onboarding",
+              "section": ""
+            },
+            {
+              "id": "b7",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q1",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q1"
+            },
+            {
+              "id": "f_q2",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q2"
+            },
+            {
+              "id": "f_q3",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q3"
+            },
+            {
+              "id": "f_q4",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q4"
+            },
+            {
+              "id": "f_q5",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q5"
+            },
+            {
+              "id": "f_q6",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q6"
+            },
+            {
+              "id": "f_q7",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q7"
+            },
+            {
+              "id": "f_q8",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q8"
+            },
+            {
+              "id": "f_q9",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q9"
+            },
+            {
+              "id": "f_q10",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q10"
+            },
+            {
+              "id": "f_q11",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q11"
+            },
+            {
+              "id": "f_q12",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q12"
+            },
+            {
+              "id": "b9",
+              "type": "subheading",
+              "text": "B. Day 1 Briefing & Facilitator",
+              "section": ""
+            },
+            {
+              "id": "b10",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q13",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q13"
+            },
+            {
+              "id": "f_q14",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q14"
+            },
+            {
+              "id": "f_q15",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q15"
+            },
+            {
+              "id": "f_q16",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q16"
+            },
+            {
+              "id": "f_q17",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q17"
+            },
+            {
+              "id": "f_q18",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q18"
+            },
+            {
+              "id": "f_q19",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q19"
+            },
+            {
+              "id": "f_q20",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q20"
+            },
+            {
+              "id": "f_q21",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q21"
+            },
+            {
+              "id": "b12",
+              "type": "subheading",
+              "text": "C. People Business Partner",
+              "section": ""
+            },
+            {
+              "id": "b13",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q22",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q22"
+            },
+            {
+              "id": "f_q23",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q23"
+            },
+            {
+              "id": "f_q24",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q24"
+            },
+            {
+              "id": "f_q25",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q25"
+            },
+            {
+              "id": "f_q26",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q26"
+            },
+            {
+              "id": "b15",
+              "type": "subheading",
+              "text": "D. Hiring Manager",
+              "section": ""
+            },
+            {
+              "id": "b16",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q27",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q27"
+            },
+            {
+              "id": "f_q28",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q28"
+            },
+            {
+              "id": "f_q29",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q29"
+            },
+            {
+              "id": "f_q30",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q30"
+            },
+            {
+              "id": "f_q31",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q31"
+            },
+            {
+              "id": "b18",
+              "type": "subheading",
+              "text": "E. Admin Readiness",
+              "section": ""
+            },
+            {
+              "id": "b19",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q32",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q32"
+            },
+            {
+              "id": "f_q33",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q33"
+            },
+            {
+              "id": "f_q34",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q34"
+            },
+            {
+              "id": "b21",
+              "type": "subheading",
+              "text": "F. Tech Readiness",
+              "section": ""
+            },
+            {
+              "id": "b22",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q35",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q35"
+            },
+            {
+              "id": "f_q36",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q36"
+            },
+            {
+              "id": "f_q37",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q37"
+            },
+            {
+              "id": "f_q38",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q38"
+            },
+            {
+              "id": "f_q39",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q39"
+            },
+            {
+              "id": "b24",
+              "type": "subheading",
+              "text": "G. Overall Experience",
+              "section": ""
+            },
+            {
+              "id": "b25",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree / very poor) to 10 (strongly agree / excellent).",
+              "section": ""
+            },
+            {
+              "id": "f_q40",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q40"
+            },
+            {
+              "id": "f_q41",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q41"
+            },
+            {
+              "id": "f_q42",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q42"
+            },
+            {
+              "id": "b27",
+              "type": "subheading",
+              "text": "H. Employer Recommendation Score",
+              "section": ""
+            },
+            {
+              "id": "b28",
+              "type": "text",
+              "text": "Rate each statement from 0 (not at all likely) to 10 (extremely likely).",
+              "section": ""
+            },
+            {
+              "id": "f_q43",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q43"
+            },
+            {
+              "id": "f_q44",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "q44"
+            },
+            {
+              "id": "b30",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm these are my own responses."
+            }
+          ],
+          "fields": [
+            {
+              "id": "svName",
+              "label": "Full name (as per NRIC / passport)",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "name",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "svPosition",
+              "label": "Offered position / job title",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "position",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "svGroup",
+              "label": "Business Group",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "group",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "svCompany",
+              "label": "Business unit / company name",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "company",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "q1",
+              "label": "Q1. The recruiter's first contact with me was professional, respectful, and well-timed.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q2",
+              "label": "Q2. The recruiter described the role during our very first interaction.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q3",
+              "label": "Q3. The recruiter coordinated all interview scheduling and logistics smoothly throughout the process.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q4",
+              "label": "Q4. The recruiter communicated outcomes and next steps to me clearly after interview stage.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q5",
+              "label": "Q5. The recruiter presented the verbal offer clearly, covering salary, benefits, job title, and start date.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q6",
+              "label": "Q6. The recruiter made me feel welcomed when delivering the offer.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q7",
+              "label": "Q7. I received the written offer letter promptly after the verbal offer was made.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q8",
+              "label": "Q8. The written offer letter was accurate and matched exactly what was discussed verbally.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q9",
+              "label": "Q9. The recruiter was professional and supportive throughout the negotiation or clarification process.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q10",
+              "label": "Q10. The recruiter clearly communicated my Day 1 logistics like exact reporting time, location, and who to ask for.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q11",
+              "label": "Q11. Overall, the recruiter's communications across the entire journey well prepared me to start my Day 1.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q12",
+              "label": "Q12. Please share what your recruiter did exceptionally well, or the thing you wish had been done differently?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q13",
+              "label": "Q13. The Day 1 briefing content was relevant and useful to me as a new joiner at Chin Hin Group.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q14",
+              "label": "Q14. The briefing shared an overview of Chin Hin Group's businesses.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q15",
+              "label": "Q15. The briefing gave me an understanding of Chin Hin Group's 7 Leadership Principles.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q16",
+              "label": "Q16. The briefing covered a brief idea of Anti-Corruption, Whistleblowing and Sexual Harassment Policy.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q17",
+              "label": "Q17. Office tour was conducted to common areas like cafeteria, prayer room, auditorium, meeting room, gym, nursing room, and medical room on Day 1. (For new joiners attending physical onboarding at Menara Chin Hin only)",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree",
+                "Not applicable"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q18",
+              "label": "Q18. The duration of the Day 1 briefing was appropriate.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q19",
+              "label": "Q19. The Day 1 briefing facilitator delivered the content in a clear, engaging, and confident manner.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q20",
+              "label": "Q20. The facilitator handled questions from new joiners appropriately during the briefing session.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q21",
+              "label": "Q21. What other topic(s) do you think would be good to include in the Day 1 briefing?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q22",
+              "label": "Q22. My People Business Partner proactively checked in with me at least once in my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sC",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q23",
+              "label": "Q23. My People Business Partner explained the Business Group structure and the relevant contact points available to me.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sC",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q24",
+              "label": "Q24. My People Business Partner has been accessible and responsive whenever I needed guidance or had questions in my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sC",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q25",
+              "label": "Q25. I feel confident knowing who to contact for different queries after my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sC",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q26",
+              "label": "Q26. What additional support from your People Business Partner would have been most helpful during your first two weeks?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sC",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q27",
+              "label": "Q27. My hiring manager was thoroughly prepared for my onboarding and offered consistent guidance and support, helping me integrate smoothly into the team over my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sD",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q28",
+              "label": "Q28. My hiring manager has clearly communicated about my role, key responsibilities and work expectations.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sD",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q29",
+              "label": "Q29. My hiring manager has introduced me to the relevant stakeholders that I need to work with.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sD",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q30",
+              "label": "Q30. I feel well supported by my hiring manager in understanding the team culture.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sD",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q31",
+              "label": "Q31. What is the one thing your hiring manager could do differently to better support you?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sD",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q32",
+              "label": "Q32. Employee ID and access card issues from Day 1 were fully resolved within my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sE",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q33",
+              "label": "Q33. All HR system access issues from Day 1 (FlexHR, Chin Hin App) were fully resolved within my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sE",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q34",
+              "label": "Q34. I was given clear guidance on how to navigate and use the Flex HR System & Chin Hin App.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sE",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q35",
+              "label": "Q35. All IT access issues raised on or after Day 1 have been fully resolved within my first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sF",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q36",
+              "label": "Q36. I have all the IT access and tools I need to perform my role effectively within the first two weeks.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sF",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q37",
+              "label": "Q37. The Technology team has been responsive and helpful when I raised any requests or issues.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sF",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q38",
+              "label": "Q38. Were there any IT / System / App access or equipment issues that remained unresolved beyond your first two weeks? Please describe.",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sF",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q39",
+              "label": "Q39. Any feedback on how the Technology team could have made your onboarding experience better?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sF",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q40",
+              "label": "Q40. Overall, my onboarding experience at Chin Hin Group from the recruiter's first contact to today has been positive.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sG",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q41",
+              "label": "Q41. After two weeks, I feel ready and equipped to progress in my role.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sG",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q42",
+              "label": "Q42. I feel welcomed, included, and valued as a new member in the team.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sG",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q43",
+              "label": "Q43. How likely are you to recommend Chin Hin Group as a great place to work to a friend or former colleague?",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Not at all likely",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Extremely likely"
+              ],
+              "section": "sH",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "q44",
+              "label": "Q44. What was the single best part of your onboarding, and what is the one thing we should improve to make the onboarding experience better for future new joiners?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sH",
+              "when": null,
+              "width": "full",
+              "columns": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "txi",
+      "name": "Exit Interview Form",
+      "module": "off",
+      "type": "Form",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": []
+      },
+      "hrStep": "none",
+      "employeeAck": false,
+      "retired": false,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Exit Interview Form",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Please complete this form before your exit interview. It helps us understand your decision to leave and what we can do better.",
+              "section": ""
+            },
+            {
+              "id": "b4",
+              "type": "subheading",
+              "text": "Your details",
+              "section": ""
+            },
+            {
+              "id": "f_xiName",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiName"
+            },
+            {
+              "id": "f_xiPosition",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiPosition"
+            },
+            {
+              "id": "f_xiCompany",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiCompany"
+            },
+            {
+              "id": "b6",
+              "type": "subheading",
+              "text": "Your decision to leave",
+              "section": ""
+            },
+            {
+              "id": "f_xiReason",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiReason"
+            },
+            {
+              "id": "f_xiReasonMore",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiReasonMore"
+            },
+            {
+              "id": "b8",
+              "type": "subheading",
+              "text": "Your experience",
+              "section": ""
+            },
+            {
+              "id": "f_xiValued",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiValued"
+            },
+            {
+              "id": "f_xiImprove",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiImprove"
+            },
+            {
+              "id": "f_xiChange",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiChange"
+            },
+            {
+              "id": "f_xiReturn",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "xiReturn"
+            },
+            {
+              "id": "b10",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm these are my own responses."
+            }
+          ],
+          "fields": [
+            {
+              "id": "xiName",
+              "label": "Full name",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "name",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "xiPosition",
+              "label": "Job title",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "position",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "xiCompany",
+              "label": "Company",
+              "type": "text",
+              "owner": "pmLocked",
+              "pmKey": "company",
+              "required": true,
+              "sensitive": false,
+              "options": [],
+              "section": "info",
+              "when": null,
+              "width": "half",
+              "columns": []
+            },
+            {
+              "id": "xiReason",
+              "label": "What is the main reason you are leaving?",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Career growth",
+                "Pay and benefits",
+                "Work-life balance",
+                "Relationship with my manager",
+                "Relocation",
+                "Further studies",
+                "Health or family",
+                "Another reason"
+              ],
+              "section": "why",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "xiReasonMore",
+              "label": "Tell us more about your main reason.",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "why",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "xiValued",
+              "label": "What did you value most about working here?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "exp",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "xiImprove",
+              "label": "What should we improve?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "exp",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "xiChange",
+              "label": "Was there anything that could have changed your decision to leave?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "exp",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "xiReturn",
+              "label": "Would you consider working with us again?",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "Yes",
+                "Maybe",
+                "No"
+              ],
+              "section": "exp",
+              "when": null,
+              "width": "full",
+              "columns": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "txs",
+      "name": "Offboarding Survey",
+      "module": "off",
+      "type": "Form",
+      "rules": {
+        "businessGroup": [],
+        "company": [],
+        "department": [],
+        "caseType": []
+      },
+      "hrStep": "none",
+      "employeeAck": false,
+      "retired": false,
+      "versions": [
+        {
+          "version": 1,
+          "state": "published",
+          "at": "",
+          "by": "Imported V9 template",
+          "blocks": [
+            {
+              "id": "b1",
+              "type": "letterhead",
+              "text": "",
+              "section": ""
+            },
+            {
+              "id": "b2",
+              "type": "heading",
+              "text": "Offboarding Survey",
+              "section": ""
+            },
+            {
+              "id": "b3",
+              "type": "text",
+              "text": "Rate each statement from 0 (strongly disagree) to 10 (strongly agree).",
+              "section": ""
+            },
+            {
+              "id": "f_sv1",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv1"
+            },
+            {
+              "id": "f_sv2",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv2"
+            },
+            {
+              "id": "f_sv3",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv3"
+            },
+            {
+              "id": "f_sv4",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv4"
+            },
+            {
+              "id": "f_sv5",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv5"
+            },
+            {
+              "id": "f_sv6",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv6"
+            },
+            {
+              "id": "b5",
+              "type": "subheading",
+              "text": "Overall",
+              "section": ""
+            },
+            {
+              "id": "f_sv7",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv7"
+            },
+            {
+              "id": "f_sv8",
+              "type": "field",
+              "text": "",
+              "section": "",
+              "fieldId": "sv8"
+            },
+            {
+              "id": "b7",
+              "type": "signature",
+              "text": "",
+              "section": "",
+              "role": "employee",
+              "label": "I confirm these are my own responses."
+            }
+          ],
+          "fields": [
+            {
+              "id": "sv1",
+              "label": "My role matched what I was told when I joined.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv2",
+              "label": "I received clear direction and regular feedback from my line manager.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv3",
+              "label": "I had the tools, systems and resources I needed to do my job.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv4",
+              "label": "I was recognised and fairly rewarded for my contribution.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv5",
+              "label": "I saw opportunities to grow and develop here.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv6",
+              "label": "I felt respected and included by my team.",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Strongly disagree",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Strongly agree"
+              ],
+              "section": "sA",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv7",
+              "label": "How likely are you to recommend Chin Hin Group as a place to work?",
+              "type": "select",
+              "owner": "employee",
+              "pmKey": null,
+              "required": true,
+              "sensitive": false,
+              "options": [
+                "0 – Not at all likely",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                "10 – Extremely likely"
+              ],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            },
+            {
+              "id": "sv8",
+              "label": "Is there anything else you would like to tell us?",
+              "type": "textarea",
+              "owner": "employee",
+              "pmKey": null,
+              "required": false,
+              "sensitive": false,
+              "options": [],
+              "section": "sB",
+              "when": null,
+              "width": "full",
+              "columns": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "emails": [
+    {
+      "id": "e1",
+      "name": "Welcome email",
+      "module": "onb",
+      "active": true,
+      "sender": "onboarding",
+      "subject": "Welcome to {company.name}, {employee.name}",
+      "body": "Dear {employee.name},\n\nWelcome to {company.name}! We are glad you are joining us as {employee.position} in {employee.department} on {joiner.joinDate}.\n\nYour supervisor will be {employee.supervisor}, and they will share your first-day details with you shortly.\n\nIf you have any questions, reply to this email or contact the Human Resource Department.\n\nRegards,\nHuman Resource Department\n{company.name}\n\n(Placeholder: replace with the final welcome email.)",
+      "cc": [],
+      "links": [],
+      "attachments": [],
+      "slots": []
+    },
+    {
+      "id": "e2",
+      "name": "Reminder before Day 1",
+      "module": "onb",
+      "active": true,
+      "sender": "onboarding",
+      "subject": "See you on {joiner.joinDate}",
+      "body": "Dear {employee.name},\n\nYou join {company.name} on {joiner.joinDate}. We look forward to welcoming you.\n\nRegards,\nHuman Resource Department",
+      "cc": [],
+      "links": [],
+      "attachments": [],
+      "slots": []
+    },
+    {
+      "id": "e3",
+      "name": "Resignation acceptance letter",
+      "module": "off",
+      "active": true,
+      "sender": "hr",
+      "subject": "Acceptance of your resignation",
+      "body": "Dear {employee.name},\n\nPlease find attached the letter accepting your resignation, signed by {signatory.name}. Your last working day is {leaver.lastDay}.\n\nPlease open the link below to acknowledge receipt of the letter.\n\nRegards,\nHuman Resource Department\n{company.name}",
+      "cc": [
+        "supervisor",
+        "pbp"
+      ],
+      "links": [
+        "t4"
+      ],
+      "attachments": [
+        "t4"
+      ],
+      "slots": []
+    },
+    {
+      "id": "e4",
+      "name": "Last working day reminder",
+      "module": "off",
+      "active": true,
+      "sender": "hr",
+      "subject": "Your last working day is {leaver.lastDay}",
+      "body": "Dear {employee.name},\n\nThis is a reminder that your last working day is {leaver.lastDay}. Before then, please:\n- hand over your work to {employee.supervisor}\n- return your laptop, access card and other Company property\n- complete your exit interview\n\nRegards,\nHuman Resource Department",
+      "cc": [],
+      "links": [],
+      "attachments": [],
+      "slots": []
+    },
+    {
+      "id": "e5",
+      "name": "Exit form and survey",
+      "module": "off",
+      "active": true,
+      "sender": "hr",
+      "subject": "Your exit interview form and survey, {employee.name}",
+      "body": "Dear {employee.name},\n\nYour last working day is {leaver.lastDay}. Please complete the exit interview form and the offboarding survey below. Please finish the exit interview form before your exit interview.\n\nRegards,\nHuman Resource Department\n{company.name}",
+      "cc": [],
+      "links": [
+        "txi",
+        "txs"
+      ],
+      "attachments": [],
+      "slots": []
+    },
+    {
+      "id": "e6",
+      "name": "Exit form and survey reminder",
+      "module": "off",
+      "active": true,
+      "sender": "hr",
+      "subject": "Reminder: your exit interview form and survey",
+      "body": "Dear {employee.name},\n\nThis is a reminder to complete your exit interview form and the offboarding survey before your last working day, {leaver.lastDay}. Anything you already entered is saved.\n\nRegards,\nHuman Resource Department\n{company.name}",
+      "cc": [],
+      "links": [
+        "txi",
+        "txs"
+      ],
+      "attachments": [],
+      "slots": []
+    },
+    {
+      "id": "e11",
+      "name": "Device acceptance form",
+      "module": "onb",
+      "active": true,
+      "sender": "onboarding",
+      "subject": "Please confirm your IT equipment, {employee.name}",
+      "body": "Dear {employee.name},\n\nWelcome to your first day at {company.name}. Please confirm the IT equipment you received from the TechGBS team and accept the Onboarding User Acceptance Policy using the form below.\n\nRegards,\nHuman Resource Department",
+      "cc": [],
+      "links": [
+        "tdev"
+      ],
+      "attachments": [],
+      "slots": []
+    },
+    {
+      "id": "e12",
+      "name": "Onboarding survey",
+      "module": "onb",
+      "active": true,
+      "sender": "onboarding",
+      "subject": "Tell us about your onboarding, {employee.name}",
+      "body": "Dear {employee.name},\n\nThank you for being part of {company.name}. Please take about 10 minutes to tell us about your onboarding so far, from your first contact with the recruiter to today. Open the survey below and submit it.\n\nRegards,\nHuman Resource Department",
+      "cc": [],
+      "links": [
+        "tsv"
+      ],
+      "attachments": [],
+      "slots": []
+    }
+  ],
+  "workflows": [
+    {
+      "id": "w1",
+      "name": "Send the welcome email",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "beforeJoin",
+        "days": 7,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w1-step-1",
+          "type": "email",
+          "to": "employee",
+          "cc": [
+            "supervisor",
+            "pbp"
+          ],
+          "template": "e1"
+        }
+      ],
+      "description": "Emails the joiner a week before they start (change the days to suit). Sent from their TA, copying their line manager and BP. It no longer waits for forms or a health check voucher."
+    },
+    {
+      "id": "w2",
+      "name": "Remind a joiner before Day 1",
+      "module": "onb",
+      "status": "draft",
+      "trigger": {
+        "event": "beforeJoin",
+        "days": 3,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w2-step-1",
+          "type": "email",
+          "to": "employee",
+          "cc": [],
+          "template": "e2"
+        }
+      ],
+      "description": "Switched off: joiners no longer have forms to complete before Day 1. Kept so you can reuse it."
+    },
+    {
+      "id": "w3",
+      "name": "Tell the supervisor their new joiner starts soon",
+      "module": "onb",
+      "status": "draft",
+      "trigger": {
+        "event": "beforeJoin",
+        "days": 5,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w3-step-1",
+          "type": "notify",
+          "to": "supervisor",
+          "cc": [
+            "ta"
+          ],
+          "subject": "{employee.name} starts on {joiner.joinDate}",
+          "body": "Hi,\n\n{employee.name} joins your team as {employee.position} on {joiner.joinDate}. Their onboarding is {onboarding.progress} complete.\n\nPlease make sure their first-day plan is ready.\n\nRegards,\nAI HR"
+        }
+      ],
+      "description": "Example of notifying someone other than the employee."
+    },
+    {
+      "id": "w6",
+      "name": "Alert: new joiner starts soon",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "submitted",
+        "days": 0,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [
+        {
+          "field": "joinWithin",
+          "op": "lt",
+          "value": "7"
+        }
+      ],
+      "steps": [
+        {
+          "id": "w6-step-1",
+          "type": "notify",
+          "to": "supervisor",
+          "cc": [
+            "pbp"
+          ],
+          "subject": "{employee.name} starts on {joiner.joinDate}",
+          "body": "Hi,\n\n{employee.name} joins as {employee.position} on {joiner.joinDate}, which is less than a week away. Please check their first-day plan, equipment and access are ready.\n\nRegards,\nAI HR"
+        }
+      ],
+      "description": "When a case is created for someone starting in less than 7 days, alerts their line manager and BP straight away."
+    },
+    {
+      "id": "w7",
+      "name": "Remind task owners before Day 1",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "beforeJoin",
+        "days": 5,
+        "workdays": false,
+        "repeat": true,
+        "skipIf": "noPre"
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w7-step-1",
+          "type": "notify",
+          "to": "taskOwners",
+          "cc": [],
+          "subject": "Open tasks for {employee.name}, who joins on {joiner.joinDate}",
+          "body": "Hi {owner.name},\n\n{employee.name} joins on {joiner.joinDate}. These tasks of yours are still open:\n{pending.tasks}\n\nPlease complete them in My Tasks.\n\nRegards,\nAI HR"
+        }
+      ],
+      "description": "From 5 days before the start, every morning, tells each person with an open task before Day 1 what is still on their list. Stops once nothing is pending."
+    },
+    {
+      "id": "w8",
+      "name": "Escalate pending tasks 2 days before",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "beforeJoin",
+        "days": 2,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": "noPre"
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w8-step-1",
+          "type": "notify",
+          "to": "pbp",
+          "cc": [
+            "ta",
+            "supervisor"
+          ],
+          "subject": "{employee.name} may not be ready for Day 1",
+          "body": "Hi,\n\n{employee.name} joins on {joiner.joinDate} and these tasks are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR"
+        }
+      ],
+      "description": "Two days before the start, tells the BP (copying the TA and line manager) about everything still open. Skipped when nothing is pending."
+    },
+    {
+      "id": "w9",
+      "name": "Send the onboarding survey",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "afterJoin",
+        "days": 6,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w9-step-1",
+          "type": "doc",
+          "template": "tsv",
+          "release": false
+        },
+        {
+          "id": "w9-step-2",
+          "type": "email",
+          "to": "employee",
+          "cc": [],
+          "template": "e12"
+        }
+      ],
+      "description": "On Day 7 (six days after the join date, which is Day 1), creates the Onboarding Satisfaction Survey and emails the joiner a link. They complete it in their employee view."
+    },
+    {
+      "id": "w10",
+      "name": "Remind about the onboarding survey",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "afterJoin",
+        "days": 9,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": "task:Onboarding Satisfaction Survey"
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w10-step-1",
+          "type": "notify",
+          "to": "employee",
+          "cc": [],
+          "subject": "Reminder: onboarding survey",
+          "body": "Dear {employee.name},\n\nA quick reminder to complete the Onboarding Satisfaction Survey in your employee view. It takes about 10 minutes.\n\nThank you,\nHuman Resource Department"
+        }
+      ],
+      "description": "On Day 10, three days after the survey is sent, nudges the joiner if they have not submitted it."
+    },
+    {
+      "id": "w11",
+      "name": "Release the device acceptance form",
+      "module": "onb",
+      "status": "published",
+      "trigger": {
+        "event": "afterJoin",
+        "days": 0,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w11-step-1",
+          "type": "doc",
+          "template": "tdev",
+          "release": true
+        }
+      ],
+      "description": "On the join date, releases the Device Acceptance Acknowledgement form in the system. It appears in the joiner's employee view against its checklist task, with no email, and can be opened once that task opens."
+    },
+    {
+      "id": "w4",
+      "name": "Prepare the resignation acceptance letter",
+      "module": "off",
+      "status": "published",
+      "trigger": {
+        "event": "submitted",
+        "days": 0,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [
+        {
+          "field": "caseType",
+          "op": "is",
+          "value": "Resignation"
+        }
+      ],
+      "steps": [
+        {
+          "id": "w4-step-1",
+          "type": "doc",
+          "template": "t4",
+          "release": false
+        },
+        {
+          "id": "w4-step-2",
+          "type": "waitSign",
+          "template": "t4",
+          "by": "hr"
+        }
+      ],
+      "description": "Generates the acceptance of resignation letter when the case is submitted and holds it for the HR signatory. It is not emailed from here: GBS People Ops review and send it from the checklist task \"Review and send acceptance of resignation letter\", with the line manager and PBP copied."
+    },
+    {
+      "id": "w5",
+      "name": "Remind a leaver before their last day",
+      "module": "off",
+      "status": "published",
+      "trigger": {
+        "event": "beforeLWD",
+        "days": 5,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w5-step-1",
+          "type": "email",
+          "to": "employee",
+          "cc": [],
+          "template": "e4"
+        }
+      ],
+      "description": "Reminds the leaver about handover, returns and the exit interview."
+    },
+    {
+      "id": "w12",
+      "name": "Send the exit form and survey",
+      "module": "off",
+      "status": "published",
+      "trigger": {
+        "event": "beforeLWD",
+        "days": 10,
+        "workdays": true,
+        "repeat": false,
+        "skipIf": ""
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w12-step-1",
+          "type": "doc",
+          "template": "txi",
+          "release": false
+        },
+        {
+          "id": "w12-step-2",
+          "type": "doc",
+          "template": "txs",
+          "release": false
+        },
+        {
+          "id": "w12-step-3",
+          "type": "email",
+          "to": "employee",
+          "cc": [],
+          "template": "e5"
+        }
+      ],
+      "description": "Ten working days before the last working day, creates the Exit Interview Form and the Offboarding Survey and emails the leaver a link to each. They complete both in their employee view."
+    },
+    {
+      "id": "w13",
+      "name": "Remind about the exit form and survey",
+      "module": "off",
+      "status": "published",
+      "trigger": {
+        "event": "beforeLWD",
+        "days": 7,
+        "workdays": true,
+        "repeat": false,
+        "skipIf": "allDocsDone"
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w13-step-1",
+          "type": "doc",
+          "template": "txi",
+          "release": false
+        },
+        {
+          "id": "w13-step-2",
+          "type": "doc",
+          "template": "txs",
+          "release": false
+        },
+        {
+          "id": "w13-step-3",
+          "type": "email",
+          "to": "employee",
+          "cc": [],
+          "template": "e6"
+        }
+      ],
+      "description": "Three working days after the exit form and survey go out, reminds the leaver. Skipped once both are submitted. The two document steps only create a form if it is missing, for a case submitted late."
+    },
+    {
+      "id": "w14",
+      "name": "Remind task owners before the last working day",
+      "module": "off",
+      "status": "published",
+      "trigger": {
+        "event": "beforeLWD",
+        "days": 5,
+        "workdays": false,
+        "repeat": true,
+        "skipIf": "noPre"
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w14-step-1",
+          "type": "notify",
+          "to": "taskOwners",
+          "cc": [],
+          "subject": "Open tasks for {employee.name}, who leaves on {leaver.lastDay}",
+          "body": "Hi {owner.name},\n\n{employee.name} leaves on {leaver.lastDay}. These items of yours are still open:\n{pending.tasks}\n\nPlease complete them in My Tasks.\n\nRegards,\nAI HR"
+        }
+      ],
+      "description": "From 5 days before the last working day, every morning, tells each person with an open checklist task or return item what is still on their list. Stops once nothing is pending."
+    },
+    {
+      "id": "w15",
+      "name": "Escalate pending tasks 2 days before the last working day",
+      "module": "off",
+      "status": "published",
+      "trigger": {
+        "event": "beforeLWD",
+        "days": 2,
+        "workdays": false,
+        "repeat": false,
+        "skipIf": "noPre"
+      },
+      "conditions": [],
+      "steps": [
+        {
+          "id": "w15-step-1",
+          "type": "notify",
+          "to": "pbp",
+          "cc": [
+            "peopleOps"
+          ],
+          "subject": "{employee.name} may not be cleared by the last working day",
+          "body": "Hi,\n\n{employee.name} leaves on {leaver.lastDay} and these items are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR"
+        }
+      ],
+      "description": "Two days before the last working day, tells the PBP, copying GBS People Ops, about everything still open. Skipped when nothing is pending."
+    }
+  ],
+  "groups": [
+    {
+      "id": "g-people",
+      "name": "HR Ops",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-hrta",
+      "name": "HR TA",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-tech",
+      "name": "Group Tech",
+      "members": [],
+      "limit": 6
+    },
+    {
+      "id": "g-facility",
+      "name": "Facility",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-gbsta",
+      "name": "GBS TA",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-techbp",
+      "name": "Tech BP",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-tbp-chbm",
+      "name": "Tech BP – CHBM",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-tbp-chce",
+      "name": "Tech BP – CHCE",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-tbp-chgp",
+      "name": "Tech BP – CHGP",
+      "members": [],
+      "limit": 4
+    },
+    {
+      "id": "g-tbp-chgb",
+      "name": "Tech BP – CHGB",
+      "members": [],
+      "limit": 4
+    }
+  ],
+  "peopleOpsGroup": "g-people",
+  "bpRules": []
+}

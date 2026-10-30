@@ -5,6 +5,7 @@ import { EmailSettingsError, emailFailureCodes, type EmailSettingsRequest } from
 /** Unix socket permission is the transport boundary; the service rechecks the exact enrolled identity. */
 export async function identityEmailRequest<T>(body: EmailSettingsRequest): Promise<T> {
   if (internalSelected()) return (await import('../internal-auth/mail')).internalEmailRequest<T>(body);
+  if (body.op === 'apply' && body.lifecycleSender) throw new EmailSettingsError('invalid');
   return new Promise((resolve,reject) => {
     const req=request({socketPath:process.env.IDENTITY_EMAIL_SOCKET || '/run/aihr-identity-email.sock',path:'/v1/settings',method:'POST',
       headers:{'content-type':'application/json'},timeout:35_000}, res=>{

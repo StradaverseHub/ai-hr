@@ -28,6 +28,8 @@
 import { Laptop } from 'lucide-react';
 import { registerPack, type ModulePack, type NavLinkDescriptor } from '../registry';
 const LIFECYCLE_NAV_LINKS: NavLinkDescriptor[] = [
+    { group: 'manage', href: '/lifecycle/v9', labelKey: 'onboardingOffboarding', icon: Laptop },
+    { group: 'manage', href: '/me/lifecycle', labelKey: 'myLifecycle', icon: Laptop },
     { group: 'manage', href: '/lifecycle/requisitions/onboarding', labelKey: 'onboardingRequisitions', icon: Laptop },
     { group: 'main', href: '/lifecycle', labelKey: 'lifecycle', icon: Laptop },
     { group: 'admin', href: '/admin/lifecycle', labelKey: 'lifecycleConfig', icon: Laptop },
@@ -41,6 +43,12 @@ export const lifecyclePack: ModulePack = {
     navLinks: LIFECYCLE_NAV_LINKS,
     navNodes: [{ group: 'manage', labelKey: 'onboardingV31', icon: Laptop, defaultHref: '/lifecycle/onboarding', children: [{ href: '/lifecycle/onboarding', labelKey: 'newJoiners', icon: Laptop, exactHref: true, ownedSubpaths: ['/lifecycle/onboarding/cases', '/lifecycle/onboarding/legacy'] }, { href: '/lifecycle/onboarding/checklists', labelKey: 'onboardingChecklists', icon: Laptop }] }],
     satelliteTables: [
+        { table: 'lc_v9_config', note: 'V9 published document, email, checklist and workflow definitions' },
+        { table: 'lc_v9_config_revision', note: 'Immutable V9 configuration revisions' },
+        { table: 'lc_v9_case', note: 'Company-scoped V9 case and document executions' },
+        { table: 'lc_v9_case_revision', note: 'Immutable V9 case revisions' },
+        { table: 'lc_v9_file', note: 'Authorized case document and email files' },
+        { table: 'lc_v9_payroll_handover', note: 'Frozen clearance figures for Payroll review' },
         { table: 'lc_onboarding_config', note: 'V3.1 versioned definitions and independent module access' },
         { table: 'lc_onboarding_config_history', note: 'Immutable configuration revisions' },
         { table: 'lc_onboarding_case', note: 'Personnel source identity, task and requisition generations' },

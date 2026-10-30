@@ -1,3 +1,4 @@
+import type { ManagedEmailSenderProfile } from '../managed-email-policy';
 import { z } from 'zod';
 import { domainToASCII } from 'node:url';
 import { isIP } from 'node:net';
@@ -36,6 +37,8 @@ export class EmailSettingsError extends Error {
   constructor(public readonly code: EmailFailureCode) { super(`Identity email settings: ${code}`); }
 }
 export type EmailSettingsView = {
+  supportsLifecycleSenders?: boolean;
+  lifecycleSenders?: { profile: ManagedEmailSenderProfile; from: string | null; connectionId?: string; appliedAt?: string; hasUnappliedChanges: boolean }[];
   connections?: {id:string;name:string;config:EmailConfig;hasPassword:boolean;active:boolean;hasUnappliedChanges:boolean;testedAt:string|null}[];
   selectedConnectionId?:string;
   selectedConnectionName?:string;
@@ -50,4 +53,4 @@ export type EmailSettingsRequest =
   | {op:'view';actor:IdentityEmailActor;connectionId?:string}
   | {op:'save';actor:IdentityEmailActor;revision:string;config:EmailConfig;password?:string;connectionId?:string;connectionName?:string}
   | {op:'test';actor:IdentityEmailActor;draftId:string;connectionId?:string}
-  | {op:'apply';actor:IdentityEmailActor;draftId:string;received:boolean;connectionId?:string};
+  | {op:'apply';actor:IdentityEmailActor;draftId:string;received:boolean;connectionId?:string;lifecycleSender?:ManagedEmailSenderProfile};

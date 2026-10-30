@@ -428,6 +428,8 @@
     "myPerformance": "My Performance",
     "mySystemTesting": "My Testing",
     "myTasks": "My tasks",
+    "onboardingOffboarding": "Onboarding & offboarding",
+    "myLifecycle": "My onboarding & offboarding",
     "newJoiners": "New Joiners",
     "onboardingRequisitions": "Requisitions",
     "allOnboardingRequisitions": "All requisitions",
@@ -11152,7 +11154,7 @@
         "onboardingModuleAccess": "Only a Master Admin with group-wide HR administration grants or removes module access.",
         "onboardingRequisitions": "Operational fulfilment, approval and configured add-system groups, module users and company HR can read requisitions. Actions remain restricted to the current team, step or item rights. A mention alone grants only its discussion context.",
         "onboardingSettings": "Onboarding module users maintain policies, catalogues, workflows and routing. A Master Admin without module access manages groups and grants only.",
-        "onboardingV31": "Requires an explicit Onboarding module grant, independent of HR role. HR-only identity fields also require company HR access.",
+        "onboardingV31": "Requires an Onboarding module grant or configured group page access. Section visibility and case actions are separate; HR-only fields also require company HR access.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Everyone can open this; only admins for the company can change it.",
@@ -21882,7 +21884,8 @@
     "success": {
       "save": "Draft saved. The active relay is unchanged.",
       "test": "The relay accepted the test message. Check the inbox before activation.",
-      "apply": "Relay activated. Invitations and password recovery can now use it."
+      "apply": "Relay activated. Invitations and password recovery can now use it.",
+      "sender": "Lifecycle sender updated. Account recovery and the installation default are unchanged."
     },
     "connectionTitle": "SMTP connection",
     "security": "Encryption",
@@ -21920,7 +21923,15 @@
     "notRecorded": "Not recorded",
     "backToConnections": "Back to connections",
     "saveConnection": "Save connection",
-    "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes."
+    "activeChangesHelp": "The active relay continues using its last activated settings. Save, test and confirm receipt before activating these changes.",
+    "lifecycleSenderTitle": "Onboarding and offboarding senders",
+    "lifecycleSenderHelp": "Each sender uses its confirmed connection. Without a separate binding, it follows the active installation relay.",
+    "applyTarget": "Apply this tested connection to",
+    "applyDefault": "Installation default (account and other email)",
+    "senderDefault": "Uses installation default",
+    "senderConfirmed": "Receipt confirmed {at}",
+    "senderPending": "This connection has newer saved changes. The confirmed version continues sending until tested and applied again.",
+    "senderTargetHelp": "Tests expire after 30 minutes. The installation default controls account email. A lifecycle choice changes only that sender for the current tenant. Test and confirm receipt again after editing a connection."
   },
   "workflowEmail": {
     "letterAccountTitle": "Letters for this account",
@@ -26897,6 +26908,7 @@
       "c035edd9bd720": "Remove from group",
       "c5d9c3ec58913": "Search people to add to",
       "c95332e75dac8": "Works from My tasks",
+      "v9NoTaskLimit": "No task limit",
       "cd1a339556dbb": "open tasks"
     }
   },

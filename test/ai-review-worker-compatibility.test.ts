@@ -22,10 +22,13 @@ beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged],{encoding:'utf8'}).trim()).toBe('');
  // PR61 adds a pinned provider-schema validator for tests only. Prove the complete old package
- // and lock graph remain identical after removing ONLY this explicitly approved additive delta.
+ // and lock graph remain identical after removing ONLY the explicit validator and server-boundary marker deltas.
  const oldPackage=JSON.parse(execFileSync('git',['show',WORKER_SOURCE+':package.json'],{encoding:'utf8'}));
- expect(JSON.parse(readFileSync('package.json','utf8'))).toEqual({...oldPackage,devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
+ expect(JSON.parse(readFileSync('package.json','utf8'))).toEqual({...oldPackage,dependencies:{...oldPackage.dependencies,'server-only':'0.0.1'},devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
  const additions=[
+  '      server-only:\n        specifier: 0.0.1\n        version: 0.0.1\n',
+  '  server-only@0.0.1:\n    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}\n\n',
+  '  server-only@0.0.1: {}\n\n',
   '      ajv:\n        specifier: 8.20.0\n        version: 8.20.0\n',
   '  ajv@8.20.0:\n    resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}\n\n',
   '  fast-uri@3.1.9:\n    resolution: {integrity: sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==}\n\n',

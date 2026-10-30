@@ -1,3 +1,4 @@
+import { isLifecycleV9Path } from '@/lib/lifecycle-v9-routing';
 import type { Metadata } from 'next';
 import { publicLoginPresentation } from '@/lib/login-presentation-server';
 import { canConfigureIdentityEmail } from '@/lib/identity/email-settings';
@@ -153,6 +154,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
+  // V9 supplies the pinned HTML's complete navigation and header composition.
+  if (isLifecycleV9Path(pathname)) {
+    return <html lang={locale} data-ui-theme="classic" className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
+      <body className="min-h-dvh font-sans" style={{ background: '#e8ebf2' }}>
+        <NextIntlClientProvider><Providers forcedTheme="light" lifecycleV9><UiThemeProvider theme="classic">
+          {children}<Toaster/>
+        </UiThemeProvider></Providers></NextIntlClientProvider>
+      </body>
+    </html>;
+  }
   const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
@@ -213,7 +224,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
-  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,master:false,requisitions:false,joiners:0,checklists:0};
+  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
@@ -296,6 +307,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               approvalCount={legacyApprovalCount}
               taskCount={pendingTasks.length}
               onboardingAccess={onboardingAccess}
+              onboardingV9Access={onboardingNav.v9}
               onboardingJoinerCount={onboardingNav.joiners}
               onboardingChecklistCount={onboardingNav.checklists}
               onboardingMaster={onboardingNav.master}

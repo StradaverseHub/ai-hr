@@ -1,0 +1,140 @@
+/** Complete controlled delivery: real credentials/relay/private capabilities → local TLS SMTP → receipt. */
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
+import { execFileSync, spawn } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { generate } from 'otplib';
+import type { SessionContext } from '../db/client';
+import { bootstrapInternalOwner } from '../lib/internal-auth/bootstrap';
+import { startLogin, changeInitialPassword, verifyMfa, readSession, credentialByLogin } from '../lib/internal-auth/service';
+import { internalEmailRequest } from '../lib/internal-auth/mail';
+import { defaultEmailConfig, type EmailSettingsView } from '../lib/identity/email-model';
+import type { LifecycleV9DeliveryRequest, LifecycleV9DeliveryResult } from '../lib/lifecycle-v9-delivery-model';
+import { hireEmployee } from '../core/org';
+import { todayInKualaLumpur } from '../lib/hr-date';
+import { addDays } from '../lib/lifecycle-v9-model';
+import { v9Setup, v9Workspace, v9SaveConfig, v9UploadEmailAsset, v9CreateOffboarding, v9Command, v9CaseDetail, v9DeliverEmails, v9Sweep, v9PreviewUpdatedEmail } from '../packs/lifecycle/service';
+import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner } from './harness';
+import { startReportSmtpSink } from './fixtures/managed-report-delivery/smtp-sink';
+import { fixtureMailAttachments } from './fixtures/lifecycle-v9/mime-attachments';
+const web = vi.hoisted(()=>({ context: null as SessionContext|null, identity: null as { issuer: string; subject: string; email: string; emailVerified: boolean }|null }));
+vi.mock('../lib/session',()=>({getSession:async()=>web.context}));
+vi.mock('../lib/internal-auth/web-session',()=>({currentInternalIdentity:async()=>web.identity}));
+let directory: string;
+beforeAll(async()=>{
+  directory=mkdtempSync(join(tmpdir(),'aihr-v9-private-smtp-'));
+  writeFileSync(join(directory,'extensions.cnf'),'subjectAltName=IP:127.0.0.1\nbasicConstraints=CA:FALSE\nextendedKeyUsage=serverAuth\n');
+  const run=(args:string[])=>execFileSync('openssl',args,{cwd:directory,stdio:'ignore'});
+  run(['req','-x509','-newkey','rsa:2048','-nodes','-keyout','ca.key','-out','ca.pem','-subj','/CN=Disposable V9 private fixture CA','-days','1']);
+  run(['req','-newkey','rsa:2048','-nodes','-keyout','server.key','-out','server.csr','-subj','/CN=127.0.0.1']);
+  run(['x509','-req','-in','server.csr','-CA','ca.pem','-CAkey','ca.key','-CAcreateserial','-out','server.pem','-days','1','-extfile','extensions.cnf']);
+});
+afterEach(()=>{vi.unstubAllEnvs();web.context=null;web.identity=null;});
+afterAll(async()=>{await closeAll();if(directory)rmSync(directory,{recursive:true,force:true});});
+async function privateSender(request:LifecycleV9DeliveryRequest):Promise<LifecycleV9DeliveryResult>{
+  return new Promise((resolve,reject)=>{
+    const child=spawn(process.execPath,['--conditions=react-server','--import','tsx','test/fixtures/lifecycle-v9/private-mail-client.ts',request.deliveryId,request.leaseToken],{cwd:process.cwd(),env:{...process.env,NODE_EXTRA_CA_CERTS:join(directory,'ca.pem')},stdio:['ignore','pipe','pipe']});
+    let output='',failure='';const timeout=setTimeout(()=>{child.kill('SIGTERM');reject(Error('Controlled private delivery timed out'));},25000);
+    child.stderr.on('data',chunk=>{if(failure.length<1000)failure+=chunk;});child.stdout.on('data',chunk=>{output+=chunk;});child.once('error',error=>{clearTimeout(timeout);reject(error);});
+    child.once('exit',code=>{clearTimeout(timeout);try{if(code!==0)throw Error('Controlled private delivery child failed: '+failure.slice(-500));resolve(JSON.parse(output));}catch(error){reject(error);}});
+  });
+}
+it('sends the immutable files/CID once through verified credentials and holds an actual lost acknowledgement',async()=>{
+  await resetDb();const base=await seedBase();await setModule(base.tenantId,'lifecycle','active');const admin=await entitledCtx(base),system={...admin,userId:undefined,personId:null};
+  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://v9-private-fixture.example');vi.stubEnv('AUTH_SESSION_KEY','6'.repeat(64));vi.stubEnv('AUTH_DEFAULT_ORGANIZATION','v9-fixture');
+  const temporary='Initial fictional passphrase 981!',final='Confirmed fictional passphrase 482!';
+  await bootstrapInternalOwner(owner.client,{appUserId:base.adminUserId,organization:'v9-fixture',username:'owner',email:'recipient@report-acceptance.invalid',password:temporary,installationOperator:true});
+  const login=await startLogin({organization:'v9-fixture',username:'owner',password:temporary,native:false});if(login.step!=='password')throw Error('Expected initial password challenge');
+  const enrollment=await changeInitialPassword(login.challenge,final);if(enrollment.step!=='enroll'||!enrollment.secret)throw Error('Expected MFA enrollment');
+  const signedIn=await verifyMfa(enrollment.challenge,await generate({secret:enrollment.secret}));if(signedIn.step!=='complete')throw Error('Expected verified private session');
+  expect((await readSession(signedIn.access_token))?.subject).toBe((await credentialByLogin('v9-fixture','owner'))!.subject);
+  const credential=(await credentialByLogin('v9-fixture','owner'))!;web.context=admin;web.identity={issuer:credential.issuer,subject:credential.subject,email:credential.email,emailVerified:credential.emailVerified};
+  const actor={userId:base.adminUserId,tenantId:base.tenantId,issuer:credential.issuer,subject:credential.subject};
+  const sink=await startReportSmtpSink({key:readFileSync(join(directory,'server.key')),cert:readFileSync(join(directory,'server.pem')),recipients:['recipient@report-acceptance.invalid','team@report-acceptance.invalid','archive@report-acceptance.invalid']});
+  try{
+    const relay={...defaultEmailConfig,host:'127.0.0.1',port:sink.port,security:'tls' as const,from:'owner@report-acceptance.invalid',auth:false};
+    const settings=await internalEmailRequest<EmailSettingsView>({op:'view',actor});await internalEmailRequest({op:'save',actor,revision:settings.revision,config:relay});
+    const draft=(await internalEmailRequest<EmailSettingsView>({op:'view',actor})).draft!;
+    // Controlled settings receipt uses the existing test transport seam; actual delivery below is TLS.
+    await internalEmailRequest({op:'test',actor,draftId:draft.id},async()=>{});await internalEmailRequest({op:'apply',actor,draftId:draft.id,received:true});
+    const senderAddress='hr-profile@report-acceptance.invalid',connectionView=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:'new'});
+    const sender=await internalEmailRequest<{connectionId:string}>({op:'save',actor,revision:connectionView.revision,connectionName:'Fictional lifecycle HR sender',config:{...relay,from:senderAddress}});
+    const selected=await internalEmailRequest<EmailSettingsView>({op:'view',actor,connectionId:sender.connectionId});
+    await internalEmailRequest({op:'test',actor,connectionId:sender.connectionId,draftId:selected.draft!.id},async()=>{});
+    await internalEmailRequest({op:'apply',actor,connectionId:sender.connectionId,draftId:selected.draft!.id,received:true,lifecycleSender:'hr'});
+    expect((await internalEmailRequest<EmailSettingsView>({op:'view',actor})).active?.from).toBe(relay.from);
+    await v9Setup(admin);let config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');config.workflows=[];
+    config.groups[0].members=[base.adminUserId];config.peopleOpsGroup=config.groups[0].id;
+    config.emails=[{id:'wire-email',name:'Fictional private wire email',module:'off',active:true,sender:'hr',subject:'Fictional private delivery',body:'Fictional saved body',cc:[],links:[],attachments:[],slots:[]}];
+    let saved=await v9SaveConfig(admin,config.revision,config);
+    const fileBytes=Buffer.from('Fictional shared handbook bytes'),imageBytes=await(await import('sharp')).default({create:{width:2,height:2,channels:4,background:{r:79,g:70,b:229,alpha:1}}}).png().toBuffer();
+    const file=await v9UploadEmailAsset(admin,{revision:saved.revision,emailId:'wire-email',kind:'file',name:'Fictional handbook.txt',content:fileBytes}),image=await v9UploadEmailAsset(admin,{revision:saved.revision,emailId:'wire-email',kind:'image',name:'Fictional logo.png',content:imageBytes});
+    config=(await v9Workspace(admin)).config!;config.emails[0].files=[file];config.emails[0].images=[image];config.emails[0].body=`Fictional saved body\n{image:${image.id}}`;
+    config.workflows=[{id:'wire-workflow',name:'Fictional real delivery workflow',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'email',type:'email',template:'wire-email',to:'peopleOps',cc:[]}],description:''}];
+    saved=await v9SaveConfig(admin,config.revision,config);
+    const subject=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional private delivery subject',primaryEmail:'subject@test.invalid'}});
+    const id=await v9CreateOffboarding(admin,{employmentId:subject.employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});await v9Command(admin,id,1,{type:'submit'});
+    expect((await v9CaseDetail(admin,id)).case.runs[0].status).toBe('waiting');
+    let childFailure: unknown;const outcomes: LifecycleV9DeliveryResult[]=[];
+    const sent=await v9DeliverEmails(system,owner,async request=>{try{const result=await privateSender(request);outcomes.push(result);return result;}catch(error){childFailure=error;throw error;}});
+    if(childFailure)throw childFailure;expect(outcomes).toEqual([{outcome:'sent',error:null}]);expect(sent).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(1);expect(sink.messages[0].recipients).toEqual(['recipient@report-acceptance.invalid']);
+    expect(Buffer.from(sink.messages[0].raw).toString('utf8').replace(/\r?\n[ \t]+/g,' ')).toContain('From: Human Resource Department <'+senderAddress+'>');
+    const [receipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid`;expect(receipt.recipient_proof).toMatchObject({senderProfile:'hr',senderAddress});
+    const attachments=fixtureMailAttachments(sink.messages[0].raw);expect(attachments).toHaveLength(2);
+    expect(attachments.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(attachments.find(part=>part.mime==='image/png')).toMatchObject({bytes:imageBytes,cid:`v9-image.${image.id}@aihr`});
+    expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(1);
+    await v9Sweep(system,owner);let c=(await v9CaseDetail(admin,id)).case;expect(c.runs[0].status).toBe('done');expect(c.mails[0].status).toBe('sent');
+    const retryConfig=(await v9Workspace(admin)).config!;
+    retryConfig.workflows.push({...structuredClone(retryConfig.workflows[0]),id:'wire-retry',name:'Fictional reviewed retry',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''}});
+    await v9SaveConfig(admin,retryConfig.revision,retryConfig);
+    await v9Command(admin,id,c.revision,{type:'startWorkflow',workflowId:'wire-retry'});
+    sink.setMode('temporary');const rejected=await v9DeliverEmails(system,owner,privateSender);
+    expect(rejected.attempted).toBe(1);expect(rejected.sent).toBe(0);expect(rejected.failed+rejected.held).toBe(1);expect(sink.messages).toHaveLength(2);
+    c=(await v9CaseDetail(admin,id)).case;const original=c.mails.find(mail=>mail.workflowId==='wire-retry')!;
+    expect(original).toMatchObject({status:'failed',failure:'smtpTemporary',deliveredAt:null});
+    const [rejectedReceipt]=await owner.client`select started_at,payload from lc_v9_email_delivery where case_id=${id}::uuid and mail_id=${original.id}`;expect(rejectedReceipt.started_at).toBeTruthy();
+    expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(2);
+    await v9Command(admin,id,c.revision,{type:'emailRetry',id:original.id,reason:'Controlled 451 rejection reviewed; relay restored.'});
+    sink.setMode('accept');expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(3);
+    const retriedParts=fixtureMailAttachments(sink.messages[2].raw);expect(retriedParts.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(retriedParts.find(part=>part.mime==='image/png')).toMatchObject({bytes:imageBytes,cid:`v9-image.${image.id}@aihr`});
+    await v9Sweep(system,owner);c=(await v9CaseDetail(admin,id)).case;expect(c.runs.find(run=>run.workflowId==='wire-retry')?.status).toBe('done');
+    expect(c.mails.find(mail=>mail.id===original.id)).toMatchObject({status:'failed',deliveredAt:null});expect(c.mails.find(mail=>mail.retryOf===original.id)).toMatchObject({status:'sent',body:original.body});
+    const [retainedReceipt]=await owner.client`select status,started_at,payload from lc_v9_email_delivery where case_id=${id}::uuid and mail_id=${original.id}`;expect(retainedReceipt).toMatchObject({status:'retry',started_at:rejectedReceipt.started_at,payload:rejectedReceipt.payload});
+    sink.setMode('lost');await v9Command(admin,id,c.revision,{type:'emailTest',emailId:'wire-email'});
+    expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:0,held:1,failed:0});expect(sink.messages).toHaveLength(4);
+    c=(await v9CaseDetail(admin,id)).case;expect(c.mails.at(-1)).toMatchObject({status:'uncertain',deliveredAt:null,failure:'uncertain'});
+    expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:0,sent:0,held:0,failed:0});expect(sink.messages).toHaveLength(4);
+    const literalConfig=(await v9Workspace(admin)).config!;
+    literalConfig.workflows.push({...structuredClone(literalConfig.workflows[0]),id:'literal-wire',name:'Fictional mailbox wire',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'mailbox',type:'email',template:'wire-email',to:['address:team@report-acceptance.invalid'],cc:['peopleOps','address:archive@report-acceptance.invalid']}]});
+    await v9SaveConfig(admin,literalConfig.revision,literalConfig);
+    c=(await v9CaseDetail(admin,id)).case;
+    await v9Command(admin,id,c.revision,{type:'startWorkflow',workflowId:'literal-wire'});
+    sink.setMode('accept');sink.setRecipientCount(3);
+    expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(5);
+    expect(sink.messages[4].recipients).toEqual(['team@report-acceptance.invalid','recipient@report-acceptance.invalid','archive@report-acceptance.invalid']);
+    const literalParts=fixtureMailAttachments(sink.messages[4].raw);expect(literalParts.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);expect(literalParts.find(part=>part.mime==='image/png')?.bytes).toEqual(imageBytes);
+    const [literalReceipt]=await owner.client`select recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid and payload->'mail'->>'workflowId'='literal-wire'`;
+    expect(literalReceipt.recipient_proof.bindings).toHaveLength(1);expect(literalReceipt.recipient_proof.literals).toEqual([{key:'address:team@report-acceptance.invalid',email:'team@report-acceptance.invalid',position:1},{key:'address:archive@report-acceptance.invalid',email:'archive@report-acceptance.invalid',position:3}]);
+
+
+    // An explicit updated-copy review sends new bytes while keeping the rejected receipt immutable.
+    const updatedConfig=(await v9Workspace(admin)).config!;
+    updatedConfig.workflows.push({...structuredClone(updatedConfig.workflows[0]),id:'updated-wire',name:'Fictional updated-copy wire',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''}});
+    await v9SaveConfig(admin,updatedConfig.revision,updatedConfig);
+    c=(await v9CaseDetail(admin,id)).case;await v9Command(admin,id,c.revision,{type:'startWorkflow',workflowId:'updated-wire'});
+    sink.setRecipientCount(1);sink.setMode('temporary');expect((await v9DeliverEmails(system,owner,privateSender)).attempted).toBe(1);
+    c=(await v9CaseDetail(admin,id)).case;const rejectedCopy=c.mails.find(mail=>mail.workflowId==='updated-wire')!;expect(rejectedCopy.status).toBe('failed');
+    const [beforeUpdated]=await owner.client`select status,started_at,payload from lc_v9_email_delivery where case_id=${id}::uuid and mail_id=${rejectedCopy.id}`;
+    const currentConfig=(await v9Workspace(admin)).config!;currentConfig.emails[0].subject='Fictional reviewed updated subject';currentConfig.emails[0].body='Fictional reviewed updated body';await v9SaveConfig(admin,currentConfig.revision,currentConfig);
+    const review=await v9PreviewUpdatedEmail(admin,id,rejectedCopy.id);expect(review).toMatchObject({subject:'Fictional reviewed updated subject',body:'Fictional reviewed updated body'});
+    await v9Command(admin,id,c.revision,{type:'emailReplace',id:rejectedCopy.id,sourceRevision:review.sourceRevision,reason:'Controlled rejected delivery; current copy reviewed.'});
+    sink.setMode('accept');expect(await v9DeliverEmails(system,owner,privateSender)).toEqual({attempted:1,sent:1,held:0,failed:0});expect(sink.messages).toHaveLength(7);
+    const updatedRaw=Buffer.from(sink.messages[6].raw).toString('utf8');expect(updatedRaw).toContain('Subject: Fictional reviewed updated subject');expect(updatedRaw).toContain('Fictional reviewed updated body');
+    const updatedParts=fixtureMailAttachments(sink.messages[6].raw);expect(updatedParts.find(part=>part.mime==='text/plain')?.bytes).toEqual(fileBytes);
+    await v9Sweep(system,owner);c=(await v9CaseDetail(admin,id)).case;expect(c.runs.find(run=>run.workflowId==='updated-wire')?.status).toBe('done');
+    expect(c.mails.find(mail=>mail.retryOf===rejectedCopy.id)).toMatchObject({status:'sent',retryMode:'updated',subject:review.subject,body:review.body});expect(c.mails.find(mail=>mail.id===rejectedCopy.id)).toMatchObject({status:'failed',subject:rejectedCopy.subject,body:rejectedCopy.body});
+    const [afterUpdated]=await owner.client`select status,started_at,payload from lc_v9_email_delivery where case_id=${id}::uuid and mail_id=${rejectedCopy.id}`;expect(afterUpdated).toEqual(beforeUpdated);
+
+  }finally{await sink.close();}
+},90000);

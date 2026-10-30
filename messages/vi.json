@@ -428,6 +428,8 @@
     "myPerformance": "Hiệu suất của tôi",
     "mySystemTesting": "Kiểm thử của tôi",
     "myTasks": "Công việc của tôi",
+    "onboardingOffboarding": "Tiếp nhận và nghỉ việc",
+    "myLifecycle": "Tiếp nhận và nghỉ việc của tôi",
     "newJoiners": "Nhân viên mới",
     "onboardingRequisitions": "Yêu cầu trang thiết bị",
     "allOnboardingRequisitions": "Tất cả yêu cầu",
@@ -11152,7 +11154,7 @@
         "onboardingModuleAccess": "Chỉ quản trị viên chính có quyền quản trị HR toàn tập đoàn mới được cấp hoặc thu hồi quyền mô-đun.",
         "onboardingRequisitions": "Các nhóm thực hiện, phê duyệt và thêm hệ thống đã cấu hình, người dùng mô-đun và HR công ty được đọc yêu cầu. Thao tác vẫn giới hạn theo nhóm, bước hoặc quyền mục hiện tại. Việc được nhắc đến chỉ cấp quyền xem cuộc thảo luận tương ứng.",
         "onboardingSettings": "Người dùng mô-đun quản lý chính sách, danh mục, quy trình phê duyệt và định tuyến. Quản trị viên chính chưa có quyền mô-đun chỉ quản lý nhóm và cấp quyền.",
-        "onboardingV31": "Cần được cấp quyền mô-đun hội nhập riêng, độc lập với vai trò HR. Trường định danh dành cho HR còn yêu cầu quyền HR tại công ty.",
+        "onboardingV31": "Cần quyền mô-đun hội nhập hoặc quyền xem trang được cấu hình cho nhóm. Quyền xem từng phần tách biệt với thao tác hồ sơ; trường dành riêng cho HR vẫn cần quyền HR của công ty.",
         "performanceHome": "Everyone signed in reaches it while Performance is on. Each card shows only the viewer's own work and the results released to them; a leader seat adds aggregate counts for the people it leads, never one person's band.",
         "onehrAssignments": "Requires a current feedback assignment or calibration cohort grant. Own-person calibration is excluded; removed or archived reviewer access is revoked. The department view lists only the people whose current head-of-department assignment names you, read-only.",
         "payrollConfig": "Mọi người đều có thể mở; chỉ quản trị viên của công ty mới có thể thay đổi.",
@@ -21882,7 +21884,8 @@
     "success": {
       "save": "Đã lưu bản nháp. Cấu hình đang dùng không đổi.",
       "test": "Máy chủ đã nhận email thử. Kiểm tra hộp thư trước khi kích hoạt.",
-      "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này."
+      "apply": "Đã kích hoạt. Lời mời và khôi phục mật khẩu có thể dùng máy chủ này.",
+      "sender": "Đã cập nhật người gửi thư vòng đời. Khôi phục tài khoản và mặc định của bản cài đặt không thay đổi."
     },
     "connectionTitle": "Kết nối SMTP",
     "security": "Mã hóa",
@@ -21920,7 +21923,15 @@
     "notRecorded": "Chưa ghi nhận",
     "backToConnections": "Quay lại danh sách kết nối",
     "saveConnection": "Lưu kết nối",
-    "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi."
+    "activeChangesHelp": "Máy chủ chuyển tiếp đang dùng cài đặt đã kích hoạt gần nhất. Lưu, kiểm tra và xác nhận nhận thư trước khi kích hoạt thay đổi.",
+    "lifecycleSenderTitle": "Người gửi thư nhận việc và nghỉ việc",
+    "lifecycleSenderHelp": "Mỗi người gửi sử dụng kết nối đã được xác nhận. Nếu chưa liên kết riêng, hệ thống dùng máy chủ chuyển tiếp đang hoạt động của bản cài đặt.",
+    "applyTarget": "Áp dụng kết nối đã kiểm tra này cho",
+    "applyDefault": "Mặc định của bản cài đặt (thư tài khoản và thư khác)",
+    "senderDefault": "Dùng mặc định của bản cài đặt",
+    "senderConfirmed": "Đã xác nhận nhận thư lúc {at}",
+    "senderPending": "Kết nối này có thay đổi mới đã lưu. Phiên bản đã xác nhận vẫn gửi thư cho đến khi được kiểm tra và áp dụng lại.",
+    "senderTargetHelp": "Kết quả kiểm tra hết hạn sau 30 phút. Mặc định của bản cài đặt điều khiển thư tài khoản. Lựa chọn vòng đời chỉ thay đổi người gửi tương ứng cho đơn vị thuê hiện tại. Sau khi sửa kết nối, hãy kiểm tra và xác nhận nhận thư lần nữa."
   },
   "workflowEmail": {
     "letterAccountTitle": "Thư cho tài khoản này",
@@ -26897,6 +26908,7 @@
       "c035edd9bd720": "Xóa khỏi nhóm",
       "c5d9c3ec58913": "Tìm người để thêm vào",
       "c95332e75dac8": "Làm việc qua Công việc của tôi",
+      "v9NoTaskLimit": "Không giới hạn công việc",
       "cd1a339556dbb": "công việc đang mở"
     }
   },
