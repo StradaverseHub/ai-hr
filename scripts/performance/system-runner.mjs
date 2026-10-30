@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync,execFileSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
-import {mkdirSync,writeFileSync,readFileSync,openSync,closeSync} from 'node:fs';
+import {mkdirSync,writeFileSync,readFileSync,readdirSync,openSync,closeSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import https from 'node:https';
 import http from 'node:http';
@@ -39,6 +39,26 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  if(code!==0){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
 }
+function summarizeCpu(){
+ const frames=new Map(),root=resolve('.next/server/chunks/ssr')+'/';
+ for(const name of readdirSync(join(out,'cpu')).filter(name=>name.endsWith('.cpuprofile'))){
+  const profile=JSON.parse(readFileSync(join(out,'cpu',name),'utf8')),nodes=new Map(profile.nodes.map(node=>[node.id,node.callFrame]));
+  for(let i=0;i<(profile.samples??[]).length;i++){
+   const frame=nodes.get(profile.samples[i]);if(!frame?.url?.startsWith('file://'))continue;
+   const file=new URL(frame.url).pathname;if(!file.startsWith(root))continue;
+   const key=file+':'+frame.lineNumber+':'+frame.columnNumber;
+   let value=frames.get(key);if(!value){value={function:frame.functionName,file,line:frame.lineNumber,column:frame.columnNumber,sampledSelfMs:0};frames.set(key,value);}
+   value.sampledSelfMs+=(profile.timeDeltas[i]??0)/1000;
+  }
+ }
+ const secrets=Object.entries(env).filter(([key,value])=>/TOKEN|PASSWORD|SECRET|KEY/i.test(key)&&typeof value==='string'&&value.length>=8).map(([,value])=>value);
+ const rows=[...frames.values()].sort((a,b)=>b.sampledSelfMs-a.sampledSelfMs).slice(0,12).map(frame=>{
+  const line=readFileSync(frame.file,'utf8').split('\n')[frame.line]??'';
+  let excerpt=line.slice(Math.max(0,frame.column-200),frame.column+1400);for(const secret of secrets)excerpt=excerpt.replaceAll(secret,'<REDACTED>');
+  return {...frame,file:frame.file.slice(resolve('.').length+1),excerpt};
+ });
+ writeFileSync(join(out,'cpu-hot-frames.json'),JSON.stringify(rows,null,2));
+}
 let app,proxy,dbStarted=false,appFd;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
@@ -72,6 +92,7 @@ finally{
  if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
  if(app){app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),pause(5000)]);if(app.exitCode===null)app.kill('SIGKILL');}
  if(appFd!==undefined)closeSync(appFd);
+ if(app)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
  if(dbStarted){const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});}
  save();
 }

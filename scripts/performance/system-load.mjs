@@ -1,5 +1,6 @@
 /** Real HTTPS requests + Chromium against the isolated production server; no auth/test route bypass. */
 import assert from 'node:assert/strict';
+import {actionFormData} from './action-form.ts';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import https from 'node:https';
@@ -20,9 +21,9 @@ const report={suite,kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:fa
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 const samples=[];
-async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={}){
+async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[]){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
- if(fields){const form=new FormData();for(const [key,value]of Object.entries(fields))form.append(key,String(value));const encoded=new Response(form);contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
+ if(fields){const encoded=new Response(actionFormData(fields,fieldOrder));contentType=encoded.headers.get('content-type');body=Buffer.from(await encoded.arrayBuffer());}
  const response=await new Promise((resolve,reject)=>{
   const req=https.request(base+path,{agent,signal:AbortSignal.timeout(90000),method:fields?'POST':'GET',headers:{Host:'localhost:3443',Origin:base,
    Cookie:`__Host-aihr_internal=${user?.token??''}; NEXT_LOCALE=en`,'Accept-Encoding':'gzip',...actionHeaders,...(body?{'Content-Type':contentType,'Content-Length':body.length}:{})}},res=>{
@@ -125,13 +126,15 @@ try{
  async function capturedAction(response){
   const req=response.request();const raw=req.postDataBuffer();assert(raw,'missing browser action payload');
   const form=await new Request(base+'/claims',{method:'POST',headers:{'Content-Type':req.headers()['content-type']},body:raw}).formData();
-  const fields=Object.fromEntries([...form].filter(([,value])=>typeof value==='string'));
+  const pairs=[...form].filter(([,value])=>typeof value==='string'),fieldOrder=pairs.map(([key])=>key);
+  assert.equal(new Set(fieldOrder).size,fieldOrder.length,'duplicate action fields need a richer replay contract');
+  const fields=Object.fromEntries(pairs);
   const key=Object.keys(fields).find(key=>key==='claimTypeId'||key==='id'||key.endsWith('_claimTypeId')||key.endsWith('_id'));
   assert(key,'unrecognized real browser action fields');
   const suffix=key.endsWith('claimTypeId')?'claimTypeId':'id',prefix=key.slice(0,-suffix.length);
   const headers={};for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
   assert(headers['next-action'],'browser server action header missing');
-  return {fields,prefix,headers,status:response.status()};
+  return {fields,fieldOrder,prefix,headers,status:response.status()};
  }
  const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
  await page.locator('[name="claimTypeId"]').selectOption(employee.claimTypeId);await page.locator('[name="amount"]').fill('1');await page.locator('[name="incurredOn"]').fill(fixture.today);
@@ -149,7 +152,7 @@ try{
  report.browser.push({role:'employee',workflow:'claim create/edit/delete',persisted:true});await ctx.close();
  contextTemplates={createTemplate,deleteTemplate};
  assert.equal(report.browserErrors.length,0,'baseline browser errors must be fixed before load');
- const actionProtocol=template=>({fieldNames:Object.keys(template.fields),prefix:template.prefix,status:template.status,
+ const actionProtocol=template=>({fieldNames:Object.keys(template.fields),fieldOrder:template.fieldOrder,prefix:template.prefix,status:template.status,
   arguments:Object.fromEntries(Object.entries(template.fields).filter(([key])=>/^\d+$/.test(key)).map(([key,value])=>{try{return [key,JSON.parse(value)];}catch{return [key,typeof value];}}))});
  report.actionProtocol={create:actionProtocol(createTemplate),delete:actionProtocol(deleteTemplate)};save();
  // Prove the captured browser protocol can be replayed before exercising another actor or load.
@@ -157,12 +160,12 @@ try{
   const description='PERF_HTTP_PREFLIGHT',fields={...createTemplate.fields};
   for(const [key,value]of Object.entries({employmentId:employee.employmentId,claimTypeId:employee.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
   delete fields[createTemplate.prefix+'draftId'];
-  const response=await request(employee,'/claims',fields,createTemplate.status,false,createTemplate.headers);
+  const response=await request(employee,'/claims',fields,createTemplate.status,false,createTemplate.headers,createTemplate.fieldOrder);
   report.actionPreflight={status:response.status,redirect:response.headers['x-action-redirect']??response.headers.location??null,
    publicErrors:[...response.content.matchAll(/"error":"([^"\n]{1,300})"/g)].map(match=>match[1])};save();
   const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft'and description=${description}`;
   assert(draft,'same-actor HTTP action preflight did not persist');
-  await request(employee,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:employee.employmentId,[deleteTemplate.prefix+'id']:draft.id},deleteTemplate.status,false,deleteTemplate.headers);
+  await request(employee,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:employee.employmentId,[deleteTemplate.prefix+'id']:draft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
   report.actionPreflight.persisted=true;save();
  }
@@ -172,18 +175,18 @@ try{
   const description='PERF_BOUNDARY_'+actor.index,fields={...createTemplate.fields};
   for(const [key,value]of Object.entries({employmentId:victim.employmentId,claimTypeId:victim.claimTypeId,amount:'7',incurredOn:fixture.today,description,intent:'draft'}))fields[createTemplate.prefix+key]=value;
   delete fields[createTemplate.prefix+'draftId'];
-  await request(victim,'/claims',fields,createTemplate.status,false,createTemplate.headers);
+  await request(victim,'/claims',fields,createTemplate.status,false,createTemplate.headers,createTemplate.fieldOrder);
   const [protectedDraft]=await db`select id from claim_request where employment_id=${victim.employmentId}::uuid and status='draft' and description=${description}`;
   assert(protectedDraft,'boundary fixture did not persist through HTTP');
   for(const selector of [actor.employmentId,victim.employmentId]){
-   const response=await request(actor,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers);
+   const response=await request(actor,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:selector,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
    const redirect=new URL(String(response.headers['x-action-redirect']??response.headers.location).split(';')[0],base);
    assert(redirect.searchParams.get('error'),'foreign draft deletion was not explicitly refused');
    const [unchanged]=await db`select employment_id,amount,status from claim_request where id=${protectedDraft.id}::uuid`;
    assert(unchanged);assert.equal(unchanged.employment_id,victim.employmentId);assert.equal(Number(unchanged.amount),7);assert.equal(unchanged.status,'draft');
    report.boundaries.push({kind:'foreign-draft-delete',role:actor.role,scope:actor.tenant!==victim.tenant?'other-tenant':actor.company!==victim.company?'other-company':'other-person',selector:selector===actor.employmentId?'own':'foreign',passed:true});
   }
-  await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers);
+  await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
  await databaseSnapshot('pilot');
@@ -212,11 +215,11 @@ try{
   const template=contextTemplates.createTemplate,fields={...template.fields};
   for(const [key,value]of Object.entries({employmentId:user.employmentId,claimTypeId:user.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[template.prefix+key]=value;
   delete fields[template.prefix+'draftId'];
-  const created=await request(user,'/claims',fields,template.status,true,template.headers);assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
+  const created=await request(user,'/claims',fields,template.status,true,template.headers,template.fieldOrder);assert.equal(new URL(String(created.headers['x-action-redirect']??created.headers.location).split(';')[0],base).searchParams.get('toast'),'Draft saved');
   const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft'and description=${description}`;assert(draft,'HTTP create did not persist');
-  await pause(1000);await request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers);
+  await pause(1000);await request(user,'/claims',{...fields,[template.prefix+'draftId']:draft.id,[template.prefix+'amount']:'2'},template.status,true,template.headers,template.fieldOrder);
   const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
-  await pause(1000);await request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers);
+  await pause(1000);await request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
   iteration++;progress.iterations++;
   }while(performance.now()<steadyUntil);
