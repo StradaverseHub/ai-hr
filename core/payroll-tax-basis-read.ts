@@ -10,7 +10,7 @@ type Source={id:string;employmentId:string;companyId:string;period:string;source
 async function sourceRows(tx:Tx,ids:string[]):Promise<Source[]>{
  if(!ids.length)return [];
  return await tx.execute<Source>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,
-   to_jsonb(p) as source,jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,'run_type',b.run_type) as batch,
+   to_jsonb(p) as source,jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch,
    (select r.id::text from payroll_history_import_revision r join payroll_history_import_snapshot s on s.record_id=r.record_id where s.id=p.id order by r.ordinal desc limit 1) as "importRevision"
   from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(${ids}::uuid[]) order by p.id`);
 }

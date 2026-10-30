@@ -80,3 +80,5 @@ export * from '../../core/individual-txn-import';
 
 export {lockNativePayrollPeriodsTx} from '../../core/payroll-period-lock';
 export {rewardPayrollProvenance} from './reward-provenance';
+
+export * from '../../core/payroll-tax-basis';
