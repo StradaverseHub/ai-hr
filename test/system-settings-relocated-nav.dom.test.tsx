@@ -34,10 +34,22 @@ function mount({admin = true, operator = false, manager = false, collapsed = fal
   </NextIntlClientProvider>);
   return view;
 }
+// A section heading and its submenu can share a label; operate the actual controlled submenu.
+function settingsTrigger(label = en.nav.systemConfiguration) {
+  const triggers = screen.getAllByRole('button', {name: label}).filter(button =>
+    button.hasAttribute('aria-controls') && button.getAttribute('aria-controls') !== 'nav-section-systemConfiguration');
+  expect(triggers).toHaveLength(1);
+  return triggers[0];
+}
 function openSettings(label = en.nav.systemConfiguration) {
-  const trigger = screen.getByRole('button', {name: label});
+  const section = document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]');
+  if (section?.getAttribute('aria-expanded') === 'false') fireEvent.click(section);
+  const trigger = settingsTrigger(label);
   if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
-  return screen.getByRole('navigation', {name: label});
+  const panel = document.getElementById(trigger.getAttribute('aria-controls')!);
+  expect(panel).not.toBeNull();
+  expect(panel).toHaveAttribute('aria-label', label);
+  return panel!;
 }
 
 beforeEach(() => {
@@ -100,7 +112,7 @@ describe('existing admin destinations relocated into System Configuration', () =
 
   it('keeps collapsed rail access, keyboard dismissal and focus return', () => {
     mount({collapsed: true});
-    const trigger = screen.getByRole('button', {name: en.nav.systemConfiguration});
+    const trigger = settingsTrigger();
     const panel = openSettings();
     expect(within(panel).getByRole('link', {name: en.nav.dataPrivacy})).toHaveAttribute('aria-current', 'page');
     expect(within(panel).getAllByRole('link')[0]).toHaveFocus();

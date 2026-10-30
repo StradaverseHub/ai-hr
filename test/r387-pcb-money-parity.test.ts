@@ -14,6 +14,29 @@ import * as schema from '../db/schema';
 const year=2026;
 const pack=requirePackFor('MY');
 const flags={kind:'allowance' as const,isNonPayable:false,prorates:false,includedInPcb:true,includedInEpf:true,includedInSocsoEis:true,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,epfBonus2012:false};
+// The historical oracle stored insertion order. The shared source reader now has explicit code
+// ordering; compare line multisets without discarding any field, bucket or duplicate instance.
+const stableValue=(value:unknown):string=>JSON.stringify(value,(_key,v)=>v&&typeof v==='object'&&!Array.isArray(v)
+ ? Object.fromEntries(Object.keys(v).sort().map(key=>[key,v[key]])):v);
+function canonicalMoneySnapshot(snapshot:any){
+ const lines=snapshot.statutory.componentLines as {code:string}[];
+ expect(Array.isArray(lines)).toBe(true);
+ for(const line of lines)expect(typeof line.code).toBe('string');
+ return {...snapshot,statutory:{...snapshot.statutory,componentLines:[...lines].sort((a,b)=>
+   a.code.localeCompare(b.code)||stableValue(a).localeCompare(stableValue(b)))}};
+}
+it('canonical money comparison retains duplicate instances and every financial/identity field',()=>{
+ const a={code:'DUPLICATE',sourceId:'first',amount:10,buckets:[{bucket:'wage',amount:10}]};
+ const b={code:'DUPLICATE',sourceId:'second',amount:20,buckets:[{bucket:'reimburse',amount:20}]};
+ const snapshot=(lines:unknown[])=>({netPay:'30.00',statutory:{componentLines:lines,exemptionUsed:{PCB_TRA_BUSINESS:20}}});
+ expect(canonicalMoneySnapshot(snapshot([b,a]))).toEqual(canonicalMoneySnapshot(snapshot([a,b])));
+ expect(canonicalMoneySnapshot(snapshot([a,a]))).not.toEqual(canonicalMoneySnapshot(snapshot([a,b])));
+ expect(canonicalMoneySnapshot(snapshot([a,{...b,sourceId:'first'}]))).not.toEqual(canonicalMoneySnapshot(snapshot([a,b])));
+ expect(canonicalMoneySnapshot(snapshot([a,{...b,amount:21}]))).not.toEqual(canonicalMoneySnapshot(snapshot([a,b])));
+ expect(canonicalMoneySnapshot(snapshot([a,{...b,buckets:[{bucket:'wage',amount:20}]}]))).not.toEqual(canonicalMoneySnapshot(snapshot([a,b])));
+ expect(canonicalMoneySnapshot({...snapshot([a,b]),netPay:'31.00'})).not.toEqual(canonicalMoneySnapshot(snapshot([a,b])));
+});
+
 describe('r387 complete monetary parity against original calculation',()=>{
  let base:Base;
  beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();await setModule(base.tenantId,'typed_pay_components','active');await setModule(base.tenantId,'multi_cycle_payroll','active');});afterAll(closeAll);
@@ -64,6 +87,23 @@ describe('r387 complete monetary parity against original calculation',()=>{
     snapshots.push(normalized({...saved,statutory}));
   }
   if(process.env.R387_WRITE_BASELINE){writeFileSync(process.env.R387_WRITE_BASELINE,JSON.stringify(snapshots,null,2)+'\n');}
-  else expect(snapshots).toEqual(JSON.parse(readFileSync('test/fixtures/r387-exemption-money-golden.json','utf8')));
+  else {
+    const golden=JSON.parse(readFileSync('test/fixtures/r387-exemption-money-golden.json','utf8'));
+    expect(snapshots.map(canonicalMoneySnapshot)).toEqual(golden.map(canonicalMoneySnapshot));
+  }
+  // TP3 consumed all but50 of the annual travel exemption BEFORE January. Two different items
+  // share that code: A100 takes50 exempt/50 wage, B50 is all wage. February has no travel room.
+  // These independent statements cannot be satisfied by sorting new money into the old oracle.
+  const linesFor=(index:number,code:string)=>{
+    const lines=snapshots[index].statutory.componentLines.filter((line:any)=>line.code===code);
+    expect(lines,`exactly one ${code} line in source fixture ${index}`).toHaveLength(1);return lines[0];
+  };
+  expect(linesFor(0,'SYNTH_TRAVEL_A')).toMatchObject({amount:100,buckets:[{bucket:'reimburse',amount:50},{bucket:'wage',amount:50}]});
+  expect(linesFor(0,'SYNTH_TRAVEL_B')).toMatchObject({amount:50,buckets:[{bucket:'wage',amount:50}]});
+  expect(snapshots[0].statutory.exemptionUsed.PCB_TRA_BUSINESS).toBe(50);
+  expect(linesFor(1,'SYNTH_TRAVEL_A')).toMatchObject({amount:100,buckets:[{bucket:'wage',amount:100}]});
+  expect(linesFor(1,'SYNTH_TRAVEL_B')).toMatchObject({amount:50,buckets:[{bucket:'wage',amount:50}]});
+  expect(snapshots[1].statutory.exemptionUsed.PCB_TRA_BUSINESS??0).toBe(0);
+  expect(linesFor(2,'SYNTH_TAXABLE_BONUS')).toMatchObject({amount:1000,buckets:[{bucket:'bonus',amount:1000}]});
  });
 });

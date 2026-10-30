@@ -52,9 +52,13 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   route.pathname='/admin/organization';route.search='';view.rerender(ui());
   expect(screen.getByRole('button',{name:messages.nav.workspaceOps})).toHaveAttribute('aria-pressed','true');
   expect(screen.getByRole('button',{name:messages.nav.modulePeople})).toBeEnabled();
-  const gear=screen.getByRole('button',{name:messages.nav.systemConfiguration});
+  const section=document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]');
+  if(section?.getAttribute('aria-expanded')==='false')fireEvent.click(section);
+  const gears=screen.getAllByRole('button',{name:messages.nav.systemConfiguration}).filter(button=>button.hasAttribute('aria-controls')&&button.getAttribute('aria-controls')!=='nav-section-systemConfiguration');
+  expect(gears).toHaveLength(1);const gear=gears[0];
   if(gear.getAttribute('aria-expanded')!=='true')fireEvent.click(gear);
-  expect(screen.getByRole('link',{name:messages.nav.systemLabels})).toHaveAttribute('href','/admin/settings/system-labels');
+  const panel=document.getElementById(gear.getAttribute('aria-controls')!);expect(panel).not.toBeNull();
+  expect(within(panel!).getByRole('link',{name:messages.nav.systemLabels})).toHaveAttribute('href','/admin/settings/system-labels');
  });
  it('offers only self-service Payroll to employees and keeps current-link ownership out of My Profile',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me/payslip';route.search='';
