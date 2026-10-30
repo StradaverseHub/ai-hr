@@ -1,4 +1,4 @@
-/** CI-only populated historical568→633 aggregate upgrade. Never connects to an installation or replays an installer.
+/** CI-only populated historical568→635 aggregate upgrade. Never connects to an installation or replays an installer.
  * The credential-free witness is metadata only; payroll/review rows below are fictional physical rows.
  * This proves migration preservation, not decryption or native decision behavior (covered separately). */
 import {createHash,randomUUID} from 'node:crypto';
@@ -15,7 +15,7 @@ import witness from './fixtures/ai-dev-applied-ledger-20261030.json';
 
 type Entry={idx:number;when:number;tag:string};
 type Journal={entries:Entry[];[key:string]:unknown};
-// Exact main15 +approved49 source tail +root-reserved0861; the568-row observed witness remains unchanged.
+// Exact main15 +approved49 source tail +root0861/0863/0864; the568-row observed witness remains unchanged.
 const TAIL=[
  {"tag":"0696_feedback_menu_operator_switch","idx":683,"when":1793330000031},
  {"tag":"0721_movement_settings_catalog","idx":684,"when":1793330000050},
@@ -82,16 +82,29 @@ const TAIL=[
  {"tag":"0859_assistant_employee_draft_discard_custody","idx":745,"when":1793330000259},
  {"tag":"0860_assistant_payroll_review_draft_delete_compatibility","idx":746,"when":1793330000260},
  {"tag":"0861_assistant_review_body_pending_parent","idx":747,"when":1793330000261},
+ {"tag":"0863_assistant_bank_effect_closure","idx":748,"when":1793330000263},
+ {"tag":"0864_assistant_catalogue_effect_closure","idx":749,"when":1793330000264},
 ] as const;
 const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','performance.ai_pm_enabled',
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
 const hash=(value:Buffer)=>createHash('sha256').update(value).digest('hex');
 
-// Exact reviewed additions after the historical568 prefix, independently traced to native ADD COLUMN
+// Exact reviewed72 additions after the historical568 prefix, independently traced to native ADD COLUMN
 // declarations. Old NULL values remain original values; no runtime result supplies this expectation.
 const ADDED_REVIEW_COLUMNS={
  "allocation_effective_company_id": "uuid",
  "allocation_effective_date": "date",
+ "bank_after_hash": "text",
+ "bank_before_hash": "text",
+ "bank_event_payload_hash": "text",
+ "bank_event_scope_hash": "text",
+ "bank_retained_prepare_hash": "text",
+ "bank_retained_root_xid": "xid8",
+ "bank_retained_version": "integer",
+ "catalogue_native_event": "uuid",
+ "catalogue_native_phase": "text",
+ "catalogue_native_root": "xid8",
+ "catalogue_native_tid": "tid",
  "checkin_schedule_birth_hash": "text",
  "checkin_schedule_birth_xact": "text",
  "checkin_schedule_birth_xmin": "text",
@@ -119,6 +132,7 @@ const ADDED_REVIEW_COLUMNS={
  "offboarding_undo_case_event_id": "uuid",
  "offboarding_undo_expect_reopening": "boolean",
  "offboarding_undo_step_key": "text",
+ "payroll_completion_root": "jsonb",
  "payroll_reopen_batch_id": "uuid",
  "payroll_reopen_period_id": "uuid",
  "payroll_reopen_person_ids": "uuid[]",
@@ -241,7 +255,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   expect(Object.keys(retained).sort()).toEqual(Object.keys(before).sort());
   // Every original non-review table and every opaque sealed-content byte stays exactly unchanged.
   for(const key of Object.keys(before))if(key!=='review')expect(retained[key],key+' exact physical preservation').toEqual(before[key]);
-  const newKeys=Object.keys(ADDED_REVIEW_COLUMNS).sort();expect(newKeys).toHaveLength(60);
+  const newKeys=Object.keys(ADDED_REVIEW_COLUMNS).sort();expect(newKeys).toHaveLength(72);
   const catalog=await storage.client<{name:string;type:string}[]>`
    select a.attname::text name,format_type(a.atttypid,a.atttypmod) type from pg_attribute a
    where a.attrelid='app.assistant_own_leave_review'::regclass and a.attnum>0 and not a.attisdropped
@@ -258,7 +272,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
    // Preserve ALL original values, including original NULLs; never strip NULLs or ignore old keys.
    expect(Object.fromEntries(oldKeys.map(key=>[key,newRow[key]])),'every original review value').toEqual(oldRow);
   }
-  const after=await ledger();expect(after).toHaveLength(633);expect(after.slice(0,prefix)).toEqual(baseline);
+  const after=await ledger();expect(after).toHaveLength(635);expect(after.slice(0,prefix)).toEqual(baseline);
   expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map(({tag,when})=>({hash:hashFile(tag),created_at:String(when)})));
   const changedDefinitions=await storage.client`select * from setting_definition order by key`;
   expect(definitions.some(row=>row.key==='feedback.menu_enabled')).toBe(false);
