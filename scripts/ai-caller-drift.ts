@@ -4,8 +4,19 @@ const sdks=new Set(['openai','@anthropic-ai/sdk','@google/genai']);
 const sdkOwners=new Set(['lib/ai/providers/openai.ts','lib/ai/providers/anthropic.ts','lib/ai/providers/google.ts']);
 const fetchOwners=new Set(['lib/ai/providers/openrouter.ts','lib/ai/providers/openrouter-transport.ts','lib/ai/spend-receipt.ts']);
 const endpoint=/(?:api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|openrouter\.ai|ai-gateway\.[^/\s'"]+)/i;
+/** A .ts generic arrow is not JSX. Refuse parse failures rather than scanning a recovered,
+ * potentially truncated tree that could hide a provider call after malformed syntax. */
+export function parseAiSource(file:string,source:string):ts.SourceFile{
+ const kind=/\.tsx$/i.test(file)?ts.ScriptKind.TSX:/\.jsx$/i.test(file)?ts.ScriptKind.JSX:/\.[cm]?js$/i.test(file)?ts.ScriptKind.JS:ts.ScriptKind.TS;
+ const tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,kind);
+ // TypeScript retains parser diagnostics on SourceFile, outside its public AST interface.
+ const diagnostics=(tree as ts.SourceFile&{parseDiagnostics:readonly ts.Diagnostic[]}).parseDiagnostics;
+ if(!Array.isArray(diagnostics)||diagnostics.length)throw Error(`Unparseable AI source: ${file}`);
+ return tree;
+}
 export function aiBoundaryViolations(file:string,source:string):string[]{
- const tree=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX),errors:string[]=[];
+ let tree:ts.SourceFile;try{tree=parseAiSource(file,source);}catch{return ['unparseable AI source'];}
+ const errors:string[]=[];
  const testFile=file.startsWith('test/'),egressOwner=file==='lib/ai/index.ts',egressDefinition=file==='lib/ai/provider-egress.ts';
  const egressModule=(value:string)=>/(?:^|\/)provider-egress(?:\.[cm]?[jt]s)?$/.test(value);
  const privacyModule=(value:string)=>/(?:^|\/)provider-privacy-request(?:\.[cm]?[jt]s)?$/.test(value);
