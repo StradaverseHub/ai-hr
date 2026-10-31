@@ -6,6 +6,7 @@ import {assertAiActionUnpausedTx} from '../core/ai-governance';
 /** Source-only acceptance: both SQL drafts must be journalled in a coordinated later window.
  * These cases are authored, NOT executed, while Board 3 owns the shared runtime. */
 import { randomUUID } from 'node:crypto';
+import { pgSqlState } from '../lib/db-error';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -209,8 +210,26 @@ describe('pending own-leave review custody', () => {
     expect(prepared).toHaveLength(5);
     expect(new Set(prepared.map(review => review.actionId)).size).toBe(5);
     expect(refused).toHaveLength(1);
-    expect(refused[0]).toBeInstanceOf(OwnLeaveContentUnavailable);
-    expect(await counts()).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
+    const sqlState = pgSqlState(refused[0]);
+    const contentUnavailable = refused[0] instanceof OwnLeaveContentUnavailable;
+    // Report only the canonical SQLSTATE/category: Drizzle error messages contain SQL and params.
+    const diagnostic = { kind: 'competing-own-leave-prepare-refusal', sqlState: sqlState ?? null,
+      category: contentUnavailable ? 'content-unavailable' : 'database-or-unknown' };
+    console.info(JSON.stringify(diagnostic));
+    expect(sqlState === '55P03' || (sqlState === undefined && contentUnavailable),
+      JSON.stringify(diagnostic)).toBe(true);
+    const before = await counts();
+    expect(before).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
+    const persisted = async () => Array.from(await owner.db.execute<{id:string;review:unknown;bodies:unknown}>(sql`select r.id,to_jsonb(r) as review,
+      (select coalesce(jsonb_agg(to_jsonb(c) order by c.action_id),'[]'::jsonb) from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies
+      from app.assistant_own_leave_review r where r.tenant_id=${base.tenantId}::uuid order by r.id`));
+    const committed = await persisted();
+    expect(committed.map(row => row.id)).toEqual(prepared.map(review => review.actionId).sort());
+    // All six original transactions have settled. A NEW canonical preparation now proves the
+    // deterministic capacity denial separately from a possible earlier Access-lock refusal.
+    await expect(prepare()).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);
+    expect(await persisted()).toEqual(committed);
+    expect(await counts()).toEqual(before);
     for (const review of prepared) expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toEqual({ kind: 'prepared', review });
   });

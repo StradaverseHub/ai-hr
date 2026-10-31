@@ -53,6 +53,8 @@ describe('physical-owner retention of extended AI custody',()=>{
   let cause:unknown=refused,code:unknown;for(let depth=0;depth<8&&cause&&typeof cause==='object';depth++){const detail=cause as {code?:unknown;cause?:unknown};if(detail.code!==undefined){code=detail.code;break;}cause=detail.cause;}expect(code).toBe('42501');await tx.execute(sql`rollback to savepoint helper_execute_refusal`);throw Error('untrusted SQL role fixture rollback');
  })).rejects.toThrow('untrusted SQL role fixture rollback');const [left]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_roles where rolname=${name}`);expect(left.n).toBe(0);});
  it('uses a genuine nonsuperuser complete custody owner/session, with no app principal or active-custody visibility',async()=>{await fixture();const before=await custody(),roleName='ai_extended_retention_'+randomUUID().replaceAll('-',''),role=sql.identifier(roleName);
+  const payrollCapabilityMetadata=async()=>Array.from(await owner.db.execute(sql`select p.oid,p.proowner,p.proacl::text from pg_proc p where p.oid in ('app._payroll_completion_shape(jsonb,text,text)'::regprocedure,'app._payroll_completion_uuid_array(jsonb)'::regprocedure) order by p.oid`));
+  const payrollBefore=await payrollCapabilityMetadata();
   await expect(owner.db.transaction(async tx=>{
    await tx.execute(sql`create role ${role} nologin nosuperuser nobypassrls`);await tx.execute(sql`grant usage on schema app,public to ${role}`);
    await tx.execute(sql`grant execute on function app.current_user_id(),app.current_tenant_id(),app.is_group_admin(),app.principal_snapshot_current() to ${role}`);
@@ -63,15 +65,29 @@ describe('physical-owner retention of extended AI custody',()=>{
    await tx.execute(sql`grant execute on function app.agent_native_signal_custody_visible(text,uuid,uuid,uuid) to ${role}`);
    // Same narrow PUBLIC-policy dependencies for conversation metadata and transcript-linked feedback/markers.
    await tx.execute(sql`grant execute on function app._answer_metadata_erasure_authorized(uuid,uuid,uuid),app.assistant_transcript_retirement_visible(uuid,uuid) to ${role}`);
+   // The global review CHECK needs only this outer pure predicate. Do not transfer its owner,
+   // grant its nested Payroll helpers, or lend this capability to PUBLIC/the application role.
+   const [beforeGrant]=await tx.execute<{allowed:boolean}>(sql`select has_function_privilege(${roleName},'app._payroll_completion_shape(jsonb,text,text)','EXECUTE') as allowed`);expect(beforeGrant.allowed).toBe(false);
+   await tx.execute(sql`grant execute on function app._payroll_completion_shape(jsonb,text,text) to ${role}`);
    // Complete derived inventory: conversation metadata, raw transcript content and its owner helper.
    for(const table of ['public.ai_assistant_answer_evaluation_arm','public.ai_assistant_answer_strategy_use','public.ai_assistant_answer_evaluation_intent','public.assistant_exchange','app.assistant_transcript_identity','app.assistant_transcript_retirement_scope'])await tx.execute(sql`alter table ${sql.raw(table)} owner to ${role}`);
    for(const fn of ['app.assistant_transcripts_retire_expired(uuid,integer,integer)','app._assistant_transcripts_retire(uuid,uuid[],boolean)','app._assistant_transcript_bounds()'])await tx.execute(sql`alter function ${sql.raw(fn)} owner to ${role}`);
    await tx.execute(sql`alter table app.assistant_own_leave_review owner to ${role}`);await tx.execute(sql`alter table app.assistant_own_leave_review_content owner to ${role}`);await tx.execute(sql`alter table public.ai_agent_feedback owner to ${role}`);await tx.execute(sql`alter table public.ai_agent_job_receipt owner to ${role}`);await tx.execute(sql`alter table public.ai_agent_job_feedback owner to ${role}`);await tx.execute(sql`alter table public.ai_agent_candidate_provenance owner to ${role}`);await tx.execute(sql`alter table public.ai_agent_plan_proposal owner to ${role}`);await tx.execute(sql`alter table public.personnel_import_assistance_attempt owner to ${role}`);await tx.execute(sql`alter table public.employee_import_evaluation_attempt owner to ${role}`);await tx.execute(sql`alter table public.employee_import_evaluation_run_membership owner to ${role}`);
    await tx.execute(sql`alter table public.ai_native_outcome_association owner to ${role}`);await tx.execute(sql`alter table app.native_outcome_source_capture owner to ${role}`);await tx.execute(sql`alter table app.native_outcome_source_target owner to ${role}`);
    await tx.execute(sql`set local session authorization ${role}`);const [identity]=await tx.execute<{role:string;session:string;superuser:boolean;bypass:boolean;principal:string|null;tenant:string|null}>(sql`select current_user as role,session_user as session,r.rolsuper as superuser,r.rolbypassrls as bypass,app.current_user_id()::text as principal,app.current_tenant_id()::text as tenant from pg_roles r where r.rolname=current_user`);expect(identity).toEqual({role:roleName,session:roleName,superuser:false,bypass:false,principal:null,tenant:null});
+   const [capability]=await tx.execute<{outer:boolean;grant_option:boolean;nested:boolean;owner_unchanged:boolean;app:boolean;public:boolean;child:boolean}>(sql`select
+    has_function_privilege(current_user,p.oid,'EXECUTE') as "outer",
+    has_function_privilege(current_user,p.oid,'EXECUTE WITH GRANT OPTION') as grant_option,
+    has_function_privilege(current_user,'app._payroll_completion_uuid_array(jsonb)','EXECUTE') as nested,
+    p.proowner<>(select oid from pg_roles where rolname=current_user) as owner_unchanged,
+    has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app,
+    exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as "public",
+    has_function_privilege('ai_hr_draft_discard_port',p.oid,'EXECUTE') as child
+    from pg_proc p where p.oid='app._payroll_completion_shape(jsonb,text,text)'::regprocedure`);
+   expect(capability).toEqual({outer:true,grant_option:false,nested:false,owner_unchanged:true,app:false,public:false,child:true});
    const [visible]=await tx.execute<{jobs:number;feedback:number;provenance:number;plans:number}>(sql`select (select count(*)::int from public.ai_agent_job_receipt) as jobs,(select count(*)::int from public.ai_agent_job_feedback) as feedback,(select count(*)::int from public.ai_agent_candidate_provenance) as provenance,(select count(*)::int from public.ai_agent_plan_proposal) as plans`);expect(visible).toEqual({jobs:2,feedback:1,provenance:1,plans:1});
    await tx.execute(sql`savepoint extended_owner_update_refusal`);await expect(tx.execute(sql`update public.ai_agent_job_feedback set outcome='helpful' where expires_at<=now()`)).rejects.toThrow();await tx.execute(sql`rollback to savepoint extended_owner_update_refusal`);
    const result=await retireExpiredAiCustodyTx(tx as unknown as Tx);expect(result).toEqual({...zero,tenants:1,busy:0,jobs:2,jobFeedback:1,candidateProvenance:1,plans:1});const [left]=await tx.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_job_receipt`);expect(left.n).toBe(0);throw Error('synthetic physical owner rollback');
-  })).rejects.toThrow('synthetic physical owner rollback');expect(await custody()).toEqual(before);const [left]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_roles where rolname=${roleName}`);expect(left.n).toBe(0);
+  })).rejects.toThrow('synthetic physical owner rollback');expect(await payrollCapabilityMetadata()).toEqual(payrollBefore);expect(await custody()).toEqual(before);const [left]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from pg_roles where rolname=${roleName}`);expect(left.n).toBe(0);
  });
 });
