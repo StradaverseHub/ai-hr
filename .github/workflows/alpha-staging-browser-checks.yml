@@ -16,7 +16,7 @@ on:
         required: false
         default: browser-install
         type: choice
-        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite]
+        options: [browser-install, operator-transport, browser-image, browser-image-firefox, browser-image-suite, v9-keyboard-causal]
 permissions: {contents: read, actions: read}
 concurrency:
   group: browser-provisioning-diagnostic-${{ inputs.candidate_ref }}-${{ inputs.probe_scope || 'browser-install' }}
@@ -128,7 +128,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   browser-image:
-    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' || inputs.probe_scope == 'browser-image-suite' }}
+    if: ${{ inputs.probe_scope == 'browser-image' || inputs.probe_scope == 'browser-image-firefox' || inputs.probe_scope == 'browser-image-suite' || inputs.probe_scope == 'v9-keyboard-causal' }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -146,7 +146,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        engine: ${{ fromJSON(inputs.probe_scope == 'browser-image-firefox' && '["firefox"]' || '["chromium","firefox","webkit"]') }}
+        engine: ${{ fromJSON((inputs.probe_scope == 'browser-image-firefox' || inputs.probe_scope == 'v9-keyboard-causal') && '["firefox"]' || '["chromium","firefox","webkit"]') }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
@@ -160,15 +160,59 @@ jobs:
           sha256sum pnpm-lock.yaml > "$RUNNER_TEMP/browser-image/lockfile-sha256.txt"
           node -e 'const assert=require("node:assert/strict"),fs=require("node:fs");const version=require("playwright/package.json").version;assert.equal(version,"1.62.1");fs.writeFileSync(process.env.RUNNER_TEMP+"/browser-image/image-binding.json",JSON.stringify({kind:"PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS",image:"mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e",playwrightVersion:version,nodeVersion:process.versions.node,candidate:process.env.AIHR_CI_HEAD,controller:process.env.AIHR_CI_CONTROL_HEAD,releaseAuthorized:false},null,2))'
       - name: Native browser launch and multilingual raster with preinstalled dependencies
-        if: ${{ inputs.probe_scope != 'browser-image-suite' }}
+        if: ${{ inputs.probe_scope != 'browser-image-suite' && inputs.probe_scope != 'v9-keyboard-causal' }}
         run: node ../automation/.github/ci/browser-tooling-probe.mjs "$ENGINE" "$RUNNER_TEMP/browser-image"
         env: {HOME: /root}
       - name: Complete original browser unit in pinned image
-        if: ${{ inputs.probe_scope == 'browser-image-suite' }}
-        run: node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
+        if: ${{ inputs.probe_scope == 'browser-image-suite' || inputs.probe_scope == 'v9-keyboard-causal' }}
+        shell: bash
+        run: |
+          if [ '${{ inputs.probe_scope }}' != v9-keyboard-causal ]; then
+            exec node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
+          fi
+          mkdir -p "$RUNNER_TEMP/v9-keyboard-causal"
+          set +e
+          node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci" 2>&1 | tee "$RUNNER_TEMP/v9-keyboard-causal/measured-unit.log"
+          measured_status=("${PIPESTATUS[@]}")
+          printf '{"kind":"MEASUREMENT_EXIT_NOT_RELEASE","testExit":%s,"logExit":%s}\n' "${measured_status[0]}" "${measured_status[1]}" > "$RUNNER_TEMP/v9-keyboard-causal/exit.json"
+          if [ "${measured_status[1]}" -ne 0 ]; then exit "${measured_status[1]}"; fi
+          exit "${measured_status[0]}"
         env: {HOME: /root}
+      - name: Retain actual measured keyboard trace and PNG even after the original assertion fails
+        if: ${{ always() && inputs.probe_scope == 'v9-keyboard-causal' }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,re
+          os.umask(0o077)
+          out=pathlib.Path(os.environ['RUNNER_TEMP'])/'v9-keyboard-causal'
+          raw=(out/'measured-unit.log').read_bytes();assert len(raw)<64*1024**2
+          text=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]','',raw.decode());traces={};images={}
+          for line in text.splitlines():
+            for tag,target in [('V9_CAUSAL_TRACE ',traces),('V9_CAUSAL_IMAGE ',images)]:
+              if tag in line:
+                value=json.loads(line.split(tag,1)[1]);route=value['route']
+                assert value['kind']=='MEASURED_COPY_NOT_ORIGINAL_OR_RELEASE' and route in ['onbChecklists','offChecklists'] and route not in target
+                target[route]=value
+          assert set(traces)=={'onbChecklists','offChecklists'} and set(images)=={'offChecklists'}
+          for route,value in traces.items():
+            assert 0<len(value['events'])<=512
+            with (out/('trace-'+route+'.json')).open('x') as f:json.dump(value,f,indent=2)
+          image=base64.b64decode(images['offChecklists']['base64'],validate=True)
+          assert 0<len(image)<8*1024**2 and image.startswith(b'\x89PNG\r\n\x1a\n')
+          with (out/'measured-offboarding.png').open('xb') as f:f.write(image)
+          manifest={'kind':'CAUSAL_MEASUREMENT_NOT_ORIGINAL_OR_RELEASE','source':os.environ['AIHR_CI_HEAD'],'controller':os.environ['AIHR_CI_CONTROL_HEAD'],'engine':os.environ['ENGINE'],'releaseAuthorized':False,'originalFailureImageRetained':False,'images':[{'file':'measured-offboarding.png','sha256':hashlib.sha256(image).hexdigest(),'bytes':len(image)}],'traceRoutes':sorted(traces)}
+          with (out/'measurement.json').open('x') as f:json.dump(manifest,f,indent=2)
+          print(json.dumps(manifest))
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: ${{ always() && inputs.probe_scope == 'browser-image-suite' }}
+        if: ${{ always() && inputs.probe_scope == 'v9-keyboard-causal' }}
+        with:
+          name: diagnostic-v9-keyboard-causal-firefox
+          path: ${{ runner.temp }}/v9-keyboard-causal/
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && (inputs.probe_scope == 'browser-image-suite' || inputs.probe_scope == 'v9-keyboard-causal') }}
         with:
           name: diagnostic-complete-image-browser-${{ matrix.engine }}
           path: ${{ runner.temp }}/aihr-ci/
