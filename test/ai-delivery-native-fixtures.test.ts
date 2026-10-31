@@ -11,14 +11,27 @@ import {createAiDeliveryFixtureContext,aiDeliveryFixturePhase as phase} from '..
 import {populateAiDeliveryWorkforce} from '../scripts/fixtures/ai-delivery-workforce';
 import {populateAiDeliveryFinancial,finalizeAiDeliveryFinancial} from '../scripts/fixtures/ai-delivery-financial';
 import {populateAiDeliveryPlatform} from '../scripts/fixtures/ai-delivery-platform';
+import {aiDeliveryFixtureCalendar} from '../scripts/fixtures/ai-delivery-fixture-context';
 import {migrateTestDb,resetDb,owner,closeAll} from './harness';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 describe('actual complete AI browser native prerequisite composition',()=>{
  it('populates actual all-module prerequisites yet leaves the selected human target effects pending',async()=>{
+  // The same calendar used by the actual Financial/Platform entry points must keep their facts
+  // disjoint across a new month, a new year and February, without changing the real clock.
+  for(const [today,correctionDate,workedDate,releasedPeriod] of [
+   ['2026-11-01','2026-10-30','2026-10-25','2026-09'],
+   ['2027-01-01','2026-12-30','2026-12-27','2026-11'],
+   ['2026-03-01','2026-02-27','2026-02-22','2026-01'],
+   ['2028-03-01','2028-02-28','2028-02-27','2028-01'],
+   ['2026-11-09','2026-11-07','2026-11-08','2026-10'],
+  ])expect(aiDeliveryFixtureCalendar(today)).toEqual({correctionDate,workedDate,releasedPeriod});
   const c=await phase('factory normal provision and actors',()=>createAiDeliveryFixtureContext(owner));
   const workforce=await phase('canonical Workforce prerequisites',()=>populateAiDeliveryWorkforce(c));
   const financial=await phase('canonical Financial prerequisites',()=>populateAiDeliveryFinancial(c));
   const platform=await phase('canonical Platform prerequisites and initial nonempty holdouts',()=>populateAiDeliveryPlatform(c));
+  const [released]=await owner.db.select({status:s.payrollBatch.status,period:s.payrollBatch.payPeriod}).from(s.payrollBatch).where(and(eq(s.payrollBatch.tenantId,c.tenantId),eq(s.payrollBatch.id,financial.releasedBatchId)));
+  expect(released).toEqual({status:'closed',period:aiDeliveryFixtureCalendar(c.today).releasedPeriod});
+  for(const item of Object.values(platform.attendance))for(const date of [item.date,item.workedDate]){expect(date<c.today).toBe(true);expect(released.period<date.slice(0,7)).toBe(true);}
   const closable=await phase('canonical Financial refresh after platform inputs',()=>finalizeAiDeliveryFinancial(c,financial));expect(closable.state).toBe('prepared_not_closed');
   // Fresh final native reads after the last changed inputs, never a hand-built moduleWork result.
   for(const actor of [c.actors.operator,...c.actors.reviewers])for(const module of AGENT_MODULE_CODES){
