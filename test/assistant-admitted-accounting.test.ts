@@ -23,6 +23,7 @@ const h=vi.hoisted(()=>{
   committed:{exchanges:[],usage:[]} as Pending,
   budget:null as null|{monthlyTokenCeiling:number;perUserDailyQuestions:number},
   configured:true,
+  balances:null as null|{leaveType:string;available:number;taken:number;pending:number}[],
   prepareFails:false,
   /** The strategy-use marker no longer completes: history cleared, PDPA erasure or access change. */
   erased:false,
@@ -125,7 +126,7 @@ vi.mock('../core/assistant-disclosure-read',()=>({assistantSourceReplay:()=>asyn
 vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:h.sourceId,assistantClarificationThreadId:h.thread,assistantClarificationContextSource:h.contextSource,assertOwnAssistantClarificationCurrentTx:h.recheckContinuation}));
 // Preserve the real context module except this explicit fake-owner boundary. Real custody is DB-tested.
 vi.mock('../core/assistant-conversation-context',async importOriginal=>({...await importOriginal<typeof import('../core/assistant-conversation-context')>(),assistantConversationContextFromClarification:h.bridge}));
-vi.mock('../core/assistant-tools',()=>{const tool={module:'leave',sensitivity:'ordinary',spec:{name:'my_leave_balances',description:'Fictional bounded own read',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,employments:[{employmentId:'fixture-employment',company:'Fixture Company',balances:[{leaveType:'Annual leave',available:113.75,taken:0,pending:0}]}]})};return{ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
+vi.mock('../core/assistant-tools',()=>{const tool={module:'leave',sensitivity:'ordinary',spec:{name:'my_leave_balances',description:'Fictional bounded own read',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,employments:[{employmentId:'fixture-employment',company:'Fixture Company',balances:h.state.balances??[{leaveType:'Annual leave',available:113.75,taken:0,pending:0}]}]})};return{ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,read:(session:unknown)=>Promise<unknown>)=>read({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,read:(session:unknown)=>Promise<unknown>)=>read({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
 vi.mock('../lib/ai/assistant-tool-answer-evidence',()=>({assistantToolAnswerExplanations:()=>[]}));
@@ -148,12 +149,24 @@ function expectAccountingOnly(row:Row|undefined){
 }
 
 beforeEach(()=>{
- Object.assign(h.state,{committed:{exchanges:[],usage:[]},budget:null,configured:true,prepareFails:false,erased:false,eraseDuringProvider:false,continuationRetired:false,retireContinuationDuringProvider:false,providerFailure:null,lostCommitAcks:0,clarification:null});
+ Object.assign(h.state,{committed:{exchanges:[],usage:[]},budget:null,configured:true,balances:null,prepareFails:false,erased:false,eraseDuringProvider:false,continuationRetired:false,retireContinuationDuringProvider:false,providerFailure:null,lostCommitAcks:0,clarification:null});
  vi.clearAllMocks();
 });
 afterEach(()=>{expect(h.contextSource).not.toHaveBeenCalled();vi.clearAllMocks();});
 
 describe('every admitted Assistant question counts exactly once',()=>{
+ it('routes a real own balance paraphrase to only the exact fresh category while keeping human words local',async()=>{
+  h.state.balances=[{leaveType:'*Annual Leave',available:17,taken:0,pending:0},{leaveType:'Annual Leave (C)',available:29,taken:0,pending:0}];
+  const question='How much *Annual Leave do I have left?';const result=await askAssistant(ctx,{question});
+  expect(result.stop).toBe('end');expect(h.converse).toHaveBeenCalledTimes(1);
+  const request=h.converse.mock.calls[0][1],turn=request.turns[0];if(turn.role!=='user')throw Error('Expected closed user descriptor');
+  const payload=JSON.parse(String(turn.content));expect(payload).toMatchObject({operation:'conversation',intent:'leave_available'});
+  expect(payload.reads[0].cards.map((card:{card:number})=>card.card)).toEqual([0]);
+  for(const secret of [question,'*Annual Leave','Annual Leave (C)','Fixture Company','fixture-employment'])expect(JSON.stringify(request)).not.toContain(secret);
+  expect(exchanges()).toHaveLength(1);expect(exchanges()[0]).toMatchObject({id:result.exchangeId,question,error:null});
+  expect(usage()).toEqual([expect.objectContaining({exchangeCount:1})]);
+ });
+
  it('ask, clear history mid-flight, repeat: the cleared question still counts and the repeat meets the daily ceiling',async()=>{
   h.state.budget={monthlyTokenCeiling:1_000_000,perUserDailyQuestions:1};h.state.eraseDuringProvider=true;
   expect(await outcome(askAssistant(ctx,{question:QUESTION}))).toBe('provider_error');
