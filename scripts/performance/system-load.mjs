@@ -167,8 +167,15 @@ try{
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
   if(await skip.isVisible()){await skip.click();await skip.waitFor({state:'hidden'});report.onboardingTourDismissals=(report.onboardingTourDismissals??0)+1;}
   if(['/claims','/admin/personnel','/payroll'].includes(path))assert(await page.locator('main tbody tr').count()>0,'expected fictional table rows');
+  let homeCards=null;
+  if(path==='/'&&['employee','manager'].includes(user.role)){
+   await page.locator('[data-home-card]').first().waitFor({timeout:90000});
+   await page.waitForFunction(()=>document.querySelectorAll('main [aria-busy="true"]').length===0,{},{timeout:90000});
+   assert.equal(await page.locator('main [role="alert"]').count(),0,'Home rendered a handled card/summary failure');
+   homeCards=await page.locator('[data-home-card]').count();assert(homeCards>0,'expected fictional Home cards');
+  }
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
-  report.browser.push({phase,role:user.role,path,heading,elapsedMs:performance.now()-start,...timing});save();
+  report.browser.push({phase,role:user.role,path,heading,homeCards,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();
@@ -274,7 +281,7 @@ try{
  const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
   await pause(10000);
   const ctx=await context(user),page=await ctx.newPage();
-  try{for(const route of user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
+  try{for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
    await visit(page,user,route,'loaded');await pause(thinkTimeMs);
   }}finally{await ctx.close();}
  }));
