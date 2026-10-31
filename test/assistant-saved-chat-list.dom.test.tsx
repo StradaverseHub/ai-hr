@@ -1,11 +1,12 @@
 /** @vitest-environment jsdom */
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({more:vi.fn()}));
 vi.mock('../app/assistant/launcher-actions',()=>({loadMoreChatsAction:ports.more}));
 vi.mock('next/link',()=>({default:({children,scroll,...props}:any)=><a {...props}>{children}</a>}));
+import {beginChatListUpdate,publishChatListUpdate} from '../components/assistant/chat-list-updates';
 import {SavedChatList} from '../components/assistant/saved-chat-list';
 const copy=en.assistant.workspace.chat;
 beforeEach(()=>ports.more.mockReset());afterEach(cleanup);
@@ -37,4 +38,24 @@ it('drops an erased older page even when the refreshed first page and cursor are
  fireEvent.click(screen.getByRole('button',{name:copy.moreChats}));await screen.findByText('ERASED_OLDER_ONLY');
  view.rerender(<NextIntlClientProvider locale="en" messages={en}><SavedChatList initialChats={initialChats} nextCursor="same-cursor" scopeDigest="scope" newChatHref="/assistant?chatReset=render-2"/></NextIntlClientProvider>);
  await waitFor(()=>expect(screen.queryByText('ERASED_OLDER_ONLY')).toBeNull());expect(screen.getByText('Retained first chat')).toBeVisible();
+});
+
+const scoped='a'.repeat(64),threadId='71000000-0000-4000-8000-000000000001',tailId='71000000-0000-4000-8000-000000000002';
+it('updates the newest tail once in place and discards superseded or foreign-scope snapshots',()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><SavedChatList initialChats={[]} nextCursor={null} scopeDigest={scoped} newChatHref="/assistant?chatReset=live"/></NextIntlClientProvider>);
+ const oldTicket=beginChatListUpdate(),newTicket=beginChatListUpdate(),page={chats:[{threadId,exchangeId:tailId,title:'New current tail'},{threadId,exchangeId:threadId,title:'Duplicate older tail'}],nextCursor:null,scopeDigest:scoped};
+ act(()=>publishChatListUpdate(newTicket,page));expect(screen.getByRole('link',{name:'New current tail'})).toHaveAttribute('href','/assistant?e='+tailId);expect(screen.queryByText('Duplicate older tail')).toBeNull();
+ act(()=>publishChatListUpdate(oldTicket,{...page,chats:[{threadId,exchangeId:threadId,title:'STALE_RESPONSE'}]}));expect(screen.queryByText('STALE_RESPONSE')).toBeNull();
+ act(()=>publishChatListUpdate(beginChatListUpdate(),{...page,scopeDigest:'b'.repeat(64),chats:[{threadId,exchangeId:threadId,title:'FOREIGN_SCOPE'}]}));expect(screen.queryByText('FOREIGN_SCOPE')).toBeNull();
+});
+it('lets an authoritative erasure reset win over a response begun before it',()=>{
+ const props={initialChats:[],nextCursor:null,scopeDigest:scoped};
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><SavedChatList {...props} newChatHref="/assistant?chatReset=before"/></NextIntlClientProvider>);
+ const delayedTicket=beginChatListUpdate();view.rerender(<NextIntlClientProvider locale="en" messages={en}><SavedChatList {...props} newChatHref="/assistant?chatReset=after-erasure"/></NextIntlClientProvider>);
+ act(()=>publishChatListUpdate(delayedTicket,{chats:[{threadId,exchangeId:tailId,title:'ERASED_DELAYED_TITLE'}],nextCursor:null,scopeDigest:scoped}));expect(screen.queryByText('ERASED_DELAYED_TITLE')).toBeNull();
+});
+it('refuses malformed presentation packets rather than rendering arbitrary record-shaped links',()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><SavedChatList initialChats={[]} nextCursor={null} scopeDigest={scoped} newChatHref="/assistant?chatReset=validation"/></NextIntlClientProvider>);
+ for(const bad of [{chats:[{threadId,exchangeId:'https://foreign.example',title:'BAD_LINK'}],nextCursor:null,scopeDigest:scoped},{chats:Array.from({length:21},()=>({threadId,exchangeId:tailId,title:'OVERSIZED'})),nextCursor:null,scopeDigest:scoped}])act(()=>publishChatListUpdate(beginChatListUpdate(),bad));
+ expect(screen.queryByText('BAD_LINK')).toBeNull();expect(screen.queryByText('OVERSIZED')).toBeNull();
 });

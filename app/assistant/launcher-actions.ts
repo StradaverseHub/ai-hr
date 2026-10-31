@@ -1,21 +1,20 @@
 'use server';
 
 import type { ReactNode } from 'react';
-import { revalidatePath } from 'next/cache';
 import { getTranslations } from 'next-intl/server';
 import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
-import {assistantSocialIntent} from '@/lib/ai/assistant-answer-plan';
 import {AssistantClarificationError} from '@/core/assistant-clarification';
 import { askAssistant, AssistantError } from '@/core/assistant';
 import { loadAiWorkspace } from '@/core/ai-workspace';
-import { resolvePageContext } from '@/lib/ai/page-context';
 import {assistantBrowserConversationScope} from './conversation-scope';
 import {listOwnAssistantChats,loadOwnAssistantChat} from '@/core/assistant-threads';
+import {assistantConversationScopeDigest} from '@/core/assistant-conversation-context';
+import type {ChatListSnapshot} from '@/components/assistant/chat-list-updates';
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
 
 export type LauncherReply =
-  | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string; clarificationRequired?:true }
+  | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string; clarificationRequired?:true; chatList?:ChatListSnapshot }
   | { ok: false; message: string };
 
 /** The floating Assistant's one command. The same askAssistant path as the Assistant page: grant, module,
@@ -34,13 +33,15 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
     const session = await getBrowserCommandSession();
     const conversationScope=await assistantBrowserConversationScope(session);
     const { exchangeId, conversationToken } = await askAssistant(session, { question, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
-    revalidatePath('/assistant');
     const workspace = await loadAiWorkspace(session, { selectedExchangeId: exchangeId, includeGovernance: false });
     const exchange = workspace.history.find(row => row.id === exchangeId);
     const answer = exchange ? await ExchangeReply({ exchange, ctx: session }) : t('workspace.conversation.unavailable');
     const conversation=exchange?.grounded?.conversation;
     const clarificationRequired=conversation?.plan.mode==='clarify'&&conversation.clarificationAllowed!==false;
-    return { ok: true, exchangeId, answer, ...(conversationToken?{conversationToken}:{}),...(clarificationRequired?{clarificationRequired:true as const}:{}) };
+    // The action already returns the fresh canonical reply. Revalidating the route here replaces
+    // a selected saved conversation with its route loading fallback; update only its scoped list.
+    const chatList=await listOwnAssistantChats(session,{},conversationScope).then(page=>({chats:page.chats.map(({threadId,exchangeId,title})=>({threadId,exchangeId,title})),nextCursor:page.nextCursor,scopeDigest:page.scopeDigest})).catch(()=>({chats:[],nextCursor:null,scopeDigest:assistantConversationScopeDigest(session,conversationScope)}));
+    return { ok: true, exchangeId, answer, chatList, ...(conversationToken?{conversationToken}:{}),...(clarificationRequired?{clarificationRequired:true as const}:{}) };
   } catch (error) {
     if(error instanceof AssistantClarificationError)return {ok:false,message:t('workspace.conversation.unavailable')};
     const code = error instanceof AuthRequiredError ? 'ai_control' : error instanceof AssistantError ? error.code : 'provider_error';

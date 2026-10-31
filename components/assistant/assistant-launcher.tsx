@@ -123,7 +123,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
       {uncertain&&<p role="status" className="shrink-0 px-4 pb-2 text-xs text-muted-foreground">{chatCopy('readOnlyHistory')}</p>}
       <form onSubmit={event => { event.preventDefault(); void send(); }} className="shrink-0 border-t border-border/70 px-4 pb-3 pt-3">
         <label htmlFor={`${titleId}-question`} className="sr-only">{t('question')}</label>
-        <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
+        <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 focus-within:ring-2 focus-within:ring-ring" data-ui-composer>
           <textarea ref={box} id={`${titleId}-question`} rows={2} maxLength={1800} value={question} readOnly={pending||uncertain}
             onChange={event => setQuestion(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}

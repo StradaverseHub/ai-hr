@@ -4,15 +4,25 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
-const state=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier}));
+const state=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn(),more:vi.fn()}));
+vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier,loadMoreChatsAction:state.more}));
 import {ConversationSuggestions,ConversationClarification} from '../components/assistant/chat-reply-boundary';
+import {SavedChatList} from '../components/assistant/saved-chat-list';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
 function show(initialTurn?:{id:string;question:string;answer:React.ReactNode;clarificationRequired?:boolean},fullHeight=false){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn} fullHeight={fullHeight}/></NextIntlClientProvider>);}
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
 beforeEach(()=>{state.ask.mockReset();state.earlier.mockReset();});afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('keeps the selected conversation mounted through pending and a fresh scoped sidebar update',async()=>{
+  let finish!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  const threadId='72000000-0000-4000-8000-000000000001',exchangeId='72000000-0000-4000-8000-000000000002',scopeDigest='a'.repeat(64);
+  render(<NextIntlClientProvider locale="en" messages={en}><SavedChatList initialChats={[]} nextCursor={null} scopeDigest={scopeDigest} newChatHref="/assistant?chatReset=stable"/><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId={threadId} initialTurns={[{id:threadId,question:'Retained question',answer:<p>Retained canonical answer</p>}]} initialResume={{exchangeId:threadId,conversationToken:'selected-owned-proof'}}/></NextIntlClientProvider>);
+  const transcript=screen.getByRole('log');send('Thanks');expect(screen.getByRole('log')).toBe(transcript);expect(transcript).toHaveTextContent('Retained canonical answer');expect(transcript).toHaveTextContent('Thinking');expect(screen.getByRole('button',{name:copy.workspace.working})).toBeDisabled();
+  await act(async()=>finish({ok:true,exchangeId,conversationToken:'next-proof',answer:<p>New canonical answer</p>,chatList:{chats:[{threadId,exchangeId,title:'Current thread summary'}],nextCursor:null,scopeDigest}}));
+  expect(screen.getByRole('log')).toBe(transcript);expect(transcript).toHaveTextContent('Retained canonical answer');expect(transcript).toHaveTextContent('New canonical answer');expect(screen.getByRole('link',{name:'Current thread summary'})).toHaveAttribute('href','/assistant?e='+exchangeId);expect(state.ask).toHaveBeenCalledExactlyOnceWith({question:'Thanks',previousExchangeId:threadId,previousConversationToken:'selected-owned-proof'});
+ });
+
  it('a generic suggested task leaves a pending clarification target without submitting immediately',async()=>{
   show({id:'checked',question:'Earlier checked question',answer:<ConversationSuggestions label="Next" suggestions={[{label:'Upcoming holidays',prompt:'When is the next public holiday?'}]}/>});
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'clarify',conversationToken:'clarify-proof',clarificationRequired:true,answer:<p>Which leave type?</p>});send('My leave');await screen.findByText('Which leave type?');

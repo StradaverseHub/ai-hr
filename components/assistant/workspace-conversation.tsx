@@ -5,6 +5,7 @@ import {askFromWorkspaceAction,loadEarlierChatAction,type LauncherReply} from '.
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {WorkspaceComposer} from './workspace-composer';
 import {ThinkingIndicator} from './thinking-indicator';
+import {beginChatListUpdate,publishChatListUpdate} from './chat-list-updates';
 import type {AiWorkspaceTaskId} from '../../lib/ai/workspace-tasks';
 export type WorkspaceChatTurn={id:string;question:string;answer:ReactNode;clarificationRequired?:boolean};
 type Turn={id:string;question:string;reply?:LauncherReply};
@@ -42,10 +43,11 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
   const question=String(data.get('question')??'').trim();if(!question||busy.current||readOnly||attachmentBusy)return;
   busy.current=true;setPending(true);setDraft('');follow.current=true;
   const clarification=clarificationExchangeId??awaitingClarification.current;
-  const atEpoch=epoch.current,id=`local-${++sequence.current}`;setTurns(rows=>[...rows,{id,question}]);
+  const listTicket=beginChatListUpdate(),atEpoch=epoch.current,id=`local-${++sequence.current}`;setTurns(rows=>[...rows,{id,question}]);
   try{
    const reply=await askFromWorkspaceAction({question,...(clarification?{clarificationExchangeId:clarification}:previous.current?{previousExchangeId:previous.current.id,previousConversationToken:previous.current.token}:{})});
    if(atEpoch!==epoch.current)return;
+   if(reply.ok&&reply.chatList)publishChatListUpdate(listTicket,reply.chatList);
    awaitingClarification.current=reply.ok&&reply.clarificationRequired?reply.exchangeId:undefined;
    if(!reply.ok||(!reply.conversationToken&&!reply.clarificationRequired))setReadOnly(true);
    if(reply.ok&&reply.conversationToken)previous.current={id:reply.exchangeId,token:reply.conversationToken};
