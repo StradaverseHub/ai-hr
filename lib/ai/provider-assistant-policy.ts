@@ -100,7 +100,7 @@ export function resolvePrivateAssistantProposal(question:string):Readonly<{actio
 /** A closed local grammar, NOT regex masking of arbitrary language. Unknown wording stays local and
  * asks for a module; names, free prose and pasted instructions are never sent as an alleged safe intent. */
 export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode}>{
- const social=assistantSocialIntent(question);if(social)return{intent:null,social};
+ const social=assistantSocialIntent(question);if(social&&social!=='help')return{intent:null,social};
  const normalized=normalize(question);
  for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date,module:'org'};}}
  for(const intent of PRIVATE_ASSISTANT_INTENTS){
@@ -109,6 +109,9 @@ export function resolvePrivateAssistantIntent(question:string,previous:readonly 
  for(const module of AGENT_MODULE_CODES){const names=[module.replaceAll('_',' '),...(moduleNames[module]??[])];if(names.some(name=>normalized===normalize(name))){const map:Partial<Record<AgentModuleCode,PrivateAssistantIntent>>={leave:'leave_available',claims:'claim_statuses',payroll:'payslip',employees:'work_profile',org:'reporting_line',assistant:'module_overview',attendance:'attendance',performance:'performance',notifications:'notifications',approvals:'approvals',toil:'toil',lifecycle:'lifecycle',knowledge_base:'knowledge_base',rewards:'rewards'};return{intent:map[module]??null,social:null,module};}
   if(names.some(name=>normalized===`what can you help me with in ${normalize(name)}`||normalized===`show current capabilities for ${normalize(name)}`))return{intent:'module_overview',social:null,module};
  }
+ // Keep source-owned exact workflow templates/aliases authoritative. Qualified general help
+ // is local only after those complete commands have been resolved; no arbitrary suffix is stripped.
+ if(social==='help')return{intent:null,social};
  const last=previous.length?resolvePrivateAssistantIntent(previous[previous.length-1],previous.slice(0,-1)).intent:null;
  if(last&&['leave_available','leave_pending','leave_taken'].includes(last)){
   if(['and pending','what about pending','and how much is pending'].includes(normalized))return{intent:'leave_pending',social:null,module:'leave'};
