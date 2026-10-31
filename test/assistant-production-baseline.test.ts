@@ -14,7 +14,7 @@ import {loadAiWorkspace} from '../core/ai-workspace';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import type {ConverseArgs,ConverseResult} from '../lib/ai/types';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {ASSISTANT_COMPLEX_BASELINE,ASSISTANT_PRODUCTION_BASELINE,conversationRun,scoreBaselineTurn,summarizeBaseline,type BaselineObservation,type BaselineScore} from './assistant-production-baseline-corpus';
+import {ASSISTANT_COMPLEX_BASELINE,ASSISTANT_PARITY_ACTIONS,ASSISTANT_PRODUCTION_BASELINE,conversationRun,scoreBaselineTurn,summarizeBaseline,type BaselineObservation,type BaselineScore} from './assistant-production-baseline-corpus';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
@@ -120,6 +120,18 @@ describe('Assistant production-fidelity conversation baseline',()=>{
    for(const value of SENTINELS)expect(body.includes(value),value).toBe(false);for(const value of questions)expect(leaks(body,value),value).toBe(false);}
   process.stdout.write('AIHR_ASSISTANT_COMPLEX_BASELINE '+JSON.stringify({summary:summarizeBaseline(scores),runs,providerRequests:requests.length,turns:scores})+'\n');
  },180_000);
+
+ it('records ordinary parity action requests through the actual route with the same hard gates',async()=>{
+  const {ctx}=await actor(),adminContext=await adminActor(),requests:ConverseArgs[]=[];oracle(requests);const scores:BaselineScore[]=[];
+  for(const conversation of ASSISTANT_PARITY_ACTIONS){const caller=conversation.persona==='admin'?adminContext:ctx;
+   for(const turn of conversation.turns){const {observation}=await observe(caller,turn.question,null,requests);scores.push(scoreBaselineTurn(turn,observation));
+    expect(['propose','clarify','insufficient','refuse','answer',undefined],turn.id).toContain(observation.plan?.mode);}}
+  expect(scores).toHaveLength(ASSISTANT_PARITY_ACTIONS.reduce((total,row)=>total+row.turns.length,0));
+  const questions=ASSISTANT_PARITY_ACTIONS.flatMap(row=>row.turns.map(turn=>turn.question));
+  for(const args of requests){const body=JSON.stringify(args);expect(args.tools??[]).toEqual([]);
+   for(const value of SENTINELS)expect(body.includes(value),value).toBe(false);for(const value of questions)expect(leaks(body,value),value).toBe(false);}
+  process.stdout.write('AIHR_ASSISTANT_PARITY_BASELINE '+JSON.stringify({summary:summarizeBaseline(scores),providerRequests:requests.length,turns:scores})+'\n');
+ },120_000);
 
  it('refuses a revoked login before any read or provider request',async()=>{
   const {admin,ctx,userId}=await actor(),requests:ConverseArgs[]=[];oracle(requests);

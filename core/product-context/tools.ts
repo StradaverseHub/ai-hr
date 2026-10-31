@@ -11,10 +11,11 @@ import type {AiToolSpec} from '../../lib/ai/types';
 import {isAdmin} from '../../lib/authz-model';
 import {ASSISTANT_TOOLS} from '../assistant-tools';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
-import {ASSISTANT_PROPOSABLE_ACTIONS,ASSISTANT_PROPOSAL_FALLBACK,ASSISTANT_PROPOSAL_HINT_KEYS,ASSISTANT_PROPOSAL_MODULE,captureAssistantProposalHints,isAssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
+import {ASSISTANT_PROPOSAL_FALLBACK,ASSISTANT_PROPOSAL_HINT_KEYS,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
 import {destinationsFor} from '../../lib/product-context/destinations';
 import {productGuidance} from './guides';
 import {setupReadiness,SetupReadinessRefused} from './setup-readiness';
+import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS,actionCatalogueFor,type SuggestableAction} from './actions';
 import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import vi from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
 const NAV_LABELS:Readonly<Record<string,Record<string,string>>>={en:en.nav,ms:ms.nav,zh:zh.nav,vi:vi.nav,ta:ta.nav,th:th.nav};
 
@@ -23,9 +24,10 @@ export type Capability=Readonly<{name:string;effect:CapabilityEffect;module:stri
  audience:'everyone'|'admin';purpose:string;reviewRoute?:string;requiredDetails?:readonly string[]}>;
 
 const object=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object' as const,properties,required,additionalProperties:false});
-export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_guidance'|'setup_readiness',AiToolSpec>>=Object.freeze({
+export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_guidance'|'setup_readiness'|'available_actions',AiToolSpec>>=Object.freeze({
  product_destinations:{name:'product_destinations',description:'Real places in this product that the signed-in person can open, with their labels and addresses. Name or link only these.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  product_guidance:{name:'product_guidance',description:'Search this company\'s published product guides for how a feature works or how to set it up. Returns authored guide sections with links.',inputSchema:object({query:{type:'string',maxLength:200}},['query']) as AiToolSpec['inputSchema']},
+ available_actions:{name:'available_actions',description:'Changes this person may be pointed to in the product, each with its purpose, its review page and the details that page collects. Suggest only these; the person completes and confirms each change on its page.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  setup_readiness:{name:'setup_readiness',description:'Administrators only: whether this company\'s payroll is configured to run this month and how many employee records lack required information. Counts and statuses only.',inputSchema:object({}) as AiToolSpec['inputSchema']},
 });
 /** Every capability the Assistant could offer, classified. Context tools are admin-only where marked. */
@@ -35,14 +37,17 @@ export function capabilityRegistry():readonly Capability[]{
   Object.freeze({name:'product_destinations',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.product_destinations.description}),
   Object.freeze({name:'product_guidance',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.product_guidance.description}),
   Object.freeze({name:'setup_readiness',effect:'context' as const,module:null,sensitivity:'configuration' as const,audience:'admin' as const,purpose:CONTEXT_TOOL_SPECS.setup_readiness.description}),
-  ...ASSISTANT_PROPOSABLE_ACTIONS.map(action=>Object.freeze({name:action,effect:'prepare_review' as const,module:ASSISTANT_PROPOSAL_MODULE[action],sensitivity:'ordinary' as const,audience:'everyone' as const,
-   purpose:'Suggest this change for the person to review and confirm on its native page. Never prepares or submits anything itself.',
-   reviewRoute:ASSISTANT_PROPOSAL_FALLBACK[action],requiredDetails:Object.freeze(ASSISTANT_PROPOSAL_HINT_KEYS[action].filter(key=>!key.endsWith('?')))})),
+  Object.freeze({name:'available_actions',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.available_actions.description}),
+  // Every human-confirmed registry action is suggestable; the seven inline-card actions keep their hint schema.
+  ...SUGGESTABLE_ACTIONS.map(action=>{const inline=isAssistantProposableAction(action.id);return Object.freeze({name:action.id,effect:'prepare_review' as const,module:action.module,
+   sensitivity:'ordinary' as const,audience:action.permission.actor==='self'?'everyone' as const:'admin' as const,purpose:ACTION_PURPOSE[action.id]??action.id,
+   reviewRoute:inline?ASSISTANT_PROPOSAL_FALLBACK[action.id as AssistantProposableAction]:action.review.route,
+   ...(inline?{requiredDetails:Object.freeze(ASSISTANT_PROPOSAL_HINT_KEYS[action.id as AssistantProposableAction].filter(key=>!key.endsWith('?')))}:{})});}),
  ]);
 }
 /** Context tool specs this caller may be offered (setup readiness for administrators only). */
 export function contextToolSpecsFor(ctx:SessionContext):readonly AiToolSpec[]{
- return Object.freeze([CONTEXT_TOOL_SPECS.product_destinations,CONTEXT_TOOL_SPECS.product_guidance,...(isAdmin(ctx)?[CONTEXT_TOOL_SPECS.setup_readiness]:[])]);
+ return Object.freeze([CONTEXT_TOOL_SPECS.product_destinations,CONTEXT_TOOL_SPECS.product_guidance,CONTEXT_TOOL_SPECS.available_actions,...(isAdmin(ctx)?[CONTEXT_TOOL_SPECS.setup_readiness]:[])]);
 }
 export type ContextToolResult=Readonly<{ok:true;content:unknown}>|Readonly<{ok:false;refusal:'not_offered'|'invalid_input'|'not_permitted'}>;
 /** Runs one context tool as the caller. `companyId` is the caller's current company scope. */
@@ -57,6 +62,7 @@ export async function runContextTool(ctx:SessionContext,name:string,input:unknow
   if(typeof value.query!=='string'||!value.query.trim()||value.query.length>200)return{ok:false,refusal:'invalid_input'};
   return{ok:true,content:await productGuidance(ctx,value.query,scope.locale)};
  }
+ if(name==='available_actions')return{ok:true,content:(await actionCatalogueFor(ctx)).map(({id,purpose,reviewRoute,humanInputs})=>({id,purpose,reviewRoute,collects:humanInputs}))};
  try{return{ok:true,content:await setupReadiness(ctx,scope.companyId)};}
  catch(error){if(error instanceof SetupReadinessRefused)return{ok:false,refusal:'not_permitted'};throw error;}
 }
@@ -69,4 +75,13 @@ export function checkProposal(action:unknown,details:unknown):Readonly<{valid:tr
  const missing=required.filter(key=>typeof given[key]!=='string'||!(given[key] as string).trim());
  if(missing.length)return{valid:false,missing:Object.freeze(missing)};
  try{captureAssistantProposalHints(action,given);return{valid:true,action};}catch{return{valid:false,missing:Object.freeze(required)};}
+}
+/** Suggest one action from the caller's CURRENT catalogue. Inline-card actions must pass the native hint
+ * check first; every other action points to its review page, which collects and validates the details.
+ * Either way nothing is prepared or submitted: the person acts on the page. */
+export function suggestAction(catalogue:readonly SuggestableAction[],action:unknown,details?:unknown):
+ Readonly<{suggested:true;action:string;reviewRoute:string;inlineCard:boolean}>|Readonly<{suggested:false;reason:'not_available'}>|Readonly<{suggested:false;reason:'missing_details';missing:readonly string[]}>{
+ const entry=catalogue.find(row=>row.id===action);if(!entry)return{suggested:false,reason:'not_available'};
+ if(entry.inlineCard){const check=checkProposal(entry.id,details??{});if(!check.valid)return{suggested:false,reason:'missing_details',missing:check.missing};}
+ return{suggested:true,action:entry.id,reviewRoute:entry.reviewRoute,inlineCard:entry.inlineCard};
 }

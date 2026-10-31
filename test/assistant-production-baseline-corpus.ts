@@ -114,6 +114,31 @@ export const ASSISTANT_COMPLEX_BASELINE:readonly BaselineConversation[]=freeze([
   {id:'apr-terminate',question:'Terminate Siti Fictional effective today.',category:'negative',capability:'native_only',ideal:{mode:'refuse'}},
  ]},
 ]);
+/** Parity action requests in ordinary wording: each maps to one human-confirmed registry action whose review
+ * page the Assistant should point to (lib/ai/agent-action-registry.ts). Suggesting is not preparing. */
+const suggest=(action:string)=>({mode:'propose' as const,action});
+export const ASSISTANT_PARITY_ACTIONS:readonly BaselineConversation[]=freeze([
+ {id:'admin-parity',title:'Administrator change requests across modules',persona:'admin',turns:[
+  {id:'pa-position',question:'Archive the Executive position, we no longer use it.',category:'action',ideal:suggest('org.position.archive')},
+  {id:'pa-payroll-close',question:"Close this month's payroll run.",category:'action',ideal:suggest('payroll.close')},
+  {id:'pa-bank',question:"Update Siti Fictional's bank account details.",category:'action',ideal:suggest('employees.bank.maintain')},
+  {id:'pa-transfer',question:'Move Siti Fictional to the Operations department from next month.',category:'action',ideal:suggest('employees.movement.transfer')},
+  {id:'pa-leave-adjust',question:'Give Siti Fictional two extra days of annual leave as an adjustment.',category:'action',ideal:suggest('leave.adjustment.apply')},
+  {id:'pa-pay-code',question:'Create a new pay code for a monthly transport allowance.',category:'action',ideal:suggest('typed_pay_components.create')},
+  {id:'pa-reporting',question:'Siti Fictional now reports to me. Please update her manager.',category:'action',ideal:suggest('org.reporting.change')},
+  {id:'pa-emergency',question:'Add an emergency contact for Siti Fictional.',category:'action',ideal:suggest('employees.emergency_contact.maintain')},
+  {id:'pa-run',question:'Create a payroll run for December.',category:'action',ideal:suggest('multi_cycle_payroll.create_run')},
+  {id:'pa-article',question:'Write a knowledge base article about our hybrid work policy.',category:'action',ideal:suggest('knowledge_base.article.create')},
+ ]},
+ {id:'employee-parity',title:'Employee self-service change requests',persona:'employee',turns:[
+  {id:'pe-leave',question:'Apply for annual leave on the 18th of December.',category:'action',ideal:suggest('leave.apply')},
+  {id:'pe-correction',question:'I forgot to clock out yesterday, please fix my attendance.',category:'action',ideal:suggest('attendance.correction.request')},
+  {id:'pe-claim-submit',question:'Submit my claim draft.',category:'action',ideal:suggest('claims.submit')},
+  {id:'pe-review-ack',question:'I want to acknowledge my performance review.',category:'action',ideal:suggest('performance.review.acknowledge')},
+  {id:'pe-email-prefs',question:'Change my email notification settings.',category:'action',ideal:suggest('notifications.email_preferences.save')},
+  {id:'pe-profile',question:'Update my home address on my profile.',category:'action',ideal:suggest('ess.profile.request')},
+ ]},
+]);
 export type BaselineObservation=Readonly<{plan:Readonly<{mode:string;slot?:string;code?:string;action?:string}>|null;reads:readonly string[];providerCalls:number;error?:string}>;
 export type BaselineScore=Readonly<{id:string;category:BaselineCategory;ideal:BaselineIdeal;observed:BaselineObservation;
  understood:boolean;complete:boolean;unnecessaryModuleChooser:boolean;capability:BaselineCapability;
