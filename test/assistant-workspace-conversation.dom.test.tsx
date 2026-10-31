@@ -9,10 +9,24 @@ vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.a
 import {ConversationClarification} from '../components/assistant/chat-reply-boundary';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
-function show(initialTurn?:{id:string;question:string;answer:React.ReactNode}){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn}/></NextIntlClientProvider>);}
+function show(initialTurn?:{id:string;question:string;answer:React.ReactNode;clarificationRequired?:boolean},fullHeight=false){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn} fullHeight={fullHeight}/></NextIntlClientProvider>);}
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
 beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('starts the full workspace with a transcript and one anchored composer before the first question',()=>{
+  show(undefined,true);expect(screen.getByRole('log')).toBeInTheDocument();expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  expect(screen.getByRole('region',{name:chat.title}).className).toContain('flex-col');expect(screen.getByRole('log').className).toContain('flex-1');
+  expect(state.ask).not.toHaveBeenCalled();
+ });
+ it('routes the next normal composer turn to a canonical clarification and then resumes ordinary context',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'owned-choice',conversationToken:'choice-token',clarificationRequired:true,answer:<p>Which leave type?</p>});show();send('My leave balance');await screen.findByText('Which leave type?');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'answer',conversationToken:'answer-token',answer:<p>Annual balance: 12 days</p>});send('Annual leave');await screen.findByText('Annual balance: 12 days');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'Annual leave',clarificationExchangeId:'owned-choice'});
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'followup',answer:<p>Pending: 2 days</p>});send('And pending?');await screen.findByText('Pending: 2 days');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',previousExchangeId:'answer',previousConversationToken:'answer-token'});
+  expect(screen.getAllByRole('textbox')).toHaveLength(1);
+ });
+
  it('captures the real in-place conversation at its actual page reading width',async()=>{
   const view=show({id:'fictional-checked',question:'How much leave do I have?',answer:<p>Annual leave: 12 days</p>});
   await captureAiReviewScreenshots('<div class="mx-auto max-w-3xl">'+aiReviewDomHtml(view.container)+'</div>','en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
@@ -31,8 +45,8 @@ describe('in-place Assistant conversation',()=>{
  });
  it('submits a clarification in place through its dedicated owned-exchange path',async()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'answered',conversationToken:'answered-proof',answer:<p>Annual balance: 12 days</p>});
-  show({id:'needs-clarification',question:'How much leave?',answer:<ConversationClarification exchangeId="needs-clarification" replyLabel="Your reply" continueLabel="Continue"/>});
-  fireEvent.change(screen.getByLabelText('Your reply'),{target:{value:'Annual leave'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+  show({id:'needs-clarification',question:'How much leave?',clarificationRequired:true,answer:<ConversationClarification exchangeId="needs-clarification" replyLabel="Your reply" continueLabel="Continue"/>});
+  send('Annual leave');
   await screen.findByText('Annual balance: 12 days');expect(screen.getByText('How much leave?')).toBeInTheDocument();expect(state.ask).toHaveBeenCalledWith({question:'Annual leave',clarificationExchangeId:'needs-clarification'});expect(window.location.search).toBe('');
  });
  it('shows the question and waiting reply immediately, keeps earlier replies and passes the opaque continuation only after success',async()=>{

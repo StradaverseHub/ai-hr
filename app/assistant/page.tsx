@@ -124,21 +124,38 @@ export default async function AssistantPage({
   }));
 
   return (
-    <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-6">
-      <div className="mx-auto max-w-3xl space-y-4 pt-2">
-        <PageHeader title={greeting} description={t('description')} />
-        <OwnClearStatus status={sp.ownClear}/>
-        <ErrorBanner message={errorMessage} />
-        <WorkspaceConversation resetKey={sp.chatReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-          initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
-            answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
-        {homeTabs}
+    <div data-tour="intelligence-assistant" className="mx-auto max-w-7xl space-y-5">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <section className="min-w-0 space-y-3">
+          <PageHeader title={greeting} />
+          <OwnClearStatus status={sp.ownClear}/>
+          <ErrorBanner message={errorMessage} />
+          <WorkspaceConversation fullHeight resetKey={sp.chatReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+            initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
+              clarificationRequired:history.find(h=>h.id===sp.e)!.grounded?.conversation?.plan.mode==='clarify'&&history.find(h=>h.id===sp.e)!.grounded?.conversation?.clarificationAllowed!==false,
+              answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
+        </section>
+        <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:border-l lg:border-t-0 lg:pl-5">
+          {history.length>0&&<details>
+            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.recent')}</summary>
+            <ul className="max-h-72 space-y-1 overflow-y-auto overscroll-contain pb-3">{history.map(h=><li key={h.id}><Link href={'/assistant?e='+encodeURIComponent(h.id)} scroll={false} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{h.question}</Link></li>)}</ul>
+          </details>}
+          <details className="border-t border-border">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.tabs')}</summary>
+            <div className="pb-3">{homeTabs}</div>
+          </details>
+          <details open={Boolean(sp.historyPrivacy||sp.importHistory||sp.nativeOutcome||sp.ownClear)} className="border-t border-border">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.privacy')}</summary>
+            <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3 pb-3">
+              <h2 id="assistant-privacy-heading" className="sr-only">{t('home.privacy')}</h2>
+              <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
+              <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
+              <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
+            </section>
+          </details>
+        </aside>
       </div>
 
-      {history.length>0&&<details className="mx-auto max-w-3xl border-t border-border pt-2">
-        <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.recent')}</summary>
-        <ul className="space-y-1 pb-3">{history.map(h=><li key={h.id}><Link href={'/assistant?e='+encodeURIComponent(h.id)} scroll={false} className="block rounded-md px-3 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{h.question}</Link></li>)}</ul>
-      </details>}
       <details open={Boolean(sp.job||sp.governed||sp.proposal||sp.planning)} className="border-t border-border pt-2">
         <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.tools')}</summary>
         <div className="space-y-6 pt-3">
@@ -152,13 +169,6 @@ export default async function AssistantPage({
           <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
         </div>
       </details>
-      {/* Own-data privacy controls sit together at the end; each still asks first and reports its outcome. */}
-      <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
-        <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
-        <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-        <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
-        <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-      </section>
     </div>
   );
 }
