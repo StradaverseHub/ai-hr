@@ -502,165 +502,116 @@ HTTP/browser outcomes remain separate, as recorded below.
 
 ## Resumed verification — 31 October 2026
 
-The owner selected an existing isolated environment for production-equivalent
-acceptance. Available operator configs identify staging and the two production
-hosts only; the isolated target's alias/config path is still required. The configured
-staging VM exposes2 CPUs and approximately4GiB RAM, so it is not an equivalent
-substitute. No workload was directed at those live installations.
+Current candidate `1a0ed296a1ddc03afebbed627de2a1547d957f22` passed129 focused
+cases (105DB/24nonDB), zero failures/skips, and the whole compiler. The current
+expanded HTTP/browser runs are41188713821(one-second) and41188713828(five-second);
+both remain pending. No newer500-user speed pass or production-equivalent
+acceptance is established. The owner selected an existing isolated environment;
+its SSH alias/config path remains required. Configured staging is2 CPUs/~4GiB,
+compared with production's two16-CPU/~64GiB VMs. No workload ran on either live
+installation, and no deployment occurred.
 
 Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` was integrated normally in
-`f1444f59c`. Its636-entry journal and every canonical SQL file were independently
-verified unchanged. The641-entry candidate appends only the five reservations
-0866–0870. No migration was applied outside disposable hosted databases.
+`f1444f59c`. Its636-entry journal and every canonical SQL byte were independently
+verified unchanged. The641-entry candidate appends only reservations0866–0870.
+No migration was applied outside disposable hosted databases; allocation/fresh refs
+must be checked again before integration.
 
-| Hosted evidence | Exact source | Result |
+| Hosted native evidence | Source | Result |
 | --- | --- | --- |
-|41179640317 |9098adc7fcf68b294075ac699fc8836ca885c9cf |74 cases PASS (68DB/6nonDB), no skips; whole compiler PASS |
-|41179939683 |9098adc7fcf68b294075ac699fc8836ca885c9cf |304 cases PASS (257DB/47nonDB), no skips,18 module suites |
-|41180201688 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |40 Profile cases PASS (23DB/17nonDB), no skips |
-|41180173334 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |Original selected-tests failure: nonexistent selected test path; retained. Its whole compiler independently PASS. Corrected selection is41180201688. |
-|41180553216 |310b5977c815c2ff37a9b595f058c714de885e60 |165 fixture/role-transfer/task-metadata cases PASS, no skips; whole compiler PASS |
-|41180556156 |310b5977c815c2ff37a9b595f058c714de885e60 |Paired native empty-Profile benchmark PASS;500 actual principals x3 reads each, no errors, native forged-principal checks retained |
+|41179640317 |9098adc7fcf68b294075ac699fc8836ca885c9cf |74PASS(68DB/6nonDB), no skips; whole compiler PASS |
+|41179939683 |9098adc7fcf68b294075ac699fc8836ca885c9cf |304PASS(257DB/47nonDB),18 module suites, no skips |
+|41180173334 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |Original selection FAIL(nonexistent test path); independent compiler PASS |
+|41180201688 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |Corrected selection40PASS(23DB/17nonDB), no skips |
+|41180553216 |310b5977c815c2ff37a9b595f058c714de885e60 |165 fixture/role-transfer/task cases PASS, no skips; whole compiler PASS |
+|41185074563 |5012f28a1bda64cb8674153f768dfca3695d3167 |54 metadata/assignment/delegation cases PASS, no skips |
+|41185013098 |5012f28a1bda64cb8674153f768dfca3695d3167 |Original benchmark FAIL(object-key insertion order affected JSON digest); independent compiler PASS |
+|41185593278 |748352f59364493725ef23d79a30d4345f6ea916 |54 affected cases PASS, no skips; whole compiler PASS |
+|41185840215 |3c5cec42b1430757d5f3da7574dc6ae11d14e8a4 |Original delegated-preview regression30PASS/1FAIL: preview0 while authorized metadata contains1 |
+|41185883781 |2a0077ca6361bcdf3e189cb40d338c6c4106e977 |Repaired preview/Home checks60PASS, no skips; whole compiler PASS |
+|41188544388 |26c7d0730c701b0bbcaa513744b10c70b98c1922 |Original large-count regressions19PASS/2FAIL, both HomeConfigurationError(template.values.count) |
+|41188641438 |1a0ed296a1ddc03afebbed627de2a1547d957f22 |129PASS(105DB/24nonDB), no skips; whole compiler PASS |
 
-The Profile reader now checks for one native-authorized pending header before
-planning employment/person joins. Nonempty queues retain their original projection
-and locked current-policy decision checks. The same-host benchmark measured p95
-for each principal's three-read journey at1178.46ms before,624.44ms changed, and
-934.05ms after restoring the joined reader. This is component evidence only; it
-cannot establish a whole-system HTTP speed improvement.
+Paired component measurements below retain their exact sources. Values are
+initial/changed/restored, on the same runner within each experiment. They are not
+500-user HTTP measurements, and independent hosted runners do not establish a
+causal scaling ratio.
 
-All initial expanded HTTP attempts before the fixture repair failed before traffic:
-41179453346/41179456415 (`b28d7f00b`),41179633915/41179637258 (`9098adc7f`), and
-41180079447/41180082400 (`871342bb8`). Current main's strict focused migration owner
-refused their dedicated disposable database/job. Production builds passed where
-observed; there are no new HTTP latency samples from these attempts.
+| Benchmark | Source | Paired result |
+| --- | --- | --- |
+|41180556156 |310b5977c815c2ff37a9b595f058c714de885e60 |500 actual principals x3 empty Profile reads: journey p95 1178.46/624.44/934.05ms; no errors; forged-principal checks retained |
+|41185420342 |6387cc10bd4f504852f4ddb6b805d42f4ddce8b8 |100,000 claims, three principals x3 reads/phase. Median full metadata: HR1421.3/1219.8/1389.4ms; manager20,000-item queue364.2/250.1/373.5ms; empty employee106.1/3.7/107.0ms |
+|41185610048 |748352f59364493725ef23d79a30d4345f6ea916 |Same-shaped native full-reader comparison: HR1283.7/188.3/1132.8ms; manager295.6/59.8/316.2ms; employee90.2/3.4/98.8ms |
+|41187886869 |c04fe51b8bfed90d6a3a8410169b1c7c9f68c82a |Preview experiment, actual audit GUC verified on: HR169.9/120.1/157.7ms; manager79.2/71.0/79.4ms; employee6.0/5.7/5.1ms. Ordered rows and exact100,000/20,000/0 totals match |
 
-Service benchmark41180175791 also failed before executing its case because the
-new role prerequisite owner admitted only the ordinary selected-tests job. A finite
-performance admission now retains the existing host/workflow/source/URL/evidence
-checks and exact role graph, adding only the two named performance jobs, their own
-evidence directories and the fixed password-free loopback system database. It does
-not spoof a job identity, disable a guard or admit live targets. Its negative tests
-and native role-transfer checks are included in41180553216.
+The corrected full-reader oracle sorts object keys only; every field, value and
+row order remains checked. Profile now probes one native-authorized pending header
+before employment/person joins. Nonempty queues retain their projection/current
+policy checks. Claims resolves delegated subject names once per pending employment,
+then repeats native principal/decision authority in a separate transaction before
+reading all current pending headers. No full task list is silently truncated.
 
-Repaired runs41180573016/41180575968 (`56fc0848f`) passed migration/catalog setup,
-then the fictional all-company Attendance workflow correctly failed self-approval
-validation. The fixture population was repaired to include employee applicants only,
-excluding the named HR approver. Runs41180942249/41180945047 on`ab55b5775` then
-passed30 route pilots, Claims browser CRUD and persisted Leave create/edit/withdraw,
-but failed before the500-user phase because the Personnel driver omitted the
-required manual employee ID. The original failures are retained; this was not a
-500-user latency measurement.
+The counted preview now shares that delegated-subject owner, preserving a valid
+stand-in whose subject is outside ordinary Personnel visibility. Each authorized
+employment contributes at most its top N to a global top N; anything below that
+subject's top N cannot enter the global top N. Native request RLS and the separate
+uncapped exact count remain authoritative. Limits1/25/200 and private-column
+restrictions are covered by the affected native checks.
 
-Workflow-only run41182199060 on`2c50477ff` independently verified persisted Leave
-create/edit/withdraw, Personnel draft create/edit/delete and Attendance correction,
-approval and applied punch changes. It failed before load at Payroll processing.
-The fixture incorrectly prepopulated current draft batches with payslips. The next
-fixture instead generates and closes real historical runs, leaving processing
-drafts empty; complete action responses and business refusals are now captured.
-This fixture diagnosis is not a claim that a particular SQL error was observed.
+The Home template validator previously rejected every task count above10,000.
+The fixture manager has20,000 actual pending assignments, so that valid workload
+could fail summary rendering with503. Counts now accept nonnegative safe integers;
+the separate200-year anniversary bound, permitted fields, text safety and rendered
+length limits remain. Counts are not clamped or replaced with a calm message.
+The native HTTP manifestation after repair remains to be verified by current runs.
 
-Workflow-only run41183418076 on`af950afcae5607c429e76da032ac1a724fb1d26d`
-passed native fixture construction and the production build, then the stricter Home
-browser assertion detected two handled card failures for a manager. The screenshot
-shows a timed-out summary; the Tasks card also failed. HTTP200 and absence of
-JavaScript errors had not established card readiness in earlier checks. This run
-never reached concurrent load or the later mutation preflights. The2.8-second Home
-card deadline is unchanged. Native SQL evidence includes four uncapped claim-task
-metadata reads and177 batched request rechecks; these are diagnostic samples, not
-proof of one exclusive cause.
+| Original expanded HTTP/browser evidence | Source | Retained outcome |
+| --- | --- | --- |
+|41179453346/41179456415;41179633915/41179637258;41180079447/41180082400 |b28d7f00b;9098adc7f;871342bb8 |Before traffic: dedicated disposable DB/job refused by newly enforced migration prerequisites; observed builds PASS |
+|41180175791(service profile) |dbc3c4e33 |Before case: role-prerequisite owner did not admit the service benchmark job |
+|41180573016/41180575968 |56fc0848f |Fixture correctly refused a self-approving Attendance workflow; applicants repaired to exclude HR approver |
+|41180942249/41180945047 |ab55b5775 |30 route pilots, Claims browser CRUD and persisted Leave CRUD passed; Personnel driver omitted required manual employee ID; no500-user phase |
+|41182199060(workflow-only) |2c50477ff |Persisted Leave, Personnel draft CRUD and Attendance correction/approval/punch changes passed. Payroll preflight failed. Draft fixture wrongly contained historical payslips; historical runs are now natively generated/closed and processing drafts start empty. No particular SQL error was independently captured |
+|41183418076 |af950afcae5607c429e76da032ac1a724fb1d26d |Fixture/build PASS; strict readiness caught two handled manager Home failures, despite HTTP200 and no JavaScript errors; no load |
+|41185134683;41185378631 |606a35db41a3a4b177e167cca50e0d6d5fdf6c1d |Original empty selection refused by controller. Corrected-input run retained one manager summary failure and hit600-second browser phase limit waiting on response.finished() at Leave edit; no completed expanded mutation preflight/load |
+|41185656999(1s)/41185654964(5s) |748352f59364493725ef23d79a30d4345f6ea916 |Fixture/build PASS. Both fail at90-second browser navigation to/me/payslip before concurrent traffic. First employee Home had no handled failures; other Home roles were not all reached. Screenshots show the statement rendered, later DB sessions idle and V8 mostly idle; the unfinished request/cause is not established |
+|41186781411;41187497364 |4849474d0;d5efdaf43 |Manager Home summary503 and handled failure before mutation/load; no concurrent latency receipt |
+|41188286052 |f95f7788989a9941c5dac0caae65a4d64490aa97 |Same uncorrected manager503 blocks preflight before the explicit PDF checks. Independent whole compiler PASS |
+|41188713821(1s)/41188713828(5s) |1a0ed296a1ddc03afebbed627de2a1547d957f22 |Pending; two million records,500 HTTP principals, five-minute sustained interval after mandatory preflights |
 
-Candidate5012f28a1bda64cb8674153f768dfca3695d3167 resolves delegated task subject
-metadata once per distinct pending employment. Run41185074563 passed54 native
-metadata, assignment, delegated-approval and delegation cases, with zero skips.
-The valid delegate outside ordinary Personnel visibility remains covered.
-Run41185013098's original paired benchmark failed a JSON digest comparison: the
-reader constructs object properties in a different insertion order. The corrected
-oracle in6387cc10b sorts object keys only, preserving every field, value and row
-order; rerun41185420342 passed on6387cc10bd4f504852f4ddb6b805d42f4ddce8b8.
-It verified identical ordered metadata across three native principals and100,000
-fictional claims. For three reads per principal, median times (initial / changed /
-restored) were HR100,000-item queue1421.3/1219.8/1389.4ms, manager20,000-item
-queue364.2/250.1/373.5ms, and empty employee queue106.1/3.7/107.0ms. These are
-component measurements, not500-user HTTP samples. The separate whole compiler
-in original run41185013098 passed; its failed benchmark remains a failure.
+Performance-job admission is finite: only the two named hosted performance jobs,
+fixed evidence directories and exact password-free loopback DB target were added.
+Existing host/workflow/source/URL/evidence checks and the exact native role graph
+remain. No job identity is spoofed, live target admitted or unsafe existing role
+repaired. Its negative cases/role-transfer checks are covered by41180553216.
 
-Candidate748352f59364493725ef23d79a30d4345f6ea916 additionally retains a separate
-fresh native principal/decision transaction, but checks employment-grained authority
-once per candidate employment before selecting current pending native-visible
-headers. It avoids transferring headers twice and re-reading them in ID batches.
-The complete uncapped metadata contract, delegated-subject owner, private-column
-restriction, current RLS and command-time decision guards remain required.
-Paired benchmark41185610048 passed on748352f59 with identical ordered metadata
-and values for all three principals. Median initial/changed/restored times were
-HR1283.7/188.3/1132.8ms, manager295.6/59.8/316.2ms, employee90.2/3.4/98.8ms.
-This is three sequential reads per principal, not concurrent500-user evidence.
-Native run41185593278 passed54 cases with no skips; its whole compiler passed.
+Browser action capture now binds to a request initiated after its click listener,
+not a response already in flight. Capture needs transport headers; follow-up
+navigation can cancel the original stream. Independent UI/committed native checks
+still decide functional success, while the timed HTTP driver consumes complete
+responses. Periodic pending-request snapshots retain paths/statuses but hide
+external addresses/query values. No readiness deadline or latency threshold was
+relaxed. Diagnostic41187497364 used90,000 Attendance rows, not one million.
 
-Browser workflow preflight41185134683 was rejected at controller selection because
-the submitted test list was empty. Corrected-input run41185378631 keeps the exact
-606a35db41a3a4b177e167cca50e0d6d5fdf6c1d source. It failed at the600-second
-HTTP/browser phase limit while waiting on Playwright response.finished() for a
-Leave edit; it also retained one handled manager summary failure. No completed
-expanded mutation preflight or concurrent phase is claimed. The original response
-wait is retained as a failure. Its purpose was to collect handled Home failures
-while continuing independent mutation checks, without permitting load acceptance. Browser Home request outcomes
-and elapsed times are now retained. No card deadline or acceptance threshold was
-relaxed.
+The own PDF download uses a native attachment anchor; HTML review remains a Next
+Link. Its pending browser checks require no unsolicited PDF request on statement
+open, correct own identity/salary, an explicit valid PDF and two foreign PDF refusals.
+This change is not yet established as the90-second navigation timeout's cause.
 
-Expanded500-user runs41185656999(one-second) and41185654964(five-second) freeze the
-same748352f59 source, one million Claims plus one million Attendance records,
-Node24.22.1, one application worker and a five-minute sustained interval. Their
-browser, mutation, processing and subject-bound Home request preflights must pass
-before concurrent traffic begins. Five-second run41185654964 failed before load:
-fixture/build succeeded, the first employee Home had no handled failures, but
-browser navigation to/me/payslip exceeded90 seconds waiting for network idle.
-Its screenshot shows a fully rendered own payslip, the later database snapshot
-contains idle sessions, and the application CPU profile is mostly idle. These
-observations do not yet identify the unfinished browser request or prove usability.
-The timeout remains a failure. One-second run41185656999 also failed at the same
-payslip navigation before concurrent traffic; it too passed fixture/build, recorded
-no Home handled failure on its first employee visit and had no browser runtime
-errors. Neither attempt is a500-user latency result.
-Both are smaller shared hosted development experiments, not production-equivalent
-acceptance. Diagnostic preflight41186781411 on4849474d0 records outstanding
-browser requests, preserves the same deadline/acceptance, and tests independent
-mutations before its explicit payslip visit.
+Coverage remains bounded:30 selected page routes, Claims draft CRUD, Leave
+create/edit/withdraw(history retained), Personnel draft CRUD, Attendance correction/
+approval, Payroll calculation/scoped CSV and100-line clocking import. Individual
+PDF transport is added to current preflights. Payroll close/publication HTTP,
+Lifecycle/Performance/Rewards mutations, large Personnel imports, report-definition
+CRUD and long document jobs are not certified. The fixture has500 employments;
+its millions are Claims/Attendance rows. Six representative loaded Chromium
+contexts accompany500 HTTP principals; this is not500 real browser instances.
+The shared four-CPU diagnostic host is not the two-host acceptance environment.
 
-Diagnostic candidate d5efdaf436de55a9ea7d6b7b0c90df1a6c63cd1c binds each action
-template to a request initiated after the click listener was armed, avoiding an
-already-running advisory response. Capture reads transport headers rather than
-awaiting the original response stream across follow-up navigation; actual UI and
-committed native outcomes remain independently required, and the timed HTTP driver
-still consumes complete responses. Run41187497364 is workflow-only, with one
-million Claims and90,000 Attendance rows to diagnose capture/request lifecycle.
-It is not a two-million-record or500-user capacity receipt. Periodic pending-request
-snapshots retain same-origin paths/statuses and hide external addresses/query values.
-Browser error checks after processing are additionally required before acceptance.
-
-A separate source review found that the earlier counted shell preview used ordinary
-employment/person RLS, omitting a valid delegate whose full metadata is authorized.
-Regression-only run41185840215 on3c5cec42b reproduced that mismatch:30 cases pass,
-one fails because the preview reports0 while native full metadata contains1. Fix candidate
-2a0077ca6361bcdf3e189cb40d338c6c4106e977 shares the delegated-subject projection
-between full metadata and counted preview, retaining scoped native authority/counts
-and removing the unused unbounded branch of the preview-only helper. Native/Home
-checks in41185883781 passed60 cases with no failures or skips; its whole compiler
-passed. This later preview change affects
-global-shell performance; earlier748352f59 HTTP evidence must retain its own source.
-
-Coverage remains a bounded development matrix: selected30 page routes, Claims
-CRUD, Leave create/edit/withdraw, Personnel draft CRUD, Attendance correction and
-approval, Payroll calculation/scoped CSV generation, and clocking-file import.
-Payroll close/publication, Lifecycle/Performance/Rewards mutations, large Personnel
-imports, report-definition CRUD and long-running document jobs are not certified.
-The hosted runner remains four CPUs with app, DB, driver and browsers sharing it.
-
-Generated provider source digest is now
-`ea448f328c1591df84318e6fc3c58bfcd058e296f142c987fc216b3812aa73ca`;
+Generated provider source digest is
+`edf39f136e1258f8e8121f3ceb7e0f5a8663da3c503f2322909897271a4dbec6`;
 module-agent source digest is
-`d5b8072776ddbd258469d3fd77f1ef176c75c5c9a2486531cf2ad84a1d89b215`.
-Literal human approval records remain unchanged. Earlier exact-source technical
-reviews/proposed approval patches do not approve this newer source. The approval
-hold remains unresolved; no provider call, integration, release or deployment is
-claimed by these development checks.
+`6b7db79e8325f0bbd50ebb1788dd0e85ace993161628fe425c93b8e7f1c34fab`.
+Literal human approval records remain unchanged. Earlier exact-source reviews do
+not approve this newer source; the approval hold remains before integration/release.
+No provider call, release, protected integration or deployment is claimed.
