@@ -23824,7 +23824,29 @@
       "amountOver": "Vượt {amount}",
       "amountLeft": "Còn {amount}",
       "cellsAdjusted": "Đã điều chỉnh {count} ô",
-      "poolFormula": "Tỷ lệ đạt PAT × số tháng thưởng mục tiêu × quỹ lương đủ điều kiện. Mỗi kế hoạch có quỹ riêng."
+      "poolFormula": "Tỷ lệ đạt PAT × số tháng thưởng mục tiêu × quỹ lương đủ điều kiện. Mỗi kế hoạch có quỹ riêng.",
+      "increase": "% tăng",
+      "hiddenRows": "{count} người không được liệt kê ở đây do quy tắc hiển thị. Tổng của đơn vị đã bao gồm họ.",
+      "decide": {
+        "blocked": "Còn {count} mục Chặn. Hãy xử lý mọi mục Chặn trong Điểm cần xem trước khi gửi hoặc phê duyệt.",
+        "reasonForWarnings": "Có {count} cảnh báo hoặc ngoại lệ. Hãy viết ít nhất 10 ký tự giải thích vì sao có thể chấp nhận.",
+        "reasonForReturn": "Để trả lại bản xét duyệt, hãy viết ít nhất 10 ký tự giải thích lý do.",
+        "moves": "{from} → {to}",
+        "submitTitle": "Gửi bản xét duyệt này?",
+        "submitHelp": "Bản xét duyệt chuyển đến người phê duyệt tiếp theo và không thể chỉnh sửa trừ khi bị trả lại.",
+        "approveTitle": "Phê duyệt bản xét duyệt này?",
+        "approveHelp": "Phê duyệt của bạn được ghi lại cùng lý do và bản xét duyệt chuyển sang giai đoạn tiếp theo.",
+        "returnTitle": "Trả bản xét duyệt này về bản nháp?",
+        "returnHelp": "Bản xét duyệt quay lại CEO đơn vị kinh doanh để sửa. Họ sẽ thấy lý do của bạn và mọi phê duyệt bắt đầu lại."
+      },
+      "person": {
+        "close": "Đóng",
+        "previous": "Trước",
+        "next": "Tiếp",
+        "position": "{index} / {total}",
+        "openRecord": "Mở hồ sơ đầy đủ để chỉnh sửa",
+        "noFlags": "Người này không có điểm cần xem."
+      }
     },
     "sharedGovernance": {
       "excludedFor": "Loại trừ cho năm {year}",
