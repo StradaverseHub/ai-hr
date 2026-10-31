@@ -214,3 +214,38 @@ Independent technical disposition: `rewards-provider-r1-final-technical-review-2
 SHA256 `9b8dba774b65f36fa5f84cebc043607d71a01fc2d2c1921cc6a651f696cef11b`.
 Fresh exact-source hosted qualification remains required; original failures retain their real
 source/controller identities. Any further covered-byte change requires another exact review.
+
+
+## Technical source binding — 31 October 2026, Reward Desk step 2 and module install defaults
+
+Release integration of PR159 (Reward Desk step 2, board item 5d34d00d) and PR158 (module install
+setting defaults) forward onto accepted staging baseline `30118cc6f242df3129424bd2d44e22445931516e`
+reconstructs the same1133-file provider closure, moving it from
+`1c56bf79e24ee331892ec40e5de84714ecd2c73ba8b220567128cf58d781e534` to
+`211f3bbdec1361521d657a264bf53c37daa0c438d69ccd8c3c91fbe20e41ca1f`.
+Closure membership is unchanged. Seven covered files differ; all other covered files are byte-identical.
+
+- `messages/{en,ms,zh,ta,th,vi}.json`: 18 added or changed leaves per locale, all under
+  `rewards.desk`, `rewards.desk.decide` and `rewards.desk.person` (side-panel and decision-confirmation
+  copy). The closure reaches these dictionaries only through `lib/ai/provider-assistant-policy.ts`,
+  which reads `assistant.workspace.*_prompt`, and `packs/performance/onehr/guide-service.ts`, which
+  reads `onehr.ask.*`. No `assistant.*` or `onehr.*` leaf changed in any locale.
+- `core/module-activation.ts`: covered through `core/admin.ts` (`companyInstallersFor`), which in turn
+  enters via the department/position archive assistant-action sources and the payroll pack service.
+  `companyInstallersFor` is unchanged. The change scopes the tenant-level `seedModuleSettingDefaults`
+  activator to the module being installed, writes only install values that differ from the catalogue
+  default, and records them with `source = 'platform'`. It reads and writes `tenant_setting` only and
+  feeds no provider serializer, descriptor, transport or prompt.
+
+Finite serializers, descriptors, provider transports, replay/one-use dispatch, spend controls,
+current access and literal-review validation remain unchanged. No new protected purpose, raw-data
+variant, contract, model money calculation or autonomous sensitive effect is admitted.
+The SAME24 approved records receive only this sourceDigest; every original human status, reviewer,
+evidence anchor and timestamp is preserved, and both pending blocks remain byte-identical.
+`lib/ai/module-agent-source-manifest.ts` is regenerated mechanically (no approval binds it).
+
+The release owner (human) approved recording this technical re-binding for the PR158/PR159 changes on
+31 October 2026. This is a technical disposition within existing scope, not a new privacy approval,
+certification, runtime PASS or staging acceptance. Fresh exact-source hosted qualification remains
+required; the earlier failed full gate on `85aa94fe` keeps its original identity. Any further
+covered-byte change requires another exact review.
