@@ -242,7 +242,7 @@ describe('r279 §4: fifteen of sixteen leave types have no entitlement table —
 // ── 5. The screen and its export carry both columns ─────────────────────────────────────────────────
 
 describe('r279 §5: Employee Balances renders both columns, and its export cannot disagree', () => {
-  const page = read('/app/leave/employee-balances/page.tsx');
+  const page = read('/app/(app)/leave/employee-balances/page.tsx');
 
   it('renders the two headers, with Full Entitlement before the earned figure it explains', () => {
     const full = page.indexOf("tMe('leaveBalanceTable.colFullEntitlement')");
@@ -299,7 +299,7 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
    * alone would have allowed. test/2a57a007-borrower-entitlement-columns.test.ts pins the behaviour.
    */
   it('the row builder carries the figure off the SAME breakdown every other figure came from — and a pooled borrower states its own 0.00', () => {
-    const rows = read('/app/leave/employee-balances/rows.ts');
+    const rows = read('/app/(app)/leave/employee-balances/rows.ts');
     // The real figure, off `row`, on the row property itself — both columns, both branches, in full.
     expect(rows).toContain('fullEntitlement: borrower ? 0 : row.fullEntitlement');
     expect(rows).toContain('ytdEntitled: borrower ? 0 : row.ytdEntitled');
@@ -318,7 +318,7 @@ describe('r279 §5: Employee Balances renders both columns, and its export canno
   });
 
   it('the export adds the header AND the cell, in the same place (a one-sided add shifts every figure)', () => {
-    const src = read('/app/leave/employee-balances/export/route.ts');
+    const src = read('/app/(app)/leave/employee-balances/export/route.ts');
     const columns = src.slice(src.indexOf('columns: ['), src.indexOf('rows: rows.map'));
     const cells = src.slice(src.indexOf('rows: rows.map'));
     expect(columns).toContain("tMe('colFullEntitlement')");

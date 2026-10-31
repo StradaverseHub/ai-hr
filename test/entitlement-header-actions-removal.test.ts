@@ -19,10 +19,10 @@ import { leavePack } from '../packs/leave';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const entitlementsPage = read('/app/admin/leave-config/types/page.tsx');
-const generatePage = read('/app/admin/leave-config/generate/page.tsx');
+const entitlementsPage = read('/app/(app)/admin/leave-config/types/page.tsx');
+const generatePage = read('/app/(app)/admin/leave-config/generate/page.tsx');
 /** r281 (09386e29) — the page Run earned accrual moved to when it stopped being a section of Generate. */
-const accrualPage = read('/app/admin/leave-config/earned-accrual/page.tsx');
+const accrualPage = read('/app/(app)/admin/leave-config/earned-accrual/page.tsx');
 
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The leave TYPE screen is

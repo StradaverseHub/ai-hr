@@ -39,9 +39,9 @@ import type { HealthLeaveType, HealthRule, HealthTemplate } from '../lib/leave-c
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const BLOCK = '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
-const STANDALONE = '/app/admin/leave-config/entitlement-tables/page.tsx';
-const TYPES_PAGE = '/app/admin/leave-config/types/page.tsx';
+const BLOCK = '/app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const STANDALONE = '/app/(app)/admin/leave-config/entitlement-tables/page.tsx';
+const TYPES_PAGE = '/app/(app)/admin/leave-config/types/page.tsx';
 const SCOPE = '/lib/entitlement-tables-scope.ts';
 
 /** COMMENTS ARE NOT CODE (the r134 rule). Every claim here explains itself by naming what it is about, and a

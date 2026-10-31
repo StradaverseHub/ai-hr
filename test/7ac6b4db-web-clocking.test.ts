@@ -11,8 +11,8 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const json = (rel: string) => JSON.parse(read(rel)) as Record<string, never>;
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-const CLIENT = '/app/attendance/clock/clock-client.tsx';
-const PAGE = '/app/attendance/clock/page.tsx';
+const CLIENT = '/app/(app)/attendance/clock/clock-client.tsx';
+const PAGE = '/app/(app)/attendance/clock/page.tsx';
 
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
@@ -42,7 +42,7 @@ describe('7ac6b4db · the rename', () => {
     // self-service, guarded by the session rather than by a screen column, so there is no matrix entry to
     // check — asserting one would be asserting something that was never true.)
     expect(read('/packs/attendance/index.ts')).toContain("{ href: '/attendance/clock', labelKey: 'attendanceClock'");
-    expect(read('/app/attendance/clock/page.tsx')).toContain('getSession');
+    expect(read('/app/(app)/attendance/clock/page.tsx')).toContain('getSession');
   });
 });
 

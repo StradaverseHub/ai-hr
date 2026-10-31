@@ -307,8 +307,8 @@ describe('§4 uploaded file → validate → commit (DB)', () => {
 
 // ── §5 source guard — composition only, NOT behaviour ──────────────────────────────────────────────
 describe('§5 employee-import.tsx wiring (static — no DOM runner in this suite)', () => {
-  const src = read('/app/admin/personnel/import/employee-import.tsx');
-  const actions = read('/app/admin/personnel/import/actions.ts');
+  const src = read('/app/(app)/admin/personnel/import/employee-import.tsx');
+  const actions = read('/app/(app)/admin/personnel/import/actions.ts');
 
   it('has a real file input, wired to the reader and to the accept list', () => {
     expect(src).toMatch(/type="file"/);

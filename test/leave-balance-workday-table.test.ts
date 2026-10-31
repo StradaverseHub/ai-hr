@@ -310,7 +310,7 @@ describe('Leave Balance table source: responsive DB-free client island', () => {
 // replacement keeping R22's two promises — each type still opens its breakdown side-sheet, ESS-gated, and the
 // balances are still the VIEWER's own — and that the table does not quietly come back beside the dashboard.
 describe('Leave Balance table: /leave no longer composes it; the dashboard keeps R22 (side-sheet, viewer scope)', () => {
-  const page = read('/app/leave/page.tsx');
+  const page = read('/app/(app)/leave/page.tsx');
   const dashboard = read('/components/leave/my-leave-dashboard.tsx');
   const myLeave = read('/core/my-leave.ts');
 
@@ -344,7 +344,7 @@ describe('Leave Balance table: /leave no longer composes it; the dashboard keeps
 });
 
 describe('Leave Balance table: /me NO LONGER renders the detailed table (relocated · R37 e5a158d3)', () => {
-  const page = read('/app/me/page.tsx');
+  const page = read('/app/(app)/me/page.tsx');
 
   it('does not compose LeaveBalanceTable anymore', () => {
     expect(page.includes('<LeaveBalanceTable')).toBe(false);

@@ -26,7 +26,7 @@ import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const LEAVE_TYPE_PAGES = ['/app/admin/leave-config/types/page.tsx'] as const;
+const LEAVE_TYPE_PAGES = ['/app/(app)/admin/leave-config/types/page.tsx'] as const;
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 // Keys of the removed standalone Card (e8f2398f) and of the removed header button (10b59703) — pruned everywhere.
@@ -60,7 +60,7 @@ describe('e8f2398f → 10b59703: Import has exactly one home, the Leave Adjustme
   });
 
   it('the importer page reads its header through the row helper, so its heading is "Leave Adjustments"', () => {
-    const page = read('/app/admin/leave-config/import/page.tsx');
+    const page = read('/app/(app)/admin/leave-config/import/page.tsx');
     expect(page).toContain("leaveConfigPageHeader('importLeaveData')");
     expect(page).toContain('<LeaveConfigMap current="importLeaveData" />');
     // The back-link that pointed at the leave type screen is gone with the header button that fed it.
@@ -69,10 +69,10 @@ describe('e8f2398f → 10b59703: Import has exactly one home, the Leave Adjustme
   });
 
   it('leaves the import flow itself untouched — the importer page still exists, at its address', () => {
-    expect(read('/app/admin/leave-config/import/page.tsx')).toContain('<LeaveLedgerImport />');
+    expect(read('/app/(app)/admin/leave-config/import/page.tsx')).toContain('<LeaveLedgerImport />');
     // And the old address still ANSWERS: it is a redirect stub, never deleted, because the reporter's
     // bookmarks are the reason the stubs exist (migration order → Round 5/6).
-    const stub = read('/app/admin/leave/import/page.tsx');
+    const stub = read('/app/(app)/admin/leave/import/page.tsx');
     expect(stub).toContain('redirect(');
     expect(stub).toContain('/admin/leave-config/import');
   });

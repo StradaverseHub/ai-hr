@@ -334,7 +334,7 @@ describe('Leave Details panel: the inline expand is still a Radix right side-she
 describe('Leave Details panel: the employee and HR inquiry owners feed summary + visual', () => {
   const PAGES = [
     ['/components/leave/my-leave-dashboard.tsx', 'LeaveDetailsPanel', 'visual={{', 'summary={{ available: selected.breakdown.totalAvailable }}'],
-    ['/app/leave/employee-balances/page.tsx', 'EntitlementBreakdown', 'visual={r.visual}', 'summary={{ available: r.available }}'],
+    ['/app/(app)/leave/employee-balances/page.tsx', 'EntitlementBreakdown', 'visual={r.visual}', 'summary={{ available: r.available }}'],
   ] as const;
   for (const [p, component, visual, summary] of PAGES) {
     it(`${p} passes the authoritative summary and visual to the panel`, () => {
@@ -357,14 +357,14 @@ describe('Leave Details panel: the employee and HR inquiry owners feed summary +
   // and pending leave from today onwards". Pinned here beside the no-upcoming pins so the two decisions are
   // read together: the page has an Upcoming Leave section; the panel still has no upcoming list.
   it('r302: /leave renders an Upcoming Leave section of its own, fed by the approved+pending read', () => {
-    const page = read('/app/leave/page.tsx');
+    const page = read('/app/(app)/leave/page.tsx');
     expect(page).toContain('<UpcomingLeave rows={upcoming} locale={locale} />');
     // r378 shares the owned History/upcoming projection; Overview retains the upcoming renderer.
     // UPDATED BY r397: the page takes `upcoming` from loadOwnUpcomingLeave (via its loader,
     // app/(app)/leave/my-leave-data.ts) — the same Upcoming projection loadOwnLeaveHistory builds, without the history
     // card's reads. Both loaders share the employment-id helper and the Upcoming read, so both are pinned.
     expect(page).toContain('upcoming,');
-    expect(read('/app/leave/my-leave-data.ts')).toContain('const upcomingP = loadOwnUpcomingLeave({ session, me, sp });');
+    expect(read('/app/(app)/leave/my-leave-data.ts')).toContain('const upcomingP = loadOwnUpcomingLeave({ session, me, sp });');
     const history = read('/components/leave/own-leave-history.tsx');
     const idsStart = history.indexOf('async function ownHistoryEmploymentIds(');
     const idsEnd = history.indexOf('return historyEmploymentIds;', idsStart);
@@ -403,8 +403,8 @@ describe('Leave Details panel: the employee and HR inquiry owners feed summary +
   it('r303: only the HR call site switches the per-line sentences on; the employee dashboard never does', () => {
     expect(read('/components/leave/my-leave-dashboard.tsx')).not.toContain('hrExplanation');
     // 39306a9e: Personnel no longer mounts the duplicate balance/explanation card.
-    expect(read('/app/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
-    expect(read('/app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
+    expect(read('/app/(app)/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
+    expect(read('/app/(app)/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
   });
 
   it('1f6fd6d8: no call site still feeds the four figures the summary stopped taking from leaveBalances', () => {
@@ -446,7 +446,7 @@ describe('ed17a4f9: the admin checklist is DERIVED from the panel, so the two ca
   });
 
   it('the admin checklist renders the GROUPS, not the flat key list', () => {
-    const src = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+    const src = ['/app/(app)/admin/leave-config/types/page.tsx', '/app/(app)/admin/leave-config/types/leave-type-tabs.tsx', '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
       .map((f) => read(f))
       .join('\n');
     expect(src.includes('ESS_VIEW_CHECKLIST_GROUPS')).toBe(true);

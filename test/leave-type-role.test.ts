@@ -153,7 +153,7 @@ describe('no source compares a leave-type code to a bare string literal', () => 
     '/core/leave.ts',
     '/core/admin.ts',
     '/core/leave-override.ts',
-    '/app/leave/actions.ts',
+    '/app/(app)/leave/actions.ts',
   ] as const;
 
   // Codes the software must never re-hardcode a comparison against.

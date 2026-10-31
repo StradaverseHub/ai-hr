@@ -20,10 +20,10 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const LIST = '/app/attendance/individual/page.tsx';
-const DAY = '/app/attendance/individual/[date]/page.tsx';
+const LIST = '/app/(app)/attendance/individual/page.tsx';
+const DAY = '/app/(app)/attendance/individual/[date]/page.tsx';
 /** dae7a10f — the one-action admin correction that now sits on that screen. */
-const ACTION = '/app/attendance/individual/[date]/actions.ts';
+const ACTION = '/app/(app)/attendance/individual/[date]/actions.ts';
 /** r433 — the day screen's presentational parts (the Overtime rows live here, around the same island). */
 const PARTS = '/components/attendance-day-parts.tsx';
 const FORMAT = '/components/attendance-format.ts';

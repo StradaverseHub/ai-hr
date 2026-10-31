@@ -28,14 +28,14 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const BALANCES = '/app/leave/employee-balances/page.tsx';
-const RECORDS = '/app/leave/employee-records/page.tsx';
+const BALANCES = '/app/(app)/leave/employee-balances/page.tsx';
+const RECORDS = '/app/(app)/leave/employee-records/page.tsx';
 // 388e53c2 REPOINTED THIS, and only this. Employee Details is the same listing with the same width; it
 // simply opens from Team Leave Tracker now instead of from My Absence, because the sidebar lights a row by
 // path prefix and every /leave/* screen was keeping "My Leave" lit while an administrator read somebody
 // else's record. The three assertions this file makes about Employee Details are unchanged in SUBSTANCE —
 // they are made against the file that now holds it.
-const DETAILS = '/app/leave/tracker/page.tsx';
+const DETAILS = '/app/(app)/leave/tracker/page.tsx';
 const NAV = '/components/leave/leave-inquiry-nav.tsx';
 
 /**
@@ -215,7 +215,7 @@ describe('026e16b9 · the three inquiry tabs use the page width, consistently', 
     // The failure this replaces the old DETAILS entry with. A half-move that leaves the rail, the table or
     // the ed* params on /leave gives an administrator two Employee Details screens, one of which relights
     // "My Leave" — the exact complaint the item was raised about.
-    const leavePage = read('/app/leave/page.tsx');
+    const leavePage = read('/app/(app)/leave/page.tsx');
     for (const gone of ['<LeaveInquiryNav', 'listEmployeesPage', 'inquiryPageWindow', 'edPage', 'edStatus']) {
       expect(leavePage.includes(gone), `still on /leave: ${gone}`).toBe(false);
     }
@@ -299,7 +299,7 @@ describe('026e16b9 · presentation only — no rule, figure or config is touched
   it('the balances page still derives every figure from the shared reads, unchanged', () => {
     // The reporter's constraint, verbatim: "do not change any other rules of config inside". The row builder
     // is untouched by this item; if a layout change ever starts computing a figure, this fails.
-    const rows = read('/app/leave/employee-balances/rows.ts');
+    const rows = read('/app/(app)/leave/employee-balances/rows.ts');
     expect(rows.includes('deriveBalanceRow')).toBe(true);
     expect(rows.includes('leaveEntitlementBreakdown')).toBe(true);
     // Every column still renders through the same `num()` formatter — no per-column rounding crept in.

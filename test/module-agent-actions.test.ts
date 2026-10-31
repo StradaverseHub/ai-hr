@@ -42,7 +42,7 @@ function publicExport(file:string,name:string,visited=new Set<string>()):boolean
 it('closes every declared canonical public boundary and source anchor against actual exported source or public re-exports',()=>{
  const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
  for(const row of Object.values(MODULE_AGENT_ACTIONS))for(const anchor of [row.publicBoundary,row.source,...row.actions.map(action=>action.publicBoundary)]){
-  expect(anchor).toMatch(/^[a-zA-Z0-9_/-]+\.ts#[A-Za-z_$][A-Za-z0-9_$]*(?:\+[A-Za-z_$][A-Za-z0-9_$]*)*$/);
+  expect(anchor).toMatch(/^[a-zA-Z0-9_/()-]+\.ts#[A-Za-z_$][A-Za-z0-9_$]*(?:\+[A-Za-z_$][A-Za-z0-9_$]*)*$/);
   const [path,names]=anchor.split('#');for(const name of names.split('+'))expect(publicExport(resolve(root,path),name),anchor).toBe(true);
  }
  // Negative controls reject real-file private/nonexistent names and a removed public file.

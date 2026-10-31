@@ -34,7 +34,7 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const SCREEN = '/app/attendance/breakdown/page.tsx';
+const SCREEN = '/app/(app)/attendance/breakdown/page.tsx';
 const PERMISSIONS = '/lib/permissions.ts';
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 

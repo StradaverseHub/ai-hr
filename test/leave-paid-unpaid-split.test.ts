@@ -110,18 +110,18 @@ describe('all four surfaces read the one derivation', () => {
   // The point of the item is that they cannot disagree. If a screen starts computing its own subtraction
   // this fails, which is the only way to keep that property once four files are involved.
   it.each([
-    ['My Leave History (+ the detail popup)', '/app/leave/page.tsx'],
-    ["the Line Manager's Approval Items", '/app/approvals/page.tsx'],
-    ['the HR Admin Employee Leave Record', '/app/leave/employee-records/page.tsx'],
+    ['My Leave History (+ the detail popup)', '/app/(app)/leave/page.tsx'],
+    ["the Line Manager's Approval Items", '/app/(app)/approvals/page.tsx'],
+    ['the HR Admin Employee Leave Record', '/app/(app)/leave/employee-records/page.tsx'],
   ])('%s calls leaveDisplaySplit', (_name, rel) => {
     expect(read(rel)).toContain('leaveDisplaySplit');
   });
 
   it('no surface does its own paid/unpaid subtraction', () => {
     for (const rel of [
-      '/app/leave/page.tsx',
-      '/app/approvals/page.tsx',
-      '/app/leave/employee-records/page.tsx',
+      '/app/(app)/leave/page.tsx',
+      '/app/(app)/approvals/page.tsx',
+      '/app/(app)/leave/employee-records/page.tsx',
       '/components/leave/leave-history-cards.tsx',
       '/components/leave/leave-request-cells.tsx',
     ]) {

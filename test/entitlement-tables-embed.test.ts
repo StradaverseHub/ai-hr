@@ -40,7 +40,7 @@ import { scopeEntitlementTables } from '../lib/entitlement-tables-scope';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const BLOCK = '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const BLOCK = '/app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 const CORE = '/core/entitlement-template.ts';
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. The standalone Entitlement Tables screen is
@@ -49,8 +49,8 @@ const CORE = '/core/entitlement-template.ts';
  * unchanged and is the reason this constant exists: ONE block, two mount points — the standalone screen
  * unfiltered, and each leave type's Entitlement step filtered to that type.
  */
-const STANDALONE = '/app/admin/leave-config/entitlement-tables/page.tsx';
-const ENTITLEMENTS = '/app/admin/leave-config/types/page.tsx';
+const STANDALONE = '/app/(app)/admin/leave-config/entitlement-tables/page.tsx';
+const ENTITLEMENTS = '/app/(app)/admin/leave-config/types/page.tsx';
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. `components/leave-type-panel.tsx` (3,367 lines)
  * was DELETED with the page that mounted it: the four steps and six sub-steps it carried are the FIVE
@@ -58,8 +58,8 @@ const ENTITLEMENTS = '/app/admin/leave-config/types/page.tsx';
  * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
  * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
  */
-const PANEL_FILES = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx'];
-const ACTIONS = '/app/admin/leave/entitlements/templates/actions.ts';
+const PANEL_FILES = ['/app/(app)/admin/leave-config/types/page.tsx', '/app/(app)/admin/leave-config/types/leave-type-tabs.tsx', '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx'];
+const ACTIONS = '/app/(app)/admin/leave/entitlements/templates/actions.ts';
 
 /** COMMENTS ARE NOT CODE (the r134 rule). Every removal here explains itself by NAMING what it removed,
  *  and a bare-substring absence check over raw source would report correct code as wrong. */
@@ -319,7 +319,7 @@ describe('§5 ee6b7c69 · a save from the embedded form returns to the step it w
   it('the return is the Entitlements page WITH the type anchor, not the bare route', () => {
     // Same contract as okEntitlements: the anchor rides after the query so ?toast= / ?error= still parse,
     // and an empty id degrades to the bare path rather than emitting a stray '#type-'.
-    const redirects = read('/app/admin/_redirects.ts');
+    const redirects = read('/app/(app)/admin/_redirects.ts');
     expect(redirects).toContain('export function failEntitlements');
     expect(redirects).toMatch(/failEntitlements[\s\S]*?ENTITLEMENTS\}\?error=[\s\S]*?leaveTypeId \? `#type-\$\{leaveTypeId\}` : ''/);
     expect(actionsSrc).toContain('okEntitlements(msg, embedded)');

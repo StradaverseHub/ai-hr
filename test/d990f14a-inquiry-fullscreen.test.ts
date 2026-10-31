@@ -22,9 +22,9 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const OVERLAY = '/components/leave/table-fullscreen.tsx';
 const NAV = '/components/leave/leave-inquiry-nav.tsx';
 const CARD = '/components/ui/card.tsx';
-const BALANCES = '/app/leave/employee-balances/page.tsx';
-const RECORDS = '/app/leave/employee-records/page.tsx';
-const DETAILS = '/app/leave/tracker/page.tsx';
+const BALANCES = '/app/(app)/leave/employee-balances/page.tsx';
+const RECORDS = '/app/(app)/leave/employee-records/page.tsx';
+const DETAILS = '/app/(app)/leave/tracker/page.tsx';
 
 describe('d990f14a · the Full screen overlay', () => {
   it('is ONE shared component, used by all three tabs rather than copied', () => {

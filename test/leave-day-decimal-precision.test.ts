@@ -174,7 +174,7 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
 
   it('the band editor tidies at DAY precision, and (r303) its From column is TYPED, not derived', () => {
     const panel = codeOnly(
-      ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+      ['/app/(app)/admin/leave-config/types/page.tsx', '/app/(app)/admin/leave-config/types/leave-type-tabs.tsx', '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
         .map((f) => read(f))
         .join('\n'),
     );
@@ -267,7 +267,7 @@ describe('4a1abc4a · rounding bands are TWO decimals now, and From is derived',
     // day" is a choice, not a number. The dropdown must stay a <select> over LeaveRoundingMethod, and the
     // day formatter must never be pointed at it.
     const panel = codeOnly(
-      ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+      ['/app/(app)/admin/leave-config/types/page.tsx', '/app/(app)/admin/leave-config/types/leave-type-tabs.tsx', '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
         .map((f) => read(f))
         .join('\n'),
     );
@@ -307,18 +307,18 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     // The day figures it rendered (the rounding-band editor, the carry/expiry fields) are in the sub-forms
     // file; `leave-type-tabs.tsx` composes them and renders no day count of its own, so listing it would
     // demand an import it has no use for — the kind of false requirement that gets a guard relaxed later.
-    '/app/admin/leave-config/types/leave-type-sub-forms.tsx',
-    '/app/leave/employee-balances/page.tsx',
-    '/app/leave/employee-balances/export/route.ts',
+    '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
+    '/app/(app)/leave/employee-balances/page.tsx',
+    '/app/(app)/leave/employee-balances/export/route.ts',
     // ee6b7c69 — the Entitlement Tables' day cells moved OUT of templates/page.tsx into the shared block
     // that page and each leave type's Entitlement step both mount. Repointed rather than dropped: this is
     // where the day figures are TYPED, so it is the one surface where the summary line and the editor cell
     // beside it must agree digit for digit, and it now renders on two screens instead of one.
-    '/app/admin/leave/entitlements/templates/entitlement-tables-block.tsx',
+    '/app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx',
     '/components/leave/adjustment-form.tsx',
-    '/app/leave/employee-records/page.tsx',
-    '/app/leave/employee-records/export/route.ts',
-    '/app/approvals/leave-date-breakdown.tsx',
+    '/app/(app)/leave/employee-records/page.tsx',
+    '/app/(app)/leave/employee-records/export/route.ts',
+    '/app/(app)/approvals/leave-date-breakdown.tsx',
     '/components/leave-duration-fields.tsx',
     // ⚠️ r343 — components/leave/replacement-leave-request-dialog.tsx LEFT THIS LIST, and its removal is not
     // a loosening: that file no longer prints a day figure at all. It became a shell (trigger, title,
@@ -330,13 +330,13 @@ describe('4a1abc4a · ONE formatter, and it stays one', () => {
     // credit, a Total Credit and a stored credit per submitted line; all three are day figures, so they are
     // listed here for the reason the header gives rather than left to be found by rendering later.
     '/components/leave/leave-credit-request-table.tsx',
-    // r389 (bc3e203d) — REPOINTED, NOT DROPPED. `/app/leave/credit/page.tsx` stood here because it printed a
+    // r389 (bc3e203d) — REPOINTED, NOT DROPPED. `/app/(app)/leave/credit/page.tsx` stood here because it printed a
     // stored credit per submitted line. It is Leave Credit History now, and the page itself prints no day
     // figure: the credit days, the credit's used / remaining and each application's share are drawn by its
     // client island, and the same figures go into the export. Those two files are where the figures are
     // printed, so they are what this guard lists; a page with no day figure cannot be guarded for its format.
     '/components/leave/leave-credit-history.tsx',
-    '/app/leave/credit/export/route.ts',
+    '/app/(app)/leave/credit/export/route.ts',
   ];
 
   it('no leave surface still prints a RAW day count', () => {

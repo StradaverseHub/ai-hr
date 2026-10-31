@@ -321,7 +321,7 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
  * reports green. One in this repo asserted nothing at all for 27 rounds that way.
  */
 function noneBranch(): string {
-  const src = readSrc('/app/admin/leave-config/types/leave-type-sub-forms.tsx');
+  const src = readSrc('/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx');
   const start = src.indexOf('// None = disabled carry');
   const end = src.indexOf("t('subStep.carryHelp')", start + 1);
   expect(start, 'the None-branch marker comment was renamed or removed').toBeGreaterThanOrEqual(0);

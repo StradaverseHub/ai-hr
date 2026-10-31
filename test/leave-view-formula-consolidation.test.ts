@@ -145,18 +145,18 @@ describe('ed17a4f9 §4 · smart content reuse: write the wording once', () => {
   it('is a PURE read-side default — the helpers cannot write, and the action has no template branch', () => {
     // Nothing is stored until Save: the template only supplies form defaultValues, so what the action
     // receives is whatever HR reviewed and left in the boxes.
-    const actions = read('/app/admin/actions.ts');
+    const actions = read('/app/(app)/admin/actions.ts');
     expect(actions.includes('leaveFormulaTemplateFrom')).toBe(false);
     expect(actions.includes('applyLeaveFormulaTemplate')).toBe(false);
     // It is resolved ONCE per page off the already-loaded leave types — no extra query, no N+1.
-    const page = read('/app/admin/leave-config/types/page.tsx');
+    const page = read('/app/(app)/admin/leave-config/types/page.tsx');
     expect(page.includes('leaveFormulaTemplateFrom')).toBe(true);
     expect(page.includes('formulaTemplate={formulaTemplate}')).toBe(true);
   });
 });
 
 describe('admin: ONE merged sub-form, now over the nine summary items', () => {
-  const panelSrc = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+  const panelSrc = ['/app/(app)/admin/leave-config/types/page.tsx', '/app/(app)/admin/leave-config/types/leave-type-tabs.tsx', '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
     .map((f) => read(f))
     .join('\n');
 
@@ -202,7 +202,7 @@ describe('admin: ONE merged sub-form, now over the nine summary items', () => {
   });
 
   it('the action builds the explanation map over the (now narrowed) key list, and drops the result field', () => {
-    const actionsSrc = read('/app/admin/actions.ts');
+    const actionsSrc = read('/app/(app)/admin/actions.ts');
     expect(actionsSrc.includes('LEAVE_EXPLANATION_KEYS.map')).toBe(true);
     expect(actionsSrc.includes('LEAVE_FORMULA_COMPONENT_KEYS')).toBe(false);
     expect(actionsSrc.includes('formula_${key}_result')).toBe(false);

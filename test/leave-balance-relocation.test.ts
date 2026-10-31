@@ -18,8 +18,8 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const leavePage = read('/app/leave/page.tsx');
-const mePage = read('/app/me/page.tsx');
+const leavePage = read('/app/(app)/leave/page.tsx');
+const mePage = read('/app/(app)/me/page.tsx');
 // r302 (6c9802c9) — the per-year dashboard read the page now calls, and the island that renders it.
 const myLeave = read('/core/my-leave.ts');
 const dashboardCmp = read('/components/leave/my-leave-dashboard.tsx');
@@ -36,7 +36,7 @@ describe('R37 e5a158d3 → r302: /leave hosts the viewer’s own balances, now a
     expect(leavePage).not.toMatch(/deriveBalanceRow\(/);
     expect(leavePage).toMatch(/<MyLeaveDashboard\s/);
     // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/(app)/leave/my-leave-data.ts).
-    expect(read('/app/leave/my-leave-data.ts')).toContain('myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale })');
+    expect(read('/app/(app)/leave/my-leave-data.ts')).toContain('myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale })');
     expect(leavePage).toContain('await loadMyLeave({ session, scopeIds, me, sp, locale, today })');
   });
 

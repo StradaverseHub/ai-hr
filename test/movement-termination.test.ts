@@ -494,7 +494,7 @@ describe('the downstream effects that were already wired', () => {
    * above. A test, not a comment, because the failure mode is somebody re-adding a "convenient" direct writer.
    */
   it('has no second, unguarded termination endpoint', () => {
-    const src = readFileSync(`${process.cwd()}/app/admin/personnel/[employmentId]/actions.ts`, 'utf8');
+    const src = readFileSync(`${process.cwd()}/app/(app)/admin/personnel/[employmentId]/actions.ts`, 'utf8');
     expect(src).not.toContain('export async function terminateAction');
   });
 });

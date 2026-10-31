@@ -186,7 +186,7 @@ describe('d58bfa3f · what must NOT be built, pinned so a later round does not b
     // `rounding_method = 'custom'` + `rounding_bands`, edited on Leave Config › Entitlements. A second
     // rounding mechanism for the same figure is the thing to refuse here.
     expect(readSrc('/db/schema.ts')).toContain("roundingMethod: text('rounding_method')");
-    expect(readSrc('/app/admin/leave-config/types/leave-type-sub-forms.tsx')).toContain('roundingBands');
+    expect(readSrc('/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx')).toContain('roundingBands');
   });
 
   it('Full Entitlement is the year’s allowance BEFORE proration — it must not be prorated', () => {

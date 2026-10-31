@@ -35,7 +35,7 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
  * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
  * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
  */
-const panel = ['/app/admin/leave-config/types/page.tsx', '/app/admin/leave-config/types/leave-type-tabs.tsx', '/app/admin/leave-config/types/leave-type-sub-forms.tsx']
+const panel = ['/app/(app)/admin/leave-config/types/page.tsx', '/app/(app)/admin/leave-config/types/leave-type-tabs.tsx', '/app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
   .map((f) => read(f))
   .join('\n');
 const engine = read('/core/leave-compute.ts');

@@ -72,9 +72,10 @@ for (const [from, to] of MOVES) {
 
 // 2. Rewrite references.
 const NAMES = [...AUTH, ...APP].join('|');
-// app/<moved>... when it starts a path: start of string, after a non-path character, or after @/ ./ ../ prefixes.
+// app/<moved>... when it starts a path: start of string, after a non-path character, after @/ ./ ../ prefixes,
+// or as '/app/...' / `${root}/app/...` right after a quote or template expression.
 const PATH_REF = new RegExp(
-  String.raw`(?<=(?:^|[^\w\-/.])(?:@/|(?:\.\.?/)+)?)app/(?:(${NAMES})(?=[/'"\x60)\s:#,\]*]|$)|(page|loading|layout)(?=\.tsx|['"\x60]))`,
+  String.raw`(?<=(?:^|[^\w\-/.])(?:@/|(?:\.\.?/)+)?|[\x60'"}]/)app/(?:(${NAMES})(?=[/'"\x60)\s:#,\]*]|$)|(page|loading|layout)(?=\.tsx|['"\x60]))`,
   'gm',
 );
 const JOIN_REF = new RegExp(String.raw`(['"])app\1(\s*,\s*)(['"])(${NAMES})\3`, 'g');
