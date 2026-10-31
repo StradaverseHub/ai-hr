@@ -19,6 +19,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 }
 const s=await import('../../db/schema.ts');
 const {hireEmployee}=await import('../../core/org.ts');
+const {createClockingMapping}=await import('../../packs/attendance/service.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
 const {saveAttendanceWorkflow,setAttendanceWorkflowEnabled}=await import('../../core/attendance-workflow.ts');
 const {createBatch}=await import('../../packs/payroll/service.ts');
@@ -41,6 +42,8 @@ try{
   const org={code:organization,tenantId:b.tenantId,name:'Performance organization '+t};
   await writeRecord(owner.client,'org:'+organization,org,null);await writeRecord(owner.client,'tenant:'+b.tenantId,org,null);
   const type=await createClaimType(ctx,{code:'PERF',name:'Performance claim',defaultTaxable:false,requiresReceipt:false});
+  const clockingMappingId=await createClockingMapping(ctx,{name:'PERF coded clocking CSV',description:'Fictional load fixture',deviceName:'Synthetic CSV',fileType:'csv',layout:'delimited',delimiter:',',hasHeader:false,encoding:'utf-8',active:true,
+   fields:{cardId:{column:1},day:{column:2},month:{column:3},year:{column:4},hours:{column:5},minute:{column:6},inOutCode:{column:7}},inOutCodes:[{code:'IN',direction:'in'},{code:'OUT',direction:'out'}],sampleLines:['PERF0004,01,01,2026,08,31,IN'],sampleFileName:'perf.csv'});
   const companies=[];
   for(let c=0;c<5;c++){
    let companyId=b.companyId,departmentId=b.deptA;
@@ -49,7 +52,7 @@ try{
    }
    const {batchId}=await createBatch(ctx,{companyId,payPeriod:month});companies.push({companyId,departmentId,batchId});
   }
-  tenants.push({tenantId:b.tenantId,organization,claimTypeId:type.id,companies});
+  tenants.push({tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies});
   for(let i=0;i<250;i++){
    const index=t*250+i,c=Math.floor(i/50),position=i%50,company=companies[c];
    const role=position===0&&c===0?'groupHR':position<2?'companyHR':position<4?'manager':'employee';

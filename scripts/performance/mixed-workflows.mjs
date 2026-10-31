@@ -130,7 +130,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   }finally{await ctx.close();}
  }
  const importDate=offset=>new Date(Date.parse(fixture.today+'T12:00:00Z')-offset*86400000).toISOString().slice(0,10);
- const importText=(user,date)=>'employee,timestamp\n'+fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===user.company).flatMap(actor=>['08:31','16:31'].map(time=>'PERF'+String(actor.index).padStart(4,'0')+','+date+' '+time)).join('\n');
+ const importText=(user,date)=>{const [year,month,day]=date.split('-');return fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===user.company).flatMap(actor=>[['08','31','IN'],['16','31','OUT']].map(parts=>['PERF'+String(actor.index).padStart(4,'0'),day,month,year,...parts].join(','))).join('\n');};
  async function assertImported(user,fileName,date){
   const rows=await db`select id,total_lines,imported_lines,failure_reason from clocking_import_run where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and file_name=${fileName}`;
   assert.equal(rows.length,1);const row=rows[0];assert.equal(row.failure_reason,null);assert.equal(row.total_lines,100);assert.equal(row.imported_lines,100);
@@ -143,7 +143,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
  {
   const ctx=await context(hr),page=await ctx.newPage(),date=importDate(2),text=importText(hr,date),fileName='PERF_IMPORT_BROWSER.csv';
   try{
-   await visit(page,hr,'/attendance/import');await page.locator('main select').selectOption('builtin');
+   await visit(page,hr,'/attendance/import');await page.locator('main select').selectOption(fixture.tenants[hr.tenant].clockingMappingId);
    await page.locator('input[type="file"]').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
    const before=await db`select count(*)::int as count from clocking_import_run`;
    await capture(page,()=>page.getByRole('button',{name:'Validate',exact:true}).click(),'importValidate');await page.waitForLoadState('networkidle');
@@ -182,8 +182,8 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    // One company owner per cohort avoids submitting the same file twice concurrently.
    if(user.index%50===1){
     const date=importDate(3+iteration),text=importText(user,date),fileName=marker+'.csv';
-    await pause(thinkTimeMs);await send(user,templates.importValidate,['builtin',text]);
-    await pause(thinkTimeMs);await send(user,templates.importCommit,['builtin',text,fileName,Buffer.byteLength(text)]);
+    await pause(thinkTimeMs);await send(user,templates.importValidate,[fixture.tenants[user.tenant].clockingMappingId,text]);
+    await pause(thinkTimeMs);await send(user,templates.importCommit,[fixture.tenants[user.tenant].clockingMappingId,text,fileName,Buffer.byteLength(text)]);
     await assertImported(user,fileName,date);report.mixedWorkflows.completed.clockingImport++;
    }
    return true;
