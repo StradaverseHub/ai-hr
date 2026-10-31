@@ -12,7 +12,7 @@ import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
 import {withApprovalDelegatesTx} from '../core/notifications';
 import {withDelegatedRequestEffectTx} from '../core/delegated-request-effect';
-import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,pendingClaimTaskMetadata} from '../packs/claims/service';
+import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequest,listPendingReplacementLeaveRequests,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
@@ -107,6 +107,15 @@ describe('request-bound delegated approval effects',()=>{
   const prepared=await k.store.prepare(delegate,{action:k.action,contractVersion:1,employmentId:subject.employmentId,subjectId:id,decision,...(decision==='rejected'?{note:'Fictional refusal'}:{})});
   const done=await k.store.confirm(delegate,{actionId:prepared.review.actionId,reviewedDigest:prepared.review.reviewedDigest});expect(done.kind).toBe('completed');
   await noPersonnel();
+ });
+ it('keeps the counted claim preview aligned with delegated metadata outside Personnel visibility',async()=>{
+  const id=await claim();await noPersonnel();
+  const full=await pendingClaimTaskMetadata(delegate),preview=await pendingClaimTaskSummary(delegate,undefined,25);
+  expect(full.map(row=>row.id)).toContain(id);expect(preview.total).toBe(full.length);expect(preview.items).toEqual(full.slice(0,25));
+  expect(await pendingClaimTaskSummary(delegate,[],25)).toEqual({items:[],total:0});
+  await owner.db.insert(schema.reportingLineScope).values({tenantId:b.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
+  expect(await pendingClaimTaskMetadata(delegate)).toEqual([]);
+  expect(await pendingClaimTaskSummary(delegate,undefined,25)).toEqual({items:[],total:0});await noPersonnel();
  });
  it('requires explicit company coverage for a stand-in in another company',async()=>{
   const id=await claim();const company=await createCompany(root,{legalName:'Fictional Other Company',country:'MY',currency:'MYR'});
