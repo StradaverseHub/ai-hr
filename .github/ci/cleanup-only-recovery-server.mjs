@@ -5,7 +5,7 @@ import {readFileSync,lstatSync,existsSync,mkdirSync,realpathSync,readdirSync} fr
 import {join,resolve} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {isDeepStrictEqual} from 'node:util';
-import {SELECTION,digest,historicalInstallMetadata,validateCleanupCertificate} from './cleanup-only-recovery-policy.mjs';
+import {SELECTION,digest,historicalInstallMetadata,validateCleanupCertificate,finishCleanupCli} from './cleanup-only-recovery-policy.mjs';
 import {runCleanupOnlySession} from './cleanup-only-recovery-session.mjs';
 import {createCleanupReadonlyRuntime} from './cleanup-only-recovery-runtime.mjs';
 import {toolDigest,privateBytes} from './cleanup-only-recovery-admission.mjs';
@@ -50,6 +50,7 @@ export async function serve({mode,source,controller,reconciliationPath,reconcili
   originals();return result;
  });
 }
+export {finishCleanupCli as finishCleanupServerCli} from './cleanup-only-recovery-policy.mjs';
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
- const [mode,source,controller,reconciliationPath,reconciliationSha256,attemptName,certificatePath]=process.argv.slice(2);serve({mode,source,controller,reconciliationPath,reconciliationSha256,attemptName,certificatePath}).then(value=>console.log(JSON.stringify(value))).catch(()=>{console.error('Cleanup-only recovery refused; preserve all records and lease; reconcile before any retry.');process.exitCode=1;});
+ const [mode,source,controller,reconciliationPath,reconciliationSha256,attemptName,certificatePath]=process.argv.slice(2);await finishCleanupCli(()=>serve({mode,source,controller,reconciliationPath,reconciliationSha256,attemptName,certificatePath}));
 }

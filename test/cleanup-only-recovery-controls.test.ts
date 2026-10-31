@@ -50,7 +50,7 @@ describe('same-channel purpose-only operator',()=>{
  it('never sends COMMIT for dirty source and retains incomplete custody',async()=>{const f=fixture(),saved:string[]=[],writes:string[]=[];const ready={format:1,kind:'CLEANUP_ONLY_V1_READY',selection:SELECTION,certificateSha256:digest(f.certificate),nonce:'e'.repeat(64),fencesSha256:digest(f.state),readyAt:new Date(T).toISOString()};const channel:any={frames:{next:async()=>ready},stdin:{end:(s?:string)=>writes.push(s??'')},success:async()=>{throw Error('unexpected');},stderr:()=>({bytes:0})};await expect(driveCleanupOnly({channel,certificate:f.certificate,controller:CONTROLLER,toolSha256:TOOL,checksum:async()=> 'changed',frozen:()=>{},save:(name:string)=>saved.push(name),now:()=>T,wait:async()=>{}})).rejects.toThrow();expect(writes).toEqual(['']);expect(saved).toContain('cleanup-only-incomplete.json');expect(saved).not.toContain('actual-cleanup-result.json');});
 });
 
-import {mkdtempSync,mkdirSync,writeFileSync,lstatSync,rmSync,symlinkSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,readFileSync,lstatSync,rmSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {verifyPriorDiagnostics} from '../.github/ci/cleanup-only-recovery-server.mjs';
@@ -59,4 +59,22 @@ describe('actual original failed diagnostic filesystem fence',()=>{
  it('retains exact prior tree and refuses changed bytes or an unrecorded child',()=>{const f=files();try{expect(()=>verifyPriorDiagnostics(f.root,f.inventory,'new-attempt')).not.toThrow();writeFileSync(f.path,'changed');expect(()=>verifyPriorDiagnostics(f.root,f.inventory,'new-attempt')).toThrow();}finally{rmSync(f.root,{recursive:true,force:true});}const g=files();try{writeFileSync(join(g.root,'ready-recovery-e10-old','extra.json'),'unexpected',{mode:0o600});expect(()=>verifyPriorDiagnostics(g.root,g.inventory,'new-attempt')).toThrow();}finally{rmSync(g.root,{recursive:true,force:true});}});
  it('refuses omission of an entire prior root even when another complete root remains',()=>{const f=files();try{mkdirSync(join(f.root,'cleanup-only-v1-other'),{mode:0o700});expect(()=>verifyPriorDiagnostics(f.root,f.inventory,'new-attempt')).toThrow();}finally{rmSync(f.root,{recursive:true,force:true});}});
  it('refuses omission, duplicate paths, traversal and symlink replacement',()=>{const f=files();try{for(const list of [[],[...f.inventory,f.inventory[0]],[{...f.inventory[0],path:'../other'},f.inventory[1]]])expect(()=>verifyPriorDiagnostics(f.root,list,'new-attempt')).toThrow();rmSync(f.path);symlinkSync('elsewhere',f.path);expect(()=>verifyPriorDiagnostics(f.root,f.inventory,'new-attempt')).toThrow();}finally{rmSync(f.root,{recursive:true,force:true});}});
+});
+
+
+import {spawnSync} from 'node:child_process';
+for(const [moduleName,boundary]of [['server','finishCleanupServerCli'],['operator','finishCleanupOperatorCli']])describe('actual '+moduleName+' CLI flushes and terminates after awaited work with live handles',()=>{
+ const server=new URL('../.github/ci/cleanup-only-recovery-'+moduleName+'.mjs',import.meta.url).href;
+ it('flushes the entire terminal frame before successful exit despite an owned live interval',()=>{
+  const program=`import {${boundary} as finishCleanupServerCli} from ${JSON.stringify(server)};setInterval(()=>{},1000);await finishCleanupServerCli(async()=>{const terminal={kind:'AWAITED_TERMINAL',payload:'x'.repeat(131072),finallyCompleted:false};try{await new Promise(done=>setTimeout(done,20));return terminal;}finally{await new Promise(done=>setTimeout(done,20));terminal.finallyCompleted=true;}});`;
+  const child=spawnSync(process.execPath,['--input-type=module','--eval',program],{encoding:'utf8',timeout:5000,maxBuffer:1024*1024});
+  expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status).toBe(0);expect(child.stderr).toBe('');expect(child.stdout.endsWith('\n')).toBe(true);expect(child.stdout.split('\n')).toHaveLength(2);expect(JSON.parse(child.stdout)).toEqual({kind:'AWAITED_TERMINAL',payload:'x'.repeat(131072),finallyCompleted:true});
+ });
+ it('flushes only the generic refusal and exits nonzero despite live handles',()=>{
+  const root=mkdtempSync(join(tmpdir(),'cleanup-cli-finally-')),marker=join(root,'finally.txt');
+  try{const program=`import {${boundary} as finishCleanupServerCli} from ${JSON.stringify(server)};import {writeFileSync} from 'node:fs';setInterval(()=>{},1000);await finishCleanupServerCli(async()=>{try{await new Promise(done=>setTimeout(done,20));throw Error('private operation detail must remain hidden');}finally{await new Promise(done=>setTimeout(done,20));writeFileSync(${JSON.stringify(marker)},'awaited-finally',{mode:0o600});}});`;
+   const child=spawnSync(process.execPath,['--input-type=module','--eval',program],{encoding:'utf8',timeout:5000,maxBuffer:1024*1024});
+   expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status).toBe(1);expect(child.stdout).toBe('');expect(child.stderr).toBe('Cleanup-only recovery refused; preserve all records and lease; reconcile before any retry.\n');expect(child.stderr).not.toContain('private operation detail');expect(readFileSync(marker,'utf8')).toBe('awaited-finally');
+  }finally{rmSync(root,{recursive:true,force:true});}
+ });
 });

@@ -62,3 +62,12 @@ export function validateCleanupCommit(commit,ready,cert,context){
 export function createCleanupCommit(ready,cert,{output,checkedAt},context){
  assert(output==='','Actual canonical checksum must be empty');return validateCleanupCommit({format:1,kind:'CLEANUP_ONLY_V1_COMMIT',selection:SELECTION,readySha256:digest(ready),certificateSha256:digest(cert),nonce:ready.nonce,sourceProof:{checkedAt,outputSha256:digest(output)}},ready,cert,context);
 }
+
+/** Executable CLI boundary only: caller must await all owned operations/receipt/lock work.
+ * Flush the complete terminal frame before explicitly exiting despite unrelated live handles.
+ * Importing this module or calling exported service operations never exits the process.
+ */
+export async function finishCleanupCli(operation){
+ try{const value=await operation();await new Promise((done,reject)=>process.stdout.write(JSON.stringify(value)+'\n',error=>error?reject(error):done()));process.exit(0);}
+ catch{await new Promise(done=>process.stderr.write('Cleanup-only recovery refused; preserve all records and lease; reconcile before any retry.\n',()=>done()));process.exit(1);}
+}

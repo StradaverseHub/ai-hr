@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {readFileSync,mkdirSync,realpathSync,lstatSync} from 'node:fs';
 import {join,resolve,dirname} from 'node:path';
 import {pathToFileURL,fileURLToPath} from 'node:url';
-import {SELECTION,ORIGIN,digest,canonicalJson,validateCleanupCertificate,validateCleanupReady,createCleanupCommit} from './cleanup-only-recovery-policy.mjs';
+import {SELECTION,ORIGIN,digest,canonicalJson,validateCleanupCertificate,validateCleanupReady,createCleanupCommit,finishCleanupCli} from './cleanup-only-recovery-policy.mjs';
 import {TOOL_FILES,toolDigest,privateBytes,savePrivate} from './cleanup-only-recovery-admission.mjs';
 export async function waitForRealReadyClock(ready,{now=()=>Date.now(),sleep=ms=>new Promise(done=>setTimeout(done,ms))}={}){
  const at=Date.parse(ready?.readyAt),start=now();assert(Number.isFinite(at)&&at-start<=2000,'Cross-host clock gap exceeds bounded real wait');
@@ -54,4 +54,5 @@ export async function operate(mode,configPath){
  assert(privateBytes(join(originalEvidence,'cleanup-session-incomplete.json')).equals(originalIncomplete)&&privateBytes(join(originalEvidence,'installed-arrival.json')).equals(originalArrival),'Original failure/arrival evidence changed');
  const composed={kind:'RECOVERED_STAGING_INSTALLATION_ARRIVAL_AND_OWNED_CLEANUP',sha:SELECTION.source,remoteBuild,arrival,arrivalVerified:true,ownedResourceCleanupVerified:true,releaseHandbackVerified:false,originalOperatorExit:1,originalOperatorPass:false,originalIncompleteReceiptSha256:digest(originalIncomplete),originalInstalledArrivalSha256:digest(originalArrival),originalCiSource:SELECTION.source,originalCiRun:ORIGIN.runId,recovery:{kind:'NEW_EXPLICIT_CLEANUP_ONLY_V1',expiredInstallationGrantIsMetadataOnly:true,cleanupCertificateSha256:digest(certificate),controller,toolSha256:toolDigest(),reconciliationSha256,originalFailuresPreserved:true,newAttempt:attemptName,finalCanonicalSourceChecksumEmpty:true,batch:lease.batch,epoch:lease.epoch},leasePhaseAndHandbackStillRootOwned:true};save('recovered-arrival.json',composed);return composed;
 }
-if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){const[mode,path]=process.argv.slice(2);operate(mode,path).then(value=>console.log(JSON.stringify(value))).catch(()=>{console.error('Cleanup-only operator refused; retain lease, preserve originals and reconcile.');process.exitCode=1;});}
+export {finishCleanupCli as finishCleanupOperatorCli} from './cleanup-only-recovery-policy.mjs';
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){const[mode,path]=process.argv.slice(2);await finishCleanupCli(()=>operate(mode,path));}
