@@ -67,7 +67,7 @@ try{
    const token=opaque(),family=randomUUID(),expiry=Date.now()+8*3600000;
    await writeRecord(owner.client,'family:'+family,{subject},subject,expiry);
    await writeRecord(owner.client,'session:'+digest(token),{subject,version,family,native:false,absoluteExpiry:expiry},subject,expiry);
-   users.push({index,tenant:t,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,token,organization,username,password,secret});
+   users.push({index,tenant:t,company:c,role,name,userId,subject,employmentId:hired.employmentId,personId:hired.personId,companyId:company.companyId,batchId:company.batchId,claimTypeId:type.id,leaveTypeId:b.annualLeaveTypeId,token,organization,username,password,secret});
    if(index%50===49)console.log('[system-perf-fixture] provisioned '+(index+1)+' principals');
   }
   const cohort=users.filter(u=>u.tenant===t);

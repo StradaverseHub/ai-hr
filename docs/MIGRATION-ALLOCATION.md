@@ -964,3 +964,7 @@ Both append strictly after0861. Foreign0862/when1793330000262 remains preserved 
 from this candidate; a numeric gap is intentional. Existing SQL bytes and the full journal prefix
 are immutable. Root must verify the then-current installation ledger and release evidence before
 any installation; neither source allocation nor focused development checks authorizes deployment.
+
+## Performance reconciliation — 31 October 2026
+
+Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` owns the complete immutable prefix. A scan of 293 unique reachable journals found maximum prefix0865, idx750 and timestamp1793330000265. The five unapplied performance drafts are now0866–0870, idx751–755, timestamps1793330000266–270, in existing dependency order. This supersedes their earlier names/indices/timestamps above. No applied SQL was edited and no installation was changed. Final release allocation still requires then-current reconciliation.
