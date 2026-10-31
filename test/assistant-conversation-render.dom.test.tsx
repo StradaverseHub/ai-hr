@@ -45,8 +45,8 @@ function answer(facts:readonly Selected[]):Reply{return reply({version:1,mode:'a
 async function view(module:AgentModuleCode,data:unknown){state.data=data;return loadCanonicalModuleJob(ctx,{module});}
 beforeEach(()=>{state.locale='en';state.leaveTool=false;vi.clearAllMocks();});afterEach(()=>{cleanup();vi.restoreAllMocks();});
 describe('grounded conversation rendering',()=>{
- it('offers exact fresh Mine leave labels visibly and only fills the one chat composer',async()=>{
-  state.leaveTool=true;state.data={ok:true,employments:[{company:'Current own employer',balances:[{leaveType:'*Annual Leave',available:4,taken:0,pending:0},{leaveType:'Annual Leave (C)',available:2,taken:0,pending:0}]}]};
+ it.each(['en','ms','zh','ta','th','vi'])('%s offers exact fresh Mine leave labels visibly and only fills the one chat composer',async locale=>{
+  state.locale=locale;state.leaveTool=true;state.data={ok:true,employments:[{company:'Current own employer',balances:[{leaveType:'*Annual Leave',available:4,taken:0,pending:0},{leaveType:'Annual Leave (C)',available:2,taken:0,pending:0}]}]};
   const issued=await loadCanonicalToolJob(ctx,'my_leave_balances',{},assistantSourceDigest(state.data),{} as AssistantReadSession);
   expect(issued.state).toBe('ready');const draft=vi.fn(),clarify=vi.fn();
   const node=await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply({version:1,mode:'clarify',slot:'leave_type'}),views:[issued],tools:['my_leave_balances']}});
