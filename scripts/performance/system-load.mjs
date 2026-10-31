@@ -202,7 +202,6 @@ try{
   report.browser.push({workflow:'client navigation',from:'/leave',to:'/claims',documentRequests:0,passed:true});await ctx.close();save();
  }
  // Capture progressive-enhancement action metadata from the actual built form. No hardcoded action ID.
- const ctx=await context(employee),page=await ctx.newPage();await visit(page,employee,'/claims');
  async function capturedAction(response){
   const req=response.request();const raw=req.postDataBuffer();assert(raw,'missing browser action payload');
   const form=await new Request(base+'/claims',{method:'POST',headers:{'Content-Type':req.headers()['content-type']},body:raw}).formData();
@@ -216,21 +215,31 @@ try{
   assert(headers['next-action'],'browser server action header missing');
   return {fields,fieldOrder,prefix,headers,status:response.status()};
  }
- const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
- await page.locator('[name="claimTypeId"]').selectOption(employee.claimTypeId);await page.locator('[name="amount"]').fill('1');await page.locator('[name="incurredOn"]').fill(fixture.today);
- await page.locator('textarea[name="description"]').fill('PERF_BROWSER_DRAFT');
- const [createResponse]=await Promise.all([browserAction(),page.locator('button[name="intent"][value="draft"]').click()]);const createTemplate=await capturedAction(createResponse);
- await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});
- const [draft]=await db`select id from claim_request where employment_id=${employee.employmentId}::uuid and status='draft' and description='PERF_BROWSER_DRAFT'`;
- assert(draft,'browser create did not persist');
- await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await page.locator('[name="amount"]').fill('2');await page.locator('button[name="intent"][value="draft"]').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved');
- const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
- await page.locator('form').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).first().getByRole('button').click();
- const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);
- const deleteTemplate=await capturedAction(deleteResponse);await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted');
- assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
- report.browser.push({role:'employee',workflow:'claim create/edit/delete',persisted:true});await ctx.close();
- contextTemplates={createTemplate,deleteTemplate};
+ async function browserClaimJourney(page,user,description,phase){
+  await visit(page,user,'/claims',phase);const timings=[];
+  const browserAction=()=>page.waitForResponse(r=>r.request().method()==='POST'&&new URL(r.url()).pathname==='/claims',{timeout:90000});
+  await page.locator('[name="claimTypeId"]').selectOption(user.claimTypeId);await page.locator('[name="amount"]').fill('1');await page.locator('[name="incurredOn"]').fill(fixture.today);
+  await page.locator('textarea[name="description"]').fill(description);
+  let started=performance.now();
+  const [createResponse]=await Promise.all([browserAction(),page.locator('button[name="intent"][value="draft"]').click()]);const createTemplate=await capturedAction(createResponse);
+  await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'create',visibleByMs:performance.now()-started});
+  const [draft]=await db`select id from claim_request where employment_id=${user.employmentId}::uuid and status='draft' and description=${description}`;assert(draft,'browser create did not persist');
+  if(phase==='loaded')await pause(thinkTimeMs);
+  await page.goto(base+'/claims?draft='+draft.id,{waitUntil:'networkidle'});await page.locator('[name="amount"]').fill('2');started=performance.now();
+  await page.locator('button[name="intent"][value="draft"]').click();await page.waitForURL(url=>url.searchParams.get('toast')==='Draft saved',{timeout:90000});timings.push({operation:'edit',visibleByMs:performance.now()-started});
+  const [edited]=await db`select amount from claim_request where id=${draft.id}::uuid`;assert.equal(Number(edited.amount),2);
+  if(phase==='loaded')await pause(thinkTimeMs);
+  await page.locator('form').filter({has:page.locator(`input[name="id"][value="${draft.id}"]`)}).first().getByRole('button').click();started=performance.now();
+  const [deleteResponse]=await Promise.all([browserAction(),page.getByRole('button',{name:'Delete draft',exact:true}).click()]);const deleteTemplate=await capturedAction(deleteResponse);
+  await page.waitForURL(url=>url.searchParams.get('toast')==='Draft deleted',{timeout:90000});timings.push({operation:'delete',visibleByMs:performance.now()-started});
+  assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
+  report.browser.push({phase,role:user.role,workflow:'claim create/edit/delete',persisted:true,timings});save();return {createTemplate,deleteTemplate};
+ }
+ {
+  const ctx=await context(employee),page=await ctx.newPage();
+  try{contextTemplates=await browserClaimJourney(page,employee,'PERF_BROWSER_DRAFT','baseline');}finally{await ctx.close();}
+ }
+ const {createTemplate,deleteTemplate}=contextTemplates;
  assert.equal(report.browserErrors.length,0,'baseline browser errors must be fixed before load');
  const actionProtocol=template=>({fieldNames:Object.keys(template.fields),fieldOrder:template.fieldOrder,prefix:template.prefix,status:template.status,
   arguments:Object.fromEntries(Object.entries(template.fields).filter(([key])=>/^\d+$/.test(key)).map(([key,value])=>{try{return [key,JSON.parse(value)];}catch{return [key,typeof value];}}))});
@@ -285,7 +294,9 @@ try{
   const ctx=await context(user),page=await ctx.newPage();
   try{for(const route of user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims']){
    await visit(page,user,route,'loaded');await pause(thinkTimeMs);
-  }}finally{await ctx.close();}
+  }
+  if(user.role==='employee')await browserClaimJourney(page,user,'PERF_BROWSER_LOADED_'+user.index,'loaded');
+  }finally{await ctx.close();}
  }));
  const results=await Promise.allSettled(fixture.users.map(async(user,i)=>{
   await pause(i*20);progress.launched++;progress.active++;progress.peakActive=Math.max(progress.peakActive,progress.active);
