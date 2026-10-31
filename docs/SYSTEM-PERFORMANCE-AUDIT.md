@@ -6,6 +6,19 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
+The31 October candidate adds measured queue-reader improvements: a paired native
+100,000-claim benchmark preserves identical ordered metadata while reducing warmed
+median HR reads from1132.8ms to188.3ms and manager20,000-item reads from316.2ms
+to59.8ms. These are component measurements. Expanded HTTP/browser runs at both
+activity levels are in progress, and no newer500-user speed pass is established.
+The bounded shell preview's delegated visibility is also being corrected and
+verified; the exact-source receipts and remaining module gaps appear in
+[resumed verification](#resumed-verification--31-october-2026).
+
+Read-only infrastructure checks found production's two16-CPU/~64GiB VMs, whereas
+configured staging is2 CPUs/~4GiB. The owner selected an existing isolated matching
+environment; its connection alias/config path remains required. No live load ran.
+
 The newest completed 30-route workload (`645a2ac90`) retains **one million Claims
 and one million attendance rows**. All500 data journeys, allsix loaded browser
 journeys and native audit checks complete at both activity levels, but speed
@@ -558,12 +571,57 @@ metadata reads and177 batched request rechecks; these are diagnostic samples, no
 proof of one exclusive cause.
 
 Candidate5012f28a1bda64cb8674153f768dfca3695d3167 resolves delegated task subject
-metadata once per distinct pending employment, then loads every native-visible
-header and retains the original fresh native decision recheck. It keeps the
-delegated-subject owner rather than substituting general employment visibility.
-Paired populated benchmark/compiler run41185013098 and affected assignment,
-metadata and delegation checks41185074563 are pending. No improvement is claimed
-until the paired benchmark and native regressions finish.
+metadata once per distinct pending employment. Run41185074563 passed54 native
+metadata, assignment, delegated-approval and delegation cases, with zero skips.
+The valid delegate outside ordinary Personnel visibility remains covered.
+Run41185013098's original paired benchmark failed a JSON digest comparison: the
+reader constructs object properties in a different insertion order. The corrected
+oracle in6387cc10b sorts object keys only, preserving every field, value and row
+order; rerun41185420342 passed on6387cc10bd4f504852f4ddb6b805d42f4ddce8b8.
+It verified identical ordered metadata across three native principals and100,000
+fictional claims. For three reads per principal, median times (initial / changed /
+restored) were HR100,000-item queue1421.3/1219.8/1389.4ms, manager20,000-item
+queue364.2/250.1/373.5ms, and empty employee queue106.1/3.7/107.0ms. These are
+component measurements, not500-user HTTP samples. The separate whole compiler
+in original run41185013098 passed; its failed benchmark remains a failure.
+
+Candidate748352f59364493725ef23d79a30d4345f6ea916 additionally retains a separate
+fresh native principal/decision transaction, but checks employment-grained authority
+once per candidate employment before selecting current pending native-visible
+headers. It avoids transferring headers twice and re-reading them in ID batches.
+The complete uncapped metadata contract, delegated-subject owner, private-column
+restriction, current RLS and command-time decision guards remain required.
+Paired benchmark41185610048 passed on748352f59 with identical ordered metadata
+and values for all three principals. Median initial/changed/restored times were
+HR1283.7/188.3/1132.8ms, manager295.6/59.8/316.2ms, employee90.2/3.4/98.8ms.
+This is three sequential reads per principal, not concurrent500-user evidence.
+Native run41185593278 passed54 cases with no skips; its whole compiler passed.
+
+Browser workflow preflight41185134683 was rejected at controller selection because
+the submitted test list was empty. Corrected-input run41185378631 keeps the exact
+606a35db41a3a4b177e167cca50e0d6d5fdf6c1d source. It records handled Home failures,
+continues collecting independent mutation evidence, and still refuses preflight
+acceptance or500-user load whenever a card fails. Browser Home request outcomes
+and elapsed times are now retained. No card deadline or acceptance threshold was
+relaxed.
+
+Expanded500-user runs41185656999(one-second) and41185654964(five-second) freeze the
+same748352f59 source, one million Claims plus one million Attendance records,
+Node24.22.1, one application worker and a five-minute sustained interval. Their
+browser, mutation, processing and subject-bound Home request preflights must pass
+before concurrent traffic begins. Both are pending. They remain smaller shared
+hosted development experiments, not production-equivalent acceptance.
+
+A separate source review found that the earlier counted shell preview used ordinary
+employment/person RLS, omitting a valid delegate whose full metadata is authorized.
+Regression-only run41185840215 on3c5cec42b reproduced that mismatch:30 cases pass,
+one fails because the preview reports0 while native full metadata contains1. Fix candidate
+2a0077ca6361bcdf3e189cb40d338c6c4106e977 shares the delegated-subject projection
+between full metadata and counted preview, retaining scoped native authority/counts
+and removing the unused unbounded branch of the preview-only helper. Native/Home
+checks in41185883781 passed60 cases with no failures or skips; its whole compiler
+remains pending. This later preview change affects
+global-shell performance; earlier748352f59 HTTP evidence must retain its own source.
 
 Coverage remains a bounded development matrix: selected30 page routes, Claims
 CRUD, Leave create/edit/withdraw, Personnel draft CRUD, Attendance correction and
@@ -573,9 +631,9 @@ imports, report-definition CRUD and long-running document jobs are not certified
 The hosted runner remains four CPUs with app, DB, driver and browsers sharing it.
 
 Generated provider source digest is now
-`f99b26cf9080e77d5fa4ed2455f76b3c97c01e7ba094b651a709979f29077f66`;
+`ea448f328c1591df84318e6fc3c58bfcd058e296f142c987fc216b3812aa73ca`;
 module-agent source digest is
-`cc3343d810bbf477a8a72abbca7a34e764d8db0ff0ad897f82572355bc5a034c`.
+`d5b8072776ddbd258469d3fd77f1ef176c75c5c9a2486531cf2ad84a1d89b215`.
 Literal human approval records remain unchanged. Earlier exact-source technical
 reviews/proposed approval patches do not approve this newer source. The approval
 hold remains unresolved; no provider call, integration, release or deployment is
