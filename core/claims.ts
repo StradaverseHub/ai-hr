@@ -3914,9 +3914,8 @@ export async function markReimbursementsPaid(
 }
 
 
-/** Metadata remains uncapped for full task screens; shell callers use the counted preview. */
-export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
- const candidates=await withTenant(ctx,async tx=>{
+/** Shared delegated header-subject projection; no ordinary Personnel visibility substitution. */
+async function pendingClaimSubjectsTx(tx:Tx,ctx:SessionContext,companyIds:string[]|undefined){
   await assertAssignedWorkPrincipalTx(tx,ctx);
   if(companyIds?.length===0)return [];
   // Resolve the delegated subject once per distinct pending employment, rather than once per
@@ -3929,7 +3928,11 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    .where(and(sql`NOT app.is_self_person(approval_subject.person_id)`,
     companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`));
   return filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
- });
+}
+
+/** Metadata remains uncapped for full task screens; shell callers use the counted preview. */
+export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
+ const candidates=await withTenant(ctx,tx=>pendingClaimSubjectsTx(tx,ctx,companyIds));
  // Keep the separate fresh principal/decision check. Authority is employment-grained, so check
  // each candidate employment once, then select its currently pending native-visible headers.
  // This avoids transferring every header twice and re-querying thousands of ID batches.
@@ -3951,26 +3954,17 @@ export function pendingClaimTaskSummary(ctx:SessionContext,companyIds:string[]|u
  return readPendingClaimTasks(ctx,companyIds,limit);
 }
 
-async function readPendingClaimTasks(ctx:SessionContext,companyIds?:string[],limit?:number){
+async function readPendingClaimTasks(ctx:SessionContext,companyIds:string[]|undefined,limit:number){
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`SET LOCAL jit = off`);
-  await assertAssignedWorkPrincipalTx(tx,ctx);
-  // Resolve names and authority over employments before touching request history. Joining person
-  // and employment to every historical request repeats their RLS and authorization work per claim.
-  const subjects=await tx.select({employmentId:employment.id,personId:employment.personId,employee:person.fullName})
-   .from(employment).leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(employment.tenantId,ctx.tenantId),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)));
-  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  const scoped=await pendingClaimSubjectsTx(tx,ctx,companyIds);
   const allowed=await claimDecisionEmploymentsTx(tx,ctx,scoped.map(row=>row.employmentId));
   if(!allowed.size)return {items:[] as AssignedApprovalMetadata[],total:0};
   const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
   const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),inArray(claimRequest.employmentId,[...allowed]));
-  const query=tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
-   .from(claimRequest).where(where).orderBy(desc(claimRequest.createdAt),claimRequest.id).$dynamic();
-  const rows=await (limit===undefined?query:query.limit(limit));
+  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
+   .from(claimRequest).where(where).orderBy(desc(claimRequest.createdAt),claimRequest.id).limit(limit);
   const items=rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
-  if(limit===undefined)return {items,total:items.length};
   const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
   return {items,total:count.total};
  });
