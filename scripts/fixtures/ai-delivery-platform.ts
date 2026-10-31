@@ -21,10 +21,9 @@ import {withAssistantRead} from '../../core/assistant-read-session';
 import {AGENT_MODULE_CODES,type AgentModuleCode} from '../../lib/ai/module-agents';
 import {executeSpecialistHoldout} from '../../core/module-specialist-harness';
 import {specialistReviewWorkspaceTx} from '../../core/module-agent-releases';
-import type {AiDeliveryFixtureContext} from './ai-delivery-fixture-context';
+import {aiDeliveryFixtureCalendar,type AiDeliveryFixtureContext} from './ai-delivery-fixture-context';
 
 function requireFact(condition:unknown,message:string):asserts condition{if(!condition)throw Error('AI platform fixture: '+message);}
-function before(today:string,days:number){const date=new Date(today+'T12:00:00Z');date.setUTCDate(date.getUTCDate()-days);return date.toISOString().slice(0,10);}
 const actorCopy=(actor:AiDeliveryFixtureContext['actors']['operator'])=>({...actor,ctx:{...actor.ctx,roles:actor.ctx.roles?.slice(),grants:actor.ctx.grants?.map(grant=>({...grant}))}});
 
 export async function populateAiDeliveryPlatform(input:AiDeliveryFixtureContext){
@@ -34,7 +33,7 @@ export async function populateAiDeliveryPlatform(input:AiDeliveryFixtureContext)
  requireFact(period===today.slice(0,7),'the current native period must match the declared fixture day');
  requireFact(new Set(participants.map(actor=>actor.userId)).size===participants.length,'distinct actual callers required');
  requireFact(new Set([operator,...reviewers].map(actor=>actor.personId)).size===3,'independent evaluators must have distinct actual own people');
- const correctionDate=before(today,2),weekday=new Date(today+'T12:00:00Z').getUTCDay(),workedDate=before(today,weekday||7);
+ const {correctionDate,workedDate}=aiDeliveryFixtureCalendar(today);
  const actualPeople=await owner.db.select({personId:s.person.id,name:s.person.fullName,email:s.person.primaryEmail,employmentId:s.employment.id,employeeCode:s.employment.employeeCode,hiredOn:s.employment.hiredOn})
   .from(s.employment).innerJoin(s.person,and(eq(s.person.id,s.employment.personId),eq(s.person.tenantId,s.employment.tenantId)))
   .where(and(eq(s.employment.tenantId,tenantId),eq(s.employment.companyId,companyId)));
