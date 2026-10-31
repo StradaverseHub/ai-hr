@@ -10,6 +10,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   let response;
   try{[response]=await Promise.all([waiting,click()]);}
   catch(error){report.mixedWorkflows.error={stage:kind,message:String(error.message).slice(0,350)};save();throw error;}
+  await response.finished();
   const req=response.request(),headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
   const type=req.headers()['content-type'];let fields,fieldOrder=[];
@@ -20,7 +21,8 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    assert.equal(new Set(fieldOrder).size,fieldOrder.length,'fixture replay does not support repeated string fields');fields=Object.fromEntries(pairs);
   }
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
-  const template={path:new URL(req.url()).pathname,fields,fieldOrder,headers,status:response.status()};
+  const actionUrl=new URL(req.url());
+  const template={path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status()};
   if(redirect){const target=new URL(String(redirect).split(';')[0],base);if(target.searchParams.has('error')){report.mixedWorkflows.error={stage:kind,message:target.searchParams.get('error')};save();throw Error('Browser mutation refused: '+target.searchParams.get('error'));}}
   templates[kind]=template;return template;
  }
@@ -183,8 +185,8 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    const rows=await db`select id,data,company_id,reserved_employee_code from employee_draft where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and label=${marker}`;
    assert.equal(rows.length,1);const row=rows[0];assert.equal(row.company_id,user.companyId);assert(row.reserved_employee_code,'Personnel ID was not reserved');
    await pause(thinkTimeMs);const editArgs=structuredClone(templates.personnelEdit.fields);editArgs[0]=row.id;editArgs[1]=row.data;editArgs[1].profile.fullName=marker+'_EDITED';
-   await send(user,templates.personnelEdit,editArgs);const [edited]=await db`select label from employee_draft where id=${row.id}::uuid`;assert.equal(edited.label,marker+'_EDITED');
-   await pause(thinkTimeMs);await send(user,templates.personnelDelete,[row.id]);assert.equal((await db`select id from employee_draft where id=${row.id}::uuid`).length,0);
+   await send(user,{...templates.personnelEdit,path:'/admin/personnel/new?draft='+row.id},editArgs);const [edited]=await db`select label from employee_draft where id=${row.id}::uuid`;assert.equal(edited.label,marker+'_EDITED');
+   await pause(thinkTimeMs);await send(user,{...templates.personnelDelete,path:'/admin/personnel/new?draft='+row.id},[row.id]);assert.equal((await db`select id from employee_draft where id=${row.id}::uuid`).length,0);
    report.mixedWorkflows.completed.personnel++;
    // One company owner per cohort avoids submitting the same file twice concurrently.
    if(user.index%50===1){
