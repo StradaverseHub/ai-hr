@@ -36,6 +36,7 @@ concurrency:
   group: ci-build-transport-qualification-${{ github.ref }}
   cancel-in-progress: false
 env:
+  PYTHONDONTWRITEBYTECODE: '1'
   CI: 'true'
   AIHR_CI_BUILD_TRANSPORT: consumer
   AIHR_CI_HEAD: ${{ inputs.source_sha }}
