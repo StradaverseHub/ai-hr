@@ -27154,7 +27154,12 @@
       "performance_idp": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
       "performance_calib": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
       "performance_assistant": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
-      "feedback_planning": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat."
+      "feedback_planning": "Ayat anda dan nilai rekod kekal dalam aplikasi. AI hanya menerima rujukan terlindung atau fakta berkumpulan yang disokong. Input yang tidak disokong disekat.",
+      "approval_chasers": "Dihantar daripada templat mesej tetap mengikut jadual yang ditetapkan. Tiada model AI digunakan dan tiada apa-apa dihantar kepada penyedia AI.",
+      "review_chasers": "Dihantar daripada templat mesej tetap mengikut jadual yang ditetapkan. Tiada model AI digunakan dan tiada apa-apa dihantar kepada penyedia AI.",
+      "clock_reminders": "Dihantar daripada templat mesej tetap mengikut jadual yang ditetapkan. Tiada model AI digunakan dan tiada apa-apa dihantar kepada penyedia AI.",
+      "document_reminders": "Dihantar daripada templat mesej tetap mengikut jadual yang ditetapkan. Tiada model AI digunakan dan tiada apa-apa dihantar kepada penyedia AI.",
+      "lifecycle_chasers": "Dihantar daripada templat mesej tetap mengikut jadual yang ditetapkan. Tiada model AI digunakan dan tiada apa-apa dihantar kepada penyedia AI."
     },
     "staleOverrideOn": "Suis lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya.",
     "staleOverrideOff": "Jeda lama yang disimpan untuk ciri ini diabaikan. Ciri ini hanya mengikut tetapannya.",
