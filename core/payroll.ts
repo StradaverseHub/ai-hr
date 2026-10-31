@@ -1,3 +1,4 @@
+import {parsePageQuery} from '../lib/pagination';
 import {readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx} from './payroll-formula-inputs';
 import {eligibleWorkingDays,payrollIncrementBasic,payrollRateBasic,payrollRoundAmount as roundAmount} from '../lib/payroll-basic';
 import {preparePayFormulaRuntimeTx} from './pay-formula-runtime';
@@ -10456,6 +10457,25 @@ export async function removeEmployeePayrollTx(
   };
 }
 
+/** All-time list counters without loading every historical run and its totals into the page. */
+export function payrollBatchListCounts(ctx: SessionContext, companyIds?: string[]) {
+  return withTenant(ctx, async tx => {
+    const [row] = await tx.select({total: sql<number>`count(*)::int`,
+      unpublished: sql<number>`count(*) filter (where ${payrollBatch.historyImportAttemptId} is null and ${payrollBatch.status} not in ('draft','closed'))::int`,
+    }).from(payrollHistoryEffectiveBatch)
+      .innerJoin(company, eq(company.id, payrollBatch.companyId))
+      .where(batchListWhere(companyIds));
+    return {total: Number(row?.total ?? 0), unpublished: Number(row?.unpublished ?? 0)};
+  });
+}
+function batchListWhere(companyIds?: string[], periodFilter?: ReturnType<typeof eq>) {
+  return and(
+    companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
+    periodFilter,
+    or(isNull(payrollBatch.historyImportAttemptId), gt(payrollBatch.employeeCount, 0)),
+  );
+}
+
 // Read-only list (no events.append per the CLAUDE.md skip rule). `payPeriod` is an OPTIONAL
 // additive filter: when a non-empty string is passed it is AND-ed onto the existing tenant-RLS +
 // companyIds guard, so it can only NARROW the result (Build #10). Omitting it (or passing '')
@@ -10532,13 +10552,7 @@ export function listBatches(
       .from(payrollHistoryEffectiveBatch)
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
       .leftJoin(payrollCycle, eq(payrollCycle.id, payrollBatch.payrollCycleId))
-      .where(
-        and(
-          companyIds && companyIds.length ? inArray(payrollBatch.companyId, companyIds) : undefined,
-          periodFilter,
-          or(isNull(payrollBatch.historyImportAttemptId),gt(payrollBatch.employeeCount,0)),
-        ),
-      )
+      .where(batchListWhere(companyIds, periodFilter))
       .orderBy(desc(payrollBatch.payPeriod), payrollBatch.runSeq),
   );
 }
@@ -11246,11 +11260,13 @@ export function preProcessAdvisoryForSelection(
   });
 }
 
-export function batchDetail(ctx: SessionContext, batchId: string) {
+export function batchDetail(ctx: SessionContext, batchId: string, pageInput?: {page?: string; size?: string}) {
   return withTenant(ctx, async (tx) => {
     const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
     if (!batch) return null;
-    const slips = await tx
+    const page = pageInput ? parsePageQuery(pageInput) : null;
+    if(page) await tx.execute(sql`SET LOCAL jit = off`);
+    const query = tx
       .select({
         id: payslip.id,
         employmentId: payslip.employmentId,
@@ -11273,8 +11289,17 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
       .innerJoin(employment, eq(employment.id, payslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .where(eq(payslip.batchId, batchId))
-      .orderBy(person.fullName);
-    return { batch, slips };
+      .orderBy(person.fullName,payslip.id).$dynamic();
+    if(page){query.limit(page.limit);query.offset(page.offset);}
+    const slips=await query;
+    const counts=page?await tx.select({n:sql<number>`count(*)::int`}).from(payslip)
+      .innerJoin(employment,eq(employment.id,payslip.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+      .where(eq(payslip.batchId,batchId)):[{n:slips.length}];
+    const marked=batch.needsRecalcAt?asIdArray(batch.recalcEmploymentIds):[];
+    const recalcSlips=page&&marked.length?await tx.select({employmentId:payslip.employmentId,name:person.fullName,employeeCode:employment.employeeCode})
+      .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+      .where(and(eq(payslip.batchId,batchId),inArray(payslip.employmentId,marked))).orderBy(person.fullName,payslip.id):page?[]:slips;
+    return { batch, slips, slipTotal:Number(counts[0]?.n??0), recalcSlips };
   });
 }
 

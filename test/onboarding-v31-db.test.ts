@@ -1,3 +1,5 @@
+import {randomUUID} from 'node:crypto';
+import {visibleRecentJoiner} from '../lib/onboarding-model';
 import { afterAll, beforeEach, describe, it, expect } from 'vitest';
 import { eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
@@ -56,6 +58,54 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(await onboardingNavigation(tech)).toMatchObject({module:false,joiners:0,checklists:0});
         expect(await onboardingNavigation(other)).toMatchObject({module:false,joiners:0,checklists:0});
     });
+    it('keeps SQL navigation counts in parity with the canonical model across historical states', async()=>{
+        const row=await prepared(),today=todayInKualaLumpur(),context=await onboardingContext(admin);
+        const original=structuredClone(row.case);
+        const examples=[original];
+        for(const state of ['pending','submitted','cancelled'] as const)for(const draft of [true,false])for(const recent of [true,false]){
+            const c=structuredClone(original);c.id=randomUUID();c.sourceDraftId=null;c.state=state;c.personnelStatus=draft?'Draft':'Active';
+            c.source.joinDate=dayDate(today,recent?1:-1000);c.local.joinDate=dayDate(today,100);
+            c.tasks.forEach(task=>task.status='done');c.requisitions.forEach(req=>req.handedAt=new Date().toISOString());examples.push(c);
+        }
+        const unfinished=structuredClone(examples.find(c=>c.state==='submitted'&&c.personnelStatus==='Active')!);
+        unfinished.id=randomUUID();unfinished.source.joinDate=dayDate(today,-1000);unfinished.tasks[0]!.status='todo';examples.push(unfinished);
+        const open=structuredClone(unfinished);open.id=randomUUID();open.tasks.forEach(task=>task.status='done');open.requisitions[0]!.handedAt=null;examples.push(open);
+        // SQL NULL is neither equal nor unequal. The original owner treats an absent
+        // legacy status as unfinished, and an absent state as not cancelled.
+        const legacyTask=structuredClone(unfinished);legacyTask.id=randomUUID();
+        legacyTask.tasks[0]!.assignee=admin.userId!;legacyTask.tasks[0]!.gate=false;
+        Reflect.deleteProperty(legacyTask.tasks[0]!,'status');examples.push(legacyTask);
+        const legacyState=structuredClone(unfinished);legacyState.id=randomUUID();
+        Reflect.deleteProperty(legacyState,'state');examples.push(legacyState);
+        const completed=examples.find(c=>c.state==='submitted'&&c.personnelStatus==='Active'&&c.tasks.every(task=>task.status==='done')&&c.requisitions.every(req=>!!req.handedAt))!;
+        const unknownDate=structuredClone(completed);unknownDate.id=randomUUID();
+        Reflect.set(unknownDate.source,'joinDate',null);examples.push(unknownDate);
+        const inheritedDate=structuredClone(completed);inheritedDate.id=randomUUID();
+        Reflect.deleteProperty(inheritedDate.source,'joinDate');examples.push(inheritedDate);
+        for(const c of examples.slice(1))await owner.db.insert(schema.lcOnboardingCase).values({id:c.id,tenantId:b.tenantId,companyId:b.companyId,sourceDraftId:null,data:c});
+        expect((await onboardingNavigation(admin)).joiners).toBe(examples.filter(c=>visibleRecentJoiner(context.config,c,today)).length);
+        expect((await onboardingNavigation(other)).joiners).toBe(0);
+        expect((await onboardingTasks(admin)).some(task=>task.caseId===legacyTask.id&&task.taskId===legacyTask.tasks[0]!.id&&task.assigned)).toBe(true);
+    });
+    it('retains unresolved mentions on completed cases but excludes resolved, deleted and cancelled history',async()=>{
+        const row=await prepared();
+        await onboardingNote(admin,row.case.id,{context:'requisition',body:'Current mention',mentions:[tech.userId!]});
+        const data=structuredClone((await onboardingDetail(admin,row.case.id)).case);
+        data.personnelStatus='Active';data.source.joinDate=dayDate(todayInKualaLumpur(),-1000);data.tasks.forEach(task=>task.status='done');
+        data.requisitions.forEach(req=>req.handedAt=new Date().toISOString());
+        await owner.db.update(schema.lcOnboardingCase).set({data}).where(eq(schema.lcOnboardingCase.id,row.case.id));
+        const before=await onboardingTasks(tech);
+        expect(before.filter(task=>task.caseId===row.case.id).map(task=>task.kind)).toEqual(['mention']);
+        const [note]=await owner.db.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.caseId,row.case.id));
+        await onboardingNote(tech,row.case.id,{id:note.id,context:'requisition',body:note.data.body,mentions:note.data.mentions,resolve:true});
+        expect((await onboardingTasks(tech)).filter(task=>task.caseId===row.case.id)).toEqual([]);
+        await onboardingNote(admin,row.case.id,{id:note.id,context:'requisition',body:'',mentions:[],deleted:true});
+        expect((await onboardingTasks(tech)).filter(task=>task.caseId===row.case.id)).toEqual([]);
+        await onboardingNote(admin,row.case.id,{context:'requisition',body:'Another mention',mentions:[tech.userId!]});
+        await owner.db.update(schema.lcOnboardingCase).set({data:{...data,state:'cancelled'}}).where(eq(schema.lcOnboardingCase.id,row.case.id));
+        expect((await onboardingTasks(tech)).filter(task=>task.caseId===row.case.id)).toEqual([]);
+    });
+
     it('saves task definitions alone, checks revisions and preserves other configuration', async () => {
         const before = await onboardingContext(admin), checklist = before.config.checklists[0]!;
         const tasks = structuredClone(checklist.tasks);

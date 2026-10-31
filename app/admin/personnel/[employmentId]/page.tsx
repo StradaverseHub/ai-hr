@@ -1,3 +1,4 @@
+import {personnelDetailSupport} from '@/core/personnel-detail-support';
 import {HireCorrectionModes} from '../information-correction-form';
 import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
 import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
@@ -5,7 +6,7 @@ import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import {workforceEmploymentAccess} from '@/core/workforce-access';
 import Link from 'next/link';
 import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
-import {employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
+import {holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
 import { notFound, redirect } from 'next/navigation';
 import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
 import { getTranslations } from 'next-intl/server';
@@ -19,7 +20,6 @@ import {
   adminCompanies,
   assignmentHistory,
   delegationsFor,
-  directSuperiorHistoryFor,
   employeeDetail,
   employmentCompanyEditable,
   listDepartments,
@@ -136,16 +136,15 @@ import { PayStructureFields, type PayModeOption } from '@/components/pay-structu
 import { PERSONNEL_PAY_MODES, PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-choice-vocabulary';
 // 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
 import { CurrencySelect } from '@/components/currency-select';
-import { getCompanyCurrency } from '@/core/read';
 import { listCp38 } from '@/core/cp38';
 import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
-import { listDependents, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
+import { qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
 // Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
-import { listQualifications, type QualificationRow } from '@/core/qualifications';
+import { type QualificationRow } from '@/core/qualifications';
 import { addQualificationAction, editQualificationAction, archiveQualificationAction } from './qualification-actions';
 // Feedback 23ad620e — Emergency Contact register: a person may have several contacts, not one.
-import { EMERGENCY_CONTACT_PRIORITIES, listEmergencyContacts, type EmergencyContactRow } from '@/core/emergency-contacts';
+import { EMERGENCY_CONTACT_PRIORITIES, type EmergencyContactRow } from '@/core/emergency-contacts';
 import { addEmergencyContactAction, editEmergencyContactAction, deleteEmergencyContactAction } from './emergency-contact-actions';
 import { FamilyFormDialog } from '@/components/family-form-dialog';
 import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
@@ -155,16 +154,16 @@ import { listAssignablePolicies } from '@/core/payroll-policy';
 import { PaymentMethodField } from '@/components/payment-method-field';
 import { PayrollPolicyField } from '@/components/payroll-policy-field';
 import { assignPolicyAction } from '@/app/admin/payroll-policy/actions';
-import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
+import { listShiftsForTenant } from '@/core/roster';
 // 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
 import { EmployeeShiftFields } from '@/components/employee-shift-fields';
-import { listHolidayGroups, listPositions, listBusinessUnits, listCostCenters } from '@/core/admin';
+import { listPositions, listBusinessUnits, listCostCenters } from '@/core/admin';
 import { listLocations } from '@/core/location';
 // f513ec02 adds listAttendanceRules — the Schedule Group picker's options. The tenant's attendance_rule
 // library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
 // the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
 // refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
-import { getScheduleRotation,listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
+import { getScheduleRotation, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
 import { setClockingControlAction } from './actions';
 import { DocumentsSection } from './documents-section';
 import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
@@ -363,6 +362,7 @@ export default async function EmployeePage({
   // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
   // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
   // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
+  const support = await personnelDetailSupport(s, {employmentId, personId: emp.personId, companyId: emp.companyId});
   const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
   // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
   // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
@@ -419,8 +419,8 @@ export default async function EmployeePage({
   const companyHrdf = admin ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
   const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
   // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
-  const holidayGroups = admin ? await listHolidayGroups(s) : [];
-  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
+  const holidayGroups = support.holidayGroups;
+  const holidayCalendarRows = support.holidayCalendarRows;
   /**
    * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
    *
@@ -434,19 +434,19 @@ export default async function EmployeePage({
    * something other than what is stored, then persisting it), reached by a different route. The extra
    * option is marked inactive so the reader is told why it is there.
    */
-  const scheduleGroupCurrentId = admin ? await employmentScheduleGroupId(s, employmentId) : null;
-  const attendanceRules = admin ? await listAttendanceRules(s) : [];
+  const scheduleGroupCurrentId = support.scheduleGroupCurrentId;
+  const attendanceRules = support.attendanceRules;
   const scheduleGroupOptions = attendanceRules.filter(
     (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
   );
   // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
   // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
-  const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
+  const positions = support.positions;
   // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
   // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
-  const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
+  const businessUnits = support.businessUnits;
   // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
-  const locations = admin ? await listLocations(s, [emp.companyId]) : [];
+  const locations = support.locations;
   // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
   // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
   // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
@@ -465,22 +465,22 @@ export default async function EmployeePage({
   const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
   // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
   // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
-  const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  const dependents = support.dependents;
   // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
   // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
   // most recent graduation first, in-progress (blank graduation date) last.
-  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
+  const qualifications = support.qualifications;
   // Feedback 23ad620e — Emergency Contact register: every person to call for this employee, in resolution
   // order (Primary → Secondary → Other). PERSON-keyed like the Family register, so it survives termination
   // and is visible to a second company's admin.
-  const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
+  const emergencyContacts = support.emergencyContacts;
   // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
   // r298 — Payroll-owned (core/payroll-policy.ts): not read for a tenant without Payroll.
   const assignablePolicies = admin && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
   // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
   // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
   // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
-  const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
+  const defaultSalaryCurrency = support.defaultSalaryCurrency;
   // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
   // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
   // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
@@ -543,7 +543,7 @@ export default async function EmployeePage({
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
   const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
-  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  const superiorHistory = support.superiorHistory;
   // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
@@ -669,7 +669,7 @@ export default async function EmployeePage({
     // have one option and silently re-affirm the move it is meant to be able to fix.
     movementCurrent
       ? await (async () => {
-          const managed = await adminCompanies(s);
+          const managed = companyEditable ? managedCompanies : await adminCompanies(s);
           // The current company leads and is always present, even for an actor who does not administer it:
           // it is the select's initial value, and a control whose value matches no option is a broken one.
           return [
@@ -681,12 +681,16 @@ export default async function EmployeePage({
   const movementOrgByCompany = Object.fromEntries(
     await Promise.all(
       movementCompanies.map(async (c) => {
-        const [deps, poss, bus, locs] = await Promise.all([
-          listDepartments(s, { companyIds: [c.id] }),
-          listPositions(s, { companyIds: [c.id] }),
-          listBusinessUnits(s, { companyIds: [c.id] }),
-          listLocations(s, [c.id]),
-        ]);
+        // The current company's exact scoped lists were already loaded for the record.
+        // Reuse them when opening New Event; destination companies still resolve independently.
+        const [deps, poss, bus, locs] = c.id === emp.companyId
+          ? [departments, positions, businessUnits, locations]
+          : await Promise.all([
+              listDepartments(s, { companyIds: [c.id] }),
+              listPositions(s, { companyIds: [c.id] }),
+              listBusinessUnits(s, { companyIds: [c.id] }),
+              listLocations(s, [c.id]),
+            ]);
         return [
           c.id,
           {

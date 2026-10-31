@@ -5,7 +5,7 @@ import {withTenant} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata} from '../packs/leave/service';
-import {createClaimType,pendingClaimTaskMetadata} from '../packs/claims/service';
+import {createClaimType,pendingClaimTaskMetadata,pendingClaimTaskSummary,listPendingClaimsPage} from '../packs/claims/service';
 import {pendingProfileTaskMetadata,decideProfileChange} from '../core/profile';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -32,6 +32,18 @@ const privateFields=['reason','proposed','amount','description','employeeRemark'
 function expectHeaders(rows:unknown[]){for(const row of rows)for(const field of privateFields)expect(row).not.toHaveProperty(field);}
 
 describe('Home assigned-decision metadata is an uncapped projection at its source owner',()=>{
+ it('returns an empty profile queue only after validating the current native principal',async()=>{
+  const ctx=adminCtx(b);
+  expect(await pendingProfileTaskMetadata(ctx)).toEqual([]);
+  await expect(pendingProfileTaskMetadata({...ctx,userId:randomUUID()})).rejects.toThrow();
+  await expect(pendingProfileTaskMetadata({...ctx,personId:randomUUID()})).rejects.toThrow();
+ });
+ it('returns an empty leave cancellation queue only after validating the native principal',async()=>{
+  const ctx=adminCtx(b);
+  expect(await pendingLeaveCancellationTaskMetadata(ctx)).toEqual([]);
+  await expect(pendingLeaveCancellationTaskMetadata({...ctx,userId:randomUUID()})).rejects.toThrow();
+  await expect(pendingLeaveCancellationTaskMetadata({...ctx,personId:randomUUID()})).rejects.toThrow();
+ });
  it('reads every pending leave header while reasons, units and application dates are unavailable to the runtime role',async()=>{
   const e=await subject(),today=todayInKualaLumpur();
   const heads=await owner.db.insert(s.leaveRequest).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:e.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:today,endDate:today,days:'1',reason:'Fictional private leave reason'}))).returning({id:s.leaveRequest.id});
@@ -47,13 +59,22 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
  it('reads every claim header without amount, receipt, custom field or description access',async()=>{
   await setModule(b.tenantId,'claims','active');const e=await subject(),ctx=adminCtx(b);
   const type=await createClaimType(ctx,{code:'HOME_META',name:'Fictional metadata claims',requiresReceipt:false,defaultTaxable:false});
-  const heads=await owner.db.insert(s.claimRequest).values(Array.from({length:211},()=>({tenantId:b.tenantId,employmentId:e.employmentId,claimTypeId:type.id,amount:'8923.45',incurredOn:todayInKualaLumpur(),description:'Fictional private claim description'}))).returning({id:s.claimRequest.id});
+  const heads=await owner.db.insert(s.claimRequest).values(Array.from({length:1201},()=>({tenantId:b.tenantId,employmentId:e.employmentId,claimTypeId:type.id,amount:'8923.45',incurredOn:todayInKualaLumpur(),description:'Fictional private claim description'}))).returning({id:s.claimRequest.id});
   await onlyColumns('claim_request',baseColumns,async()=>{
    await expectDenied(withTenant(ctx,tx=>tx.select({amount:s.claimRequest.amount}).from(s.claimRequest)));
-   const rows=await pendingClaimTaskMetadata(ctx);expect(rows).toHaveLength(211);
+   const rows=await pendingClaimTaskMetadata(ctx);expect(rows).toHaveLength(1201);
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));expectHeaders(rows);
+   const preview=await pendingClaimTaskSummary(ctx,undefined,25);
+   expect(preview.total).toBe(1201);expect(preview.items).toEqual(rows.slice(0,25));expectHeaders(preview.items);
+   expect(await pendingClaimTaskSummary(ctx,[],25)).toEqual({items:[],total:0});
+
    expect(JSON.stringify(rows)).not.toContain('8923.45');expect(await pendingClaimTaskMetadata(ctx,[])).toEqual([]);
   });
+  const first=await listPendingClaimsPage(ctx),second=await listPendingClaimsPage(ctx,{page:'1'});
+  expect(first.page.total).toBe(1201);expect(first.rows).toHaveLength(25);expect(second.rows).toHaveLength(25);
+  expect(new Set([...first.rows,...second.rows].map(row=>row.id)).size).toBe(50);
+  expect((await listPendingClaimsPage(ctx,{companyIds:[]})).rows).toEqual([]);
+
  });
  it('reads every stored profile task without proposed values or before/after review projection, then removes a real decision',async()=>{
   const e=await subject(),ctx=adminCtx(b);

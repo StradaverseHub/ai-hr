@@ -768,6 +768,7 @@
       "childReliefReview": "Rà soát giảm trừ cho con"
     },
     "switcher": {
+      "loadFailed": "Không thể tải tìm kiếm nhân viên. Vui lòng thử lại.",
       "ariaLabel": "Tìm nhân viên",
       "placeholder": "Tìm mã nhân viên hoặc tên…",
       "resultsLabel": "Kết quả tìm nhân viên",

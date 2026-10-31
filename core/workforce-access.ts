@@ -1,7 +1,7 @@
 /** Workforce-purpose adapter. Existing record, financial, self-service and approval owners remain independent. */
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
-import {lockAccessConfigurationTx} from './access-configuration-lock';
+import {lockAccessConfigurationTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
 export type WorkforceOperation='view'|'maintain';
 export class WorkforceAccessError extends Error{
  constructor(){super('Employee record or permission is unavailable.');this.name='WorkforceAccessError';}
@@ -61,7 +61,7 @@ export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
 /** Page-scope metadata only. This does not widen the shared company switcher or other modules' scope. */
 export function workforceViewScope(ctx: SessionContext) {
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const companies=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and app.access_workforce_projection_company(id) order by id`);
   const [unassigned]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_unassigned('workforce.view') as allowed`);
   return {companyIds:companies.map(row=>row.id),canOpen:companies.length>0||unassigned?.allowed===true};

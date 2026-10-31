@@ -1,3 +1,4 @@
+import {performanceRoleFixtureProfile,performanceMigrationAdmin} from './performance-role-fixture';
 import {createHash} from 'node:crypto';
 import {isAbsolute,join,resolve} from 'node:path';
 /** Pure orchestration: no driver, helper import, connection, filesystem or process side effects.
@@ -50,7 +51,8 @@ export async function runCandidateMigration(input:{focused:boolean;environment?:
  }
  if(input.focused){
   if(args.length)throw Error('Focused migration does not accept alternate CLI arguments.');
-  const admin=focusedMigrationAdmin(input.migrationTarget,input.testMigrationTarget);
+  const performance=performanceRoleFixtureProfile(environment);
+  const admin=performance?.system?performanceMigrationAdmin(input.migrationTarget,input.testMigrationTarget):focusedMigrationAdmin(input.migrationTarget,input.testMigrationTarget);
   const owner=await owners.loadFocusedRoleOwner();
   // Reuse the FULL existing guard, never a new relaxed or read-only provisioning fallback.
   owner.assertDisposableDraftDiscardFixture(admin);

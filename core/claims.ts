@@ -1,3 +1,4 @@
+import {parsePageQuery, pageState} from '../lib/pagination';
 import {assertClaimsProviderSourceTx} from './claims-provider-source';
 import {createHash} from 'node:crypto';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
@@ -6,7 +7,7 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * admin-write); every state change appends a DomainEvent. The lifecycle (submit/decide) + payout live in
  * later slices of this file.
  */
-import { and, desc, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, ne, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r292). `withTenant` here is `withClaimsTenant` — every one of this file's
 // 35 exported entry points refuses a tenant without the Claims module, however the call was reached.
@@ -38,7 +39,7 @@ import {
 
 export type { ClaimMileageStamp, ClaimRateConfig };
 import { toCsv } from '../lib/csv';
-import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
+import { assertCanDecide, filterDelegationOrgScopeTx,decisionEmploymentAuthorityTx,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
 import { calendarWindowFor } from './payroll-policy-config';
@@ -61,7 +62,12 @@ const num = (v: string | null): number | null => (v == null ? null : Number(v));
  * without Claims, and a caller-supplied tx must not be a way around it. Web callers pass none: unchanged.
  */
 async function withClaimsTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  if (!existingTx) return withTenant(ctx, run);
+  if (!existingTx) return withTenant(ctx, async tx => {
+    // Short interactive commands use expanded RLS plans; compiling them adds latency without
+    // amortizing it over a bulk calculation. Keep this setting local to the owned transaction.
+    await tx.execute(sql`SET LOCAL jit = off`);
+    return run(tx);
+  });
   assertModuleGate(ctx, 'claims');
   return run(existingTx);
 }
@@ -3388,21 +3394,89 @@ const toRow = (r: RawClaimRow, atts: Map<string, ClaimRow['attachments']>): Clai
   attachments: atts.get(r.id) ?? [],
 });
 
-/** A single employment's claims (newest first) — "my claims". */
-export async function listClaimsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
-  return withTenant(ctx, async (tx) => {
-    const rows = await tx
-      .select(rowSelect())
-      .from(claimRequest)
-      .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
-      // LEFT join: legacy/zero-item rows (claim_item_id IS NULL) must not be dropped from the list.
-      .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
-      .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
-      .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(claimRequest.employmentId, employmentId))
-      .orderBy(desc(claimRequest.createdAt));
-    const atts = await attachmentsByClaim(tx, rows.map((r) => r.id));
-    return rows.map((r) => toRow(r, atts));
+type EmploymentClaimRead = {claimId?: string; status?: 'draft' | 'history'; claimStatus?: string; cursorOrder?: boolean; before?: readonly [string, string]; limit?: number; offset?: number};
+function employmentClaimWhere(employmentId: string, opts: EmploymentClaimRead) {
+  return and(eq(claimRequest.employmentId, employmentId),
+    opts.claimId ? eq(claimRequest.id, opts.claimId) : undefined,
+    opts.status === 'draft' ? eq(claimRequest.status, 'draft') : undefined,
+    opts.status === 'history' ? ne(claimRequest.status, 'draft') : undefined,
+    opts.claimStatus ? eq(claimRequest.status, opts.claimStatus as typeof CLAIM_STATUSES[number]) : undefined,
+    opts.before ? sql`(date_trunc('milliseconds',${claimRequest.createdAt}),${claimRequest.id}) < (${opts.before[0]}::timestamptz,${opts.before[1]}::uuid)` : undefined);
+}
+// Keep the person lookup a single authorized PK probe. With only a join variable,
+// RLS cardinality estimates can instead scan every person and expand their policy subplans.
+const claimSubjectPersonId = (employmentId:string) => sql`(select person_id from employment where id=${employmentId}::uuid)`;
+/** Uncorrelated identity checks retain related-table RLS and execute once per statement.
+ * ANY(array(select...)) prevents a flattened join from probing the type for every claim. */
+function employmentClaimCountWhere(tenantId: string, employmentId: string, opts: EmploymentClaimRead) {
+  return and(eq(claimRequest.tenantId,tenantId), employmentClaimWhere(employmentId, opts),
+    sql`${claimRequest.claimTypeId} = any(array(select ${claimType.id} from ${claimType}))`,
+    sql`exists(select 1 from ${employment} inner join ${person} on ${person.id}=${employment.personId}
+      where ${employment.id}=${employmentId}::uuid and ${person.id}=${claimSubjectPersonId(employmentId)})`);
+}
+async function employmentClaimRowsTx(tx: Tx, tenantId: string, employmentId: string, opts: EmploymentClaimRead = {}): Promise<ClaimRow[]> {
+  const order = [opts.cursorOrder ? sql`date_trunc('milliseconds',${claimRequest.createdAt}) desc` : desc(claimRequest.createdAt), desc(claimRequest.id)];
+  // LIMIT is inside the CTE, after all membership/RLS checks but before display joins.
+  // Otherwise bad RLS cardinality estimates can cause a million display lookups before LIMIT25.
+  const ids = tx.select({id:claimRequest.id}).from(claimRequest)
+    .where(employmentClaimCountWhere(tenantId,employmentId,opts)).orderBy(...order).$dynamic();
+  if(opts.limit!==undefined)ids.limit(opts.limit);
+  if(opts.offset!==undefined)ids.offset(opts.offset);
+  const page=tx.$with('employment_claim_page').as(ids);
+  const query = tx.with(page).select(rowSelect()).from(page)
+    .innerJoin(claimRequest,eq(claimRequest.id,page.id))
+    .innerJoin(claimType, eq(claimType.id, claimRequest.claimTypeId))
+    .leftJoin(claimItem, eq(claimItem.id, claimRequest.claimItemId))
+    .innerJoin(employment, eq(employment.id, claimRequest.employmentId))
+    .innerJoin(person, eq(person.id, employment.personId))
+    .where(and(eq(employment.id,employmentId),sql`${person.id}=${claimSubjectPersonId(employmentId)}`))
+    .orderBy(...order);
+  const rows = await query;
+  const atts = await attachmentsByClaim(tx, rows.map(row => row.id));
+  return rows.map(row => toRow(row, atts));
+}
+
+/** A single employment's claims, newest first; a detail read can narrow by id in SQL. */
+export function listClaimsForEmployment(ctx: SessionContext, employmentId: string, opts: {claimId?: string} = {}): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, ctx.tenantId, employmentId, opts));
+}
+
+/** Drafts have their own workspace; never read filed history to populate it. */
+export function listClaimDraftsForEmployment(ctx: SessionContext, employmentId: string): Promise<ClaimRow[]> {
+  return withTenant(ctx, tx => employmentClaimRowsTx(tx, ctx.tenantId, employmentId, {status: 'draft'}));
+}
+
+/** Bound history rows and attachment metadata in SQL before constructing the browser's page. */
+export function listClaimHistoryPage(ctx: SessionContext, employmentId: string, input: {page?: string; size?: string} = {}) {
+  const query = parsePageQuery(input);
+  return withTenant(ctx, async tx => {
+    // Avoid compiling the expanded RLS plan for a short interactive read.
+    // Limit interpretation to this read transaction; the server's JIT setting is unchanged.
+    await tx.execute(sql`SET LOCAL jit = off`);
+    const [countRow] = await tx.select({n: sql<number>`count(*)::int`}).from(claimRequest)
+      .where(employmentClaimCountWhere(ctx.tenantId, employmentId, {status: 'history'}));
+    const rows = await employmentClaimRowsTx(tx, ctx.tenantId, employmentId, {status: 'history', limit: query.limit, offset: query.offset});
+    return {rows, state: pageState(query, Number(countRow?.n ?? 0), rows.length)};
+  });
+}
+
+/** SQL continuation for mobile lists. Counts span all statuses; receipt metadata is page-only.
+ * Millisecond ordering preserves the existing mobile cursor contract (including timestamp ties). */
+export function listEmploymentClaimsCursorPage(ctx: SessionContext, employmentId: string, input: {
+  status?: typeof CLAIM_STATUSES[number]; limit: number; cursor: readonly [string, string] | null;
+}) {
+  const {status, limit} = input, cursor = input.cursor ? [...input.cursor] as [string,string] : null;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || status && !CLAIM_STATUSES.includes(status)
+    || cursor && (!Number.isFinite(Date.parse(cursor[0])) || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(cursor[1]))) throw new RangeError('Invalid claim page');
+  return withTenant(ctx, async tx => {
+    await tx.execute(sql`SET LOCAL jit = off`);
+    const totals = await tx.select({status: claimRequest.status, n: sql<number>`count(*)::int`}).from(claimRequest)
+      .where(employmentClaimCountWhere(ctx.tenantId, employmentId, {})).groupBy(claimRequest.status);
+    const counts = Object.fromEntries(CLAIM_STATUSES.map(status => [status, 0])) as Record<typeof CLAIM_STATUSES[number],number>;
+    for (const row of totals) counts[row.status] = Number(row.n);
+    const found = await employmentClaimRowsTx(tx, ctx.tenantId, employmentId, {claimStatus: status, before: cursor ?? undefined, cursorOrder: true, limit: limit + 1});
+    const rows = found.slice(0,limit), last = rows.at(-1);
+    return {rows, counts, next: found.length > limit && last ? [last.createdAt,last.id] as const : null};
   });
 }
 
@@ -3461,6 +3535,39 @@ export async function listPendingClaims(ctx: SessionContext,opts:{requestId?:str
     const atts = await attachmentsByClaim(tx, scoped.map((r) => r.id));
     return scoped.map((r) => toRow(r, atts));
   });
+}
+
+/** SQL-paged approval workspace. Full legacy readers remain available to their existing owners. */
+export function listPendingClaimsPage(ctx:SessionContext,opts:{page?:string;size?:string;sort?:'latest'|'oldest'|'name_asc'|'name_desc';companyIds?:string[]}={}){
+ const page=parsePageQuery(opts);
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET LOCAL jit = off`);
+  const subjects=await tx.select({employmentId:employment.id,name:person.fullName}).from(employment)
+   .innerJoin(person,eq(person.id,employment.personId)).where(and(eq(employment.tenantId,ctx.tenantId),
+    opts.companyIds===undefined?undefined:inArray(employment.companyId,opts.companyIds)));
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  if(!scoped.length)return {rows:[] as ClaimRow[],page:pageState(page,0,0)};
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+   inArray(claimRequest.employmentId,scoped.map(row=>row.employmentId)),
+   sql`${claimRequest.claimTypeId}=ANY(ARRAY(SELECT ${claimType.id} FROM ${claimType}))`);
+  const names=JSON.stringify(Object.fromEntries(scoped.map(row=>[row.employmentId,row.name])));
+  const name=sql`(${names}::jsonb ->> ${claimRequest.employmentId}::text)`;
+  const order=opts.sort==='oldest'?[asc(claimRequest.createdAt),asc(claimRequest.id)]:
+   opts.sort==='name_asc'?[asc(name),desc(claimRequest.createdAt),asc(claimRequest.id)]:
+   opts.sort==='name_desc'?[desc(name),desc(claimRequest.createdAt),asc(claimRequest.id)]:[desc(claimRequest.createdAt),asc(claimRequest.id)];
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
+  const ids=await tx.select({id:claimRequest.id}).from(claimRequest).where(where).orderBy(...order).limit(page.limit).offset(page.offset);
+  if(!ids.length)return {rows:[] as ClaimRow[],page:pageState(page,count.total,0)};
+  // Private fields and attachments are read only for the visible page, after the SQL boundary.
+  const rows=await tx.select(rowSelect()).from(claimRequest)
+   .innerJoin(claimType,eq(claimType.id,claimRequest.claimTypeId)).leftJoin(claimItem,eq(claimItem.id,claimRequest.claimItemId))
+   .innerJoin(employment,eq(employment.id,claimRequest.employmentId)).innerJoin(person,eq(person.id,employment.personId))
+   .where(inArray(claimRequest.id,ids.map(row=>row.id)));
+  const attachments=await attachmentsByClaim(tx,ids.map(row=>row.id));
+  const byId=new Map(rows.map(row=>[row.id,toRow(row,attachments)]));
+  const ordered=ids.flatMap(row=>byId.has(row.id)?[byId.get(row.id)!]:[]);
+  return {rows:ordered,page:pageState(page,count.total,ordered.length)};
+ });
 }
 
 /** M11 — the facts of a claim that the list row (ClaimRow) does not carry, for its detail screens. */
@@ -3807,6 +3914,7 @@ export async function markReimbursementsPaid(
 }
 
 
+/** Metadata remains uncapped for full task screens; shell callers use the counted preview. */
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
@@ -3822,23 +3930,54 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
  return candidates.filter(row=>allowed.has(row.id));
 }
 
+export function pendingClaimTaskSummary(ctx:SessionContext,companyIds:string[]|undefined,limit=25){
+ if(!Number.isSafeInteger(limit)||limit<1||limit>200)throw new Error('Invalid claim task preview limit');
+ return readPendingClaimTasks(ctx,companyIds,limit);
+}
+
+async function readPendingClaimTasks(ctx:SessionContext,companyIds?:string[],limit?:number){
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET LOCAL jit = off`);
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  // Resolve names and authority over employments before touching request history. Joining person
+  // and employment to every historical request repeats their RLS and authorization work per claim.
+  const subjects=await tx.select({employmentId:employment.id,personId:employment.personId,employee:person.fullName})
+   .from(employment).leftJoin(person,eq(person.id,employment.personId))
+   .where(and(eq(employment.tenantId,ctx.tenantId),sql`NOT app.is_self_person(${employment.personId})`,
+    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)));
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  const allowed=await claimDecisionEmploymentsTx(tx,ctx,scoped.map(row=>row.employmentId));
+  if(!allowed.size)return {items:[] as AssignedApprovalMetadata[],total:0};
+  const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
+  const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),inArray(claimRequest.employmentId,[...allowed]));
+  const query=tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
+   .from(claimRequest).where(where).orderBy(desc(claimRequest.createdAt),claimRequest.id).$dynamic();
+  const rows=await (limit===undefined?query:query.limit(limit));
+  const items=rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
+  if(limit===undefined)return {items,total:items.length};
+  const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
+  return {items,total:count.total};
+ });
+}
+
+/** Authority depends on the subject employment, not the number of requests it owns. Keep this
+ * transaction-local: never reuse a decision across requests or after reporting/delegation changes. */
+async function claimDecisionEmploymentsTx(tx:Tx,ctx:SessionContext,employmentIds:readonly string[]){
+ return (await decisionEmploymentAuthorityTx(tx,ctx,employmentIds,scopeOf('claims.claim'))).allowed;
+}
 
 export function actionablePendingClaimIds(ctx:SessionContext,requestIds:readonly string[]){
  return withTenant(ctx,async tx=>{
   if(!requestIds.length)return [];
+  await tx.execute(sql`SET LOCAL jit = off`);
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const result:string[]=[],ids=[...new Set(requestIds)];
-  // The existing inbox is not capped at 1,000 claims. Bound each SQL parameter batch without turning
-  // a valid large queue into an exception in the shared application header.
+  const rows:{id:string;employmentId:string}[]=[],ids=[...new Set(requestIds)];
   for(let offset=0;offset<ids.length;offset+=1000){
-   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
-    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id);
-   for(const row of rows){
-    try{await assertCanDecide(tx,ctx,row.employmentId,'claim',scopeOf('claims.claim'));result.push(row.id);}
-    catch(error){if(!isApprovalDecisionRefusal(error,'claim'))throw error;}
-   }
+   rows.push(...await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId}).from(claimRequest)
+    .where(and(inArray(claimRequest.id,ids.slice(offset,offset+1000)),eq(claimRequest.status,'pending'))).orderBy(claimRequest.id));
   }
-  return result.sort();
+  const allowed=await claimDecisionEmploymentsTx(tx,ctx,rows.map(row=>row.employmentId));
+  return rows.filter(row=>allowed.has(row.employmentId)).map(row=>row.id).sort();
  });
 }
 

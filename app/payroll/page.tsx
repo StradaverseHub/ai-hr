@@ -3,7 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { listBatches, payrollCloseCompanyIds } from '@/core/payroll';
+import { listBatches, payrollBatchListCounts, payrollCloseCompanyIds } from '@/core/payroll';
 import { listBatchProcessedDates } from '@/core/payroll-view';
 import { listCompanies } from '@/core/read';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -144,19 +144,14 @@ export default async function PayrollPage({
   // Encoded once here; re-validated BY SHAPE at the other end (lib/return-to.ts), never echoed raw.
   const fromQuery = encodeURIComponent(dashboardHref(filters));
 
-  const [yearBatches, allBatches, companies] = await Promise.all([
+  const [yearBatches, batchCounts, companies] = await Promise.all([
     // The GRID + TIMELINE read: exactly the twelve periods of the selected year, pushed into SQL through
     // listBatches' widened period-set argument. Bounded by construction, and it is the whole year rather
     // than only the ticked months on purpose — every month cell shows its own run count, so an untick
     // must not blind the timeline to what is in the months you are not looking at.
     listBatches(s, scopeIds, periodsForYear(filters.year)),
-    // The UNPUBLISHED BANNER read, and NOTHING else. ef31d251 exists because eighteen runs were
-    // processed and never closed, so no employee ever saw a payslip — "a skipped one cannot sit
-    // unnoticed for months". That warning has to span ALL TIME: counted off the year's rows instead, a
-    // run left unpublished last December would stop being warned about the moment the clock ticked over
-    // to January, which is precisely the failure it was written to prevent. If this read ever becomes
-    // expensive the fix is to make it a COUNT — not to scope it to the selected year.
-    listBatches(s, scopeIds),
+    // Both all-time counters stay independent of the selected year without loading every run.
+    payrollBatchListCounts(s, scopeIds),
     // Company filter options. Sourced from the authorised company list rather than from the year's runs,
     // so the dropdown does not change shape as you step through years and a selected company cannot
     // vanish underneath you. Narrowed to scopeIds: a view filter must never widen the access fence.
@@ -196,7 +191,7 @@ export default async function PayrollPage({
     batchPage.filter((b) => b.status === 'processed').map((b) => b.companyId),
   );
 
-  const unpublishedCount = allBatches.filter((b) => payrollPublicationState(b) === 'unpublished').length;
+  const unpublishedCount = batchCounts.unpublished;
 
   // Month names are CALENDAR DATA, not product copy — Intl already knows them in every locale this app
   // ships, so putting twelve more strings × six catalogs into the message files would be inventing a
@@ -574,7 +569,7 @@ export default async function PayrollPage({
                   <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     {/* `year` is passed as a STRING: ICU formats a number argument with grouping, and
                         "2,026" is not a year. */}
-                    {allBatches.length === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
+                    {batchCounts.total === 0 ? t('empty') : t('filteredEmpty', { year: String(filters.year) })}
                   </td>
                 </tr>
               )}

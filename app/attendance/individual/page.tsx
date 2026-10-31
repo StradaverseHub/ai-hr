@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import Link from 'next/link';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
-import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
+import { attendanceForEmploymentRange, attendancePunchesForDays } from '@/packs/attendance/service';
 import { flagOf, statusOf } from '@/core/attendance-derive';
 import { listEmployees } from '@/core/read';
 import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
@@ -71,7 +71,9 @@ export default async function IndividualAttendancePage({
   const { rows: dayPage, state: pgState } = paginateRows(rows, parsePageQuery(sp));
   // R45 92bdf77a — the full punch trail per day (multiple clocking). Keyed by attendanceId; the summary
   // columns still use the row's first-in / last-out, this only expands the audit detail below a multi-punch day.
-  const punchesByAttendance = selectedEmp ? await attendancePunchesForRange(s, selectedEmp, from, to) : new Map();
+  const punchesByAttendance = await attendancePunchesForDays(
+    s, dayPage.flatMap(row => row.attendanceId ? [row.attendanceId] : []),
+  );
 
   /**
    * The panel is fed from the SAME `listEmployees(s, scopeIds)` the dropdown used — it must never become a

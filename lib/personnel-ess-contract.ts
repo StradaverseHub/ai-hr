@@ -12,7 +12,10 @@ export const essEditableFields=()=>essVisibleFields().filter(field=>field.ess.bi
 /** Legacy lists governed requests only; finite direct contacts remain compatible until a v2 save. */
 export function resolveEssEditableIds(raw:unknown):ReadonlySet<string>{
  const fields=essEditableFields();
- if(isProfileVisibilityPolicyValue(raw))return new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='editable'&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id));
+ if(isProfileVisibilityPolicyValue(raw)){
+  const visible=resolveEssVisibleIds(raw);
+  return new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='editable'&&visible.has(field.id)).map(field=>field.id));
+ }
  if(isProfileEditPolicyValue(raw))return new Set(fields.filter(field=>raw.fields.includes(field.id)).map(field=>field.id));
  if(!isLegacyProfileEditPolicy(raw))return new Set();
  const requests=raw==='all'||raw==null?PROFILE_REQUESTABLE_KEYS:raw as readonly string[];
@@ -21,7 +24,10 @@ export function resolveEssEditableIds(raw:unknown):ReadonlySet<string>{
 /** Exactly the old primary-contact fields, never create/other rows. Complete v2 empty closes them. */
 export function resolveEssPrimaryEditableIds(raw:unknown):ReadonlySet<string>{
  const fields=essEditableFields().filter(field=>field.ess.legacyPrimaryKey);
- if(isProfileVisibilityPolicyValue(raw))return new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='viewOnly'&&profileGroupPermission(raw,field)==='editable'&&raw.primaryOnly.includes(field.id)&&resolveEssVisibleIds(raw).has(field.id)).map(field=>field.id));
+ if(isProfileVisibilityPolicyValue(raw)){
+  const visible=resolveEssVisibleIds(raw);
+  return new Set(fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='viewOnly'&&profileGroupPermission(raw,field)==='editable'&&raw.primaryOnly.includes(field.id)&&visible.has(field.id)).map(field=>field.id));
+ }
  if(isProfileEditPolicyValue(raw))return new Set(fields.filter(field=>raw.fields.includes(field.ess.legacyPrimaryKey!)).map(field=>field.id));
  return new Set(isLegacyProfileEditPolicy(raw)?fields.map(field=>field.id):[]);
 }

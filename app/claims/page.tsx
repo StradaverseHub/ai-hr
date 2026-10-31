@@ -4,13 +4,12 @@ import {notFound} from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { requireModule } from '@/lib/authz';
 import {ownClaimSubject} from './subject';
-import { claimRecordFacts, getEmployeeClaimTypes, listClaimsForEmployment } from '@/packs/claims/service';
+import { claimRecordFacts, getEmployeeClaimTypes, listClaimDraftsForEmployment, listClaimHistoryPage } from '@/packs/claims/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { ClaimForm, type ClaimDraftPrefill, type ClaimFormType } from '@/components/claim-form';
 import { Button } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { Pager } from '@/components/pager';
-import { paginateRows, parsePageQuery } from '@/lib/pagination';
 import { cancelClaimAction, deleteDraftAction, submitClaimAction, submitDraftsAction } from './actions';
 
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -62,17 +61,13 @@ export default async function ClaimsPage({
     );
   }
 
-  const [types, allClaims] = await Promise.all([
+  const [types, drafts, {rows: claimPage, state: pgState}] = await Promise.all([
     getEmployeeClaimTypes(s, me.employmentId),
-    listClaimsForEmployment(s, me.employmentId),
+    listClaimDraftsForEmployment(s, me.employmentId),
+    listClaimHistoryPage(s, me.employmentId, sp),
   ]);
-  // e7eb5d83 — drafts get their own card. Kept OUT of the history table on purpose: that table is the
-  // record of what has been filed, and a draft has not been filed. Mixing them is how someone believes a
-  // claim is with their manager when it is still sitting in their own list.
-  const drafts = allClaims.filter((c) => c.status === 'draft');
-  const claims = allClaims.filter((c) => c.status !== 'draft');
-  // The approver's reason on a rejection (stamped on the rejection event), read by the claims owner's own reader.
-  const rejectReasons = await claimRecordFacts(s, claims.filter((c) => c.status === 'rejected').map((c) => c.id));
+  // Only displayed rejections need detail facts; older history stays in the database.
+  const rejectReasons = await claimRecordFacts(s, claimPage.filter(c => c.status === 'rejected').map(c => c.id));
   const editing = sp.draft ? drafts.find((d) => d.id === sp.draft) : undefined;
   if(selectedQuery.employmentId&&sp.draft!==undefined&&!editing)notFound();
   const draftPrefill: ClaimDraftPrefill | undefined = editing
@@ -86,8 +81,6 @@ export default async function ClaimsPage({
         description: editing.description,
       }
     : undefined;
-  // fc776376 — the claim history is a genuine list that grows with time, so it pages like every other.
-  const { rows: claimPage, state: pgState } = paginateRows(claims, parsePageQuery(sp));
   const today = todayInKualaLumpur();
   const dayMs = 86400000;
   const formTypes: ClaimFormType[] = types.map((ct) => ({
@@ -216,9 +209,9 @@ export default async function ClaimsPage({
       )}
 
       <Card data-tour="claims-history" className="overflow-hidden">
-        <SectionHeader title={t('myClaims')} count={claims.length} />
+        <SectionHeader title={t('myClaims')} count={pgState.total} />
         <Pager basePath="/claims" params={selectedQuery} state={pgState} />
-        {claims.length === 0 ? (
+        {claimPage.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('empty')}</p>
         ) : (
           <table className="w-full text-sm">

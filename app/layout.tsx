@@ -5,7 +5,8 @@ import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale } from 'next-intl/server';
+import { getLocale,getMessages } from 'next-intl/server';
+import {sharedClientMessages} from '@/i18n/client-messages';
 import './globals.css';
 import './login/login.css';
 import './onboarding-workspace.css';
@@ -51,7 +52,7 @@ import {canConfigureAccess} from '@/core/access-configuration-editor';
 import {workforceViewScope} from '@/core/workforce-access';
 import { getScopeIds } from '@/lib/scope';
 import { getOnboardingStatus } from '@/core/onboarding';
-import { listPendingTasks } from '@/core/approvals-inbox';
+import { pendingTaskSummary } from '@/core/approvals-inbox';
 import { onboardingTasks, onboardingUnreadNoticeCount, onboardingNotices, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
 import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
@@ -105,7 +106,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // because middleware.ts needs the same list; keeping two copies is what let them drift apart.
   const pathname = (await headers()).get('x-pathname') ?? '';
   const isAuthRoute = isAuthRoutePath(pathname);
-  const locale = await getLocale();
+  const [locale,messages]=await Promise.all([getLocale(),getMessages()]);
+  const shellMessages=sharedClientMessages(messages);
   // r396 — the UI theme, from the `ui_theme` cookie, written onto <html> so the FIRST paint is already in
   // the chosen theme (no flash). Absent or unknown → Atelier (lib/ui-theme.ts). Read before the auth
   // branch so /login is themed too. Light/dark is a separate axis (next-themes' `.dark` class).
@@ -123,7 +125,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         suppressHydrationWarning
       >
         <body className="h-dvh overflow-auto bg-canvas font-sans">
-          <NextIntlClientProvider>
+          <NextIntlClientProvider messages={shellMessages}>
             <Providers>{children}</Providers>
           </NextIntlClientProvider>
         </body>
@@ -145,7 +147,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     const viewer = await viewerIdentity(session);
     return <html lang={locale} data-ui-theme={uiTheme} className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="h-dvh overflow-hidden font-sans">
-        <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
+        <NextIntlClientProvider messages={shellMessages}><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
@@ -153,10 +155,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       </body>
     </html>;
   }
-  const principals = await listPrincipals();
   // Dev identity switcher: developers, plus the gated consultant demo (ALLOW_DEMO_SESSION; see lib/demo-mode).
   const showDevSwitcher = demoSwitcherEnabled();
-  const allowed = await allowedCompanies(session);
+  const [principals, allowed] = await Promise.all([listPrincipals(), allowedCompanies(session)]);
   const scopeIds = await getScopeIds(allowed.map((c) => c.id));
   const cookieStore = await cookies();
   const railCollapsed = cookieStore.get('rail_collapsed')?.value === '1';
@@ -173,8 +174,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     viewerIdentity(session),canConfigureAccess(session),
     isAdmin(session)?Promise.resolve(false):workforceViewScope(session).then(scope=>scope.canOpen),
   ]);
-  const letterDestinations=isModuleEnabledOrFalse(session,'employees')?await letterNavigation(session,scopeIds):[];
-  const onboarded = await getOnboardingStatus(session);
+  const [letterDestinations, onboarded, identityEmailAvailable] = await Promise.all([
+    isModuleEnabledOrFalse(session, 'employees') ? letterNavigation(session, scopeIds) : Promise.resolve([]),
+    getOnboardingStatus(session),
+    canConfigureIdentityEmail(session),
+  ]);
   const tours = toursForRoles(session.roles);
   const canApprove = isAdmin(session) || (session.roles ?? []).includes('manager');
   // ADR-0034 34-3: when notifications are on, the bell shows the viewer's own notifications (everyone), not
@@ -204,31 +208,39 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // same reason `notifEnabled` two lines above uses it: this is the root layout and a throw 500s every
   // authenticated route. `listPendingTasks` takes the answer rather than asking, so the loud/quiet choice
   // belongs to whichever surface calls it.
-  const approvalTasks = await listPendingTasks(session, scopeIds, {
+  const approvalSummary = await pendingTaskSummary(session, scopeIds, {
     attendance: isModuleEnabledOrFalse(session, 'attendance'),
     claims: isModuleEnabledOrFalse(session, 'claims'),
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
   });
+  const approvalTasks=approvalSummary.items;
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
-  const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0};
+  const onboardingNoticesEnabled = isModuleEnabledOrFalse(session, 'lifecycle');
+  const [onboardingNav, onboardingQueue, onboardingUnread, onboardingRead, onboardingUnreadCount] = await Promise.all([
+    onboardingNoticesEnabled ? onboardingNavigation(session) : Promise.resolve({module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false,records:false},master:false,requisitions:false,joiners:0,checklists:0}),
+    onboardingNoticesEnabled ? onboardingTasks(session) : Promise.resolve([]),
+    onboardingNoticesEnabled ? onboardingNotices(session) : Promise.resolve([]),
+    onboardingNoticesEnabled ? onboardingNotices(session, true) : Promise.resolve([]),
+    onboardingNoticesEnabled ? onboardingUnreadNoticeCount(session) : Promise.resolve(0),
+  ]);
   const onboardingAccess=onboardingNav.module;
-  const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
   // Profile Changes now has its own Personnel queue. Count only tasks this inbox actually opens;
   // My tasks and the bell still contain every canonical task, without another query.
-  const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;
+  const legacyApprovalCount = approvalSummary.approvalCount;
   const hasAssignedApproval = !canApprove && legacyApprovalCount>0;
   const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];
-  const onboardingNoticesEnabled=isModuleEnabledOrFalse(session,'lifecycle');
-  const [onboardingUnread,onboardingRead]=onboardingNoticesEnabled?await Promise.all([onboardingNotices(session),onboardingNotices(session,true)]):[[],[]];
-  const onboardingUnreadCount=onboardingNoticesEnabled?await onboardingUnreadNoticeCount(session):0;
-  const notifUnread = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : 0;
-  const taskNotifCount = bellNotificationsEnabled ? await unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : 0;
-  const notifItems = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : [];
-  const taskNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : [];
-  const readNotifs = bellNotificationsEnabled ? await listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : [];
+  // These five recipient reads are independent. Keep this batch after dispatch and separate
+  // from the approval fan-out above so a shell render does not launch every query at once.
+  const [notifUnread, taskNotifCount, notifItems, taskNotifs, readNotifs] = await Promise.all([
+    bellNotificationsEnabled ? unreadNotificationCount(session, undefined, {...notificationScope, action: false }) : Promise.resolve(0),
+    bellNotificationsEnabled ? unreadNotificationCount(session, undefined, {...notificationScope, action: true }) : Promise.resolve(0),
+    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: false }) : Promise.resolve([]),
+    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: false, action: true }) : Promise.resolve([]),
+    bellNotificationsEnabled ? listNotifications(session, undefined, {...notificationScope, limit: 12, read: true }) : Promise.resolve([]),
+  ]);
   // Approval history (44a89810): recent team decisions for the bell's History tab — canApprove only,
   // no dead query for regular employees.
   const approvalHistory = canApprove
@@ -254,7 +266,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       suppressHydrationWarning
     >
       <body className="h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4 monolith:bg-background! monolith:p-0!">
-        <NextIntlClientProvider>
+        <NextIntlClientProvider messages={shellMessages}>
         <Providers>
         {/* r398 — the theme the shell's structural branches render on the server (components/ui-theme-context.tsx);
             on the client they follow <html data-ui-theme> itself. */}
@@ -272,7 +284,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // each page's route guard (requirePayrollAccess / requirePerfCompAccess) 403/redirects
               // the pages it can't enter. The cap ORs isAdmin into every partner capability so a user
               // who is BOTH hr_admin and a partner is never narrower than a plain admin (union rule).
-              canConfigureIdentityEmail={await canConfigureIdentityEmail(session)}
+              canConfigureIdentityEmail={identityEmailAvailable}
               canPreviewIdentityEmail={isAdmin(session)}
               isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}
               canApprove={(session.roles ?? []).includes('manager')}
@@ -297,7 +309,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // self-excluding, admin-only categories gated inside listPendingTasks. NOT the bell's
               // taskCount below, which also folds in unread action notifications (not approval records).
               approvalCount={legacyApprovalCount}
-              taskCount={pendingTasks.length}
+              taskCount={approvalSummary.total+onboardingQueue.length}
               onboardingAccess={onboardingAccess}
               onboardingV9Access={onboardingNav.v9}
               onboardingV9Navigation={onboardingNav.v9Navigation}
@@ -440,8 +452,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                     unread={notifUnread + onboardingUnreadCount}
                     items={[...notifItems,...onboardingUnread]}
                     tasks={pendingTasks}
+                    claimTaskCount={approvalSummary.claimTotal}
                     taskNotifications={taskNotifs}
-                    taskCount={pendingTasks.length + taskNotifCount}
+                    taskCount={approvalSummary.total+onboardingQueue.length+taskNotifCount}
                     readItems={[...readNotifs,...onboardingRead]}
                     history={approvalHistory}
                     canApprove={canApprove}

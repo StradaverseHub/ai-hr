@@ -1,0 +1,585 @@
+{
+  "version": 1,
+  "shared": {
+    "prefixes": [
+      "accessConfiguration",
+      "approvalHistory",
+      "approvals",
+      "assistant.fileImport",
+      "assistant.launcher",
+      "assistant.workspace.chat",
+      "auth",
+      "commandBar",
+      "common",
+      "components.themeToggle",
+      "components.uiTheme",
+      "delegations",
+      "employeeHome.greetingNotification",
+      "letters.notifications",
+      "nav",
+      "notifications",
+      "onboarding",
+      "onehr.workspace",
+      "operatorWorkspace",
+      "pageStyleRecovery",
+      "topbar"
+    ],
+    "unknown": []
+  },
+  "segments": {
+    "": {
+      "prefixes": [
+        "assistant",
+        "attendance.clock",
+        "common.databaseError",
+        "dashboard",
+        "employeeHome.calendar",
+        "employeeHome.celebrations",
+        "employeeHome.greeting",
+        "employeeHome.greetingSend",
+        "employeeHome.knowledgeSearch",
+        "employeeHome.notices",
+        "employeeHome.quickActions",
+        "employeeHome.summary",
+        "employeeHome.taskNames",
+        "employeeHome.tasks",
+        "employeeHome.team",
+        "employeeHome.timeOff",
+        "employeeHome.today",
+        "notices"
+      ],
+      "unknown": []
+    },
+    "admin": {
+      "prefixes": [
+        "accessConfiguration",
+        "accountEmail",
+        "admin.ai",
+        "admin.attendancePolicy",
+        "admin.benefitScheme",
+        "admin.claims",
+        "admin.entitlementTemplates",
+        "admin.leave",
+        "admin.leaveBfImport",
+        "admin.leaveConfigTypes",
+        "admin.leaveCredit",
+        "admin.leaveDataImport",
+        "admin.leaveHistoryImport",
+        "admin.locations",
+        "admin.organization",
+        "admin.personnel.benefitScheme.colLeaveType",
+        "admin.personnel.benefitScheme.colPickedUpBy",
+        "admin.personnel.benefitScheme.effectiveFrom",
+        "admin.personnel.benefitScheme.title",
+        "admin.privacy",
+        "admin.profileOptions",
+        "admin.rotation",
+        "admin.scheduleAssignment",
+        "admin.systemLabels",
+        "admin.users",
+        "allowanceV2",
+        "allowanceV3",
+        "allowanceV4",
+        "appliedInPayroll",
+        "assistant.fileImport",
+        "assistant.protectedInput",
+        "attendance",
+        "attendanceSettingsHub",
+        "attendanceWorkflow",
+        "boardSchedule",
+        "cardImport",
+        "clockingFile",
+        "common",
+        "components.confirmSubmit",
+        "components.downloadCsv",
+        "components.downloadTemplate",
+        "components.drawer",
+        "components.tabSave",
+        "costAllocations",
+        "currencySelect",
+        "delegations",
+        "emailDesign",
+        "employeeHome.configuration",
+        "employeeHome.quickActions",
+        "employeeHome.taskNames",
+        "employeeHome.templateNames",
+        "employeePanel",
+        "holidayCalendarAssignments",
+        "identityEmail",
+        "jobDescriptions",
+        "labelExcelRoundTrip",
+        "labelsImportWizard",
+        "leave.breakdown",
+        "leave.fieldStartDate",
+        "leave.inquiry.colEntitlementStatus",
+        "leaveApproval",
+        "leaveCreditHistory.col.expiryDate",
+        "loans",
+        "loginPresentation",
+        "me",
+        "offlineClocking.settings",
+        "onboardingV31.copy",
+        "overtimePatterns",
+        "pagination",
+        "payComponents",
+        "payRule",
+        "payrollPolicy",
+        "people",
+        "peopleGeneral",
+        "replacementRequest",
+        "review.currentType",
+        "review.dueDate",
+        "review.endDate",
+        "review.typeLabel",
+        "review.uploadSignedLetter",
+        "rewards",
+        "rewardsAccess",
+        "rewardsAccessBatch",
+        "rewardsAccessControl",
+        "rewardsConfig",
+        "roster",
+        "scheduleDrafts",
+        "systemTestingWorkspace"
+      ],
+      "unknown": []
+    },
+    "analytics": {
+      "prefixes": [
+        "analytics",
+        "common.databaseError",
+        "people.employeeStatus"
+      ],
+      "unknown": []
+    },
+    "approvals": {
+      "prefixes": [
+        "approvals",
+        "common.databaseError",
+        "components.plannedAbsences",
+        "components.timelineNav",
+        "leave",
+        "replacementRequest.formulaReview",
+        "review"
+      ],
+      "unknown": []
+    },
+    "assistant": {
+      "prefixes": [
+        "admin.personnel.benefitScheme.colLeaveType",
+        "admin.personnel.benefitScheme.colPickedUpBy",
+        "admin.personnel.benefitScheme.effectiveFrom",
+        "admin.personnel.benefitScheme.title",
+        "assistant",
+        "attendance",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "costAllocations.costCenter",
+        "costAllocations.effectiveDate",
+        "costAllocations.percentage",
+        "costAllocations.remainderField",
+        "costAllocations.totalField",
+        "employeeHome.calendar",
+        "employeeHome.taskNames",
+        "employeeHome.tasks",
+        "employeeHome.team",
+        "holidayCalendarAssignments.calendar",
+        "holidayCalendarAssignments.end",
+        "holidayCalendarAssignments.start",
+        "leave.breakdown.asAtDate",
+        "leave.breakdown.field.adjustments",
+        "leave.breakdown.field.availableBalance",
+        "leave.breakdown.field.broughtForward",
+        "leave.breakdown.field.broughtForwardForfeited",
+        "leave.breakdown.field.eligible",
+        "leave.breakdown.field.pendingApproval",
+        "leave.breakdown.field.taken",
+        "leave.breakdown.field.total",
+        "leave.breakdown.field.ytdEntitled",
+        "leave.fieldStartDate",
+        "leave.inquiry.colEntitlementStatus",
+        "leaveCreditHistory.col.expiryDate",
+        "me",
+        "ownLeaveChange",
+        "ownLeaveReview",
+        "payComponents",
+        "payRule",
+        "payrollPolicy.assignLabel",
+        "people",
+        "replacementRequest",
+        "review.currentType",
+        "review.dueDate",
+        "review.endDate",
+        "review.typeLabel",
+        "review.uploadSignedLetter",
+        "workflowEmail.categories"
+      ],
+      "unknown": []
+    },
+    "attendance": {
+      "prefixes": [
+        "attendance",
+        "attendanceHistory",
+        "clockingFile",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "components.drawer",
+        "employeePanel",
+        "me",
+        "offlineClocking"
+      ],
+      "unknown": []
+    },
+    "callback": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "claims": {
+      "prefixes": [
+        "claims",
+        "common.databaseError",
+        "components.confirmSubmit"
+      ],
+      "unknown": []
+    },
+    "control-tower": {
+      "prefixes": [
+        "admin.ai",
+        "assistant.workspace.ownClear",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "controlTower.orchestrator"
+      ],
+      "unknown": []
+    },
+    "delegations": {
+      "prefixes": [
+        "common.databaseError",
+        "delegations"
+      ],
+      "unknown": []
+    },
+    "email-assets": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "feedback": {
+      "prefixes": [
+        "common.databaseError",
+        "feedback",
+        "pagination"
+      ],
+      "unknown": []
+    },
+    "fonts": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "health": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "invite": {
+      "prefixes": [
+        "common",
+        "internalAuth",
+        "loginPresentation",
+        "loginTour"
+      ],
+      "unknown": []
+    },
+    "knowledge-base": {
+      "prefixes": [
+        "common.databaseError",
+        "kb"
+      ],
+      "unknown": []
+    },
+    "leave": {
+      "prefixes": [
+        "admin.leave.adjustmentsCriteria",
+        "admin.leaveCredit",
+        "admin.profileOptions.category",
+        "admin.replacementLeave",
+        "attendance",
+        "common",
+        "components.confirmSubmit",
+        "components.drawer",
+        "components.plannedAbsences",
+        "components.timelineNav",
+        "employeePanel",
+        "leave",
+        "leaveCreditHistory",
+        "leaveFigure",
+        "me",
+        "nav",
+        "replacementRequest"
+      ],
+      "unknown": []
+    },
+    "letters": {
+      "prefixes": [
+        "common.databaseError",
+        "letters.fields"
+      ],
+      "unknown": []
+    },
+    "lifecycle": {
+      "prefixes": [
+        "accessConfiguration",
+        "auth",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "components.uiTheme",
+        "lifecycle",
+        "nav",
+        "onboarding",
+        "onboardingV31.copy",
+        "topbar"
+      ],
+      "unknown": []
+    },
+    "login": {
+      "prefixes": [
+        "common",
+        "internalAuth",
+        "loginPresentation",
+        "loginTour",
+        "mobileSetup"
+      ],
+      "unknown": []
+    },
+    "manage": {
+      "prefixes": [
+        "components.drawer",
+        "myTeam"
+      ],
+      "unknown": []
+    },
+    "me": {
+      "prefixes": [
+        "admin.personnel.benefitScheme.colLeaveType",
+        "admin.personnel.benefitScheme.colPickedUpBy",
+        "admin.personnel.benefitScheme.effectiveFrom",
+        "admin.personnel.benefitScheme.title",
+        "attendance",
+        "common.databaseError",
+        "components.printButton",
+        "costAllocations.costCenter",
+        "costAllocations.effectiveDate",
+        "costAllocations.percentage",
+        "costAllocations.remainderField",
+        "costAllocations.totalField",
+        "employeeHome.calendar",
+        "employeeHome.cardNames",
+        "employeeHome.personPrivacy",
+        "employeeHome.preferences",
+        "employeeHome.team",
+        "essProfile",
+        "holidayCalendarAssignments.calendar",
+        "holidayCalendarAssignments.end",
+        "holidayCalendarAssignments.start",
+        "leave.breakdown.asAtDate",
+        "leave.breakdown.field.adjustments",
+        "leave.breakdown.field.availableBalance",
+        "leave.breakdown.field.broughtForward",
+        "leave.breakdown.field.broughtForwardForfeited",
+        "leave.breakdown.field.eligible",
+        "leave.breakdown.field.pendingApproval",
+        "leave.breakdown.field.taken",
+        "leave.breakdown.field.total",
+        "leave.breakdown.field.ytdEntitled",
+        "leave.fieldStartDate",
+        "leave.inquiry.colEntitlementStatus",
+        "leaveCreditHistory.col.expiryDate",
+        "me",
+        "myEa",
+        "myPayslip",
+        "myTp3",
+        "onehr",
+        "pagination",
+        "payroll.transactions.tp1",
+        "payrollPolicy.assignLabel",
+        "people",
+        "review.currentType",
+        "review.dueDate",
+        "review.endDate",
+        "review.typeLabel",
+        "review.uploadSignedLetter",
+        "taxRelief"
+      ],
+      "unknown": []
+    },
+    "mobile-preview": {
+      "prefixes": [
+        "attendance.clock",
+        "common.databaseError",
+        "me.leaveBalanceTable",
+        "mobilePreview",
+        "notifications"
+      ],
+      "unknown": []
+    },
+    "notices": {
+      "prefixes": [
+        "common.databaseError"
+      ],
+      "unknown": []
+    },
+    "operator": {
+      "prefixes": [
+        "common.databaseError",
+        "kb",
+        "operator",
+        "operatorWorkspace"
+      ],
+      "unknown": []
+    },
+    "org": {
+      "prefixes": [
+        "common.databaseError",
+        "org"
+      ],
+      "unknown": []
+    },
+    "payroll": {
+      "prefixes": [
+        "admin.personnel.benefitScheme.colLeaveType",
+        "admin.personnel.benefitScheme.colPickedUpBy",
+        "admin.personnel.benefitScheme.effectiveFrom",
+        "admin.personnel.benefitScheme.title",
+        "appliedInPayroll",
+        "assistant.fileImport",
+        "attendance",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "components.downloadCsv",
+        "components.downloadTemplate",
+        "components.printButton",
+        "costAllocations.costCenter",
+        "costAllocations.effectiveDate",
+        "costAllocations.percentage",
+        "costAllocations.remainderField",
+        "costAllocations.totalField",
+        "employeePanel",
+        "holidayCalendarAssignments.calendar",
+        "holidayCalendarAssignments.end",
+        "holidayCalendarAssignments.start",
+        "leave.breakdown.asAtDate",
+        "leave.breakdown.field.adjustments",
+        "leave.breakdown.field.availableBalance",
+        "leave.breakdown.field.broughtForward",
+        "leave.breakdown.field.broughtForwardForfeited",
+        "leave.breakdown.field.eligible",
+        "leave.breakdown.field.pendingApproval",
+        "leave.breakdown.field.taken",
+        "leave.breakdown.field.total",
+        "leave.breakdown.field.ytdEntitled",
+        "leave.fieldStartDate",
+        "leave.inquiry.colEntitlementStatus",
+        "leaveCreditHistory.col.expiryDate",
+        "me",
+        "overtimePatterns",
+        "pagination",
+        "payFormula",
+        "payroll.batch",
+        "payroll.config",
+        "payroll.ea.override",
+        "payroll.guide",
+        "payroll.historyImport",
+        "payroll.historyRevisions",
+        "payroll.individualImport",
+        "payroll.individualPayslip",
+        "payroll.list",
+        "payroll.paymentSubmission",
+        "payroll.payslipInformation",
+        "payroll.process",
+        "payroll.runPicker",
+        "payroll.transactions",
+        "payroll.txnImport",
+        "payrollPolicy.assignLabel",
+        "people",
+        "review.currentType",
+        "review.dueDate",
+        "review.endDate",
+        "review.typeLabel",
+        "review.uploadSignedLetter",
+        "taxRelief"
+      ],
+      "unknown": []
+    },
+    "people": {
+      "prefixes": [],
+      "unknown": []
+    },
+    "performance": {
+      "prefixes": [
+        "assistant.protectedInput",
+        "assistant.workspace.chat",
+        "common.databaseError",
+        "components.confirmSubmit",
+        "components.drawer",
+        "onehr",
+        "performance.eligibility",
+        "performance.lifecycle",
+        "performance.list",
+        "performance.review",
+        "performanceArea"
+      ],
+      "unknown": []
+    },
+    "personnel": {
+      "prefixes": [
+        "common.databaseError"
+      ],
+      "unknown": []
+    },
+    "reports": {
+      "prefixes": [
+        "assistant",
+        "common.databaseError",
+        "employeeMasterReports",
+        "payrollComparison"
+      ],
+      "unknown": []
+    },
+    "reset-password": {
+      "prefixes": [
+        "common",
+        "internalAuth",
+        "loginPresentation",
+        "loginTour"
+      ],
+      "unknown": []
+    },
+    "rewards": {
+      "prefixes": [
+        "common.databaseError",
+        "rewards"
+      ],
+      "unknown": []
+    },
+    "roster": {
+      "prefixes": [
+        "common.databaseError",
+        "pagination",
+        "roster"
+      ],
+      "unknown": []
+    },
+    "system-testing": {
+      "prefixes": [
+        "common.databaseError",
+        "systemTestingWorkspace"
+      ],
+      "unknown": []
+    },
+    "tasks": {
+      "prefixes": [
+        "common.databaseError",
+        "notifications.task",
+        "onboardingV31.copy"
+      ],
+      "unknown": []
+    }
+  }
+}

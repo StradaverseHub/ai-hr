@@ -676,6 +676,136 @@ This allocation authorizes source repair only. No SQL has been applied by this r
 backup/restore, authenticated affected qualification, exact release admission, protected
 integration and the exclusive staging window remain required. Production is untouched.
 
+## Performance development reservation — 30 October 2026
+
+Owned branch `codex/system-performance-audit-20261030` reserves
+`0726_claim_history_order`, development idx684 / when1793330000055. Freshly fetched
+main/alpha retain the 569-entry prefix through0696 /1793330000031. Reachable worktree
+SQL names extend through0725 and journal sequences through1793330000054. This
+append is for isolated hosted development tests only; it is not an installation
+allocation. Reconcile all unmerged reservations, the complete actual applied ledger
+and historical byte identities before integration or deployment. No existing journal
+entry or SQL byte changes. The index changes no grants or RLS.
+
+Performance release hold: subsequent canonical2ab4f6c12 appends0721/0722 at
+idx684–685 /when1793330000050–51. The orchestrator/V9 owner reports an earlier
+release position for V9 with proposed56–63 successors. Performance keeps55 only
+for its isolated development database; it must be reallocated above the actual
+accepted watermark at its later freeze. No release application or protected-branch
+merge is authorized by this development reservation. Preserve old receipts and rerun
+affected checks after reconciliation.
+
+The same unapplied0726 development migration also fences the DISTINCT-company CTE
+in `app.visible_employment_ids()`. Measured500-employment plans push admin checks
+below DISTINCT without the fence (500 evaluations), while materialization evaluates
+one per company. All visibility arms/security attributes remain intact. This broadens
+the release impact: require current app-role visibility-equivalence, hierarchy, grants
+and module RLS checks plus load regression before release. Earlier index-only migration
+receipts remain tied to their original bytes and do not verify this revised migration.
+
+Final isolated performance source4d5b404e2 retains the revised0726 SHA256
+`0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e`.
+Hosted41013812848 passes306 permission/regression assertions plus compiler/build;
+41014984239 verifies the million-row Claims budget;41015751657 records pool comparisons;
+41016041103 verifies the final bounded-pool source. These are focused development receipts,
+not a release witness or an allocation above the actual V9 handoff. The500-user latency target
+is still unmet; no merge/deployment acceptance is claimed.
+
+HTTP performance development continuation merges published main2ab4f6c12 while
+preserving its entire571-entry journal.0726 is appended at development idx686 /when55
+only for disposable CI databases. This does not compete with V9's release allocation:
+the performance candidate remains explicitly non-deployable pending the actual V9
+handback and fresh successor allocation. No existing SQL byte or applied entry changes.
+
+## Permission plan caching — 30 October 2026, development only
+
+Read-only refresh of main/alpha plus remote refs and Git-discovered worktree journals found
+filenames through0735 and sequences through1793330000072. Reserve unapplied
+`0736_visibility_plan_cache` at sequence1793330000073 (idx687 on this development branch).
+It preserves0726's complete visibility query and changes its language to PL/pgSQL so PostgreSQL
+can retain the query plan per connection. Permission results, session identity and effective dates
+are evaluated afresh; policies and grants do not change. The paired500-principal experiment
+41022556721 motivates this change; current equivalence and HTTP tests remain required.
+
+This does not resolve0726's pre-existing filename/sequence collision with AI/V9 reservations.
+Both performance successors require reconciliation above the accepted ledger at integration.
+No staging application, branch integration, deployment or release eligibility is authorized.
+
+## Permission read work — 30 October 2026, development only
+
+Fresh main/alpha refs point to d6cb83d62; remote refs and Git-discovered worktree claims
+were checked again. Reserve `0745_permission_read_work` at idx688 on this branch / sequence1793330000082.
+SQL SHA256: `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6`. It adds the measured coarse-admin short-circuit and
+plan reuse for the unchanged pure grant predicate. Existing per-company guards, malformed
+grant failures, function security attributes, grants and applied migration bytes remain intact.
+
+This is a disposable development journal position. The complete performance prefix still needs
+reconciliation against the accepted AI/V9 handback before integration;0726/0736 are not
+release allocations above that watermark. No merge, application, installation or deployment
+is authorized. Frozen source receipts remain tied to their exact original candidates.
+
+## Session read planning — development reservation,30 October2026
+
+Main/alpha were freshly fetched atd6cb83d62. A full local-ref journal scan and Git-discovered
+worktree scan found independent Formula0800/1793330000200 and other0745–0747 claims.
+Reserve **0810_session_read_plans / idx689 on this development branch /1793330000210**
+with headroom, not a placeholder series. SQL SHA256: `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56`.
+The reversible500-principal experiment41042136707 preserves live archival/termination and
+forged-role refusals; p95 for20 repeated guard pairs falls5199→3710ms and returns5214ms
+after restoration. Only query plans persist; every login/principal fact is read afresh.
+
+This is an unapplied development reservation. Existing0726/0736/0745 collisions and the
+accepted ledger still require reconciliation before integration or application. No protected
+branch integration, target database change, deployment or release eligibility is authorized.
+
+## Performance source reconciliation — 31 October 2026, development only
+
+The isolated performance branch merges published main/alpha
+`b0907303caf7fcb75fdce7194a327d10ae209ba2`. Its complete 583-entry source journal
+through 0811 / idx697 /1793330000211 and all SQL bytes are preserved exactly.
+A read-only scan of 2,382 local/remote refs (284 distinct parseable journal blobs)
+and 344 Git-registered worktrees found filenames through0811 and sequences
+through1793330000211. The four unapplied performance drafts are renamed without
+changing their SQL bytes and appended in the same dependency order:
+
+| Index | Sequence | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 698 | 1793330000212 | 0866_claim_history_order | `0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e` |
+| 699 | 1793330000213 | 0867_visibility_plan_cache | `189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2` |
+| 700 | 1793330000214 | 0868_permission_read_work | `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6` |
+| 701 | 1793330000215 | 0869_session_read_plans | `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56` |
+
+This supersedes the older performance development positions above. Older receipts
+retain their original source identities and do not verify this merged candidate.
+The installed ledger/watermark was not queried in this source-only reconciliation;
+installation allocation, complete live-prefix verification and release acceptance
+remain held. No target database, protected branch or deployment changes are authorized.
+
+## Home role read guard — 31 October 2026, development only
+
+Fresh main/alpha remain `b0907303caf7fcb75fdce7194a327d10ae209ba2`. A scan of
+2406 local/remote refs (287 distinct parseable journals) and
+349 registered worktrees finds filenames through0861 and sequences
+through1793330000261. Preserve the complete existing source journal and every SQL byte.
+Append the next unapplied development successor:
+
+| Index | Sequence | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 702 | 1793330000262 | 0870_home_role_reporting_guard | `1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e` |
+
+Native experiment41107920846 (`35a9544ed`) compares100 active actual principals
+within a500-person/ten-company fixture. Necessary-edge guard p95 is98.8ms versus
+13,995.9ms before and12,373.3ms after restoration. Owner, ACL, security attributes,
+current assignments, archival, forged-grant and foreign/other-subject checks pass.
+The guard preserves the full original visibility query whenever any edge exists;
+no permission result or private record is cached. Broader native and HTTP/browser
+qualification is required on the migration candidate.
+
+This is source-only development allocation. No installed ledger or watermark was
+queried; the complete accepted ledger and all unapplied performance reservations
+still require final reconciliation. No target application, protected integration,
+release acceptance or deployment authority is granted by this record.
+
 
 ## AI review source freeze above verified Board arrival — 30 October 2026
 
@@ -834,3 +964,7 @@ Both append strictly after0861. Foreign0862/when1793330000262 remains preserved 
 from this candidate; a numeric gap is intentional. Existing SQL bytes and the full journal prefix
 are immutable. Root must verify the then-current installation ledger and release evidence before
 any installation; neither source allocation nor focused development checks authorizes deployment.
+
+## Performance reconciliation — 31 October 2026
+
+Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` owns the complete immutable prefix. A scan of 293 unique reachable journals found maximum prefix0865, idx750 and timestamp1793330000265. The five unapplied performance drafts are now0866–0870, idx751–755, timestamps1793330000266–270, in existing dependency order. This supersedes their earlier names/indices/timestamps above. No applied SQL was edited and no installation was changed. Final release allocation still requires then-current reconciliation.

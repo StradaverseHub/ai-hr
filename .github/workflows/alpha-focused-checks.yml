@@ -15,6 +15,44 @@ on:
         description: JSON array of 1–64 tracked unit/DOM test paths; candidate classifier owns DB selection
         required: true
         type: string
+      run_system_load:
+        description: Isolated production HTTP/browser profiling; no release or deployment
+        default: false
+        type: boolean
+      system_load_suite:
+        description: Comparable Claims-heavy workload or wider authorized page mix
+        default: claims-heavy
+        type: choice
+        options: [claims-heavy, whole-system]
+      system_think_time:
+        description: Time between actions for each of the 500 active users
+        default: 1s
+        type: choice
+        options: [1s, 5s]
+      system_hold_time:
+        description: Sustained activity after the ten-second arrival ramp
+        default: 30s
+        type: choice
+        options: [30s, 5m]
+      system_attendance_days:
+        description: Attendance history per employee; 2000 days creates one million retained rows
+        default: '180'
+        type: choice
+        options: ['180', '2000']
+      system_workers:
+        description: Development app workers; total app pool and heap budgets stay fixed
+        default: '1'
+        type: choice
+        options: ['1', '2']
+      service_profile:
+        description: Explicit service benchmark outside the normal unit-test inventory
+        default: none
+        type: choice
+        options: [none, plan-cache, claims-sql, admin-gate, session-plan, scope-lock, orm-schema, review-queues, ess-fields, home-role, profile-queue, audit-session]
+      profile_database_sql:
+        description: Track statements in the isolated development database
+        default: false
+        type: boolean
       qualify_restricted_port_prerequisites:
         description: Opt-in exact581 populated restricted-port prerequisite rehearsal before migrations; requires real Personnel DB files and whole typecheck
         default: false
@@ -62,6 +100,8 @@ env:
   AIHR_CI_PG_CONFIGURED_CAP_BYTES: '2113929216'
   AIHR_CI_PG_PEAK_BUDGET_BYTES: '2147483648'
   AIHR_CI_PG_JIT: 'on'
+  AIHR_CI_PG_STATEMENTS: ${{ inputs.profile_database_sql && '1' || '0' }}
+  AIHR_CI_PG_STATEMENTS_OWNER: visibility-plan-benchmark
   AIHR_FOCUSED_PROFILE: ${{ inputs.profile_database }}
   AIHR_TEST_DURATION_ORDER: ${{ inputs.duration_order }}
   DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -98,6 +138,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAGING_BASE_SHA: ${{ vars.STAGING_DEPLOYED_SHA }}
   selected-tests:
+    if: ${{ !inputs.run_system_load && (inputs.service_profile == 'none' || inputs.service_profile == '') }}
     needs: resolve
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -270,3 +311,79 @@ jobs:
           persist-credentials: false
       - name: Compile and exercise native proof handoff models
         run: bash automation/.github/ci/native-proof-models.sh "$GITHUB_WORKSPACE/source"
+
+  system-http-browser-load:
+    if: ${{ inputs.run_system_load }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_UNIT: db-1
+      AIHR_CI_PG_DURABLE: '1'
+      AIHR_CI_PG_STATEMENTS: '1'
+      AIHR_CI_PG_STATEMENTS_OWNER: system-http-profile
+      PERF_HTTP_SUITE: ${{ inputs.system_load_suite }}
+      PERF_HTTP_THINK_MS: ${{ inputs.system_think_time == '5s' && '5000' || '1000' }}
+      PERF_HTTP_HOLD_MS: ${{ inputs.system_hold_time == '5m' && '300000' || '30000' }}
+      PERF_APP_WORKERS: ${{ inputs.system_workers || '1' }}
+      PERF_ATTENDANCE_DAYS: ${{ inputs.system_attendance_days || '180' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '24.22.1', mobile: 'false', capacity_profile: legacy}
+      - name: Select an actual installed browser or install Chromium
+        shell: bash
+        run: |
+          if command -v google-chrome >/dev/null; then
+            echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE=$(command -v google-chrome)" >> "$GITHUB_ENV"
+            google-chrome --version
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
+      - name: Production HTTP and browser performance on a fictional runner database
+        run: node scripts/performance/system-runner.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: system-http-browser-development-evidence
+          path: ${{ runner.temp }}/system-performance-evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  service-performance-profile:
+    if: ${{ inputs.service_profile == 'plan-cache' || inputs.service_profile == 'claims-sql' || inputs.service_profile == 'admin-gate' || inputs.service_profile == 'session-plan' || inputs.service_profile == 'scope-lock' || inputs.service_profile == 'orm-schema' || inputs.service_profile == 'review-queues' || inputs.service_profile == 'ess-fields' || inputs.service_profile == 'home-role' || inputs.service_profile == 'profile-queue' || inputs.service_profile == 'audit-session' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_CI_UNIT: db-1
+      AIHR_CI_PG_STATEMENTS: '1'
+      AIHR_CI_PG_STATEMENTS_OWNER: visibility-plan-benchmark
+      PERF_SERVICE_PROFILE: ${{ inputs.service_profile }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ needs.resolve.outputs.sha }}', path: source, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {mobile: 'false', capacity_profile: legacy}
+      - name: Run explicit service benchmark in a job-owned database
+        run: node scripts/performance/service-runner.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: service-performance-development-evidence
+          path: ${{ runner.temp }}/service-performance-evidence/
+          if-no-files-found: error
+          retention-days: 14

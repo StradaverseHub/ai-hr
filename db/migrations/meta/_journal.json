@@ -4453,6 +4453,41 @@
       "when": 1793330000265,
       "tag": "0865_assistant_company_retention_references",
       "breakpoints": true
+    },
+    {
+      "idx": 751,
+      "version": "7",
+      "when": 1793330000266,
+      "tag": "0866_claim_history_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 752,
+      "version": "7",
+      "when": 1793330000267,
+      "tag": "0867_visibility_plan_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1793330000268,
+      "tag": "0868_permission_read_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 754,
+      "version": "7",
+      "when": 1793330000269,
+      "tag": "0869_session_read_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1793330000270,
+      "tag": "0870_home_role_reporting_guard",
+      "breakpoints": true
     }
   ]
 }

@@ -909,15 +909,28 @@ export async function withdrawProfileChangesForLockedFields(
 export async function pendingProfileTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
+  // The native reader predicate and RLS already evaluate current routing/access facts.
+  // This first transaction only finds candidates: resolving edit settings here took
+  // the exclusive profile-write barrier on every shell read, even for an empty queue.
+  // Nonempty candidates still pass the locked current-policy decision check below.
+  // Establish emptiness before planning the employment/person joins. On an empty queue the
+  // joined query can still walk workforce visibility for every shell rebuild. This probe
+  // retains the same native reader and RLS; a positive result grants no decision authority.
+  const [pending]=await tx.select({id:profileChangeRequest.id}).from(profileChangeRequest)
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
+    sql`NOT app.is_self_person(${profileChangeRequest.personId})`)).limit(1);
+  if(!pending)return [];
   return tx.select({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,
    employee:person.fullName,createdAt:profileChangeRequest.createdAt}).from(profileChangeRequest)
    .innerJoin(employment,and(eq(employment.id,profileChangeRequest.employmentId),eq(employment.tenantId,profileChangeRequest.tenantId)))
    .leftJoin(person,and(eq(person.id,profileChangeRequest.personId),eq(person.tenantId,profileChangeRequest.tenantId)))
-   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+   .where(and(eq(profileChangeRequest.tenantId,ctx.tenantId),eq(profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
     sql`NOT app.is_self_person(${profileChangeRequest.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
    .orderBy(desc(profileChangeRequest.createdAt),profileChangeRequest.id);
  });
+ // The first transaction has already checked the current principal and native reader. With no
+ // candidates there is no decision authority to resolve in a second locked transaction.
+ if(candidates.length===0)return [];
  const allowed=new Set(await actionableProfileChangeIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
 }

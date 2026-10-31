@@ -938,23 +938,41 @@ export function getReviewDocument(
 export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr',companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
   return withTenant(ctx,async tx=>{
     await assertAssignedWorkPrincipalTx(tx,ctx);
+    return (await readPendingReviewTaskGroupsTx(tx,ctx,companyIds,stage))[stage];
+  });
+}
+
+/** Both shell queues share one current-principal proof and transaction. Stage authority is still
+ * checked independently for each row; no result survives this read or enters another request. */
+export function pendingReviewTaskGroups(ctx:SessionContext,companyIds?:string[]){
+  return withTenant(ctx,async tx=>{
+    await assertAssignedWorkPrincipalTx(tx,ctx);
+    return readPendingReviewTaskGroupsTx(tx,ctx,companyIds);
+  });
+}
+
+async function readPendingReviewTaskGroupsTx(tx:Tx,ctx:SessionContext,companyIds?:string[],stage?:'manager'|'hr'){
+    const assignedManager=sql`EXISTS (SELECT 1 FROM public.employment AS manager WHERE manager.id=${employmentReview.managerEmploymentId}
+      AND manager.tenant_id=${employmentReview.tenantId} AND app.is_self_person(manager.person_id))`;
+    const stageCondition=stage==='manager'?and(eq(employmentReview.status,'pending_manager'),assignedManager)
+      :stage==='hr'?eq(employmentReview.status,'pending_hr')
+      :or(eq(employmentReview.status,'pending_hr'),and(eq(employmentReview.status,'pending_manager'),assignedManager));
     const rows=await tx.select({id:employmentReview.id,employmentId:employmentReview.employmentId,personId:employmentReview.personId,
-      employee:person.fullName,createdAt:employmentReview.createdAt,dueDate:employmentReview.dueDate,managerEmploymentId:employmentReview.managerEmploymentId})
+      employee:person.fullName,createdAt:employmentReview.createdAt,dueDate:employmentReview.dueDate,status:employmentReview.status,managerEmploymentId:employmentReview.managerEmploymentId})
       .from(employmentReview)
       .innerJoin(employment,and(eq(employment.id,employmentReview.employmentId),eq(employment.tenantId,employmentReview.tenantId)))
       .leftJoin(person,and(eq(person.id,employmentReview.personId),eq(person.tenantId,employmentReview.tenantId)))
-      .where(and(eq(employmentReview.tenantId,ctx.tenantId),eq(employmentReview.status,stage==='manager'?'pending_manager':'pending_hr'),
-        sql`NOT app.is_self_person(${employmentReview.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds),
-        stage==='manager'?sql`EXISTS (SELECT 1 FROM public.employment AS manager WHERE manager.id=${employmentReview.managerEmploymentId}
-          AND manager.tenant_id=${employmentReview.tenantId} AND app.is_self_person(manager.person_id))`:undefined))
+      .where(and(eq(employmentReview.tenantId,ctx.tenantId),stageCondition,
+        sql`NOT app.is_self_person(${employmentReview.personId})`,companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
       .orderBy(desc(employmentReview.createdAt),employmentReview.id);
-    const result:AssignedApprovalMetadata[]=[];
+    const result:{manager:AssignedApprovalMetadata[];hr:AssignedApprovalMetadata[]}={manager:[],hr:[]};
     for(const row of rows){
       try{
-        if(stage==='manager')await assertManagerReviewAuthorityTx(tx,ctx,row.managerEmploymentId);
+        const rowStage=row.status==='pending_manager'?'manager':'hr';
+        if(rowStage==='manager')await assertManagerReviewAuthorityTx(tx,ctx,row.managerEmploymentId);
         else await assertHrReviewAuthorityTx(tx,ctx,row.employmentId);
-        const {managerEmploymentId:_,...metadata}=row;
-        result.push(metadata);
+        const {managerEmploymentId:_,status:__,...metadata}=row;
+        result[rowStage].push(metadata);
       }catch(error){
         if(isApprovalDecisionRefusal(error,'review'))continue;
         if(error instanceof ReviewError&&['Only an admin can decide a review.','Only the assigned manager or an admin can submit this evaluation.'].includes(error.message))continue;
@@ -962,7 +980,6 @@ export function pendingReviewTaskMetadata(ctx:SessionContext,stage:'manager'|'hr
       }
     }
     return result;
-  });
 }
 
 
