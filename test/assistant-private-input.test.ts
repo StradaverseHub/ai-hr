@@ -81,6 +81,11 @@ describe('private conversational native Assistant integration',()=>{
   expect((await recorded(ctx,unknown.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
   const next=await askAssistant(ctx,{question:'And pending?',previousExchangeId:unknown.exchangeId,previousConversationToken:unknown.conversationToken});expect(transport).toHaveBeenCalledTimes(1);expect(next.toolsUsed).toEqual([]);expect((await recorded(ctx,next.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
  });
+ it('keeps a named module clarification and bare module reply closed across an ordinary relative follow-up',async()=>{
+  const {ctx}=await fixture(),prior=await clarify(ctx,'Alice leave balance','module',true),transport=vi.spyOn(openaiAdapter,'converse');
+  const bare=await askAssistant(ctx,{question:'leave',clarificationExchangeId:prior});expect((await recorded(ctx,bare.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
+  const next=await askAssistant(ctx,{question:'And pending?',previousExchangeId:bare.exchangeId,previousConversationToken:bare.conversationToken});expect(transport).not.toHaveBeenCalled();expect(next.toolsUsed).toEqual([]);expect((await recorded(ctx,next.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});
+ });
  it('never turns a named original question plus bare module into an own read',async()=>{
   const {ctx}=await fixture(),prior=await clarify(ctx,'Alice leave balance','module'),transport=vi.spyOn(openaiAdapter,'converse');
   const result=await askAssistant(ctx,{question:'leave',clarificationExchangeId:prior});expect(transport).not.toHaveBeenCalled();expect(result.toolsUsed).toEqual([]);expect((await recorded(ctx,result.exchangeId)).proof.plan).toEqual({version:1,mode:'clarify',slot:'module'});

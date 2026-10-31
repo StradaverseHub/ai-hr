@@ -50,6 +50,10 @@ describe('local closed intent grammar',()=>{
   expect(resolvePrivateAssistantContextualIntent('And pending?',[{question:'Alice leave balance',slot:'module',completed:false},{question:'leave',slot:null,completed:true}])).toEqual({intent:null,social:null});
  });
 
+ it('allows a complete explicit own-task restart after a named module clarification without reinterpreting bare replies',()=>{
+  const history=[{question:'Alice leave balance',slot:'module' as const,completed:false},{question:'My leave balance',slot:null,completed:true}];
+  expect(resolvePrivateAssistantContextualIntent('And pending?',history)).toMatchObject({intent:'leave_pending',social:null});
+ });
  it('retains the closed own task through authenticated advancing slots, including an invalid retry before advancement',()=>{
   for(const invalid of [false,true]){
    const history=[{question:'My leave balance',slot:'employment' as const,completed:false},...(invalid?[{question:'Unknown company',slot:'employment' as const,completed:false}]:[]),{question:'Fictional Company',slot:'leave_type' as const,completed:false},{question:'Annual Leave',slot:null,completed:true}];

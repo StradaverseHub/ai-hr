@@ -31,11 +31,12 @@ async function actor(base:Base=b){
  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  return {ctx,admin,userId,employmentId:employee.employmentId};
 }
-async function exchange(ctx:SessionContext,plan:AssistantAnswerPlan|undefined={version:1,mode:'clarify',slot:'period'},question='Which period does my leave question cover?',askedAt?:Date){
- const binding:AssistantDisclosureBinding={tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:randomUUID(),question,answer:terminal};
+async function exchange(ctx:SessionContext,plan:AssistantAnswerPlan|undefined={version:1,mode:'clarify',slot:'period'},question='Which period does my leave question cover?',askedAt?:Date,options:{id?:string;parent?:string|null;thread?:'self'|{threadId:string;scopeDigest:string}}={}){
+ const binding:AssistantDisclosureBinding={tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:options.id??randomUUID(),question,answer:terminal};
  const reads=[{name:'employee_profile',input:{},digest:assistantSourceDigest({ok:true,sourcePrivate})}];
- const receipt=sealAssistantDisclosure(binding,reads,plan);expect(receipt).toBeTruthy();
- await owner.db.insert(s.assistantExchange).values({id:binding.exchangeId,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer:terminal,disclosureReceipt:receipt,stop:'end',...(askedAt?{askedAt}:{})});
+ const thread=options.thread==='self'?{threadId:binding.exchangeId,scopeDigest:assistantConversationScopeDigest(ctx)}:options.thread;
+ const receipt=sealAssistantDisclosure(binding,reads,plan,thread);expect(receipt).toBeTruthy();
+ await owner.db.insert(s.assistantExchange).values({id:binding.exchangeId,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer:terminal,disclosureReceipt:receipt,stop:'end',continuesExchangeId:options.parent??null,...(askedAt?{askedAt}:{})});
  return {binding,receipt:receipt!};
 }
 const state=async()=>({exchanges:await owner.db.select().from(s.assistantExchange).orderBy(s.assistantExchange.id),
@@ -85,9 +86,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   expect(await state()).toEqual(before);
  });
  it('retains linked genuine legacy clarification context without inventing saved-chat scope, but stops at different authenticated v3 threads or scopes',async()=>{
-  const {ctx}=await actor(),root=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance'),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave'),threadId=tail.binding.exchangeId;
-  const tailReceipt=sealAssistantDisclosure(tail.binding,[],{version:1,mode:'clarify',slot:'leave_type'},{threadId,scopeDigest:assistantConversationScopeDigest(ctx)})!;
-  await owner.db.update(s.assistantExchange).set({disclosureReceipt:tailReceipt,continuesExchangeId:root.binding.exchangeId}).where(eq(s.assistantExchange.id,tail.binding.exchangeId));
+  const {ctx}=await actor(),root=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance'),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave',undefined,{parent:root.binding.exchangeId,thread:'self'}),threadId=tail.binding.exchangeId;
   const issued=await ownAssistantClarification(ctx,threadId,'Annual Leave');expect(issued.earlier).toEqual([{question:'My leave balance',slot:'leave_type'}]);
   expect(()=>assistantConversationContextFromClarification(ctx,{...issued})).toThrow('Current clarification unavailable.');
   expect(()=>assistantConversationContextFromClarification(ctx,issued,'other-company')).toThrow('Current clarification unavailable.');
@@ -103,11 +102,16 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   await expect(withTenant(ctx,tx=>assertOwnAssistantClarificationCurrentTx(tx,ctx,issued))).rejects.toThrow('Current clarification unavailable.');
   await refused(ctx,stored.binding.exchangeId,'Annual Leave');
  });
- it.each(['expired','retired','foreign'] as const)('excludes %s legacy ancestors from a new scoped explicit clarification',async state=>{
-  const {ctx}=await actor(),other=state==='foreign'?await actor():null,root=await exchange(other?.ctx??ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance',state==='expired'?new Date(Date.now()-31*86400000):undefined),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave');
-  const receipt=sealAssistantDisclosure(tail.binding,[],{version:1,mode:'clarify',slot:'leave_type'},{threadId:tail.binding.exchangeId,scopeDigest:assistantConversationScopeDigest(ctx)})!;
-  await owner.db.update(s.assistantExchange).set({disclosureReceipt:receipt,continuesExchangeId:root.binding.exchangeId}).where(eq(s.assistantExchange.id,tail.binding.exchangeId));
-  if(state==='retired')await owner.db.execute(sql`select app._assistant_transcripts_retire(${ctx.tenantId}::uuid,array[${root.binding.exchangeId}::uuid],true)`);
+ it.each(['expired','retired','foreign'] as const)('excludes %s legacy ancestors from a new scoped explicit clarification',async lifecycleState=>{
+  const {ctx}=await actor();
+  if(lifecycleState==='foreign'){
+   const other=await actor(),foreign=await exchange(other.ctx,{version:1,mode:'clarify',slot:'leave_type'},'Foreign private leave'),root=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance'),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave',undefined,{parent:root.binding.exchangeId,thread:'self'}),blockedId=randomUUID(),before=await state();
+   await expect(exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Rejected child',undefined,{id:blockedId,parent:foreign.binding.exchangeId,thread:'self'})).rejects.toMatchObject({cause:{code:'42501',message:"Assistant continuation must answer the same login's exchange"}});
+   expect(await state()).toEqual(before);expect((await state()).exchanges.some(row=>row.id===blockedId)).toBe(false);
+   await refused(ctx,foreign.binding.exchangeId,'Annual Leave');expect((await ownAssistantClarification(ctx,tail.binding.exchangeId,'Annual Leave')).earlier).toEqual([{question:'My leave balance',slot:'leave_type'}]);return;
+  }
+  const root=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance',lifecycleState==='expired'?new Date(Date.now()-31*86400000):undefined),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave',undefined,{parent:root.binding.exchangeId,thread:'self'});
+  if(lifecycleState==='retired')await owner.db.execute(sql`select app._assistant_transcripts_retire(${ctx.tenantId}::uuid,array[${root.binding.exchangeId}::uuid],true)`);
   expect((await ownAssistantClarification(ctx,tail.binding.exchangeId,'Annual Leave')).earlier).toEqual([]);
  });
  it('accepts a full original 2000-character human question and 500-character clarification without serialization overhead or truncation',async()=>{
@@ -132,7 +136,7 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
  });
  it('keeps the explicit clarification bridge within the existing six whole-question token suffix',async()=>{
   const {ctx}=await actor(),ids:string[]=[];let parent:string|null=null;
-  for(let n=0;n<8;n++){const stored=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'q'+n+'x'.repeat(400));await owner.db.update(s.assistantExchange).set({continuesExchangeId:parent}).where(eq(s.assistantExchange.id,stored.binding.exchangeId));ids.push(stored.binding.exchangeId);parent=stored.binding.exchangeId;}
+  for(let n=0;n<8;n++){const stored=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'q'+n+'x'.repeat(400),undefined,{parent});ids.push(stored.binding.exchangeId);parent=stored.binding.exchangeId;}
   const issued=await ownAssistantClarification(ctx,parent!,'Annual Leave'),bridge=assistantConversationContextFromClarification(ctx,issued);
   expect(bridge.questions).toHaveLength(5);expect(bridge.questions.every(question=>question.length===402)).toBe(true);expect(bridge.questions[0]).toBe('q3'+'x'.repeat(400));expect(bridge.questions.reduce((sum,question)=>sum+question.length+2,0)).toBeLessThanOrEqual(8000);
  });

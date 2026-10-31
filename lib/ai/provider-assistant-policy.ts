@@ -149,7 +149,9 @@ export function resolvePrivateAssistantContextualIntent(question:string,history:
    const candidate=resolvePrivateAssistantClarifiedIntent({...pending,answer:turn.question});
    if(turn.completed&&candidate.intent){effective=[canonical(candidate.intent,turn.question)];pending=null;continue;}
    if(turn.slot&&(turn.slot===pending.slot||candidate.intent&&turn.slot!=='module')){pending={originalQuestion:turn.question,slot:turn.slot,earlier:[...pending.earlier,{question:pending.originalQuestion,slot:pending.slot}]};continue;}
-   pending=null;effective=[];
+   // A rejected typed reply is consumed here. It must not be reinterpreted as an
+   // ordinary bare-module command on the same leaf after the original request was refused.
+   pending=turn.slot?{originalQuestion:turn.question,slot:turn.slot,earlier:[]}:null;effective=[];continue;
   }
   const candidate=resolvePrivateAssistantIntent(turn.question,effective);
   effective=candidate.intent?[canonical(candidate.intent,turn.question)]:[];
