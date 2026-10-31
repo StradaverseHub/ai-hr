@@ -11,7 +11,7 @@ const mode=vi.hoisted(()=>({shared:false,metadataShared:false}));
 vi.mock('../../core/access-configuration-lock',async original=>{
  const native=await original<typeof import('../../core/access-configuration-lock')>();
  return {...native,lockAccessConfigurationReadTx:(...args:Parameters<typeof native.lockAccessConfigurationReadTx>)=>
-  mode.shared?native.lockAccessConfigurationReadTx(...args):native.lockAccessConfigurationTx(...args),
+  (mode.shared||mode.metadataShared)?native.lockAccessConfigurationReadTx(...args):native.lockAccessConfigurationTx(...args),
   lockAccessConfigurationTx:(...args:Parameters<typeof native.lockAccessConfigurationTx>)=>
    mode.metadataShared?native.lockAccessConfigurationReadTx(...args):native.lockAccessConfigurationTx(...args)};
 });
@@ -52,7 +52,7 @@ it('measures500 live menu and standalone metadata readers with unchanged native 
     }finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,u.id));}
     expect(await workforceEmploymentAccess(ctx,u.employmentId,'maintain')).toBe(true);
    }
-   phases[workload+':'+phase]={principals:500,queriesPerPrincipal:workload==='menu'?1:3,elapsedMs:performance.now()-started,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors};
+   phases[workload+':'+phase]={principals:500,publicReaderCallsPerPrincipal:workload==='menu'?1:3,elapsedMs:performance.now()-started,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors};
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'workforce-read-lock.json'),JSON.stringify({kind:'NATIVE_READ_ONLY_METADATA_LOCK_EXPERIMENT',releaseEligible:false,phases},null,2));expect(errors).toEqual([]);
   }
  }finally{mode.shared=false;mode.metadataShared=false;}

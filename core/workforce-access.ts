@@ -33,7 +33,9 @@ export async function assertWorkforcePersonTx(tx:Tx,ctx:SessionContext,personId:
 /** Scope metadata only. Actual reads/writes repeat their check under the same access lock. */
 export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperation='view', outerTx?:Tx){
   const run=async (tx:Tx)=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  // A borrowed transaction may write later; never introduce a shared-to-exclusive upgrade.
+  if(outerTx)await lockAccessConfigurationTx(tx,ctx.tenantId);
+  else await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const allowed=operation==='view'?sql`app.access_workforce_projection_company(id)`:sql`app.access_workforce_company(id,'workforce.maintain')`;
   const rows=await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and ${allowed} order by id`);
   return rows.map(row=>row.id);
@@ -43,7 +45,7 @@ export function workforceCompanies(ctx:SessionContext,operation:WorkforceOperati
 
 export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string,operation:WorkforceOperation){
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${employmentId}::uuid,${'workforce.'+operation}) as allowed`);
   return row?.allowed===true;
  });
@@ -52,7 +54,7 @@ export function workforceEmploymentAccess(ctx:SessionContext,employmentId:string
 /** Availability of the implemented fixed-command lane; never a raw-row or legacy-role grant. */
 export function workforceCommandAccess(ctx:SessionContext,employmentId:string){
  return withTenant(ctx,async tx=>{
-  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_command_allowed(${employmentId}::uuid) as allowed`);
   return row?.allowed===true;
  });

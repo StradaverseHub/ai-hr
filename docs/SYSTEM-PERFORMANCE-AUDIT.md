@@ -653,6 +653,16 @@ Link. Its passing native browser checks require no unsolicited PDF request on st
 open, correct own identity/salary, an explicit valid PDF and two foreign PDF refusals.
 This change is not yet established as the90-second navigation timeout's cause.
 
+Standalone Workforce metadata scheduling is also being qualified. Native500-principal
+experiment41194330229 on sourcea1d73a804 returned identical values and live archive
+refusals: triple-reader p95 exclusive4704.0ms / shared1926.1ms / restored4667.3ms.
+The original-code concurrency regression41194802272 on source7d202c06e is deliberately
+RED:4PASS/3FAIL, no skips. Only the three standalone metadata methods fail reader
+overlap; existing writer exclusion and borrowed view/maintain exclusivity pass.
+The prepared fix uses the existing shared barrier only for complete owned read-only
+transactions. Borrowed transactions and all actual write/assertion paths retain
+their exclusive barrier. Wider native and compiler qualification remains pending.
+
 Coverage remains bounded:30 selected page routes, Claims draft CRUD, Leave
 create/edit/withdraw(history retained), Personnel draft CRUD, Attendance correction/
 approval, Payroll calculation/scoped CSV and100-line clocking import. Individual
@@ -664,9 +674,9 @@ contexts accompany500 HTTP principals; this is not500 real browser instances.
 The shared four-CPU diagnostic host is not the two-host acceptance environment.
 
 Generated provider source digest is
-`edf39f136e1258f8e8121f3ceb7e0f5a8663da3c503f2322909897271a4dbec6`;
+`b5b699a57eb788a8c5c8a56c34ee6141b7f1da5d639cb7863c8b58cd25bc25ee`;
 module-agent source digest is
-`6b7db79e8325f0bbd50ebb1788dd0e85ace993161628fe425c93b8e7f1c34fab`.
+`995201926e32224b5a563be0d31439d7d72c13fb592f818c0dd28ad2ee61cdbe`.
 Literal human approval records remain unchanged. Earlier exact-source reviews do
 not approve this newer source; the approval hold remains before integration/release.
 No provider call, release, protected integration or deployment is claimed.
