@@ -1,0 +1,72 @@
+/** ADR-0169 phase B — the Assistant's context and capability layer, as typed tools.
+ *
+ * Three context tools (product destinations, product guidance, setup readiness) run as the caller over
+ * existing owners, plus a capability registry that classifies every existing Assistant read and proposable
+ * action by effect, and a deterministic proposal check that reuses the native hint schema. Nothing here
+ * changes data, prepares a review or sends anything to a provider. Not imported by the production
+ * Assistant (outside the provider privacy closure until the ADR-0169 §5.1 review passes); a future harness
+ * must route tool output through the reviewed disclosure contract before any egress. */
+import type {SessionContext} from '../../db/client';
+import type {AiToolSpec} from '../../lib/ai/types';
+import {isAdmin} from '../../lib/authz-model';
+import {ASSISTANT_TOOLS} from '../assistant-tools';
+import {visibleModuleCodes} from '../../lib/nav-entitlements';
+import {ASSISTANT_PROPOSABLE_ACTIONS,ASSISTANT_PROPOSAL_FALLBACK,ASSISTANT_PROPOSAL_HINT_KEYS,ASSISTANT_PROPOSAL_MODULE,captureAssistantProposalHints,isAssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
+import {destinationsFor} from '../../lib/product-context/destinations';
+import {productGuidance} from './guides';
+import {setupReadiness,SetupReadinessRefused} from './setup-readiness';
+import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import vi from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
+const NAV_LABELS:Readonly<Record<string,Record<string,string>>>={en:en.nav,ms:ms.nav,zh:zh.nav,vi:vi.nav,ta:ta.nav,th:th.nav};
+
+export type CapabilityEffect='read'|'context'|'prepare_review';
+export type Capability=Readonly<{name:string;effect:CapabilityEffect;module:string|null;sensitivity:'ordinary'|'pay'|'identity'|'configuration';
+ audience:'everyone'|'admin';purpose:string;reviewRoute?:string;requiredDetails?:readonly string[]}>;
+
+const object=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object' as const,properties,required,additionalProperties:false});
+export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_guidance'|'setup_readiness',AiToolSpec>>=Object.freeze({
+ product_destinations:{name:'product_destinations',description:'Real places in this product that the signed-in person can open, with their labels and addresses. Name or link only these.',inputSchema:object({}) as AiToolSpec['inputSchema']},
+ product_guidance:{name:'product_guidance',description:'Search this company\'s published product guides for how a feature works or how to set it up. Returns authored guide sections with links.',inputSchema:object({query:{type:'string',maxLength:200}},['query']) as AiToolSpec['inputSchema']},
+ setup_readiness:{name:'setup_readiness',description:'Administrators only: whether this company\'s payroll is configured to run this month and how many employee records lack required information. Counts and statuses only.',inputSchema:object({}) as AiToolSpec['inputSchema']},
+});
+/** Every capability the Assistant could offer, classified. Context tools are admin-only where marked. */
+export function capabilityRegistry():readonly Capability[]{
+ return Object.freeze([
+  ...ASSISTANT_TOOLS.map(tool=>Object.freeze({name:tool.spec.name,effect:'read' as const,module:tool.module,sensitivity:tool.sensitivity,audience:'everyone' as const,purpose:tool.spec.description})),
+  Object.freeze({name:'product_destinations',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.product_destinations.description}),
+  Object.freeze({name:'product_guidance',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.product_guidance.description}),
+  Object.freeze({name:'setup_readiness',effect:'context' as const,module:null,sensitivity:'configuration' as const,audience:'admin' as const,purpose:CONTEXT_TOOL_SPECS.setup_readiness.description}),
+  ...ASSISTANT_PROPOSABLE_ACTIONS.map(action=>Object.freeze({name:action,effect:'prepare_review' as const,module:ASSISTANT_PROPOSAL_MODULE[action],sensitivity:'ordinary' as const,audience:'everyone' as const,
+   purpose:'Suggest this change for the person to review and confirm on its native page. Never prepares or submits anything itself.',
+   reviewRoute:ASSISTANT_PROPOSAL_FALLBACK[action],requiredDetails:Object.freeze(ASSISTANT_PROPOSAL_HINT_KEYS[action].filter(key=>!key.endsWith('?')))})),
+ ]);
+}
+/** Context tool specs this caller may be offered (setup readiness for administrators only). */
+export function contextToolSpecsFor(ctx:SessionContext):readonly AiToolSpec[]{
+ return Object.freeze([CONTEXT_TOOL_SPECS.product_destinations,CONTEXT_TOOL_SPECS.product_guidance,...(isAdmin(ctx)?[CONTEXT_TOOL_SPECS.setup_readiness]:[])]);
+}
+export type ContextToolResult=Readonly<{ok:true;content:unknown}>|Readonly<{ok:false;refusal:'not_offered'|'invalid_input'|'not_permitted'}>;
+/** Runs one context tool as the caller. `companyId` is the caller's current company scope. */
+export async function runContextTool(ctx:SessionContext,name:string,input:unknown,scope:{companyId:string;locale?:string}):Promise<ContextToolResult>{
+ if(!contextToolSpecsFor(ctx).some(spec=>spec.name===name))return{ok:false,refusal:'not_offered'};
+ const value=input&&typeof input==='object'&&!Array.isArray(input)?input as Record<string,unknown>:null;if(!value)return{ok:false,refusal:'invalid_input'};
+ if(name==='product_destinations'){
+  // The sidebar's own module visibility owner; null means "no opinion" there, so no module filter here.
+  return{ok:true,content:destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>({href:row.href,label:(NAV_LABELS[scope.locale??'en']??NAV_LABELS.en)[row.labelKey]??NAV_LABELS.en[row.labelKey]??row.labelKey,module:row.module}))};
+ }
+ if(name==='product_guidance'){
+  if(typeof value.query!=='string'||!value.query.trim()||value.query.length>200)return{ok:false,refusal:'invalid_input'};
+  return{ok:true,content:await productGuidance(ctx,value.query,scope.locale)};
+ }
+ try{return{ok:true,content:await setupReadiness(ctx,scope.companyId)};}
+ catch(error){if(error instanceof SetupReadinessRefused)return{ok:false,refusal:'not_permitted'};throw error;}
+}
+/** Deterministic check before any proposal is shown: the native hint schema decides, and missing required
+ * details are named so the person is asked for them. A valid result is still only a suggestion. */
+export function checkProposal(action:unknown,details:unknown):Readonly<{valid:true;action:string}>|Readonly<{valid:false;missing:readonly string[]}>{
+ if(!isAssistantProposableAction(action))return{valid:false,missing:[]};
+ const given=details&&typeof details==='object'&&!Array.isArray(details)?details as Record<string,unknown>:{};
+ const required=ASSISTANT_PROPOSAL_HINT_KEYS[action].filter(key=>!key.endsWith('?'));
+ const missing=required.filter(key=>typeof given[key]!=='string'||!(given[key] as string).trim());
+ if(missing.length)return{valid:false,missing:Object.freeze(missing)};
+ try{captureAssistantProposalHints(action,given);return{valid:true,action};}catch{return{valid:false,missing:Object.freeze(required)};}
+}
