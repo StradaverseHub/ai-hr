@@ -27,7 +27,9 @@ describe('same canonical human Payroll run selection',()=>{
   // Workforce publication is the restricted deployment step, not a migration, and sibling files reset the shared catalog.
   // Publish through that AUTHENTIC installer (real bindings, no fixture), then restore the exact prior catalog rows.
   const ids=['workforce.view','workforce.maintain','profile.review'],prior=await owner.client<{id:string;supported:boolean;bindings:string}[]>`select id,supported,bindings::text as bindings from access_capability where id=any(${ids}::text[]) order by id`;expect(prior).toHaveLength(3);
-  try{await publishWorkforceCapabilities(owner.client);
+  // A sibling in the same worker database may leave fixture bindings behind (assistant-family-maintenance);
+  // the installer correctly refuses an unknown partial version, so start from the uninstalled catalogue.
+  try{await owner.client`update access_capability set supported=false,bindings='[]'::jsonb where id=any(${ids}::text[])`;await publishWorkforceCapabilities(owner.client);
   const [published]=await owner.db.execute<{ready:boolean}>(sql`select supported and jsonb_array_length(bindings)>0 as ready from access_capability where id='workforce.view'`);expect(published?.ready,'Current candidate must publish its authentic Workforce reader; never fake-enable a fixture.').toBe(true);
   expect((await labels({employmentIds:[employeeId],departmentIds:[b.deptA]})).employees.map(row=>row.employmentId),'non-vacuity: the published reader admits the same labels before the denial').toEqual([employeeId]);
   const before=await withTenant(ctx,tx=>accessConfigurationStore.loadCurrent(tx,ctx)),edit={expectedRevision:before.snapshot.revision,command:{kind:'setOverride' as const,userId:b.adminUserId,capabilityId:'workforce.view',companyId:b.companyId,effect:'deny' as const}},preview=await previewAccessConfiguration(ctx,edit,accessConfigurationStore);await saveAccessConfiguration(ctx,{...edit,previewFingerprint:preview.fingerprint},accessConfigurationStore);await expect(labels({employmentIds:[employeeId],departmentIds:[b.deptA]})).rejects.toThrow();
