@@ -83,7 +83,7 @@ describe('Assistant context layer tools',()=>{
   for(const action of SUGGESTABLE_ACTIONS)expect(action.review.route.startsWith('/'),action.id).toBe(true);
  });
  it('offers each person only the parity actions their role and modules allow',async()=>{
-  const {employee,hr}=await people(),actorOf=new Map(SUGGESTABLE_ACTIONS.map(action=>[action.id,action.permission.actor]));
+  const {employee,hr}=await people(),actorOf=new Map<string,string>(SUGGESTABLE_ACTIONS.map(action=>[action.id,action.permission.actor]));
   const forEmployee=await actionCatalogueFor(employee),forAdmin=await actionCatalogueFor(hr);
   const employeeIds=forEmployee.map(row=>row.id),adminIds=forAdmin.map(row=>row.id);
   expect(employeeIds).toContain('leave.apply');
