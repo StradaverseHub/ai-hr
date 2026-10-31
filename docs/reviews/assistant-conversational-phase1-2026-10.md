@@ -197,11 +197,13 @@ Facts were correct wherever stated: 17.25 and 11.5 days, the holiday date, and e
 
 Problems found by reading the replies:
 
-1. **An invented link.** It told the person to open "the Leave page (/assistant/leave)", a route that does not exist. Every link must come from the product's real navigation, never from model text.
+1. **Correction (1 November):** an earlier version of this list called "/assistant/leave" an invented link. That was wrong: `app/assistant/leave/page.tsx` is the Assistant's own leave apply and review flow, so the destination was real and appropriate. Links should still come only from the product's real navigation; the next probe checks every path in a reply against the app's actual pages.
 2. **It overclaims actions.** For "Help me request overtime tomorrow evening" it said "I've prepared an overtime request" without asking for times. A proposal needs a deterministic check for missing fields and must never be described as prepared until the native review exists.
 3. **It underuses actions.** For "Approve all the pending claims for me" and "Review claim approvals" it pointed to the Approvals page instead of proposing the existing reviewed approval action.
 4. **Admin setup is generic.** The steps were sensible, but the model correctly said it cannot see the company's configuration. Grounded guidance needs Assistant reads over the native readiness owners. "Guide me step by step" ended blank after 5 tool calls, all reading the same module summary, so the loop needs stop and repeat limits.
 5. **It sent an admin to "your HR administrator".** Replies need to know the person's role.
 6. **It declined to compute** "two days next to the holiday": this kind of figure should come from a native calculation, not the model.
+
+**Limitation (owner review, 1 November):** this probe gave the model the person's own data but no knowledge of how the product works: no navigation, guides, setup checks or role. That explains the generic setup advice and the "ask your HR administrator" reply to an admin. The 38/58 figure therefore measures language understanding plus lookups, not product-grounded helpfulness. §11 measures the product-context variant.
 
 Conclusion: most of the gap is understanding and planning, which a question-aware, tool-using design closes on these tasks. The other two parts are separate work: grounding setup guidance needs new native reads, and trustworthy actions need deterministic proposal checks. Production adoption still needs the §4 privacy decision, because this probe sent fictional questions and records to the provider.
