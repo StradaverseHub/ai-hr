@@ -42,6 +42,16 @@ async function profileReceipt() {
 }
 
 describe('actual AI workspace source read', () => {
+  it('opens an older retained own exchange beyond ten recent turns without admitting a foreign selection',async()=>{
+    const ctx=await grant(),[old]=await owner.db.insert(schema.assistantExchange).values({tenantId:base.tenantId,appUserId:ctx.userId!,question:'Older own question',answer:'UNTRUSTED_OLDER_BODY',stop:'end',askedAt:new Date(Date.now()-60000)}).returning({id:schema.assistantExchange.id});
+    for(let index=0;index<12;index++)await exchange(base.tenantId,ctx.userId!,'Newer '+index);
+    const selected=await loadAiWorkspace(ctx,{selectedExchangeId:old.id,includeGovernance:false});
+    expect(selected.history.find(row=>row.id===old.id)).toMatchObject({question:'Older own question',answer:null,answerVisibility:'unavailable'});expect(JSON.stringify(selected)).not.toContain('UNTRUSTED_OLDER_BODY');
+    const [other]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'other-'+randomUUID()}).returning({id:schema.appUser.id});
+    const [foreign]=await exchange(base.tenantId,other.id,'FOREIGN_SELECTED_SENTINEL');
+    expect(JSON.stringify(await loadAiWorkspace(ctx,{selectedExchangeId:foreign.id,includeGovernance:false}))).not.toContain('FOREIGN_SELECTED_SENTINEL');
+  });
+
   it('keeps personal history separate from broad HR visibility and other tenants', async () => {
     const ctx = await grant();
     const other = await seedBase();

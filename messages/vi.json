@@ -19784,6 +19784,12 @@
         "doneCredit": "Đã ghi {days} ngày phép bù cho {date}."
       },
       "chat": {
+        "activity": "Những gì tôi đã kiểm tra ({n})",
+        "suggested": "Bước tiếp theo được đề xuất",
+        "chats": "Trò chuyện",
+        "older": "Tin nhắn trước",
+        "moreChats": "Thêm cuộc trò chuyện",
+        "readOnlyHistory": "Bạn có thể đọc cuộc trò chuyện này nhưng không thể tiếp tục trong phạm vi hiện tại. Hãy bắt đầu cuộc trò chuyện mới.",
         "title": "Cuộc trò chuyện",
         "new": "Trò chuyện mới",
         "thinking": "Đang suy nghĩ…",
@@ -21800,7 +21806,8 @@
       "request": "Cần chuẩn bị gì?",
       "requestHint": "Ví dụ: chuẩn bị nhập những nhân viên này; để trống các trường chưa rõ.",
       "source": "Xem văn bản nguồn đã trích xuất",
-      "consent": "Tôi đồng ý gửi văn bản trang tính hoặc PDF đã chọn cùng yêu cầu đến nhà cung cấp AI đã cấu hình, bao gồm thông tin cá nhân hoặc lương trong đó. Chỉ gửi thông tin bạn được phép sử dụng.",
+      "consent": "Tôi muốn chuẩn bị bản nháp từ tệp và yêu cầu này. Chỉ đầu vào được phép qua kiểm tra bảo vệ dữ liệu và xét duyệt mới được gửi đến nhà cung cấp AI đã cấu hình. Không có dữ liệu nào được nhập trước khi tôi xem xét và xác nhận.",
+      "protectedInput": "Không thể chuẩn bị tệp này theo chính sách đầu vào được bảo vệ hiện tại. Chưa có dữ liệu nào được nhập. Bạn có thể dùng quy trình xem xét nhập gốc.",
       "prepare": "Chuẩn bị bản nháp",
       "reading": "Đang đọc tệp…",
       "preparing": "Đang chuẩn bị bản nháp… Bạn có thể hủy trong khi xử lý.",

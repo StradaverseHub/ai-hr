@@ -19784,6 +19784,12 @@
         "doneCredit": "{days} hari Kredit Cuti disimpan untuk {date}."
       },
       "chat": {
+        "activity": "Yang saya semak ({n})",
+        "suggested": "Langkah seterusnya yang dicadangkan",
+        "chats": "Sembang",
+        "older": "Mesej terdahulu",
+        "moreChats": "Lagi sembang",
+        "readOnlyHistory": "Perbualan ini boleh dibaca tetapi tidak boleh disambung dalam konteks semasa. Mulakan sembang baharu untuk meneruskan.",
         "title": "Perbualan",
         "new": "Sembang baharu",
         "thinking": "Sedang berfikir…",
@@ -21800,7 +21806,8 @@
       "request": "Apakah yang perlu disediakan?",
       "requestHint": "Contohnya: sediakan pekerja ini untuk import; biarkan medan yang tidak jelas kosong.",
       "source": "Semak teks sumber yang diekstrak",
-      "consent": "Saya bersetuju menghantar teks lembaran atau PDF yang dipilih serta permintaan saya kepada penyedia AI yang dikonfigurasi, termasuk maklumat peribadi atau gaji di dalamnya. Hantar maklumat yang anda dibenarkan gunakan sahaja.",
+      "consent": "Saya mahu menyediakan draf daripada fail dan permintaan ini. Hanya input yang dibenarkan oleh semakan perlindungan data dan semakan kelulusan boleh dihantar kepada penyedia AI yang dikonfigurasi. Tiada apa-apa diimport sehingga saya menyemak dan mengesahkannya.",
+      "protectedInput": "Fail ini tidak boleh disediakan di bawah dasar input terlindung semasa. Tiada apa-apa diimport. Anda boleh menggunakan semakan import asal.",
       "prepare": "Sediakan draf",
       "reading": "Membaca fail…",
       "preparing": "Menyediakan draf… Anda boleh membuangnya semasa proses berjalan.",

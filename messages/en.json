@@ -19784,6 +19784,12 @@
         "doneCredit": "{days} day(s) of Leave Credit banked for {date}."
       },
       "chat": {
+        "activity": "What I checked ({n})",
+        "suggested": "Suggested next steps",
+        "chats": "Chats",
+        "older": "Earlier messages",
+        "moreChats": "More chats",
+        "readOnlyHistory": "This conversation can be read, but cannot be continued in the current context. Start a new chat to continue.",
         "title": "Conversation",
         "new": "New chat",
         "thinking": "Thinking…",
@@ -21800,7 +21806,8 @@
       "request": "What should I prepare?",
       "requestHint": "For example: prepare these employees for import; leave unclear fields blank.",
       "source": "Review extracted source text",
-      "consent": "I agree to send the selected worksheet or PDF text and my request to the configured AI provider, including any personal or payroll information it contains. Only send information you are authorised to use.",
+      "consent": "I want to prepare a draft from this file and my request. Only inputs allowed by the protected-data and review checks may reach the configured AI provider. Nothing is imported until I review and confirm it.",
+      "protectedInput": "This file cannot be prepared under the current protected-input policy. Nothing has been imported. You can use the native import review instead.",
       "prepare": "Prepare draft",
       "reading": "Reading file…",
       "preparing": "Preparing draft… You can discard it while it runs.",

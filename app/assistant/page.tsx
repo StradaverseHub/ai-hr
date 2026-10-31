@@ -1,3 +1,8 @@
+import {SavedChatList} from '@/components/assistant/saved-chat-list';
+import {assistantConversationScopeDigest} from '@/core/assistant-conversation-context';
+import {randomUUID} from 'node:crypto';
+import {listOwnAssistantChats,loadOwnAssistantChat} from '@/core/assistant-threads';
+import {assistantBrowserConversationScope} from './conversation-scope';
 import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
 import {isAdmin} from '@/lib/authz-model';
 import {allowedCompanies} from '@/core/read';
@@ -57,7 +62,7 @@ import { eraseAgentFeedbackAction } from './feedback-actions';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -67,15 +72,14 @@ export default async function AssistantPage({
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
-  // Home: a greeting, the question box, then "My work" and "Calendar". Both panels are the existing home
-  // cards, each reading its own authorized facts for the signed-in person's selected employment. A login
-  // with no employment (or an unreadable one) simply sees a short note instead of the two panels.
+  // The denied-access fallback retains own work/calendar. The active chat never preloads those
+  // unrelated records; its secondary navigation links to the dashboard instead.
   const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
-  const name = await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null);
+  const name = !access.allowed?await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null):null;
   const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
     : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
     : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
-  const employmentId = await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null);
+  const employmentId = !access.allowed?await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null):null;
   const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
     work={<HomeTasksCard employmentId={employmentId}/>}
     calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
@@ -116,7 +120,14 @@ export default async function AssistantPage({
   }
 
   const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
-  const { history } = workspace;
+  const newChatHref='/assistant?chatReset='+randomUUID();
+  const conversationScope=await assistantBrowserConversationScope(s);
+  const scopeReset=assistantConversationScopeDigest(s,conversationScope);
+  const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
+  const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
+  const initialTurns=selectedChat?.turns.map(exchange=>({id:exchange.id,question:exchange.question,
+    clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
+    answer:<ExchangeReply exchange={exchange} ctx={s}/>}));
   const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
   // Shortcuts are offered only where the target's own authorization rules admit this session.
   const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
@@ -126,22 +137,32 @@ export default async function AssistantPage({
   }));
 
   return (
-    <div data-tour="intelligence-assistant" className="mx-auto max-w-5xl space-y-6">
-      <div className="mx-auto max-w-3xl space-y-4 pt-2">
-        <PageHeader title={greeting} description={t('description')} />
-        <OwnClearStatus status={sp.ownClear}/>
-        <ErrorBanner message={errorMessage} />
-        <WorkspaceConversation resetKey={sp.chatReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-          initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
-            answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
-        {homeTabs}
-        <PersonnelReviewNavigation ctx={s}/>
+    <div data-tour="intelligence-assistant" className="mx-auto max-w-7xl space-y-5">
+      <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <section className="min-w-0 space-y-3 lg:order-2">
+          <PageHeader title={t('title')} />
+          <OwnClearStatus status={sp.ownClear}/>
+          <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
+          <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+            initialTurns={initialTurns} historyReadOnly={Boolean(sp.e&&!selectedChat?.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
+
+        </section>
+        <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:order-1 lg:border-r lg:border-t-0 lg:pr-5">
+          <SavedChatList key={scopeReset} initialChats={(savedChats?.chats??[]).map(({threadId,exchangeId,title})=>({threadId,exchangeId,title}))} nextCursor={savedChats?.nextCursor??null} scopeDigest={scopeReset} activeThreadId={selectedChat?.threadId} newChatHref={newChatHref}/>
+          <PersonnelReviewNavigation ctx={s}/>
+          <Link href="/" className="flex min-h-11 items-center border-t border-border py-3 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.tabs')}</Link>
+          <details open={Boolean(sp.historyPrivacy||sp.importHistory||sp.nativeOutcome||sp.ownClear)} className="border-t border-border">
+            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.privacy')}</summary>
+            <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3 pb-3">
+              <h2 id="assistant-privacy-heading" className="sr-only">{t('home.privacy')}</h2>
+              <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
+              <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
+              <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
+            </section>
+          </details>
+        </aside>
       </div>
 
-      {history.length>0&&<details className="mx-auto max-w-3xl border-t border-border pt-2">
-        <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.recent')}</summary>
-        <ul className="space-y-1 pb-3">{history.map(h=><li key={h.id}><Link href={'/assistant?e='+encodeURIComponent(h.id)} scroll={false} className="block rounded-md px-3 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{h.question}</Link></li>)}</ul>
-      </details>}
       <details open={Boolean(sp.job||sp.governed||sp.proposal||sp.planning)} className="border-t border-border pt-2">
         <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.tools')}</summary>
         <div className="space-y-6 pt-3">
@@ -155,13 +176,6 @@ export default async function AssistantPage({
           <ModuleQuestionPlanner permit={workspace.planningPermit} availability={workspace.planningAvailability} view={workspace.proposal} status={sp.planning??(sp.proposal&&!workspace.proposal?'unavailable':undefined)}/>
         </div>
       </details>
-      {/* Own-data privacy controls sit together at the end; each still asks first and reports its outcome. */}
-      <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
-        <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
-        <AssistantHistoryPrivacy status={sp.historyPrivacy}/>
-        <OwnClearForm kind="conversation" action={eraseConversationMetadataAction} label={t('workspace.conversationGovernance.erase')}/>
-        <ImportPreparationPrivacy status={sp.importHistory}/><NativeOutcomePrivacy status={sp.nativeOutcome}/>
-      </section>
     </div>
   );
 }

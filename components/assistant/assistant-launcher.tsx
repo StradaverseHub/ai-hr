@@ -9,19 +9,19 @@ import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 
-type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string } | { ok: false; message: string } };
+type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
  * core/assistant-launcher.ts); every question still goes through the Assistant's own checks. It opens as a
  * small chat window and can be docked as a right-side panel. It knows the page's AREA and, at most, one
  * record id from the address, never what is on the screen. */
 export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[] }) {
- const privacyNotice=useTranslations('assistant.workspace.chat')('privacy');
+ const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
   const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas');
   const pathname = usePathname() ?? '/';
   const context = resolvePageContext(pathname);
   const [open, setOpen] = React.useState(false), [docked, setDocked] = React.useState(false);
-  const [question, setQuestion] = React.useState(''), [turns, setTurns] = React.useState<Turn[]>([]), [pending, setPending] = React.useState(false);
+  const [question, setQuestion] = React.useState(''), [turns, setTurns] = React.useState<Turn[]>([]), [pending, setPending] = React.useState(false),[uncertain,setUncertain]=React.useState(false);
   const button = React.useRef<HTMLButtonElement>(null), box = React.useRef<HTMLTextAreaElement>(null), log = React.useRef<HTMLDivElement>(null);
   const titleId = React.useId();
   const wasOpen = React.useRef(false);
@@ -29,13 +29,15 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
   const nextTurnId = React.useRef(0);
   const inFlight = React.useRef(false);
   const pageGeneration = React.useRef(0);
+  const awaitingClarification=React.useRef<string|null>(null);
   const previousExchange = React.useRef<{ path: string; id: string; token: string } | null>(null);
   React.useEffect(() => {
     // A new page starts a new context. A response arriving from the previous page may still be shown,
     // but must never silently become the parent of a question about this page.
     pageGeneration.current += 1;
     previousExchange.current = null;
-    setTurns([]);
+    awaitingClarification.current=null;
+    setUncertain(false);setTurns([]);
   }, [pathname]);
   React.useEffect(() => {
     if (open) box.current?.focus();
@@ -51,27 +53,31 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
   const close = () => setOpen(false);
   async function send(clarification?:{id:string;answer:string}) {
     const text = (clarification?.answer??question).trim();
-    if (!text || inFlight.current) return;
+    if (!text || inFlight.current||uncertain) return;
     inFlight.current = true;
     const id = ++nextTurnId.current;
     const generation = pageGeneration.current;
     const previous = previousExchange.current?.path === pathname ? previousExchange.current : null;
+    const clarificationId=clarification?.id??awaitingClarification.current;
     followLatest.current = true;
     setTurns(list => [...list, { id, question: text, area: context?.area ?? null }]);
     if(!clarification)setQuestion(''); setPending(true);
     try {
       const reply = await askFromLauncherAction({ question: text, path: pathname,
-        ...(clarification?{clarificationExchangeId:clarification.id}:previous ? { previousExchangeId: previous.id, previousConversationToken: previous.token } : {}) });
-      if (generation === pageGeneration.current) previousExchange.current = reply.ok && reply.conversationToken
-        ? { path: pathname, id: reply.exchangeId, token: reply.conversationToken } : null;
+        ...(clarificationId?{clarificationExchangeId:clarificationId}:previous ? { previousExchangeId: previous.id, previousConversationToken: previous.token } : {}) });
+      if (generation === pageGeneration.current) {
+        previousExchange.current = reply.ok && reply.conversationToken ? { path: pathname, id: reply.exchangeId, token: reply.conversationToken } : null;
+        awaitingClarification.current=reply.ok&&reply.clarificationRequired?reply.exchangeId:null;
+        if(!reply.ok||(!reply.conversationToken&&!reply.clarificationRequired))setUncertain(true);
+      }
       setTurns(list => list.map(turn => turn.id === id ? { ...turn, reply } : turn));
     } catch {
-      if(generation===pageGeneration.current)previousExchange.current=null;
+      if(generation===pageGeneration.current){previousExchange.current=null;awaitingClarification.current=null;setUncertain(true);}
       setTurns(list => list.map(turn => turn.id === id ? { ...turn, reply: { ok: false, message: t('failed') } } : turn));
     } finally { inFlight.current = false; setPending(false); }
   }
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
-  return <AssistantChatBoundary value={{pending,clarify:async(id,answer)=>{await send({id,answer});}}}>
+  return <AssistantChatBoundary value={{pending:pending||uncertain,setQuestionDraft:answer=>{if(inFlight.current||uncertain)return;awaitingClarification.current=null;setQuestion(answer);box.current?.focus();},clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current||uncertain)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
     {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={t('open')} aria-haspopup="dialog"
       className={`fixed bottom-4 ${side} z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none`}>
       <Sparkles aria-hidden className="size-5"/>
@@ -91,6 +97,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <button type="button" disabled={pending} onClick={()=>{pageGeneration.current++;previousExchange.current=null;awaitingClarification.current=null;setUncertain(false);setTurns([]);setQuestion('');followLatest.current=true;box.current?.focus();}} className="min-h-11 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{chatCopy('new')}</button>
           <button type="button" onClick={() => setDocked(value => !value)} aria-label={docked ? t('undock') : t('dock')} title={docked ? t('undock') : t('dock')}
             className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{docked ? <Minimize2 aria-hidden className="size-4"/> : <Maximize2 aria-hidden className="size-4"/>}</button>
           <button type="button" onClick={close} aria-label={t('close')} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X aria-hidden className="size-4"/></button>
@@ -105,22 +112,23 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
         </div>
         {turns.map(turn => <div key={turn.id} className="space-y-3">
           <p data-message-role="user" className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-primary/10 px-4 py-3 leading-relaxed">{turn.question}</p>
-          <div data-message-role="assistant" className="mr-5 min-w-0 max-w-full break-words rounded-2xl rounded-tl-sm bg-muted/60 px-4 py-3 leading-relaxed">
+          <fieldset disabled={uncertain} data-message-role="assistant" className={turn.reply?"mr-5 min-w-0 max-w-full break-words px-1 py-2 leading-relaxed":"min-w-0 px-1"}>
             {!turn.reply ? <ThinkingIndicator label={t('working')}/>
               : !turn.reply.ok ? <p role="alert">{turn.reply.message}</p>
               : <div className="space-y-2">{turn.reply.answer ?? <p className="text-muted-foreground">{t('noCard')}</p>}
                   <Link href={`/assistant?e=${encodeURIComponent(turn.reply.exchangeId)}`} className="inline-flex min-h-11 items-center text-xs font-medium text-primary hover:underline">{t('openInAssistant')}</Link></div>}
-          </div>
+          </fieldset>
         </div>)}
       </div>
+      {uncertain&&<p role="status" className="shrink-0 px-4 pb-2 text-xs text-muted-foreground">{chatCopy('readOnlyHistory')}</p>}
       <form onSubmit={event => { event.preventDefault(); void send(); }} className="shrink-0 border-t border-border/70 px-4 pb-3 pt-3">
         <label htmlFor={`${titleId}-question`} className="sr-only">{t('question')}</label>
         <div className="flex items-end gap-2 rounded-2xl border border-input bg-background p-2 focus-within:ring-2 focus-within:ring-ring">
-          <textarea ref={box} id={`${titleId}-question`} rows={2} maxLength={1800} value={question} readOnly={pending}
+          <textarea ref={box} id={`${titleId}-question`} rows={2} maxLength={1800} value={question} readOnly={pending||uncertain}
             onChange={event => setQuestion(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void send(); } }}
             placeholder={t('placeholder')} className="min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-relaxed outline-none"/>
-          <button type="submit" disabled={pending || !question.trim()} aria-busy={pending} aria-label={pending ? t('working') : t('send')} title={t('send')}
+          <button type="submit" disabled={pending || uncertain || !question.trim()} aria-busy={pending} aria-label={pending ? t('working') : t('send')} title={t('send')}
             className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"><ArrowUp aria-hidden className="size-4"/></button>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">{t('scope')}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{privacyNotice}</p>

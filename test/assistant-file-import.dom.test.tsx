@@ -1,5 +1,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {useCallback,useState} from 'react';
+import type {AttachmentChatTurn} from '../components/assistant/use-assistant-import';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {AssistantImportHandoffProvider,useAssistantImportHandoff,useAssistantImportIntake} from '../components/assistant/import-handoff';
@@ -16,9 +18,9 @@ const copy=en.assistant.fileImport;
 const source='E001 -25.50';
 const draft=captureImportDraft('payroll_history',source,{rows:[{cells:[{field:'employee_no',start:0,end:4},{field:'amount',start:5,end:11}]}]});
 function wrap(ui:React.ReactNode=<AssistantFileImport/>){return render(<NextIntlClientProvider locale="en" messages={en}><AssistantImportHandoffProvider>{ui}</AssistantImportHandoffProvider></NextIntlClientProvider>);}
-async function attach(){await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await screen.findByText('records.pdf');}
+async function attach(){await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await screen.findByLabelText(copy.consent);}
 beforeEach(()=>{vi.resetAllMocks();mocks.read.mockResolvedValue({name:'records.pdf',parts:[{label:'records.pdf',text:source}]});mocks.prepare.mockResolvedValue({ok:true,draft});window.history.replaceState({},'', '/assistant');});
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.useRealTimers();});
 
 describe('source-bound extraction',()=>{
  it('bounds repeated evidence expansion before returning a draft',()=>{
@@ -64,13 +66,14 @@ describe('source-bound extraction',()=>{
 });
 
 describe('file preparation and review',()=>{
- it('carries the chat request into file mode and removes the ordinary chat submission',async()=>{
-  wrap(<WorkspaceComposer fileImport layout="hero" action={vi.fn()} tasks={[]} labels={{tasks:'Tasks',taskHint:'Choose a task',question:'Chat question',placeholder:'Ask',ask:'Send',working:'Working',scope:'Your access'}}/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'Chat question'}),{target:{value:'Prepare these records'}});
-  await attach();expect(screen.getByLabelText(copy.request)).toHaveValue('Prepare these records');
-  expect(screen.queryByRole('button',{name:'Send'})).toBeNull();expect(document.querySelector('form')).toBeNull();
-  fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:copy.prepare}));
-  await waitFor(()=>expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({instruction:'Prepare these records'})));
+ it('keeps the request and attachment in one composer and sends only protected import preparation',async()=>{
+  const ordinary=vi.fn();wrap(<WorkspaceComposer fileImport layout="hero" action={ordinary} tasks={[]} labels={{tasks:'Tasks',taskHint:'Choose a task',question:'Chat question',placeholder:'Ask',ask:'Send',working:'Working',scope:'Your access'}}/>);
+  const question=screen.getByRole('textbox',{name:'Chat question'});fireEvent.change(question,{target:{value:'Prepare these records'}});
+  await attach();expect(question).toHaveValue('Prepare these records');expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  expect(screen.getByRole('button',{name:'Send'})).toBeDisabled();expect(document.querySelectorAll('form')).toHaveLength(1);expect(mocks.prepare).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));
+  await screen.findByText('Draft: 1 record');expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({instruction:'Prepare these records'}));expect(ordinary).not.toHaveBeenCalled();
+  expect(screen.getByRole('button',{name:copy.review})).toBeDisabled();
  });
  it('requires an explicit request and provider consent, then a separate source review',async()=>{
   wrap();await attach();const prepare=screen.getByRole('button',{name:copy.prepare});
@@ -104,6 +107,61 @@ describe('file preparation and review',()=>{
  it('shows a failure and never offers confirmation on an invalid model response',async()=>{
   mocks.prepare.mockResolvedValue({ok:false});wrap();await attach();fireEvent.change(screen.getByLabelText(copy.request),{target:{value:'Prepare'}});fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:copy.prepare}));
   expect(await screen.findByRole('alert')).toHaveTextContent(copy.prepareError);expect(screen.queryByRole('button',{name:copy.review})).toBeNull();
+ });
+});
+
+describe('inline attachment conversation lifecycle',()=>{
+ const labels={tasks:'Tasks',taskHint:'Choose a task',question:'Chat question',placeholder:'Ask',ask:'Send',working:'Working',scope:'Your access'};
+ function Chat({ordinary=vi.fn(),busy=vi.fn(),published}:{ordinary?:(data:FormData)=>Promise<void>;busy?:(value:boolean)=>void;published?:(value:AttachmentChatTurn|null)=>void}){
+  const[turn,setTurn]=useState<AttachmentChatTurn|null>(null),publish=useCallback((value:AttachmentChatTurn|null)=>{setTurn(value);published?.(value);},[published]);
+  return <><div role="log" aria-label="Conversation">{turn&&<><p>{turn.question}</p>{turn.answer}</>}</div><WorkspaceComposer fileImport clearAfterSubmit layout="hero" action={ordinary} tasks={[]} labels={labels} onAttachmentTurn={publish} onAttachmentBusy={busy}/></>;
+ }
+ it.each([['scan','scan'],['read failure','readError']] as const)('keeps a failed %s read visible with a prefilled question and permits discard',async(reason,key)=>{
+  let fail!:(error:Error)=>void;mocks.read.mockReturnValue(new Promise((_,reject)=>{fail=reject;}));const ordinary=vi.fn();wrap(<Chat ordinary={ordinary}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare these records'}});
+  await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});
+  await screen.findByText(copy.reading);await act(async()=>fail(new Error(reason)));
+  expect(await screen.findByRole('alert')).toHaveTextContent(copy[key]);expect(screen.queryByLabelText(copy.consent)).toBeNull();expect(screen.getByRole('button',{name:'Send'})).toBeDisabled();expect(mocks.prepare).not.toHaveBeenCalled();expect(ordinary).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:copy.discard}));expect(screen.getByRole('log')).toBeEmptyDOMElement();expect(screen.queryByText('records.pdf')).toBeNull();
+ });
+ it('adopts a prefilled instruction after a deferred file read without invalidating the read',async()=>{
+  let finish!:(value:unknown)=>void;mocks.read.mockReturnValue(new Promise(resolve=>{finish=resolve;}));wrap(<Chat/>);
+  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare these records'}});
+  await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});
+  await screen.findByText(copy.reading);expect(screen.queryByLabelText(copy.consent)).toBeNull();
+  await act(async()=>finish({name:'records.pdf',parts:[{label:'records.pdf',text:source}]}));
+  await screen.findByLabelText(copy.consent);fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));
+  await screen.findByText('Draft: 1 record');expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({instruction:'Prepare these records'}));
+ });
+ it('publishes selected source, consent, draft and editable review in the same thread without a second instruction field',async()=>{
+  const ordinary=vi.fn(),busy=vi.fn();wrap(<Chat ordinary={ordinary} busy={busy}/>);const question=screen.getByRole('textbox',{name:labels.question});fireEvent.change(question,{target:{value:'Prepare records'}});await attach();
+  expect(screen.getAllByRole('log')).toHaveLength(1);expect(screen.getByRole('log')).toHaveTextContent(copy.target);expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  fireEvent.change(screen.getByLabelText(copy.target),{target:{value:'payroll_history'}});fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));await screen.findByText('Draft: 1 record');
+  expect(question).toHaveValue('');expect(screen.getByRole('log')).toHaveTextContent('Prepare records');expect(ordinary).not.toHaveBeenCalled();expect(busy).toHaveBeenCalledWith(true);expect(busy).toHaveBeenLastCalledWith(false);
+  fireEvent.click(screen.getByLabelText(copy.reviewed));expect(screen.getByRole('button',{name:copy.review})).toBeEnabled();
+  fireEvent.change(screen.getByLabelText(copy.editHint),{target:{value:importDraftCsv(draft)}});expect(screen.getByLabelText(copy.reviewed)).not.toBeChecked();expect(screen.getByRole('button',{name:copy.review})).toBeDisabled();
+ });
+ it('retains a truthful blocked or invalid preparation reply and never falls through to ordinary chat',async()=>{
+  mocks.prepare.mockResolvedValue({ok:false});const ordinary=vi.fn();wrap(<Chat ordinary={ordinary}/>);fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare records'}});await attach();fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));
+  expect(await screen.findByRole('alert')).toHaveTextContent(copy.prepareError);expect(ordinary).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:copy.review})).toBeNull();
+ });
+ it('does not republish source or a late response after the attachment composer unmounts',async()=>{
+  let finish!:(value:unknown)=>void;mocks.prepare.mockReturnValue(new Promise(resolve=>{finish=resolve;}));const publish=vi.fn(),busy=vi.fn();const view=wrap(<Chat published={publish} busy={busy}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare records'}});await attach();fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));expect(mocks.prepare).toHaveBeenCalledTimes(1);
+  view.unmount();expect(publish).toHaveBeenLastCalledWith(null);expect(busy).toHaveBeenLastCalledWith(false);const calls=publish.mock.calls.length;
+  await act(async()=>finish({ok:true,draft}));expect(publish).toHaveBeenCalledTimes(calls);expect(mocks.push).not.toHaveBeenCalled();
+ });
+ it('does not revive an expired draft when native preparation finishes after its source deadline',async()=>{
+  vi.useFakeTimers();let finish!:(value:unknown)=>void;mocks.prepare.mockReturnValue(new Promise(resolve=>{finish=resolve;}));wrap(<Chat/>);
+  await act(async()=>{fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare records'}});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await Promise.resolve();});
+  fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));expect(mocks.prepare).toHaveBeenCalledTimes(1);
+  await act(async()=>{await vi.advanceTimersByTimeAsync(600001);});expect(screen.getByRole('log')).toBeEmptyDOMElement();
+  await act(async()=>finish({ok:true,draft}));expect(screen.queryByText('Draft: 1 record')).toBeNull();expect(screen.queryByRole('button',{name:copy.review})).toBeNull();expect(screen.getByRole('alert')).toHaveTextContent(copy.expired);
+ });
+ it('expires attachment data and removes the ephemeral reply after ten minutes',async()=>{
+  vi.useFakeTimers();wrap(<Chat/>);await act(async()=>{fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await Promise.resolve();});
+  expect(screen.getByRole('log')).toHaveTextContent(copy.target);await act(async()=>{await vi.advanceTimersByTimeAsync(600001);});
+  expect(screen.getByRole('log')).toBeEmptyDOMElement();expect(screen.queryByText('records.pdf')).toBeNull();expect(screen.getByRole('alert')).toHaveTextContent(copy.expired);
  });
 });
 

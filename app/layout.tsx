@@ -473,7 +473,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
-          <AssistantReplyClientEntry>{launcher && <AssistantLauncher position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}</AssistantReplyClientEntry>
+          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}</AssistantReplyClientEntry>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an

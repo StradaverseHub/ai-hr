@@ -20,6 +20,17 @@ const show=(hiddenAreas:string[]=[],position:'bottom-right'|'bottom-left'='botto
 beforeEach(()=>{state.path='/leave';state.ask.mockReset();});
 afterEach(cleanup);
 describe('floating Assistant',()=>{
+ it('uses the same composer for a canonical clarification and resumes ordinary continuation afterwards',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'needs-answer',conversationToken:'first-proof',clarificationRequired:true,answer:<p>Which leave type?</p>})
+   .mockResolvedValueOnce({ok:true,exchangeId:'answered',conversationToken:'next-proof',answer:<p>Annual leave: 12 days</p>})
+   .mockResolvedValueOnce({ok:true,exchangeId:'next',answer:<p>Pending leave: 2 days</p>});
+  show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
+  const send=(value:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
+  send('My leave');await screen.findByText('Which leave type?');expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  send('Annual leave');await screen.findByText('Annual leave: 12 days');expect(state.ask).toHaveBeenLastCalledWith({question:'Annual leave',path:'/leave',clarificationExchangeId:'needs-answer'});
+  send('And pending?');await screen.findByText('Pending leave: 2 days');expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',path:'/leave',previousExchangeId:'answered',previousConversationToken:'next-proof'});
+ });
+
  it('opens as a tall rounded messenger with an honest AI welcome and the composer outside its scrolling transcript',()=>{
   show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
   const dialog=screen.getByRole('dialog',{name:copy.title});
@@ -33,7 +44,7 @@ describe('floating Assistant',()=>{
   expect(screen.getByText(copy.welcome).closest('[data-message-role="assistant"]')).toHaveClass('rounded-2xl','bg-muted/60');
   expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();
  });
- it('keeps a continuous left/right bubble transcript in the approved messenger presentation',async()=>{
+ it('keeps a continuous transcript with quiet prose replies',async()=>{
   state.ask.mockResolvedValue({ok:true,exchangeId:'messenger-example',answer:<p>You have 12 days of annual leave left.</p>});show();
   fireEvent.click(screen.getByRole('button',{name:copy.open}));fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'How much leave do I have left?'}});fireEvent.click(screen.getByRole('button',{name:copy.send}));
   const answer=await screen.findByText('You have 12 days of annual leave left.');
@@ -41,7 +52,7 @@ describe('floating Assistant',()=>{
   expect(screen.getByText(copy.welcome)).toBeInTheDocument();
   expect(log.querySelectorAll('[data-message-role="assistant"]')).toHaveLength(2);
   expect(screen.getByText('How much leave do I have left?').closest('[data-message-role="user"]')).toHaveClass('ml-auto','rounded-tr-sm');
-  expect(answer.closest('[data-message-role="assistant"]')).toHaveClass('rounded-tl-sm','bg-muted/60');
+  expect(answer.closest('[data-message-role="assistant"]')?.className).not.toMatch(/bg-|rounded|border|shadow/);
  });
  it('captures the approved messenger fixture separately from functional interaction timeouts',async()=>{
   state.ask.mockResolvedValue({ok:true,exchangeId:'messenger-fixture',answer:<p>You have 12 days of annual leave left.</p>});const view=show();
@@ -68,7 +79,7 @@ describe('floating Assistant',()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'first',conversationToken:'proof',answer:<p>First answer</p>}).mockRejectedValueOnce(Error('PRIVATE')).mockResolvedValueOnce({ok:true,exchangeId:'third',answer:<p>Third answer</p>});
   show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
   const send=(question:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
-  send('First');await screen.findByText('First answer');send('Second');await screen.findByRole('alert');send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third',path:'/leave'});
+  send('First');await screen.findByText('First answer');send('Second');await screen.findByRole('alert');expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third',path:'/leave'});
  });
  it('is absent on the Assistant itself, in a hidden area and on an unknown area',()=>{
   for(const [path,hidden] of [['/assistant',[]],['/assistant/leave',[]],['/payroll',['payroll']],['/somewhere-else',[]]] as const){state.path=path;const view=show([...hidden]);expect(screen.queryByRole('button',{name:copy.open}),path).toBeNull();view.unmount();}
@@ -97,7 +108,7 @@ describe('floating Assistant',()=>{
   fireEvent.click(screen.getByRole('button',{name:copy.open}));
   fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'Hi'}});fireEvent.keyDown(screen.getByLabelText(copy.question),{key:'Enter'});
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(en.assistant.err_budget_daily));
-  expect((screen.getByLabelText(copy.question) as HTMLTextAreaElement).readOnly).toBe(false);
+  expect((screen.getByLabelText(copy.question) as HTMLTextAreaElement).readOnly).toBe(true);fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect((screen.getByLabelText(copy.question) as HTMLTextAreaElement).readOnly).toBe(false);
  });
  it('keeps a delayed reply beside the question without pulling a scrolled-up reader down',async()=>{
   let finish!:(reply:unknown)=>void;
@@ -110,7 +121,7 @@ describe('floating Assistant',()=>{
   const log=screen.getByRole('dialog').querySelector('[aria-live="polite"]') as HTMLDivElement;
   Object.defineProperties(log,{scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
   log.scrollTop=120;fireEvent.scroll(log);
-  await act(async()=>{finish({ok:true,exchangeId:'exchange-delayed',answer:<p>Delayed answer</p>});});
+  await act(async()=>{finish({ok:true,exchangeId:'exchange-delayed',conversationToken:'delayed-proof',answer:<p>Delayed answer</p>});});
   expect(screen.getByText('Delayed answer')).toBeInTheDocument();expect(log.scrollTop).toBe(120);
   expect(screen.queryByRole('status')).toBeNull();
   // Sending is an explicit request to return to the latest turn.
@@ -140,7 +151,7 @@ describe('floating Assistant',()=>{
   send('My leave');await screen.findByText('First answer');
   send('What about tomorrow?');await screen.findByRole('alert');
   expect(state.ask).toHaveBeenNthCalledWith(2,{question:'What about tomorrow?',path:'/leave',previousExchangeId:'exchange-parent',previousConversationToken:'scope-bound-parent'});
-  send('Try that again');await screen.findByText('Another answer');
+  fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));send('Try that again');await screen.findByText('Another answer');
   expect(state.ask).toHaveBeenNthCalledWith(3,{question:'Try that again',path:'/leave'});
   state.path='/claims';view.rerender(<NextIntlClientProvider locale="en" messages={en}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
   send('My claims');await waitFor(()=>expect(state.ask).toHaveBeenCalledTimes(4));
@@ -154,7 +165,7 @@ describe('floating Assistant',()=>{
   const send=(question:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
   send('First');await screen.findByText('Signed answer');send('Second');await screen.findByText('Fresh answer');
   expect(state.ask).toHaveBeenNthCalledWith(2,{question:'Second',path:'/leave',previousExchangeId:'exchange-signed',previousConversationToken:'signed-scope'});
-  send('Third');await screen.findByText('Third answer');
+  expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));send('Third');await screen.findByText('Third answer');
   expect(state.ask).toHaveBeenNthCalledWith(3,{question:'Third',path:'/leave'});
  });
  it('does not attach a late response from the page left behind to the new page',async()=>{
@@ -181,7 +192,7 @@ describe('floating Assistant',()=>{
   expect(state.ask).toHaveBeenCalledTimes(1);expect(question).toHaveAttribute('readonly');
   expect(screen.getByRole('button',{name:copy.working})).toBeDisabled();
   await act(async()=>{finish({ok:false,message:'Unavailable'});});
-  expect(screen.getByRole('alert')).toHaveTextContent('Unavailable');expect(question).not.toHaveAttribute('readonly');
+  expect(screen.getByRole('alert')).toHaveTextContent('Unavailable');expect(question).toHaveAttribute('readonly');fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect(screen.getByLabelText(copy.question)).not.toHaveAttribute('readonly');
  });
 
 });

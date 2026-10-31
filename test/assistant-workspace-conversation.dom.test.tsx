@@ -4,15 +4,61 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
-const state=vi.hoisted(()=>({ask:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
-import {ConversationClarification} from '../components/assistant/chat-reply-boundary';
+const state=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn()}));
+vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier}));
+import {ConversationSuggestions,ConversationClarification} from '../components/assistant/chat-reply-boundary';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
-function show(initialTurn?:{id:string;question:string;answer:React.ReactNode}){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn}/></NextIntlClientProvider>);}
+function show(initialTurn?:{id:string;question:string;answer:React.ReactNode;clarificationRequired?:boolean},fullHeight=false){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn} fullHeight={fullHeight}/></NextIntlClientProvider>);}
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
-beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
+beforeEach(()=>{state.ask.mockReset();state.earlier.mockReset();});afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('a generic suggested task leaves a pending clarification target without submitting immediately',async()=>{
+  show({id:'checked',question:'Earlier checked question',answer:<ConversationSuggestions label="Next" suggestions={[{label:'Upcoming holidays',prompt:'When is the next public holiday?'}]}/>});
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'clarify',conversationToken:'clarify-proof',clarificationRequired:true,answer:<p>Which leave type?</p>});send('My leave');await screen.findByText('Which leave type?');
+  fireEvent.click(screen.getByRole('button',{name:'Upcoming holidays'}));expect(state.ask).toHaveBeenCalledTimes(1);expect(screen.getByRole('textbox')).toHaveValue('When is the next public holiday?');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'holiday',conversationToken:'holiday-proof',answer:<p>Checked holiday answer</p>});fireEvent.click(screen.getByRole('button',{name:copy.ask}));await screen.findByText('Checked holiday answer');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'When is the next public holiday?',previousExchangeId:'clarify',previousConversationToken:'clarify-proof'});
+ });
+ it('allows explicit New chat from an unavailable selection with no restored turns',async()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId="missing" historyReadOnly/></NextIntlClientProvider>);
+  expect(screen.getByRole('button',{name:copy.ask})).toBeDisabled();expect(screen.getByRole('button',{name:chat.new})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:chat.new}));state.ask.mockResolvedValueOnce({ok:true,exchangeId:'fresh',conversationToken:'fresh-proof',answer:<p>Fresh answer</p>});send('Hello');await screen.findByText('Fresh answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Hello'});
+ });
+
+ it('restores more than six displayed turns while continuing only with the owner-issued selected tail proof',async()=>{
+  const turns=Array.from({length:9},(_,index)=>({id:'saved-'+index,question:'Saved question '+index,answer:<p>Checked answer {index}</p>}));
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight initialTurns={turns} historyTailId="saved-8" initialResume={{exchangeId:'saved-8',conversationToken:'owned-tail-proof'}}/></NextIntlClientProvider>);
+  expect(screen.getByRole('log')).toHaveTextContent('Saved question 0');expect(screen.getByRole('log')).toHaveTextContent('Saved question 8');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',answer:<p>New checked answer</p>});send('And pending?');await screen.findByText('New checked answer');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',previousExchangeId:'saved-8',previousConversationToken:'owned-tail-proof'});
+ });
+ it('keeps legacy or uncertain saved history read-only until the person explicitly starts New chat',async()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId="legacy" initialTurns={[{id:'legacy',question:'Old question',answer:<button>Prepare old action</button>}]} historyReadOnly/></NextIntlClientProvider>);
+  expect(screen.getByRole('button',{name:copy.ask})).toBeDisabled();expect(screen.getByRole('button',{name:'Prepare old action'})).toBeDisabled();expect(state.ask).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:chat.new}));state.ask.mockResolvedValueOnce({ok:true,exchangeId:'fresh',answer:<p>Fresh reply</p>});send('Hello');await screen.findByText('Fresh reply');expect(state.ask).toHaveBeenLastCalledWith({question:'Hello'});expect(screen.queryByText('Old question')).toBeNull();
+ });
+ it('prepends a selected-branch earlier page without replacing the live tail continuation',async()=>{
+  state.earlier.mockResolvedValueOnce({ok:true,turns:[{id:'earlier',question:'Earlier question',answer:<p>Earlier checked reply</p>}],olderCursor:null});
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId="tail" olderCursor="sealed-earlier" initialTurns={[{id:'tail',question:'Latest question',answer:<p>Latest checked reply</p>}]} initialResume={{exchangeId:'tail',conversationToken:'tail-proof'}}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:chat.older}));await screen.findByText('Earlier checked reply');expect(state.earlier).toHaveBeenCalledExactlyOnceWith({exchangeId:'tail',before:'sealed-earlier'});
+  expect(screen.getByText('Earlier question').compareDocumentPosition(screen.getByText('Latest question'))&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'next',answer:<p>Continued reply</p>});send('Continue');await screen.findByText('Continued reply');expect(state.ask).toHaveBeenLastCalledWith({question:'Continue',previousExchangeId:'tail',previousConversationToken:'tail-proof'});
+ });
+
+ it('starts the full workspace with a transcript and one anchored composer before the first question',()=>{
+  show(undefined,true);expect(screen.getByRole('log')).toBeInTheDocument();expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  expect(screen.getByRole('region',{name:chat.title}).className).toContain('flex-col');expect(screen.getByRole('log').className).toContain('flex-1');
+  expect(state.ask).not.toHaveBeenCalled();
+ });
+ it('routes the next normal composer turn to a canonical clarification and then resumes ordinary context',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'owned-choice',conversationToken:'choice-token',clarificationRequired:true,answer:<p>Which leave type?</p>});show();send('My leave balance');await screen.findByText('Which leave type?');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'answer',conversationToken:'answer-token',answer:<p>Annual balance: 12 days</p>});send('Annual leave');await screen.findByText('Annual balance: 12 days');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'Annual leave',clarificationExchangeId:'owned-choice'});
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'followup',answer:<p>Pending: 2 days</p>});send('And pending?');await screen.findByText('Pending: 2 days');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',previousExchangeId:'answer',previousConversationToken:'answer-token'});
+  expect(screen.getAllByRole('textbox')).toHaveLength(1);
+ });
+
  it('captures the real in-place conversation at its actual page reading width',async()=>{
   const view=show({id:'fictional-checked',question:'How much leave do I have?',answer:<p>Annual leave: 12 days</p>});
   await captureAiReviewScreenshots('<div class="mx-auto max-w-3xl">'+aiReviewDomHtml(view.container)+'</div>','en','overview','Real in-place conversation component; fictional authorized-command response; no authenticated server/provider journey');
@@ -23,7 +69,7 @@ describe('in-place Assistant conversation',()=>{
   view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1"/></NextIntlClientProvider>);
   expect(screen.queryByText('Private pending question')).toBeNull();
   await act(async()=>resolve({ok:true,exchangeId:'erased',conversationToken:'erased-token',answer:<p>Erased reply</p>}));expect(screen.queryByText('Erased reply')).toBeNull();
-  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',answer:<p>New reply</p>});send('New question');await screen.findByText('New reply');expect(state.ask).toHaveBeenLastCalledWith({question:'New question'});
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',conversationToken:'new-proof',answer:<p>New reply</p>});send('New question');await screen.findByText('New reply');expect(state.ask).toHaveBeenLastCalledWith({question:'New question'});
   state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));send('Pending old selection');
   view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1" initialTurn={{id:'selected',question:'Selected question',answer:<p>Selected reply</p>}}/></NextIntlClientProvider>);
   await act(async()=>resolve({ok:true,exchangeId:'old',conversationToken:'old-token',answer:<p>Late old answer</p>}));expect(screen.queryByText('Late old answer')).toBeNull();expect(screen.getByText('Selected reply')).toBeInTheDocument();
@@ -31,8 +77,8 @@ describe('in-place Assistant conversation',()=>{
  });
  it('submits a clarification in place through its dedicated owned-exchange path',async()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'answered',conversationToken:'answered-proof',answer:<p>Annual balance: 12 days</p>});
-  show({id:'needs-clarification',question:'How much leave?',answer:<ConversationClarification exchangeId="needs-clarification" replyLabel="Your reply" continueLabel="Continue"/>});
-  fireEvent.change(screen.getByLabelText('Your reply'),{target:{value:'Annual leave'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+  show({id:'needs-clarification',question:'How much leave?',clarificationRequired:true,answer:<ConversationClarification exchangeId="needs-clarification" replyLabel="Your reply" continueLabel="Continue"/>});
+  send('Annual leave');
   await screen.findByText('Annual balance: 12 days');expect(screen.getByText('How much leave?')).toBeInTheDocument();expect(state.ask).toHaveBeenCalledWith({question:'Annual leave',clarificationExchangeId:'needs-clarification'});expect(window.location.search).toBe('');
  });
  it('shows the question and waiting reply immediately, keeps earlier replies and passes the opaque continuation only after success',async()=>{
@@ -62,6 +108,6 @@ describe('in-place Assistant conversation',()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'one',conversationToken:'token',answer:<p>First answer</p>});show();send('First');await screen.findByText('First answer');
   let reject!:(reason:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise((_done,fail)=>{reject=fail;}));send('Second');const log=screen.getByRole('log');Object.defineProperties(log,{scrollHeight:{value:900,configurable:true},clientHeight:{value:300,configurable:true}});log.scrollTop=590;fireEvent.scroll(log);
   await act(async()=>reject(Error('PRIVATE provider data')));expect(log.scrollTop).toBe(900);expect(screen.getByRole('alert')).toHaveTextContent(copy.err_provider_error);expect(screen.queryByText('PRIVATE provider data')).toBeNull();
-  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'three',answer:<p>Third answer</p>});send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third'});
+  expect(screen.getByRole('button',{name:copy.ask})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:chat.new}));state.ask.mockResolvedValueOnce({ok:true,exchangeId:'three',answer:<p>Third answer</p>});send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third'});
  });
 });
