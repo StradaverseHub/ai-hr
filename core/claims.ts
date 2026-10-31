@@ -3962,8 +3962,16 @@ async function readPendingClaimTasks(ctx:SessionContext,companyIds:string[]|unde
   if(!allowed.size)return {items:[] as AssignedApprovalMetadata[],total:0};
   const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
   const where=and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),inArray(claimRequest.employmentId,[...allowed]));
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
-   .from(claimRequest).where(where).orderBy(desc(claimRequest.createdAt),claimRequest.id).limit(limit);
+  // A global top N cannot include a request below its own employment's top N. Use the
+  // existing employment/history indexes before merging that bounded candidate set. The exact
+  // count below still covers every currently authorized pending request, without truncation.
+  const headers=tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
+   .from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+    eq(claimRequest.employmentId,sql`claim_preview_subject.employment_id`)))
+   .orderBy(desc(claimRequest.createdAt),claimRequest.id).limit(limit).as('claim_preview_headers');
+  const rows=await tx.select({id:headers.id,employmentId:headers.employmentId,createdAt:headers.createdAt})
+   .from(sql`(VALUES ${sql.join([...allowed].map(id=>sql`(${id}::uuid)`),sql`, `)}) AS claim_preview_subject(employment_id)`)
+   .innerJoinLateral(headers,sql`true`).orderBy(desc(headers.createdAt),headers.id).limit(limit);
   const items=rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
   const [count]=await tx.select({total:sql<number>`count(*)::int`}).from(claimRequest).where(where);
   return {items,total:count.total};

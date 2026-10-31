@@ -66,6 +66,7 @@ describe('Home assigned-decision metadata is an uncapped projection at its sourc
    expect(new Set(rows.map(r=>r.id))).toEqual(new Set(heads.map(r=>r.id)));expectHeaders(rows);
    const preview=await pendingClaimTaskSummary(ctx,undefined,25);
    expect(preview.total).toBe(1201);expect(preview.items).toEqual(rows.slice(0,25));expectHeaders(preview.items);
+   for(const limit of [1,200]){const bounded=await pendingClaimTaskSummary(ctx,undefined,limit);expect(bounded.total).toBe(1201);expect(bounded.items).toEqual(rows.slice(0,limit));expectHeaders(bounded.items);}
    expect(await pendingClaimTaskSummary(ctx,[],25)).toEqual({items:[],total:0});
 
    expect(JSON.stringify(rows)).not.toContain('8923.45');expect(await pendingClaimTaskMetadata(ctx,[])).toEqual([]);
