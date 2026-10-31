@@ -11,7 +11,7 @@ import viWords from '../messages/vi.json';
 import {HomePersonPrivacyEditor} from '../components/employee-home/person-privacy-editor';
 import {parseHomePersonPrivacyForm} from '../lib/employee-home-person-privacy';
 const state=vi.hoisted(()=>({save:vi.fn()}));
-vi.mock('../app/me/home/privacy-actions',()=>({saveHomePersonPrivacyAction:state.save}));
+vi.mock('../app/(app)/me/home/privacy-actions',()=>({saveHomePersonPrivacyAction:state.save}));
 vi.mock('next/navigation',()=>({unstable_rethrow:()=>{}}));
 const catalogues={en,ms,zh,ta,th,vi:viWords};
 beforeEach(()=>{vi.clearAllMocks();state.save.mockReset();state.save.mockResolvedValue({error:'invalid'});});afterEach(cleanup);

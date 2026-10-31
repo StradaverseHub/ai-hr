@@ -47,7 +47,7 @@ import {
 import { defaultSocsoEisNumber } from '../localization/my/socso-eis';
 import { completeEmployeeDraft, saveEmployeeDraft } from '../core/employee-draft';
 import { type EmployeeDraftData } from '../lib/employee-draft-schema';
-import { setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setStatutoryAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 // requireAdmin() (session) is unavailable in the harness — return the seeded admin ctx.
@@ -260,12 +260,12 @@ describe('Optional Identity No on the statutory row (35524d1f)', () => {
     // Source guard rather than a behaviour test: the Zakat election is a read-modify-write of the SAME
     // full-row setter, so it carried the same `?? ''` coercion and failed identically for an employee with no
     // IC. There is no separate validation to exercise — the fault was the coercion itself.
-    const src = read('app/payroll/transactions/zakat/election-actions.ts');
+    const src = read('app/(app)/payroll/transactions/zakat/election-actions.ts');
     expect(src).toContain('icNumber: current.icNumber,');
     expect(src, 'the coercion that made the setter refuse the save must not come back').not.toContain(
       "icNumber: current.icNumber ?? ''",
     );
-    const personnel = read('app/admin/personnel/[employmentId]/actions.ts');
+    const personnel = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
     expect(personnel).toContain('const icNumber = current.icNumber;');
   });
 });

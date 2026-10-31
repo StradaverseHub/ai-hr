@@ -2,7 +2,7 @@
 
 /**
  * ADR-0070 — self-service clock-in/out with browser geolocation capture. Extracted from
- * app/me/attendance-clock.tsx (feedback 5249d43f) so the /me clock card and the dedicated
+ * app/(app)/me/attendance-clock.tsx (feedback 5249d43f) so the /me clock card and the dedicated
  * Attendance > Clock in/out page share ONE capture path instead of forking it. On click, tries
  * navigator.geolocation.getCurrentPosition (enableHighAccuracy, ~10s timeout); on success the lat/lng
  * hidden fields are filled before submit, on denial/timeout the form submits WITHOUT them — the SERVER

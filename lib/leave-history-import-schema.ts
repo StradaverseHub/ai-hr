@@ -3,7 +3,7 @@
  *
  * No DB imports. The column contract, the header spellings, the key canonicaliser and the per-row
  * result shapes live here so the server service (`core/leave-history-import`), the client screen
- * (`app/admin/leave-config/history-import`) and the downloadable template all read ONE list — the
+ * (`app/(app)/admin/leave-config/history-import`) and the downloadable template all read ONE list — the
  * desync lock lib/import-schema.ts and lib/payroll-history-import-schema.ts already apply.
  *
  * ⚠️ NOT THE SAME THING AS `lib/leave-import-schema.ts`, and the two must never be merged. That one is

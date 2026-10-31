@@ -107,7 +107,7 @@ dots). Found by rasterising the page — the extracted text of the overlapping d
 **The other statutory PDFs inherit the old limit.** `lib/ea-pdf.ts`, `cp22-pdf.ts`, `cp39-form-pdf.ts`,
 `borang-a-pdf.ts`, `borang-8a-pdf.ts`, `tp1-pdf.ts` and `tp3-pdf.ts` all draw with `StandardFonts.Helvetica`
 and carry the same fold. They are unaffected **today** only because they are produced in en/ms alone
-(`EA_LANGS = ['en','ms']`, `app/payroll/statutory-forms/ea/shared.ts`). The moment a third locale is added
+(`EA_LANGS = ['en','ms']`, `app/(app)/payroll/statutory-forms/ea/shared.ts`). The moment a third locale is added
 to any of them, that form starts printing question marks, and `lib/payslip-pdf-fonts.ts` is the module to
 reuse. Deliberately not changed in this round.
 

@@ -7,7 +7,7 @@
  * the same vocabulary the engine routes on — and `core/leave-approval-policy.ts` imports `db/client`,
  * `db/events` and `db/schema`, so importing it from a client component would drag the database kernel into
  * the browser bundle. The alternative, a second hand-maintained list inside the editor, is what this file
- * exists to delete: `app/admin/leave-approval/step-list-editor.tsx` carried exactly such a copy, and
+ * exists to delete: `app/(app)/admin/leave-approval/step-list-editor.tsx` carried exactly such a copy, and
  * nothing failed when the two disagreed — a kind the engine accepts but the picker never offers is
  * invisible until somebody hand-writes a template row.
  *

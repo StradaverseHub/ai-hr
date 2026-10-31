@@ -194,11 +194,11 @@ describe('route and screen registration', () => {
     expect(SCREENS.filter((s) => s.routes.includes('/performance/home')).map((s) => s.screenKey)).toEqual(['performanceHome']);
     expect(REGISTERED_ROUTES.has('/performance/home')).toBe(true);
     expect(typeof en.admin.users.scope.performanceHome).toBe('string');
-    const page = fs.readFileSync(path.join(ROOT, 'app/performance/home/page.tsx'), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+    const page = fs.readFileSync(path.join(ROOT, 'app/(app)/performance/home/page.tsx'), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
     expect(page).toMatch(/await requireModule\('performance'\)/);
     expect(page).toMatch(/await scopedSession\(\)/);
     expect(page).toMatch(/getPerformanceHome\(s, scopeIds\)/);
-    expect(fs.readFileSync(path.join(ROOT, 'app/performance/home/loading.tsx'), 'utf8').trim()).toBe("export { default } from '@/components/route-loading';");
+    expect(fs.readFileSync(path.join(ROOT, 'app/(app)/performance/home/loading.tsx'), 'utf8').trim()).toBe("export { default } from '@/components/route-loading';");
   });
 
   it('the leader card reads getLeaderStatus for the running cycle; the page draws the Dashboard strip', () => {

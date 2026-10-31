@@ -7,7 +7,7 @@ import { ArrowUp, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
 import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
-import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
+import { askFromLauncherAction } from '@/app/(app)/assistant/launcher-actions';
 
 type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
 

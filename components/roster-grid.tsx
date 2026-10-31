@@ -75,7 +75,7 @@ import { ClientPager, useClientPageQuery } from '@/components/client-pager';
 
 import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
-import { assignCellAction, bulkAssignAction } from '@/app/roster/actions';
+import { assignCellAction, bulkAssignAction } from '@/app/(app)/roster/actions';
 import { RosterLegend } from '@/components/roster-legend';
 import { EmployeeCode } from '@/components/ui';
 import { shiftChipClass, shiftChipStyle } from '@/lib/shift-visual';

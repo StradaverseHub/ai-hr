@@ -67,12 +67,12 @@ const here = dirname(fileURLToPath(import.meta.url));
  * taken the guard out rather than moved it.
  */
 const LEAVE_TYPE_SCREEN = [
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
 ];
 const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
-const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
+const actionsSrc = readFileSync(resolve(here, '../app/(app)/admin/actions.ts'), 'utf8');
 const leaveSrc = readFileSync(resolve(here, '../core/leave.ts'), 'utf8');
 
 let b: Base;
@@ -812,7 +812,7 @@ describe('bc36c768 · setLeaveTypeRules is the ONLY path that can write an earni
     // picker" invariant eee43966 pinned and this item must not quietly break.
     expect(form).toContain('<span className={cn(inputCls, \'w-72 bg-muted text-muted-foreground\')}>{storedMethod}</span>');
     expect((panelSrc.match(/aria-label=\{t\('subStep\.earningMethodLabel'\)\}/g) ?? []).length).toBe(1);
-    // earningRendered stays posted UNCONDITIONALLY. app/admin/actions.ts gates accrualMethod, accrualDay,
+    // earningRendered stays posted UNCONDITIONALLY. app/(app)/admin/actions.ts gates accrualMethod, accrualDay,
     // roundingMethod, roundingThreshold AND roundingBands inside ONE `...(earningRendered ? {} : {})`, so
     // dropping the marker to avoid writing the method would make Rounding Method unsaveable for that type.
     expect(form).toContain('<input type="hidden" name="earningRendered" value="1" />');

@@ -1,7 +1,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 const h=vi.hoisted(()=>({action:vi.fn()}));
-vi.mock('../app/analytics/ai-actions',()=>({readProtectedAnalysisAction:h.action}));
+vi.mock('../app/(app)/analytics/ai-actions',()=>({readProtectedAnalysisAction:h.action}));
 vi.mock('../lib/hr-date',()=>({todayInKualaLumpur:()=> '2026-10-30'}));
 import {ProtectedAnalysisPanel,type ProtectedAnalysisLabels} from '../components/assistant/protected-analysis-panel';
 const labels:ProtectedAnalysisLabels={title:'Explain company overview',description:'Explain authorized source facts.',companyScope:'Selected companies only. Department and search filters do not apply.',domain:'Area',month:'Completed month',compareWindow:'Compare completed months.',snapshotWindow:'Current source snapshot; no historical trend.',run:'Explain overview',thinking:'Thinking…',result:'Explanation',

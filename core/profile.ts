@@ -769,7 +769,7 @@ export function listProfileChangeRequests(
  *
  * ── IT TAKES NO ID, AND THAT IS THE SECURITY PROPERTY ───────────────────────────────────────────────
  * Stage one made `myProfileRecord` resolve the employment from `ctx.personId` for exactly this reason
- * (app/me/record.ts's header). This used to take an `employmentId` parameter: the /me page passed its
+ * (app/(app)/me/record.ts's header). This used to take an `employmentId` parameter: the /me page passed its
  * own, and RLS would have refused a colleague's rows anyway — but a parameter is a way in that a future
  * caller can get wrong, and "scoped by the session" is a property you can read off the signature. So the
  * subject is `ctx.personId` and there is nothing to pass. A principal linked to no person gets an empty

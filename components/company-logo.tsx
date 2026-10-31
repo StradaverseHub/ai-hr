@@ -15,7 +15,7 @@
  * screen that owns the namespace and this file needs no namespace of its own.
  *
  * THE UPLOAD CONTRACT IS UNCHANGED. The same `<form action={setAction}>` posts the same `companyId` +
- * `logo` file field to the same server action (PNG/JPG, 2 MB, sniffed server-side — app/admin/actions.ts).
+ * `logo` file field to the same server action (PNG/JPG, 2 MB, sniffed server-side — app/(app)/admin/actions.ts).
  * The preview is a local object URL and is never submitted; picking a file and walking away saves nothing.
  *
  * THE PREVIEW MUST NOT OUTLIVE THE FORM. PhotoEditMenu renders its children behind `{open && …}` and its

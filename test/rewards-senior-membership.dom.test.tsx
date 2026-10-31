@@ -10,8 +10,8 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 const actions = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: actions.refresh }) }));
-vi.mock('../app/rewards/actions', () => ({ previewSeniorMembershipAction: actions.preview, saveSeniorMembershipAction: actions.save }));
-import { SeniorMembership } from '../app/rewards/[unitId]/senior-membership';
+vi.mock('../app/(app)/rewards/actions', () => ({ previewSeniorMembershipAction: actions.preview, saveSeniorMembershipAction: actions.save }));
+import { SeniorMembership } from '../app/(app)/rewards/[unitId]/senior-membership';
 
 const catalogues = {en, ms, zh, ta, th, vi:viMessages};
 const roster = [{employmentId:'employee-a',name:'Fictional A',employeeCode:'S-01',member:false,eligible:true,grade:'21'},{employmentId:'employee-b',name:'Fictional B',employeeCode:'S-02',member:true,eligible:true,grade:'22'}];

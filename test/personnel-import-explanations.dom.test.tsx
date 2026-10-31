@@ -1,5 +1,5 @@
-vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,references:{companies:[],costCenters:[]}})}));
-vi.mock('../app/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn(),previewMovementAction:vi.fn(),commitMovementAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,references:{companies:[],costCenters:[]}})}));
+vi.mock('../app/(app)/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn(),previewMovementAction:vi.fn(),commitMovementAction:vi.fn()}));
 import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
@@ -9,13 +9,13 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
-import {ImportWorkbench} from '../app/admin/personnel/import/import-workbench';
-import type {ImportReference} from '../app/admin/personnel/import/employee-import';
+import {ImportWorkbench} from '../app/(app)/admin/personnel/import/import-workbench';
+import type {ImportReference} from '../app/(app)/admin/personnel/import/employee-import';
 
 const mocks=vi.hoisted(()=>({build:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
-vi.mock('../app/admin/personnel/import/section-actions',()=>({validateSectionAction:vi.fn(),commitSectionAction:vi.fn(),registerRecordsAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/section-actions',()=>({validateSectionAction:vi.fn(),commitSectionAction:vi.fn(),registerRecordsAction:vi.fn()}));
 vi.mock('../lib/spreadsheet',()=>({buildXlsx:mocks.build}));
 const reference:ImportReference={departments:[],positions:[],costCenters:[],states:[],countries:[],nationalities:[],relationships:[],familyRelationships:[]};
 const locales=[

@@ -10,9 +10,9 @@ vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: {}, scopeIds: ['
 vi.mock('../packs/attendance/service', () => service);
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND'); } }));
-vi.mock('../app/attendance/application-history/actions', () => ({ attendanceHistoryAction: vi.fn() }));
+vi.mock('../app/(app)/attendance/application-history/actions', () => ({ attendanceHistoryAction: vi.fn() }));
 vi.mock('../components/attendance-workflow-progress', () => ({ AttendanceWorkflowProgress: () => <p>Recorded progress</p> }));
-import Page from '../app/attendance/application-history/[id]/page';
+import Page from '../app/(app)/attendance/application-history/[id]/page';
 beforeEach(() => vi.clearAllMocks()); afterEach(cleanup);
 function detail(kind: string, review: unknown) {
   return { application: { id: '00000000-0000-0000-0000-000000000002', status: 'pending', attendanceDate: '2026-10-20', createdAt: new Date('2026-10-20T02:00:00Z'), reason: 'Fictional employee explanation', requestKind: kind },

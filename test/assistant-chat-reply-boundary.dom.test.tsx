@@ -4,7 +4,7 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {AssistantReplyClientEntry,AssistantChatBoundary,ConversationClarification} from '../components/assistant/chat-reply-boundary';
-vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/actions',()=>({askAssistantAction:vi.fn()}));
 afterEach(cleanup);
 it('preserves the exact owned clarification transport through the shared server/client entry',()=>{
  const clarify=vi.fn().mockResolvedValue(undefined),answer='Hello, what can you help me do?';

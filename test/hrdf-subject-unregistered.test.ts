@@ -42,7 +42,7 @@ import {
   preProcessAdvisory,
   preProcessAdvisoryForSelection,
 } from '../core/payroll';
-import { generateAction } from '../app/payroll/actions';
+import { generateAction } from '../app/(app)/payroll/actions';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 // generateAction resolves its own session/translations and always redirects; mirror the wiring the
@@ -296,7 +296,7 @@ describe('(C) no issued payslip is altered', () => {
 
 describe('(D) the surfaces render it, and say it in six languages', () => {
   it('the batch pre-checks card lists the group as a WARNING and counts it among the confirm-to-proceed warnings', () => {
-    const PAGE = read('app/payroll/[batchId]/page.tsx');
+    const PAGE = read('app/(app)/payroll/[batchId]/page.tsx');
     expect(PAGE).toContain("['hrdfSubjectUnregistered', preChecks.hrdfSubjectUnregistered ?? [], false]");
     expect(PAGE).toContain('(preChecks.hrdfSubjectUnregistered?.length ?? 0)');
     // It must NOT reach the blocker tally — that would refuse the run, which is the decision we did not take.
@@ -305,7 +305,7 @@ describe('(D) the surfaces render it, and say it in six languages', () => {
   });
 
   it('the Process wizard Validation step lists it as a warning too', () => {
-    const STEP = read('app/payroll/process/steps/step-validation.tsx');
+    const STEP = read('app/(app)/payroll/process/steps/step-validation.tsx');
     expect(STEP).toContain("['hrdfSubjectUnregistered', advisory.hrdfSubjectUnregistered ?? [], false]");
     expect(STEP).toContain('(advisory.hrdfSubjectUnregistered?.length ?? 0)');
     const blockerLine = STEP.slice(STEP.indexOf('const blockers ='), STEP.indexOf('// 297ae65a'));
@@ -313,7 +313,7 @@ describe('(D) the surfaces render it, and say it in six languages', () => {
   });
 
   it('generateAction gates on it as a warning, never as a blocker', () => {
-    const ACTIONS = read('app/payroll/actions.ts');
+    const ACTIONS = read('app/(app)/payroll/actions.ts');
     expect(ACTIONS).toContain('(checks.hrdfSubjectUnregistered?.length ?? 0)');
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function generateAction'), ACTIONS.indexOf('export async function setPayrollInputAction'));
     const blockerLine = fn.slice(fn.indexOf('const blockers ='), fn.indexOf('// 297ae65a'));
@@ -321,7 +321,7 @@ describe('(D) the surfaces render it, and say it in six languages', () => {
   });
 
   it('the employee card says it BEFORE the tick is set, without disturbing the post-save warning', () => {
-    const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+    const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     const card = PAGE.slice(PAGE.indexOf('const othersStatutoryCard'), PAGE.indexOf('const tp3Card'));
     // efece4ce's stored-Yes warning is untouched…
     expect(card).toContain('statutory?.subjectToHrdf === true && companyHrdfUnregistered');

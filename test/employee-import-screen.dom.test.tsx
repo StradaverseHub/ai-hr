@@ -1,4 +1,4 @@
-vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,references:{companies:[],costCenters:[]}})}));
+vi.mock('../app/(app)/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:async()=>({ok:true,references:{companies:[],costCenters:[]}})}));
 /**
  * The Import Employees screen, PROVED BY RENDERING (item 2983802f).
  *
@@ -28,7 +28,7 @@ import { File as NodeFile } from 'node:buffer';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
-import { EmployeeImport } from '../app/admin/personnel/import/employee-import';
+import { EmployeeImport } from '../app/(app)/admin/personnel/import/employee-import';
 import type { ImportPreview, ImportResult } from '../lib/import-schema';
 
 vi.mock('next/navigation', () => ({
@@ -38,7 +38,7 @@ vi.mock('next/navigation', () => ({
 
 const validateMock = vi.fn();
 const commitMock = vi.fn();
-vi.mock('../app/admin/personnel/import/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/import/actions', () => ({
   validateImportAction: (...a: unknown[]) => validateMock(...a),
   commitImportAction: (...a: unknown[]) => commitMock(...a),
 }));

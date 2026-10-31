@@ -6,7 +6,7 @@ const route=vi.hoisted(()=>({path:'/admin/users/create'}));
 vi.mock('next/navigation',()=>({usePathname:()=>route.path,useSearchParams:()=>new URLSearchParams(),useRouter:()=>({push:vi.fn(),refresh:vi.fn()}),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
-vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));
+vi.mock('../app/(app)/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));
 vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 import {Sidebar} from '../components/sidebar';
 const hrefs=['/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users'];

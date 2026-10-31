@@ -18,7 +18,7 @@
  * the department is not permanently hidden the moment any BU is picked.
  *
  * `hireOptionVisible` is the single pure visibility rule, and its one caller is now the Create New
- * Employee wizard (app/admin/personnel/new/wizard.tsx), which is a client component and simply calls
+ * Employee wizard (app/(app)/admin/personnel/new/wizard.tsx), which is a client component and simply calls
  * it. It used to be serialised into a pure-DOM inline `<script>` on the Personnel LIST page via
  * `HIRE_ORG_FILTER_SCRIPT` — see the note where that constant used to be, at the foot of this file.
  * The body is still written self-contained (the csv-contains helper is inlined) because that costs
@@ -79,7 +79,7 @@ export function hireOptionVisible(args: HireOptionVisibleArgs): boolean {
  * It was a pure-DOM inline script that embedded `hireOptionVisible` above via
  * `Function.prototype.toString`, because the old hire form lived on a server-rendered list page with
  * no client island to run the rule in. Create New Employee is now a dedicated CLIENT wizard
- * (app/admin/personnel/new/wizard.tsx), which calls the rule directly — so the serialised copy, its
+ * (app/(app)/admin/personnel/new/wizard.tsx), which calls the rule directly — so the serialised copy, its
  * hydration-parity dance (server-rendering the same initial hidden/disabled stamps the script would
  * apply at parse time) and the `<id>-empty` toggle wiring are all gone with it.
  *

@@ -9,7 +9,7 @@ import { START_TOUR_EVENT } from '@/lib/onboarding-tour';
  * Help control: (re)starts the onboarding tour from anywhere.
  *
  * r256 — IT MOVED INTO THE ACCOUNT MENU and is no longer a bare icon beside the theme toggle. The
- * topbar's right cluster is a fixed budget (see app/layout.tsx): at a 1280px viewport its track is
+ * topbar's right cluster is a fixed budget (see app/(app)/layout.tsx): at a 1280px viewport its track is
  * 308px, and with this button still in it the signed-in person's name and Employee ID measured ZERO
  * pixels wide. This was also the control the cluster was already squeezing — it rendered 20px wide
  * instead of 36 at 1280 and 1440, its icon clipped — so it was both the cheapest thing to move and

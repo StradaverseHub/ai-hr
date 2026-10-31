@@ -75,7 +75,7 @@ that golden test green; if your blocker fix touches it, re-prove it.` },
 (b) THE ERROR HANDLING LEAKS SQL TO THE SCREEN, and this is worth fixing even though the verifier ranked
     it inside the same finding. core/admin.ts:2631-2634 isPrivilegeError reads e.code, but drizzle puts
     42501 on e.cause — so the outer code is undefined, the catch at :2773-2778 falls through to
-    'else throw e', and app/admin/settings/actions.ts:288 passes the raw message to the banner. The
+    'else throw e', and app/(app)/admin/settings/actions.ts:288 passes the raw message to the banner. The
     captured text was 'Failed query: update "department" set ... params: RenamedByB,,edited by B,b22d7f28…'
     — untranslated SQL and parameter values in an admin-facing banner. Read the code from .cause as well
     as .code, and return a translated refusal.
@@ -109,9 +109,9 @@ is precisely what a static test misses.` },
 that has not happened yet in January, and to the wrong tax year for the whole Jan–Mar annual-filing
 season — which is exactly when the EA and the annual forms are actually filed.
 
-The repo already has the right idiom and a comment explaining it: app/payroll/statutory-forms/page.tsx
+The repo already has the right idiom and a comment explaining it: app/(app)/payroll/statutory-forms/page.tsx
 had 'Default to the month just ENDED — the one whose submission is actually open' (~:229), and
-app/payroll/dashboard-logic.ts documents why the tenant clock is used rather than new Date() (between
+app/(app)/payroll/dashboard-logic.ts documents why the tenant clock is used rather than new Date() (between
 00:00 and 08:00 MYT the UTC date is still the previous day). Use the tenant clock, default the monthly
 forms to the month just ended, and default the ANNUAL forms (C.P.8A / EA) to the year being filed FOR,
 not the calendar year the browser is in.

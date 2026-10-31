@@ -39,7 +39,7 @@ const DETAILS = '/app/leave/tracker/page.tsx';
 const NAV = '/components/leave/leave-inquiry-nav.tsx';
 
 /**
- * app/leave/tracker/page.tsx renders ONE of two surfaces: the inquiry listing for an HR administrator, the
+ * app/(app)/leave/tracker/page.tsx renders ONE of two surfaces: the inquiry listing for an HR administrator, the
  * leave calendar for everybody else. Only the first is an inquiry tab, so every width assertion below is
  * scoped to its branch — otherwise "the three tabs share one cap" would be satisfied, or broken, by a
  * calendar that was never one of the three.

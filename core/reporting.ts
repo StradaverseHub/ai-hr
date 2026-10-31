@@ -274,7 +274,7 @@ async function resolveDef(ctx: SessionContext, companyId: string, reportId: stri
  * ever set the override, so the carve-out was theory — and the consequence was not a missing audit row.
  *
  * WHAT ACTUALLY BROKE. `recordFileReport` is awaited BETWEEN generating a submission file and returning
- * it (app/payroll/reports/cp39-file/route.ts). Its read-only error fell into the route's generic catch,
+ * it (app/(app)/payroll/reports/cp39-file/route.ts). Its read-only error fell into the route's generic catch,
  * which answers 500 "Could not generate the CP39 file". So a suspended customer did not merely lose the
  * artefact — THEY COULD NOT FILE THEIR PCB AT ALL. That is the precise outcome the carve-out exists to
  * prevent, and it is worse than the state before r104, where the write simply succeeded.
@@ -496,7 +496,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
  * ── WHO MAY DO THIS ─────────────────────────────────────────────────────────────────────────────────
  * The granular `payroll.statutory_file` permission (lib/payroll-permissions.ts), resolved exactly the
  * way payroll.unlock / payroll.close are: code default of hr_admin + super_admin, overridable per
- * company or tenant-wide from app/admin/payroll-permissions. Filing is a statutory act and WHOSE act it
+ * company or tenant-wide from app/(app)/admin/payroll-permissions. Filing is a statutory act and WHOSE act it
  * is differs per customer (HR, an outsourced bureau, a finance director) — that is a real UNKNOWN, and
  * a configurable key is how this codebase answers one, rather than my guessing on the customer's behalf.
  * The service is the primary gate; the 0026 RLS policy (`app.is_admin_for(company_id)`) is the SQL
@@ -756,7 +756,7 @@ async function eaEmployerCountry(
  *
  * ── THE OLD CLAIM, RETIRED HERE ──────────────────────────────────────────────────────────────────────
  * Both EA seams below used to document their authorization as "RLS scopes visibility: an employee sees
- * only their own (+ reports'); admins see their company scope", and `app/me/ea/[employmentId]/pdf/route.ts`
+ * only their own (+ reports'); admins see their company scope", and `app/(app)/me/ea/[employmentId]/pdf/route.ts`
  * says the same in as many words: "an employee can only pull their own (or a subordinate's, or — as admin
  * — their company's) EA". THE SUBORDINATE CASE WAS THE DEFECT, not a feature. An EA form prints the
  * person's IC or passport, their tax number and every ringgit the employer paid them for the year; a line
@@ -2096,7 +2096,7 @@ export function recentReports(ctx: SessionContext, companyId: string) {
 // `overtimePay` path payroll uses (so eligibility gate + configured excess multipliers are reflected), and an
 // explicit eligibility label. Pure READ — no DomainEvent is appended (per substrate rules, read-only surfaces
 // skip the event; this comment documents the deliberate skip). The report is exported via lib/report-export
-// (CSV / XLSX / PDF) from the admin-gated route app/attendance/ot-report/export.
+// (CSV / XLSX / PDF) from the admin-gated route app/(app)/attendance/ot-report/export.
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const minToHours = (m: number) => r2(m / 60);
@@ -2340,7 +2340,7 @@ export async function overtimeReport(
   });
 }
 
-/** English report column labels (export headers stay English by design, matching app/analytics/export). */
+/** English report column labels (export headers stay English by design, matching app/(app)/analytics/export). */
 export const OVERTIME_REPORT_COLUMNS = [
   'Employee',
   'Employee code',

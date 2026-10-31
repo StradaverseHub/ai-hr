@@ -141,7 +141,7 @@ never described as the official form. An unfilled box prints EMPTY rather than `
 word of the body comes from the `taxRelief` namespace and every locale in `messages/` translates it, so
 resolving that namespace against the viewer's UI locale prints a statutory form whose whole of Section C
 reads as rows of `?` for `ta` / `zh` / `th` / `vi`. Same allowlist, for the same reason, as
-`app/me/ea/[employmentId]/pdf/route.ts` (587ee719); a `lang` parameter chooses between the two and any
+`app/(app)/me/ea/[employmentId]/pdf/route.ts` (587ee719); a `lang` parameter chooses between the two and any
 other locale gets the English form rather than a broken one.
 
 **9. Section F's Name is resolved through `approved_by`, never copied onto the row.** The column stores

@@ -7,7 +7,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import type { AttendanceHistoryRow } from '@/packs/attendance/service';
 import { attendanceHistoryDate } from '@/lib/attendance-history-filter';
-import { attendanceHistoryBulkAction } from '@/app/attendance/application-history/actions';
+import { attendanceHistoryBulkAction } from '@/app/(app)/attendance/application-history/actions';
 import { Button, ErrorBanner, inputCls, tableWrapCls, tbodyCls, thCls } from './ui';
 
 export function AttendanceHistoryTable({rows,returnTo}:{rows:AttendanceHistoryRow[];returnTo:string}){

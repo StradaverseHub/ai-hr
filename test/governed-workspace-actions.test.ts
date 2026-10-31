@@ -4,7 +4,7 @@ const state=vi.hoisted(()=>({session:vi.fn(),run:vi.fn(),redirect:vi.fn((url:str
 vi.mock('@/lib/session',()=>({getBrowserCommandSession:state.session}));
 vi.mock('@/core/module-agent-releases',()=>({runGovernedModuleReadPlan:state.run}));
 vi.mock('next/navigation',()=>({redirect:state.redirect}));
-import {runGovernedPlanAction} from '../app/assistant/governed-job-actions';
+import {runGovernedPlanAction} from '../app/(app)/assistant/governed-job-actions';
 beforeEach(()=>{vi.clearAllMocks();state.session.mockResolvedValue({tenantId:'fictional-tenant',userId:'fictional-user'});state.run.mockResolvedValue({jobId:'11111111-1111-1111-1111-111111111111',results:[{private:'NEVER_IN_URL'}]});});
 afterEach(()=>vi.restoreAllMocks());
 const form=()=>{const value=new FormData();value.set('commandNonce','22222222-2222-2222-2222-222222222222');value.append('module','employees');value.append('module','leave');value.append('module','');return value;};

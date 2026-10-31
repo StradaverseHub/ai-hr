@@ -81,7 +81,7 @@ inside the first (rolled-back) transaction — never taken from client input —
 employee can read their own blocked-attempt events without being able to forge someone else's.
 
 **Caveat, documented not fixed:** the blocked event's `date`/`time` payload fields come from the
-same `nowParts()` helper `app/me/actions.ts` already uses for check-in/out (UTC calendar date +
+same `nowParts()` helper `app/(app)/me/actions.ts` already uses for check-in/out (UTC calendar date +
 server local time-of-day). This is an existing, pre-existing inexactness in the codebase, not
 introduced here; flagged because the blocked event is a compliance artifact.
 
@@ -154,10 +154,10 @@ Two deferrals recorded below are now CLOSED, and one decision here was reversed:
 - **A duplicate save no longer reaches the banner as SQL.** `location` carries two partial unique
   indexes (`location_code_uq`, `location_branch_uq`); tripping either used to surface drizzle's
   `Failed query: update "location" … params: TWO,Two,MY,,BUKIT JALIL,…` in `?error=`, because
-  `app/admin/_redirects.ts fail()` copies `(e as Error).message` verbatim. `createLocation` /
+  `app/(app)/admin/_redirects.ts fail()` copies `(e as Error).message` verbatim. `createLocation` /
   `updateLocation` now map 23505 to `LocationBranchTakenError` / `LocationCodeTakenError` (the
   `core/roster.ts shiftUniqueError` shape: sniff the code down the cause chain, discriminate on the
-  constraint NAME), and `app/admin/actions.ts` localises them. The branch error carries the CODE of
+  constraint NAME), and `app/(app)/admin/actions.ts` localises them. The branch error carries the CODE of
   the location already holding the branch, resolved in a SECOND transaction because the one that hit
   the violation is aborted.
 - Still deferred: the embedded map picker (no tile provider is configured and the deployed host has
@@ -226,7 +226,7 @@ posted field set (`CLOCKING_FIELDS`) is the same eight.
   block would repeat a move that has twice failed. The decision taken instead: build on free, keyless
   open map data now, so the reporter gets the thing they asked for without owing us anything.
 - **THE PROVIDER IS A SEAM, NOT A CHOICE BAKED INTO THE SCREEN.**
-  `app/admin/locations/clocking/map-provider.ts` is the one module that knows where tiles come from,
+  `app/(app)/admin/locations/clocking/map-provider.ts` is the one module that knows where tiles come from,
   where an address search goes and WHETHER SATELLITE EXISTS. The default is OpenStreetMap raster tiles
   plus Nominatim search, keyless. `resolveMapProvider({})` returns a working provider and never throws.
 - **A KEY ALONE DOES NOT FLIP IT — the supplier's templates do, and that is deliberate.** The approved
@@ -324,11 +324,11 @@ geofencing behaviour is affected — only where the screens live and what the me
 - The register is **Administration › Physical Work Location** at **`/admin/work-locations`**, a flat row
   in `components/sidebar.tsx` beside Organization. The clocking POINTS moved with it, at the reporter's
   approval: `/admin/work-locations/clocking/new` and `/admin/work-locations/clocking/[id]`, with
-  `app/admin/work-locations/clocking/map-provider.ts` still the one module that knows where tiles come
+  `app/(app)/admin/work-locations/clocking/map-provider.ts` still the one module that knows where tiles come
   from. Every `/admin/locations/…` path written above should be read as the address this ADR was
   recorded at; each one still resolves, as a `requireAdmin()` redirect stub, so no bookmark 404s.
 - **This was a PACK-OWNERSHIP change, not a rename.** `packs/attendance/index.ts` had claimed
-  `app/admin/locations/` as one of its own surfaces ("clocking-site admin"), which is what let the list
+  `app/(app)/admin/locations/` as one of its own surfaces ("clocking-site admin"), which is what let the list
   import `core/clocking-location` directly past `test/attendance-pack-drift.test.ts`. The work-site
   register is company-scoped master data — `location.companyId`, RLS by `app.is_admin_for(company_id)` —
   it carries the branch mapping, and it is the only editor of either. So the surface claim was REMOVED
@@ -368,7 +368,7 @@ model, storage or geofencing behaviour is affected.
   they have a screen of their own at `/admin/work-locations/clocking`, linked from the listing with a
   count. Every one of those routes is registered on the same unchanged `locations` screen column.
 - **The pack-ownership half of the r336 amendment is UNCHANGED.** The surface claim on
-  `app/admin/locations/` is still gone and was NOT re-added at the new address: the ADR-0080 ratchet is
+  `app/(app)/admin/locations/` is still gone and was NOT re-added at the new address: the ADR-0080 ratchet is
   about IMPORTS, not menus, and every screen in the tree still consumes clocking through
   `packs/attendance/service`. Those allowlists only ever shrink.
 - **Consequence worth stating, because it reverses the one stated above:** the row is back in

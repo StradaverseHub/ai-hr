@@ -6,7 +6,7 @@
  * anything. So the thing worth pinning is the rendered markup — what a browser would actually hand a
  * click to — not a class string in a source file.
  *
- * The listing itself cannot be rendered here: app/admin/personnel/page.tsx is an async server component
+ * The listing itself cannot be rendered here: app/(app)/admin/personnel/page.tsx is an async server component
  * that reads the database before it emits a row. Each row is therefore its own component, and this file
  * renders THOSE, inside a real <table> so the <tr> is a legal child (the precedent is
  * test/organization-companies-reachable.test.ts, which renders its rows the same way; next/link resolves
@@ -20,7 +20,7 @@
  *      computes a table row's `position: relative` as `static` — measured, in the newest Safari
  *      engine this machine has (bug 240961) — so an overlay pinned to a row escapes to the nearest
  *      positioned ancestor, `<main>`, and paints one invisible link over the entire screen.
- *      app/admin/personnel/row-link.tsx records the measurement and its limits. Hence: every cell
+ *      app/(app)/admin/personnel/row-link.tsx records the measurement and its limits. Hence: every cell
  *      positioned, the row not, and nothing in between.
  *   2. every cell carries exactly one anchor to the row's destination — that is what makes the whole row
  *      clickable with no dead cell (the plan names Employee ID and Status as the two it would be worst
@@ -42,8 +42,8 @@ import {
   EmployeeRow,
   employeeRowHref,
   type EmployeeRowProps,
-} from '../app/admin/personnel/employee-row';
-import { DraftRow, draftRowHref, type DraftRowProps } from '../app/admin/personnel/draft-row';
+} from '../app/(app)/admin/personnel/employee-row';
+import { DraftRow, draftRowHref, type DraftRowProps } from '../app/(app)/admin/personnel/draft-row';
 import type { EmployeeColumnKey } from '../lib/employee-columns';
 
 // jsdom rewrites `import.meta.url` to a non-file URL, so the usual `new URL('..', import.meta.url)`
@@ -138,7 +138,7 @@ function itBehavesLikeAClickableRow(what: string, render: () => Rendered, href: 
         expect(classesOf(td), `the ${COLUMNS[i]} cell is not a positioning context`).toContain('relative');
       }
       // And the row deliberately is NOT. If this ever comes back, the overlays escape the table in
-      // Safari and cover the whole page — the failure app/admin/personnel/row-link.tsx measured.
+      // Safari and cover the whole page — the failure app/(app)/admin/personnel/row-link.tsx measured.
       expect(
         classesOf(tr).filter((c) => POSITIONED.has(c)),
         'the row declares its own positioning, which Safari ignores and Chromium honours',
@@ -281,7 +281,7 @@ describe('420ebab5 · the draft row, in detail', () => {
 });
 
 describe('420ebab5 · the listing renders those rows, and nothing else', () => {
-  const LISTING = read('app/admin/personnel/page.tsx');
+  const LISTING = read('app/(app)/admin/personnel/page.tsx');
 
   it('both kinds of row come from their components, not from a hand-built <tr>', () => {
     expect(LISTING).toMatch(/import \{[^}]*\bEmployeeRow\b[^}]*\} from '\.\/employee-row';/);

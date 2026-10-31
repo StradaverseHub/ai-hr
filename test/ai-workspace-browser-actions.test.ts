@@ -14,8 +14,8 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>((key:
 vi.mock('../core/assistant',()=>({AssistantError:errors.AssistantError,askAssistant:owners.ask}));
 vi.mock('../core/ai-management',()=>({AiControlError:errors.AiControlError,setAiFeature:owners.feature,setAiAllowance:owners.allowance,setAssistantPermission:owners.permission,clearUserAllowance:owners.clear,parseAiAllowance:(value:string)=>value===''?null:Number(value)}));
 import { getSession } from '../lib/session';
-import { askAssistantAction } from '../app/assistant/actions';
-import { clearUserAllowanceAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from '../app/control-tower/agents/actions';
+import { askAssistantAction } from '../app/(app)/assistant/actions';
+import { clearUserAllowanceAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from '../app/(app)/control-tower/agents/actions';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 let base:Base;
 beforeAll(migrateTestDb);

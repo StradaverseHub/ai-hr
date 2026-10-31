@@ -13,10 +13,10 @@ vi.mock('../core/notification-email',()=>({readNotificationEmailPolicy:m.policy,
 vi.mock('../core/notification-email-delivery',()=>({readNotificationEmailTransport:m.relay}));
 vi.mock('../core/account-email',()=>({readAccountEmailDeliveries:m.accounts}));
 vi.mock('../components/account-email-deliveries',()=>({AccountEmailDeliveries:()=>null}));
-vi.mock('../app/admin/settings/notifications/actions',()=>({saveWorkflowEmailPolicy:vi.fn(),retryWorkflowEmail:vi.fn()}));
-vi.mock('../app/me/notifications/actions',()=>({saveMyWorkflowEmailPreferences:vi.fn(),saveMyLetterEmailPreferences:vi.fn()}));
-import AdminPage from '../app/admin/settings/notifications/page';
-import MyPage from '../app/me/notifications/page';
+vi.mock('../app/(app)/admin/settings/notifications/actions',()=>({saveWorkflowEmailPolicy:vi.fn(),retryWorkflowEmail:vi.fn()}));
+vi.mock('../app/(app)/me/notifications/actions',()=>({saveMyWorkflowEmailPreferences:vi.fn(),saveMyLetterEmailPreferences:vi.fn()}));
+import AdminPage from '../app/(app)/admin/settings/notifications/page';
+import MyPage from '../app/(app)/me/notifications/page';
 beforeEach(()=>{cleanup();vi.clearAllMocks();m.accounts.mockResolvedValue([]);m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
 describe('workflow email configuration screens',()=>{
  it('does not claim mail is active when the root-installed service has not been upgraded',async()=>{

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { attendancePack } from '../packs/attendance';
 import { isNavRowActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES } from '../lib/permissions';
-import { ATTENDANCE_SETTINGS_CARDS } from '../app/admin/attendance/settings/cards';
+import { ATTENDANCE_SETTINGS_CARDS } from '../app/(app)/admin/attendance/settings/cards';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -50,7 +50,7 @@ describe('r431: the Settings page cards', () => {
   });
 
   it('the page is requireAdmin-guarded, renders every card, and has a loading boundary', () => {
-    const src = read('app/admin/attendance/settings/page.tsx');
+    const src = read('app/(app)/admin/attendance/settings/page.tsx');
     // A guard that greps a slice must prove the slice was found AND is long (CLAUDE.md section 8).
     const start = src.indexOf('export default async function AttendanceSettingsPage');
     expect(start, 'page component found').toBeGreaterThanOrEqual(0);
@@ -59,16 +59,16 @@ describe('r431: the Settings page cards', () => {
     expect(body).toMatch(/await requireAdmin\(\)/);
     expect(body).toContain('ATTENDANCE_SETTINGS_CARDS.map');
     expect(body).toContain('href={c.href}');
-    expect(fs.existsSync(path.join(root, 'app/admin/attendance/settings/loading.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'app/(app)/admin/attendance/settings/loading.tsx'))).toBe(true);
     expect(REGISTERED_ROUTES.has(SETTINGS), 'registered in lib/permissions.ts (function-access)').toBe(true);
   });
 
   it('a static settings segment sits beside [shiftId], which Next resolves ahead of the dynamic one', () => {
-    const dir = path.join(root, 'app/admin/attendance');
+    const dir = path.join(root, 'app/(app)/admin/attendance');
     expect(fs.existsSync(path.join(dir, 'settings/page.tsx'))).toBe(true);
     expect(fs.existsSync(path.join(dir, '[shiftId]/page.tsx'))).toBe(true);
     // The module gate: this page lives under the attendance layout, which allowance and work-locations lack.
-    expect(read('app/admin/attendance/layout.tsx')).toContain("moduleLayout('attendance')");
+    expect(read('app/(app)/admin/attendance/layout.tsx')).toContain("moduleLayout('attendance')");
   });
 
   it.each(LOCALES)('locale %s: the nav key and every card string are present and non-empty', (loc) => {

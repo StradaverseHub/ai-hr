@@ -15,9 +15,9 @@ vi.mock('../components/attendance-history-table', () => ({ AttendanceHistoryTabl
 // The Offline punches tab (draft 0647) reads the database; without the draft it is absent, which this suite pins.
 // Its own rendering is covered by test/offline-claims-review.dom.test.tsx.
 const offline = vi.hoisted(() => ({ count: null as number | null }));
-vi.mock('../app/attendance/application-history/offline-data', () => ({ offlineReviewTabCount: async () => offline.count, loadOfflineReview: vi.fn() }));
-vi.mock('../app/attendance/application-history/offline-review', () => ({ OfflineClaimsReview: () => null }));
-import Page from '../app/attendance/application-history/page';
+vi.mock('../app/(app)/attendance/application-history/offline-data', () => ({ offlineReviewTabCount: async () => offline.count, loadOfflineReview: vi.fn() }));
+vi.mock('../app/(app)/attendance/application-history/offline-review', () => ({ OfflineClaimsReview: () => null }));
+import Page from '../app/(app)/attendance/application-history/page';
 beforeEach(() => {
   vi.clearAllMocks(); cookie.mockReturnValue(undefined); offline.count = null;
   list.mockResolvedValue({ rows: [], total: 3, page: 1, pageSize: 25, counts: { pending: 3, approved: 5, rejected: 2, cancelled: 1, withdrawn: 2, cancelledWithdrawn: 3, all: 13 } });

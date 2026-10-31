@@ -2,7 +2,7 @@
  * Client-safe contract for the leave-data importer (Leave Data Import & Migration Tool).
  *
  * No DB imports — the column list + per-row result shape live here so BOTH the server service
- * (core/leave-import) and the client UI (app/admin/leave/import) can share them, exactly like
+ * (core/leave-import) and the client UI (app/(app)/admin/leave/import) can share them, exactly like
  * lib/import-schema.ts does for the employee importer.
  *
  * The result type deliberately does NOT reuse lib/import-schema's RowResult (that type is hardwired

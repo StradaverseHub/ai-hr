@@ -207,7 +207,7 @@ export function totalsFor(
  * screen at all.
  *
  * ⚠️ r219 (7966ee35) — AND EVERY CALLER MUST SAY WHICH. The reporter's tenant had this function returning
- * `module_off` for every employee in every company, and `app/leave/page.tsx` rendered the boolean and threw
+ * `module_off` for every employee in every company, and `app/(app)/leave/page.tsx` rendered the boolean and threw
  * the reason away, so the screen was silent and the customer spent a round turning Leave Config switches on
  * and off. That is the third time a surface in this repo computed a precise cause and rendered nothing
  * (`no_eligibility_match`, 8ebf77ae, was the second). `components/leave/replacement-availability-notice.tsx`

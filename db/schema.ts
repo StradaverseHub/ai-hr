@@ -302,7 +302,7 @@ export const company = pgTable(
     // 0287 escalation precedent and the leave_* siblings above (RLS + grant already in place).
     //   probationMonths     — default probation length for a FULL-TIME hire's provisional end date. NULL =
     //                         the code default of 3 (core/org.ts resolveProbationMonths). Read by the hire
-    //                         path (app/admin/personnel/actions.ts), never by payroll. CHECK: NULL or > 0.
+    //                         path (app/(app)/admin/personnel/actions.ts), never by payroll. CHECK: NULL or > 0.
     //   reviewReminderDays  — days BEFORE an employment review's end date at which the nightly sweep nudges
     //                         manager + HR. NULL/empty = the code default [30,14,7]
     //                         (core/employment-review.ts resolveReminderDays). Stored sorted-desc, deduped.
@@ -6650,7 +6650,7 @@ export const payrollBatch = pgTable(
     //
     // 0b326d5f (r256) RE-AFFIRMS THAT, and is the reason to read this comment before adding the value.
     // The reporter asked for "Reprocess Required" as a fourth status in the Payroll Process listing, and
-    // it now appears there — as a DISPLAY state derived from this column (app/payroll/dashboard-logic.ts
+    // it now appears there — as a DISPLAY state derived from this column (app/(app)/payroll/dashboard-logic.ts
     // `payrollListState`: processed + needs_recalc_at ⇒ 'reprocess_required'), including in that screen's
     // status filter. The stored value stayed 'processed', so every report, export, permission and service
     // predicate that already understands it kept working untouched. The reporter was told this in the

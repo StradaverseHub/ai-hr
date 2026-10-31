@@ -3,7 +3,7 @@
 import React from 'react';
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
-vi.mock('../app/assistant/native-outcome-actions',()=>({recordNativeOutcomeAction:vi.fn(async()=>{})}));
+vi.mock('../app/(app)/assistant/native-outcome-actions',()=>({recordNativeOutcomeAction:vi.fn(async()=>{})}));
 import {NativeOutcomeForm} from '../components/assistant/native-outcome-form';
 afterEach(cleanup);
 const props={jobId:'10000000-0000-4000-8000-000000000001',nonce:'10000000-0000-4000-8000-000000000002',options:[{value:'first',label:'Leave submitted; not approved'},{value:'second',label:'Claim submitted; not reimbursed'}],messages:{choose:'Choose completed action',consent:'I explicitly agree to link it',save:'Check and save',pending:'Checking',recover:'Reload saved links'}};

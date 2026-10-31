@@ -16,7 +16,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const PAGE = fs.readFileSync(
-  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
 const TABS = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');

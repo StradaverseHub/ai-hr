@@ -7,7 +7,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Search, ArrowRight, UserCog } from 'lucide-react';
 import { DelegationManager } from '@/components/delegation-manager';
-import { loadDelegationContextAction, type DelegationContext } from '@/app/delegations/actions';
+import { loadDelegationContextAction, type DelegationContext } from '@/app/(app)/delegations/actions';
 import { OPEN_COMMAND_BAR_EVENT, type OpenCommandBarDetail } from '@/lib/command-bar-events';
 import { useNavIndex } from '@/components/nav-index-context';
 

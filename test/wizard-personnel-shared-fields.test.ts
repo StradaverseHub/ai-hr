@@ -71,8 +71,8 @@ function missingByTabBody(): string {
   return body;
 }
 
-const WIZARD = 'app/admin/personnel/new/wizard.tsx';
-const PERSONNEL = 'app/admin/personnel/[employmentId]/page.tsx';
+const WIZARD = 'app/(app)/admin/personnel/new/wizard.tsx';
+const PERSONNEL = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 const SHARED = 'components/person-details-fields.tsx';
 const BIRTH_DATE = 'components/birth-date-fields.tsx';
 const EPF_FIELDS = 'components/epf-registration-fields.tsx';
@@ -83,10 +83,10 @@ const TAX_CARD = 'components/identity-tax-card.tsx';
 const SOCSO_FIELDS = 'components/socso-eis-fields.tsx';
 const IDENTITY_FIELDS = 'components/identity-fields.tsx';
 const IDENTITY_CARD = 'components/personnel-identity.tsx';
-const PERSONNEL_PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
+const PERSONNEL_PAGE = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
-const LEAVE_PANEL = 'app/admin/leave-config/types/leave-type-tabs.tsx';
+const LEAVE_PANEL = 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx';
 
 let b: Base;
 

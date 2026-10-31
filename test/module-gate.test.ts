@@ -247,31 +247,31 @@ describe('r292 — a tenant that declined EVERY optional module still runs the c
 describe('r292 — every optional pack route segment carries a layout guard', () => {
   /** segment → the module code its layout must bind. Each is a route tree packs/<pack>/index.ts claims. */
   const SEGMENTS: Record<string, string> = {
-    'app/attendance/clock': 'attendance',
-    'app/attendance/daily': 'attendance',
-    'app/attendance/import': 'attendance',
-    'app/attendance/individual': 'attendance',
-    'app/attendance/my-records': 'attendance',
-    'app/attendance/plan-ot': 'attendance',
-    'app/attendance/recompute': 'attendance',
-    'app/attendance/request-status': 'attendance',
-    'app/attendance/requests': 'attendance',
-    'app/admin/attendance': 'attendance',
-    'app/admin/attendance-policy': 'attendance',
-    'app/admin/attendance-allowance': 'attendance',
-    'app/claims': 'claims',
-    'app/admin/claims': 'claims',
-    'app/performance': 'performance',
-    'app/me/performance': 'performance',
-    'app/payroll': 'payroll',
-    'app/admin/pay-components': 'payroll',
-    'app/admin/payroll-config': 'payroll',
-    'app/admin/payroll-cycle': 'payroll',
-    'app/admin/payroll-policy': 'payroll',
-    'app/admin/payroll-permissions': 'payroll',
-    'app/admin/loans': 'payroll',
-    'app/me/payslip': 'payroll',
-    'app/me/tax-relief': 'payroll',
+    'app/(app)/attendance/clock': 'attendance',
+    'app/(app)/attendance/daily': 'attendance',
+    'app/(app)/attendance/import': 'attendance',
+    'app/(app)/attendance/individual': 'attendance',
+    'app/(app)/attendance/my-records': 'attendance',
+    'app/(app)/attendance/plan-ot': 'attendance',
+    'app/(app)/attendance/recompute': 'attendance',
+    'app/(app)/attendance/request-status': 'attendance',
+    'app/(app)/attendance/requests': 'attendance',
+    'app/(app)/admin/attendance': 'attendance',
+    'app/(app)/admin/attendance-policy': 'attendance',
+    'app/(app)/admin/attendance-allowance': 'attendance',
+    'app/(app)/claims': 'claims',
+    'app/(app)/admin/claims': 'claims',
+    'app/(app)/performance': 'performance',
+    'app/(app)/me/performance': 'performance',
+    'app/(app)/payroll': 'payroll',
+    'app/(app)/admin/pay-components': 'payroll',
+    'app/(app)/admin/payroll-config': 'payroll',
+    'app/(app)/admin/payroll-cycle': 'payroll',
+    'app/(app)/admin/payroll-policy': 'payroll',
+    'app/(app)/admin/payroll-permissions': 'payroll',
+    'app/(app)/admin/loans': 'payroll',
+    'app/(app)/me/payslip': 'payroll',
+    'app/(app)/me/tax-relief': 'payroll',
   };
 
   it('each segment has a layout.tsx bound to the right module code', () => {
@@ -289,25 +289,25 @@ describe('r292 — every optional pack route segment carries a layout guard', ()
    *   it('`/attendance/travel` is deliberately NOT gated — travel is spine, not the Attendance pack')
    *     … expect(src).toContain("from '@/core/travel-request'");
    *
-   * and its reasoning was that gating the whole `app/attendance` segment would have taken the travel
+   * and its reasoning was that gating the whole `app/(app)/attendance` segment would have taken the travel
    * FILING screen away while leaving its approval queue live — the asymmetry being the bug.
    *
    * My Travel is removed now, so the travel half of that claim is simply false: the screen is a redirect,
    * it imports no service, and there is no approval queue on the other side. What is NOT false, and is
    * what this case actually protects, is the second assertion it always carried: there must be NO
-   * `app/attendance/layout.tsx`. A segment layout there would gate clock, requests, plan-ot and
+   * `app/(app)/attendance/layout.tsx`. A segment layout there would gate clock, requests, plan-ot and
    * request-status — four self-service screens — behind the optional Attendance pack, which is the same
    * over-reach under a different name. Deleting the case outright would have taken that with it.
    */
-  it('`app/attendance` has NO segment layout — its self-service children are not pack-gated', () => {
+  it('`app/(app)/attendance` has NO segment layout — its self-service children are not pack-gated', () => {
     expect(
-      fs.existsSync(path.join(ROOT, 'app/attendance/layout.tsx')),
+      fs.existsSync(path.join(ROOT, 'app/(app)/attendance/layout.tsx')),
       'a layout here would gate clock, requests, plan-ot and request-status behind the Attendance pack',
     ).toBe(false);
-    expect(fs.existsSync(path.join(ROOT, 'app/attendance/travel/layout.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/attendance/travel/layout.tsx'))).toBe(false);
     // b833a077 — the removed screen is a bare redirect: no service import of any kind, so there is
     // nothing left here for a module gate to be right or wrong about.
-    const src = fs.readFileSync(path.join(ROOT, 'app/attendance/travel/page.tsx'), 'utf8');
+    const src = fs.readFileSync(path.join(ROOT, 'app/(app)/attendance/travel/page.tsx'), 'utf8');
     expect(src, 'My Travel is removed; the address only forwards').toContain("redirect('/attendance/clock')");
     expect(src, 'the travel service was deleted with the feature').not.toContain("from '@/core/travel-request'");
     expect(src).not.toContain("from '@/core/attendance'");
@@ -357,14 +357,14 @@ describe('r292 — every optional pack route segment carries a layout guard', ()
 //   BOUND  core/tax-relief.ts  — every consumer outside the payroll route trees takes only the PURE
 //                                exports (TP1_COUNTABLE_COLUMNS, tp1CountForYear, TP1_FORM_CODE,
 //                                TP1_ITEMS, TP1_REBATES), none of which opens a transaction.
-//   BOUND  core/back-pay.ts    — no consumer at all outside app/payroll/back-pay/** and the facade.
+//   BOUND  core/back-pay.ts    — no consumer at all outside app/(app)/payroll/back-pay/** and the facade.
 //
-//   LEFT   core/pay-components.ts  — app/admin/personnel/[employmentId] (PERSONNEL, core) reads it,
+//   LEFT   core/pay-components.ts  — app/(app)/admin/personnel/[employmentId] (PERSONNEL, core) reads it,
 //                                    and the ATTENDANCE pack reaches it (see the attendance-allowance
 //                                    case below, and core/module-gate.ts's r298 correction of WHERE).
 //   LEFT   core/cp38.ts           — same Personnel page reads `listCp38`.
-//   LEFT   core/loans.ts          — app/me/page.tsx (ESS, core) reads `listLoansForEmployment`.
-//   LEFT   core/payroll-cycle.ts  — app/admin/organization/[companyId] (core, and the surface r292
+//   LEFT   core/loans.ts          — app/(app)/me/page.tsx (ESS, core) reads `listLoansForEmployment`.
+//   LEFT   core/payroll-cycle.ts  — app/(app)/admin/organization/[companyId] (core, and the surface r292
 //                                    named) reads `listPayrollCycles`; core/admin.ts seeds the cycle
 //                                    catalogue on company creation.
 //
@@ -405,7 +405,7 @@ describe('r294 — tax-relief and back-pay are bound: refused without Payroll, w
       ModuleNotEnabledError,
     );
     // THE WRITE IS THE POINT. /me/tax-relief and /payroll/transactions/tp1 both have a layout guard, but
-    // `app/me/actions.ts` posts saveTp1Draft / submitTp1 from a CORE segment with no payroll layout
+    // `app/(app)/me/actions.ts` posts saveTp1Draft / submitTp1 from a CORE segment with no payroll layout
     // above it — a declined customer could declare and have HR approve tax relief until this line.
     await expect(
       saveTp1DraftForPerson(off, { personId, assessmentYear, tp1Amount: 1200 }),
@@ -467,13 +467,13 @@ describe('r294 — the four files left unbound still serve their CORE surfaces w
     await declineEverySellableModule(b.tenantId);
     const ctx = await entitledCtx(b);
 
-    // app/admin/personnel/[employmentId]/page.tsx — for any admin, gated on Payroll since r298.
+    // app/(app)/admin/personnel/[employmentId]/page.tsx — for any admin, gated on Payroll since r298.
     await expect(listPayComponents(ctx)).resolves.toBeDefined(); // core/pay-components.ts
     await expect(listEmploymentPayComponents(ctx, employmentId)).resolves.toBeDefined(); // core/pay-components.ts
     await expect(listCp38(ctx, { employmentId })).resolves.toBeDefined(); // core/cp38.ts
-    // app/me/page.tsx — the ESS profile, gated on Payroll since r298.
+    // app/(app)/me/page.tsx — the ESS profile, gated on Payroll since r298.
     await expect(listLoansForEmployment(ctx, employmentId)).resolves.toBeDefined(); // core/loans.ts
-    // app/admin/organization/[companyId]/page.tsx:82 — the surface r292 named by name.
+    // app/(app)/admin/organization/[companyId]/page.tsx:82 — the surface r292 named by name.
     await expect(listPayrollCycles(ctx, b.companyId, { activeOnly: true })).resolves.toHaveLength(1); // core/payroll-cycle.ts
   });
 
@@ -489,11 +489,11 @@ describe('r294 — the four files left unbound still serve their CORE surfaces w
 describe('r294 — the audit is pinned in source, on both sides', () => {
   /** file → the CORE (or other-pack) consumer that forbids binding it, and the symbol it calls. */
   const LEFT_UNBOUND: Record<string, { consumer: string; symbol: string }> = {
-    'core/pay-components.ts': { consumer: 'app/admin/personnel/[employmentId]/page.tsx', symbol: 'listPayComponents' },
-    'core/cp38.ts': { consumer: 'app/admin/personnel/[employmentId]/page.tsx', symbol: 'listCp38' },
-    'core/loans.ts': { consumer: 'app/me/page.tsx', symbol: 'listLoansForEmployment' },
+    'core/pay-components.ts': { consumer: 'app/(app)/admin/personnel/[employmentId]/page.tsx', symbol: 'listPayComponents' },
+    'core/cp38.ts': { consumer: 'app/(app)/admin/personnel/[employmentId]/page.tsx', symbol: 'listCp38' },
+    'core/loans.ts': { consumer: 'app/(app)/me/page.tsx', symbol: 'listLoansForEmployment' },
     'core/payroll-cycle.ts': {
-      consumer: 'app/admin/organization/[companyId]/page.tsx',
+      consumer: 'app/(app)/admin/organization/[companyId]/page.tsx',
       symbol: 'listPayrollCycles',
     },
   };

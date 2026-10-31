@@ -14,8 +14,8 @@
  *   effective-dated budget policy + limits, employee entitlement resolution, submit/decide/cancel
  *   lifecycle, receipt attachments, and both payout routes (taxable → payroll prefill via the D9
  *   contract below; non-taxable → off-cycle reimbursement list/CSV/mark-paid).
- * - Routes: `app/claims/**` (employee submit/list + attachment download),
- *   `app/admin/claims/**` (catalog admin, limits, reimbursements + CSV export).
+ * - Routes: `app/(app)/claims/**` (employee submit/list + attachment download),
+ *   `app/(app)/admin/claims/**` (catalog admin, limits, reimbursements + CSV export).
  * - Client widgets (UI-only, no service imports): `components/claim-form.tsx`,
  *   `components/claims-tabs.tsx`, `components/claim-type-panel.tsx`,
  *   `components/claim-limit-editor.tsx`.
@@ -25,7 +25,7 @@
  * ## The payout seam → the first PayrollInputContributor (D9) — LANDED this rung
  *
  * Audited finding: approved TAXABLE claims reach payroll through real code — the batch page's
- * "queue claims" action (`app/payroll/actions.ts` → `prefillClaimsForBatch`) sums them into
+ * "queue claims" action (`app/(app)/payroll/actions.ts` → `prefillClaimsForBatch`) sums them into
  * `payroll_input.claim_allowance` and reserves each claim to the batch; `generatePayslips` folds
  * the amount into the taxable allowance base and marks the claims paid on processing. Rung 3 cut
  * that seam over to the kernel contract: `packs/contracts.ts` owns `PayrollInputContributor`,
@@ -40,7 +40,7 @@
  * cross-module consumer that becomes a narrow KERNEL CONTRACT at a later rung. They are
  * allowlisted in the ratchet until that contract exists; the list only shrinks.
  *
- * - `app/approvals/{page,actions}.ts` — the full approvals workspace lists
+ * - `app/(app)/approvals/{page,actions}.ts` — the full approvals workspace lists
  *   (`listPendingClaims`) and decides (`decideClaim`) claims. Cross-module approvals substrate is
  *   KERNEL (ADR-0080 open decision 6); needs an approvals contract, not the pack facade. Same
  *   disposition as the identical attendance-corrections entries at rung 2.

@@ -3,7 +3,7 @@
 import React from 'react';
 import {beforeEach,expect,it,vi} from 'vitest';
 import {ModuleProfileActionSection} from '../components/assistant/module-profile-action-section';
-import AssistantProfileRequestPage from '../app/assistant/profile/page';
+import AssistantProfileRequestPage from '../app/(app)/assistant/profile/page';
 const source=vi.hoisted(()=>({session:vi.fn(),choices:vi.fn(),locale:vi.fn()}));vi.mock('server-only',()=>({}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('../core/assistant-actions/module-action-server',()=>({readProfileModuleActionChoices:source.choices}));vi.mock('../components/assistant/module-profile-action-panel',()=>({ModuleProfileActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 const user='10000000-0000-4000-8000-000000000001',person='10000000-0000-4000-8000-000000000002',tenant='10000000-0000-4000-8000-000000000003',employment='10000000-0000-4000-8000-000000000004',review='10000000-0000-4000-8000-000000000005';const session=()=>({tenantId:tenant,userId:user,personId:person,roles:['employee'],grants:[{role:'employee',companyId:null as string|null}]}),choices=()=>({kind:'choices',employments:[{employmentId:employment,employeeCode:'F001',companyName:'Fictional Company',manualPending:true,fields:[{fieldId:'profile.personal_details.preferredname',baseline:'sha256:'+'a'.repeat(64),type:'text'}]}]});
 beforeEach(()=>{vi.clearAllMocks();source.session.mockResolvedValue(session());source.choices.mockResolvedValue(choices());source.locale.mockResolvedValue('en');});

@@ -14,7 +14,7 @@
  *   • listClockingLocations has no company parameter, and the personnel page calls it without one — that
  *     call was the single line that made assignment per-company in practice.
  *   • The screen renders the forms for group admins only and posts no companyId — since r267 (rev 2) the
- *     forms live on a page of their own (app/admin/work-locations/clocking/*) and the list carries none.
+ *     forms live on a page of their own (app/(app)/admin/work-locations/clocking/*) and the list carries none.
  *
  * Behaviour (the 42501, the service refusal, cross-company assignment landing, the optional link) lives in
  * test/clocking-geofence.test.ts. This file pins the SHAPE those behaviours depend on.
@@ -267,7 +267,7 @@ describe('f9afd1ce — core/clocking-location.ts: every writer asserts group-adm
 
 describe('f9afd1ce / r423 — the screens', () => {
   it('r423 REVERSES "the personnel page offers EVERY shared site": only active sites open to the employee’s company', () => {
-    const page = read('app/admin/personnel/[employmentId]/page.tsx');
+    const page = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(page).toContain('await listClockingLocations(s, { companyId: emp.companyId }) : []');
     expect(page).not.toContain('await listClockingLocations(s) : []');
     expect(page).not.toContain('resolvedLocationPointCount');
@@ -285,9 +285,9 @@ describe('f9afd1ce / r423 — the screens', () => {
   });
 
   it('the list renders ONE tenant-level register through the facade, gated on isGroupAdmin, with no clocking form; the form posts no owner company', () => {
-    const list = read('app/admin/work-locations/clocking/page.tsx');
-    const view = read('app/admin/work-locations/clocking/[id]/page.tsx');
-    const page = read('app/admin/work-locations/page.tsx');
+    const list = read('app/(app)/admin/work-locations/clocking/page.tsx');
+    const view = read('app/(app)/admin/work-locations/clocking/[id]/page.tsx');
+    const page = read('app/(app)/admin/work-locations/page.tsx');
     expect(list).toContain('const groupAdmin = isGroupAdmin(s);');
     // r428 (83c0d3c8 contest) — company-first: the list is ALWAYS scoped to one company (step 2) now, so
     // the read no longer has an optional `|| undefined` companyId; step 1's own read is unscoped by design.
@@ -304,22 +304,22 @@ describe('f9afd1ce / r423 — the screens', () => {
       expect(src).not.toContain('action={createClockingLocationAction}');
       expect(src).not.toContain('action={updateClockingLocationAction}');
     }
-    // r428 — the old address is a redirect stub now (app/admin/work-locations/page.tsx); trivially no
+    // r428 — the old address is a redirect stub now (app/(app)/admin/work-locations/page.tsx); trivially no
     // form, kept as a guard against a future round quietly regrowing one there instead of in the company
     // view (CLOCKING_SRC-equivalent content lives on `list` now, already checked above).
     expect(page, 'the old address (now a stub) renders no form at all').not.toContain('<form');
-    const form = read('app/admin/work-locations/clocking/clocking-form.tsx');
+    const form = read('app/(app)/admin/work-locations/clocking/clocking-form.tsx');
     expect(form).toContain("action={mode === 'edit' ? updateClockingLocationAction : createClockingLocationAction}");
     expect(form, 'no OWNER company field').not.toContain('name="companyId"');
     expect(form, 'the companies ALLOWED to use it, one tick each').toContain('name="companyIds"');
-    const newPage = read('app/admin/work-locations/clocking/new/page.tsx');
+    const newPage = read('app/(app)/admin/work-locations/clocking/new/page.tsx');
     expect(newPage).toContain('const groupAdmin = isGroupAdmin(s);');
     expect(newPage).toContain("t('sharedManagedByGroupAdmin')");
-    expect(read('app/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain('if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));');
+    expect(read('app/(app)/admin/work-locations/clocking/[id]/edit/page.tsx')).toContain('if (!isGroupAdmin(s)) redirect(clockingViewPage(site.id));');
   });
 
   it('the create action posts the companies allowed (companyIds), never an owner companyId', () => {
-    const actions = read('app/admin/actions.ts');
+    const actions = read('app/(app)/admin/actions.ts');
     const from = actions.indexOf('export async function createClockingLocationAction');
     const to = actions.indexOf('export async function updateClockingLocationAction');
     expect(from).toBeGreaterThanOrEqual(0);

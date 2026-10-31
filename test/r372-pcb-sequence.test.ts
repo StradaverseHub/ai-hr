@@ -5,8 +5,8 @@
  * WHAT THE DEFECT ACTUALLY WAS. Nine of the reporter's ten sections already existed with his own headings
  * and already in his order (r361 / r362); thirty-one headings rendered. What did not exist was the
  * NUMBERING, the container for sequence 9 — its working was fourteen separate top-level cards — and one
- * ordered list. The screen's order was hand-placed JSX in `app/payroll/pcb-detail/pcb-detail-view.tsx`;
- * the document's was a run of `sections.push` calls in `app/payroll/pcb-detail/shared.ts`. Two independent
+ * ordered list. The screen's order was hand-placed JSX in `app/(app)/payroll/pcb-detail/pcb-detail-view.tsx`;
+ * the document's was a run of `sections.push` calls in `app/(app)/payroll/pcb-detail/shared.ts`. Two independent
  * layouts of one document, and they had already drifted:
  *
  *   · `reliefsHeading`, `bracketHeading`, `priorHeading`, `additionalHeading` and `sourceHeading` were on
@@ -63,8 +63,8 @@ const strip = (src: string) =>
 const code = (rel: string) => strip(read(rel));
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-const VIEW = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
-const SHARED = 'app/payroll/pcb-detail/shared.ts';
+const VIEW = 'app/(app)/payroll/pcb-detail/pcb-detail-view.tsx';
+const SHARED = 'app/(app)/payroll/pcb-detail/shared.ts';
 const EXPLAIN = 'core/pcb-explain.ts';
 
 const CATALOGUE = TP1_ITEMS as readonly PcbSlipCatalogueItem[];
@@ -294,7 +294,7 @@ describe('r372 — the screen and the PDF cannot disagree about which sections t
     expect(monthYearLabel('2026-13', 'en')).toBe('2026-13');
     expect(monthYearLabel('', 'en')).toBe('');
     expect(monthYearLabel(null, 'en')).toBe('');
-    for (const rel of ['app/payroll/pcb-detail/page.tsx', SHARED]) {
+    for (const rel of ['app/(app)/payroll/pcb-detail/page.tsx', SHARED]) {
       expect(code(rel), `${rel} must use the shared formatter`).toContain('monthYearLabel(');
       expect(code(rel), `${rel} must not mint a second one`).not.toContain("month: 'long', year: 'numeric'");
     }
@@ -381,7 +381,7 @@ describe('r372 — sequence 2 shows how many children are on record AND the weig
   it('the SUM lives in the read layer, because core/ holds no arithmetic', () => {
     // core/pcb-explain.ts must not be able to produce a figure — test/7f251381 refuses an operator below
     // its marker — so the grid is added up beside the other sum on this surface, `priorRemuneration`.
-    const reads = code('app/payroll/pcb-detail/slip-data.ts');
+    const reads = code('app/(app)/payroll/pcb-detail/slip-data.ts');
     expect(reads, 'the head count is computed in the read layer').toContain('function childHeadCountOf');
     expect(reads, 'and reads the keyed total for a manual employee').toContain('employeeStatutoryMy.numChildren');
     expect(code(EXPLAIN), 'core only carries the shape').toContain('export type PcbChildHeadCount');

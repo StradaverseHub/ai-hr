@@ -45,12 +45,12 @@ import { canAdminCancelLeave, LEAVE_STATUS_PILL, LEAVE_STATUS_PILL_DEFAULT } fro
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const recordsPage = read('app/leave/employee-records/page.tsx');
-const recordsExport = read('app/leave/employee-records/export/route.ts');
-const leavePage = read('app/leave/page.tsx');
+const recordsPage = read('app/(app)/leave/employee-records/page.tsx');
+const recordsExport = read('app/(app)/leave/employee-records/export/route.ts');
+const leavePage = read('app/(app)/leave/page.tsx');
 const ownHistory = read('components/leave/own-leave-history.tsx');
-const historyPage = read('app/leave/history/page.tsx');
-const leaveActionsSrc = read('app/leave/actions.ts');
+const historyPage = read('app/(app)/leave/history/page.tsx');
+const leaveActionsSrc = read('app/(app)/leave/actions.ts');
 const cancelDialog = read('components/leave/admin-cancel-leave-dialog.tsx');
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -262,10 +262,10 @@ describe('§3 the Requests subsection is REMOVED — where each of its six capab
   });
 
   it('6. /leave/export is DELETED, not left orphaned', () => {
-    expect(existsSync(root + 'app/leave/export/route.ts')).toBe(false);
+    expect(existsSync(root + 'app/(app)/leave/export/route.ts')).toBe(false);
     expect(leavePage).not.toContain('/leave/export?');
     // The surviving per-employee download is untouched.
-    expect(existsSync(root + 'app/leave/employee-records/export/route.ts')).toBe(true);
+    expect(existsSync(root + 'app/(app)/leave/employee-records/export/route.ts')).toBe(true);
   });
 });
 

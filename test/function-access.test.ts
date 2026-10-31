@@ -88,7 +88,7 @@ function guardedRoutes(): string[] {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
       else if (e.name === 'page.tsx' && (GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))||assistantGuard&&path.relative(APP,p).split(path.sep)[0]==='assistant')) {
-        // app/foo/bar/page.tsx -> /foo/bar ; app/page.tsx -> /
+        // app/foo/bar/page.tsx -> /foo/bar ; app/(app)/page.tsx -> /
         const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
         const route = rel.replace(/(^|\/)page\.tsx$/, '');
         out.push(route === '' ? '/' : `/${route}`);

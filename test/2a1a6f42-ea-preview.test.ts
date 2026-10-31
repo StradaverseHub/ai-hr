@@ -41,17 +41,17 @@ import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { employeeEaStatement } from '../core/reporting';
-import { MAX_EA_SELECTION } from '../app/payroll/statutory-forms/ea/limits';
+import { MAX_EA_SELECTION } from '../app/(app)/payroll/statutory-forms/ea/limits';
 import { adminCtx, closeAll, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 
 const ROOT = join(__dirname, '..');
 const src = (p: string) => readFileSync(join(ROOT, p), 'utf8');
-const SHARED = src('app/payroll/statutory-forms/ea/shared.ts');
-const PREVIEW_ROUTE = src('app/payroll/statutory-forms/ea/preview/route.ts');
-const DOWNLOAD_ROUTE = src('app/payroll/statutory-forms/ea/download/route.ts');
-const SCREEN = src('app/payroll/statutory-forms/ea/page.tsx');
-const PICKER = src('app/payroll/statutory-forms/ea/employee-picker.tsx');
+const SHARED = src('app/(app)/payroll/statutory-forms/ea/shared.ts');
+const PREVIEW_ROUTE = src('app/(app)/payroll/statutory-forms/ea/preview/route.ts');
+const DOWNLOAD_ROUTE = src('app/(app)/payroll/statutory-forms/ea/download/route.ts');
+const SCREEN = src('app/(app)/payroll/statutory-forms/ea/page.tsx');
+const PICKER = src('app/(app)/payroll/statutory-forms/ea/employee-picker.tsx');
 
 /**
  * Source with its comments removed. These files EXPLAIN the gate at length — `shared.ts` is named in
@@ -90,8 +90,8 @@ vi.mock('next-intl/server', () => {
   };
 });
 
-import { GET as previewGET } from '../app/payroll/statutory-forms/ea/preview/route';
-import { GET as downloadGET } from '../app/payroll/statutory-forms/ea/download/route';
+import { GET as previewGET } from '../app/(app)/payroll/statutory-forms/ea/preview/route';
+import { GET as downloadGET } from '../app/(app)/payroll/statutory-forms/ea/download/route';
 
 let b: Base;
 let employmentId: string;
@@ -326,7 +326,7 @@ describe('2a1a6f42 · a preview is NOT a lighter surface — every refusal is th
    * `scopeIds.includes(companyId)` line and nothing else.
    *
    * NON-VACUITY: delete `if (!scopeIds.includes(companyId)) return notFound();` from
-   * app/payroll/statutory-forms/ea/shared.ts and both expectations fail with 200 (verified r331).
+   * app/(app)/payroll/statutory-forms/ea/shared.ts and both expectations fail with 200 (verified r331).
    */
   it('an OUT-OF-SCOPE company is a bare 404 on BOTH routes — and the data was reachable', async () => {
     scope = { s: ctxFor(), scopeIds: [neighbourCompanyId] }; // the admin can reach anything BUT this company

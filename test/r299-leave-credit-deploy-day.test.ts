@@ -113,8 +113,8 @@ import {
 import { createEntitlementTemplate } from '../core/entitlement-template';
 import { leaveTypeConfigHealth, type HealthLeaveType, type HealthTemplate } from '../lib/leave-config-health';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import AdjustmentsPage from '../app/admin/leave-config/adjustments/page';
-import BalanceHealthPage from '../app/admin/leave-config/balance-health/page';
+import AdjustmentsPage from '../app/(app)/admin/leave-config/adjustments/page';
+import BalanceHealthPage from '../app/(app)/admin/leave-config/balance-health/page';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -496,7 +496,7 @@ describe('D8 · Expiring soon exists only with the module', () => {
 
   it('the form renders the column only for a number, and the action passes the service figure through', () => {
     expect(read('components/leave-duration-fields.tsx')).toContain('{summary.expiringSoon != null && (');
-    expect(read('app/leave/actions.ts')).toContain('expiringSoon: view.available ? s.expiringSoon : null,');
+    expect(read('app/(app)/leave/actions.ts')).toContain('expiringSoon: view.available ? s.expiringSoon : null,');
   });
 });
 
@@ -558,7 +558,7 @@ describe('D9 · Leave Balance Health — the pure derivation, both arms', () => 
   });
 
   it('the loader decides the flag from the module AND the role, and the sentence exists in six locales', () => {
-    const loader = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const loader = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(loader).toContain("const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');");
     expect(loader).toContain("daysFromLeaveCreditOnly: leaveCreditLive && leaveTypeIs(x, 'replacement'),");
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {

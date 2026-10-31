@@ -16,7 +16,7 @@ import {workforceViewScope} from '../core/workforce-access';
 import {accessConfigurationStore} from '../core/access-configuration-store';
 import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
 import {requirePackFor} from '../localization/registry';
-import {setPassportAction,saveProfileTabAction} from '../app/admin/personnel/[employmentId]/actions';
+import {setPassportAction,saveProfileTabAction} from '../app/(app)/admin/personnel/[employmentId]/actions';
 import {SECTIONS_FIELD,SECTION_FIELD_PREFIX} from '../lib/personnel-tab-sections';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';

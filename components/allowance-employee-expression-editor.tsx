@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { X } from 'lucide-react';
 import { Button, Field, inputCls } from '@/components/ui';
-import { searchAllowanceEmployeeValues } from '@/app/admin/attendance-allowance/actions';
+import { searchAllowanceEmployeeValues } from '@/app/(app)/admin/attendance-allowance/actions';
 import { ALLOWANCE_EMPLOYEE_FIELDS_V4, type AllowanceEmployeeExpression, type AllowanceEmployeeGroup, type AllowanceEmployeeLeaf } from '@/lib/allowance-employee-expression';
 const criterion=():AllowanceEmployeeLeaf=>({id:crypto.randomUUID(),type:'criterion',field:'departmentId',operator:'in',values:[]});
 export const newAllowanceEmployeeGroup=():AllowanceEmployeeGroup=>({id:crypto.randomUUID(),type:'group',logic:'and',children:[criterion()]});

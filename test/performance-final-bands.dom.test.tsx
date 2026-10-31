@@ -4,8 +4,8 @@ import { createTranslator,NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import type { getAssessmentFinalBands } from '../packs/performance/service';
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
-vi.mock('../app/performance/onehr-actions',()=>({finalBandsAction:vi.fn()}));
-import { FinalBandsView } from '../app/performance/onehr/final-bands-view';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({finalBandsAction:vi.fn()}));
+import { FinalBandsView } from '../app/(app)/performance/onehr/final-bands-view';
 type View=Awaited<ReturnType<typeof getAssessmentFinalBands>>;
 const fixture=()=>({session:{id:'scope',cycleId:'cycle',name:'Shared services',revision:4,mode:'blend',bgWeight:50},cycle:{name:'Annual review',status:'open'},sourceDigest:'digest',rows:[
  {reviewId:'one',employmentId:'one-e',name:'Nadia',employeeCode:'E01',department:'Finance',companyId:'company',company:'Acme',businessGroup:'North',ready:true,finalized:false,bg:'AE',group:'ME',draft:null,groupLockedAt:new Date(),suggestion:{band:null,tie:['ME','AE'],why:'halfway'},waiting:null,final:null,agreed:false},

@@ -32,15 +32,15 @@ vi.mock('../packs/performance/service', () => ({
   getOnehrFeedback: mock.feedback, getOnehrReview: mock.review, getOnehrCalibration: vi.fn(async () => null), getAssessmentPersonalRecord: vi.fn(async () => null),
   getReviewConversation: vi.fn(async () => null), getFeedbackConversation: vi.fn(async () => null), getCalibrationConversation: vi.fn(async () => null),
 }));
-vi.mock('../app/performance/workspace/performance-guide', () => ({ PerformanceGuide: () => null }));
-vi.mock('../app/performance/workspace/review-conversation', () => ({ ReviewConversation: ({ children }: { children?: React.ReactNode }) => <>{children}</> }));
-vi.mock('../app/performance/workspace/personal-record', () => ({ PersonalRecord: () => null }));
-vi.mock('../app/performance/workspace/record-drawer', () => ({ RecordDrawer: () => null }));
-vi.mock('../app/performance/onehr/review-view', () => ({ OnehrReviewView: () => null }));
-vi.mock('../app/performance/onehr/feedback-view', () => ({ FeedbackView: () => null }));
-vi.mock('../app/performance/onehr/calibration-view', () => ({ AssessmentCalibrationView: () => null }));
+vi.mock('../app/(app)/performance/workspace/performance-guide', () => ({ PerformanceGuide: () => null }));
+vi.mock('../app/(app)/performance/workspace/review-conversation', () => ({ ReviewConversation: ({ children }: { children?: React.ReactNode }) => <>{children}</> }));
+vi.mock('../app/(app)/performance/workspace/personal-record', () => ({ PersonalRecord: () => null }));
+vi.mock('../app/(app)/performance/workspace/record-drawer', () => ({ RecordDrawer: () => null }));
+vi.mock('../app/(app)/performance/onehr/review-view', () => ({ OnehrReviewView: () => null }));
+vi.mock('../app/(app)/performance/onehr/feedback-view', () => ({ FeedbackView: () => null }));
+vi.mock('../app/(app)/performance/onehr/calibration-view', () => ({ AssessmentCalibrationView: () => null }));
 
-import { PerformanceWorkspaceScreen } from '../app/performance/workspace/workspace-screen';
+import { PerformanceWorkspaceScreen } from '../app/(app)/performance/workspace/workspace-screen';
 import { WORKSPACE_TAB_SCOPES } from '../packs/performance/onehr/tab-route-model';
 
 // jsdom has no matchMedia; the workspace rail (workspace-rail.tsx) listens for the desktop breakpoint.

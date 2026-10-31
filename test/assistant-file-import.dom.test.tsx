@@ -12,7 +12,7 @@ import {parseCsvRecords} from '../lib/csv';
 
 const mocks=vi.hoisted(()=>({prepare:vi.fn(),read:vi.fn(),push:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:mocks.push})}));
-vi.mock('../app/assistant/file-import-actions',()=>({prepareAssistantImportAction:mocks.prepare}));
+vi.mock('../app/(app)/assistant/file-import-actions',()=>({prepareAssistantImportAction:mocks.prepare}));
 vi.mock('../lib/assistant-import-file',()=>({readAssistantImportFile:mocks.read}));
 const copy=en.assistant.fileImport;
 const source='E001 -25.50';

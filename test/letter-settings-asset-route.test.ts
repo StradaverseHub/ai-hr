@@ -4,7 +4,7 @@ import {LetterWorkflowError} from '../lib/letter-workflow';
 const mocks=vi.hoisted(()=>({session:vi.fn(),asset:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({readLetterAsset:mocks.asset}));
-import {GET} from '../app/letters/settings/assets/[assetId]/route';
+import {GET} from '../app/(app)/letters/settings/assets/[assetId]/route';
 const assetId='00000000-0000-4000-8000-000000000001',ctx={tenantId:'fixture',userId:'actual-owner'},params=()=>({params:Promise.resolve({assetId})}),request=new Request('https://fixture.test/letters/settings/assets/'+assetId);
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);});
 it('serves only the owner-authorized exact pixels with private image headers',async()=>{

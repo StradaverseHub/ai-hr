@@ -37,7 +37,7 @@ describe('r292 — transport and product copy describe the same conditional deli
   expect(queue).toContain('policy.enabled');expect(queue).toContain('ev.sequence>pref.email_after_sequence');expect(queue).toContain('ev.sequence>policy.after_sequence');
  });
  it('does not restore obsolete absence claims or unconditional delivery promises',()=>{
-  for(const f of ['app/layout.tsx','app/notification-actions.ts','scripts/review-sweep.ts'])expect(notificationPath).toContain(f);
+  for(const f of ['app/(app)/layout.tsx','app/notification-actions.ts','scripts/review-sweep.ts'])expect(notificationPath).toContain(f);
   expect(notificationPath.length).toBeGreaterThan(6);
   for(const f of notificationPath){const src=read(f);expect(src,f).not.toMatch(/NO EMAIL TRANSPORT IN THIS REPOSITORY|notification_pref.*dead schema|there is no email transport in the repo|this path SENDS EMAIL|there is no email switch, because there is no email/);}
   const header=read('core/notifications.ts').slice(0,2600);

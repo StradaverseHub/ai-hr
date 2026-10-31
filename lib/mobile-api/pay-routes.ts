@@ -1,11 +1,11 @@
 import 'server-only';
 /**
  * M09 — the route halves of the mobile payslip and EA endpoints (app/api/mobile/v2/payslips/**, …/ea/pdf). Server
- * only: the document owners they wrap (app/me/payslip/document.ts, app/me/ea/document.ts) are.
+ * only: the document owners they wrap (app/(app)/me/payslip/document.ts, app/(app)/me/ea/document.ts) are.
  *
  * THE SAME DOCUMENT AS THE WEB, NOT A SECOND ONE. The detail is `myPayslipDocument` (own and released, YTD from
  * the employee's own released slips) drawn through `payslipPresentationRows` with the web statement's own rate
- * formatter (app/me/payslip/statement.tsx); the PDFs are `myPayslipPdfFile` and `myEaPdfFile`, which the web routes
+ * formatter (app/(app)/me/payslip/statement.tsx); the PDFs are `myPayslipPdfFile` and `myEaPdfFile`, which the web routes
  * call too. The only thing this file adds is transport: amounts become two-place decimal strings (the precision the
  * web statement prints, sign kept, no grouping), and every refusal is one `not_found`.
  *
@@ -16,9 +16,9 @@ import 'server-only';
  */
 import type { SessionContext } from '@/db/client';
 import { payrollEnabled } from '@/core/mobile-pay';
-import { myPayslipDocument } from '@/app/me/payslip/document';
-import { myPayslipPdfFile } from '@/app/me/payslip/pdf-file';
-import { myEaPdfFile } from '@/app/me/ea/document';
+import { myPayslipDocument } from '@/app/(app)/me/payslip/document';
+import { myPayslipPdfFile } from '@/app/(app)/me/payslip/pdf-file';
+import { myEaPdfFile } from '@/app/(app)/me/ea/document';
 import { payslipPresentationRows } from '@/lib/payslip-pdf';
 import { formatRate } from '@/lib/money';
 import { MobileBadRequest, type MobileBinary } from './handler';

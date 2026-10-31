@@ -13,7 +13,7 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,typ
 let b:Base,CALLER:SessionContext;
 vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key}));
-const {saveHomeConfigurationAction}=await import('../app/admin/settings/dashboard/home-actions');
+const {saveHomeConfigurationAction}=await import('../app/(app)/admin/settings/dashboard/home-actions');
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();CALLER=adminCtx(b);});
 function form(configuration:EmployeeHomeConfiguration=defaultEmployeeHomeConfiguration(),companyId=b.companyId){
  const data=new FormData();

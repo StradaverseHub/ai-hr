@@ -39,7 +39,7 @@
  * WHAT EACH GROUP OF CASES IS FOR:
  *   1. Static source — the editor is ABSENT from Entitlements and PRESENT on Approval. A mount is not
  *      something a behaviour test can see, and "absent" is the half a careless re-add would undo.
- *   2. The Promise.all arity check — app/admin/leave-config/types/page.tsx's OWN comment warns that
+ *   2. The Promise.all arity check — app/(app)/admin/leave-config/types/page.tsx's OWN comment warns that
  *      removing a name from the destructure without its element (or the reverse) shifts every later
  *      variable by one slot, giving each one somebody else's value with no type error. That trap was
  *      live in this exact edit, so it is pinned rather than trusted.
@@ -62,18 +62,18 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { SCREENS, MATRIX_ROLES, canReach } from '../lib/permissions';
 
 const ROOT = path.resolve(__dirname, '..');
-const ENTITLEMENTS = path.join(ROOT, 'app/admin/leave-config/types/page.tsx');
+const ENTITLEMENTS = path.join(ROOT, 'app/(app)/admin/leave-config/types/page.tsx');
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. 9a65f808's property is that the Grade Groups
  * editor does not live on the approval screen and its READS left with it; the approval screen moved to
  * `/admin/leave-config/approval-chains` and the old address is a redirect stub, which reads nothing at
  * all — so asserting the absence there would be true forever and would mean nothing.
  */
-const APPROVAL = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
+const APPROVAL = path.join(ROOT, 'app/(app)/admin/leave-config/approval-chains/page.tsx');
 /** 9a65f808 — the editor's third and current home: beside Job Grades on the Organisation tab. */
-const SYSTEM_LABELS = path.join(ROOT, 'app/admin/settings/system-labels/page.tsx');
+const SYSTEM_LABELS = path.join(ROOT, 'app/(app)/admin/settings/system-labels/page.tsx');
 /** a6fe37fc Round 5 — the screen that absorbed the shared-group editor and the half-day card. */
-const COMPANY_RULES = path.join(ROOT, 'app/admin/leave-config/company-rules/page.tsx');
+const COMPANY_RULES = path.join(ROOT, 'app/(app)/admin/leave-config/company-rules/page.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 const entitlementsSrc = fs.readFileSync(ENTITLEMENTS, 'utf8');
@@ -182,7 +182,7 @@ describe('f12d77e5 · the Grade Groups editor is off the Entitlement screen', ()
     // inside Generate Entitlement, beside the one operation it must not be confused with). The property
     // is unchanged — the dialog is mounted SOMEWHERE real, so the "not here" half above cannot go green
     // on a tool that simply vanished.
-    expect(stripComments(fs.readFileSync(path.join(ROOT, 'app/admin/leave-config/earned-accrual/page.tsx'), 'utf8'))).toContain('<EarnedAccrualDialog');
+    expect(stripComments(fs.readFileSync(path.join(ROOT, 'app/(app)/admin/leave-config/earned-accrual/page.tsx'), 'utf8'))).toContain('<EarnedAccrualDialog');
   });
 
   it('the destructure and the Promise.all still have the SAME arity, in the same order', () => {
@@ -300,7 +300,7 @@ describe('9a65f808 · …and maintained on System Labels → Organisation, besid
     // A save that worked and then dropped the admin on another screen would show no result. Worse on
     // failure: `fail()` carries the message in `?error=`, so deleteGradeGroup's refusal would be rendered
     // on a page with no grade-group form while the screen the admin is looking at reloads unchanged.
-    const actionsSrc = fs.readFileSync(path.join(ROOT, 'app/admin/actions.ts'), 'utf8');
+    const actionsSrc = fs.readFileSync(path.join(ROOT, 'app/(app)/admin/actions.ts'), 'utf8');
     const block = actionsSrc.slice(
       actionsSrc.indexOf('export async function createGradeGroupAction'),
       actionsSrc.indexOf('// SHARED LEAVE GROUPS'),
@@ -313,7 +313,7 @@ describe('9a65f808 · …and maintained on System Labels → Organisation, besid
     // …and the constant is the route this page actually lives at. `LEAVE_APPROVAL` was removed with the
     // card: these three were its only callers, and an exported redirect nobody redirects to is a stale
     // statement about where a screen lives.
-    const redirects = fs.readFileSync(path.join(ROOT, 'app/admin/_redirects.ts'), 'utf8');
+    const redirects = fs.readFileSync(path.join(ROOT, 'app/(app)/admin/_redirects.ts'), 'utf8');
     expect(redirects).toContain("export const SYSTEM_LABELS = '/admin/settings/system-labels';");
     expect(redirects).not.toContain('export const LEAVE_APPROVAL');
   });

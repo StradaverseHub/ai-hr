@@ -30,10 +30,10 @@ vi.mock('next-intl/server', () => ({
   }),
 }));
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('NOT_FOUND'); } }));
-vi.mock('../app/attendance/application-history/actions', () => ({ attendanceHistoryAction: vi.fn() }));
+vi.mock('../app/(app)/attendance/application-history/actions', () => ({ attendanceHistoryAction: vi.fn() }));
 // The existing workflow tests cover progress. This regression renders the actual history page/list.
 vi.mock('../components/attendance-workflow-progress', () => ({ AttendanceWorkflowProgress: () => <div /> }));
-import Page from '../app/attendance/application-history/[id]/page';
+import Page from '../app/(app)/attendance/application-history/[id]/page';
 
 const companyId = '00000000-0000-0000-0000-000000000001';
 const applicationId = '00000000-0000-0000-0000-000000000002';

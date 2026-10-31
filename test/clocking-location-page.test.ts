@@ -13,7 +13,7 @@
  * reason and everything typed; nothing an action does can leave the Locations screens.
  *
  * r423 (83c0d3c8) — REWRITTEN AROUND THE NEW SCREENS, property by property. Attendance › Locations is the
- * CLOCKING location list now (app/admin/work-locations/clocking/page.tsx: search, Company and Status
+ * CLOCKING location list now (app/(app)/admin/work-locations/clocking/page.tsx: search, Company and Status
  * filters, the plan's eight columns, View / Edit / Deactivate); View is a read-only page (clocking/[id]) and
  * Edit is the form (clocking/[id]/edit); the form is in the reporter's order (Location Name first — this
  * REVERSES r335's "Name below the coordinates", which the cases below used to pin) with Companies and
@@ -68,17 +68,17 @@ vi.mock('next/headers', () => ({
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
-import NewClockingLocationPage from '../app/admin/work-locations/clocking/new/page';
-import EditClockingLocationPage from '../app/admin/work-locations/clocking/[id]/edit/page';
-import ViewClockingLocationPage from '../app/admin/work-locations/clocking/[id]/page';
-import ClockingListPage from '../app/admin/work-locations/clocking/page';
-import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
+import NewClockingLocationPage from '../app/(app)/admin/work-locations/clocking/new/page';
+import EditClockingLocationPage from '../app/(app)/admin/work-locations/clocking/[id]/edit/page';
+import ViewClockingLocationPage from '../app/(app)/admin/work-locations/clocking/[id]/page';
+import ClockingListPage from '../app/(app)/admin/work-locations/clocking/page';
+import EditLocationPage from '../app/(app)/admin/work-locations/[id]/edit/page';
 import {
   archiveClockingLocationAction,
   createClockingLocationAction,
   restoreClockingLocationAction,
   updateClockingLocationAction,
-} from '../app/admin/actions';
+} from '../app/(app)/admin/actions';
 import {
   CLOCKING_FIELDS,
   CLOCKING_LIST,
@@ -90,7 +90,7 @@ import {
   readTypedClockingValues,
   readTypedCompanyIds,
   typedKey,
-} from '../app/admin/work-locations/clocking/form-fields';
+} from '../app/(app)/admin/work-locations/clocking/form-fields';
 
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
@@ -99,16 +99,16 @@ const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
  * r423 — the files this test reads. `LIST` is Attendance › Locations; `REGISTER` and `LOCATION_EDIT` are the
  * WORK location screens, read only to assert that no clocking location is shown under them any more.
  */
-const LIST = 'app/admin/work-locations/clocking/page.tsx';
-const LOCATION_EDIT = 'app/admin/work-locations/[id]/edit/page.tsx';
-const LOCATION_VIEW = 'app/admin/work-locations/[id]/page.tsx';
-const REGISTER = 'app/admin/work-locations/page.tsx';
-const FORM = 'app/admin/work-locations/clocking/clocking-form.tsx';
-const NEW = 'app/admin/work-locations/clocking/new/page.tsx';
-const EDIT = 'app/admin/work-locations/clocking/[id]/edit/page.tsx';
-const VIEW = 'app/admin/work-locations/clocking/[id]/page.tsx';
-const ACTIONS = 'app/admin/actions.ts';
-const FIELDS = 'app/admin/work-locations/clocking/form-fields.ts';
+const LIST = 'app/(app)/admin/work-locations/clocking/page.tsx';
+const LOCATION_EDIT = 'app/(app)/admin/work-locations/[id]/edit/page.tsx';
+const LOCATION_VIEW = 'app/(app)/admin/work-locations/[id]/page.tsx';
+const REGISTER = 'app/(app)/admin/work-locations/page.tsx';
+const FORM = 'app/(app)/admin/work-locations/clocking/clocking-form.tsx';
+const NEW = 'app/(app)/admin/work-locations/clocking/new/page.tsx';
+const EDIT = 'app/(app)/admin/work-locations/clocking/[id]/edit/page.tsx';
+const VIEW = 'app/(app)/admin/work-locations/clocking/[id]/page.tsx';
+const ACTIONS = 'app/(app)/admin/actions.ts';
+const FIELDS = 'app/(app)/admin/work-locations/clocking/form-fields.ts';
 const NEW_ROUTE = '/admin/work-locations/clocking/new';
 const VIEW_ROUTE = '/admin/work-locations/clocking/[id]';
 const EDIT_ROUTE = '/admin/work-locations/clocking/[id]/edit';
@@ -171,7 +171,7 @@ describe('r423 — the routes exist, guard themselves, and sit on the locations 
     expect(settingsRow).toContain("'/admin/work-locations/clocking'");
     expect(settingsRow).toContain("'/admin/work-locations'");
     expect((sidebar + pack).split("{ href: '/admin/work-locations/clocking'").length - 1, 'Locations is not a row').toBe(0);
-    expect(read('app/admin/attendance/settings/cards.ts'), 'the card opens the clocking list').toContain(
+    expect(read('app/(app)/admin/attendance/settings/cards.ts'), 'the card opens the clocking list').toContain(
       "{ key: 'locations', href: '/admin/work-locations/clocking' }",
     );
     expect(pack, 'no second row for the retired Work Locations screen').not.toContain("labelKey: 'workLocations'");
@@ -293,7 +293,7 @@ describe('r428 (83c0d3c8 contest) — STEP 2: a company’s own view, its column
       expect(code, `${name} offers no "Add a clocking point"`).not.toContain("t('addPointCta')");
       expect(code, `${name} links to no clocking editor`).not.toContain('clockingEditPage');
     }
-    expect(fs.existsSync(path.join(root, 'app/admin/work-locations/clocking-points.tsx')), 'the row component is gone').toBe(false);
+    expect(fs.existsSync(path.join(root, 'app/(app)/admin/work-locations/clocking-points.tsx')), 'the row component is gone').toBe(false);
     // r428 — the standalone listing's own H1 retired WITH the page; the register is a redirect stub now.
     expect(register, 'the register is a guarded redirect stub, not a screen').toContain('requireAdmin()');
     expect(register, 'and renders no page of its own').not.toContain('PageHeader');
@@ -858,7 +858,7 @@ describe('r423 — the pages render', () => {
       expect(count(html, `name="${kept}"`), `the ${kept} control survives`).toBeGreaterThan(0);
     }
 
-    // ⚠️ THE MUTATION TARGET. Put a state control back on app/admin/work-locations/location-form.tsx and
+    // ⚠️ THE MUTATION TARGET. Put a state control back on app/(app)/admin/work-locations/location-form.tsx and
     // the first line fails; restore the retired note and the second does.
     expect(count(html, 'name="state"'), 'no State control on the location form').toBe(0);
     const en = JSON.parse(read('messages/en.json')) as { admin: { locations: Record<string, string> } };

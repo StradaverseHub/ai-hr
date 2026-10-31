@@ -7,7 +7,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {PersonnelImportHeaderReview,type PersonnelImportHeaderReviewMessages} from '../components/personnel-import-header-review';
 import {capturePersonnelImportSource} from '../lib/personnel-import-assistance-source';
 const actions=vi.hoisted(()=>({prepare:vi.fn(),execute:vi.fn(),reopen:vi.fn()}));
-vi.mock('../app/admin/personnel/import/assistance-actions',()=>({preparePersonnelImportHeadersAction:actions.prepare,assistPersonnelImportHeadersAction:actions.execute,reopenPersonnelImportHeadersAction:actions.reopen}));
+vi.mock('../app/(app)/admin/personnel/import/assistance-actions',()=>({preparePersonnelImportHeadersAction:actions.prepare,assistPersonnelImportHeadersAction:actions.execute,reopenPersonnelImportHeadersAction:actions.reopen}));
 vi.mock('../components/ui',()=>({Button:({children,variant:_,...props}:React.ButtonHTMLAttributes<HTMLButtonElement>&{variant?:string})=><button {...props}>{children}</button>,inputCls:''}));
 const keys='title localOnly sheet column sourceHeading sampleValues destination chooseField unresolved ambiguous duplicate applyMapping cancel reviewHeadings invalidSource acceptedRevision sourceChanged unknownSheet aiTitle aiDescription aiChoose aiConsent aiSend aiWorking aiUnavailable aiUncertain aiReopen aiNewRequest aiReady aiUseSuggestion aiNoHeadings aiLimit aiSelected aiStale aiPrepareUnknown'.split(' ');
 const messages=Object.fromEntries(keys.map(key=>[key,key])) as PersonnelImportHeaderReviewMessages;

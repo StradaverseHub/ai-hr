@@ -63,7 +63,7 @@ const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
 /** Every page of the module, walked from disk so a page added later cannot skip this. */
-function pages(dir = 'app/admin/leave-config', out: string[] = []): string[] {
+function pages(dir = 'app/(app)/admin/leave-config', out: string[] = []): string[] {
   for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
     const p = `${dir}/${e.name}`;
     if (e.isDirectory()) pages(p, out);
@@ -78,8 +78,8 @@ function pages(dir = 'app/admin/leave-config', out: string[] = []): string[] {
  * old tab addresses became. Each is asserted to be what it claims below, so a row page cannot hide in
  * this list, and everything else on disk is still held to the heading-equals-row rule.
  */
-const SUB_SCREEN = 'app/admin/leave-config/records/page.tsx';
-const STUBS = ['app/admin/leave-config/records/entitlement/page.tsx', 'app/admin/leave-config/records/balances/page.tsx'];
+const SUB_SCREEN = 'app/(app)/admin/leave-config/records/page.tsx';
+const STUBS = ['app/(app)/admin/leave-config/records/entitlement/page.tsx', 'app/(app)/admin/leave-config/records/balances/page.tsx'];
 /**
  * r279 (3fbf7a02) — LEAVE BALANCE HEALTH IS NOT ON THIS EXCLUSION LIST, and it was the round's decision
  * that it should not be. It is a new page under the module, so it takes a map group of its own (of one
@@ -91,10 +91,10 @@ const STUBS = ['app/admin/leave-config/records/entitlement/page.tsx', 'app/admin
  */
 // r378: importer bookmarks are guarded redirects, not duplicate row pages.
 const IMPORT_ALIASES = {
-  'app/admin/leave-config/history-import/page.tsx': 'history',
-  'app/admin/leave-config/bf-import/page.tsx': 'bf',
+  'app/(app)/admin/leave-config/history-import/page.tsx': 'history',
+  'app/(app)/admin/leave-config/bf-import/page.tsx': 'bf',
 } as const;
-const SETTINGS_HUB = 'app/admin/leave-config/settings/page.tsx';
+const SETTINGS_HUB = 'app/(app)/admin/leave-config/settings/page.tsx';
 const PAGES = pages().filter((p) => p !== SETTINGS_HUB && p !== SUB_SCREEN && !STUBS.includes(p) && !(p in IMPORT_ALIASES));
 const MAP_SRC = read('components/leave-config-map.tsx');
 const MAP_CODE = stripComments(MAP_SRC);
@@ -103,7 +103,7 @@ const CHILDREN = LEAVE_ADMIN_DESTINATIONS.children;
  * 5ca446db (r269) — the five CONFIGURATION rows, which is what this file has always been about.
  *
  * The fly-out gained a sixth child (Employee Leave Inquiry → `/leave/employee-balances`) that is not a
- * Leave Config screen: no page under `app/admin/leave-config/**`, its own `leaveEmployeeBalances`
+ * Leave Config screen: no page under `app/(app)/admin/leave-config/**`, its own `leaveEmployeeBalances`
  * permission column, its own PageHeader. Every case below that reasons about "the rows and their tabs"
  * means these five; the sixth has its own case in §A and in test/leave-flyout-nav.test.ts.
  */
@@ -185,7 +185,7 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
       expect(onMap.filter((h) => h === r), r).toHaveLength(r === '/admin/leave-config/settings' || r === LEAVE_CONFIG_RECORDS_HREF || Object.keys(IMPORT_ALIASES).some((p) => p.replace(/^app/, '').replace(/\/page\.tsx$/, '') === r) ? 0 : 1);
     }
     expect(leaveConfig.routes).toContain(LEAVE_CONFIG_RECORDS_HREF);
-    expect(read('app/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
+    expect(read('app/(app)/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
     expect(onMap).toEqual([
       '/admin/leave-config/types',
       '/admin/leave-config/entitlement-tables',
@@ -421,7 +421,7 @@ describe('§D · the moves, and what deliberately did not move', () => {
     // Leave Config screen instead of one underlined link on this one page, which is strictly stronger. The
     // reporter asked for that row twice. So the assertion moves with the property: the header is empty, and
     // the row is what carries the way in.
-    const src = read('app/admin/leave-config/types/page.tsx');
+    const src = read('app/(app)/admin/leave-config/types/page.tsx');
     const header = src.slice(src.indexOf('<PageHeader'), src.indexOf('<LeaveConfigMap'));
     expect(header, 'the actions slot is gone, not emptied').not.toMatch(/actions=\{/);
     expect(header, 'no link survives in the header').not.toContain('<Link ');
@@ -444,10 +444,10 @@ describe('§D · the moves, and what deliberately did not move', () => {
     // one place. r266 put it on Generate Entitlement; that screen CREATES a leave year's entitlement and
     // this one tops up what was already earned, so filing the second inside the first put an operator one
     // scroll from the operation it must never be confused with. It has a row and a page of its own now.
-    const accrual = read('app/admin/leave-config/earned-accrual/page.tsx');
-    const generate = read('app/admin/leave-config/generate/page.tsx');
-    const types = read('app/admin/leave-config/types/page.tsx');
-    const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
+    const accrual = read('app/(app)/admin/leave-config/earned-accrual/page.tsx');
+    const generate = read('app/(app)/admin/leave-config/generate/page.tsx');
+    const types = read('app/(app)/admin/leave-config/types/page.tsx');
+    const tabs = read('app/(app)/admin/leave-config/types/leave-type-tabs.tsx');
     expect(accrual.match(/<EarnedAccrualDialog/g)).toHaveLength(1);
     // ONE PLACE, NOT TWO: a half-done move that leaves a second mount behind fails here.
     expect(generate.match(/<EarnedAccrualDialog/g) ?? []).toHaveLength(0);
@@ -468,7 +468,7 @@ describe('§D · the moves, and what deliberately did not move', () => {
   });
 
   it('eligibility rules stay under Entitlements; Company rules only points at them', () => {
-    const companyRules = read('app/admin/leave-config/company-rules/page.tsx');
+    const companyRules = read('app/(app)/admin/leave-config/company-rules/page.tsx');
     expect(companyRules).toContain("tPage('whoQualifies')");
     // r270 (995387c6) — UPDATED, NOT DELETED, AND THE PROPERTY IS NARROWED RATHER THAN LOOSENED.
     //
@@ -498,17 +498,17 @@ describe('§D · the moves, and what deliberately did not move', () => {
     expect(companyRules).not.toContain('<EntitlementTablesBlock');
     expect(companyRules).not.toContain('EligibilityRuleForm');
     // The tables block is mounted where it was: the leave type's tab 3 and the Entitlement tables tab.
-    expect(read('app/admin/leave-config/entitlement-tables/page.tsx')).toContain('<EntitlementTablesBlock');
-    expect(read('app/admin/leave-config/types/page.tsx')).toContain('<EntitlementTablesBlock');
+    expect(read('app/(app)/admin/leave-config/entitlement-tables/page.tsx')).toContain('<EntitlementTablesBlock');
+    expect(read('app/(app)/admin/leave-config/types/page.tsx')).toContain('<EntitlementTablesBlock');
     // Approval Workflow and Company rules keep their content: the editors are still mounted.
-    const approval = read('app/admin/leave-config/approval-chains/page.tsx');
+    const approval = read('app/(app)/admin/leave-config/approval-chains/page.tsx');
     for (const needle of ['<ApprovalTemplateManager', '<ApprovalAssignmentManager', '<LeaveEscalationEditor'])
       expect(approval).toContain(needle);
     // r281 (a73d1e14) — THE HALF-DAY CARD LEFT THIS SCREEN, so the assertion follows the editor rather
     // than the address: it is on the Special Setting row now (the reporter asked for it under a heading
     // of its own), and it must be on EXACTLY one screen — asserted in both directions so a half-done move
     // that leaves a second copy behind, or one that loses the card altogether, both fail.
-    expect(read('app/admin/leave-config/special-setting/page.tsx')).toContain('<HalfDayCompanyPicker');
+    expect(read('app/(app)/admin/leave-config/special-setting/page.tsx')).toContain('<HalfDayCompanyPicker');
     expect(companyRules, 'the half-day card must not survive on Company rules too').not.toContain(
       '<HalfDayCompanyPicker',
     );
@@ -525,7 +525,7 @@ describe('§D · the moves, and what deliberately did not move', () => {
     // passed it, because the section is still textually earlier. The Card that carries `data-tour=
     // "leave-config"` IS the per-type workspace as far as the reader is concerned, so that is the
     // boundary the section must sit outside of.
-    const types = read('app/admin/leave-config/types/page.tsx');
+    const types = read('app/(app)/admin/leave-config/types/page.tsx');
     expect(types).toContain('<LeaveSharedGroupConfig');
     expect(
       types.indexOf('<LeaveSharedGroupConfig'),
@@ -563,7 +563,7 @@ describe('§D · the moves, and what deliberately did not move', () => {
     const tours = JSON.parse(read('lib/module-tours.json')) as Record<string, { steps: { route: string; target: string | null }[] }>;
     const step = Object.values(tours).flatMap((m) => m.steps).find((x) => x.target === '[data-tour="leave-config"]');
     expect(step?.route).toBe('/admin/leave-config/types');
-    expect(read('app/admin/leave-config/types/page.tsx')).toContain('data-tour="leave-config"');
+    expect(read('app/(app)/admin/leave-config/types/page.tsx')).toContain('data-tour="leave-config"');
   });
 });
 
@@ -658,7 +658,7 @@ describe('§E · the strings, six locales', () => {
       'admin.leaveLedgerArchive.backToEntitlements',
       'admin.leaveConfigTypes.pageDescription',
       // 5ca446db (r269) — the LAST header caption goes the same way, with the link it labelled. Grepped
-      // first (the r137 rule): its one reader was app/admin/leave-config/types/page.tsx, and no computed
+      // first (the r137 rule): its one reader was app/(app)/admin/leave-config/types/page.tsx, and no computed
       // `t(\`…\`)` form in any file reading the `admin.leave` namespace can reach it.
       'admin.leave.employeeBalancesAction',
     ]) {

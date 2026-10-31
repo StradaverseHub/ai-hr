@@ -48,22 +48,22 @@ describe('deductionLinesFor — reconcile before replacing', () => {
 
 /** Every surface in the approved plan's list, and what it must call. */
 const SURFACES: [string, RegExp][] = [
-  ['app/payroll/transaction-view/history-table.tsx', /payrollRunLabel\(r,/],
-  ['app/payroll/transaction-view/history-grid.tsx', /payrollRunLabel\(r,/],
-  ['app/payroll/transaction-view/history-export.ts', /payrollRunLabel\(row,/],
-  ['app/payroll/transaction-view/grid-export/route.ts', /payrollRunLabel\(r,/],
-  ['app/payroll/transaction-view/page.tsx', /payrollRunLabel\(m,/],
-  ['app/payroll/individual-payslip/page.tsx', /payrollRunLabel\(o,/],
-  ['app/payroll/process/steps/step-period.tsx', /payrollRunLabel\(r,/],
-  ['app/payroll/process/wizard.tsx', /payrollRunLabel\(resumeBatch,/],
-  ['app/payroll/[batchId]/reprocess/page.tsx', /payrollRunLabel\(batch,/],
-  ['app/payroll/[batchId]/remove/page.tsx', /payrollRunLabel\(batch,/],
-  ['app/payroll/[batchId]/reset/page.tsx', /payrollRunLabel\(batch,/],
-  ['app/payroll/[batchId]/page.tsx', /payrollRunLabel\(batch,/],
-  ['app/payroll/page.tsx', /payrollRunLabel\(b,/],
-  ['app/payroll/multi-cycle-worksheet/page.tsx', /payrollRunLabel\(r,/],
-  ['app/payroll/statutory-detail/statutory-detail-view.tsx', /payrollRunLabel\(ctx,/],
-  ['app/payroll/[batchId]/transaction-detail-report.ts', /payrollRunLabel\(r,/],
+  ['app/(app)/payroll/transaction-view/history-table.tsx', /payrollRunLabel\(r,/],
+  ['app/(app)/payroll/transaction-view/history-grid.tsx', /payrollRunLabel\(r,/],
+  ['app/(app)/payroll/transaction-view/history-export.ts', /payrollRunLabel\(row,/],
+  ['app/(app)/payroll/transaction-view/grid-export/route.ts', /payrollRunLabel\(r,/],
+  ['app/(app)/payroll/transaction-view/page.tsx', /payrollRunLabel\(m,/],
+  ['app/(app)/payroll/individual-payslip/page.tsx', /payrollRunLabel\(o,/],
+  ['app/(app)/payroll/process/steps/step-period.tsx', /payrollRunLabel\(r,/],
+  ['app/(app)/payroll/process/wizard.tsx', /payrollRunLabel\(resumeBatch,/],
+  ['app/(app)/payroll/[batchId]/reprocess/page.tsx', /payrollRunLabel\(batch,/],
+  ['app/(app)/payroll/[batchId]/remove/page.tsx', /payrollRunLabel\(batch,/],
+  ['app/(app)/payroll/[batchId]/reset/page.tsx', /payrollRunLabel\(batch,/],
+  ['app/(app)/payroll/[batchId]/page.tsx', /payrollRunLabel\(batch,/],
+  ['app/(app)/payroll/page.tsx', /payrollRunLabel\(b,/],
+  ['app/(app)/payroll/multi-cycle-worksheet/page.tsx', /payrollRunLabel\(r,/],
+  ['app/(app)/payroll/statutory-detail/statutory-detail-view.tsx', /payrollRunLabel\(ctx,/],
+  ['app/(app)/payroll/[batchId]/transaction-detail-report.ts', /payrollRunLabel\(r,/],
   ['core/report-registry.ts', /payrollRunLabel\(r,/],
 ];
 
@@ -82,7 +82,7 @@ describe('every listed surface labels a run through payrollRunLabel', () => {
     // listFilableRunsForPeriod (borang-a, borang-8a, cp39, bbcd, sip-contribution) and payslipForReview.
     expect(view.match(/historyImportCycleName\} \|\| ' - By Import'/g)?.length).toBe(2);
     for (const preview of ['borang-a', 'borang-8a', 'borang-bbcd', 'cp39', 'sip-contribution']) {
-      expect(readFileSync(`app/payroll/${preview}/preview/page.tsx`, 'utf8')).toMatch(/payslipCycleLabel\(\{\s*cycleName: r\.cycleName/);
+      expect(readFileSync(`app/(app)/payroll/${preview}/preview/page.tsx`, 'utf8')).toMatch(/payslipCycleLabel\(\{\s*cycleName: r\.cycleName/);
     }
     expect(readFileSync('components/run-picker.tsx', 'utf8')).toMatch(/payslipCycleLabel\(\{ cycleName: r\.cycleName/);
   });

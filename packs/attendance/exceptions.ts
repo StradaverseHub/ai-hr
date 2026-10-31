@@ -19,8 +19,8 @@
  * PURE. No DB, no React, no `t` — imports only the derivation module, which is itself pure. That is what
  * lets the section rules be unit-tested with plain object literals and no fixtures, and it is why the
  * import is `core/attendance-derive` directly rather than the pack facade (which drags in db/client).
- * `app/attendance/` is pack surface, so the import ratchet allows it — the same import
- * app/attendance/individual/page.tsx already makes.
+ * `app/(app)/attendance/` is pack surface, so the import ratchet allows it — the same import
+ * app/(app)/attendance/individual/page.tsx already makes.
  */
 import { flagOf, statusOf, type AttendanceFlag } from '@/core/attendance-derive';
 

@@ -13,8 +13,8 @@ import { statutoryIdentityFor } from '../localization/my/statutory-identity';
 import { borang8AFrom } from '../lib/borang-8a';
 import { borangAFrom } from '../lib/borang-a';
 import { borangAFileReadiness, buildBorangAFile, parseBorangAFileTotals } from '../lib/kwsp-borang-a-file';
-import { borang8AFileRows } from '../app/payroll/borang-8a/shared';
-import { borangAFileRows } from '../app/payroll/borang-a/shared';
+import { borang8AFileRows } from '../app/(app)/payroll/borang-8a/shared';
+import { borangAFileRows } from '../app/(app)/payroll/borang-a/shared';
 
 const id = (p: Partial<Parameters<typeof statutoryIdentityFor>[0]>) =>
   statutoryIdentityFor({ epfCitizenship: null, nationality: null, icNumber: null, passportNumber: null, ...p });

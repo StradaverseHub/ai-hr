@@ -17,8 +17,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const root = join(__dirname, '..');
-const personnel = readFileSync(join(root, 'app/admin/personnel/[employmentId]/page.tsx'), 'utf8');
-const fixedList = readFileSync(join(root, 'app/payroll/transactions/fixed/fixed-list.tsx'), 'utf8');
+const personnel = readFileSync(join(root, 'app/(app)/admin/personnel/[employmentId]/page.tsx'), 'utf8');
+const fixedList = readFileSync(join(root, 'app/(app)/payroll/transactions/fixed/fixed-list.tsx'), 'utf8');
 const en = JSON.parse(readFileSync(join(root, 'messages/en.json'), 'utf8'));
 
 /** Strip comments — this file's own explanation quotes the retired reasoning, and the pack-drift ratchet
@@ -64,7 +64,7 @@ describe('2f889bae: Pay items rows reach the item page', () => {
     const exit=personnel.indexOf('if(!isAdmin(s))return <WorkforceScopedRecord');
     expect(exit).toBeGreaterThan(-1);
     expect(personnel.indexOf('const payrollOn = isModuleEnabledOrFalse')).toBeGreaterThan(exit);
-    const destination = readFileSync(join(root, 'app/payroll/transactions/fixed/[id]/page.tsx'), 'utf8');
+    const destination = readFileSync(join(root, 'app/(app)/payroll/transactions/fixed/[id]/page.tsx'), 'utf8');
     expect(destination).toMatch(/scopedAdmin\(\)/);
   });
 });

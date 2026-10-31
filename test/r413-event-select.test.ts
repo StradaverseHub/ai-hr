@@ -40,9 +40,9 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import EventPage from '../app/payroll/statutory-forms/event/page';
-import { GET as continueGET } from '../app/payroll/statutory-forms/event/continue/route';
-import Cp22aPreviewPage from '../app/payroll/cp22a/[employmentId]/preview/page';
+import EventPage from '../app/(app)/payroll/statutory-forms/event/page';
+import { GET as continueGET } from '../app/(app)/payroll/statutory-forms/event/continue/route';
+import Cp22aPreviewPage from '../app/(app)/payroll/cp22a/[employmentId]/preview/page';
 import { renderCp22Pdf } from '../lib/cp22-pdf';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -172,11 +172,11 @@ describe('r413 · a death is due 30 days after the employer is TOLD — no compu
   // event screen above is the one place this word is printed. Pinned both ways, so the word cannot quietly
   // come back on the directory as a date, nor vanish from the event screen.
   it('the directory carries no worklist table any more; the event screen is where the word is said', () => {
-    const src = code(fs.readFileSync(path.join(ROOT, 'app/payroll/statutory-forms/page.tsx'), 'utf8'));
+    const src = code(fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/statutory-forms/page.tsx'), 'utf8'));
     expect(src.length).toBeGreaterThan(5000);
     expect(src).not.toContain('w.dueBy');
     expect(src).not.toContain('data-due-on-notice');
-    const ev = code(fs.readFileSync(path.join(ROOT, 'app/payroll/statutory-forms/event/page.tsx'), 'utf8'));
+    const ev = code(fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/statutory-forms/event/page.tsx'), 'utf8'));
     expect(ev).toContain('data-due-on-notice');
     expect(ev).toContain("tf('dueOnNotice')");
   });
@@ -288,9 +288,9 @@ describe('r413 · CP22 moved onto the screen and its document did not change', (
       'lib/cp22-fields.ts',
       'lib/cp22-review.ts',
       'lib/cp22-template.ts',
-      'app/payroll/cp22/[employmentId]/preview/page.tsx',
-      'app/payroll/cp22/[employmentId]/pdf/route.ts',
-      'app/payroll/cp22/[employmentId]/text/route.ts',
+      'app/(app)/payroll/cp22/[employmentId]/preview/page.tsx',
+      'app/(app)/payroll/cp22/[employmentId]/pdf/route.ts',
+      'app/(app)/payroll/cp22/[employmentId]/text/route.ts',
       'public/forms/cp22-pin-1-2021.pdf',
     ]) {
       expect(fs.readFileSync(path.join(ROOT, f), 'latin1') === execFileSync('git', ['show', `${BASELINE}:${f}`], { cwd: ROOT, encoding: 'latin1' }), f).toBe(true);
@@ -318,7 +318,7 @@ describe('r413 · the CP22A preview page', () => {
   });
 
   it('page and PDF route both run the company-scope check (source guard; slice found and long)', () => {
-    for (const f of ['app/payroll/cp22a/[employmentId]/preview/page.tsx', 'app/payroll/cp22a/[employmentId]/pdf/route.ts']) {
+    for (const f of ['app/(app)/payroll/cp22a/[employmentId]/preview/page.tsx', 'app/(app)/payroll/cp22a/[employmentId]/pdf/route.ts']) {
       const src = code(fs.readFileSync(path.join(ROOT, f), 'utf8'));
       expect(src.length, f).toBeGreaterThan(800);
       expect(src, f).toMatch(/scopeIds\.includes\(particulars\.companyId\)/);

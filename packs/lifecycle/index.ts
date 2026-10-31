@@ -10,8 +10,8 @@
  *
  * ## Pack surface
  * - Services (reachable from outside ONLY via `packs/lifecycle/service`): `core/lifecycle-*.ts`.
- * - Routes: `app/lifecycle/**` (everyone: asset requests; staff: cases, requisitions, assets),
- *   `app/admin/lifecycle/**` (Module Config: staff, checklists, catalogue, custom fields),
+ * - Routes: `app/(app)/lifecycle/**` (everyone: asset requests; staff: cases, requisitions, assets),
+ *   `app/(app)/admin/lifecycle/**` (Module Config: staff, checklists, catalogue, custom fields),
  *   `app/daa/**` (the public Device Acceptance form, token-gated, no login).
  *
  * ## Identity and ownership (CLAUDE.md §1)

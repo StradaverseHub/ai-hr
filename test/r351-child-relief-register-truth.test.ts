@@ -52,7 +52,7 @@ const NEW_KEYS = [
 ] as const;
 
 const CARD = 'components/identity-tax-card.tsx';
-const PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
+const PAGE = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 const DEPS = 'core/dependents.ts';
 
 describe('r351 · the false sentences are retired in all six locales, not deleted', () => {

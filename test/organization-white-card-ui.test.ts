@@ -32,9 +32,9 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const PANEL = read('components/company-panel.tsx');
-const DETAIL = read('app/admin/organization/[companyId]/page.tsx');
-const LISTING = read('app/admin/organization/page.tsx');
-const ROWS = read('app/admin/organization/company-rows.tsx');
+const DETAIL = read('app/(app)/admin/organization/[companyId]/page.tsx');
+const LISTING = read('app/(app)/admin/organization/page.tsx');
+const ROWS = read('app/(app)/admin/organization/company-rows.tsx');
 
 /**
  * COMMENTS ARE STRIPPED FIRST (the r331 aec53564 lesson: a guard that reads its own explanation finds

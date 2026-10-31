@@ -13,9 +13,9 @@ import th from '../messages/th.json';
 import ta from '../messages/ta.json';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/mobile-preview/actions', () => ({ changeMobileDesignAction: vi.fn() }));
+vi.mock('../app/(app)/mobile-preview/actions', () => ({ changeMobileDesignAction: vi.fn() }));
 const { MobileBuilder } = await import('../components/mobile-preview/mobile-builder');
-const { changeMobileDesignAction } = await import('../app/mobile-preview/actions');
+const { changeMobileDesignAction } = await import('../app/(app)/mobile-preview/actions');
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.mocked(changeMobileDesignAction).mockReset(); });
 const data: MobilePreviewData = {
   today: '2026-10-10', loadedAt: '2026-10-10T01:00:00Z', leaveHistoryHref: '/leave', person: { name: 'Test Viewer', employeeCode: 'TEST' },

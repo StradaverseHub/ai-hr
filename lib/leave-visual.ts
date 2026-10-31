@@ -4,7 +4,7 @@
 // 7-token palette) + an icon (curated Lucide registry). Shared by:
 //   - core/admin.ts updateLeaveType — validation allow-lists (LEAVE_COLOR_TOKENS / LEAVE_ICON_KEYS)
 //   - components/leave-type-panel.tsx — the admin "Leave Type Visual Configuration" sub-form
-//   - app/me/page.tsx — the employee self-service Leave tab renders leaveVisual({...}).Icon + chipClass
+//   - app/(app)/me/page.tsx — the employee self-service Leave tab renders leaveVisual({...}).Icon + chipClass
 //
 // GUARDRAIL: nothing here is ever consulted for entitlement / eligibility / workflow / calculation. It only
 // decides how a leave type LOOKS. Unconfigured (both null) reproduces today's exact ESS appearance via the

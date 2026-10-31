@@ -6,7 +6,7 @@ vi.mock('../core/letter-email-preferences',()=>({saveLetterEmailPreferences:m.sa
 vi.mock('../core/notification-email',()=>({saveNotificationEmailPreferences:vi.fn()}));
 vi.mock('next/cache',()=>({revalidatePath:m.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw Error('REDIRECT '+url);}}));
-import {saveMyLetterEmailPreferences} from '../app/me/notifications/actions';
+import {saveMyLetterEmailPreferences} from '../app/(app)/me/notifications/actions';
 const session={tenantId:'fixture',userId:'account-only-reviewer'},identity={issuer:'https://identity.fixture.test',subject:'verified-user',email:'verified@fixture.test',emailVerified:true};
 function form(enabled=true){const value=new FormData();value.set('locale','en');if(enabled)value.set('enabled','true');return value;}
 beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.provider.mockResolvedValue(identity);m.save.mockResolvedValue(undefined);});

@@ -9,7 +9,7 @@
   `tenant_module`/`isModuleEnabled()`; rung 3 (Claims module pack: `packs/claims` declaration +
   service facade, registry-mounted flat nav rows, ratchet seeded) landed 2026-07-23 — and the
   `PayrollInputContributor` kernel contract (D9) LANDED with it: the claims payout prefill was a real
-  code path (`app/payroll/actions.ts` → `prefillClaimsForBatch`) and now rides the contract
+  code path (`app/(app)/payroll/actions.ts` → `prefillClaimsForBatch`) and now rides the contract
   (`packs/contracts.ts` + `packs/claims/payroll.ts`), payroll output proven identical by the
   golden payout tests; rung 4 (Performance module pack: `packs/performance` declaration + service
   facade, registry-mounted flat Manage-group nav row, ratchet seeded with one entry) landed
@@ -72,7 +72,7 @@
   satellites. Payroll consumes country calculators through the registry with ZERO direct `localization/my`
   imports (removed at 5a). **The pay-seam DEBT this rung inherited, disposed per one-correct-partial:**
   (a) claims taxable payout — RESOLVED-INTO-CONTRACT already at rung 3 (`PayrollInputContributor`,
-  `app/payroll/actions.ts` resolves the claims contributor by id), unchanged and proven byte-identical
+  `app/(app)/payroll/actions.ts` resolves the claims contributor by id), unchanged and proven byte-identical
   by the payout goldens; (b) the rung-6 leave↔payroll seam — LEFT INLINE by shape+risk: neither effect
   produces a `payroll_input` row (unpaid-leave is an inline generation-time reduction reading
   `leave_request` directly, below the ratchet radar; encashment is a read-only `leaverAdvisory` import of
@@ -156,7 +156,7 @@ The target model, composing ADR-0008 with ADR-0077:
 | Layer | Files | Character |
 | --- | --- | --- |
 | `core/` | 12 (`payroll.ts`, `pay-components.ts`, `ea-override.ts`, `tax-relief.ts`, `leave-compute.ts`, `import.ts`, `payroll-history-import.ts`, `dependents.ts`, `admin.ts`, `location.ts`, `profile-options.ts`, `reporting.ts`) | **Kernel leak — the one that kills the thesis.** The payroll kernel imports MY tables/codes by name (e.g. `MY_PCB_EXEMPTION_CODES` in `core/payroll.ts:58`, added by the R55 PCB work) |
-| `app/payroll/configuration/*` | 9 routes (epf, socso, eis, pcb, hrdf, skbbk, zakat, shared, actions) | **Country admin UI hardcoded as global routes** — legitimate MY screens, wrong mounting |
+| `app/(app)/payroll/configuration/*` | 9 routes (epf, socso, eis, pcb, hrdf, skbbk, zakat, shared, actions) | **Country admin UI hardcoded as global routes** — legitimate MY screens, wrong mounting |
 | `components/` | 6 (`personnel-identity`, `ic-dob-autofill`, `bank-info-card`, `statutory-config-form`, `holiday-group-form`, `leave-rule-preview`) | **MY widgets embedded in generic screens** (MyKad validation, MY banks, MY holiday groups) |
 | `lib/` | 3 (`my-banks`, `epf-mode-map`, `ea-pdf`) | MY helpers presented as generic |
 | `db/` + `scripts/` | 4 (`schema.ts`, `seed.ts`, `provision.ts`, `statutory-pack-build-my.ts`) | Schema/seed references (see D5) |
@@ -200,7 +200,7 @@ jurisdiction.
 
 ### D4 — Country UI mounts through the registry, not through hardcoded routes
 
-The `app/payroll/configuration/*` MY screens stay MY screens — but their *mounting* becomes
+The `app/(app)/payroll/configuration/*` MY screens stay MY screens — but their *mounting* becomes
 registry-driven:
 
 - The pack contributes **UI descriptors**: configuration sections (label, href, component ref),

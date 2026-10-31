@@ -31,7 +31,7 @@
  *    ⚠️ DO NOT "FIX" THIS BY WIDENING THE READ TO THE WHOLE TENANT. The warning NAMES a company, and
  *    naming one this admin cannot administer is exactly the disclosure feedback ab77dc1f was raised
  *    about (see the note on `scopedSession` in lib/scope.ts, and the SCOPE paragraph in
- *    app/admin/organization/page.tsx: "the filter IS the permission boundary"). For a group-wide
+ *    app/(app)/admin/organization/page.tsx: "the filter IS the permission boundary"). For a group-wide
  *    hr_admin — the reporter, and realistically anyone creating a company — the two sets are identical.
  *
  * ── AND WHAT "THE SAME CODE" MEANS ────────────────────────────────────────────────────────────────

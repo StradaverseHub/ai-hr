@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 const save=vi.hoisted(()=>vi.fn());
-vi.mock('../app/letters/fields/actions',()=>({saveField:save}));
+vi.mock('../app/(app)/letters/fields/actions',()=>({saveField:save}));
 import {LetterFieldForm} from '../components/letters/field-form';
 const companyId='00000000-0000-4000-8000-000000000001';
 const wrap=(component:React.ReactNode)=><NextIntlClientProvider locale="en" messages={messages}>{component}</NextIntlClientProvider>;

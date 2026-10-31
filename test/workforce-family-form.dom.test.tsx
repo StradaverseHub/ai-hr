@@ -9,12 +9,12 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
-import {WorkforceValueForm} from '../app/admin/personnel/[employmentId]/workforce-value-form';
+import {WorkforceValueForm} from '../app/(app)/admin/personnel/[employmentId]/workforce-value-form';
 import type {WorkforceEditor,WorkforceEditorRow} from '../core/workforce-maintenance';
 import {WORKFORCE_PROFILE_FIELDS,type WorkforceProfile} from '../lib/workforce-record-fields';
 import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
 
-vi.mock('../app/admin/personnel/[employmentId]/workforce-record-actions',()=>({saveWorkforceRecordAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/[employmentId]/workforce-record-actions',()=>({saveWorkforceRecordAction:vi.fn()}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 type RuntimeMessages=NonNullable<Parameters<typeof createTranslator>[0]['messages']>;
 const id='11111111-1111-4111-8111-111111111111';

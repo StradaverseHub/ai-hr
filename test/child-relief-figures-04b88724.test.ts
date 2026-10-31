@@ -324,7 +324,7 @@ describe('04b88724 · (e) an employee with no keyed grid still gets 0 from the c
 
 // ─── (f) the Personnel page no longer offers the link, and its neighbour still does ──────────────────
 describe('04b88724 · (f) the Child Relief Review link is gone from Personnel Management, surgically', () => {
-  const personnelPage = readFileSync(`${root}app/admin/personnel/page.tsx`, 'utf8');
+  const personnelPage = readFileSync(`${root}app/(app)/admin/personnel/page.tsx`, 'utf8');
 
   /**
    * ⚠️ COMMENTS ARE STRIPPED BEFORE THE ROUTE IS LOOKED FOR, AND THAT IS NOT A LOOPHOLE — IT IS THE POINT.
@@ -409,7 +409,7 @@ describe('04b88724 · (f) the Child Relief Review link is gone from Personnel Ma
     // of the other 74 employees off flat child counting. Deleting it in the same round would break that.
     // A deleted page must ALSO lose its SCREENS column (test/function-access.test.ts walks app/**/page.tsx),
     // so these two assertions must move together or not at all.
-    const routePage = readFileSync(`${root}app/admin/personnel/child-relief/page.tsx`, 'utf8');
+    const routePage = readFileSync(`${root}app/(app)/admin/personnel/child-relief/page.tsx`, 'utf8');
     expect(routePage, 'the route page still exists and is still admin-gated').toContain('requireAdmin');
     expect(
       readFileSync(`${root}lib/permissions.ts`, 'utf8'),

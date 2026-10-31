@@ -158,18 +158,18 @@ describe('fc776376 — the one pagination contract', () => {
 
 describe('fc776376 — one implementation, not a sixth', () => {
   const converted = [
-    'app/personnel/page.tsx',
-    'app/admin/personnel/page.tsx',
-    // afd0a87c — app/leave/page.tsx is OFF this list. It was converted for the org-wide leave-request
+    'app/(app)/personnel/page.tsx',
+    'app/(app)/admin/personnel/page.tsx',
+    // afd0a87c — app/(app)/leave/page.tsx is OFF this list. It was converted for the org-wide leave-request
     // table, which has been removed at the reporter's request; the Employee Details listing that remains
     // has its own numbered pager (inquiryPageWindow, feedback 650b6eb8) and never used the shared <Pager>
     // or the ?size= contract. /leave/employee-records below is the surviving shared-pager leave surface.
-    'app/leave/employee-records/page.tsx',
-    'app/approvals/history/page.tsx',
-    // f1b994e3 — 'app/admin/leave/audit/page.tsx' STOOD HERE and is now a redirect stub with no list to
+    'app/(app)/leave/employee-records/page.tsx',
+    'app/(app)/approvals/history/page.tsx',
+    // f1b994e3 — 'app/(app)/admin/leave/audit/page.tsx' STOOD HERE and is now a redirect stub with no list to
     // page. Its pager, filters and export moved UP to the central Audit Trail one line above, which was
     // already on this list; the entry is removed rather than repointed because the two were one screen.
-    'app/admin/audit/page.tsx',
+    'app/(app)/admin/audit/page.tsx',
   ];
 
   it.each(converted)('%s pages through the shared helper and pager', (file) => {
@@ -186,13 +186,13 @@ describe('fc776376 — one implementation, not a sixth', () => {
   // the SAME params. The contract is asserted where it lives rather than dropped — a page that stops
   // accepting ?size= still fails here.
   const searchParamsIn: Record<string, string> = {
-    'app/admin/personnel/page.tsx': 'app/admin/personnel/list-query.ts',
+    'app/(app)/admin/personnel/page.tsx': 'app/(app)/admin/personnel/list-query.ts',
   };
 
   it.each(converted)('%s accepts ?size= so a shared link opens the same view', (file) => {
     expect(read(searchParamsIn[file] ?? file)).toContain('size?: string;');
     // …and the page still feeds those params to the shared helper, wherever the type is declared.
-    if (file === 'app/leave/employee-records/page.tsx') {
+    if (file === 'app/(app)/leave/employee-records/page.tsx') {
       expect(read(file)).toContain("query = parseInquiryQuery(sp, 'records')");
       expect(read('lib/leave-inquiry-query.ts')).toContain("import { parsePageQuery } from './pagination'");
       expect(read('lib/leave-inquiry-query.ts')).toContain('const pq = parsePageQuery({ size, page })');
@@ -245,19 +245,19 @@ describe('fc776376 — one implementation, not a sixth', () => {
     for (const file of [
       'components/band-grid-editor.tsx',
       'components/function-access-grid.tsx',
-      // 706d34e8 — app/admin/leave-approval/workflow-matrix.tsx STOOD HERE and the file is deleted (the
+      // 706d34e8 — app/(app)/admin/leave-approval/workflow-matrix.tsx STOOD HERE and the file is deleted (the
       // per-rule Approval Workflows list was removed from /admin/leave/approval and it had no other
       // importer). A config grid that no longer exists cannot grow pagination; the entry goes with it.
-      'app/payroll/configuration/pcb/page.tsx',
-      'app/payroll/configuration/skbbk/page.tsx',
-      'app/admin/personnel/import/employee-import.tsx',
+      'app/(app)/payroll/configuration/pcb/page.tsx',
+      'app/(app)/payroll/configuration/skbbk/page.tsx',
+      'app/(app)/admin/personnel/import/employee-import.tsx',
       // r424 (50ed39e1) — punch-import.tsx STOOD HERE and is deleted; the import preview is now
       // clocking-import.tsx, still a capped preview (500 rendered rows), not a paged list.
-      'app/attendance/import/clocking-import.tsx',
+      'app/(app)/attendance/import/clocking-import.tsx',
       // Payroll history now uses the approved whole-file revision preview with visible paging;
       // payroll-history-import-screen.dom.test.tsx proves all pages remain available before confirm.
-      'app/admin/leave/import/leave-ledger-import.tsx',
-      'app/approvals/leave-date-breakdown.tsx',
+      'app/(app)/admin/leave/import/leave-ledger-import.tsx',
+      'app/(app)/approvals/leave-date-breakdown.tsx',
     ]) {
       expect(read(file), file).not.toContain("from '@/lib/pagination'");
     }

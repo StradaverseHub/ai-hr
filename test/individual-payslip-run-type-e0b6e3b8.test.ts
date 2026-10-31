@@ -66,7 +66,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { listPayrollCycles, seedPayrollCycleCatalog } from '../core/payroll-cycle';
-import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
+import IndividualPayslipPage from '../app/(app)/payroll/individual-payslip/page';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'vi', 'th'] as const;
@@ -88,7 +88,7 @@ describe('e0b6e3b8 — the chooser and the payslip field no longer carry one lab
   it('THE ITEM ITSELF: filterRunType differs from fieldCycle in EVERY locale', () => {
     // This is the whole point of the round. Presence is already covered by i18n-coverage Check A, and
     // presence is exactly what cannot see this defect: both keys were present, non-empty and equal.
-    // Check C cannot see it either — app/payroll/individual-payslip/page.tsx binds five namespaces, and
+    // Check C cannot see it either — app/(app)/payroll/individual-payslip/page.tsx binds five namespaces, and
     // Check C skips any file that binds more than one.
     for (const l of LOCALES) {
       const runType = at(catalogue(l), `${NS}.filterRunType`);

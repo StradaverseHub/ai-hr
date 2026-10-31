@@ -62,8 +62,8 @@ if(!options.heldLockWorker) {
   const git=(args)=>execFileSync('git',['-C',root,...args],{cwd:root,encoding:'utf8'}).trim();
   if(git(['status','--porcelain']))throw new Error('Freeze a clean owned candidate before the browser runner.');
   const candidate=git(['rev-parse','HEAD']);
-  const actionSource=fs.readFileSync(path.join(root,'app/admin/personnel/new/actions.ts'),'utf8');
-  const wizardSource=fs.readFileSync(path.join(root,'app/admin/personnel/new/wizard.tsx'),'utf8');
+  const actionSource=fs.readFileSync(path.join(root,'app/(app)/admin/personnel/new/actions.ts'),'utf8');
+  const wizardSource=fs.readFileSync(path.join(root,'app/(app)/admin/personnel/new/wizard.tsx'),'utf8');
   if(!actionSource.includes('draftActivationValidation') || !/\.ok\b/.test(wizardSource))throw new Error('Integrate the parent safe action result and wizard consumer before the Activation journey. This runner does not modify UI.');
   let server,activeJob,stopping=false,serverFd,forceStopTimer;
   let runFailed=false,ownedServerPid;

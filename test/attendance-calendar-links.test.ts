@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { attendanceCalendarBackHref, attendanceCalendarDetailHref, calendarReturnParams,resolveAttendanceCalendarState } from '../app/attendance/my-roster/attendance-links';
-import { resolveMyRosterWindow } from '../app/attendance/my-roster/view';
+import { attendanceCalendarBackHref, attendanceCalendarDetailHref, calendarReturnParams,resolveAttendanceCalendarState } from '../app/(app)/attendance/my-roster/attendance-links';
+import { resolveMyRosterWindow } from '../app/(app)/attendance/my-roster/view';
 
 const today = '2026-03-18';
 describe('personal calendar detail and return navigation', () => {

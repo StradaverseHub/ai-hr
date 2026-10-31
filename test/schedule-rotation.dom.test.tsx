@@ -3,11 +3,11 @@ import { cleanup,fireEvent,render,screen,within,waitFor } from '@testing-library
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { saveRotationAction } from '../app/admin/attendance/schedule/rotation-actions';
+import { saveRotationAction } from '../app/(app)/admin/attendance/schedule/rotation-actions';
 import { ScheduleRotationEditor } from '../components/schedule-rotation-editor';
 const {router}=vi.hoisted(()=>({router:{push:vi.fn()}}));
 vi.mock('next/navigation',()=>({useRouter:()=>router,usePathname:()=>'/admin/attendance/schedule/group/edit'}));
-vi.mock('../app/admin/attendance/schedule/rotation-actions',()=>({saveRotationAction:vi.fn()}));
+vi.mock('../app/(app)/admin/attendance/schedule/rotation-actions',()=>({saveRotationAction:vi.fn()}));
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.mocked(saveRotationAction).mockReset();router.push.mockReset();});
 const date=new Date(Date.parse(`${todayInKualaLumpur()}T00:00:00Z`)+86_400_000).toISOString().slice(0,10);
 function mount(other=false){return render(<NextIntlClientProvider locale="en" messages={messages}><a href="/admin/attendance/settings">Back to settings</a><ScheduleRotationEditor

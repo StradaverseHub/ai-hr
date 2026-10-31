@@ -1,12 +1,12 @@
 /** HTTP boundary only. Financial-model and real PDF parity are separate database/app checks. */
 import {randomUUID} from 'node:crypto';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-import {GET as payslipGet} from '../app/me/payslip/[payslipId]/pdf/route';
-import {GET as eaGet} from '../app/me/ea/[employmentId]/pdf/route';
+import {GET as payslipGet} from '../app/(app)/me/payslip/[payslipId]/pdf/route';
+import {GET as eaGet} from '../app/(app)/me/ea/[employmentId]/pdf/route';
 const mocks=vi.hoisted(()=>({document:vi.fn(),ea:vi.fn(),payslipPdf:vi.fn(),eaPdf:vi.fn(),eaLabels:vi.fn(),locale:'en'}));
 vi.mock('../lib/session',()=>({getSession:async()=>({tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee']})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale}));
-vi.mock('../app/me/payslip/document',()=>({myPayslipDocument:mocks.document}));
+vi.mock('../app/(app)/me/payslip/document',()=>({myPayslipDocument:mocks.document}));
 vi.mock('../lib/payslip-pdf',()=>({renderPayslipPdf:mocks.payslipPdf}));
 vi.mock('../core/reporting',()=>({myEaStatement:mocks.ea}));
 vi.mock('../lib/ea-pdf',()=>({renderEaPdf:mocks.eaPdf,EaLayoutFitError:class extends Error{}}));

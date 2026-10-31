@@ -33,7 +33,7 @@ import {
   type Cp39FormRow,
 } from '../lib/cp39-form';
 import { CP39_TABLE_COLUMNS, cp39ColumnSpan, renderCp39FormPdf } from '../lib/cp39-form-pdf';
-import { cp39DocumentPairs, cp39DocumentQuery, cp39HasDeductions, cp39Query } from '../app/payroll/cp39/query';
+import { cp39DocumentPairs, cp39DocumentQuery, cp39HasDeductions, cp39Query } from '../app/(app)/payroll/cp39/query';
 import {
   CYCLES_REFUSALS,
   criteriaReturnHref,
@@ -41,7 +41,7 @@ import {
   defaultCriteria,
   parseDestination,
   reportDestination,
-} from '../app/payroll/statutory-forms/criteria';
+} from '../app/(app)/payroll/statutory-forms/criteria';
 import { parseRunSelection } from '../lib/payroll-run-selection';
 import {
   MY_NOT_APPLICABLE_FORMS,
@@ -263,7 +263,7 @@ describe('the identity card number prints as digits only; the screen still dashe
 
   it('formatMyIc is unchanged, for the screen', () => {
     expect(formatMyIc('941128035179')).toBe('941128-03-5179');
-    expect(code('app/payroll/cp39/preview/page.tsx')).toContain('formatMyIc(r.newIc)');
+    expect(code('app/(app)/payroll/cp39/preview/page.tsx')).toContain('formatMyIc(r.newIc)');
   });
 
   const icForm = (cff: typeof cp39FormFrom) =>
@@ -374,8 +374,8 @@ describe('26 rows a sheet, and the totals reconcile to the rows drawn', () => {
 
 // ── 3. The contracts between files ──────────────────────────────────────────────────────────────────
 
-const PREVIEW = read('app/payroll/cp39/preview/page.tsx');
-const PREVIEW_CODE = code('app/payroll/cp39/preview/page.tsx');
+const PREVIEW = read('app/(app)/payroll/cp39/preview/page.tsx');
+const PREVIEW_CODE = code('app/(app)/payroll/cp39/preview/page.tsx');
 
 describe('the cycle selection reaches every CP39 surface', () => {
   it('keeps EVERY value of a repeated run parameter', () => {
@@ -417,13 +417,13 @@ describe('the cycle selection reaches every CP39 surface', () => {
   });
 
   it('serves the preview as the download\'s own bytes; only the disposition differs', () => {
-    const route = code('app/payroll/cp39/pdf/route.ts');
+    const route = code('app/(app)/payroll/cp39/pdf/route.ts');
     expect(route).toContain("q.get('disposition') === 'inline' ? 'inline' : 'attachment'");
     expect(route.match(/renderCp39FormPdf\(/g)).toHaveLength(1);
   });
 
   it('the loader parses the selection once and hands it to the read', () => {
-    const shared = code('app/payroll/cp39/shared.ts');
+    const shared = code('app/(app)/payroll/cp39/shared.ts');
     expect(shared).toContain('const selection = parseRunSelection(p.query);');
     expect(shared).toContain('runSeqs: selection.runSeqs,');
     expect(shared).toContain("if (result.meta.selectionEmpty) return { ok: false, reason: 'selection-empty' };");
@@ -431,7 +431,7 @@ describe('the cycle selection reaches every CP39 surface', () => {
   });
 
   it('the e-Data PCB file route honours the same run parameters, and refuses an invalid one', () => {
-    const route = code('app/payroll/reports/cp39-file/route.ts');
+    const route = code('app/(app)/payroll/reports/cp39-file/route.ts');
     expect(route).toContain('const selection = parseRunSelection(url.searchParams);');
     expect(route).toContain('if (!selection.ok) return new Response(selection.reason, { status: 422 });');
     expect(route).toContain('cp39FileForBatch(s, { companyId, periodKey, runSeqs: selection.runSeqs })');
@@ -459,7 +459,7 @@ describe('the Continue gate', () => {
     expect(before).not.toContain('cp39DocumentQuery(');
     expect(before).not.toContain('<StatutoryPdfViewer');
     for (const r of ['pdf', 'text']) {
-      const src = code(`app/payroll/cp39/${r}/route.ts`);
+      const src = code(`app/(app)/payroll/cp39/${r}/route.ts`);
       for (const reason of ['selection-empty', 'bad-selection', 'no-deductions']) {
         expect(src, `${r} route does not answer ${reason}`).toContain(`loaded.reason === '${reason}'`);
       }
@@ -487,7 +487,7 @@ describe('the Continue gate', () => {
       '/payroll/statutory-forms/open?form=my.cp8d&companyId=c1&year=2026',
     );
     expect(CYCLES_REFUSALS).toContain('year_no_payroll');
-    const open = code('app/payroll/statutory-forms/open/page.tsx');
+    const open = code('app/(app)/payroll/statutory-forms/open/page.tsx');
     for (const r of ['cycles_no_deductions', 'year_no_payroll']) expect(open).toContain(`${r}: 'refusal_${r}'`);
   });
 });
@@ -527,14 +527,14 @@ describe('the criteria each form asks for', () => {
     const asReport = reportDestination(cp8d.id, cp8d.periodKind, null, cp8d.preview);
     expect(defaultCriteria('2027-03-05', asReport.criteria, cp8d).year).toBe('2026');
     // The step resolves a REPORT's own target, not one read back off a preview path that names no report.
-    expect(code('app/payroll/statutory-forms/open/page.tsx')).toContain(
+    expect(code('app/(app)/payroll/statutory-forms/open/page.tsx')).toContain(
       'catalog.reports.find((r) => r.id === report.id)',
     );
   });
 });
 
 describe('the Form E / CP8D preview', () => {
-  const PAGE = code('app/payroll/cp8d/preview/page.tsx');
+  const PAGE = code('app/(app)/payroll/cp8d/preview/page.tsx');
 
   it('frames the PDF the entry has always exported, inline, and downloads the same route', () => {
     const viewer = slice(PAGE, '<StatutoryPdfViewer', 'sidePanel=', 300);
@@ -543,7 +543,7 @@ describe('the Form E / CP8D preview', () => {
     expect(PAGE).toContain('/export?companyId=');
     // No new renderer: the page draws nothing itself.
     expect(PAGE).not.toMatch(/pdf-lib|renderCp8d|PDFDocument/);
-    const exportRoute = code('app/payroll/statutory-forms/[formId]/export/route.ts');
+    const exportRoute = code('app/(app)/payroll/statutory-forms/[formId]/export/route.ts');
     expect(exportRoute).toContain("format === 'pdf' && url.searchParams.get('disposition') === 'inline' ? 'inline' : 'attachment'");
   });
 

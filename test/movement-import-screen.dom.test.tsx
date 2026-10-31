@@ -2,13 +2,13 @@ import {fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import en from '../messages/en.json';
-import {MovementImport} from '../app/admin/personnel/import/movement-import';
-import {ImportWorkbench} from '../app/admin/personnel/import/import-workbench';
+import {MovementImport} from '../app/(app)/admin/personnel/import/movement-import';
+import {ImportWorkbench} from '../app/(app)/admin/personnel/import/import-workbench';
 const mocks=vi.hoisted(()=>({fetch:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn()}));
-vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
-vi.mock('../app/admin/personnel/import/section-actions',()=>({validateSectionAction:vi.fn(),commitSectionAction:vi.fn(),registerRecordsAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/section-actions',()=>({validateSectionAction:vi.fn(),commitSectionAction:vi.fn(),registerRecordsAction:vi.fn()}));
 const companies=[{id:'a',name:'Fictional A'},{id:'b',name:'Fictional B'}];
 const row=(row:number,employeeCode:string,status:'valid'|'invalid',errors:string[]=[])=>({row,employeeCode,eventType:'transfer',effectiveDate:'2026-11-01',status,errors,source:{sheet:'Movements',row},sourceRows:[row],companyCode:'EXT'});
 const preview={inputHash:'file-bound',selection:[2,3,4],fileErrors:[],valid:1,excluded:2,employees:[

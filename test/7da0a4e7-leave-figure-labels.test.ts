@@ -97,8 +97,8 @@ describe('7da0a4e7 · (d) the surfaces that print these figures resolve them thr
   const SURFACES = [
     'components/leave/leave-balance-table.tsx',
     'components/leave/my-leave-dashboard.tsx',
-    'app/leave/employee-balances/page.tsx',
-    'app/leave/employee-balances/export/route.ts',
+    'app/(app)/leave/employee-balances/page.tsx',
+    'app/(app)/leave/employee-balances/export/route.ts',
   ];
 
   for (const f of SURFACES) {
@@ -119,7 +119,7 @@ describe('7da0a4e7 · (d) the surfaces that print these figures resolve them thr
   });
 
   it('the EXPORT uses the same names as the screen — the file exports the table that was on screen', () => {
-    const s = src('app/leave/employee-balances/export/route.ts');
+    const s = src('app/(app)/leave/employee-balances/export/route.ts');
     expect(s).toContain('LEAVE_FIGURE_LABEL_KEY.ytdEntitled');
     expect(s).toContain('LEAVE_FIGURE_LABEL_KEY.balance');
   });

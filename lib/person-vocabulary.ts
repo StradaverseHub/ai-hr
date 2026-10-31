@@ -41,7 +41,7 @@ export type Gender = (typeof GENDERS)[number];
  * undisclosed employees", which means nothing.
  *
  * WHY THE LIST MOVED HERE. Three files declared it independently — `core/admin.ts`
- * (`ELIGIBILITY_GENDER_OPTIONS`, the write validator), `app/admin/leave-config/types/leave-type-tabs.tsx`
+ * (`ELIGIBILITY_GENDER_OPTIONS`, the write validator), `app/(app)/admin/leave-config/types/leave-type-tabs.tsx`
  * (the picker itself, a client component that cannot import `core/admin.ts`), and, from d272834b onwards,
  * `core/leave.ts` (the gate, which cannot import `core/admin.ts` either — `core/admin.ts` imports
  * `core/leave.ts`, so the arrow only goes one way). d272834b made the CONTENT of this list load-bearing:

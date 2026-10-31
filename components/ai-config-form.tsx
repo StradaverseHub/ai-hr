@@ -22,7 +22,7 @@ import {
   saveAiProviderConfigAction,
   setActiveProviderAction,
   testConnectionAction,
-} from '@/app/admin/ai/actions';
+} from '@/app/(app)/admin/ai/actions';
 
 export function AiConfigForm({ config }: { config: AiConfigView }) {
   const t = useTranslations('admin.ai');

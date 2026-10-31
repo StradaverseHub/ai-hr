@@ -911,7 +911,7 @@ async function analyzeIndividual(
         b.runType === r.targetCycle &&
         (!r.intendedCycleId || b.payrollCycleId === r.intendedCycleId || b.payrollCycleId == null && cycles.filter(c=>c.companyId===r.companyId&&c.runType===r.targetCycle).length===1) &&
         (b.status === 'draft' || b.status === 'processed') &&
-        // Read defensively, exactly as app/payroll/transactions/individual/page.tsx does: `listBatches`
+        // Read defensively, exactly as app/(app)/payroll/transactions/individual/page.tsx does: `listBatches`
         // does not project `scope` today, so this reads undefined and every run is treated as
         // whole-company — which is precisely how the Add form behaves. `createIndividualTxnsBulk`
         // re-checks scope membership authoritatively and refuses with EmploymentNotInBatchScopeError,

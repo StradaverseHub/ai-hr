@@ -18,7 +18,7 @@ import { UI_THEME_ATTRIBUTE, isUiTheme, type UiTheme } from '@/lib/ui-theme';
  * stylesheet; a component that rendered Monolith structure there would be Monolith markup in Classic paint.
  * The layout always writes the attribute (lib/ui-theme.ts resolves an absent cookie to Atelier first).
  *
- * The server has no document, so it renders the value app/layout.tsx resolved from the cookie, handed in
+ * The server has no document, so it renders the value app/(app)/layout.tsx resolved from the cookie, handed in
  * through <UiThemeProvider>; hydration reads the same value back (getServerSnapshot), so there is no
  * mismatch, and the attribute takes over from then on.
  */
@@ -40,7 +40,7 @@ function subscribe(onChange: () => void): () => void {
 }
 
 /**
- * D-P1-32 D3 — an AREA THEME (app/performance/layout.tsx, `data-area-theme`) paints the same in every UI theme:
+ * D-P1-32 D3 — an AREA THEME (app/(app)/performance/layout.tsx, `data-area-theme`) paints the same in every UI theme:
  * the `monolith:` / `atelier:` variants do not match inside it (app/globals.css) and its stylesheet neutralises
  * the themes' structural rules. So inside it a structural branch must render Classic structure, whatever the
  * document attribute says. Null (outside any area) means "follow the document", exactly as before.

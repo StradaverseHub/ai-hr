@@ -2,8 +2,8 @@
  * 5c198931 — every localized string the payslip document needs, resolved ONCE.
  *
  * WHY THIS MODULE EXISTS. Two routes print the payslip: the employee's own
- * (`app/me/payslip/[payslipId]/pdf`) and the admin review copy
- * (`app/payroll/individual-payslip/[payslipId]/pdf`). Each used to assemble its own 25-line label object
+ * (`app/(app)/me/payslip/[payslipId]/pdf`) and the admin review copy
+ * (`app/(app)/payroll/individual-payslip/[payslipId]/pdf`). Each used to assemble its own 25-line label object
  * by hand, and the redesign takes that to forty-odd. Two hand-maintained copies of the same object is how
  * one of them quietly loses a block and the employee's payslip stops being the document the reviewer
  * approved — which is the exact failure this board item was raised about. So the object is built here and

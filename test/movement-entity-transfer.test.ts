@@ -722,7 +722,7 @@ describe('a correction cannot re-classify across the Entity Transfer line', () =
 
 describe('SOURCE GUARDS — the New Event form', () => {
   const NEW_EVENT = fs.readFileSync(
-    path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
+    path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx'),
     'utf8',
   );
 

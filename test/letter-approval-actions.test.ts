@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({decideLetter:mocks.decide,delegateLetterApproval:mocks.delegate,bulkDecideLetters:mocks.bulk}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {decideApproval,delegateApproval,bulkApprove} from '../app/letters/approval/actions';
+import {decideApproval,delegateApproval,bulkApprove} from '../app/(app)/letters/approval/actions';
 const letterId='00000000-0000-4000-8000-000000000001',revisionId='00000000-0000-4000-8000-000000000002',otherId='00000000-0000-4000-8000-000000000003',ctx={tenantId:'fictional-tenant',userId:'current-user'},head={letterId,expectedRevisionId:revisionId,expectedLockVersion:4};
 function form(){const data=new FormData();for(const [key,value]of Object.entries({...head,decision:'approve',comment:'Reviewed this revision',delegateUserId:otherId}))data.set(key,String(value));return data;}
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);for(const fn of [mocks.decide,mocks.delegate,mocks.bulk])fn.mockResolvedValue({});});

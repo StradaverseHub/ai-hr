@@ -52,7 +52,7 @@ import { and, eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant } from '../db/client';
 import { getActiveStatutoryMY } from '../localization/my/statutory-config';
-import { setStatutoryComponentAction } from '../app/payroll/configuration/actions';
+import { setStatutoryComponentAction } from '../app/(app)/payroll/configuration/actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 /** Count DomainEvents of a given type for a tenant (used to pin the override provenance is intact). */

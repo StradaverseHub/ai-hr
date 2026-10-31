@@ -5,7 +5,7 @@ import type {agentReviewWorkspaceTx} from '../../core/module-agent-releases';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT,PROMPT_HOLDOUT_LOCALES} from '../../lib/ai/module-agent-prompt-candidate';
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import {OwnClearForm} from './own-clear';
-import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction,createConversationCandidateAction,evaluateConversationCandidateAction,promoteConversationCandidateAction,eraseConversationMetadataAction} from '../../app/assistant/agent-review-actions';
+import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction,createConversationCandidateAction,evaluateConversationCandidateAction,promoteConversationCandidateAction,eraseConversationMetadataAction} from '../../app/(app)/assistant/agent-review-actions';
 type View=NonNullable<Awaited<ReturnType<typeof agentReviewWorkspaceTx>>>;
 export async function ModuleAgentReview({view}:{view:View}){
  const [t,native,jobs,locale]=await Promise.all([getTranslations('assistant.workspace.agentReview'),getTranslations('assistant.workspace.nativeOutcomes'),getTranslations('assistant.workspace.jobs'),getLocale()]);

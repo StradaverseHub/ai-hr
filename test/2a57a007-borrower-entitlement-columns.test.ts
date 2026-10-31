@@ -34,7 +34,7 @@ import { openLeaveYear, requestLeave, InsufficientLeaveBalanceOnSubmitError } fr
 import { createEligibilityRule, createEntitlementTemplate } from '../core/entitlement-template';
 import { leaveBalances } from '../core/read';
 import { ENTITLEMENT_STATUS_LABEL_KEY, entitlementStatusNeedsNotice } from '../lib/entitlement-status';
-import { employeeBalanceRows, type EmployeeBalanceRow } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows, type EmployeeBalanceRow } from '../app/(app)/leave/employee-balances/rows';
 import { pooledEntitlementCaption } from '../lib/shared-leave-balance';
 
 import en from '../messages/en.json';
@@ -249,8 +249,8 @@ describe('2a57a007 (r340) · (b) the r209 GUARD — the suppression must not wid
 
 describe('2a57a007 (r340) · (c) the three surfaces read ONE decision', () => {
   it('the screen and the export take the caption from the same function, not from the status map', () => {
-    const page = read('app/leave/employee-balances/page.tsx');
-    const route = read('app/leave/employee-balances/export/route.ts');
+    const page = read('app/(app)/leave/employee-balances/page.tsx');
+    const route = read('app/(app)/leave/employee-balances/export/route.ts');
     for (const [name, src] of [['page', page], ['export route', route]] as const) {
       expect(src, `${name} must read the ONE pooled decision, not re-derive it`).toContain('pooledEntitlementCaption(r)');
       expect(src, `${name} must not test for a pool by hand`).not.toContain('r.entitlementFromPool != null');
@@ -413,7 +413,7 @@ describe('2a57a007 (r340) · the Explain panel’s pooled statement, in six loca
 
 describe('2a57a007 (r340) · the row carries the fact', () => {
   it('EmployeeBalanceRow declares entitlementFromPool', () => {
-    const src = read('app/leave/employee-balances/rows.ts');
+    const src = read('app/(app)/leave/employee-balances/rows.ts');
     expect(src).toContain('entitlementFromPool: string | null;');
     const typed: keyof EmployeeBalanceRow = 'entitlementFromPool';
     expect(typed).toBe('entitlementFromPool');

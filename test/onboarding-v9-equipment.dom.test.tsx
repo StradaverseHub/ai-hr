@@ -4,7 +4,7 @@ import { OnboardingEquipment } from '../components/onboarding-equipment';
 import * as M from '../lib/onboarding-model';
 const mocks = vi.hoisted(() => ({ save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
-vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.save }));
+vi.mock('../app/(app)/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.save }));
 function fixture() {
   const config = M.defaultConfig('owner'); config.v9ChecklistRevision = 1; config.groups = [{id:'team',name:'Fulfilling team',members:['owner'],limit:0}]; config.techGroup = 'team';
   config.catalogue = [{id:'device',name:'Fictional device',type:'device',active:true,rules:{},workflow:null,team:'team',card:false}];

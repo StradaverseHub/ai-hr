@@ -6,7 +6,7 @@ export function applicationStateFixture(expected={}){
  const binaries=['typescript/package.json','typescript/lib/tsc.js','typescript/lib/_tsc.js','typescript/lib/typescript.js','next/dist/lib/typescript/runTypeCheckCli.js','next/dist/lib/typescript/runTypeScriptCli.js','next/dist/lib/typescript/runTypeCheck.js','next/dist/build/type-check.js'];
  const context={runtime:{...p.runtime,typescript:'5.9.3'},sourcePath:'/home/runner/work/ai-hr/ai-hr/source',nodeOptions:'--max-old-space-size=6144',
   inputs:Object.fromEntries(inputs.map(k=>[k,digest])),compiler:Object.fromEntries(binaries.map(k=>[k,digest])),generatedTypes:[{path:'validator.ts',bytes:12,sha256:digest}]};
- const state=Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../app/page.tsx','../../lib/dependency.ts']}));
+ const state=Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../app/(app)/page.tsx','../../lib/dependency.ts']}));
  const text='Compiled successfully in fixture\nFinished TypeScript in fixture\n';
  const producer={kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,exitCode:0,source:p.source,controller:p.controller,runId:String(p.runId),attempt:'1',
   sourceRestored:true,controllerRestored:true,workingStateRemoved:true,ownedRecordsRemoved:true,cachePublishPermitted:true,buildLogSha256:fixtureHash(Buffer.from(text)),

@@ -495,7 +495,7 @@ describe('e2632276 — the payroll gate', () => {
 
     const { batchId } = await createBatch(a, { companyId: b.companyId, payPeriod: PERIOD });
     const rows = await batchInputRows(a, batchId);
-    // 0 renders as "—" on the grid (app/payroll/[batchId]/page.tsx), which is the honest preview of a
+    // 0 renders as "—" on the grid (app/(app)/payroll/[batchId]/page.tsx), which is the honest preview of a
     // deduction that is not running — not a claim that the employee was never absent.
     expect(rows.find((r) => r.employmentId === off)!.absentDays).toBe(0);
     expect(rows.find((r) => r.employmentId === on)!.absentDays).toBe(1);

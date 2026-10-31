@@ -14,7 +14,7 @@
  *      wrong and look right. The list is paged; a chip counted over the fetched rows says 25 when the
  *      truth is 30, and only an employee past the page size ever sees it. The fixture is therefore
  *      deliberately LARGER than the page — a five-row fixture makes this case pass whatever the code
- *      does. The same defect is documented at app/feedback/page.tsx, where it painted "All 517" over a
+ *      does. The same defect is documented at app/(app)/feedback/page.tsx, where it painted "All 517" over a
  *      list of 200 on production.
  *  B · ONE PREDICATE SERVES BOTH READS. Counts follow the date window and the search and IGNORE the
  *      status chip — that is what makes a chip's number describe the set the rows underneath are a page
@@ -51,7 +51,7 @@ import type { SessionContext } from '../db/client';
 const root = (p: string) => path.resolve(__dirname, '..', p);
 const read = (p: string) => fs.readFileSync(root(p), 'utf8');
 
-const LIST = read('app/attendance/plan-ot/page.tsx');
+const LIST = read('app/(app)/attendance/plan-ot/page.tsx');
 const LAYOUT_GUARD = read('test/attendance-screens-layout.test.ts');
 
 /** Source with comments removed. A guard that reads a comment proves what somebody wrote, not what ships
@@ -278,7 +278,7 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     expect(
       LAYOUT_GUARD,
       'WIDE_LIST_SCREENS must list this screen — otherwise a cap can come back with nothing failing',
-    ).toContain("'app/attendance/plan-ot/page.tsx',");
+    ).toContain("'app/(app)/attendance/plan-ot/page.tsx',");
     // The not-linked notice stays centred and narrow. `max-w-md`, not `max-w-2xl`, because the layout
     // guard reads this file for `mx-auto` + `max-w-…xl` — the very shape this round took off the screen.
     expect(LIST).toContain('<div className="mx-auto max-w-md">');
@@ -397,7 +397,7 @@ describe('C · the screen: what the approved plan changed, and what it deliberat
     const core = code(read('core/attendance.ts'));
     expect(core).toContain('rejectReason: attendanceCorrection.rejectReason');
     expect(core).toContain('MissingAttendanceRejectReasonError');
-    const requestStatus = code(read('app/attendance/request-status/page.tsx'));
+    const requestStatus = code(read('app/(app)/attendance/request-status/page.tsx'));
     expect(requestStatus).toContain("r.rejectReason ?? t('maRejectNotRecorded')");
     expect(requestStatus).toContain("t('maRejectReason')");
     expect(requestStatus).toContain("r.status === 'rejected'");

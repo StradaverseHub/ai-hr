@@ -4,10 +4,10 @@ import {AuthRequiredError} from '../lib/auth-errors';
 const mocks=vi.hoisted(()=>({session:vi.fn(),read:vi.fn(),workbook:vi.fn(),pdf:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedSession:mocks.session}));
 vi.mock('../core/letters',()=>({readLetterReport:mocks.read}));
-vi.mock('../app/letters/reports/labels',()=>({reportLabels:async()=>({title:'Fixture report'})}));
+vi.mock('../app/(app)/letters/reports/labels',()=>({reportLabels:async()=>({title:'Fixture report'})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en'}));
 vi.mock('../lib/letter-report',async original=>({...await original<typeof import('../lib/letter-report')>(),letterReportWorkbook:mocks.workbook,letterReportPdf:mocks.pdf}));
-import {GET} from '../app/letters/reports/export/route';
+import {GET} from '../app/(app)/letters/reports/export/route';
 const companyId='00000000-0000-4000-8000-000000000001',hash='d'.repeat(64),ctx={tenantId:'fixture',userId:'current-user'},request=(format='xlsx')=>new Request(`https://fixture.test/letters/reports/export?from=2026-10-01&to=2026-10-26&companyId=${companyId}&hash=${hash}&format=${format}`);
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue({s:ctx,scopeIds:[companyId]});mocks.read.mockResolvedValue({dataHash:hash});mocks.workbook.mockReturnValue(new Uint8Array([1,2,3]));mocks.pdf.mockResolvedValue({bytes:Buffer.from('%PDF-fixture')});});
 it('rechecks the complete authorised cohort and exact displayed fingerprint before exporting',async()=>{

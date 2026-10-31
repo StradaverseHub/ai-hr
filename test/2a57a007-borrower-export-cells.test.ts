@@ -63,7 +63,7 @@ vi.mock('next-intl/server', () => {
   };
 });
 
-import { GET } from '../app/leave/employee-balances/export/route';
+import { GET } from '../app/(app)/leave/employee-balances/export/route';
 
 const en = JSON.parse(readFileSync(join(ROOT, 'messages/en.json'), 'utf8')) as {
   leave: { colType: string; inquiry: Record<string, string> };

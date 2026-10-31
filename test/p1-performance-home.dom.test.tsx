@@ -21,7 +21,7 @@ vi.mock('next-intl/server', () => ({
 }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/performance/home', useSearchParams: () => new URLSearchParams() }));
 // The record AI read is the existing client component (cache read on open, generation only on request); stubbed here.
-vi.mock('@/app/performance/onehr/record-insight', () => ({ RecordInsight: ({ reviewId, kind }: { reviewId: string; kind: string }) => <p data-record-insight={`${reviewId}:${kind}`} /> }));
+vi.mock('@/app/(app)/performance/onehr/record-insight', () => ({ RecordInsight: ({ reviewId, kind }: { reviewId: string; kind: string }) => <p data-record-insight={`${reviewId}:${kind}`} /> }));
 const load = vi.fn<() => Promise<PerformanceHomeBlock | null>>();
 const assigned = vi.fn<() => Promise<boolean>>();
 vi.mock('@/packs/performance/service', () => ({ getPerformanceHomeBlock: () => load(), hasAssignedPerformanceWork: () => assigned() }));

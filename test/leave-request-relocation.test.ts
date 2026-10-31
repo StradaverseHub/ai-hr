@@ -18,7 +18,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 describe('Request Leave: relocated to a top-right primary "+" button', () => {
-  const page = read('app/leave/page.tsx');
+  const page = read('app/(app)/leave/page.tsx');
 
   it('drops the old bottom inline <details>/<summary> apply Card', () => {
     expect(page.includes('<details>')).toBe(false);

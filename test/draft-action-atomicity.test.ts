@@ -7,7 +7,7 @@ import type {EmployeeDraftData} from '../lib/employee-draft-schema';
 const actor=vi.hoisted(()=>({ctx:null as SessionContext|null}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>{if(!actor.ctx)throw new Error('Missing real fixture actor');return actor.ctx;}}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
-import {createEmployeeAction} from '../app/admin/personnel/new/actions';
+import {createEmployeeAction} from '../app/(app)/admin/personnel/new/actions';
 import {createEmployeeDraftWithReservedCode,getEmployeeDraft} from '../core/employee-draft';
 import {createConfig} from '../core/employee-id-config';
 import * as s from '../db/schema';

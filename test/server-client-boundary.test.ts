@@ -4,7 +4,7 @@
  * ⚠️ THIS FILE EXISTS BECAUSE r123 SHIPPED A BROKEN PAGE TO PRODUCTION AND NOTHING IN THE GATE SAW IT.
  *
  * 10e96227 dropped `ChipMultiSelect` (a 'use client' component) into
- * app/admin/leave-config/types/page.tsx (a server component) and passed it two closures over the server's
+ * app/(app)/admin/leave-config/types/page.tsx (a server component) and passed it two closures over the server's
  * translator, `removeLabelFor` and `countLabelFor`. React cannot serialise a function across the boundary,
  * so it threw at RENDER time and the whole Entitlements tab returned "This page couldn't load". The
  * reporter raised it as b55fdf33.
@@ -154,11 +154,11 @@ describe('b55fdf33 · a server component may not pass functions to a client comp
     // component may not hand a function across the boundary, and the wrapper is what stops it. The card
     // moved off Company rules to the Special Setting row, where the reporter asked for it under a heading
     // of its own. Both files are read, so the wrapper cannot be bypassed on either.
-    const page = readFileSync(join(ROOT, 'app/admin/leave-config/special-setting/page.tsx'), 'utf8');
+    const page = readFileSync(join(ROOT, 'app/(app)/admin/leave-config/special-setting/page.tsx'), 'utf8');
     expect(page).not.toContain('<ChipMultiSelect');
     expect(page).not.toMatch(/from '@\/components\/ui\/chip-multi-select'/);
     expect(page).toContain('<HalfDayCompanyPicker');
-    const leftBehind = readFileSync(join(ROOT, 'app/admin/leave-config/company-rules/page.tsx'), 'utf8');
+    const leftBehind = readFileSync(join(ROOT, 'app/(app)/admin/leave-config/company-rules/page.tsx'), 'utf8');
     expect(leftBehind).not.toContain('<ChipMultiSelect');
     expect(leftBehind, 'the card must not survive on the screen it left').not.toContain('<HalfDayCompanyPicker');
 

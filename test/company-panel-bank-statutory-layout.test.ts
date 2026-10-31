@@ -58,7 +58,7 @@ const screen = read('components/statutory-setup-screen.tsx');
 const SCREEN = screen;
 const DISPLAY = read('lib/statutory-authority-display.ts');
 /** The company action file, needed by cases in more than one describe block below. */
-const ACTIONS_SRC = read('app/admin/actions.ts');
+const ACTIONS_SRC = read('app/(app)/admin/actions.ts');
 const ROW_SRC = panel.slice(
   panel.indexOf('function StatutoryBodyRow'),
   panel.indexOf('export function CompanyPanel'),
@@ -423,7 +423,7 @@ describe('Statutory tab: per-authority payment setup', () => {
    */
   it('deletes the per-body route, its matrix entry and the redirect that built a path from a body', () => {
     expect(
-      existsSync(join(root, 'app/admin/organization/[companyId]/statutory/[authority]/page.tsx')),
+      existsSync(join(root, 'app/(app)/admin/organization/[companyId]/statutory/[authority]/page.tsx')),
       'the intermediate page is off disk',
     ).toBe(false);
     const perms = read('lib/permissions.ts');
@@ -435,7 +435,7 @@ describe('Statutory tab: per-authority payment setup', () => {
     );
     // THE SURVIVING ROUTE STILL RUNS THE SAME COMPANY GUARD — the door that is left must not be an
     // easier door. test/organization-list-detail.test.ts RUNS the refusal; this pins it at the source.
-    const listPage = read('app/admin/organization/[companyId]/statutory/page.tsx');
+    const listPage = read('app/(app)/admin/organization/[companyId]/statutory/page.tsx');
     expect(listPage, 'the company guard').toContain('await scopedAdmin()');
     expect(listPage).toContain("listCompanies(s, { includeArchived: true, adminOnly: true })");
     expect(listPage, 'and its refusal').toContain('if (!c) notFound();');
@@ -443,7 +443,7 @@ describe('Statutory tab: per-authority payment setup', () => {
     expect(listPage, 'no mode in the query').not.toContain('rawMode');
     // THE REDIRECT HALF. `failStatutoryBody` built `…/statutory/<body>?mode=edit`; it is gone with the
     // page, and every refusal in this flow now goes to the screen that holds the form.
-    const redirects = read('app/admin/_redirects.ts');
+    const redirects = read('app/(app)/admin/_redirects.ts');
     expect(stripComments(redirects), 'no helper builds a path out of a body').not.toContain(
       'export function failStatutoryBody',
     );
@@ -532,7 +532,7 @@ describe('Statutory tab: per-authority payment setup', () => {
  */
 describe('Statutory tab: one body, one card, both of its numbers (r226)', () => {
   const CS = read('localization/my/company-statutory.ts');
-  const ACTIONS = read('app/admin/actions.ts');
+  const ACTIONS = read('app/(app)/admin/actions.ts');
   /**
    * ⚠️ THERE ARE TWO CALLERS OF THE PARTIAL-PATCH IDENTITY WRITER AGAIN, AND THE r353 CLAIM THAT THERE
    * MUST BE ONE IS REVERSED HERE RATHER THAN DELETED (15e5bd93 rev 4, r372).
@@ -540,7 +540,7 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
    * r352 opened a SECOND DOOR to `company_statutory_my`: a consolidated Save reaching the partial-patch
    * writer alongside `setCompanyStatutoryAuthorityAction`. r353 deleted it and this case read, in full:
    * "there is ONE caller of the partial-patch identity writer again, not a dormant second one", asserting
-   * `existsSync(app/admin/organization/statutory-tab-actions.ts) === false`.
+   * `existsSync(app/(app)/admin/organization/statutory-tab-actions.ts) === false`.
    *
    * ⚠️ THE HAZARD THAT CLAIM NAMED WAS NEVER "two callers"; IT WAS "a partial-patch writer with one
    * presence-checked caller and one COLLAPSING caller". Reading an absent key as `''` is what blanks the
@@ -551,10 +551,10 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
    * It also pins that the second door is REACHED, not merely present. An unreferenced `'use server'`
    * writer of this row is the original hazard wearing a different hat.
    */
-  const TAB_ACTION = read('app/admin/organization/statutory-tab-actions.ts');
+  const TAB_ACTION = read('app/(app)/admin/organization/statutory-tab-actions.ts');
   it('has two callers of the partial-patch identity writer, both presence-checked, neither dormant', () => {
     expect(
-      existsSync(join(root, 'app/admin/organization/statutory-tab-actions.ts')),
+      existsSync(join(root, 'app/(app)/admin/organization/statutory-tab-actions.ts')),
       'the consolidated statutory action is restored from r352 (d991c149)',
     ).toBe(true);
     expect(
@@ -603,7 +603,7 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
     );
 
     // NOT DORMANT: the screen's route binds it, by reference, from the `'use server'` module.
-    const listPage = read('app/admin/organization/[companyId]/statutory/page.tsx');
+    const listPage = read('app/(app)/admin/organization/[companyId]/statutory/page.tsx');
     expect(stripComments(listPage), 'the screen reaches it').toContain(
       "import { saveCompanyStatutoryTabAction } from '../../statutory-tab-actions';",
     );
@@ -653,7 +653,7 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
      * CARD at the top of the screen body, beside the four filing identifiers, so the claim moves to the
      * component that now prints them — and the page is asserted NOT to, so the two cannot both do it.
      */
-    const setupPage = read('app/admin/organization/[companyId]/statutory/page.tsx');
+    const setupPage = read('app/(app)/admin/organization/[companyId]/statutory/page.tsx');
     expect(screen, 'the identity card prints SSM').toContain('statutory?.ssmRegistrationNo');
     expect(screen, 'and MyInvois').toContain('statutory?.myinvoisTin');
     expect(setupPage, 'and the page heading no longer repeats them').not.toContain('statutory?.ssmRegistrationNo');
@@ -826,7 +826,7 @@ describe('Statutory tab: one body, one card, both of its numbers (r226)', () => 
      */
     expect(ACTIONS).toContain("function fromStatutorySetupScreen(fd: FormData)");
     expect(ACTIONS).toContain("=== STATUTORY_SETUP_RETURN");
-    expect(read('app/admin/_redirects.ts'), 'the path is built, not posted').toContain(
+    expect(read('app/(app)/admin/_redirects.ts'), 'the path is built, not posted').toContain(
       'export function companyStatutoryPath(companyId: string)',
     );
   });
@@ -1494,10 +1494,10 @@ describe('Bank Account: the company debit account is not masked here', () => {
     ).toContain('`•••• ${String(no).slice(-4)}`');
     expect(read('core/profile-edit.ts'), 'own master fields are masked before RSC').toContain('field.ess.masked');
     expect(read('core/profile-edit.ts')).toContain('value.slice(-4)');
-    expect(read('app/me/page.tsx')).toContain('{mask:true}');
+    expect(read('app/(app)/me/page.tsx')).toContain('{mask:true}');
     // …and the pending value drawn beside it is masked by the same function, not printed in full.
     expect(
-      read('app/me/request-change-card.tsx'),
+      read('app/(app)/me/request-change-card.tsx'),
       'a pending account number on /me is masked by the same rule as the master one',
     ).toContain('formatProposedValue(field, value, t, { mask: true })');
     expect(read('lib/audit-format.ts'), 'the audit formatter still masks sensitive values').toContain(

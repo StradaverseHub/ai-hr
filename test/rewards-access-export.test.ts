@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:ports.session}));
 vi.mock('../lib/scope',()=>({getScopeIds:ports.scope}));
 vi.mock('../core/read',()=>({adminCompanies:ports.companies}));
 vi.mock('../packs/rewards/service',()=>({rewardAccessAdministration:ports.read,rewardRoleLabels:{ctro:'CTRO'}}));
-import {GET} from '../app/admin/rewards/access/export/route';
+import {GET} from '../app/(app)/admin/rewards/access/export/route';
 beforeEach(()=>vi.clearAllMocks());
 it('exports only the fresh authorized company selection and neutralizes a spreadsheet formula in a person name',async()=>{
  const session={tenantId:'fictional-tenant',userId:'fictional-admin'};

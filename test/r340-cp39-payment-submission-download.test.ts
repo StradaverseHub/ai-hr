@@ -9,7 +9,7 @@
  *
  * WHAT THIS FILE PROVES, in the plan's own order:
  *   (a) THE BYTES ARE THE SAME BYTES. An EQUALITY against `cp39FileForBatch` — the exact function
- *       `app/payroll/reports/cp39-file/route.ts` calls — never a re-derivation. A test that rebuilt the
+ *       `app/(app)/payroll/reports/cp39-file/route.ts` calls — never a re-derivation. A test that rebuilt the
  *       expected 136-character lines here would share whatever mistake the shelf made; `lib/kwsp-borang-a-
  *       file.ts` records that transposing two adjacent nine-wide fields once produced "a file of the right
  *       length whose own totals still agreed, and 214 tests stayed green".
@@ -53,7 +53,7 @@ import {
   SUBMISSION_FORMATS,
   submissionFormat,
   type SubmissionBuild,
-} from '../app/payroll/payment-submission/registry';
+} from '../app/(app)/payroll/payment-submission/registry';
 
 /** The registry id AND the key the employer's pack is asked for. One string, two sides of a seam. */
 const LHDN = 'my.lhdn.cp39-edata';
@@ -307,7 +307,7 @@ describe('0d02d4a1 (f)(g) — lit WITHOUT an upgraded provenance claim and WITHO
   });
 
   it('(g) no file on the Payment Submission shelf names a country pack', () => {
-    const dir = new URL('../app/payroll/payment-submission/', import.meta.url);
+    const dir = new URL('../app/(app)/payroll/payment-submission/', import.meta.url);
     for (const file of ['registry.ts', 'pack-file.ts', 'page.tsx', 'download-dialog.tsx', 'download/route.ts']) {
       const src = readFileSync(new URL(file, dir), 'utf8');
       // The ratchet itself does not strip comments; this guard is about the CODE, so it does.

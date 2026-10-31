@@ -32,7 +32,7 @@ export type ShiftFormType = 'normal' | 'semi_flexi' | 'full_flexi';
 /**
  * r429 (f6819e19) — THE SHIFT PAGE, REDESIGNED: Working Time and Breaks, as their own numbered r427
  * sections (components/ui/section-card.tsx). Shift Information (name, label, colour, the read-only
- * Schedule Group line) is app/admin/attendance/shift-form.tsx's own server-rendered section; the closed
+ * Schedule Group line) is app/(app)/admin/attendance/shift-form.tsx's own server-rendered section; the closed
  * "Overtime and pay" panel is there too. This island owns Working Time and Breaks because the shift type
  * decides which boxes Working Time asks for and the break rows feed the live normal-hours readout, so the
  * two sections share state.
@@ -41,7 +41,7 @@ export type ShiftFormType = 'normal' | 'semi_flexi' | 'full_flexi';
  * Schedule Group's own page), the Schedule Group picker (ditto — changed from "Shifts allowed" there), the
  * whole-shift Flexible switch and the inverted "Fixed" tick (replaced by ONE "Flexible" tick per row). NONE
  * of the four is rendered by this file any more, and none of the four is posted by
- * app/admin/attendance/shift-actions.ts — core/roster.ts preserves whatever was already stored.
+ * app/(app)/admin/attendance/shift-actions.ts — core/roster.ts preserves whatever was already stored.
  *
  * THE ONE SURVIVOR: a shift migration 0519 could not convert onto its break rows exactly keeps deducting
  * its whole-shift allowance until the operator explicitly ticks "Stop using it" (`flexLocked` below) —
@@ -574,7 +574,7 @@ export function ShiftTimeFields({
 
             {/* Every NON-blank row posts — the hidden JSON field the service reads. Blank rows (both times
                 empty) are included too (the server drops them before any index reaches a refusal; see
-                app/admin/attendance/shift-actions.ts parseBreakPeriods / core/roster.ts). */}
+                app/(app)/admin/attendance/shift-actions.ts parseBreakPeriods / core/roster.ts). */}
             {!showScalarBox && (
               <input
                 type="hidden"

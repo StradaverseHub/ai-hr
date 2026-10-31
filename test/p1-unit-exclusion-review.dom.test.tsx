@@ -7,7 +7,7 @@
  * test/performance-unit-exclusion-leaders.test.ts); with its flags (manager, reviewer and planReviewer all false)
  * the page renders none of these controls.
  */
-vi.mock('../app/performance/assessment-rewrite-actions', () => ({ rewriteAssessmentFieldAction: vi.fn() }));
+vi.mock('../app/(app)/performance/assessment-rewrite-actions', () => ({ rewriteAssessmentFieldAction: vi.fn() }));
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
@@ -17,9 +17,9 @@ import framework from '../packs/performance/onehr/framework.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as never }) }));
 vi.mock('next/navigation', async importActual => ({ ...await importActual<typeof import('next/navigation')>(), useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/performance/onehr-actions', () => ({ onehrReviewAction: vi.fn(), careerPlanDraftAction: vi.fn(), applyCareerPlanDraftAction: vi.fn(), developmentSuggestionsAction: vi.fn(), saveAssessmentKpiSettingAction: vi.fn(), saveAssessmentDraftAction: vi.fn(), onehrDraftAction: vi.fn(), assessmentInsightAction: vi.fn(), assessmentIdpFitAction: vi.fn(), assessmentCompetencyInsightAction: vi.fn() }));
-vi.mock('../app/performance/actions', () => ({ uploadAttachmentAction: vi.fn() }));
-import { OnehrReviewView } from '../app/performance/onehr/review-view';
+vi.mock('../app/(app)/performance/onehr-actions', () => ({ onehrReviewAction: vi.fn(), careerPlanDraftAction: vi.fn(), applyCareerPlanDraftAction: vi.fn(), developmentSuggestionsAction: vi.fn(), saveAssessmentKpiSettingAction: vi.fn(), saveAssessmentDraftAction: vi.fn(), onehrDraftAction: vi.fn(), assessmentInsightAction: vi.fn(), assessmentIdpFitAction: vi.fn(), assessmentCompetencyInsightAction: vi.fn() }));
+vi.mock('../app/(app)/performance/actions', () => ({ uploadAttachmentAction: vi.fn() }));
+import { OnehrReviewView } from '../app/(app)/performance/onehr/review-view';
 
 afterEach(cleanup);
 type View = Parameters<typeof OnehrReviewView>[0]['v'];

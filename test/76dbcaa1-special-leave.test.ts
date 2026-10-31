@@ -19,7 +19,7 @@
  *   4. `?type=` is seeded, never trusted — an id the subject may not take falls back.
  *
  * ⚠️ r355 (8d3a7bff) — WHY THIS FILE CHANGED AT ALL, since 76dbcaa1 is not the item being built. It read
- * app/leave/shared/[groupId]/page.tsx AT MODULE LEVEL (the key-grep below was a `describe`-body statement),
+ * app/(app)/leave/shared/[groupId]/page.tsx AT MODULE LEVEL (the key-grep below was a `describe`-body statement),
  * so the deletion did not fail an assertion here — it threw during collection and took the picker guards,
  * which are still live and still correct, down with it. The structural guards on that file are rewritten as
  * guards on its ABSENCE rather than dropped: a reinstated orphan page must fail something.
@@ -33,7 +33,7 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
 /** r355 — the page this item built, now DELETED. Kept as a constant because its absence is asserted. */
-const DETAIL = 'app/leave/shared/[groupId]/page.tsx';
+const DETAIL = 'app/(app)/leave/shared/[groupId]/page.tsx';
 const FIELDS = 'components/leave-duration-fields.tsx';
 const GROUP = 'core/leave-shared-group.ts';
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
@@ -106,7 +106,7 @@ describe('r355 · the details screen and its route are gone, and nothing points 
     );
     // The approved personal earned-credit register shares this self-service column; it is not a
     // resurrection of the retired pooled-group page or a second function-access label.
-    const creditDetails = read('app/leave/credit-details/page.tsx');
+    const creditDetails = read('app/(app)/leave/credit-details/page.tsx');
     expect(creditDetails).toContain('await scopedSession()');
     expect(creditDetails).toContain('listOwnEarnedLeaveCredits(s,');
     // Unchanged from 76dbcaa1: the point of riding an existing column was that a second one would repeat
@@ -117,7 +117,7 @@ describe('r355 · the details screen and its route are gone, and nothing points 
   it('no employee surface links to /leave/shared any more', () => {
     // r356 — the third file was `shared-leave-group-cards.tsx`; it is `shared-leave-group-entry.ts` now
     // and holds only the type, the dead component beside it having rendered nowhere since r302.
-    for (const f of ['app/leave/page.tsx', 'components/leave/my-leave-dashboard.tsx', 'components/leave/shared-leave-group-entry.ts']) {
+    for (const f of ['app/(app)/leave/page.tsx', 'components/leave/my-leave-dashboard.tsx', 'components/leave/shared-leave-group-entry.ts']) {
       expect(codeOnly(read(f)), `${f} must not build a /leave/shared href`).not.toContain('/leave/shared');
     }
     // The card's link was the ONE runtime entry point, so the two fields that carried it are off the type.
@@ -131,8 +131,8 @@ describe('r355 · the details screen and its route are gone, and nothing points 
     // `usedThisYear` was unique to that page: `sharedLeaveGroupBalances` has exactly two callers and the
     // surviving one never read `usedDays`. Losing it was the only real cost of the deletion, so the move is
     // pinned across BOTH files in the contract — the RSC that builds the line and the card that draws it.
-    expect(codeOnly(read('app/leave/page.tsx'))).toContain("tMe('sharedLeaveGroups.usedThisYear'");
-    expect(codeOnly(read('app/leave/page.tsx')), 'the group cycle figure, not a card figure').toContain(
+    expect(codeOnly(read('app/(app)/leave/page.tsx'))).toContain("tMe('sharedLeaveGroups.usedThisYear'");
+    expect(codeOnly(read('app/(app)/leave/page.tsx')), 'the group cycle figure, not a card figure').toContain(
       'merged.usedDays',
     );
     expect(codeOnly(read('components/leave/my-leave-dashboard.tsx'))).toContain('c.pooledCeiling.usedLine');

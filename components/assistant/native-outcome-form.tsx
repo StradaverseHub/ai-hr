@@ -1,6 +1,6 @@
 'use client';
 import {useState} from 'react';
-import {recordNativeOutcomeAction} from '../../app/assistant/native-outcome-actions';
+import {recordNativeOutcomeAction} from '../../app/(app)/assistant/native-outcome-actions';
 export type NativeOutcomeFormMessages=Readonly<{choose:string;consent:string;save:string;pending:string;recover:string}>;
 /** No auto retry after transport uncertainty. Reloading only discovers metadata; it records nothing. */
 export function NativeOutcomeForm({jobId,nonce,options,messages}:{jobId:string;nonce:string;options:readonly{value:string;label:string}[];messages:NativeOutcomeFormMessages}){

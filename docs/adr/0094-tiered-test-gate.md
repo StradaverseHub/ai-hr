@@ -23,7 +23,7 @@ Measured on 2026-10-08 on the 18 GB, 12-core development machine:
   35 vitest workers (load average ~73). A gate run then is slow for reasons its log never showed.
 - `scripts/improve/release.ts` fell through to a bare `pnpm vitest run` whenever the gate receipt was
   missing or stale — the one command this machine cannot run (it writes more WAL than the RAM disk holds).
-- Many rounds change only presentation: r416 (one CSS stacking fix in `app/layout.tsx` and a component)
+- Many rounds change only presentation: r416 (one CSS stacking fix in `app/(app)/layout.tsx` and a component)
   waited the full ~25 minutes like a migration would.
 
 ## Decision

@@ -19,7 +19,7 @@ import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
  * the OTHER axis to `auto` too) CLIPPED it — measured in Chromium at ~43px off the panel's LEFT end, at
  * every width where the profile header lays out as a row, which takes the left end of every button in it.
  * The fix portals the panel to document.body and positions it `fixed` from a measured, viewport-clamped
- * trigger rect, exactly as r206 / 65e2d5de did for app/payroll/row-actions.tsx. Neither jsdom (no layout,
+ * trigger rect, exactly as r206 / 65e2d5de did for app/(app)/payroll/row-actions.tsx. Neither jsdom (no layout,
  * no CSS) nor a 200 from the page can show that regressing, so it is pinned here as source assertions —
  * the same way the row-actions fix is pinned. Delete these and the clipping comes back silently.
  */
@@ -30,7 +30,7 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
+const PAGE = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 const ISLAND = 'components/photo-edit-menu.tsx';
 const LOGO = 'components/company-logo.tsx';
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -134,7 +134,7 @@ describe('Photo edit menu: the panel escapes the scroll container (r227)', () =>
 
   it('BOTH mount sites inherit the fix, because neither positions the panel itself', () => {
     // The island is shared by the Personnel employee header and the company logo editor, under the same
-    // scrolling ancestor (app/layout.tsx's <main>). It cannot be repositioned for one caller alone, and a
+    // scrolling ancestor (app/(app)/layout.tsx's <main>). It cannot be repositioned for one caller alone, and a
     // second, per-caller positioning implementation is the thing to prevent.
     expect(logo).toContain("from './photo-edit-menu'");
     expect(logo).toContain('<PhotoEditMenu');

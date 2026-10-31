@@ -20,7 +20,7 @@
  *
  * THE APPLY-DROPDOWN ARM WAS ALREADY CORRECT BEFORE THIS CHANGE, and is pinned here anyway rather than
  * claimed as new work: `listEligibleLeaveTypesFor` has carried `isNull(leaveType.archivedAt)` in its own
- * `where` all along, and the item's build notes misread `app/leave/page.tsx`'s `listLeaveTypes` call as
+ * `where` all along, and the item's build notes misread `app/(app)/leave/page.tsx`'s `listLeaveTypes` call as
  * the dropdown's source — that call feeds `unpaidTypeName`, the EditLeaveDialog list and the
  * replacement-leave notice, and `listLeaveTypes` excludes archived types by default anyway. The guard is
  * a regression guard on a behaviour two independent reads now depend on, and it does fail if that
@@ -256,9 +256,9 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
   const read = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
   it('the retained HR inquiry includes archived types without restoring the retired Personnel balance copy', () => {
-    expect(read('../app/leave/employee-balances/rows.ts')).toContain('includeArchived: true');
-    expect(read('../app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
-    const personnel = read('../app/admin/personnel/[employmentId]/page.tsx');
+    expect(read('../app/(app)/leave/employee-balances/rows.ts')).toContain('includeArchived: true');
+    expect(read('../app/(app)/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    const personnel = read('../app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(personnel).not.toMatch(/\bleaveBalances\(/);
     expect(personnel).not.toContain('<EntitlementBreakdown');
   });
@@ -266,11 +266,11 @@ describe('ec991c2a — which surface asks for which answer, pinned across both f
   it('the employee-facing call sites are EXPLICIT, so the default can never silently change meaning', () => {
     // The item is explicit that an inherited default is how this defect comes back. Both self-service
     // balance reads state the answer they want rather than relying on `leaveBalances`' default.
-    expect(read('../app/leave/page.tsx')).toContain('includeArchived: false');
-    expect(read('../app/page.tsx')).toContain('includeArchived: false');
+    expect(read('../app/(app)/leave/page.tsx')).toContain('includeArchived: false');
+    expect(read('../app/(app)/page.tsx')).toContain('includeArchived: false');
     // …and neither of them opts out of the archived gate.
-    expect(read('../app/leave/page.tsx')).not.toContain('includeArchived: true');
-    expect(read('../app/page.tsx')).not.toContain('includeArchived: true');
+    expect(read('../app/(app)/leave/page.tsx')).not.toContain('includeArchived: true');
+    expect(read('../app/(app)/page.tsx')).not.toContain('includeArchived: true');
   });
 
   it('the shared-pool summer is the ONE self-service caller that opts out, and says why', () => {

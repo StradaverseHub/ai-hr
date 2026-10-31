@@ -6,7 +6,7 @@ import en from '../messages/en.json';import ms from '../messages/ms.json';import
 const copyState=vi.hoisted(()=>({locale:null as string|null}));
 const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getTranslations:vi.fn(async(namespace:string)=>(key:string,values?:Record<string,unknown>)=>{if(copyState.locale===null)return namespace+'.'+key+(values?' '+JSON.stringify(values):'');let value:unknown=copies[copyState.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing actual specialist translation');return value.replace(/\{(\w+)\}/g,(_all,name:string)=>String(values?.[name]??'{'+name+'}'));})}));
-vi.mock('../app/assistant/specialist-review-actions',()=>({createSpecialistCandidateAction:vi.fn(),evaluateSpecialistCandidateAction:vi.fn(),promoteSpecialistCandidateAction:vi.fn(),rollbackSpecialistCandidateAction:vi.fn(),runSpecialistJobAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/specialist-review-actions',()=>({createSpecialistCandidateAction:vi.fn(),evaluateSpecialistCandidateAction:vi.fn(),promoteSpecialistCandidateAction:vi.fn(),rollbackSpecialistCandidateAction:vi.fn(),runSpecialistJobAction:vi.fn()}));
 import {ModuleSpecialistFindings} from '../components/assistant/module-specialist-findings';
 import {executeCanonicalSpecialist} from '../lib/ai/module-specialists';
 import {ModuleSpecialistReview,SpecialistJobComposer} from '../components/assistant/module-specialist-review';

@@ -768,7 +768,7 @@ export function LeaveCreditRequestTable({
                * they are two-sentence bar copy and a dot's tooltip wants one line, so `table.dotReasonNoRecord`
                * and `table.dotReasonPastClockOut` replace them here while both stay in all six catalogues.
                * The approvals queue's warnings are SEPARATE keys (`creditWarnNoClockOut` /
-               * `creditWarnPastClockOut`) rendered by app/approvals/page.tsx and are untouched by this round.
+               * `creditWarnPastClockOut`) rendered by app/(app)/approvals/page.tsx and are untouched by this round.
                */
               const attendanceAlert =
                 windowLive && d?.view != null && (!d.hasClockOut || d.exceedsClockOut)

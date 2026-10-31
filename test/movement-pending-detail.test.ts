@@ -114,7 +114,7 @@ describe('pending Movement View shows saved intent separately from applied histo
   });
 
   it('wires the distinct scheduled-values section and its explanation in all six locales', () => {
-    const source = readFileSync(resolve('app/admin/personnel/[employmentId]/page.tsx'),'utf8');
+    const source = readFileSync(resolve('app/(app)/admin/personnel/[employmentId]/page.tsx'),'utf8');
     const start = source.indexOf('{movementDetailData.pendingIntent ? (');
     const end = source.indexOf('      ) : (',start);
     expect(start).toBeGreaterThan(-1); expect(end).toBeGreaterThan(start);

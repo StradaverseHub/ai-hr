@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowLeft, ArrowRight, Search } from 'lucide-react';
 import { Button, inputCls } from '@/components/ui';
-import { searchAllowanceEmployees } from '@/app/admin/attendance-allowance/actions';
+import { searchAllowanceEmployees } from '@/app/(app)/admin/attendance-allowance/actions';
 import type { AllowanceEmployeeOption } from '@/packs/attendance/service';
 
 /** Included IDs and checked rows live independently of each search result page. */

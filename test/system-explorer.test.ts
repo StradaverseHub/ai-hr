@@ -45,7 +45,7 @@ import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModu
 import type { SessionContext } from '../db/client';
 
 const ROOT = path.resolve(__dirname, '..');
-const PAGE = 'app/admin/system-explorer/page.tsx';
+const PAGE = 'app/(app)/admin/system-explorer/page.tsx';
 const HREF = '/admin/system-explorer';
 const readRepo = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
@@ -318,10 +318,10 @@ describe('deec1691 — the module, the placement, and the wiring', () => {
     expect(DEFAULT_PROVISION_MODULE_CODES).not.toContain(SYSTEM_EXPLORER_MODULE);
   });
 
-  it('is mounted under app/admin ONLY — the operator route is gone, not duplicated', () => {
+  it('is mounted under app/(app)/admin ONLY — the operator route is gone, not duplicated', () => {
     // Read-the-file, the same ratchet the module-catalog suite applies to migrations. The reporter
     // moved this surface deliberately; leaving the old copy behind would keep an ungated-by-module
-    // route alive on the operator plane, and a page under app/admin/anything-else would type-check and
+    // route alive on the operator plane, and a page under app/(app)/admin/anything-else would type-check and
     // pass every other test in this file.
     //
     // COMMENTS STRIPPED, and it matches an IMPORT rather than the bare string. The first version did
@@ -342,7 +342,7 @@ describe('deec1691 — the module, the placement, and the wiring', () => {
     };
     for (const d of ['app', 'components']) walk(path.join(ROOT, d));
     expect(importers, 'exactly one surface reads the explorer service').toEqual([PAGE]);
-    expect(fs.existsSync(path.join(ROOT, 'app/operator/schema')), 'the operator route is removed').toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/operator/schema')), 'the operator route is removed').toBe(false);
   });
 
   it('the page carries BOTH guards — the admin gate and the module gate', () => {

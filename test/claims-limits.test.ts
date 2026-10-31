@@ -308,7 +308,7 @@ describe('ccbd0508 — claim limits by grade', () => {
       // so the dead branch is pinned at the source. The screen stopped offering the option in r186; until
       // this step the parser still honoured it, so a hand-rolled POST could write a per-km scalar back onto
       // a claim policy through a screen that has no such field.
-      const src = readFileSync(new URL('../app/admin/claims/limits/actions.ts', import.meta.url), 'utf8');
+      const src = readFileSync(new URL('../app/(app)/admin/claims/limits/actions.ts', import.meta.url), 'utf8');
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
       expect(code).not.toContain('mileage_flat');
       expect(code).not.toContain('ratePerKm');
@@ -541,7 +541,7 @@ describe('ccbd0508 — claim limits by grade', () => {
       // FIELD — r186 removed those — it is a claim_item they created in June named "RM1.00/km", listed
       // beside their real sub-claims. So the mileage type carries a line pointing at Mileage Rates and no
       // sub-claim rows at all, and the ITEM IS NOT ARCHIVED OR DELETED: it is the reporter's data.
-      const page = readFileSync(new URL('../app/admin/claims/limits/page.tsx', import.meta.url), 'utf8');
+      const page = readFileSync(new URL('../app/(app)/admin/claims/limits/page.tsx', import.meta.url), 'utf8');
       expect(page).toMatch(/const subs = isMileage \? \[\] : r\.items;/);
       expect(page).toMatch(/kind: 'mileage'/);
       // Nothing on this screen archives or deletes an item — the only writes it can make are limits.

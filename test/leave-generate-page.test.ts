@@ -33,10 +33,10 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
  * one-caller case would pass forever while saying nothing.
  */
 const GENERATE_ROUTE = '/admin/leave-config/generate';
-const GENERATE_PAGE = 'app/admin/leave-config/generate/page.tsx';
+const GENERATE_PAGE = 'app/(app)/admin/leave-config/generate/page.tsx';
 /** The old address, kept in the file because two cases below still assert what became of it. */
-const OLD_GENERATE_PAGE = 'app/admin/leave/generate/page.tsx';
-const ACTIONS = 'app/admin/actions.ts';
+const OLD_GENERATE_PAGE = 'app/(app)/admin/leave/generate/page.tsx';
+const ACTIONS = 'app/(app)/admin/actions.ts';
 /** 93249794 grew the page into the five-step flow. Everything interactive — including the <form> and the
  *  year select — moved into this client component; the page stayed a server component and kept the import.
  *  The assertions below FOLLOW the code rather than being relaxed: the promise this file makes is that the
@@ -155,7 +155,7 @@ describe('4b0e76ae · the Generate Entitlement page is REACHABLE', () => {
 });
 
 describe('4b0e76ae · openLeaveYearAction has EXACTLY ONE caller', () => {
-  it('is defined once, in app/admin/actions.ts', () => {
+  it('is defined once, in app/(app)/admin/actions.ts', () => {
     const actions = read(ACTIONS);
     expect(actions.match(/export async function openLeaveYearAction/g)).toHaveLength(1);
   });
@@ -197,10 +197,10 @@ describe('4b0e76ae · openLeaveYearAction has EXACTLY ONE caller', () => {
 
 describe('4b0e76ae · the Leave Year Configuration block is GONE from Custom Settings', () => {
   const panel = () =>
-    ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx']
+    ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx', 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
       .map((f) => read(f))
       .join('\n');
-  const entitlements = () => read('app/admin/leave-config/types/page.tsx');
+  const entitlements = () => read('app/(app)/admin/leave-config/types/page.tsx');
 
   it('the panel no longer declares, destructures or renders the leaveYearSection slot', () => {
     const src = panel();
@@ -360,16 +360,16 @@ describe('4b0e76ae · the reset keeps the table, and the year list stops reading
     // tops up what was already earned, so one could not stay filed inside the other. The property this
     // case guards is unchanged and is about the SELECTOR, not the address: it is the one shared computed
     // range (three years back, six forward), built in exactly one place, and never a forward-only array.
-    const page = read('app/admin/leave-config/earned-accrual/page.tsx');
+    const page = read('app/(app)/admin/leave-config/earned-accrual/page.tsx');
     expect(page).toContain('entitlementYearOptions(currentYear)');
     expect(page).toContain('leaveYears={earnedLeaveYears}');
     // The old fallback array built currentYear..+6 with no past years, which silently removed the ability
     // to run earned accrual for a past year.
     expect(page.includes('Array.from({ length: 7 }')).toBe(false);
     // …and it is built in ONE place: neither screen the tool has left may build the accrual list again.
-    const types = read('app/admin/leave-config/types/page.tsx');
+    const types = read('app/(app)/admin/leave-config/types/page.tsx');
     expect(types.includes('entitlementYearOptions(currentYear)'), 'the selector must not be built on the types page any more').toBe(false);
-    const generate = read('app/admin/leave-config/generate/page.tsx');
+    const generate = read('app/(app)/admin/leave-config/generate/page.tsx');
     expect(generate.includes('leaveYears={earnedLeaveYears}'), 'the accrual selector must not survive on Generate Entitlement').toBe(false);
     // Generate Entitlement keeps its OWN use of the shared range — the wizard's year dropdown — which is
     // why this is a mount moving rather than a helper moving.

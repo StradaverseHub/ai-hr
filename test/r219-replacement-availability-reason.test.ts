@@ -274,8 +274,8 @@ describe('r219: no reason can reach a screen without a sentence', () => {
 
 // ── 3. Both surfaces mount it, and neither one re-words a reason itself ──────────────────────────────
 describe('r219: the employee and the admin looking that employee up are told the same cause', () => {
-  const EMPLOYEE_PAGE = 'app/leave/page.tsx';
-  const ADMIN_PAGE = 'app/leave/employee-balances/page.tsx';
+  const EMPLOYEE_PAGE = 'app/(app)/leave/page.tsx';
+  const ADMIN_PAGE = 'app/(app)/leave/employee-balances/page.tsx';
 
   it('the employee page renders the notice for the SELF audience', () => {
     const src = read(EMPLOYEE_PAGE);

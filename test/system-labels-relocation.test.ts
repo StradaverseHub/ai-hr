@@ -74,7 +74,7 @@ import {
   createPositionAction,
   createCostCenterAction,
   createBusinessUnitAction,
-} from '../app/admin/settings/actions';
+} from '../app/(app)/admin/settings/actions';
 // fbdeee87: Profile Options relocated into the System Labels surface as a tab. Its five server actions now
 // live under the System Labels sub-route and must redirect to the Profile Options tab (NOT the old
 // standalone /admin/settings/profile-options path) — the same redirect-target guard as the org catalogs.
@@ -84,7 +84,7 @@ import {
   setProfileOptionActiveAction,
   deleteProfileOptionAction,
   seedProfileOptionsAction,
-} from '../app/admin/settings/system-labels/profile-options/actions';
+} from '../app/(app)/admin/settings/system-labels/profile-options/actions';
 import { listAllProfileOptions } from '../core/profile-options';
 import { listDepartments } from '../core/read';
 

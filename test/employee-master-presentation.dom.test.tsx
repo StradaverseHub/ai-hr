@@ -18,10 +18,10 @@ const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: language.current, messages: catalogues[language.current], namespace: namespace as never, onError: error => { throw error; } }) }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
-vi.mock('../app/reports/employee-master/actions', () => ({ previewEmployeeMaster: preview, saveEmployeeMaster: save }));
-vi.mock('../app/reports/employee-master/MasterReportActions', () => ({ MasterReportActions: () => null }));
-import { EmployeeMasterBuilder } from '../app/reports/employee-master/EmployeeMasterBuilder';
-import { MasterReportList } from '../app/reports/employee-master/MasterReportList';
+vi.mock('../app/(app)/reports/employee-master/actions', () => ({ previewEmployeeMaster: preview, saveEmployeeMaster: save }));
+vi.mock('../app/(app)/reports/employee-master/MasterReportActions', () => ({ MasterReportActions: () => null }));
+import { EmployeeMasterBuilder } from '../app/(app)/reports/employee-master/EmployeeMasterBuilder';
+import { MasterReportList } from '../app/(app)/reports/employee-master/MasterReportList';
 
 const code = PERSONNEL_FIELDS.find(field => field.owner === 'employment' && field.ownerField === 'employeeCode')!;
 const hire = PERSONNEL_FIELDS.find(field => field.owner === 'employment' && field.ownerField === 'hiredOn')!;

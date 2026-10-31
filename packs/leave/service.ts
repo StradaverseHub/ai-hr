@@ -44,14 +44,14 @@ export * from '../../core/leave-import';
 // test/leave-pack-drift.test.ts, for the reason the 241817ef note above gives: a new leave-pack module
 // that is not a BOUNDARY is simply unguarded, and silencing the guard with a pack-drift-allowlist entry
 // would grow a list documented to only ever shrink. No allowlist entry is added — its only outside
-// consumer is app/admin/leave-config/, which is already always-allowed.
+// consumer is app/(app)/admin/leave-config/, which is already always-allowed.
 export * from '../../core/leave-history-import';
 // db55d08a (r369) — LEAVE B/F DATA IMPORT, the OPENING-FIGURE third of a migration (the two lines above
 // are the BALANCE and RECORD halves). Re-exported here, and registered in BOTH BOUNDARIES and
 // ALWAYS_ALLOWED in test/leave-pack-drift.test.ts, for the reason the 241817ef note above gives: a new
 // leave-pack module that is not a BOUNDARY is simply unguarded, and silencing the guard with a
 // pack-drift-allowlist entry would grow a list documented to only ever shrink. No allowlist entry is
-// added — its only outside consumer is app/admin/leave-config/, which is already always-allowed.
+// added — its only outside consumer is app/(app)/admin/leave-config/, which is already always-allowed.
 export * from '../../core/leave-bf-import';
 // 56910869 — the Override Leave Application rule vocabulary. Re-exported here (and registered in BOTH
 // BOUNDARIES and ALWAYS_ALLOWED in test/leave-pack-drift.test.ts) for the reason the 241817ef note above
@@ -79,7 +79,7 @@ export * from '../../core/replacement-request';
 export * from '../../core/leave-credit-request';
 // r389 bc3e203d — the employee's own Leave Credit History read (requests, lines, credits and the toil events
 // that used or settled them). Same registration discipline as the line above (BOUNDARIES + ALWAYS_ALLOWED in
-// test/leave-pack-drift.test.ts, no allowlist entry): its outside callers are app/leave/credit/, which reach
+// test/leave-pack-drift.test.ts, no allowlist entry): its outside callers are app/(app)/leave/credit/, which reach
 // it through this facade.
 export * from '../../core/leave-credit-history';
 export * from '../../core/benefit-scheme';
@@ -92,7 +92,7 @@ export * from '../../core/entitlement-template';
 export * from '../../core/entitlement-archive';
 // c8052ae3 — the read-only record of the leave_ledger rows the Medical / Hospitalization reset removes.
 // Same registration discipline as the two lines above (BOUNDARIES + ALWAYS_ALLOWED in
-// test/leave-pack-drift.test.ts, no allowlist entry): the only outside reader is app/admin/leave/, which
+// test/leave-pack-drift.test.ts, no allowlist entry): the only outside reader is app/(app)/admin/leave/, which
 // is already always-allowed, and the correction SCRIPT deliberately imports none of this — it talks to
 // db/schema and the SQL capture function directly, so an operator one-off never becomes a pack consumer.
 export * from '../../core/leave-ledger-archive';

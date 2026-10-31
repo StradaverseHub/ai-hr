@@ -29,7 +29,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 // Imported after the mocks are registered.
-const { setStatutoryComponentAction } = await import('../app/payroll/configuration/actions');
+const { setStatutoryComponentAction } = await import('../app/(app)/payroll/configuration/actions');
 
 const fd = (o: Record<string, string>) => {
   const f = new FormData();

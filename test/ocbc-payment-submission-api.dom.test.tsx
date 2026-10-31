@@ -11,15 +11,15 @@ vi.mock('@/db/client', () => ({ withTenant: async (_s: unknown, fn: (tx: unknown
 vi.mock('@/core/bank-profile', () => ({ listCompanyBankProfiles: m.accounts }));
 vi.mock('@/packs/payroll/service', () => ({ listFilableRunsForPeriod: m.runs, listBatches: m.batches }));
 vi.mock('@/localization/registry', () => ({ packFor: (country: string) => country === 'MY' ? { bankPaymentFiles: { preview: m.preview, download: m.download } } : undefined }));
-vi.mock('../app/payroll/payment-submission/registry', () => ({ submissionFormat: (id: string) => ({
+vi.mock('../app/(app)/payroll/payment-submission/registry', () => ({ submissionFormat: (id: string) => ({
   'my.ocbc.salary': { available: true, transport: 'bank-post', periodKind: 'month-cycle', testIndicator: false },
   'my.ocbc.kwsp': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: true },
   'my.ocbc.socso': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: true },
   'my.ocbc.lhdn': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: false },
   'my.ocbc.zakat': { available: true, transport: 'bank-post', periodKind: 'month', testIndicator: false },
 } as Record<string, unknown>)[id] }));
-import { GET, POST } from '../app/payroll/payment-submission/bank-file/route';
-import { GET as governmentDownload } from '../app/payroll/payment-submission/download/route';
+import { GET, POST } from '../app/(app)/payroll/payment-submission/bank-file/route';
+import { GET as governmentDownload } from '../app/(app)/payroll/payment-submission/download/route';
 import { BankPaymentFileError } from '../localization/country-pack';
 const companyId = '11111111-2222-3333-4444-555555555555';
 const bankProfileId = '22222222-2222-3333-4444-555555555555';

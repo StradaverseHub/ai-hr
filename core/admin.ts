@@ -2854,7 +2854,7 @@ export type LabelUpdateInput = {
 /**
  * One row's refusal. `message` is the diagnostic sentence (English, like every other message in this
  * module); `code` — when present — is a STABLE TOKEN the client translates before it reaches a screen
- * (`admin.systemLabels.<code>`, the app/payroll/transactions `errorKeys` precedent). Every refusal that
+ * (`admin.systemLabels.<code>`, the app/(app)/payroll/transactions `errorKeys` precedent). Every refusal that
  * an admin can actually provoke carries one; the token is what makes the banner speak the reader's
  * language instead of the driver's.
  */
@@ -3098,7 +3098,7 @@ export async function bulkSaveLabels(
         // statement the database refused has already aborted it: every later statement in this loop
         // raises 25P02 ("current transaction is aborted"), which is neither a unique nor a privilege
         // violation, so it escaped through `throw e` as a raw driver string with nothing highlighted —
-        // the failure class recorded against the grades path in app/admin/settings/actions.ts. The save
+        // the failure class recorded against the grades path in app/(app)/admin/settings/actions.ts. The save
         // is atomic anyway (any error rolls the whole thing back), so reporting the FIRST database
         // refusal and stopping loses nothing except a second, misleading error.
         if (pgErrorCode(e)) throw new LabelBulkError(errors);

@@ -3,7 +3,7 @@
  *
  * ── WHY THIS IS A DOM TEST ──────────────────────────────────────────────────────────────────────────
  * The gate the reporter feels is `onStatusChange({ hasBlockers })` in the Validation step: the wizard's
- * footer computes `canProcess = … && !validation.hasBlockers` (app/payroll/process/wizard.tsx), so the
+ * footer computes `canProcess = … && !validation.hasBlockers` (app/(app)/payroll/process/wizard.tsx), so the
  * button's enabled-ness IS that flag. And the §8 render check cannot reach the interesting case at all —
  * `pnpm db:seed` creates NO `custom_period` employee (production has none either: pay_mode is monthly
  * 105 / daily 1), so a GET of /payroll/process renders the all-clear branch no matter how many locales
@@ -47,13 +47,13 @@ const CARLA: Row = { employmentId: 'emp-carla', name: 'Custom Carla', employeeCo
 /** The advisory the component's own server action would return; set per render. */
 let nextAdvisory: Advisory = EMPTY;
 
-vi.mock('../app/payroll/process/actions', () => ({
+vi.mock('../app/(app)/payroll/process/actions', () => ({
   validatePayrollSelection: () => Promise.resolve(nextAdvisory),
   checkPayrollCycleReadiness: () => Promise.resolve([]),
   checkUnattachedForSelection: () => Promise.resolve([]),
 }));
 
-import { StepValidation } from '../app/payroll/process/steps/step-validation';
+import { StepValidation } from '../app/(app)/payroll/process/steps/step-validation';
 
 const CATALOGUES = { en, ms, ta, th, vi: viMsg, zh } as const;
 type Locale = keyof typeof CATALOGUES;

@@ -31,7 +31,7 @@ import thMessages from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 
 /**
- * The SAME mapping app/admin/attendance-policy/rules/rule-form.tsx makes from the catalogue to the island's
+ * The SAME mapping app/(app)/admin/attendance-policy/rules/rule-form.tsx makes from the catalogue to the island's
  * props. Duplicated on purpose and kept honest by test/attendance-rule-early-ot-untick.test.ts, which
  * asserts the form still reads exactly these keys — so a key renamed in one place fails in the other.
  */

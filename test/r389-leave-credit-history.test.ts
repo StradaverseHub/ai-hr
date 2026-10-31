@@ -85,8 +85,8 @@ import {
   type CreditHistoryLine,
 } from '../lib/leave-credit-history';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { cancelLeaveCreditRequestAction, submitLeaveCreditRequestAction } from '../app/leave/credit/actions';
-import { GET as exportGET } from '../app/leave/credit/export/route';
+import { cancelLeaveCreditRequestAction, submitLeaveCreditRequestAction } from '../app/(app)/leave/credit/actions';
+import { GET as exportGET } from '../app/(app)/leave/credit/export/route';
 import { leavePack } from '../packs/leave';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -689,7 +689,7 @@ describe('r389 · the My Leave menu, the renamed row, the retired link and the s
       const tbl = cat(l).replacementRequest.table;
       for (const k of ['myRequests', 'noRequests', 'statusHeading', 'submittedOn']) expect(tbl[k], `${l}.${k}`).toMatch(/^\[retired r389 —/);
     }
-    for (const f of ['app/leave/credit/page.tsx', 'components/leave/leave-credit-history.tsx', 'components/leave/leave-credit-request-table.tsx'])
+    for (const f of ['app/(app)/leave/credit/page.tsx', 'components/leave/leave-credit-history.tsx', 'components/leave/leave-credit-request-table.tsx'])
       for (const k of ['myRequests', 'noRequests', 'statusHeading', 'submittedOn']) expect(codeOnly(read(f)), `${f} renders ${k}`).not.toContain(`'table.${k}'`);
   });
 
@@ -708,7 +708,7 @@ describe('r389 · the My Leave menu, the renamed row, the retired link and the s
     // And every key the page, the island and the export render exists (a MISSING_MESSAGE passes tsc).
     const used = new Set<string>();
     // (The actions file binds `t` to two namespaces in two functions, so its two keys are named instead.)
-    for (const f of ['app/leave/credit/page.tsx', 'components/leave/leave-credit-history.tsx', 'app/leave/credit/export/route.ts']) {
+    for (const f of ['app/(app)/leave/credit/page.tsx', 'components/leave/leave-credit-history.tsx', 'app/(app)/leave/credit/export/route.ts']) {
       const src = codeOnly(read(f));
       for (const m of src.matchAll(/\bt\('([^']+)'/g)) used.add(m[1]);
     }
@@ -754,7 +754,7 @@ describe('r389 · a Leave Credit request submitted from the dialog returns to My
     expect(bad.searchParams.get('error')).toBe(en.replacementRequest.table.reasonRequired);
 
     // The source agrees: no redirect in the action file names /leave/credit as a landing.
-    const actions = codeOnly(read('app/leave/credit/actions.ts'));
+    const actions = codeOnly(read('app/(app)/leave/credit/actions.ts'));
     expect(actions).toContain("const SUBMIT_LANDING = '/leave';");
     expect(actions).not.toMatch(/redirect\(`\$\{HISTORY\}\?(toast|error)/);
   });

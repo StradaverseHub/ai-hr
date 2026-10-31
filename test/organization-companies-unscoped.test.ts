@@ -41,8 +41,8 @@ vi.mock('next-intl/server', () => ({ getTranslations: vi.fn(async () => (k: stri
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { SectionHeader } from '../components/ui';
-import { CompanyRows } from '../app/admin/organization/company-rows';
-import OrganizationPage from '../app/admin/organization/page';
+import { CompanyRows } from '../app/(app)/admin/organization/company-rows';
+import OrganizationPage from '../app/(app)/admin/organization/page';
 
 // Depth-first walk of a rendered React element tree collecting every node whose `type` identity matches.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -8,7 +8,7 @@ import {PersonnelImportHeaderReview} from '../components/personnel-import-header
 import {capturePersonnelImportSource} from '../lib/personnel-import-assistance-source';
 import en from '../messages/en.json';
 const state=vi.hoisted(()=>({prepare:vi.fn(),execute:vi.fn(),reopen:vi.fn()}));
-vi.mock('../app/admin/personnel/import/assistance-actions',()=>({preparePersonnelImportHeadersAction:state.prepare,assistPersonnelImportHeadersAction:state.execute,reopenPersonnelImportHeadersAction:state.reopen}));
+vi.mock('../app/(app)/admin/personnel/import/assistance-actions',()=>({preparePersonnelImportHeadersAction:state.prepare,assistPersonnelImportHeadersAction:state.execute,reopenPersonnelImportHeadersAction:state.reopen}));
 const messages=en.people.import.headerAssistance,companyId='11111111-1111-4111-8111-111111111111',attemptId='22222222-2222-4222-8222-222222222222';
 const source=(revision='local-1',heading='Who is this?')=>capturePersonnelImportSource({text:`${heading},email\r\nPRIVATE PERSON,private@fixture.test\r\n`,fileName:'PRIVATE original.csv',format:'csv'},revision);
 const result=(command:any)=>({kind:'proposal',attemptId,attemptVersion:1,proposal:{version:1,sourceRevision:command.request.sourceRevision,registryDigest:command.request.registryDigest,mappings:command.request.headers.map((header:any)=>({columnIndex:header.columnIndex,status:'mapped',field:'full_name'}))}});

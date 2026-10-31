@@ -735,7 +735,7 @@ describe('c063eea9 — the screen and the action', () => {
   });
 
   it('the action recomputes entitlement with trigger hire_corrected and redacts errors through publicErrorMessage', () => {
-    const src = read('app/admin/personnel/[employmentId]/actions.ts');
+    const src = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
     const start = src.indexOf('export async function correctHireDetailsAction');
     const end = src.indexOf('export async function', start + 10);
     expect(start).toBeGreaterThanOrEqual(0);
@@ -748,7 +748,7 @@ describe('c063eea9 — the screen and the action', () => {
   });
 
   it('the Hired row offers the action and wears its own badge, not the rolled-back Corrected badge', () => {
-    const src = read('app/admin/personnel/[employmentId]/page.tsx');
+    const src = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(src).toContain("canCreateMovement && m.kind === 'hired'");
     expect(src).toContain("t('movement.hireCorrection.action')");
     expect(src).toContain("t('movement.hireCorrection.badge')");

@@ -21,7 +21,7 @@ import { SIP_HEADER_KEYS, sipFrom } from '../lib/sip-contribution';
 import { renderSipContributionPdf } from '../lib/sip-contribution-pdf';
 import { BORANG_8B_HEADER_KEYS, borang8BFrom } from '../lib/borang-8b';
 import { SOCSO_NOT_IN_SELECTION_REASON } from '../localization/my/statutory-month-wage';
-import { sipHasContributions } from '../app/payroll/sip-contribution/query';
+import { sipHasContributions } from '../app/(app)/payroll/sip-contribution/query';
 
 let b: Base;
 

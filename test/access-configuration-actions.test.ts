@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:calls.session}));
 vi.mock('../core/access-configuration',()=>({previewAccessConfiguration:calls.preview,saveAccessConfiguration:calls.save}));
 vi.mock('../core/access-configuration-store',()=>({accessConfigurationStore:calls.store}));
 vi.mock('next/cache',()=>({revalidatePath:calls.revalidate}));
-import {previewAccessConfigurationAction,saveAccessConfigurationAction} from '../app/admin/users/access/actions';
+import {previewAccessConfigurationAction,saveAccessConfigurationAction} from '../app/(app)/admin/users/access/actions';
 import {AccessPermissionError} from '../lib/access-permission-model';
 const session={tenantId:'fictional-tenant',userId:'real-session-user',roles:['employee']};
 const edit={expectedRevision:'current-revision',command:{kind:'renameGroup',groupId:'fictional-id',name:'Fictional group'}};

@@ -5,7 +5,7 @@
  * WHY THIS FILE EXISTS AT ALL, and why it names the round-trip. r179 removed the left-hand employee
  * rail from the Transaction Detail tab to give the table more room; the reporter contested it and
  * 98e69987 rev 2 put it back on 2026-08-11. This item is NOT that trade-off and must never be built as
- * that trade-off: the cause was one expression in app/payroll/transaction-view/page.tsx that capped four
+ * that trade-off: the cause was one expression in app/(app)/payroll/transaction-view/page.tsx that capped four
  * of the five tabs at `max-w-6xl` (1152px) while the fifth — the ONLY one that has ever had an employee
  * rail — was already full width. So the fix widens four tabs and touches no rail at all. Assertion (1)
  * pins the width rule; assertion (2) pins that the rail is still mounted, so a future "full width"
@@ -31,9 +31,9 @@ import { NextIntlClientProvider } from 'next-intl';
 
 import messages from '../messages/en.json';
 import type { IndividualTxnViewRow, ProcessedPayslipViewRow, UnattachedGroupRow } from '../core/payroll-view';
-import { IndividualTxnTable } from '../app/payroll/transaction-view/individual-table';
-import { OutstandingTable } from '../app/payroll/transaction-view/outstanding-table';
-import { HistoryTable } from '../app/payroll/transaction-view/history-table';
+import { IndividualTxnTable } from '../app/(app)/payroll/transaction-view/individual-table';
+import { OutstandingTable } from '../app/(app)/payroll/transaction-view/outstanding-table';
+import { HistoryTable } from '../app/(app)/payroll/transaction-view/history-table';
 
 // The address bar, stubbed — these tables read ?page/?size through useClientPageQuery and nothing here
 // navigates. Same shape as test/client-pager.dom.test.tsx.
@@ -45,7 +45,7 @@ vi.mock('next/navigation', () => ({
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-const PAGE = 'app/payroll/transaction-view/page.tsx';
+const PAGE = 'app/(app)/payroll/transaction-view/page.tsx';
 
 // ─────────────────────────── 1. the width rule ───────────────────────────
 

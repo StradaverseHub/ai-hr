@@ -141,8 +141,8 @@ describe('hireOptionVisible — department rule (company AND business-unit)', ()
 describe('6d671f44 — the wizard uses the one rule, and keeps its two behaviours', () => {
   const fs = require('node:fs') as typeof import('node:fs');
   const path = require('node:path') as typeof import('node:path');
-  const WIZARD = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/new/wizard.tsx'), 'utf8');
-  const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/page.tsx'), 'utf8');
+  const WIZARD = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/personnel/new/wizard.tsx'), 'utf8');
+  const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/personnel/page.tsx'), 'utf8');
   const LIB = fs.readFileSync(path.resolve(__dirname, '../lib/hire-form-filter.ts'), 'utf8');
 
   it('the wizard calls hireOptionVisible instead of reimplementing the rule', () => {
@@ -196,7 +196,7 @@ describe('6d671f44 — the wizard uses the one rule, and keeps its two behaviour
     // 6d671f44's way OUT of this screen was a plain Link. 034a5080's reporter asks for a prompt over the
     // list instead ("a Create New Employee prompt/modal instead of navigating the user to a separate full
     // screen"), so the trigger — and with it the href and the tour anchor — moved into
-    // app/admin/personnel/create-employee-dialog.tsx, where the trigger is STILL a Link to that route.
+    // app/(app)/admin/personnel/create-employee-dialog.tsx, where the trigger is STILL a Link to that route.
     // The route is not deleted; see test/hire-entry-relocation.test.ts, which pins both ends.
     //
     // This assertion was passing for the wrong reason for one commit of this item: the list page's JSX
@@ -204,7 +204,7 @@ describe('6d671f44 — the wizard uses the one rule, and keeps its two behaviour
     // now asserted against the component that replaced the Link, which cannot be satisfied by a sentence.
     expect(PAGE).toContain('<CreateEmployeeDialog');
     const DIALOG = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/create-employee-dialog.tsx'),
+      path.resolve(__dirname, '../app/(app)/admin/personnel/create-employee-dialog.tsx'),
       'utf8',
     );
     expect(DIALOG).toContain('href="/admin/personnel/new"');

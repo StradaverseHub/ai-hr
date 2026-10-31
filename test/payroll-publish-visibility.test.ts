@@ -237,7 +237,7 @@ describe('ef31d251 source guards', () => {
     // Deliberately a POSITIVE guard only. Asserting the ABSENCE of `=== 'closed'` in these files would
     // fire on constructs it is not about: the batch page legitimately tests `batch.status === 'closed'`
     // to gate the Unlock card, and the list page uses it in STATUS_STYLE.
-    for (const f of ['app/payroll/page.tsx', 'app/payroll/[batchId]/page.tsx']) {
+    for (const f of ['app/(app)/payroll/page.tsx', 'app/(app)/payroll/[batchId]/page.tsx']) {
       const src = read(f);
       expect(src, f).toContain("from '@/lib/payroll-publication'");
       expect(src, f).toContain('payrollPublicationState(');
@@ -249,7 +249,7 @@ describe('ef31d251 source guards', () => {
     // already contains this exact string. closeAction is currently last in the file, but slicing only
     // from its start would silently become whole-file-equivalent the day a function is appended below
     // it — so the slice is closed at the next top-level function too.
-    const src = read('app/payroll/actions.ts');
+    const src = read('app/(app)/payroll/actions.ts');
     const start = src.indexOf('export async function closeAction');
     expect(start, 'closeAction not found — did it get renamed?').toBeGreaterThan(-1);
     const next = src.indexOf('\nexport async function', start + 1);
@@ -260,7 +260,7 @@ describe('ef31d251 source guards', () => {
   it('the Close button is behind a confirmation dialog', () => {
     // Scoped to the close form's own block: ConfirmSubmit already appears three times on this page
     // (generate-with-warnings, reset, unlock), so a whole-file check passes vacuously.
-    const page = read('app/payroll/[batchId]/page.tsx');
+    const page = read('app/(app)/payroll/[batchId]/page.tsx');
     const start = page.indexOf('<form action={closeAction}>');
     expect(start).toBeGreaterThan(-1);
     const form = page.slice(start, page.indexOf('</form>', start));

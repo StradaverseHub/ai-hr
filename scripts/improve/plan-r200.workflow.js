@@ -50,7 +50,7 @@ const ITEMS = [
     extra: `Small and ESS-facing. r199 shipped 5ff7daff, which made the ESS leave placement default ` +
       `ROLE-aware; check whether this text is already conditional on something before proposing a new flag.` },
   { id: '7ad37961', title: 'TP1 Relief — redesign and complete the LHDN TP1 (2026) form',
-    extra: `A statutory form with its own screens under app/payroll/transactions/tp1. Establish what is ` +
+    extra: `A statutory form with its own screens under app/(app)/payroll/transactions/tp1. Establish what is ` +
       `already built before proposing a redesign — TP1 has shipped work behind it, and the reporter says ` +
       `"complete", which usually means specific missing reliefs rather than a rebuild.` },
   { id: '464b58e6', title: 'Simplify employee leave visibility and application settings',

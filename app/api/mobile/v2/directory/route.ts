@@ -1,5 +1,5 @@
 /**
- * GET /api/mobile/v2/directory?q&offset&limit — the web's read-only People directory (app/personnel/page.tsx) for
+ * GET /api/mobile/v2/directory?q&offset&limit — the web's read-only People directory (app/(app)/personnel/page.tsx) for
  * the app: active colleagues the caller may see, by name, with the fields the web directory already shows them.
  * The request rules are about SHAPE only (lib/mobile-api/v2/directory.ts); who is visible is RLS's, as on the web.
  */

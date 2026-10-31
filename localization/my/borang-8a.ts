@@ -477,7 +477,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
       //
       // r372 ADDED THE SECOND REASON, AND IT IS NOT AN ABSENCE. The IC is something we do not have; an
       // inconsistent wage is a month whose own runs disagree, where we have TWO figures and neither is the
-      // month's. The existing gate (app/payroll/borang-8a/shared.ts) blocks the PDF, the text export and
+      // month's. The existing gate (app/(app)/payroll/borang-8a/shared.ts) blocks the PDF, the text export and
       // the PERKESO upload file on ANY entry in this list, so naming it here is what holds the document —
       // and the review screen still renders the table, which is the only way the person gets named.
       readiness: accs

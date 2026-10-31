@@ -4,7 +4,7 @@
  * ── THE DEFECT, END TO END ──────────────────────────────────────────────────────────────────────────
  * `components/leave/entitlement-bands-editor.tsx` seeds its rows with `useState(initial.length ? initial
  * : DEFAULT_BANDS)`. useState reads its argument ONLY on the first mount. The Edit control on
- * `app/admin/leave/entitlements/templates/page.tsx` is a next/link `Link` to `?editTemplate=…`, so
+ * `app/(app)/admin/leave/entitlements/templates/page.tsx` is a next/link `Link` to `?editTemplate=…`, so
  * clicking it is a CLIENT-SIDE navigation: React re-renders the SAME component instance with a new
  * `initial` prop, the component discards it, and the blank new-table row stays on screen over a saved
  * template. Loading that same URL directly is a server render and a fresh mount, so it always looked
@@ -47,14 +47,14 @@ import { validateServiceBands, type ServiceBand } from '../core/leave-compute';
 const read = (rel: string) => readFileSync(resolve(process.cwd(), rel), 'utf8');
 /**
  * ee6b7c69 MOVED THE FORM, NOT THE FIX. The two Cards that were
- * app/admin/leave/entitlements/templates/page.tsx are now a shared block with two mount points (the
+ * app/(app)/admin/leave/entitlements/templates/page.tsx are now a shared block with two mount points (the
  * standalone screen and each leave type's Entitlement step), so the source guard at the end of §1 follows
  * the JSX to where it lives. It is pointed at the block rather than loosened, and the extraction makes it
  * MORE load-bearing, not less: the embedded mount is conditional (`activeStep === 'entitlement'`), so a
  * dropped key there would remount-and-re-seed on a step change and misbehave only when Edit is clicked
  * while already standing on the step — an intermittent version of the same data loss.
  */
-const PAGE = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const PAGE = 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 
 /** One saved template's bands, in the string shape the page's `toEditable` hands the editor. */
 const SAVED: EditableBand[] = [
@@ -140,9 +140,9 @@ describe('§1 4a1abc4a · clicking Edit is a client-side navigation, and the edi
     // redirect stub now and the screen is `/admin/leave-config/entitlement-tables`. The assertion is
     // stronger for following it — a stub can never grow a second editor, and the live page can.
     const mounts = [
-      'app/admin/leave-config/types/page.tsx',
-      'app/admin/leave-config/entitlement-tables/page.tsx',
-      'app/admin/leave-config/types/page.tsx',
+      'app/(app)/admin/leave-config/types/page.tsx',
+      'app/(app)/admin/leave-config/entitlement-tables/page.tsx',
+      'app/(app)/admin/leave-config/types/page.tsx',
     ];
     for (const f of mounts) {
       expect(read(f), `${f} must mount the shared block, never its own editor`).not.toContain(

@@ -17,7 +17,7 @@ import {setOwnPersonPhoto,setPersonPhoto,getPersonPhoto,getProfilePhotoProposal,
 import {person,profileChangeRequest,profilePhotoProposal,personPhoto,roleAssignment} from '../db/schema';
 const routeSession=vi.hoisted(()=>({current:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.current)throw new Error('No fixture identity');return routeSession.current;}}));
-import {GET as photoGET} from '../app/me/photo-proposal/[requestId]/route';
+import {GET as photoGET} from '../app/(app)/me/photo-proposal/[requestId]/route';
 let b:Base;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();b=await seedBase();});afterAll(closeAll);
 const group=(base:Base=b):SessionContext=>({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]});

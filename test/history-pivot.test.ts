@@ -43,7 +43,7 @@ import {
   filterGridRows,
   pivotHistoryGrid,
   type HistoryGridRow,
-} from '../app/payroll/transaction-view/history-pivot';
+} from '../app/(app)/payroll/transaction-view/history-pivot';
 import en from '../messages/en.json';
 
 let seq = 0;
@@ -882,9 +882,9 @@ describe('0253dc7c — the export file and the screen are ONE projection', () =>
    * unit test of either half passes throughout while the pair is broken. Hence source-shape
    * assertions across both, the convention test/history-export.test.ts already uses for this route.
    */
-  const grid = readFileSync(resolve(__dirname, '..', 'app/payroll/transaction-view/history-grid.tsx'), 'utf8');
+  const grid = readFileSync(resolve(__dirname, '..', 'app/(app)/payroll/transaction-view/history-grid.tsx'), 'utf8');
   const route = readFileSync(
-    resolve(__dirname, '..', 'app/payroll/transaction-view/grid-export/route.ts'),
+    resolve(__dirname, '..', 'app/(app)/payroll/transaction-view/grid-export/route.ts'),
     'utf8',
   );
 
@@ -897,7 +897,7 @@ describe('0253dc7c — the export file and the screen are ONE projection', () =>
    * either one passes throughout.
    */
   it('every map the screen feeds pivotHistoryGrid is also fed by the export route', () => {
-    const page = readFileSync(resolve(__dirname, '..', 'app/payroll/transaction-view/page.tsx'), 'utf8');
+    const page = readFileSync(resolve(__dirname, '..', 'app/(app)/payroll/transaction-view/page.tsx'), 'utf8');
     // THE ARGUMENT LIST, NOT THE FILE. Asserting the file merely CONTAINS the name is satisfied by the
     // `const payItemNames = …` that builds it, so the guard passes with the argument removed from the
     // call — which is precisely how it read as coverage while the export drifted. (Written weak first;

@@ -1,7 +1,7 @@
 /**
  * r134 — the payroll-cycle label must resolve under the namespace the SCREEN reads it from.
  *
- * THE BUG THIS PINS, which was live in production when it was found. `app/payroll/[batchId]/page.tsx`
+ * THE BUG THIS PINS, which was live in production when it was found. `app/(app)/payroll/[batchId]/page.tsx`
  * rendered the run's Cycle field as `t('runType.<cycle>')` with `t` bound to `payroll.batch` — a
  * namespace that has never contained `runType`. The four cycle names are catalogued under
  * `payroll.list`, `payroll.process` and `payrollCycleConfig`. So the Cycle field on EVERY payroll run
@@ -31,7 +31,7 @@ const load = (loc: string): Dict => JSON.parse(fs.readFileSync(path.join(MESSAGE
 const getPath = (obj: Dict, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
-/** Every .ts/.tsx under app/payroll, walked rather than listed — a new screen is covered on arrival. */
+/** Every .ts/.tsx under app/(app)/payroll, walked rather than listed — a new screen is covered on arrival. */
 function payrollSources(dir = path.join(ROOT, 'app', 'payroll')): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const full = path.join(dir, e.name);
@@ -58,7 +58,7 @@ const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').repl
 describe('r134 — payroll runType labels resolve under the namespace each screen reads', () => {
   const catalogs = Object.fromEntries(LOCALES.map((l) => [l, load(l)] as const));
 
-  it('every runType.${…} call site in app/payroll resolves in all six catalogs', () => {
+  it('every runType.${…} call site in app/(app)/payroll resolves in all six catalogs', () => {
     const checked: string[] = [];
     for (const file of payrollSources()) {
       const src = stripComments(fs.readFileSync(file, 'utf8'));

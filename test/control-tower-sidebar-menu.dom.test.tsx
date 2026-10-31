@@ -10,7 +10,7 @@ import messages from '../messages/en.json';
 vi.mock('next/navigation',()=>({usePathname:()=>'/control-tower/agents/allowances',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
-vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));
+vi.mock('../app/(app)/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));
 vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 import {Sidebar} from '../components/sidebar';
 

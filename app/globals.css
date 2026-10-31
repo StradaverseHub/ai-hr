@@ -8,7 +8,7 @@
    <html data-ui-theme="monolith">, so one component's markup can carry both looks and Classic's computed
    styles are untouched: a `monolith:` utility does not match in Classic at all. Same shape as `dark:` above
    (:where keeps the specificity of the bare utility, so variant order decides, exactly as for dark:).
-   D-P1-32 D3 — neither variant matches inside an area theme (<div data-area-theme>, app/performance/area-theme.css):
+   D-P1-32 D3 — neither variant matches inside an area theme (<div data-area-theme>, app/(app)/performance/area-theme.css):
    that area looks the same in every theme. `:not(:where(...))` adds zero specificity. */
 @custom-variant monolith (&:where([data-ui-theme='monolith'] *):not(:where([data-area-theme], [data-area-theme] *)));
 
@@ -81,7 +81,7 @@
 
 /* ── r396 — THE MONOLITH THEME (docs/design/monolith/, README §1–2) ─────────────────────────────────────
    Two UI themes, chosen per browser by the `ui_theme` cookie and written by the server as
-   <html data-ui-theme="monolith|classic"> (app/layout.tsx, lib/ui-theme.ts). The :root and .dark blocks
+   <html data-ui-theme="monolith|classic"> (app/(app)/layout.tsx, lib/ui-theme.ts). The :root and .dark blocks
    above ARE Classic and are deliberately untouched (test/r396-theme-switch.test.ts compares them with
    main). Monolith's values from docs/design/monolith/tokens.css live only under the scope below, so every
    existing token NAME works in both themes.

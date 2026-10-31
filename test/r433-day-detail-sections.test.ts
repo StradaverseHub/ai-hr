@@ -1,5 +1,5 @@
 /**
- * r433 (faca1cfb round 1) — the attendance DAY screen (app/attendance/individual/[date]/page.tsx), rendered
+ * r433 (faca1cfb round 1) — the attendance DAY screen (app/(app)/attendance/individual/[date]/page.tsx), rendered
  * for real against a real database.
  *
  * READ-ONLY PRESENTATION. The three claims, each pinned on rendered markup rather than on source text:
@@ -48,7 +48,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }), headers: async () => new Headers() }));
 
-import DayPage from '../app/attendance/individual/[date]/page';
+import DayPage from '../app/(app)/attendance/individual/[date]/page';
 
 const WORKDAY = '2026-07-01'; // Wednesday, a working day under Mon–Fri (a past date; the engine reads it as stored)
 const uniq = () => Math.random().toString(36).slice(2, 8);

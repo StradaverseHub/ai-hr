@@ -9,12 +9,12 @@ import {Button} from '@/components/ui';
 import {IndependentHomeCard} from './home-card';
 import {validateEmployeeHomeToday,type EmployeeHomeToday} from '@/lib/employee-home-today';
 import {liveClockSeconds} from '@/lib/clock-elapsed';
-import type {ClockingConfirmation} from '@/app/attendance/clock/clock-client';
+import type {ClockingConfirmation} from '@/app/(app)/attendance/clock/clock-client';
 
-type ClockComponent=typeof import('@/app/attendance/clock/clock-client').ClockPageClient;
+type ClockComponent=typeof import('@/app/(app)/attendance/clock/clock-client').ClockPageClient;
 type ClockState=React.ComponentProps<ClockComponent>['initial'];
 function ClockLoading(){const t=useTranslations('employeeHome.today');return <p role="status" className="p-4 text-sm">{t('loadingClock')}</p>;}
-const CanonicalClockFlow=dynamic(()=>import('@/app/attendance/clock/clock-client').then(module=>module.ClockPageClient),{ssr:false,loading:ClockLoading});
+const CanonicalClockFlow=dynamic(()=>import('@/app/(app)/attendance/clock/clock-client').then(module=>module.ClockPageClient),{ssr:false,loading:ClockLoading});
 
 /** No sensor, camera, capture command or full clock history loads when Home opens. The existing
  * canonical clock interaction mounts only after an explicit button press for this own employment. */

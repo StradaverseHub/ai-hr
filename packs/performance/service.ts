@@ -90,7 +90,7 @@ export {getPerformanceHomeBlock,hasAssignedPerformanceWork,WHERE_YOU_STAND_RULE,
 // D-P1-32 PT-X1 — the Performance & Talent tab registry (pure), its one facts builder and the per-tab route check.
 export {PERFORMANCE_AREA_TABS,PERFORMANCE_STRIP_LABEL_KEYS,performanceAreaStrips,performanceAreaStrip,performanceAreaTab,performanceTabState,activePerformanceTab,type PerformanceAreaFacts,type PerformanceAreaItem,type PerformanceAreaStrip,type PerformanceAreaTab,type PerformanceTabId,type PerformanceTabState,type PerformanceTabView,type PerformanceTabMatch,type OwnFeedbackReport,type PerformanceCalibrationHint,performanceCalibrationHints,CALIBRATION_SESSION_PATHS} from './onehr/tab-model';
 export {getPerformanceAreaFacts,getPerformanceAreaFactsAndItems,performanceTabAccess} from './onehr/tab-service';
-// D-P1-32 PT-X5 — the admin area's section addresses (pure), for the sidebar's Performance admin entry (app/layout.tsx).
+// D-P1-32 PT-X5 — the admin area's section addresses (pure), for the sidebar's Performance admin entry (app/(app)/layout.tsx).
 export {adminSectionHref} from './onehr/admin-sections';
 export {getPerformanceHome} from './onehr/performance-home-service';
 export {performanceHomeLayout,homeNext,homeSlot,notInReason,teamCounts,toolDoors,pastJourney,type PerformanceHomeView,type PerformanceHomeLayout,type PerformanceHomeCardId,type HomeNext,type HomeRow,type HomeSlot,type HomeRail,type NotInReason,type TeamCounts,type HomeToolGroup,type RunningLeaderStatus,type RecordLeaderStatus} from './onehr/performance-home-model';

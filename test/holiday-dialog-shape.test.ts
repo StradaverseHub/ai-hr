@@ -29,7 +29,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { holidayStatesByCountry } from '../app/admin/holidays/holiday-state-options';
+import { holidayStatesByCountry } from '../app/(app)/admin/holidays/holiday-state-options';
 import { MY_STATES } from '../localization/my/holidays';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -39,12 +39,12 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const rawPage = read('app/admin/holidays/page.tsx');
-const rawDialog = read('app/admin/holidays/holiday-dialog.tsx');
+const rawPage = read('app/(app)/admin/holidays/page.tsx');
+const rawDialog = read('app/(app)/admin/holidays/holiday-dialog.tsx');
 const page = codeOnly(rawPage);
 const dialog = codeOnly(rawDialog);
-const helper = codeOnly(read('app/admin/holidays/holiday-state-options.ts'));
-const actions = codeOnly(read('app/admin/actions.ts'));
+const helper = codeOnly(read('app/(app)/admin/holidays/holiday-state-options.ts'));
+const actions = codeOnly(read('app/(app)/admin/actions.ts'));
 const service = codeOnly(read('core/admin.ts'));
 
 const between = (src: string, from: string, to: string, what: string) => {

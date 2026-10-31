@@ -3,8 +3,8 @@ import { afterEach, expect, it } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-import { ClockingMap } from '../app/admin/work-locations/clocking/clocking-map';
-import { OSM_PROVIDER } from '../app/admin/work-locations/clocking/map-provider';
+import { ClockingMap } from '../app/(app)/admin/work-locations/clocking/clocking-map';
+import { OSM_PROVIDER } from '../app/(app)/admin/work-locations/clocking/map-provider';
 
 // Exercise real Leaflet createTile in a browser, without contacting public map servers.
 const tile = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e5efdb"/></svg>');

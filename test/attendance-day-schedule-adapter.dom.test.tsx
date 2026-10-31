@@ -6,7 +6,7 @@ import {AttendanceDateSchedule} from '../components/attendance-day-editor';
 import type {AttendanceDayEditorData} from '../packs/attendance/service';
 import en from '../messages/en.json';
 const {schedule,overtime}=vi.hoisted(()=>({schedule:vi.fn(async(_fd:FormData)=>({ok:true})),overtime:vi.fn(async(_fd:FormData)=>({ok:true}))}));
-vi.mock('../app/attendance/individual/[date]/actions',()=>({saveAttendanceDayScheduleAction:schedule,saveAttendanceDayChangesAction:overtime,adminCorrectAttendanceDayAction:vi.fn(),rejectAttendanceDayApplicationAction:vi.fn()}));
+vi.mock('../app/(app)/attendance/individual/[date]/actions',()=>({saveAttendanceDayScheduleAction:schedule,saveAttendanceDayChangesAction:overtime,adminCorrectAttendanceDayAction:vi.fn(),rejectAttendanceDayApplicationAction:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('sonner',()=>({toast:{success:vi.fn()}}));
 const data={baseline:'native',shiftId:null,dayKind:null,closed:false,self:false,processed:false,leave:[],schedule:{shiftCode:'BASE',dayKind:'workday'},shifts:[],rows:[],history:[],applications:[]} as unknown as AttendanceDayEditorData;

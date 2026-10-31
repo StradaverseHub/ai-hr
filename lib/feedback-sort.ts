@@ -2,14 +2,14 @@
  * The feedback board's ordering vocabulary (e14334ef) — shared by the SERVER page that validates
  * `?sort=` and issues the query, and the CLIENT table that renders the clickable heading.
  *
- * WHY IT IS NOT IN `core/feedback.ts`. `app/feedback/bulk-table.tsx` is a `'use client'` module and has
+ * WHY IT IS NOT IN `core/feedback.ts`. `app/(app)/feedback/bulk-table.tsx` is a `'use client'` module and has
  * to know the two option names to build the flip link. It already imports `FeedbackRow` from core, but
  * that is a TYPE import and erases; importing a runtime constant from core would pull the drizzle client
  * and the whole DB layer into the browser bundle. So the vocabulary lives here, dependency-free, and
  * `core/feedback.ts` imports the type from it.
  *
  * WHY THE ORDER IS SERVER-SIDE AT ALL. `listFeedback` caps the board at `FEEDBACK_LIST_LIMIT` = 200 rows
- * (517 on production; `app/feedback/page.tsx` says so on screen when the cut bites).
+ * (517 on production; `app/(app)/feedback/page.tsx` says so on screen when the cut bites).
  * Sorting the returned page in the browser would rank only the 200 most recently CREATED items, so an
  * old item touched yesterday — the exact case this field exists to surface — could never reach the top.
  * The ORDER BY has to run before the LIMIT, which means it has to run in SQL.

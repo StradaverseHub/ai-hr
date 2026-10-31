@@ -3,12 +3,12 @@ import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
-import { WorkspaceSettings, type NativeSettingsData } from '../app/lifecycle/v9/workspace-settings';
+import { WorkspaceSettings, type NativeSettingsData } from '../app/(app)/lifecycle/v9/workspace-settings';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { defaultConfig } from '../lib/onboarding-model';
 const mocks = vi.hoisted(() => ({ save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
-vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ saveOnboardingConfig: mocks.save, saveOnboardingChecklistTasks: vi.fn() }));
+vi.mock('../app/(app)/lifecycle/onboarding/v31-actions', () => ({ saveOnboardingConfig: mocks.save, saveOnboardingChecklistTasks: vi.fn() }));
 const messages = JSON.parse(readFileSync('messages/en.json', 'utf8'));
 function Editor() {
   const [config, setConfig] = useState(v9Defaults());

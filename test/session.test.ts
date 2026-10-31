@@ -50,7 +50,7 @@ describe('resolveDevPrincipal — tolerant dev principal resolution', () => {
      * This used to be a plain Error reading "No dev principal", because the only way to reach it was an
      * unseeded database. Since the gated demo withholds the DEV_USER_ID fallback (lib/session.ts), it is
      * ALSO the demo's normal signed-out state — a visitor who has not chosen an identity yet. A plain
-     * Error there renders a 500 on the product's front door; AuthRequiredError is what app/layout.tsx
+     * Error there renders a 500 on the product's front door; AuthRequiredError is what app/(app)/layout.tsx
      * turns into a redirect to /login. The message still names `pnpm db:seed`, because on a developer's
      * machine an unseeded database remains the likeliest cause.
      */

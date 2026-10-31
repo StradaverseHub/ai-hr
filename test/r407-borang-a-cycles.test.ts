@@ -23,7 +23,7 @@ import {
   borangADocumentQuery,
   borangAHasContributions,
   borangAQuery,
-} from '../app/payroll/borang-a/query';
+} from '../app/(app)/payroll/borang-a/query';
 import {
   CYCLES_ENDPOINT,
   criteriaReturnHref,
@@ -31,7 +31,7 @@ import {
   cyclesRefusalHref,
   reportDestination,
   runQueryPairs,
-} from '../app/payroll/statutory-forms/criteria';
+} from '../app/(app)/payroll/statutory-forms/criteria';
 import { parseRunSelection } from '../lib/payroll-run-selection';
 import { MY_REPORTS } from '../localization/my/reports';
 import { BORANG_A_ROWS_PER_PAGE, borangAFrom, money, type BorangARow } from '../lib/borang-a';
@@ -46,10 +46,10 @@ const code = (p: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
 
-const PREVIEW = read('app/payroll/borang-a/preview/page.tsx');
-const PREVIEW_CODE = code('app/payroll/borang-a/preview/page.tsx');
-const OPEN_CODE = code('app/payroll/statutory-forms/open/page.tsx');
-const PDF_ROUTE_CODE = code('app/payroll/borang-a/pdf/route.ts');
+const PREVIEW = read('app/(app)/payroll/borang-a/preview/page.tsx');
+const PREVIEW_CODE = code('app/(app)/payroll/borang-a/preview/page.tsx');
+const OPEN_CODE = code('app/(app)/payroll/statutory-forms/open/page.tsx');
+const PDF_ROUTE_CODE = code('app/(app)/payroll/borang-a/pdf/route.ts');
 
 /**
  * A slice of source between two markers, REFUSING to be vacuous: both markers must be found (`>= 0`, never
@@ -131,13 +131,13 @@ describe('the Continue gate', () => {
     expect(gate).toContain("loaded.reason === 'selection-empty'");
     expect(gate).toContain("loaded.reason === 'no-contributions'");
     // …decided in the LOADER, so the download routes refuse the same selection (a direct link included).
-    const shared = code('app/payroll/borang-a/shared.ts');
+    const shared = code('app/(app)/payroll/borang-a/shared.ts');
     expect(shared).toContain("if (p.refuseEmpty !== false && !borangAHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };");
     // verify D1 — the i-Akaun upload file (and the Payment Submission shelf behind it) keeps building a zero
     // month's EPFORMA2: the refusal is the FORM's, and whether KWSP expects a nil filing is unknown.
     expect(shared).toContain('query: p.query, refuseEmpty: false });');
     for (const r of ['pdf', 'text']) {
-      expect(code(`app/payroll/borang-a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
+      expect(code(`app/(app)/payroll/borang-a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
     }
     expect(shared).toContain("loaded.reason === 'no-contributions'");
     // Nothing that draws or links a document precedes the gate.
@@ -201,17 +201,17 @@ describe('the cycles criterion is generic, for the next monthly forms', () => {
     expect(OPEN_CODE).toContain('endpoint={CYCLES_ENDPOINT}');
     // The endpoint is the eligible-runs route r372 built, which reads `listFilableRunsForPeriod`.
     expect(CYCLES_ENDPOINT).toBe('/payroll/payment-submission/runs');
-    expect(code('app/payroll/payment-submission/runs/route.ts')).toContain(
+    expect(code('app/(app)/payroll/payment-submission/runs/route.ts')).toContain(
       "import { listFilableRunsForPeriod } from '@/packs/payroll/service';",
     );
   });
 
   it('has ONE run picker, used by both the download pop-up and the criteria step', () => {
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/payment-submission/run-picker.tsx'))).toBe(false);
-    expect(code('app/payroll/payment-submission/download-dialog.tsx')).toContain(
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/payment-submission/run-picker.tsx'))).toBe(false);
+    expect(code('app/(app)/payroll/payment-submission/download-dialog.tsx')).toContain(
       "import { RunPicker } from '@/components/run-picker';",
     );
-    expect(code('app/payroll/statutory-forms/open/cycles-criterion.tsx')).toContain(
+    expect(code('app/(app)/payroll/statutory-forms/open/cycles-criterion.tsx')).toContain(
       "import { RunPicker, type RunPickerStrings } from '@/components/run-picker';",
     );
   });

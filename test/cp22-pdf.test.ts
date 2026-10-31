@@ -284,9 +284,9 @@ describe('CP22 — the bundled LHDN template', () => {
     const helper = fs.readFileSync(path.join(ROOT, 'lib', 'cp22-template.ts'), 'utf8');
     expect(helper).toContain("'forms', 'cp22-pin-1-2021.pdf'");
     for (const f of [
-      'app/payroll/cp22/[employmentId]/pdf/route.ts',
-      'app/payroll/cp22/blank/route.ts',
-      'app/payroll/cp22/batch/route.ts',
+      'app/(app)/payroll/cp22/[employmentId]/pdf/route.ts',
+      'app/(app)/payroll/cp22/blank/route.ts',
+      'app/(app)/payroll/cp22/batch/route.ts',
     ]) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
       expect(src, `${f} must go through readCp22Template`).toContain('readCp22Template');
@@ -974,9 +974,9 @@ describe('CP22 batch — one file, two pages per joiner', () => {
     expect(renderCp22Batch.length, 'renderCp22Batch must take (template, records) and nothing else').toBe(2);
     const src = code(path.join(ROOT, 'lib', 'cp22-pdf.ts'));
     expect(src).not.toContain('lhdnBranch');
-    const route = code(path.join(ROOT, 'app/payroll/cp22/batch/route.ts'));
+    const route = code(path.join(ROOT, 'app/(app)/payroll/cp22/batch/route.ts'));
     expect(route, 'the batch route must no longer read a branch it cannot print').not.toContain('lhdnBranch');
-    const screen = code(path.join(ROOT, 'app/payroll/statutory-forms/page.tsx'));
+    const screen = code(path.join(ROOT, 'app/(app)/payroll/statutory-forms/page.tsx'));
     expect(screen, 'the screen must not offer an input that goes nowhere').not.toContain('lhdnBranch');
   });
 
@@ -1031,7 +1031,7 @@ describe('CP22 review screen — one corrected record, not two', () => {
   });
 
   it('derives the listed values and the overflow warning from the same object', () => {
-    const src = code(path.join(ROOT, 'app/payroll/cp22/[employmentId]/preview/page.tsx'));
+    const src = code(path.join(ROOT, 'app/(app)/payroll/cp22/[employmentId]/preview/page.tsx'));
     // Both must read the reviewed record. A screen that re-inlines the merge is free to drift from it
     // again, so the merge helper itself has to be the thing being called.
     expect(src, 'the corrections must be applied through the shared helper').toContain('applyCp22Review(particulars, review)');

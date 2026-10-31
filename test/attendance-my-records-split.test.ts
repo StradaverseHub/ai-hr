@@ -78,9 +78,9 @@ const stripComments = (src: string) =>
   src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
 // 54f33b59 r2 composes the list under the personal calendar; the old page only redirects.
-const EMPLOYEE_PAGE = 'app/attendance/my-roster/record-list.tsx';
-const ENTRY_PAGE = 'app/attendance/my-roster/page.tsx';
-const ADMIN_PAGE = 'app/attendance/page.tsx';
+const EMPLOYEE_PAGE = 'app/(app)/attendance/my-roster/record-list.tsx';
+const ENTRY_PAGE = 'app/(app)/attendance/my-roster/page.tsx';
+const ADMIN_PAGE = 'app/(app)/attendance/page.tsx';
 const EMPLOYEE_ROUTE = '/attendance/my-records';
 const ADMIN_ROUTE = '/attendance';
 
@@ -96,7 +96,7 @@ describe('f3e6c36e — the two screens are genuinely two screens', () => {
     // would satisfy every nav assertion in the repo while leaving ONE screen behind two addresses — the
     // exact two-nodes-one-screen condition r274 disclosed and this item exists to end.
     expect(src, 'the employee screen does not re-export the admin page').not.toMatch(
-      /from\s+'(\.\.\/page|@\/app\/attendance\/page)'/,
+      /from\s+'(\.\.\/page|@\/app\/\(app\)\/attendance\/page)'/,
     );
     /**
      * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
@@ -109,7 +109,7 @@ describe('f3e6c36e — the two screens are genuinely two screens', () => {
      */
     expect(read(ENTRY_PAGE), 'the personal shell renders its title').toContain("title={t('myCalendar.title')}");
     expect(read(ENTRY_PAGE)).toContain('<AttendanceRecordList');
-    expect(read('app/attendance/my-records/page.tsx')).toContain('redirect(attendanceCalendarHref(');
+    expect(read('app/(app)/attendance/my-records/page.tsx')).toContain('redirect(attendanceCalendarHref(');
     expect(src, 'and it is not a redirect stub').not.toMatch(/\bredirect\(/);
   });
 
@@ -267,7 +267,7 @@ describe('f3e6c36e — the administrative affordances are ABSENT from the employ
      * ⚠️ 2aef3cd8 (r362) — THE OLD CLAIM WAS:
      *   expect(src, 'no form posts from this screen').not.toMatch(/<form\b/);
      * Correct for a blank page and WRONG as a rule: 67268d83 round one gives the employee a Date From /
-     * Date To / Apply filter, and the house idiom for a filter (app/attendance/individual/page.tsx) is a
+     * Date To / Apply filter, and the house idiom for a filter (app/(app)/attendance/individual/page.tsx) is a
      * plain `method="GET"` form that NAVIGATES. Forbidding the element would have pushed the filter into a
      * client island or a server action — more machinery, and a real writer where there was none.
      *
@@ -302,7 +302,7 @@ describe('f3e6c36e — the employee screen says the same thing the admin screen 
      *   • attendance-format + attendance-derive render the LIST — the hour columns, the status and the
      *     flag. Asserted as REQUIRED again, which is the reversal.
      *   • attendance-figure-cells + attendance-explain render the eight figure cells WITH THEIR STORED
-     *     WORKING, which is the day DETAIL screen (app/attendance/individual/[date]/page.tsx is the
+     *     WORKING, which is the day DETAIL screen (app/(app)/attendance/individual/[date]/page.tsx is the
      *     specification, and its employee twin is round TWO of this item). 570fd56e took those eight
      *     columns off HR's own list for the same reason they are off this one: six of them hold 0.00 on an
      *     ordinary day. So they stay absent here AND stay existing — the r362 half of the case that is
@@ -423,7 +423,7 @@ describe('f3e6c36e — the employee screen says the same thing the admin screen 
  * 2aef3cd8 (r362) — THE ACCESS-GRID SCOPE NOTE PROMISED SOMETHING THE SCREEN NO LONGER SHOWS.
  *
  * `lib/permissions.ts` sets `hasScopeNote: true` on the `myAttendanceRecords` column, so /admin/users
- * renders `admin.users.scope.myAttendanceRecords` beside it (app/admin/users/page.tsx). In English it read
+ * renders `admin.users.scope.myAttendanceRecords` beside it (app/(app)/admin/users/page.tsx). In English it read
  * "Everyone can open this; whoever you are, it shows only your own attendance." — true of r287's screen,
  * false the moment the day table was removed. A false sentence on the permissions grid is worse than no
  * sentence: it is the one place an administrator goes to find out what a role can see.

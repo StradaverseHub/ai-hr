@@ -42,7 +42,7 @@ import {
   setPassportProfileMY,
   PassportRequiredError,
 } from '../localization/my/statutory';
-import { setPassportAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setPassportAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { personnelControl } from '../lib/personnel-form-contract';
 
@@ -61,9 +61,9 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 const IDENTITY = read('components/personnel-identity.tsx');
-const ACTIONS = read('app/admin/personnel/[employmentId]/actions.ts');
+const ACTIONS = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('Identity sections — NRIC gated by nationality, passport always (55865c32 + 357faecf)', () => {

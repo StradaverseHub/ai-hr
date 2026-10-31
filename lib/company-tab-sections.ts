@@ -5,7 +5,7 @@
  * This list is the contract between three files that cannot see each other: the panel marks each card
  * `data-save-section="<id>"`, the client scope packs the dirty ones into one payload keyed by that id
  * (lib/tab-save-dom.ts), and `saveCompanyGeneralTabAction` unpacks them and calls each card's own
- * service. It lives outside app/admin/actions.ts because that file carries `'use server'`, where only
+ * service. It lives outside app/(app)/admin/actions.ts because that file carries `'use server'`, where only
  * async functions may be exported.
  *
  * WHY ONLY THESE THREE, AND WHY THE STATUTORY NUMBERS ARE NOT AMONG THEM.

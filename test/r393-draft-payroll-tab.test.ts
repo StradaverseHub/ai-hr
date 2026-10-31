@@ -267,7 +267,7 @@ describe('§4 where Payroll is switched off, a stored policy is IGNORED (the pic
 // ── §5 wiring ───────────────────────────────────────────────────────────────────────────────────────
 describe('§5 the wiring the database tests cannot see', () => {
   it('the draft page offers the draft COMPANY\'s assignable policies, only when Payroll is on', () => {
-    const page = read('app/admin/personnel/new/page.tsx');
+    const page = read('app/(app)/admin/personnel/new/page.tsx');
     expect(page).toContain("isModuleEnabledOrFalse(session, 'payroll', draftCompanyId)");
     expect(page).toContain('listAssignablePolicies(session, draftCompanyId)');
     expect(page).toContain("from '@/packs/payroll/service'");

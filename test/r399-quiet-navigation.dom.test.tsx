@@ -59,7 +59,7 @@ describe('r399 · IntentLink waits for a resting pointer', () => {
   });
 
   it('the feedback board links its rows through IntentLink', () => {
-    expect(read('app/feedback/bulk-table.tsx')).toContain("import Link from '@/components/intent-link';");
+    expect(read('app/(app)/feedback/bulk-table.tsx')).toContain("import Link from '@/components/intent-link';");
   });
 });
 

@@ -3,12 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import { RewardAccessEditor } from '../app/admin/rewards/access/access-editor';
+import { RewardAccessEditor } from '../app/(app)/admin/rewards/access/access-editor';
 import type { RewardAccessAdministration } from '../packs/rewards/service';
 const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn(), batchPreview: vi.fn(), batchSave: vi.fn(), copyPreview: vi.fn(),decide:vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: ports.refresh }) }));
-vi.mock('../app/rewards/actions', () => ({ previewRewardAccessAction: ports.preview, saveRewardAccessAction: ports.save }));
-vi.mock('../app/admin/rewards/access/actions', () => ({ previewRewardAccessBatchAction: ports.batchPreview, saveRewardAccessBatchAction: ports.batchSave, previewRewardAccessCopyAction: ports.copyPreview,decideRewardAccessRequestAction:ports.decide }));
+vi.mock('../app/(app)/rewards/actions', () => ({ previewRewardAccessAction: ports.preview, saveRewardAccessAction: ports.save }));
+vi.mock('../app/(app)/admin/rewards/access/actions', () => ({ previewRewardAccessBatchAction: ports.batchPreview, saveRewardAccessBatchAction: ports.batchSave, previewRewardAccessCopyAction: ports.copyPreview,decideRewardAccessRequestAction:ports.decide }));
 const b = en.rewardsAccessBatch;
 const roles = ['bu', 'bg', 'gr', 'ctro', 'ec', 'pbp', 'payroll'] as const;
 const coverage = (unitId: string, holders: Partial<Record<(typeof roles)[number], string>>) => ({ unitId, roles: roles.map(role => ({ role, required: role !== 'pbp', activeHolders: holders[role] ? [{ userId: role, name: holders[role]!, email: null }] : [] })), missing: roles.filter(role => role !== 'pbp' && !holders[role]) });

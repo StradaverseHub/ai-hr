@@ -45,9 +45,9 @@ const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
 const HREF = '/admin/leave-config/data-import';
-const PAGE = 'app/admin/leave-config/data-import/page.tsx';
-const ISLAND = 'app/admin/leave-config/history-import/leave-history-import.tsx';
-const ACTIONS = 'app/admin/leave-config/history-import/actions.ts';
+const PAGE = 'app/(app)/admin/leave-config/data-import/page.tsx';
+const ISLAND = 'app/(app)/admin/leave-config/history-import/leave-history-import.tsx';
+const ACTIONS = 'app/(app)/admin/leave-config/history-import/actions.ts';
 
 describe('the three registries agree about the new row', () => {
   it('the fly-out row, the map group and the permission route all name the same address', () => {

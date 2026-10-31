@@ -16,7 +16,7 @@ import {
   TERMINATION_REASONS,
   fieldsForDecision,
   isFieldRequired,
-} from '../app/approvals/review-decide-fields';
+} from '../app/(app)/approvals/review-decide-fields';
 
 describe('review decide — progressive disclosure field map', () => {
   it('confirm reveals NO extra fields (single-step submit)', () => {

@@ -43,9 +43,9 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
 
 // ── 1. The edge between the page and the action ──────────────────────────────────────────────────────
 describe('the approval surface exists and is wired to the decide action', () => {
-  const page = read('app/approvals/page.tsx');
-  const actions = read('app/leave/actions.ts');
-  const panel = read('app/approvals/category-panel.tsx');
+  const page = read('app/(app)/approvals/page.tsx');
+  const actions = read('app/(app)/leave/actions.ts');
+  const panel = read('app/(app)/approvals/category-panel.tsx');
 
   it('the /approvals page LOADS pending replacement-leave requests', () => {
     // Through the pack facade, never the pack implementation (the house rule for cross-module reads).
@@ -61,7 +61,7 @@ describe('the approval surface exists and is wired to the decide action', () => 
   });
 
   it('and POSTS to decideReplacementLeaveRequestAction — the action that had no caller', () => {
-    expect(page).toMatch(/import \{ decideReplacementLeaveRequestAction \} from '@\/app\/leave\/actions'/);
+    expect(page).toMatch(/import \{ decideReplacementLeaveRequestAction \} from '@\/app\/\(app\)\/leave\/actions'/);
     // Both decisions, both reachable from this page.
     expect(page).toContain('<form action={decideReplacementLeaveRequestAction}>');
     for (const decision of ['approved', 'rejected']) {

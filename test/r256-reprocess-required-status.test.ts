@@ -12,7 +12,7 @@
  * AND IT IS STILL NOT A FOURTH ENUM VALUE. `payrollStatusEnum` remains exactly
  * ('draft','processed','closed') — db/schema.ts says so at the column, and
  * test/payroll-dashboard-timeline.test.ts pins the listing's STATUS_STYLE to exactly those three. What
- * the screen shows is DERIVED (app/payroll/dashboard-logic.ts `payrollListState`), so every report,
+ * the screen shows is DERIVED (app/(app)/payroll/dashboard-logic.ts `payrollListState`), so every report,
  * export, permission and service predicate that already understands 'processed' is untouched.
  *
  * WHAT IS PINNED HERE, and why each case exists rather than one happy path:
@@ -92,8 +92,8 @@ import {
   payrollListState,
   periodsForYear,
   reprocessEmploymentIds,
-} from '../app/payroll/dashboard-logic';
-import PayrollListPage from '../app/payroll/page';
+} from '../app/(app)/payroll/dashboard-logic';
+import PayrollListPage from '../app/(app)/payroll/page';
 import {
   adminCtx,
   closeAll,

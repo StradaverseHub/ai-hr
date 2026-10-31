@@ -49,7 +49,7 @@ import { employment, jobGrade, leaveType } from '../db/schema';
 // ADR-0080 D9: core/leave-compute and core/entitlement-template are leave-pack BOUNDARY modules, and
 // this file is an outside consumer (its caller is the personnel screen, not a leave screen). So it takes
 // them through the facade, which re-exports both in place. Adding this file to the pack instead would
-// have pushed the violation onto app/admin/personnel and GROWN the audited debt allowlist, which
+// have pushed the violation onto app/(app)/admin/personnel and GROWN the audited debt allowlist, which
 // test/leave-pack-drift.test.ts documents as only ever shrinking.
 import { bandFor, type ServiceBand, buildTemplateEntitlementResolver, leaveTypeIdsWithTemplatesAt } from '../packs/leave/service';
 import { movementHistory, movementHistoryTx } from './movement';

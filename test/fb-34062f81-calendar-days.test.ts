@@ -48,7 +48,7 @@ import {
   previewTxnAmountAction,
   previewTxnAmountsAction,
   updateIndividualTxnAction,
-} from '../app/payroll/transactions/individual/actions';
+} from '../app/(app)/payroll/transactions/individual/actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const BASIC = 3000;

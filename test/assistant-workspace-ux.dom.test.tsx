@@ -14,9 +14,9 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
  if(typeof value!=='string')throw Error('Missing test translation '+namespace+'.'+key);
  return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??'{'+field+'}'));
 }}));
-vi.mock('../app/assistant/history-privacy-actions',()=>({eraseAssistantHistoryAction:vi.fn()}));
-vi.mock('../app/assistant/module-plan-actions',()=>({proposeModulePlanAction:vi.fn(),eraseModuleProposalsAction:vi.fn(),evaluateHumanPlannerAction:vi.fn()}));
-vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/history-privacy-actions',()=>({eraseAssistantHistoryAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/module-plan-actions',()=>({proposeModulePlanAction:vi.fn(),eraseModuleProposalsAction:vi.fn(),evaluateHumanPlannerAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
 import {ModuleQuestionPlanner} from '../components/assistant/module-plan';
 import {AssistantHistoryPrivacy} from '../components/assistant/history-privacy';
 afterEach(()=>{cleanup();vi.restoreAllMocks();state.locale='en';});

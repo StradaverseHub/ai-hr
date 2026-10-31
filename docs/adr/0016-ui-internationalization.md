@@ -29,7 +29,7 @@ match/fill them, and import the corrected copy back — without a developer touc
 Adopt `next-intl` (v4). Locale is carried by a `NEXT_LOCALE` cookie, resolved server-side in
 `i18n/request.ts` via `getRequestConfig`; there is no `[locale]` URL segment and no middleware
 rewrite. This matches the existing app shape (cookie-based company scope and dev identity) and keeps
-deep links stable. `app/layout.tsx` wraps the tree in `<NextIntlClientProvider>` (messages are
+deep links stable. `app/(app)/layout.tsx` wraps the tree in `<NextIntlClientProvider>` (messages are
 inherited from the request config) and sets `<html lang>` dynamically from `getLocale()`.
 
 Supported locales (`i18n/config.ts`): `en` (source), `zh` (Simplified, zh-Hans), `ms`, `ta`, `th`,

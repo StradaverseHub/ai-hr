@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { FileText, Plus, Upload, X } from 'lucide-react';
-import { createArticleAction, uploadFileAction } from '@/app/knowledge-base/actions';
+import { createArticleAction, uploadFileAction } from '@/app/(app)/knowledge-base/actions';
 import { Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
 

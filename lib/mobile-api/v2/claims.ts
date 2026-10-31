@@ -30,7 +30,7 @@
  * lib/mobile-api/body.ts mobileForm, which bounds the stream before parsing; the app streams the file's bytes from
  * the protected folder (expo fetch). Base64 in JSON would add a third to the body and hold a 13 MiB string in the
  * app's JS heap for a 10 MB receipt. The server never trusts the part's declared type: it sniffs the bytes (PDF, JPEG,
- * PNG; fail closed), as app/claims/actions.ts does.
+ * PNG; fail closed), as app/(app)/claims/actions.ts does.
  */
 import { z } from 'zod';
 import { commandOf, pageOf, refusalOf } from './common';

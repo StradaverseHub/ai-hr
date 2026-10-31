@@ -27,13 +27,13 @@ export async function Tp3DeclarationFields({record,identity,selectedYear,mode='a
                       The reporter asked for a dropdown of month names instead of a number, and they are
                       right that "3" is a poor thing to ask somebody holding a paper form for. What the
                       value MUST stay is an integer: `core/tp3.ts` `validateMonth` parses 1–12 and
-                      `app/payroll/transactions/tp1/[year]/[month]/page.tsx` matches on
+                      `app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx` matches on
                       `r.deductionMonth === month`. A named value here would match nothing there and the
                       declaration would silently stop opening on its own month, so the option VALUE is
                       the number and only the LABEL is the name.
 
                       Names come from Intl in the request's own locale, resolved on the SERVER — the
-                      same decision `app/payroll/transactions/tp1/page.tsx` records: twelve names in six
+                      same decision `app/(app)/payroll/transactions/tp1/page.tsx` records: twelve names in six
                       locales would be six copies of the calendar in the message catalogue, and the
                       catalogue check cannot tell a wrong month name from a right one. */}
                   <label className="block text-sm">

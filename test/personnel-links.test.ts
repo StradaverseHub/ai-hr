@@ -29,10 +29,10 @@ describe('People → Personnel: audit entity links point at the admin management
 
 describe('People → Personnel: everyday inbound links resolve to /personnel (never /people, never /admin)', () => {
   const everyday: { file: string; label: string }[] = [
-    { file: 'app/page.tsx', label: 'dashboard headcount tile + onboarding view-all' },
+    { file: 'app/(app)/page.tsx', label: 'dashboard headcount tile + onboarding view-all' },
     { file: 'components/org-chart.tsx', label: 'org chart node link' },
-    { file: 'app/approvals/page.tsx', label: 'leave approval requester links' },
-    // NB: app/payroll/transactions/fixed/page.tsx used to belong here (it listed employees with a
+    { file: 'app/(app)/approvals/page.tsx', label: 'leave approval requester links' },
+    // NB: app/(app)/payroll/transactions/fixed/page.tsx used to belong here (it listed employees with a
     // "manage" → /personnel link). Feedback b7fc8583 replaced it with a self-contained fixed-transaction
     // editor that picks an employee via a <select> — it has no inbound /personnel link by design, so it
     // is no longer an everyday personnel-link surface to guard.
@@ -49,7 +49,7 @@ describe('People → Personnel: everyday inbound links resolve to /personnel (ne
       expect(src.includes('/personnel')).toBe(true);
       // Approved relocation: exactly the HR-guarded legacy queue redirect is permitted.
       // Requester links still use the read-only personnel course; no other admin href is exempted.
-      if(file==='app/approvals/page.tsx'){
+      if(file==='app/(app)/approvals/page.tsx'){
         const redirect=/if\(admin&&categoryParam==='profileChanges'\)redirect\('\/admin\/personnel\/profile-changes'\);/g;
         expect(src.match(redirect)).toHaveLength(1);
         expect(src.replace(redirect,'').includes('/admin/personnel')).toBe(false);
@@ -60,8 +60,8 @@ describe('People → Personnel: everyday inbound links resolve to /personnel (ne
 
 describe('People → Personnel: routes exist where expected', () => {
   it('the read-only directory + detail live under /personnel', () => {
-    expect(() => read('app/personnel/page.tsx')).not.toThrow();
-    expect(() => read('app/personnel/[employmentId]/page.tsx')).not.toThrow();
+    expect(() => read('app/(app)/personnel/page.tsx')).not.toThrow();
+    expect(() => read('app/(app)/personnel/[employmentId]/page.tsx')).not.toThrow();
   });
 
   it('the Workforce management surface lives under /admin/personnel and requires its purpose-bound access', () => {
@@ -75,8 +75,8 @@ describe('People → Personnel: routes exist where expected', () => {
     const stripComments = (src: string) =>
       src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/.*$/gm, '');
     const guarded = (path: string) => /\brequireWorkforceAccess\s*\(/.test(stripComments(read(path)));
-    expect(guarded('app/admin/personnel/page.tsx'), 'listing page is Workforce-gated').toBe(true);
-    expect(guarded('app/admin/personnel/[employmentId]/page.tsx'), 'detail page is Workforce-gated').toBe(true);
+    expect(guarded('app/(app)/admin/personnel/page.tsx'), 'listing page is Workforce-gated').toBe(true);
+    expect(guarded('app/(app)/admin/personnel/[employmentId]/page.tsx'), 'detail page is Workforce-gated').toBe(true);
   });
 
   it('the guard assertion above cannot be satisfied by a comment', () => {
@@ -88,8 +88,8 @@ describe('People → Personnel: routes exist where expected', () => {
   });
 
   it('old /people URLs still resolve via redirect stubs', () => {
-    const listStub = read('app/people/page.tsx');
-    const detailStub = read('app/people/[employmentId]/page.tsx');
+    const listStub = read('app/(app)/people/page.tsx');
+    const detailStub = read('app/(app)/people/[employmentId]/page.tsx');
     expect(listStub.includes('/personnel')).toBe(true);
     expect(listStub.includes('redirect')).toBe(true);
     expect(detailStub.includes('/personnel/')).toBe(true);

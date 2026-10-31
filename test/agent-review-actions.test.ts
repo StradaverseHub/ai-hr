@@ -6,7 +6,7 @@ vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(location:string)=>{throw Object.assign(Error('test redirect'),{location});}}));
 vi.mock('../core/module-agent-releases',()=>({createPromptAgentCandidate:boundary.create,evaluatePromptAgentCandidate:boundary.evaluate,
  promotePromptAgentCandidate:boundary.promote,rollbackAssistantPromotion:boundary.rollback,runPromptPlannedSyntheticJob:boundary.trial}));
-import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction} from '../app/assistant/agent-review-actions';
+import {createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction} from '../app/(app)/assistant/agent-review-actions';
 import {PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';
 const actions=[createAgentCandidateAction,evaluateAgentCandidateAction,promoteAgentCandidateAction,rollbackAgentCandidateAction,tryAgentCandidateAction];
 const ctx={tenantId:'test-tenant',userId:'test-reviewer'};

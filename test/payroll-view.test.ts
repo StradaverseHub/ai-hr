@@ -33,7 +33,7 @@ import {
 // 080de5cf — the History grid's fold. Exercised HERE against real kernel output as well as in
 // test/history-pivot.test.ts against fixtures: the fixtures catch a wrong fold, this catches a wrong
 // decomposition of what the payslip actually stores.
-import { pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
+import { pivotHistoryGrid } from '../app/(app)/payroll/transaction-view/history-pivot';
 // 3c88d593 — the ONE rule for which days a payslip claims. Read here so the assertion below tests what
 // the SCREENS ask ("is this slip segmented?"), not merely that two columns came back non-null.
 import { payslipSegmentOf } from '../core/payslip-segment';

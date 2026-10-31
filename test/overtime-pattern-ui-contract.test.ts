@@ -2,7 +2,7 @@ import {readFileSync,existsSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {describe,expect,it} from 'vitest';
 import {SCREENS} from '../lib/permissions';
-import {ATTENDANCE_SETTINGS_CARDS} from '../app/admin/attendance/settings/cards';
+import {ATTENDANCE_SETTINGS_CARDS} from '../app/(app)/admin/attendance/settings/cards';
 import {OVERTIME_SELECTION_FIELDS,OVERTIME_NUMERIC_FIELDS,OVERTIME_ASSIGNMENT_SELECTION_FIELDS} from '../lib/overtime-pattern-model';
 
 const root=resolve(__dirname,'..');
@@ -18,13 +18,13 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
   const owners=SCREENS.filter(screen=>screen.routes.includes(PAGE));
   expect(owners).toHaveLength(1);expect(owners[0].screenKey).toBe('attendancePolicyConfig');expect(owners[0].guard).toBe('requireAdmin');
   expect(page).toContain('await scopedAdmin()');expect(existsSync(resolve(root,`app${PAGE}/loading.tsx`))).toBe(true);
-  expect(read('app/admin/attendance/layout.tsx')).toContain("moduleLayout('attendance')");
+  expect(read('app/(app)/admin/attendance/layout.tsx')).toContain("moduleLayout('attendance')");
  });
  it('leaves existing Schedule Group settings and bookmarks in place and links to the new OT owner',()=>{
-  const source=read('app/admin/attendance/schedule/group-sections.tsx');
+  const source=read('app/(app)/admin/attendance/schedule/group-sections.tsx');
   expect(source).toContain(`href="${PAGE}"`);
   expect(source).toContain('saveScheduleGroupOvertimeAction');expect(source).toContain('saveScheduleGroupAttendanceAction');
-  expect(existsSync(resolve(root,'app/admin/attendance/schedule/[ruleId]/edit/page.tsx'))).toBe(true);
+  expect(existsSync(resolve(root,'app/(app)/admin/attendance/schedule/[ruleId]/edit/page.tsx'))).toBe(true);
  });
  it('uses fresh server context for every public operation and never accepts a computed amount for transfer',()=>{
   const names=[...action.matchAll(/export async function (\w+)/g)].map(match=>match[1]);

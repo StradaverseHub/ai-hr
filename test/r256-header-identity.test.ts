@@ -165,7 +165,7 @@ describe('fbf6abd0 — the topbar identity is read from the viewer’s EMPLOYMEN
 });
 
 describe('fbf6abd0 — the app shell actually renders it, and Log out is still reachable', () => {
-  const LAYOUT = read('app/layout.tsx');
+  const LAYOUT = read('app/(app)/layout.tsx');
   const MENU = read('components/user-menu.tsx');
   const VIEWER = read('lib/viewer.ts');
 

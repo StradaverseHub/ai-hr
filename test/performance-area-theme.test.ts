@@ -18,8 +18,8 @@ import { describe, expect, it } from 'vitest';
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '');
 const AREA = "[data-area-theme='performance']";
-const css = read('app/performance/area-theme.css');
-const layout = read('app/layout.tsx');
+const css = read('app/(app)/performance/area-theme.css');
+const layout = read('app/(app)/layout.tsx');
 const globals = read('app/globals.css');
 const atelier = read('app/atelier.css');
 
@@ -73,7 +73,7 @@ const declarations = (body: string) =>
 const areaRules = rules(css);
 
 describe('the area stylesheet is loaded once, from the root layout, after the theme CSS', () => {
-  it('is a module import of app/layout.tsx placed after atelier.css', () => {
+  it('is a module import of app/(app)/layout.tsx placed after atelier.css', () => {
     expect(layout).toMatch(/^import '\.\/performance\/area-theme\.css';$/m);
     const atelierAt = layout.indexOf("import './atelier.css';");
     const areaAt = layout.indexOf("import './performance/area-theme.css';");
@@ -83,7 +83,7 @@ describe('the area stylesheet is loaded once, from the root layout, after the th
   });
 
   it('the segment layout renders the wrapper and keeps its module guard', () => {
-    const segment = read('app/performance/layout.tsx');
+    const segment = read('app/(app)/performance/layout.tsx');
     expect(segment).toContain("moduleLayout('performance')");
     expect(segment).toContain('data-area-theme="performance"');
     expect(segment).toContain("t('performanceTalent')");

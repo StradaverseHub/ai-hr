@@ -22,8 +22,8 @@ vi.mock('../packs/attendance/mobile-offline-claim-review',()=>({resolveOfflineCl
 vi.mock('../packs/attendance/service',()=>({setOfflineClockingPolicy:m.setPolicy,OfflineClockingSettingsError:m.OfflineClockingSettingsError,
  AttendancePayrollClosedError:m.AttendancePayrollClosedError,ClockDataChangedError:m.ClockDataChangedError,AttendanceCorrectionPendingError:m.AttendanceCorrectionPendingError,
  AttendanceCorrectionFutureDateError:m.AttendanceCorrectionFutureDateError,AttendanceWorkflowError:m.AttendanceWorkflowError}));
-import {resolveOfflineClaimAction} from '../app/attendance/application-history/offline-actions';
-import {saveOfflineClockingAction} from '../app/admin/attendance-policy/offline-clocking-actions';
+import {resolveOfflineClaimAction} from '../app/(app)/attendance/application-history/offline-actions';
+import {saveOfflineClockingAction} from '../app/(app)/admin/attendance-policy/offline-clocking-actions';
 
 const CLAIM='0b6a3f3e-8d0e-4a51-9b7e-3c1f0c6f2a11',COMPANY='5d2c1b0a-7e6f-4a3b-8c9d-0e1f2a3b4c5d';
 const form=(fields:Record<string,string>)=>{const data=new FormData();for(const [k,v] of Object.entries(fields))data.set(k,v);return data;};

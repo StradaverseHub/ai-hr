@@ -12,7 +12,7 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>((key:
 vi.mock('../lib/session',()=>({getBrowserCommandSession:async()=>({tenantId:'fixture-tenant',userId:'fixture-user'})}));
 vi.mock('../core/ai-spend-management',()=>({setAiSpendBudget:owners.spend}));
 vi.mock('../core/ai-management',()=>({AiControlError:errors.AiControlError,setAiFeature:owners.feature,setAiAllowance:owners.allowance,setAssistantPermission:owners.permission,clearUserAllowance:owners.clear,parseAiAllowance:(value:string)=>value===''?null:Number(value)}));
-import { clearUserAllowanceAction, setAiAllowanceAction, setAiFeatureAction, setAiSpendBudgetAction, setAssistantPermissionAction } from '../app/control-tower/agents/actions';
+import { clearUserAllowanceAction, setAiAllowanceAction, setAiFeatureAction, setAiSpendBudgetAction, setAssistantPermissionAction } from '../app/(app)/control-tower/agents/actions';
 
 const COMPANY='11111111-1111-4111-8111-111111111111',USER='22222222-2222-4222-8222-222222222222';
 function form(values:Record<string,string>){const f=new FormData();for(const [k,v] of Object.entries({q:'fictional search',enabled:'true',dailyRequests:'10',monthlyTokens:'',maxConcurrent:'',...values}))f.set(k,v);return f;}

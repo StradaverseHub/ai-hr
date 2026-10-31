@@ -522,7 +522,7 @@ describe('20837372 (c) · each C2 sub-item carries its own sourced exemption lim
     // §8, statutory documents: never print a figure you cannot stand behind. These limits are the
     // specification's, not this form's; putting them on the generated PDF would produce a TP3 that does
     // not match the one the employee signed, with three numbers on it the agency never ruled for.
-    const pdf = readFileSync(join(ROOT, 'app/payroll/transactions/tp3/pdf/route.ts'), 'utf8');
+    const pdf = readFileSync(join(ROOT, 'app/(app)/payroll/transactions/tp3/pdf/route.ts'), 'utf8');
     expect(pdf, 'the generated form stays faithful to the printed one').not.toMatch(/exemptionLimit/);
   });
 
@@ -708,7 +708,7 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
     // THE CONTRACT ACROSS BOTH FILES (§8). The TP1 month page compares a stored deductionMonth against
     // the URL's integer month; a dropdown whose value became a NAME would match nothing there, and the
     // declaration would silently stop opening on its own month.
-    const tp1Src = readFileSync(join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/page.tsx'), 'utf8');
+    const tp1Src = readFileSync(join(ROOT, 'app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx'), 'utf8');
     expect(tp1Src).toMatch(/r\.deductionMonth === month/);
     const tp3Src = readFileSync(join(ROOT, 'components/tp3-declaration-fields.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -764,7 +764,7 @@ describe('20837372 (g) · Deduction Month is a named dropdown over the same inte
  * `setStatutoryProfileMY` is a FULL OVERWRITE of `employee_statutory_my`, and two screens call it with
  * a whole object rebuilt from a form — the Personnel Bank & Statutory card and the Zakat election. Both
  * already carry explicit pass-throughs for the four TP3 columns, added after each of them silently
- * wiped something (the comments in `app/admin/personnel/[employmentId]/actions.ts` record it).
+ * wiped something (the comments in `app/(app)/admin/personnel/[employmentId]/actions.ts` record it).
  *
  * ⚠️ A FIFTH COLUMN IS A FIFTH CHANCE TO BE WIPED, so `tp3_lp` is deliberately NOT in that setter's
  * write set at all — the same posture as the four custom-payment-holder columns, which that file's own

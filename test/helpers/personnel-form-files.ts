@@ -9,7 +9,7 @@ const GENERIC_BOUNDARIES:Record<string,string>={
   'components/ic-dob-autofill.tsx':'Generic input/autofill primitive; IdentityNumberField supplies the canonical binding.',
   'components/currency-select.tsx':'Generic currency catalog primitive; its Personnel caller supplies the owner binding.',
 };
-export const PERSONNEL_FORM_ROOTS=['app/admin/personnel/[employmentId]/page.tsx','app/admin/personnel/new/wizard.tsx','app/admin/personnel/new/create-form.tsx'] as const;
+export const PERSONNEL_FORM_ROOTS=['app/(app)/admin/personnel/[employmentId]/page.tsx','app/(app)/admin/personnel/new/wizard.tsx','app/(app)/admin/personnel/new/create-form.tsx'] as const;
 /** Discover mounted local JSX modules from the real roots; a newly extracted form cannot disappear. */
 export function personnelFormSources(root:string,roots:readonly string[]=PERSONNEL_FORM_ROOTS) {
   const seen=new Set<string>();const files=new Map<string,string>();const boundaries=new Map<string,string>();

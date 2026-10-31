@@ -36,7 +36,7 @@ import {
   taxNumberSharedWithMY,
   NoIcYetError,
 } from '../localization/my/statutory';
-import { setTaxAction, setIcAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setTaxAction, setIcAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let ADMIN: ReturnType<typeof adminCtx>;
@@ -420,7 +420,7 @@ describe('r209 — the shared-tax-number warning reaches the field it is about',
     expect(read('localization/country-pack.ts')).toContain(
       "taxNumberSharedWith: MyStatutoryModule['taxNumberSharedWithMY']",
     );
-    const page = read('app/admin/personnel/[employmentId]/page.tsx');
+    const page = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(page).toContain('countryPack?.statutory.taxNumberSharedWith(s, {');
     expect(page).toContain('taxNumberSharedWith={taxNumberSharedWith}');
     const card = read('components/identity-tax-card.tsx');

@@ -20,8 +20,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const DAILY = 'app/attendance/daily/page.tsx';
-const INDIVIDUAL = 'app/attendance/individual/page.tsx';
+const DAILY = 'app/(app)/attendance/daily/page.tsx';
+const INDIVIDUAL = 'app/(app)/attendance/individual/page.tsx';
 const SHARED = 'components/attendance-day-cells.tsx';
 
 /** The `t('colX')` header keys of a page's <thead>, in order. The slice must be found AND long. */

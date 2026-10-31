@@ -19,8 +19,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const codeOnly = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const WIDENED = ['app/attendance/page.tsx', 'app/attendance/daily/page.tsx', 'app/attendance/individual/page.tsx'];
-const DAILY = 'app/attendance/daily/page.tsx';
+const WIDENED = ['app/(app)/attendance/page.tsx', 'app/(app)/attendance/daily/page.tsx', 'app/(app)/attendance/individual/page.tsx'];
+const DAILY = 'app/(app)/attendance/daily/page.tsx';
 
 describe('dde08629 · the three screens are wide, and say so in the shared guard', () => {
   it.each(WIDENED)('%s uses pageWideCls and carries no page-level cap', (f) => {
@@ -44,10 +44,10 @@ describe('dde08629 · the three screens are wide, and say so in the shared guard
    * protect is wide; this file got that wrong on its first pass and its own assertion caught it.
    */
   it('the one-column form stayed narrow — the widening did not sweep it up', () => {
-    const rules = codeOnly(read('app/admin/attendance-policy/rules/rule-form.tsx'));
+    const rules = codeOnly(read('app/(app)/admin/attendance-policy/rules/rule-form.tsx'));
     expect(rules, 'a one-column form keeps a comfortable reading width').not.toContain('pageWideCls');
     expect(read('test/attendance-screens-layout.test.ts')).toContain(
-      "'app/admin/attendance-policy/rules/rule-form.tsx'",
+      "'app/(app)/admin/attendance-policy/rules/rule-form.tsx'",
     );
   });
 });
@@ -101,7 +101,7 @@ describe('dde08629 · the identity columns stay put when the table scrolls', () 
   it('Individual has no identity column to stick, and does not pretend to', () => {
     // One employee's own days — the employee is the page, not a column. A `stick()` here would be
     // freezing the date, which is not what the reporter asked for and not what it would help with.
-    const src = codeOnly(read('app/attendance/individual/page.tsx'));
+    const src = codeOnly(read('app/(app)/attendance/individual/page.tsx'));
     expect(src).not.toContain('const stick =');
   });
 

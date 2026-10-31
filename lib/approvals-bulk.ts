@@ -3,7 +3,7 @@ import { attendanceApplicationType } from './attendance-workflow';
  * Bulk-approval shared helpers (feedback fb99474b — "Bulk Approval Function for Managers and HR Admin").
  *
  * PURE, server-callable module (NOT 'use client'): the server page imports the types + row descriptors from
- * here, and the client selection island (app/approvals/bulk-selection.tsx) imports the same helpers — so the
+ * here, and the client selection island (app/(app)/approvals/bulk-selection.tsx) imports the same helpers — so the
  * RSC-boundary guard (test/rsc-boundary-guard.test.ts) stays satisfied. Nothing here touches React/DOM.
  *
  * v1 scope (approved as recommended in the plan): bulk covers the request kinds that today have a single
@@ -14,7 +14,7 @@ import { attendanceApplicationType } from './attendance-workflow';
  * b833a077 (r362) — TRAVEL WAS THE FIFTH MEMBER OF BOTH UNIONS AND IS GONE. My Travel was removed
  * completely: no travel request can be created and none can be decided, so there is no travel row to
  * select. Both unions and both ordered lists lose 'travel' in ONE change, because the dispatcher switch
- * in app/approvals/actions.ts and the category switch in core/approvals-summary.ts are keyed off them —
+ * in app/(app)/approvals/actions.ts and the category switch in core/approvals-summary.ts are keyed off them —
  * shrink a union without dropping its case (or the reverse) and tsc fails.
  */
 

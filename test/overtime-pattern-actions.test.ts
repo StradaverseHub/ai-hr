@@ -12,7 +12,7 @@ vi.mock('../packs/attendance/service',()=>({
 }));
 vi.mock('../packs/payroll/service',()=>({overtimePatternTransferOptions:mocks.options,transferOvertimePatternToPayroll:mocks.transfer,OvertimePayrollError:class extends Error {constructor(readonly code:string){super('Finite financial refusal');}}}));
 import {OvertimePayrollError} from '../packs/payroll/service';
-import {previewOvertimeSampleAction,previewOvertimeEmployeeAction,transferOvertimePayrollAction,readOvertimeTransferAction} from '../app/admin/attendance/settings/overtime-patterns/actions';
+import {previewOvertimeSampleAction,previewOvertimeEmployeeAction,transferOvertimePayrollAction,readOvertimeTransferAction} from '../app/(app)/admin/attendance/settings/overtime-patterns/actions';
 const tenantId='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002';
 const date=todayInKualaLumpur();
 function sample():OvertimeSampleDraft {return {date,currency:{code:'MYR',minorScale:2},facts:{basicSalary:'4000'},sessionGranularity:'recorded',approvalStatus:'approved',approvalMinutes:'240',segments:[{id:'sample-clock',sessionId:'one-session',date,rawMinutes:'999',dayType:'workday',endDayType:'rest_day',clockKnown:true,from:'22:00',to:'02:00',endDayOffset:1}],resources:[]};}

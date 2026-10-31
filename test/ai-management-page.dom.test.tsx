@@ -18,17 +18,17 @@ vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:s
 vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry',rows:[]}),aiManagementAlerts:async()=>({status:'ok',alerts:[]}),aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:1},hasMore:false,rows:[]})}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view,bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
-vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
+vi.mock('../app/(app)/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../lib/ai/spend-allocation',()=>({nanosToUsd:(value:string)=>value}));
-vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAiFeatureCapAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
-import { AiManagementScreen } from '../app/control-tower/agents/screen';
-import type { AiManagementSection } from '../app/control-tower/agents/sections';
+vi.mock('../app/(app)/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAiFeatureCapAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
+import { AiManagementScreen } from '../app/(app)/control-tower/agents/screen';
+import type { AiManagementSection } from '../app/(app)/control-tower/agents/sections';
 const navigation=vi.hoisted(()=>({redirect:vi.fn((location:string)=>{throw Object.assign(Error('fixture redirect'),{location});})}));
 vi.mock('next/navigation',()=>({redirect:navigation.redirect}));
 const providerScreen=vi.hoisted(()=>vi.fn(async()=>null));
-vi.mock('../app/admin/ai/provider-screen',()=>({AiProviderScreen:providerScreen}));
-import AiManagementProviderPage from '../app/control-tower/agents/provider/page';
-import { usdDisplay } from '../app/control-tower/agents/usd-display';
+vi.mock('../app/(app)/admin/ai/provider-screen',()=>({AiProviderScreen:providerScreen}));
+import AiManagementProviderPage from '../app/(app)/control-tower/agents/provider/page';
+import { usdDisplay } from '../app/(app)/control-tower/agents/usd-display';
 
 const ZERO='11111111-1111-4111-8111-111111111111',CAPPED='33333333-3333-4333-8333-333333333333';
 const use=(daily:number|null,maxConcurrent:number|null=null)=>({daily:{used:0,limit:daily,level:daily===0?'at':null},tokens:{used:0,limit:null,level:null},recorded:0,held:0,enabled:true,maxConcurrent,blocked:0,failed:0});

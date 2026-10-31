@@ -12,7 +12,7 @@ vi.mock('../app/auth-actions', () => ({ signOutUnlinkedAction: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), redirect: () => { throw new Error('unexpected redirect'); } }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) => key }));
 vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <img {...props}/> }));
-import LoginPage from '../app/login/page';
+import LoginPage from '../app/(auth)/login/page';
 afterEach(cleanup);
 async function show(organization?: string | string[]) {
   render(<NextIntlClientProvider locale="en" messages={en}>{await LoginPage({ searchParams: Promise.resolve({ organization }) })}</NextIntlClientProvider>);

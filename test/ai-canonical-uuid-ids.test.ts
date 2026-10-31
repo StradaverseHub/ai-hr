@@ -66,10 +66,10 @@ describe("AI id validators accept PostgreSQL-canonical UUIDs, not only RFC 9562 
 
 /** The inventory of every source file under core/ packs/ app/ lib/ db/ scripts/ to which the AI work
  * ADDED a strict UUID validator (diff origin/alpha...candidate). Alpha-owned validators are excluded:
- * app/performance/onehr-actions.ts and packs/performance/onehr/{ai,calibration-conversation,
+ * app/(app)/performance/onehr-actions.ts and packs/performance/onehr/{ai,calibration-conversation,
  * development-suggestion-service,feedback-conversation}.ts keep their z.uuid() calls unchanged from alpha. */
 const AI_ID_VALIDATOR_FILES = [
-  "app/assistant/native-outcome-actions.ts",
+  "app/(app)/assistant/native-outcome-actions.ts",
   "core/ai-provider-readiness.ts",
   "core/assistant-actions/attendance-correction-review-store.ts",
   "core/assistant-actions/country-statutory-review-store.ts",

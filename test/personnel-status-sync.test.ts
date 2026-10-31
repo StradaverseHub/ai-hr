@@ -183,9 +183,9 @@ describe('Employee Status sync — one derived status across every payload (5afc
 
 describe('drift guard — no surface renders the obsolete statuses', () => {
   const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
-  const DIRECTORY = read('app/personnel/page.tsx');
-  const PROFILE = read('app/personnel/[employmentId]/page.tsx');
-  const DASHBOARD = read('app/page.tsx');
+  const DIRECTORY = read('app/(app)/personnel/page.tsx');
+  const PROFILE = read('app/(app)/personnel/[employmentId]/page.tsx');
+  const DASHBOARD = read('app/(app)/page.tsx');
   const UI = read('components/ui.tsx');
 
   it('the staff directory derives status and never badges a raw/legacy value', () => {
@@ -220,7 +220,7 @@ describe('drift guard — no surface renders the obsolete statuses', () => {
     expect(PAYROLL_VIEW).toContain('employmentStatusSql');
     expect(PAYROLL_VIEW).not.toMatch(/employmentStatus:\s*assignment\.status/);
     // The dashboard filter must offer the derived buckets, never the retired stored ones.
-    const FILTER_BAR = read('app/analytics/FilterBar.tsx');
+    const FILTER_BAR = read('app/(app)/analytics/FilterBar.tsx');
     expect(FILTER_BAR).toContain('EMPLOYMENT_STATUSES');
     expect(FILTER_BAR).not.toMatch(/on_leave|offboarding/);
   });

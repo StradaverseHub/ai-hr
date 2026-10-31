@@ -30,7 +30,7 @@ import { addDaysIso, isoWeekdayOf, monthDates } from '@/lib/roster-month';
  *
  * SERIALISABLE PROPS ONLY (test/server-client-boundary.test.ts): strings, numbers and plain objects.
  * The month label and the weekday headings are formatted through Intl on the SERVER and handed over as
- * strings, which is the convention app/roster/page.tsx set — it keeps one rendition of a date per screen
+ * strings, which is the convention app/(app)/roster/page.tsx set — it keeps one rendition of a date per screen
  * and keeps Intl out of the client bundle.
  */
 
@@ -62,7 +62,7 @@ const KIND_CLS: Record<OtCalendarKind, string> = {
   off_day: 'border-border bg-muted text-muted-foreground',
 };
 
-/** The pill palette of app/attendance/request-ui.tsx, as dots — so the calendar and the list cannot
+/** The pill palette of app/(app)/attendance/request-ui.tsx, as dots — so the calendar and the list cannot
  *  disagree about what "approved" looks like. */
 const PLAN_DOT: Record<OtCalendarPlanStatus, string> = {
   pending: 'bg-amber-500',

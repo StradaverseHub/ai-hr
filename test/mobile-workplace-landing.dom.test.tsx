@@ -19,7 +19,7 @@ function fixture(href: string) {
   const listeners=new Map<string,()=>void>(),location=new URL(href);
   const history={replaceState:vi.fn((_state:unknown,_title:string,path:string)=>{location.href=new URL(path,location.origin).href;})};
   const fetcher=vi.fn(),output={exports:{} as {MobileSetupLink:React.ComponentType}};
-  runInNewContext(transpileModule(readFileSync('app/login/mobile-setup/setup-link.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
+  runInNewContext(transpileModule(readFileSync('app/(auth)/login/mobile-setup/setup-link.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
     {exports:output.exports,module:output,window:{location,history,addEventListener:(event:string,fn:()=>void)=>listeners.set(event,fn),removeEventListener:(event:string)=>listeners.delete(event)},fetch:fetcher,
       require(id:string){if(id==='react')return React;if(id==='react/jsx-runtime')return jsx;if(id==='next-intl')return{useTranslations:()=>((key:keyof typeof en.mobileSetup)=>en.mobileSetup[key])};
         if(id==='@/lib/mobile-workplace-setup')return{readWorkplaceSetupLink,workplaceSetupLinks};throw new Error(id);}});

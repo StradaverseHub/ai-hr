@@ -10,7 +10,7 @@ import {personnelDisplay,personnelInput,personnelControl} from '@/lib/personnel-
 import {ConfirmDialog} from '@/components/ui/confirm-submit';
 import type {EmploymentCostAllocationView} from '@/core/employment-cost-allocations';
 import {formatAllocationPercent,percentageHundredths,type CostAllocationInput} from '@/lib/employment-cost-allocation';
-import {readCostAllocationsAction,previewCostAllocationsAction,saveCostAllocationsAction} from '@/app/admin/personnel/[employmentId]/cost-allocation-actions';
+import {readCostAllocationsAction,previewCostAllocationsAction,saveCostAllocationsAction} from '@/app/(app)/admin/personnel/[employmentId]/cost-allocation-actions';
 export function CostCenterAllocations({value:initial}:{value:EmploymentCostAllocationView}){
  const t=useTranslations('costAllocations'),router=useRouter();
  const[value,setValue]=useState(initial),[date,setDate]=useState(initial.effectiveDate),[rows,setRows]=useState(()=>initial.rows.map(r=>({costCenterId:r.costCenterId,percentage:formatAllocationPercent(r.hundredths)})));

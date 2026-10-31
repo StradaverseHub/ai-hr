@@ -4,7 +4,7 @@
  * Three approved items, all about ONE screen, and the third only makes sense on the screen the first two
  * clear:
  *
- *   5527ce8f  Leave balance health was drawn TWICE — `app/admin/leave-config/types/page.tsx:220` renders
+ *   5527ce8f  Leave balance health was drawn TWICE — `app/(app)/admin/leave-config/types/page.tsx:220` renders
  *             `LeaveConfigHealthCard` at page level, and the shared block rendered the identical card
  *             above the tables on the Entitlement tables tab.
  *   995387c6  Benefit schemes were drawn TWICE — the list and its create/edit form are the leave type's
@@ -34,14 +34,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { entitlementGridRows } from '../app/admin/leave/entitlements/templates/entitlement-tables-block';
+import { entitlementGridRows } from '../app/(app)/admin/leave/entitlements/templates/entitlement-tables-block';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const BLOCK = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
-const PAGE = 'app/admin/leave-config/entitlement-tables/page.tsx';
-const TYPES_PAGE = 'app/admin/leave-config/types/page.tsx';
+const BLOCK = 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const PAGE = 'app/(app)/admin/leave-config/entitlement-tables/page.tsx';
+const TYPES_PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
 const IA = 'docs/design/a6fe37fc-leave-config-ia.md';
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -310,7 +310,7 @@ describe('§B · which mount switches what off, and what was gated rather than d
     expect(block, 'the per-type notice is the scoped arm and stays').toContain(
       '<LeaveConfigHealthNotice health={scopedHealth} />',
     );
-    expect(read('app/admin/leave-config/balance-health/page.tsx')).toContain('<LeaveConfigHealthCard');
+    expect(read('app/(app)/admin/leave-config/balance-health/page.tsx')).toContain('<LeaveConfigHealthCard');
   });
 
   it('the schemes Card is GATED, not deleted — the leave type tab still gets every part of it', () => {
@@ -389,7 +389,7 @@ describe('§B · which mount switches what off, and what was gated rather than d
     expect(page).not.toContain('entitlementStep.schemeExplainer');
     expect(page).not.toContain("getTranslations('admin.leaveConfigTypes')");
     // Still rendered where the schemes actually are.
-    expect(read('app/admin/leave-config/types/leave-type-tabs.tsx')).toContain("tTabs('entitlementStep.schemeExplainer')");
+    expect(read('app/(app)/admin/leave-config/types/leave-type-tabs.tsx')).toContain("tTabs('entitlementStep.schemeExplainer')");
   });
 
   it('the page comment no longer names a health card this page does not render', () => {

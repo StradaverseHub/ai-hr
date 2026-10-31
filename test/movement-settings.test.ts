@@ -398,7 +398,7 @@ describe('476f23ed — deletion is refused where it would damage history', () =>
 
 describe('476f23ed — the settings screen', () => {
   it('SOURCE GUARD: rename, switch off and add — and never a behaviour picker for a built-in', () => {
-    const dir = path.resolve(__dirname, '../app/admin/settings/movement');
+    const dir = path.resolve(__dirname, '../app/(app)/admin/settings/movement');
     const src = codeOnly(fs.readFileSync(path.join(dir, 'page.tsx'), 'utf8'));
     const config = codeOnly(fs.readFileSync(path.join(dir, 'event-type-config-page.tsx'), 'utf8'));
     const form = codeOnly(fs.readFileSync(path.join(dir, 'event-type-form.tsx'), 'utf8'));
@@ -422,7 +422,7 @@ describe('476f23ed — the settings screen', () => {
    */
   it('SOURCE GUARD: 1d58019a listing — tabs, Classification + Description, Delete on every row', () => {
     const src = codeOnly(
-      fs.readFileSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx'), 'utf8'),
+      fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/settings/movement/page.tsx'), 'utf8'),
     );
     expect(src).toContain('<table');
     expect(src).toContain('className={pageWideCls}');
@@ -454,7 +454,7 @@ describe('476f23ed — the settings screen', () => {
    * the refused-save case by rendering.
    */
   it('SOURCE GUARD: 1d58019a — Add/Edit is a configuration page, never a modal over the list', () => {
-    const dir = path.resolve(__dirname, '../app/admin/settings/movement');
+    const dir = path.resolve(__dirname, '../app/(app)/admin/settings/movement');
     const page = codeOnly(fs.readFileSync(path.join(dir, 'page.tsx'), 'utf8'));
     const rawForm = fs.readFileSync(path.join(dir, 'event-type-form.tsx'), 'utf8');
     const form = codeOnly(rawForm);
@@ -526,7 +526,7 @@ describe('476f23ed — the settings screen', () => {
     expect(sidebar).toContain("href: '/admin/settings/movement'");
     expect(sidebar).toContain("labelKey: 'movementSettings'");
     expect(
-      fs.existsSync(path.resolve(__dirname, '../app/admin/settings/movement/page.tsx')),
+      fs.existsSync(path.resolve(__dirname, '../app/(app)/admin/settings/movement/page.tsx')),
       'the route the nav row points at exists',
     ).toBe(true);
 
@@ -594,7 +594,7 @@ describe('476f23ed — the settings screen', () => {
 
   it('SOURCE GUARD: the New Event form asks the BEHAVIOUR what fields to show, not the code', () => {
     const src = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
+      path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx'),
       'utf8',
     );
     // Every field-visibility decision runs off `behaviour`. If one is left keyed on `kind`, a tenant's own

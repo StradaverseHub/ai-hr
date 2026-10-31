@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
-import {loadMoreChatsAction} from '../../app/assistant/launcher-actions';
+import {loadMoreChatsAction} from '../../app/(app)/assistant/launcher-actions';
 type Chat={threadId:string;exchangeId:string;title:string};
 /** Earlier scan pages may repeat a long chat. Preserve the newest/first selected tail per thread. */
 function distinct(rows:readonly Chat[]):Chat[]{const seen=new Set<string>();return rows.filter(row=>{if(seen.has(row.threadId))return false;seen.add(row.threadId);return true;});}

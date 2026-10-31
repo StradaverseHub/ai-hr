@@ -7,15 +7,15 @@ vi.mock('../lib/session', () => ({ getSession: async () => ({ grants: state.oper
 vi.mock('../lib/authz', () => ({ isOperator: (s: { grants: { role: string }[] }) => s.grants.some(g => g.role === 'operator') }));
 vi.mock('../lib/demo-mode', () => ({ isDemoDeployment: () => state.demo }));
 vi.mock('../core/operator-customers',()=>({listOperatorCustomers:async()=>[]}));
-vi.mock('../app/operator/customer-forms',()=>({CustomerCreateForm:()=>null}));
+vi.mock('../app/(app)/operator/customer-forms',()=>({CustomerCreateForm:()=>null}));
 vi.mock('../core/operator', () => ({ listProvisionRequests: state.list, PROVISION_STEPS: [] }));
-vi.mock('../app/operator/actions', () => ({ createCustomerAction: vi.fn(), requestReissueAction: vi.fn() }));
+vi.mock('../app/(app)/operator/actions', () => ({ createCustomerAction: vi.fn(), requestReissueAction: vi.fn() }));
 vi.mock('../localization/registry', () => ({ countryPacks: () => [{ country: 'MY' }] }));
 vi.mock('next/navigation', () => ({ redirect: () => { throw new Error('redirect'); } }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => Object.assign((key: string) => key, { has: () => true }) }));
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
 
-import OperatorPage from '../app/operator/page';
+import OperatorPage from '../app/(app)/operator/page';
 
 beforeEach(() => { state.operator = true; state.demo = false; state.list.mockReset(); state.list.mockResolvedValue([]); });
 

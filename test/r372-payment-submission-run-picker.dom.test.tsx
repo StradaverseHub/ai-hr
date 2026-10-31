@@ -33,7 +33,7 @@ import th from '../messages/th.json';
 import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-import { DownloadDialog } from '../app/payroll/payment-submission/download-dialog';
+import { DownloadDialog } from '../app/(app)/payroll/payment-submission/download-dialog';
 
 const COMPANY = '11111111-2222-3333-4444-555555555555';
 const OTHER_COMPANY = '99999999-8888-7777-6666-555555555555';

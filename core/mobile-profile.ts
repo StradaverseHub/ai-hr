@@ -1,7 +1,7 @@
 /**
  * M13 (D14) — the employee's own profile in the app. COMPOSITION ONLY over the owners the web's /me already uses:
  *
- *   policy      readProfilePresentationPolicy — one read, passed to every owner below (as app/me/page.tsx does)
+ *   policy      readProfilePresentationPolicy — one read, passed to every owner below (as app/(app)/me/page.tsx does)
  *   workspace   readOwnProfileWorkspace — visible values, CAS baselines, editable ids (already visibility-projected)
  *   open        myOwnEmploymentSubjects({profileEdit:true}) — whether this own employment may request changes
  *   choices     listAllProfileOptions (the tenant catalogue) or personnelFieldChoices (fixed vocabularies)
@@ -63,7 +63,7 @@ function kindOf(field: PersonnelFieldDescriptor): ProfileFieldKind {
   return /phone$/i.test(field.ess.binding?.field ?? '') ? 'phone' : 'text';
 }
 /**
- * The web's section for a field, titled as app/me/profile-editor.tsx titles it. "Contact and permanent address" and
+ * The web's section for a field, titled as app/(app)/me/profile-editor.tsx titles it. "Contact and permanent address" and
  * "Correspondence address" both carry "Mobile Phone Number" / "Home Phone Number" (people.detail.phone/homePhone); the
  * coarse `section` merges them, the group keeps them apart.
  */
@@ -79,7 +79,7 @@ function readRefusal(e: unknown): ProfileReadRefusal | null {
   return null;
 }
 
-/** The policy's hidden tabs (version 4 groups), as app/me/page.tsx reads them. */
+/** The policy's hidden tabs (version 4 groups), as app/(app)/me/page.tsx reads them. */
 function hiddenTabs(policy: ProfilePresentationPolicy): ReadonlySet<string> {
   return new Set(profileHiddenTabs(getSetting(policy.ctx, 'ess.profile_change_fields')));
 }

@@ -12,7 +12,7 @@
  * Pure unit test — no DB (the derivation is presentation-only over a ProcessedPayslipViewRow).
  */
 import { describe, expect, it } from 'vitest';
-import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
+import { deriveHistoryBreakdown } from '../app/(app)/payroll/transaction-view/history-breakdown';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
 
 function row(overrides: Partial<ProcessedPayslipViewRow> = {}): ProcessedPayslipViewRow {

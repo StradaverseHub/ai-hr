@@ -15,7 +15,7 @@
  * is not a group admin) accepts; a group admin may reject, and may accept once the photo has expired or been purged or
  * when there is none. The resolution row links the claim to that correction. The claim row is never changed.
  * Permission is checked here as well as by RLS and the bound trigger. Mounted by the HR review tab of Attendance ›
- * Application History (app/attendance/application-history) and its photo route; not exported through the facade,
+ * Application History (app/(app)/attendance/application-history) and its photo route; not exported through the facade,
  * because core/mobile-offline-claim (its AAD owner) is server-only.
  *
  * Lock order of a resolution: the subject advisory lock (tenant:employment), then the correction owner's own order

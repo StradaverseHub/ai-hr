@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
-import { NativeJoiners, type NativeJoinersData } from '../app/lifecycle/v9/native-joiners';
+import { NativeJoiners, type NativeJoinersData } from '../app/(app)/lifecycle/v9/native-joiners';
 import { blankCase, defaultConfig, progress } from '../lib/onboarding-model';
 import { todayInKualaLumpur } from '../lib/hr-date';
 

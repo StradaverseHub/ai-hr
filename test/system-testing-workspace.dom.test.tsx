@@ -12,7 +12,7 @@ import viMessages from '../messages/vi.json';
 import { testingInstructionDraftFrom } from '../lib/system-testing/editor-model';
 import { parseInstructionDraft } from '../lib/system-testing/model';
 const actions=vi.hoisted(()=>({save:vi.fn(),observe:vi.fn(),refresh:vi.fn(),replace:vi.fn()}));
-vi.mock('../app/admin/system-testing/workspace-actions',()=>({saveTestingInstructionAction:actions.save,saveTestingObservationAction:actions.observe}));
+vi.mock('../app/(app)/admin/system-testing/workspace-actions',()=>({saveTestingInstructionAction:actions.save,saveTestingObservationAction:actions.observe}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh,replace:actions.replace})}));
 import { TestingInstructionEditor } from '../components/system-testing/instruction-editor';
 import { TestingObservationForm } from '../components/system-testing/observation-form';

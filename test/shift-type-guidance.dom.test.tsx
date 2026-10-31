@@ -10,8 +10,8 @@ import viMessages from '../messages/vi.json';
 const catalog=vi.hoisted(()=>({locale:'en',messages:{} as typeof en}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:catalog.locale,messages:catalog.messages,namespace:namespace as never,onError:error=>{throw error;}})}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
-vi.mock('../app/admin/attendance/shift-actions',()=>({createShiftAction:vi.fn(),updateShiftAction:vi.fn()}));
-import {ShiftForm,type ShiftRow} from '../app/admin/attendance/shift-form';
+vi.mock('../app/(app)/admin/attendance/shift-actions',()=>({createShiftAction:vi.fn(),updateShiftAction:vi.fn()}));
+import {ShiftForm,type ShiftRow} from '../app/(app)/admin/attendance/shift-form';
 
 const shift:ShiftRow={id:'full-flexi-guidance',name:'Fictional Full Flexi',code:'FF-GUIDANCE',type:'full_flexi',startTime:null,endTime:null,
   normalMinutesOverride:480,breakMinutes:30,breakPeriods:[{start:'12:00',end:'13:00',flexible:true,flexibleMinutes:30}],

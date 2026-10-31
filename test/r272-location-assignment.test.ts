@@ -14,24 +14,24 @@ import { readFileSync } from 'node:fs';
  * things away, and a guard that only checked the new card would not notice any of them coming back.
  */
 
-const CARD = 'app/admin/personnel/[employmentId]/page.tsx';
+const CARD = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 const PICKER = 'components/attendance/location-assignment.tsx';
 /**
  * 639bf4a5 rev 2 (r338) — RE-POINTED, NOT LOOSENED. This read the REGISTER
- * (app/admin/work-locations/page.tsx), because that is where a clocking point's row was rendered when
+ * (app/(app)/admin/work-locations/page.tsx), because that is where a clocking point's row was rendered when
  * r272 shipped. The register is a COMPANY LISTING now — Company | Location | Status | Action, no rows of
- * its own — and every point's row moved verbatim to app/admin/work-locations/clocking-points.tsx, which
+ * its own — and every point's row moved verbatim to app/(app)/admin/work-locations/clocking-points.tsx, which
  * the location's own View / Edit screens and the unlinked-points screen all render. Every property r272
  * won is asserted below exactly as before, at the file that now holds it; a guard left reading the old
  * file would have gone quietly vacuous the moment the rows moved.
  */
 /*
- * r423 (83c0d3c8) — RE-POINTED AGAIN, at Attendance › Locations (app/admin/work-locations/clocking/page.tsx),
+ * r423 (83c0d3c8) — RE-POINTED AGAIN, at Attendance › Locations (app/(app)/admin/work-locations/clocking/page.tsx),
  * which is now THE list of clocking locations; clocking-points.tsx was deleted with the rows it rendered
  * under work locations. Two r272 properties are REVERSED there on the reporter's instruction and pinned as
  * reversed below (§C): a location is now opened to named companies and the list prints them.
  */
-const ADMIN = 'app/admin/work-locations/clocking/page.tsx';
+const ADMIN = 'app/(app)/admin/work-locations/clocking/page.tsx';
 const read = (p: string) => readFileSync(p, 'utf8');
 const card = read(CARD);
 const picker = read(PICKER);
@@ -148,7 +148,7 @@ describe('§C · the company coupling — removed by r272, made REAL and explici
     expect(admin).not.toContain('locationCompanyName');
     expect(admin).not.toContain('g.companyName');
     // The work location screens keep their own identity header (Work Locations is otherwise unchanged).
-    const edit = read('app/admin/work-locations/[id]/edit/page.tsx');
+    const edit = read('app/(app)/admin/work-locations/[id]/edit/page.tsx');
     expect(edit).toContain('`${site.companyName} · ${site.code} · ${site.name}`');
   });
 

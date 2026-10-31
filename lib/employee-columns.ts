@@ -4,7 +4,7 @@
  * Pure — no React, no drizzle, no db/schema — for three reasons that all matter:
  *   1. the picker is a CLIENT island and the table is a SERVER component, and both must agree on the
  *      same catalogue without one dragging the other's dependencies into its bundle;
- *   2. the Excel export (app/admin/personnel/export/route.ts) resolves the SAME columns in the SAME
+ *   2. the Excel export (app/(app)/admin/personnel/export/route.ts) resolves the SAME columns in the SAME
  *      order, which is the whole of point 10 — "the export should follow the selected columns";
  *   3. normalisation is the only thing standing between a tampered/legacy saved preference and a table
  *      with no columns in it, so it is unit-testable on its own.

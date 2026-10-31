@@ -32,8 +32,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
 const PAGE = 'components/tp3-declaration-fields.tsx';
 it('both TP3 surfaces mount the shared full field owner in the correct mode',()=>{
- expect(src('app/payroll/transactions/tp3/page.tsx')).toMatch(/<Tp3DeclarationFields[^>]*mode="admin"/);
- expect(src('app/me/tp3/page.tsx')).toMatch(/<Tp3DeclarationFields[^>]*mode="personal"/);
+ expect(src('app/(app)/payroll/transactions/tp3/page.tsx')).toMatch(/<Tp3DeclarationFields[^>]*mode="admin"/);
+ expect(src('app/(app)/me/tp3/page.tsx')).toMatch(/<Tp3DeclarationFields[^>]*mode="personal"/);
 });
 
 const c2sub = (code: string) => TP3_SECTION_C.find((l) => l.code === 'c2')!.subItems.find((s) => s.code === code)!;
@@ -201,7 +201,7 @@ describe('20837372 · (f) the limits reach the screen and never the paper', () =
     // These limits are the specification's, not the form's. A TP3 printed with a limit column would not
     // match the one the employee signed. Asserted here as well as in the section-D file, because this
     // is the round that could most plausibly have broken it.
-    expect(src('app/payroll/transactions/tp3/pdf/route.ts')).not.toContain('exemptionLimit');
+    expect(src('app/(app)/payroll/transactions/tp3/pdf/route.ts')).not.toContain('exemptionLimit');
   });
 });
 

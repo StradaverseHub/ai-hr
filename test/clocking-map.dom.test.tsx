@@ -14,7 +14,7 @@
  *     dead button.
  *
  * ⚠️ THE HARNESS BUILDS ITS INPUTS FROM `CLOCKING_FIELDS`, not from a hand-copied list. The islands find
- * the fields through the enclosing <form> (app/admin/work-locations/clocking/form-bridge.ts), so a test form
+ * the fields through the enclosing <form> (app/(app)/admin/work-locations/clocking/form-bridge.ts), so a test form
  * whose field names had drifted from the real one would pass while the screen was broken.
  *
  * ⚠️ LEAFLET IS FAKED. The real library wants a layout engine jsdom does not have, and the point here is
@@ -27,10 +27,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
-import { ClockingAddressSearch } from '../app/admin/work-locations/clocking/address-search';
-import { ClockingMap } from '../app/admin/work-locations/clocking/clocking-map';
-import { OSM_PROVIDER, type MapProvider } from '../app/admin/work-locations/clocking/map-provider';
-import { CLOCKING_FIELDS } from '../app/admin/work-locations/clocking/form-fields';
+import { ClockingAddressSearch } from '../app/(app)/admin/work-locations/clocking/address-search';
+import { ClockingMap } from '../app/(app)/admin/work-locations/clocking/clocking-map';
+import { OSM_PROVIDER, type MapProvider } from '../app/(app)/admin/work-locations/clocking/map-provider';
+import { CLOCKING_FIELDS } from '../app/(app)/admin/work-locations/clocking/form-fields';
 
 type FakeState = {
   mapOptions: Record<string, unknown> | null;
@@ -184,7 +184,7 @@ vi.mock('leaflet', () => {
  * re-ordering could have broken silently (form-bridge.ts finds every input through `closest('form')`).
  * So the last describe in this file renders `ClockingLocationForm` itself.
  *
- * It is a server component, and it imports two modules that a jsdom test cannot load: `app/admin/actions`
+ * It is a server component, and it imports two modules that a jsdom test cannot load: `app/(app)/admin/actions`
  * ('use server') and `@/packs/attendance/service`, whose own header says it "drags in db/client" — proven
  * rather than assumed here, the unmocked import fails with "DATABASE_URL is not set" out of db/client.ts.
  * Both are replaced, as narrowly as possible: the actions become spies (which makes "the search never
@@ -195,14 +195,14 @@ vi.mock('leaflet', () => {
 vi.mock('@/packs/attendance/service', () => ({ MAX_REPORT_LABEL_CHARS: 60 }));
 /** `vi.hoisted` because `vi.mock` is hoisted above every `const`: a plain one would be in its TDZ here. */
 const formActions = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn() }));
-vi.mock('../app/admin/actions', () => ({
+vi.mock('../app/(app)/admin/actions', () => ({
   createClockingLocationAction: formActions.create,
   updateClockingLocationAction: formActions.update,
 }));
 
 import * as leafletModule from 'leaflet';
-import { ClockingLocationForm } from '../app/admin/work-locations/clocking/clocking-form';
-import type { ClockingFormValues } from '../app/admin/work-locations/clocking/form-fields';
+import { ClockingLocationForm } from '../app/(app)/admin/work-locations/clocking/clocking-form';
+import type { ClockingFormValues } from '../app/(app)/admin/work-locations/clocking/form-fields';
 const fake = leafletModule as unknown as { __state: FakeState; __reset: () => void; __tileEvent: (event: string) => void };
 
 /** A point that is NOT the island's fallback centre, so "the marker moved" cannot pass by accident. */

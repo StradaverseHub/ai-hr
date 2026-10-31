@@ -26,7 +26,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 
 import messages from '../messages/en.json';
-import { TxnImportButtons } from '../app/payroll/transactions/import-excel/txn-import-dialog';
+import { TxnImportButtons } from '../app/(app)/payroll/transactions/import-excel/txn-import-dialog';
 import type { TxnImportPreview, TxnImportResult } from '../lib/payroll-txn-import-schema';
 import type { TxnTemplateReference } from '../lib/import-template-xlsx';
 
@@ -37,7 +37,7 @@ vi.mock('next/navigation', () => ({
 
 const validateMock = vi.fn();
 const commitMock = vi.fn();
-vi.mock('../app/payroll/transactions/import-excel/actions', () => ({
+vi.mock('../app/(app)/payroll/transactions/import-excel/actions', () => ({
   validateTxnImportAction: (...a: unknown[]) => validateMock(...a),
   commitTxnImportAction: (...a: unknown[]) => commitMock(...a),
 }));

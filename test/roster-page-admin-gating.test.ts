@@ -1,7 +1,7 @@
 /**
  * 23390097 — WHO IS OFFERED THE ADMIN AFFORDANCES ON THE ROSTER SCREEN, measured on the RENDERED page.
  *
- * app/roster/page.tsx gates Upload Shift Roster, Download Template, Generate roster and Copy roster
+ * app/(app)/roster/page.tsx gates Upload Shift Roster, Download Template, Generate roster and Copy roster
  * behind `{admin && …}`, because all four end in a write to roster_assignment and its RLS requires
  * app.can_admin_employment. Offering them to a supervisor is offering a form that can only ever end in
  * a 42501.
@@ -44,8 +44,8 @@ vi.mock('next/cache', () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock('next/navigation', () => ({ redirect: () => { throw new Error('NEXT_REDIRECT'); } }));
 vi.mock('@/lib/session', () => ({ getSession: async () => SCOPE.s }));
 
-import RosterPage from '../app/roster/page';
-import { copyRosterAction, generateRosterAction } from '../app/roster/actions';
+import RosterPage from '../app/(app)/roster/page';
+import { copyRosterAction, generateRosterAction } from '../app/(app)/roster/actions';
 import { RosterGrid, RosterTemplateButton } from '../components/roster-grid';
 import { ROSTER_MAX_RANGE_DAYS } from '../lib/roster-month';
 

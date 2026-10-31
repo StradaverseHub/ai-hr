@@ -152,7 +152,7 @@ describe('72b100cd · what it refuses, because a tax form prints it verbatim', (
  * this pins the half r321 is answerable for.
  */
 describe('72b100cd · the payment form is a sibling of the downloads, not a child', () => {
-  const SRC = readFileSync(join(__dirname, '..', 'app/payroll/cp39/preview/page.tsx'), 'utf8')
+  const SRC = readFileSync(join(__dirname, '..', 'app/(app)/payroll/cp39/preview/page.tsx'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
 

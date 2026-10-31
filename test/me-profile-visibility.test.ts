@@ -3,9 +3,9 @@ import fs from 'node:fs';import path from 'node:path';
 import {describe,it,expect} from 'vitest';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {ESS_PROFILE_TABS} from '../lib/personnel-ess-model';
-import {ME_TABS,ME_TAB_LABEL_KEY,ME_HIDDEN_FIELDS,ME_VISIBLE_FIELD_LABEL_KEYS} from '../app/me/visible-fields';
+import {ME_TABS,ME_TAB_LABEL_KEY,ME_HIDDEN_FIELDS,ME_VISIBLE_FIELD_LABEL_KEYS} from '../app/(app)/me/visible-fields';
 const read=(name:string)=>fs.readFileSync(path.resolve(__dirname,'..',name),'utf8');
-const page=read('app/me/page.tsx'),editor=read('app/me/profile-editor.tsx'),record=read('app/me/record.ts'),owner=read('core/profile-edit.ts'),view=read('core/profile-view.ts'),doc=read('docs/me-profile-field-visibility.md');
+const page=read('app/(app)/me/page.tsx'),editor=read('app/(app)/me/profile-editor.tsx'),record=read('app/(app)/me/record.ts'),owner=read('core/profile-edit.ts'),view=read('core/profile-view.ts'),doc=read('docs/me-profile-field-visibility.md');
 const at=(raw:unknown,key:string):unknown=>key.split('.').reduce<unknown>((value,part)=>value&&typeof value==='object'?(value as Record<string,unknown>)[part]:undefined,raw);
 describe('My Profile shared Personnel inventory and actual consumers',()=>{
  it('retains the exact eleven-tab order, canonical labels and a panel for every tab',()=>{
@@ -54,6 +54,6 @@ describe('My Profile shared Personnel inventory and actual consumers',()=>{
   for(const forbidden of ['AttendanceClockButton','action={myCheckIn}','action={myCheckOut}','<LocationNotice','todayHeading'])expect(page+editor).not.toContain(forbidden);
   expect(page).toContain('href="/attendance"');expect(page).toContain('href="/attendance/requests"');expect(page).toContain('href="/leave"');expect(page).toContain('href="/me/performance"');
   expect(page).toContain('/me/ea/${r.employmentId}/pdf');expect(page).toContain('<MeReviewCard s={s} employmentId={employmentId}');
-  const clock=read('app/attendance/clock/page.tsx'),client=read('app/attendance/clock/clock-client.tsx');expect(clock).toContain('<ClockPageClient');expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");
+  const clock=read('app/(app)/attendance/clock/page.tsx'),client=read('app/(app)/attendance/clock/clock-client.tsx');expect(clock).toContain('<ClockPageClient');expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");
  });
 });

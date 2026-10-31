@@ -1,7 +1,7 @@
 import {readFileSync} from 'node:fs';
 import {describe,expect,it} from 'vitest';
-const page=readFileSync(new URL('../app/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
-const actions=readFileSync(new URL('../app/admin/personnel/[employmentId]/actions.ts',import.meta.url),'utf8');
+const page=readFileSync(new URL('../app/(app)/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
+const actions=readFileSync(new URL('../app/(app)/admin/personnel/[employmentId]/actions.ts',import.meta.url),'utf8');
 describe('884ea42d Personnel maintenance boundaries',()=>{
  it('removes only the requested panels and preserves privacy, probation and general notice information',()=>{
   for(const removed of ['changeHistoryCard','dataClassificationCard','reviewCard','<ReviewSection','employeeAudit(s,'])expect(page).not.toContain(removed);
@@ -24,8 +24,8 @@ describe('884ea42d Personnel maintenance boundaries',()=>{
   for(const field of ['resignationDate','tenderResignationDate','lastWorkingDate'])expect(writer).not.toContain(`str('${field}')`);
  });
  it('retains one subject filter through the Audit Trail query, count, paging and exports',()=>{
-  const audit=readFileSync(new URL('../app/admin/audit/page.tsx',import.meta.url),'utf8');
-  const exported=readFileSync(new URL('../app/admin/audit/export/route.ts',import.meta.url),'utf8');
+  const audit=readFileSync(new URL('../app/(app)/admin/audit/page.tsx',import.meta.url),'utf8');
+  const exported=readFileSync(new URL('../app/(app)/admin/audit/export/route.ts',import.meta.url),'utf8');
   expect(audit).toContain('employmentId: uuidRe.test(sp.employment');
   expect(audit).toContain('employment: filters.employmentId');
   expect(audit).toContain('name="employment" value={filters.employmentId}');

@@ -4,7 +4,7 @@
  * Employee dashboard card: leave balance with a leave-type selector (R17 e6f0384c).
  *
  * A Server Component can't pass state/handlers across the client boundary, so the interactive
- * `<select>` lives here as a `'use client'` island (see app/analytics/YearSelect.tsx for the pattern).
+ * `<select>` lives here as a `'use client'` island (see app/(app)/analytics/YearSelect.tsx for the pattern).
  * The server pre-fetches the balances (RLS-scoped to the caller's own employment via `leaveBalances`)
  * and passes them in; this island only picks which type's `available` figure to show — it reads no
  * data of its own. The card header links to /leave; the `<select>` is deliberately OUTSIDE that link

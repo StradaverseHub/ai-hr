@@ -133,7 +133,7 @@ describe('R17 per-shift grace windows drive scheduleFor lateness / early-leave',
     };
     expect(await stored()).toEqual({ late: 20, early: 25 });
 
-    // Exactly what app/admin/attendance/shift-actions.ts now posts: the two keys are simply absent.
+    // Exactly what app/(app)/admin/attendance/shift-actions.ts now posts: the two keys are simply absent.
     await updateShift(a, {
       shiftId: created.id,
       name: 'GracePreserve renamed',

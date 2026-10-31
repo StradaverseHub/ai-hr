@@ -4,7 +4,7 @@
  * A calendar pill that is waiting for the viewer's decision links straight to the matching
  * /approvals section by URL hash. Pure + DB-free: shared by the server pill mapping
  * (components/planned-absences.tsx), the approvals page's section ids, and the arrival island
- * (app/approvals/attention-on-arrival.tsx) — one constant, so the ids cannot drift apart.
+ * (app/(app)/approvals/attention-on-arrival.tsx) — one constant, so the ids cannot drift apart.
  */
 
 /** The two /approvals sections a calendar pill can deep-link to, keyed by focus kind. */

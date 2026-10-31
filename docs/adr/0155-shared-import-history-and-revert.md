@@ -60,7 +60,7 @@ and tenant-wide visibility.
 ## 3. Consequences
 
 - Kind builders add: a plan type, item `before/after` shapes, a revert handler and (optionally) a renderer in
-  `app/admin/personnel/import/history/import-history-views.tsx`. They reuse `ImportRevertControl` unchanged.
+  `app/(app)/admin/personnel/import/history/import-history-views.tsx`. They reuse `ImportRevertControl` unchanged.
 - Revert never deletes. Allocation, movement and employment history keep the imported and the reverting
   writes; the import keeps its attempt, items and events.
 - Imports made before 0675 have no attempt and cannot be reverted as a batch.

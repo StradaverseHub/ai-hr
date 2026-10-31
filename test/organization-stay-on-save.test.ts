@@ -97,7 +97,7 @@ import {
   setCompanyStatutoryAuthorityAction,
   updateCompanyAction,
   updateCompanyDefaultCycleAction,
-} from '../app/admin/actions';
+} from '../app/(app)/admin/actions';
 import { listCompanyBankProfiles } from '../core/bank-profile';
 import { listCompanyStatutoryAuthorities } from '../core/statutory-authority';
 import { COMPANY_PANEL_TABS, isCompanyPanelTab } from '../lib/company-panel-tabs';
@@ -310,14 +310,14 @@ describe('§2 the tab survives the save, and it does not eat the toast (r287 →
     expect(isCompanyPanelTab('statutory')).toBe(true);
     expect(isCompanyPanelTab('other')).toBe(false);
     for (const f of [
-      'app/admin/actions.ts',
-      'app/admin/organization/[companyId]/page.tsx',
+      'app/(app)/admin/actions.ts',
+      'app/(app)/admin/organization/[companyId]/page.tsx',
       'components/company-panel.tsx',
     ]) {
       expect(read(f), f).toContain('company-panel-tabs');
     }
     // The page VALIDATES rather than trusting: `?tab=` is reader-supplied.
-    expect(read('app/admin/organization/[companyId]/page.tsx')).toContain('isCompanyPanelTab(tab) ? tab : undefined');
+    expect(read('app/(app)/admin/organization/[companyId]/page.tsx')).toContain('isCompanyPanelTab(tab) ? tab : undefined');
   });
 });
 
@@ -346,7 +346,7 @@ describe('§3 archiveCompanyAction has two homes and two destinations', () => {
   it('the marker is an EXPLICIT input in the panel and absent from the list rows', () => {
     const panel = read('components/company-panel.tsx');
     expect(panel.match(/name="returnTo" value="company"/g) ?? [], 'both archive forms').toHaveLength(2);
-    expect(read('app/admin/organization/company-rows.tsx'), 'the list must not claim to be the panel').not.toContain(
+    expect(read('app/(app)/admin/organization/company-rows.tsx'), 'the list must not claim to be the panel').not.toContain(
       'returnTo',
     );
   });
@@ -406,7 +406,7 @@ describe('§4 delete is the one that must NOT stay (classification finding 2)', 
  * confirmation naming what was saved. Never redirected to the Organization company list." The page is
  * `/admin/organization/<companyId>/statutory`, which is NOT the company panel — so the capture-phase
  * tracker at components/company-panel.tsx that injects `?tab=` into every form it hosts does not apply, and
- * `okCompany` cannot serve it (see the note on `okStatutorySetup` in app/admin/_redirects.ts).
+ * `okCompany` cannot serve it (see the note on `okStatutorySetup` in app/(app)/admin/_redirects.ts).
  *
  * RUN, NOT SCANNED, for this file's own reason: the concatenation defect that shipped twice on the schedule
  * screen is a defect in how a path and a query string MEET, and only parsing the target the way a browser
@@ -431,7 +431,7 @@ describe('§6 the Statutory Payment Setup flow keeps its own saves (15e5bd93 rev
    * The reporter has since called that per-body page "an unnecessary intermediate page" and it is
    * deleted. THE REASONING IS UNTOUCHED AND IS WHY THE SPLIT CAN GO: `…/statutory` now holds every
    * body's form, so it IS "the screen that holds the form the refusal is about". Both outcomes land
-   * there, `failStatutoryBody` is gone from app/admin/_redirects.ts with the page, and no posted value
+   * there, `failStatutoryBody` is gone from app/(app)/admin/_redirects.ts with the page, and no posted value
    * reaches a redirect path from this flow at all.
    *
    * ONE marker still chooses the flow (`returnTo=statutory-setup`); there is one screen for it to choose.

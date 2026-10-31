@@ -8,8 +8,8 @@ import {auditPersonnelFormSource,type PersonnelSourceExemption} from './helpers/
 import {workforceMaintenanceFields,workforceMaintenanceControl,workforceMaintenanceInput} from '../lib/workforce-maintenance-fields';
 const root=fileURLToPath(new URL('..',import.meta.url));
 const exemptions=JSON.parse(readFileSync(new URL('./fixtures/personnel-form-exemptions.json',import.meta.url),'utf8')) as Record<string,PersonnelSourceExemption[]>;
-const workforceForm='app/admin/personnel/[employmentId]/workforce-value-form.tsx';
-const relationshipForm='app/admin/personnel/[employmentId]/workforce-relationship-fields.tsx';
+const workforceForm='app/(app)/admin/personnel/[employmentId]/workforce-value-form.tsx';
+const relationshipForm='app/(app)/admin/personnel/[employmentId]/workforce-relationship-fields.tsx';
 /** Resolve the finite declaration actually used by these two generic renderers. No field-ID list
  * is copied into a test, and an unknown renderer/import/descriptor remains a refusal. */
 function workforceBindings(file:string,source:string):Record<string,readonly string[]>|undefined{
@@ -26,12 +26,12 @@ function workforceBindings(file:string,source:string):Record<string,readonly str
 }
 describe('actual mounted Personnel form inventory',()=>{
   it('retires profile classification maintenance while retaining its guarded canonical fact',()=>{
-    const file='app/admin/personnel/[employmentId]/page.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const file='app/(app)/admin/personnel/[employmentId]/page.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     expect(source).not.toContain('dataClassificationCard');
     expect(source).not.toContain('setTestRecordAction');
     expect(source).not.toContain('employment.data_classification.istestrecord');
     expect(exemptions[file].filter(item=>item.context==='dataClassificationCard')).toEqual([]);
-    const actions=readFileSync(new URL('../app/admin/personnel/[employmentId]/actions.ts',import.meta.url),'utf8');
+    const actions=readFileSync(new URL('../app/(app)/admin/personnel/[employmentId]/actions.ts',import.meta.url),'utf8');
     expect(actions).not.toContain('setTestRecordAction');
     const owner=readFileSync(new URL('../core/employment-test-record.ts',import.meta.url),'utf8');
     expect(owner).toContain('export async function setEmploymentTestRecord');
@@ -94,7 +94,7 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(exemptions[workforceForm].map(item=>item.name).sort()).toEqual(['employmentId','expectedVersion','kind','operation','rowId','section'].sort());
   });
   it('refuses new controls and caption/type/required overrides in the real mounted draft source',()=>{
-    const file='app/admin/personnel/new/wizard.tsx';
+    const file='app/(app)/admin/personnel/new/wizard.tsx';
     const source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const control='<input {...personnelInput("profile.personal_details.fullname", \'draft\')}';
     expect(source).toContain(control);
@@ -106,7 +106,7 @@ describe('actual mounted Personnel form inventory',()=>{
     ])expect(auditPersonnelFormSource(file,changed,PERSONNEL_FIELDS).issues.length).toBeGreaterThan(0);
   });
   it('discovers and audits all dated calendar facts while exempting only the two guarded record pointers',()=>{
-    const file='app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx';
+    const file='app/(app)/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx';
     const {files}=personnelFormSources(root),source=files.get(file);
     expect(source,'the mounted calendar form must remain in the Personnel inventory').toBeDefined();
     if(!source)throw new Error('Mounted calendar form missing');
@@ -123,7 +123,7 @@ describe('actual mounted Personnel form inventory',()=>{
     expect(exemptions).not.toHaveProperty('components/leave/LeaveDetailsPanel.tsx');
   });
   it('resolves actual imported Movement descriptors and refuses altered keys/maps/imports with only existing plumbing exemptions',()=>{
-    const file='app/admin/personnel/[employmentId]/movement-new-event.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const file='app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const resolveImportSource=personnelImportSourceReader(root),audit=(text:string,reader=resolveImportSource)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:reader});
     const actual=audit(source);expect(actual.controls).toBeGreaterThan(15);expect(actual.issues).toEqual([]);
     expect(source).toContain("movementField('companyId')");expect(source).toContain('movementField(name)');
@@ -141,14 +141,14 @@ describe('actual mounted Personnel form inventory',()=>{
       expect(item.occurrences,file).toBeGreaterThan(0);
       if(item.hidden)expect(item.name||item.nameExpression,file).toBeTruthy();
     }
-    const file='app/admin/personnel/new/create-form.tsx';
+    const file='app/(app)/admin/personnel/new/create-form.tsx';
     const source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const extra=source.replace('<input\n                    type="radio"','<input name="employeeIdMode" type="radio" /><input\n                    type="radio"');
     expect(extra).not.toBe(source);
     expect(auditPersonnelFormSource(file,extra,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource:personnelImportSourceReader(root)}).issues.some(issue=>issue.message.includes('occurrence changed'))).toBe(true);
   });
   it('resolves the information workflow from its actual finite map and refuses invented or unbounded controls',()=>{
-    const file='app/admin/personnel/information-correction-form.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
+    const file='app/(app)/admin/personnel/information-correction-form.tsx',source=readFileSync(new URL('../'+file,import.meta.url),'utf8');
     const reader=personnelImportSourceReader(root);
     const audit=(text:string,resolveImportSource=reader)=>auditPersonnelFormSource(file,text,PERSONNEL_FIELDS,{exemptions:exemptions[file],resolveImportSource});
     expect(audit(source)).toMatchObject({controls:5,issues:[]});

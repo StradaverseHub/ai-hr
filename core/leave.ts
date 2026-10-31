@@ -599,7 +599,7 @@ export class MissingRejectReasonError extends Error {
  *
  * TYPED, for the same reason LeaveCancellationNotAllowedError is: a refusal has to reach the employee in
  * their own language. The message below is the English fallback an unlocalized logger sees; the screen maps
- * the error NAME to leave.errors.applyOnBehalfNotAllowed (app/leave/actions.ts) rather than painting this
+ * the error NAME to leave.errors.applyOnBehalfNotAllowed (app/(app)/leave/actions.ts) rather than painting this
  * sentence onto the page.
  */
 export class LeaveOnBehalfNotAllowedError extends Error {
@@ -615,7 +615,7 @@ export class LeaveOnBehalfNotAllowedError extends Error {
 // throw). None of these persist anything — they run BEFORE any write.
 /**
  * r301 (board 83511d3b) — WHY a cancellation was refused, carried on the refusal so the screen can say
- * exactly that instead of one sentence for every case (app/me/actions.ts localizeLeaveError maps each to its
+ * exactly that instead of one sentence for every case (app/(app)/me/actions.ts localizeLeaveError maps each to its
  * own message). The English `reason` is unchanged and still what the error's `message` says; the code is
  * additive. A refusal raised without one falls back to the generic sentence, as every refusal did before.
  */
@@ -693,7 +693,7 @@ export class LeaveCancellationTooCloseError extends Error {
  * 3fb1a611 (r299) — a Replacement Leave cannot be cancelled because a credit it used can no longer take the
  * day back (expired, paid out, reversed). A `LeaveCancellationNotAllowedError`, so every existing handler still
  * treats it as a refusal; it carries the blocking credits so the screen can NAME them in the reader's language
- * instead of the generic "can't be cancelled" (app/me/actions.ts localizeLeaveError). The plan's promise is that
+ * instead of the generic "can't be cancelled" (app/(app)/me/actions.ts localizeLeaveError). The plan's promise is that
  * the screen says the credit has expired, not merely that something went wrong.
  */
 export class ReplacementCreditCancellationBlockedError extends LeaveCancellationNotAllowedError {
@@ -1840,7 +1840,7 @@ async function pendingLeaveDays(
  * returned so the popup can show the subtraction (Balance − Pending Approval = Available) rather than a bare
  * result the reporter had no way to check.
  *
- * ESS gating is NOT applied here: essViewConfig is returned raw and the caller decides (app/leave/actions.ts),
+ * ESS gating is NOT applied here: essViewConfig is returned raw and the caller decides (app/(app)/leave/actions.ts),
  * because the admin on-behalf path must never be gated. substrate: read-only, no event.
  */
 export async function leaveTypeApplySummary(
@@ -3313,7 +3313,7 @@ async function resolveApplyOnBehalfTx(tx: Tx, ctx: SessionContext, companyId: st
 }
 
 /**
- * The SAME question, asked by the screen (app/leave/page.tsx) so the Employee selector is rendered only for
+ * The SAME question, asked by the screen (app/(app)/leave/page.tsx) so the Employee selector is rendered only for
  * a holder. Exported deliberately: the selector's visibility and the submission's refusal must be one
  * decision resolved in one place, or they drift the moment either side is edited. Hiding the selector is
  * the courtesy; the throw inside requestLeave below is the control.
@@ -3431,7 +3431,7 @@ export async function requestLeave(
     // second screen) would have inherited the same hole. Mirrors requestLeaveCancellation's §6(1)
     // subject-only check, which is enforced in code for the same reason: RLS here is SYMMETRIC — a manager
     // may legitimately SEE a subordinate's employment, so every row policy passes and the write is allowed.
-    // Hiding the Employee selector (app/leave/page.tsx) is the courtesy; this throw is the control.
+    // Hiding the Employee selector (app/(app)/leave/page.tsx) is the courtesy; this throw is the control.
     //
     // ABOVE the Emergency-Leave short-circuit below, which returns into a whole separate submission path,
     // and above every other gate: nothing is read or written on behalf of someone the caller may not act for.
@@ -4277,7 +4277,7 @@ export async function previewLeaveDeduction(
     durationType?: LeaveDurationType;
     /** Employee apply-popup day-by-day panel: when set (and only for a full_day span) the SAME computation
      *  that produced `days` also returns its per-date detail as `dayRows`. Absent ⇒ byte-identical work, so
-     *  every existing caller (notably app/me/actions.ts myPreviewLeaveDeduction) is untouched. */
+     *  every existing caller (notably app/(app)/me/actions.ts myPreviewLeaveDeduction) is untouched. */
     includeDayRows?: boolean;
     /** Opt-in available estimate after pending reservations, from availableLeaveBalance. The legacy
      * balanceAvailable/balanceAfter fields remain the raw-ledger preview for existing consumers. */

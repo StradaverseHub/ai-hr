@@ -12,8 +12,8 @@ const { duplicate, remove, router } = vi.hoisted(() => ({ duplicate: vi.fn(), re
 const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('next/link', () => ({ default: ({ children, ...props }: React.ComponentProps<'a'>) => <a {...props}>{children}</a> }));
-vi.mock('../app/reports/employee-master/actions', () => ({ duplicateEmployeeMaster: duplicate, deleteEmployeeMaster: remove }));
-import { MasterReportActions } from '../app/reports/employee-master/MasterReportActions';
+vi.mock('../app/(app)/reports/employee-master/actions', () => ({ duplicateEmployeeMaster: duplicate, deleteEmployeeMaster: remove }));
+import { MasterReportActions } from '../app/(app)/reports/employee-master/MasterReportActions';
 const reportId = '00000000-0000-4000-8000-000000000001', copiedId = '00000000-0000-4000-8000-000000000002';
 function actions(locale: keyof typeof catalogues, canEdit: boolean) {
  return render(<NextIntlClientProvider locale={locale} timeZone="Asia/Kuala_Lumpur" messages={catalogues[locale]} onError={error => { throw error; }}><MasterReportActions id={reportId} canEdit={canEdit}/></NextIntlClientProvider>);

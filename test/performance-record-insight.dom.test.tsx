@@ -3,9 +3,9 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,act} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-vi.mock('../app/performance/onehr-actions',()=>({assessmentRecordInsightAction:vi.fn()}));
-import {assessmentRecordInsightAction} from '../app/performance/onehr-actions';
-import {RecordInsight} from '../app/performance/onehr/record-insight';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({assessmentRecordInsightAction:vi.fn()}));
+import {assessmentRecordInsightAction} from '../app/(app)/performance/onehr-actions';
+import {RecordInsight} from '../app/(app)/performance/onehr/record-insight';
 const show=(id='current')=><NextIntlClientProvider locale="en" messages={en}><RecordInsight key={id} reviewId={id} kind="cycle"/></NextIntlClientProvider>;
 beforeEach(()=>vi.mocked(assessmentRecordInsightAction).mockReset());afterEach(cleanup);
 it('reads the personal cache on opening and generates only after the employee chooses to',async()=>{

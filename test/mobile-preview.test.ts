@@ -27,7 +27,7 @@ describe('mobile-preview module (ca2f2fef)', () => {
   });
 
   it('the page enforces the guard (not merely registered)', () => {
-    const src = read('app/mobile-preview/page.tsx');
+    const src = read('app/(app)/mobile-preview/page.tsx');
     expect(src).toMatch(/scopedSession\(/);
   });
 
@@ -43,7 +43,7 @@ describe('mobile-preview module (ca2f2fef)', () => {
     for (const id of ['home', 'clock', 'requests', 'inbox', 'me']) expect(src).toContain(`id: '${id}'`);
     expect(src).not.toContain('Aisyah Rahman');
     expect(src).toContain('MobilePreviewData');
-    const page = read('app/mobile-preview/page.tsx');
+    const page = read('app/(app)/mobile-preview/page.tsx');
     expect(page).toContain('loadMobilePreview(s, scopeIds, locale)');
   });
 });

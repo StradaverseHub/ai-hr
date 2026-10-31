@@ -17,15 +17,15 @@ import {isProfileEditPolicyValue,isProfileVisibilityPolicyValue,effectiveProfile
  * below, and every one of those files now reads it:
  *
  *   · core/profile.ts        — sanitises a proposal and applies an approved one, per `target`/`column`;
- *   · app/me/actions.ts      — reads the form, one entry per key, instead of naming seven by hand;
- *   · app/me/request-change-card.tsx — renders the form, one control per entry;
- *   · app/me/page.tsx        — draws a pending request BESIDE the master value it would replace;
+ *   · app/(app)/me/actions.ts      — reads the form, one entry per key, instead of naming seven by hand;
+ *   · app/(app)/me/request-change-card.tsx — renders the form, one control per entry;
+ *   · app/(app)/me/page.tsx        — draws a pending request BESIDE the master value it would replace;
  *   · the admin approval surfaces — name each proposed field the way the employee's record names it.
  *
  * ── WHY `labelKey` IS A `people.detail.*` KEY AND NOT A WORDING OF ITS OWN ──────────────────────────
  * The plan's instruction, verbatim: widen to a declared set "keyed by the same field keys the
  * visibility manifest uses so a permission and a request can never disagree about what a field is
- * called". `app/me/visible-fields.ts ME_VISIBLE_FIELD_LABEL_KEYS` is that manifest, and every
+ * called". `app/(app)/me/visible-fields.ts ME_VISIBLE_FIELD_LABEL_KEYS` is that manifest, and every
  * `labelKey` below is one of its entries — which is the SAME catalogue key Personnel Management renders.
  * So the field an employee reads on their record, the field they ask to change, the field the approver
  * sees in the queue and (in stage three) the field a permission is granted over are one name resolved

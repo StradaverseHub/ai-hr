@@ -19,7 +19,7 @@ import { createManualAccount } from '../core/manual-identity';
 import { hireEmployee } from '../core/org';
 import { dispatchNotifications } from '../core/notifications';
 import { saveNotificationEmailPolicy } from '../core/notification-email';
-import { saveMyWorkflowEmailPreferences } from '../app/me/notifications/actions';
+import { saveMyWorkflowEmailPreferences } from '../app/(app)/me/notifications/actions';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import * as schema from '../db/schema';
 

@@ -4,7 +4,7 @@
  * The dashboard's top card row is role-aware: an employee sees self-service cards, a direct manager
  * sees team cards, and an HR admin keeps the high-level company overview. This module holds ONLY the
  * pure, testable pieces — the role resolver, the declarative per-role card config, the card metadata
- * (label key + href), and the `teamAwayToday` counter. Rendering stays in `app/page.tsx`; the data
+ * (label key + href), and the `teamAwayToday` counter. Rendering stays in `app/(app)/page.tsx`; the data
  * reads it selects are all existing, scope-fenced reads — this config never widens access, it only
  * chooses WHICH already-permission-fenced numbers to show.
  */

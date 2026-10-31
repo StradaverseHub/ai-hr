@@ -76,8 +76,8 @@ assert the card cannot show one while saving the other.
 
 ⚠️ MAJOR 1 — YOU FORKED THE FIELD LIST, WHICH IS THE DRIFT THIS ITEM WAS RAISED ABOUT.
 The approved plan's build note says: "A READ surface: reuse the Personnel section components with an
-employee-scoped read, do NOT fork them." app/me/read-field.tsx plus a hand-re-listing of every field in
-app/me/page.tsx is a second, independent enumeration; only the label KEYS are shared. A field added to a
+employee-scoped read, do NOT fork them." app/(app)/me/read-field.tsx plus a hand-re-listing of every field in
+app/(app)/me/page.tsx is a second, independent enumeration; only the label KEYS are shared. A field added to a
 Personnel group will silently never appear on /me and nothing goes red.
 The verifier names the route you did not take: components/person-details-fields.tsx is 'use client' with
 an explicit mode:'form' branch that takes NO function props precisely so a server page can mount it (its
@@ -109,8 +109,8 @@ THEN THE MINORS:
   its own claim about when it was written — the plan promised the list BEFORE the build and it was
   written during. Say so in the document rather than letting the title overstate it.
 
-SCOPE FENCE: app/me/**, the shared personnel components ONLY where a second consumer needs a prop (say
-so), your tests, docs/, six locales. No migration. Do NOT touch app/admin/leave-config/**.`,
+SCOPE FENCE: app/(app)/me/**, the shared personnel components ONLY where a second consumer needs a prop (say
+so), your tests, docs/, six locales. No migration. Do NOT touch app/(app)/admin/leave-config/**.`,
   },
   {
     slug: 'leave-round3',
@@ -132,7 +132,7 @@ so), your tests, docs/, six locales. No migration. Do NOT touch app/admin/leave-
   and say which direction you chose. The module is a preview until Round 5, so pointing the map at the
   old addresses is defensible — but then the back-links should match, and vice versa.
 
-DO NOT touch app/admin/leave/**, components/leave-type-panel.tsx, core/leave*, app/me/**, or any
+DO NOT touch app/(app)/admin/leave/**, components/leave-type-panel.tsx, core/leave*, app/(app)/me/**, or any
 migration. Do not edit the five old guards or test/pack-drift-allowlist.json.`,
   },
 ];

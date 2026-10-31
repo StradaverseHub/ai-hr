@@ -6,7 +6,7 @@ vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,letterReportDep
 vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'current-user'},scopeIds:['00000000-0000-4000-8000-000000000001']})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>((key:string)=>key)}));
-import ReportsPage from '../app/letters/reports/page';
+import ReportsPage from '../app/(app)/letters/reports/page';
 import {LetterReportDownloads} from '../components/letters/report-downloads';
 const companyId='00000000-0000-4000-8000-000000000001',hash='e'.repeat(64),labels={excel:'Excel',pdf:'PDF',working:'Preparing',errors:{stale:'Refresh the changed report',permission:'Sign in and check permission',unavailable:'Try again'}};
 beforeEach(()=>{vi.clearAllMocks();mocks.access.mockResolvedValue([{id:companyId,name:'Fictional company',read:true,report:true}]);mocks.departments.mockResolvedValue([]);mocks.read.mockResolvedValue({summary:{total:37,issued:4,pendingApproval:2,pendingAcknowledgement:1,approvalOverdue:1,acknowledgementOverdue:0,void:0,meanApprovalHours:null,meanIssueHours:3,meanAcknowledgementHours:null},dataHash:hash,generatedAt:'2026-10-26T12:00:00Z',generatedBy:'current-user',nextCursor:null,rows:[{id:companyId,reference:'HR/2026/00001',state:'issued',employee_name:'Fictional Employee',employee_code:'0001',company_name:'Fictional company',department_name:null,title:'Fictional title',category:'confirmation',issued_at:'2026-10-26T11:00:00Z',acknowledged_at:null,approval_hours:null,issue_hours:3,organisation_ambiguous:false,approval_overdue:false,acknowledgement_overdue:false}]});});

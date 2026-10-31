@@ -42,7 +42,7 @@ import { createLoan, prefillLoansForBatch } from '../core/loans';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
-import { wizardInitialStep } from '../app/payroll/process/selection-logic';
+import { wizardInitialStep } from '../app/(app)/payroll/process/selection-logic';
 import {
   adminCtx,
   closeAll,

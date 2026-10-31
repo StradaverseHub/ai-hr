@@ -19,7 +19,7 @@ Most of this substrate already shipped in Wave 4 (`core/analytics.ts`):
 - `masterDataExport({ includeComp, includeTerminated })` → **All-Worker / Active Master Data ±Comp**
 - `newHires` → **New Hire**, `terminations` → **Worker Termination**, plus `turnoverRate`
 
-Export today is **CSV-only** (`lib/csv.ts#toCsv` + `app/analytics/export/route.ts`).
+Export today is **CSV-only** (`lib/csv.ts#toCsv` + `app/(app)/analytics/export/route.ts`).
 
 So this slice is an **extension in two tracks**:
 

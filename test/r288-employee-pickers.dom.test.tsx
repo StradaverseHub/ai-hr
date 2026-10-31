@@ -78,7 +78,7 @@ function mountAdjustments() {
 }
 
 /**
- * The copy object built EXACTLY as app/admin/notice-board/{new,[id]}/page.tsx build it — one `t()` call per
+ * The copy object built EXACTLY as app/(app)/admin/notice-board/{new,[id]}/page.tsx build it — one `t()` call per
  * label, so a key this component needs but no page passes shows up here as `undefined`, not as a plausible
  * placeholder. (`test/r288-employee-pickers.test.ts` §C pins that the pages themselves pass them.)
  */

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { LoginShell } from '../app/login/login-shell';
-import { LoginTour } from '../app/login/login-tour';
+import { LoginShell } from '../app/(auth)/login/login-shell';
+import { LoginTour } from '../app/(auth)/login/login-tour';
 import { DEFAULT_LOGIN_PRESENTATION } from '../lib/login-presentation';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';

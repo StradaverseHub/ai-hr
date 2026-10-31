@@ -22,7 +22,7 @@ import {
 import { renderBorangBbcdPdf } from '../lib/borang-bbcd-pdf';
 import { MY_REPORTS } from '../localization/my/reports';
 import { REGISTERED_ROUTES } from '../lib/permissions';
-import { reportDestination } from '../app/payroll/statutory-forms/criteria';
+import { reportDestination } from '../app/(app)/payroll/statutory-forms/criteria';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
@@ -143,7 +143,7 @@ describe('Borang A, to the October sample', () => {
       'lib/borang-a-pdf.ts',
       'localization/my/borang-a.ts',
       'localization/my/reports.ts',
-      'app/payroll/borang-a/preview/page.tsx',
+      'app/(app)/payroll/borang-a/preview/page.tsx',
       'test/borang-a.test.ts',
       'test/statutory-forms-page.test.ts',
     ]) {
@@ -162,7 +162,7 @@ describe('Borang A, to the October sample', () => {
       expect(ns.notArtworkDrawn, l).not.toMatch(/publishes no|does not publish|tidak menerbitkan/i);
       if (l !== 'en') expect(ns.notArtworkDrawn, `${l} is still English`).not.toBe(catalog('en').payroll.borangA.notArtworkDrawn);
     }
-    const preview = code('app/payroll/borang-a/preview/page.tsx');
+    const preview = code('app/(app)/payroll/borang-a/preview/page.tsx');
     expect(preview).toContain("t('notArtworkDrawn')");
     expect(preview).not.toContain("t('notArtwork')");
     // No computed key could still reach the retired one.
@@ -195,17 +195,17 @@ describe('the BBCD is a projection of the Borang A, never a second calculation',
   });
 
   it('has no read of its own: both surfaces call loadBorangA, and nothing under borang-bbcd reads the pack', () => {
-    const shared = code('app/payroll/borang-bbcd/shared.ts');
+    const shared = code('app/(app)/payroll/borang-bbcd/shared.ts');
     expect(shared).toContain("import { loadBorangA, type BorangALoad } from '../borang-a/shared';");
     expect(shared).toContain('const loaded = await loadBorangA(p);');
     expect(shared).toContain('const bbcd = borangBbcdFrom(loaded.form);');
-    for (const f of ['app/payroll/borang-bbcd/shared.ts', 'app/payroll/borang-bbcd/pdf/route.ts', 'app/payroll/borang-bbcd/preview/page.tsx', 'lib/borang-bbcd.ts', 'lib/borang-bbcd-pdf.ts']) {
+    for (const f of ['app/(app)/payroll/borang-bbcd/shared.ts', 'app/(app)/payroll/borang-bbcd/pdf/route.ts', 'app/(app)/payroll/borang-bbcd/preview/page.tsx', 'lib/borang-bbcd.ts', 'lib/borang-bbcd-pdf.ts']) {
       const src = code(f);
       expect(src.length, f).toBeGreaterThan(500);
       expect(src, f).not.toMatch(/reportPreview\(|localization\/my|from '@\/db|totalEmployer \+|\.reduce\(/);
     }
-    expect(code('app/payroll/borang-bbcd/pdf/route.ts')).toContain('const loaded = await loadBorangBbcd({');
-    expect(code('app/payroll/borang-bbcd/preview/page.tsx')).toContain('const loaded = await loadBorangBbcd({');
+    expect(code('app/(app)/payroll/borang-bbcd/pdf/route.ts')).toContain('const loaded = await loadBorangBbcd({');
+    expect(code('app/(app)/payroll/borang-bbcd/preview/page.tsx')).toContain('const loaded = await loadBorangBbcd({');
   });
 });
 
@@ -282,7 +282,7 @@ describe('the drawn BBCD, laid out like the sample', () => {
     }
 
     // THE SCREEN: a readiness NOTE, before the download, that never hides it.
-    const page = code('app/payroll/borang-bbcd/preview/page.tsx');
+    const page = code('app/(app)/payroll/borang-bbcd/preview/page.tsx');
     const note = slice(page, 'const signatoryNote =', 'const blanks =', 400);
     expect(note).toContain('signatoryMissing.length > 0 ?');
     expect(note).toContain("t('signatoryMissingTitle')");
@@ -294,7 +294,7 @@ describe('the drawn BBCD, laid out like the sample', () => {
     expect(panel.indexOf('{signatoryNote}')).toBeGreaterThanOrEqual(0);
     expect(panel.indexOf('{signatoryNote}')).toBeLessThan(panel.indexOf('{tiles}'));
     // The loader never refuses on it.
-    expect(code('app/payroll/borang-bbcd/shared.ts')).not.toMatch(/signatoryMissing[^;]*return \{ ok: false/);
+    expect(code('app/(app)/payroll/borang-bbcd/shared.ts')).not.toMatch(/signatoryMissing[^;]*return \{ ok: false/);
   });
 });
 
@@ -318,13 +318,13 @@ describe('the BBCD shelf entry, its path and its refusals', () => {
 
   it('is a registered screen with a loading state', () => {
     expect(REGISTERED_ROUTES.has('/payroll/borang-bbcd/preview')).toBe(true);
-    expect(read('app/payroll/borang-bbcd/preview/loading.tsx').trim()).toBe(
+    expect(read('app/(app)/payroll/borang-bbcd/preview/loading.tsx').trim()).toBe(
       "export { default } from '@/components/route-loading';",
     );
   });
 
   it('refuses what Borang A refuses, before anything is drawn', () => {
-    const page = code('app/payroll/borang-bbcd/preview/page.tsx');
+    const page = code('app/(app)/payroll/borang-bbcd/preview/page.tsx');
     const GATE = 'if (!selection.ok) redirect(';
     const gate = slice(page, GATE, 'const monthFmt', 600);
     for (const r of ['cycles_invalid', 'cycles_no_runs', 'cycles_no_data']) expect(gate, r).toContain(`'${r}'`);
@@ -337,7 +337,7 @@ describe('the BBCD shelf entry, its path and its refusals', () => {
     expect(before).not.toContain('<StatutoryPdfViewer');
     expect(before).not.toContain('borangADocumentQuery(');
     // The PDF route answers every refusal, and frames the same bytes it downloads.
-    const route = code('app/payroll/borang-bbcd/pdf/route.ts');
+    const route = code('app/(app)/payroll/borang-bbcd/pdf/route.ts');
     for (const r of ['not-found', 'no-batch', 'selection-empty', 'bad-selection', 'no-contributions']) {
       expect(route, r).toContain(`loaded.reason === '${r}'`);
     }
@@ -349,7 +349,7 @@ describe('the BBCD shelf entry, its path and its refusals', () => {
   });
 
   it('has every key the screen uses in all six locales', () => {
-    const page = code('app/payroll/borang-bbcd/preview/page.tsx');
+    const page = code('app/(app)/payroll/borang-bbcd/preview/page.tsx');
     const used = new Set<string>([
       ...[...page.matchAll(/\bt\('([A-Za-z_]+)'/g)].map((m) => m[1]),
       ...[...page.matchAll(/'((?:sigField|headerField)_[A-Za-z]+)'/g)].map((m) => m[1]),
@@ -373,7 +373,7 @@ describe('r411 · NAMA PENUH is marked HURUF BESAR on the form', () => {
 
 describe('r411 · the review table under the viewer totals the same way as the printed form', () => {
   it('has no carried-forward rows and one JUMLAH of the two contributions', () => {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'app/payroll/borang-a/preview/page.tsx'), 'utf8');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'app/(app)/payroll/borang-a/preview/page.tsx'), 'utf8');
     const start = src.indexOf('<tfoot');
     const end = src.indexOf('</tfoot>', start);
     expect(start, 'the review table footer was found').toBeGreaterThanOrEqual(0);

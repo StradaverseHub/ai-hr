@@ -7,7 +7,7 @@ vi.mock('../lib/request-origin',()=>({isSameOriginBrowserRequest:()=>true}));
 vi.mock('../core/movement-import',()=>({movementImportTemplateData:mocks.template}));
 vi.mock('../core/movement-import-history',()=>({previewMovementUpload:mocks.preview,confirmMovementUpload:mocks.confirm}));
 vi.mock('../lib/movement-workbook.server',()=>({MOVEMENT_WORKBOOK_LIMITS:{maxBytes:5000000},buildMovementWorkbook:mocks.build}));
-import {POST} from '../app/admin/personnel/import/movement/route';
+import {POST} from '../app/(app)/admin/personnel/import/movement/route';
 import {ImportHistoryError} from '../core/import-history';
 function request(operation:string,entries:Record<string,string|File>={}){const data=new FormData();data.set('operation',operation);for(const [key,value]of Object.entries(entries))data.set(key,value);return new Request('http://localhost/admin/personnel/import/movement',{method:'POST',body:data});}
 beforeEach(()=>{vi.resetAllMocks();mocks.template.mockResolvedValue({types:[{code:'transfer',label:'Transfer',behaviour:'transfer'}],companies:[]});mocks.build.mockResolvedValue(Buffer.from('fictional workbook'));mocks.preview.mockResolvedValue({attemptId:'attempt',previewHash:'hash',preview:{employees:[],fileErrors:[]}});mocks.confirm.mockResolvedValue({attemptId:'attempt',imported:1,failed:0,excluded:0,employees:[],byEventType:[],alreadyCommitted:false});});

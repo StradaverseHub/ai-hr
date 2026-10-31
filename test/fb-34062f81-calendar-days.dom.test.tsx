@@ -25,9 +25,9 @@ import {
   type TxnCompany,
   type TxnEmployee,
   type TxnPayItem,
-} from '../app/payroll/transactions/individual/txn-workspace';
-import type { TxnPanel } from '../app/payroll/transactions/individual/existing-context';
-import { distinctDayEntries, dayEntryKey, blankDayLine } from '../app/payroll/transactions/individual/day-lines';
+} from '../app/(app)/payroll/transactions/individual/txn-workspace';
+import type { TxnPanel } from '../app/(app)/payroll/transactions/individual/existing-context';
+import { distinctDayEntries, dayEntryKey, blankDayLine } from '../app/(app)/payroll/transactions/individual/day-lines';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -40,7 +40,7 @@ const previewOneMock = vi.fn();
 const previewManyMock = vi.fn();
 const dayGridMock = vi.fn();
 
-vi.mock('../app/payroll/transactions/individual/actions', () => ({
+vi.mock('../app/(app)/payroll/transactions/individual/actions', () => ({
   fetchEmployeeTxnPanelAction: (...a: unknown[]) => panelMock(...a),
   fetchBatchImpactAction: () => Promise.resolve(null),
   fetchTxnDetailAction: () => Promise.resolve(null),

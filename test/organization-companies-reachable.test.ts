@@ -69,8 +69,8 @@ import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { SectionHeader } from '../components/ui';
-import { CompanyRows, type CompanyRow } from '../app/admin/organization/company-rows';
-import OrganizationPage from '../app/admin/organization/page';
+import { CompanyRows, type CompanyRow } from '../app/(app)/admin/organization/company-rows';
+import OrganizationPage from '../app/(app)/admin/organization/page';
 
 /** Depth-first walk of a rendered React element tree collecting every node whose `type` matches. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

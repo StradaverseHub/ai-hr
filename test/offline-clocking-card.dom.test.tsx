@@ -11,9 +11,9 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 import zh from '../messages/zh.json';
 const save = vi.hoisted(() => vi.fn());
-vi.mock('../app/admin/attendance-policy/offline-clocking-actions', () => ({ saveOfflineClockingAction: save }));
-import { OfflineClockingCard } from '../app/admin/attendance-policy/offline-clocking-card';
-import type { OfflineClockingCompanySettings } from '../app/admin/attendance-policy/offline-clocking-data';
+vi.mock('../app/(app)/admin/attendance-policy/offline-clocking-actions', () => ({ saveOfflineClockingAction: save }));
+import { OfflineClockingCard } from '../app/(app)/admin/attendance-policy/offline-clocking-card';
+import type { OfflineClockingCompanySettings } from '../app/(app)/admin/attendance-policy/offline-clocking-data';
 
 const company = (over: Partial<OfflineClockingCompanySettings> = {}): OfflineClockingCompanySettings => ({
   companyId: '5d2c1b0a-7e6f-4a3b-8c9d-0e1f2a3b4c5d', companyName: 'Fictional Sdn Bhd', available: true, columns: true, canEdit: true,

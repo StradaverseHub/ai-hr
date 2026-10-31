@@ -522,10 +522,10 @@ describe('§5 an accrual failure leaves the generation committed and is returned
 
 describe('§5b the Run Earned Accrual actions require an administrator', () => {
   it('preview and run call requireAdmin, not a bare session (the 4b0e76ae hole on openLeaveYearAction)', () => {
-    const reasonSrc = read('app/admin/leave-config/earned-accrual/actions.ts');
+    const reasonSrc = read('app/(app)/admin/leave-config/earned-accrual/actions.ts');
     expect(reasonSrc, 'the preview the Run Earned Accrual screen actually calls').toContain('await requireAdmin()');
     expect(reasonSrc).not.toContain('getSession(');
-    const src = read('app/admin/actions.ts');
+    const src = read('app/(app)/admin/actions.ts');
     for (const name of ['previewEarnedAccrualAction', 'runEarnedAccrualAction']) {
       const at = src.indexOf(`export async function ${name}(`);
       expect(at, name).toBeGreaterThan(0);

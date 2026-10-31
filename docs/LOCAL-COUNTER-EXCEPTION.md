@@ -52,7 +52,7 @@ Actual completed DB logs are approximately 35–48 MB each because the frozen ca
 
 ## Tracked-source reader correction
 
-The first actual acceptance collection on clean H counter-only child `4d89d52005121d25f2b1cb5801cd04df32dfd32e` refused while its independent classifier resolved `app/attendance/application-history/[id]/page.tsx`. The private artifact filename grammar incorrectly also governed tracked application source. This is a collector defect, not an application/test failure; the original refusal remains evidence.
+The first actual acceptance collection on clean H counter-only child `4d89d52005121d25f2b1cb5801cd04df32dfd32e` refused while its independent classifier resolved `app/(app)/attendance/application-history/[id]/page.tsx`. The private artifact filename grammar incorrectly also governed tracked application source. This is a collector defect, not an application/test failure; the original refusal remains evidence.
 
 The classifier now uses a separate reader authorized by the actual canonical checkout's stage-zero regular Git inventory. It permits legitimate tracked route punctuation, returns null for untracked/missing candidates, and retains canonical relative paths, no traversal/backslashes/control characters, regular-file/no-symlink/canonical ancestry checks, bounded reads, immutable file identity and raw hash recording. The original private artifact reader keeps exactly its narrow filename grammar and byte limits. No classifier, selected inventory, raw report policy, source transition, receipt/result, database guard or release authority changed.
 

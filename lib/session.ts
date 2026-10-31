@@ -56,7 +56,7 @@ function toSession(userId: string, principal: PrincipalRow): SessionContext {
  * normally the seeded GROUP ADMIN. Archiving a user would then ESCALATE their privileges rather than
  * block them. And this path is not dev-only: demoSwitcherEnabled() is true in a real build whenever
  * ALLOW_DEMO_SESSION is set. So: an id that resolves AND is blocked throws AuthRequiredError
- * immediately (→ /login via app/layout.tsx); an id that does not resolve at all still self-heals.
+ * immediately (→ /login via app/(app)/layout.tsx); an id that does not resolve at all still self-heals.
  *
  * Pure + injectable (`lookup`, `blocked`) so both paths are unit-testable without a request context.
  * `blocked` defaults to never-blocked so existing 3-arg callers keep their pinned behaviour.
@@ -70,7 +70,7 @@ export async function resolveDevPrincipal(
   const ids = [...new Set([cookieUser, fallback].filter((v): v is string => Boolean(v)))];
   if (ids.length === 0) {
     // ⚠️ AuthRequiredError, NOT a plain Error. With no cookie and no fallback the caller is simply not
-    // signed in yet — the demo's normal starting state — and app/layout.tsx turns this into a redirect
+    // signed in yet — the demo's normal starting state — and app/(app)/layout.tsx turns this into a redirect
     // to /login. A plain Error would surface as a 500 on the front door. Local dev still passes a
     // fallback, so it reaches this branch only when the database is genuinely unseeded, and the message
     // says so.
@@ -143,7 +143,7 @@ export async function resolveWorkosPrincipal(
  *
  * DEGRADES, DOES NOT 500. getSession is the entry point for every page, so an exception here — the
  * 0313 tables not yet applied on a code-ahead-of-migration deploy, a revoked grant, a connection blip
- * — would take down authentication itself, including /login, since app/layout.tsx only converts
+ * — would take down authentication itself, including /login, since app/(app)/layout.tsx only converts
  * AuthRequiredError into a redirect. Instead the session is returned WITHOUT a snapshot, which makes
  * every entitlement gate refuse at the point of use (fail-closed, and core modules still answer true)
  * rather than making the whole app unreachable.
@@ -269,7 +269,7 @@ async function resolveWebSession(requireSelectedDevCookie: boolean): Promise<Ses
      * header switcher.
      *
      * On the demo the fallback is therefore withheld: no cookie ⇒ resolveDevPrincipal throws ⇒
-     * app/layout.tsx redirects to /login, where the tester CHOOSES which access to test with.
+     * app/(app)/layout.tsx redirects to /login, where the tester CHOOSES which access to test with.
      *
      * ⚠️ LOCAL DEV KEEPS THE FALLBACK, deliberately. This file's header states the dev switcher exists so
      * `pnpm dev` and the test harness "are never forced through WorkOS"; removing the fallback outright

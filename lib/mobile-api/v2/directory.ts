@@ -1,5 +1,5 @@
 /**
- * The staff directory in the app: the web's read-only People directory (app/personnel/page.tsx, screen `people`,
+ * The staff directory in the app: the web's read-only People directory (app/(app)/personnel/page.tsx, screen `people`,
  * guard scopedSession) through the SAME owner and the SAME row visibility. Read only. Imported by route handlers AND
  * by the Expo app, so this file stays dependency-free (zod only, no server module, no 'server-only').
  *

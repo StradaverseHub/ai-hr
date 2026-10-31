@@ -61,14 +61,14 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const PAYROLL_ACTIONS = code('app/payroll/actions.ts');
-const PROCESS_ACTIONS = code('app/payroll/process/actions.ts');
-const RUN_SCREEN = code('app/payroll/[batchId]/page.tsx');
-const HUB = code('app/payroll/transactions/page.tsx');
-const WIZARD = code('app/payroll/process/wizard.tsx');
-const PROCESS_PAGE = code('app/payroll/process/page.tsx');
-const PANEL = code('app/payroll/adjustments-panel.tsx');
-const STEP_SELECTION = code('app/payroll/process/steps/step-selection.tsx');
+const PAYROLL_ACTIONS = code('app/(app)/payroll/actions.ts');
+const PROCESS_ACTIONS = code('app/(app)/payroll/process/actions.ts');
+const RUN_SCREEN = code('app/(app)/payroll/[batchId]/page.tsx');
+const HUB = code('app/(app)/payroll/transactions/page.tsx');
+const WIZARD = code('app/(app)/payroll/process/wizard.tsx');
+const PROCESS_PAGE = code('app/(app)/payroll/process/page.tsx');
+const PANEL = code('app/(app)/payroll/adjustments-panel.tsx');
+const STEP_SELECTION = code('app/(app)/payroll/process/steps/step-selection.tsx');
 
 let icSeq = 0;
 const nextIc = () => `9102020${String(10000 + icSeq++).slice(-5)}`;
@@ -115,7 +115,7 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
     expect(PAYROLL_ACTIONS).toMatch(/const back = payrollListAfterReset\(String\(formData\.get\('from'\) \?\? ''\)\);/);
     expect(PAYROLL_ACTIONS).toMatch(/redirect\(withQueryParam\(back, 'toast', t\('resetDone'\)\)\)/);
     // The 7076f8af destination is gone with the decision it implemented — resumeHref is no longer read
-    // here at all (the list row's Continue link is still its caller, in app/payroll/page.tsx).
+    // here at all (the list row's Continue link is still its caller, in app/(app)/payroll/page.tsx).
     expect(PAYROLL_ACTIONS).not.toMatch(/resumeHref/);
     // THE ORIGINAL DEFECT, still pinned negatively and still the reason this case exists: whatever the
     // destination becomes, it must never be the long run screen whose payslip list a reset has emptied.
@@ -129,11 +129,11 @@ describe('7076f8af — Reset lands in the run flow, and the run flow ends', () =
     // 9f8cd608 MOVED ONE OF THE TWO FORMS, and this case follows it rather than being deleted. The LIST's
     // reset form used to sit inside the ⋯ row menu, which is a `position: fixed` panel that closes on any
     // scroll — so its ConfirmSubmit, owned by that subtree, unmounted as it opened and the button appeared
-    // to do nothing. The form now lives on app/payroll/[batchId]/reset, and the list's job shrinks to
+    // to do nothing. The form now lives on app/(app)/payroll/[batchId]/reset, and the list's job shrinks to
     // handing that screen the filter query as `?from=…`; the screen posts it on. The chain is asserted
     // end to end here, because a break anywhere along it costs the operator their filters just the same.
-    const LIST = code('app/payroll/page.tsx');
-    const RESET_SCREEN = code('app/payroll/[batchId]/reset/page.tsx');
+    const LIST = code('app/(app)/payroll/page.tsx');
+    const RESET_SCREEN = code('app/(app)/payroll/[batchId]/reset/page.tsx');
     expect(LIST, 'the row action carries the filter query to the reset screen').toMatch(
       /href=\{`\/payroll\/\$\{b\.id\}\/reset\?from=\$\{fromQuery\}`\}/,
     );
@@ -242,9 +242,9 @@ describe('7076f8af — the two relocated cards', () => {
     expect(WIZARD).toMatch(/adjustmentsPanel\?: React\.ReactNode/);
     expect(WIZARD).toMatch(/step === 2 && adjustmentsPanel/);
     // … and a screen under Transactions.
-    expect(code('app/payroll/transactions/adjustments/page.tsx')).toMatch(/<PayrollAdjustmentsPanel/);
+    expect(code('app/(app)/payroll/transactions/adjustments/page.tsx')).toMatch(/<PayrollAdjustmentsPanel/);
     // (b) the CSV import: Transactions ONLY. It must NOT also appear on the Review step.
-    expect(code('app/payroll/transactions/import-components/page.tsx')).toMatch(/<ComponentImport/);
+    expect(code('app/(app)/payroll/transactions/import-components/page.tsx')).toMatch(/<ComponentImport/);
     expect(WIZARD).not.toMatch(/ComponentImport/);
     expect(PROCESS_PAGE).not.toMatch(/ComponentImport/);
   });

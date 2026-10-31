@@ -6,7 +6,7 @@
  * r352 built this vocabulary for a rail-plus-workspace inside the company panel's Statutory TAB; r353
  * deleted it with that shape. The file name is the one it was born with and is kept so the approved
  * plan's own words still resolve — the surface it serves is now
- * `app/admin/organization/[companyId]/statutory/page.tsx`, a screen, not a tab.
+ * `app/(app)/admin/organization/[companyId]/statutory/page.tsx`, a screen, not a tab.
  *
  * It is the contract between three files that cannot see each other: the screen marks each body's form
  * `data-save-section="<authority>"`, the client scope packs the dirty ones into one payload keyed by

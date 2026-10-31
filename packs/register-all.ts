@@ -11,7 +11,7 @@
  * The consumer that needs it TODAY is the catalog<->registry drift ratchet
  * (`test/module-catalog-drift.test.ts`), which pins every registered pack to a catalog row in both
  * directions and cannot run inside a client component. (An earlier version of this comment named the
- * operator console's module picker instead — app/operator/page.tsx reads MODULE_CATALOG directly and
+ * operator console's module picker instead — app/(app)/operator/page.tsx reads MODULE_CATALOG directly and
  * never calls listPacks, so that justification pointed at a caller that does not exist. It is the kind
  * of comment that gets the wrong thing deleted, hence the correction rather than a tidy-up.) Slice 4's
  * nav filter is the next caller, and it is server-side too.

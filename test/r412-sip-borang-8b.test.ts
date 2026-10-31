@@ -30,8 +30,8 @@ import {
   renderBorang8BPdf,
 } from '../lib/borang-8b-pdf';
 import { BORANG_8A_ROW_PITCH, BORANG_8A_SHEET } from '../lib/borang-8a-pdf';
-import { sipDocumentPairs, sipDocumentQuery, sipHasContributions, sipQuery } from '../app/payroll/sip-contribution/query';
-import { reportDestination } from '../app/payroll/statutory-forms/criteria';
+import { sipDocumentPairs, sipDocumentQuery, sipHasContributions, sipQuery } from '../app/(app)/payroll/sip-contribution/query';
+import { reportDestination } from '../app/(app)/payroll/statutory-forms/criteria';
 import { parseRunSelection } from '../lib/payroll-run-selection';
 import { MY_PLANNED_FORMS, MY_REPORTS } from '../localization/my/reports';
 import en from '../messages/en.json';
@@ -381,15 +381,15 @@ describe('both forms left the planned list and joined the catalog', () => {
     const perms = read('lib/permissions.ts');
     expect(perms).toContain("'/payroll/sip-contribution/preview',");
     expect(perms).toContain("'/payroll/borang-8b/preview',");
-    for (const p of ['app/payroll/sip-contribution/preview/loading.tsx', 'app/payroll/borang-8b/preview/loading.tsx']) {
+    for (const p of ['app/(app)/payroll/sip-contribution/preview/loading.tsx', 'app/(app)/payroll/borang-8b/preview/loading.tsx']) {
       expect(fs.existsSync(path.join(ROOT, p)), p).toBe(true);
     }
   });
 });
 
 describe('the SIP selection reaches every surface, and the gate runs before anything is drawn', () => {
-  const PREVIEW = code('app/payroll/sip-contribution/preview/page.tsx');
-  const SHARED = code('app/payroll/sip-contribution/shared.ts');
+  const PREVIEW = code('app/(app)/payroll/sip-contribution/preview/page.tsx');
+  const SHARED = code('app/(app)/payroll/sip-contribution/shared.ts');
 
   it('keeps EVERY value of a repeated run parameter, and NOTHING for all cycles', () => {
     const q = sipQuery({ companyId: 'c', periodKey: '2026-07', run: ['1', '3'] });
@@ -430,7 +430,7 @@ describe('the SIP selection reaches every surface, and the gate runs before anyt
   });
 
   it("serves the preview as the download's own bytes, only the disposition differs", () => {
-    for (const r of ['app/payroll/sip-contribution/pdf/route.ts', 'app/payroll/borang-8b/pdf/route.ts']) {
+    for (const r of ['app/(app)/payroll/sip-contribution/pdf/route.ts', 'app/(app)/payroll/borang-8b/pdf/route.ts']) {
       const c = code(r);
       expect(c, r).toContain("q.get('disposition') === 'inline' ? 'inline' : 'attachment'");
       expect(c.match(/render\w+Pdf\(/g), r).toHaveLength(1);
@@ -438,8 +438,8 @@ describe('the SIP selection reaches every surface, and the gate runs before anyt
   });
 
   it('the 8B preview has no cycles box and no "nothing to file" gate, and scopes like its siblings', () => {
-    const B = code('app/payroll/borang-8b/preview/page.tsx');
-    const BS = code('app/payroll/borang-8b/shared.ts');
+    const B = code('app/(app)/payroll/borang-8b/preview/page.tsx');
+    const BS = code('app/(app)/payroll/borang-8b/shared.ts');
     expect(B.length).toBeGreaterThan(2000);
     expect(B).not.toContain('parseRunSelection');
     // Its only refusal back to the step is r412 verify D1's: a month that has not ended.
@@ -460,7 +460,7 @@ describe('r412 verify D1 · Borang 8B is only for a month that has ENDED', () =>
     expect(borang8BMonthHasEnded('2026-12', '2026-10-08')).toBe(false);
     expect(borang8BMonthHasEnded('2099-01', '2026-10-08')).toBe(false);
     expect(borang8BMonthHasEnded('2026-13', '2027-01-01')).toBe(false);
-    const shared = fs.readFileSync(path.join(__dirname, '..', 'app/payroll/borang-8b/shared.ts'), 'utf8');
+    const shared = fs.readFileSync(path.join(__dirname, '..', 'app/(app)/payroll/borang-8b/shared.ts'), 'utf8');
     expect(shared).toContain('if (!borang8BMonthHasEnded(p.periodKey, todayInKualaLumpur())) return { ok: false, reason: \'month-not-ended\' };');
   });
 });

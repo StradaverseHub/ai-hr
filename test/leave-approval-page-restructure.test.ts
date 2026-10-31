@@ -17,7 +17,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { groupTemplateAssignments } from '../app/admin/leave-approval/assignment-groups';
+import { groupTemplateAssignments } from '../app/(app)/admin/leave-approval/assignment-groups';
 
 const ROOT = path.resolve(__dirname, '..');
 /**
@@ -26,8 +26,8 @@ const ROOT = path.resolve(__dirname, '..');
  * nothing. Every property this file guards is about the SCREEN, not the address, so it follows the
  * screen — asserted against a stub it would have gone quietly, permanently vacuous.
  */
-const PAGE = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
-const MANAGER = path.join(ROOT, 'app/admin/leave-approval/template-manager.tsx');
+const PAGE = path.join(ROOT, 'app/(app)/admin/leave-config/approval-chains/page.tsx');
+const MANAGER = path.join(ROOT, 'app/(app)/admin/leave-approval/template-manager.tsx');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 const page = fs.readFileSync(PAGE, 'utf8');
@@ -228,8 +228,8 @@ describe('Approval Workflow page — two headed sections', () => {
     // Its only importer was this page, and its `actions` prop has no supplier left. A component that
     // cannot be wired is worse than no component — it reads as a second way in that merely is not mounted
     // yet (the 645e67c4 "the strip is actually gone" rule, applied to a component instead of a nav strip).
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-approval/workflow-matrix.tsx'))).toBe(false);
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-approval/matrix-labels.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/leave-approval/workflow-matrix.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/leave-approval/matrix-labels.ts'))).toBe(false);
   });
 
   it('KEEPS the templates section, the assignment section, escalation, and the route itself', () => {
@@ -238,13 +238,13 @@ describe('Approval Workflow page — two headed sections', () => {
     expect(page).toContain('<ApprovalTemplateManager');
     expect(page).toContain('<ApprovalAssignmentManager');
     expect(page).toContain('<LeaveEscalationEditor');
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/leave-config/approval-chains/page.tsx'))).toBe(true);
     // …and the nav entry that reaches it, at the address the cutover moved it to.
     expect(fs.readFileSync(path.join(ROOT, 'packs/leave/index.ts'), 'utf8')).toContain(
       "href: '/admin/leave-config/approval-chains'",
     );
     // …and the OLD address still answers, as a stub, so no saved approval bookmark 404s.
-    const stub = fs.readFileSync(path.join(ROOT, 'app/admin/leave/approval/page.tsx'), 'utf8');
+    const stub = fs.readFileSync(path.join(ROOT, 'app/(app)/admin/leave/approval/page.tsx'), 'utf8');
     expect(stub).toContain('redirect(');
     expect(stub).toContain('/admin/leave-config/approval-chains');
   });
@@ -274,7 +274,7 @@ describe('Approval Workflow page — two headed sections', () => {
    * deliberately KEPT: it is the domain operation and the policy suite drives it directly.
    */
   it('removes the base-chain server action, not just its screen', () => {
-    const actions = fs.readFileSync(path.join(ROOT, 'app/admin/leave-approval/actions.ts'), 'utf8');
+    const actions = fs.readFileSync(path.join(ROOT, 'app/(app)/admin/leave-approval/actions.ts'), 'utf8');
     expect(actions).not.toContain('saveLeaveApprovalPolicyAction');
     expect(actions).not.toContain('setLeaveApprovalPolicy');
     // The neighbouring actions are untouched — this was a removal, not a rewrite.
@@ -289,7 +289,7 @@ describe('Approval Workflow page — two headed sections', () => {
    * 2 (the base chain), now this.
    */
   it('the per-rule actions retire with their matrix — no unreachable write path into approval rules', () => {
-    const actions = fs.readFileSync(path.join(ROOT, 'app/admin/leave-approval/actions.ts'), 'utf8');
+    const actions = fs.readFileSync(path.join(ROOT, 'app/(app)/admin/leave-approval/actions.ts'), 'utf8');
     expect(actions).not.toContain('saveLeaveApprovalRuleAction');
     expect(actions).not.toContain('archiveLeaveApprovalRuleAction');
     // …and the parse/persist helpers that had no other caller.
@@ -353,8 +353,8 @@ describe('Approval Workflow page — two headed sections', () => {
  * so the cutover deletes one line rather than the case.
  */
 describe('706d34e8 + a6fe37fc R4 — the matrix stays gone, and the read-out is not it', () => {
-  const NEW_PAGE = path.join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx');
-  const READOUT = path.join(ROOT, 'app/admin/leave-config/approval-readout.tsx');
+  const NEW_PAGE = path.join(ROOT, 'app/(app)/admin/leave-config/approval-chains/page.tsx');
+  const READOUT = path.join(ROOT, 'app/(app)/admin/leave-config/approval-readout.tsx');
 
   it('the new Approval chains page exists and renders no Workflow Matrix either', () => {
     expect(fs.existsSync(NEW_PAGE), 'a6fe37fc Round 4 builds this page — see the migration order').toBe(true);
@@ -362,8 +362,8 @@ describe('706d34e8 + a6fe37fc R4 — the matrix stays gone, and the read-out is 
     expect(newPage).not.toContain('<WorkflowMatrix');
     expect(newPage).not.toContain('buildWorkflowMatrixLabels');
     // The deleted files stay deleted at the new address too.
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-approval/workflow-matrix.tsx'))).toBe(false);
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/leave-approval/matrix-labels.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/leave-approval/workflow-matrix.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/leave-approval/matrix-labels.ts'))).toBe(false);
   });
 
   it('the read-out shows the scope columns 706d34e8 left invisible — that is what it is FOR', () => {
@@ -389,7 +389,7 @@ describe('706d34e8 + a6fe37fc R4 — the matrix stays gone, and the read-out is 
       ).toBe(false);
     }
     // …and the per-rule server actions are still retired, so there is nothing for one to post to.
-    const actions = fs.readFileSync(path.join(ROOT, 'app/admin/leave-approval/actions.ts'), 'utf8');
+    const actions = fs.readFileSync(path.join(ROOT, 'app/(app)/admin/leave-approval/actions.ts'), 'utf8');
     expect(actions).not.toContain('saveLeaveApprovalRuleAction');
     expect(actions).not.toContain('archiveLeaveApprovalRuleAction');
   });

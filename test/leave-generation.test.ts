@@ -457,8 +457,8 @@ describe('93249794 · D. no second entitlement definition, no second criteria en
     // is the one that matters: two screens, ONE section list, so they cannot select different people
     // from the same words.
     for (const page of [
-      'app/admin/leave-config/adjustments/page.tsx',
-      'app/admin/leave-config/generate/page.tsx',
+      'app/(app)/admin/leave-config/adjustments/page.tsx',
+      'app/(app)/admin/leave-config/generate/page.tsx',
     ]) {
       expect(read(page), `${page} must call the shared builder`).toContain('buildOrgCriteriaSections');
     }

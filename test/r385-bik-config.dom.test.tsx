@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { StatutoryConfig } from '../app/admin/pay-components/statutory-config';
+import { StatutoryConfig } from '../app/(app)/admin/pay-components/statutory-config';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';

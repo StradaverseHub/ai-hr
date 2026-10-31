@@ -217,18 +217,18 @@ describe('labels (APR-023) and the route\'s registration', () => {
     const route = '/performance/[cycleId]/[section]/[tab]';
     expect(SCREENS.filter((s) => s.routes.includes(route)).map((s) => s.screenKey)).toEqual(['performance']);
     expect(SCREENS.find((s) => s.screenKey === 'performance')?.routes).toEqual(expect.arrayContaining(['/performance/[cycleId]', '/performance/[cycleId]/release', '/performance/[cycleId]/records', '/performance/[cycleId]/reports', route]));
-    const dir = path.join(ROOT, 'app/performance/[cycleId]/[section]/[tab]');
+    const dir = path.join(ROOT, 'app/(app)/performance/[cycleId]/[section]/[tab]');
     const page = fs.readFileSync(path.join(dir, 'page.tsx'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
     expect(page).toMatch(/const s = await requireOnehrAdminAccess\(\);/);
     expect(page).toMatch(/if \(isOnehrOnlyPerformanceAdmin\(s\) && !await isOnehrAdminCycle\(s, cycleId\)\) notFound\(\);/);
     expect(fs.readFileSync(path.join(dir, 'loading.tsx'), 'utf8').trim()).toBe("export { default } from '@/components/route-loading';");
     // The section folder holds no page of its own, so it needs no boundary; the three existing pages keep theirs.
-    expect(fs.existsSync(path.join(ROOT, 'app/performance/[cycleId]/[section]/page.tsx'))).toBe(false);
-    for (const existing of ['release', 'records', 'reports']) expect(fs.existsSync(path.join(ROOT, `app/performance/[cycleId]/${existing}/loading.tsx`)), existing).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/performance/[cycleId]/[section]/page.tsx'))).toBe(false);
+    for (const existing of ['release', 'records', 'reports']) expect(fs.existsSync(path.join(ROOT, `app/(app)/performance/[cycleId]/${existing}/loading.tsx`)), existing).toBe(true);
   });
 
   it('keeps every section and tab slug clear of the existing static segments under /performance/[cycleId]', () => {
-    const statics = fs.readdirSync(path.join(ROOT, 'app/performance/[cycleId]'), { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('[')).map((e) => e.name).sort();
+    const statics = fs.readdirSync(path.join(ROOT, 'app/(app)/performance/[cycleId]'), { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith('[')).map((e) => e.name).sort();
     expect(statics).toEqual(['progress', 'records', 'release', 'reports']);
     // A card section slug that equals a static folder would never be reached; Reports is drawn through its existing pages.
     for (const s of adminSectionList.filter((x) => x.tabs.some((t) => t.pages.some((p) => !p.route)))) expect(statics, s.key).not.toContain(s.key);

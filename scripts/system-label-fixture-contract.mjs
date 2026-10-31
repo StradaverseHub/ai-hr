@@ -10,7 +10,7 @@ export const SYSTEM_LABEL_FIXTURE_SOURCE_PATHS=Object.freeze([
  'lib/system-label-definition.ts','lib/system-label-workbook.ts','lib/system-label-scope.ts',
  'db/schema.ts','db/migrations/0550_system_label_company_criteria.sql',
  'core/system-labels.ts','core/system-label-import.ts','core/admin.ts','core/profile-options.ts','core/org.ts',
- 'app/admin/settings/system-labels/page.tsx','app/admin/settings/system-labels/import-actions.ts',
+ 'app/(app)/admin/settings/system-labels/page.tsx','app/(app)/admin/settings/system-labels/import-actions.ts',
  'components/system-labels-grid.tsx',
  'messages/en.json','messages/ms.json','messages/zh.json','messages/ta.json','messages/th.json','messages/vi.json',
 ]);

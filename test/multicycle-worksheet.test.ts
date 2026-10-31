@@ -187,7 +187,7 @@ describe('ADR-0024 §7 worksheet — the arithmetic that separates the two readi
  */
 describe('ADR-0024 §7 worksheet — the screen and the message catalogs agree', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const pageSrc = readFileSync(`${root}app/payroll/multi-cycle-worksheet/page.tsx`, 'utf8');
+  const pageSrc = readFileSync(`${root}app/(app)/payroll/multi-cycle-worksheet/page.tsx`, 'utf8');
   const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
   const catalogs = LOCALES.map((loc) => ({
     loc,

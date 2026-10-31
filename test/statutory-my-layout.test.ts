@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const page = read('app/admin/personnel/[employmentId]/page.tsx');
+const page = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 const identityTaxCard = read('components/identity-tax-card.tsx');
 
 /**

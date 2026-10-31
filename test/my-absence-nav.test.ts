@@ -30,10 +30,10 @@ const sidebar = read('components/sidebar.tsx');
 const leavePack = read('packs/leave/index.ts');
 const SRC = sidebar + leavePack;
 const permissions = read('lib/permissions.ts');
-const leavePage = read('app/leave/page.tsx');
+const leavePage = read('app/(app)/leave/page.tsx');
 const ownHistory = read('components/leave/own-leave-history.tsx');
-const mePage = read('app/me/page.tsx');
-const meActions = read('app/me/actions.ts');
+const mePage = read('app/(app)/me/page.tsx');
+const meActions = read('app/(app)/me/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('My Absence: first-level nav rename (label-only, same href)', () => {
@@ -149,7 +149,7 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
     expect(ownHistory.includes('leaveRequestDateBreakdown(session, r.id)')).toBe(true);
     // Own uploaded attachment — served by the UNCHANGED route under /me/leave/attachment.
     expect(ownHistory.includes('/me/leave/attachment/${r.id}?inline=1')).toBe(true);
-    expect(existsSync(root + 'app/me/leave/attachment/[id]/route.ts')).toBe(true);
+    expect(existsSync(root + 'app/(app)/me/leave/attachment/[id]/route.ts')).toBe(true);
     expect(ownHistory.includes("tMe('leaveStatus.partiallyApproved')")).toBe(true);
     // r302 (6c9802c9): the stage line ("Manager review" / "HR review") is replaced by the approver line — who
     // it is waiting for and at which level, labelled by the step's KIND — and the step-by-step progress.
@@ -173,7 +173,7 @@ describe('My Absence: everything the /me Leave tab had now lives on /leave', () 
     // capability: cancelling someone else's leave lives on Employee Leave Record (where fe3eb141 moved
     // it) and on the dashboard calendar. Asserted at both surviving homes so it cannot go homeless later.
     expect(leavePage.includes('<AdminCancelLeaveDialog')).toBe(false);
-    expect(read('app/leave/employee-records/page.tsx')).toContain('<AdminCancelLeaveDialog');
+    expect(read('app/(app)/leave/employee-records/page.tsx')).toContain('<AdminCancelLeaveDialog');
     expect(read('components/planned-absences-grid.tsx')).toContain('<AdminCancelLeaveDialog');
   });
 });

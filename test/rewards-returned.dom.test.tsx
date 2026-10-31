@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-import { ReturnedBanner, RewardStageLabel, rewardDecisionTime } from '../app/rewards/returned-status';
+import { ReturnedBanner, RewardStageLabel, rewardDecisionTime } from '../app/(app)/rewards/returned-status';
 
 const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>;
 afterEach(cleanup);

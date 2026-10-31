@@ -13,7 +13,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 
 /**
  * Item 5988053a — Family tab Add/Edit child dialog shell. The ONLY client file this feature adds, modelled
- * on FixedToolbar (app/payroll/transactions/fixed/add-fixed-dialog.tsx): a trigger Button plus a Radix
+ * on FixedToolbar (app/(app)/payroll/transactions/fixed/add-fixed-dialog.tsx): a trigger Button plus a Radix
  * Dialog whose body is the SERVER-RENDERED dependent form passed as `children`. It holds the open state and
  * nothing else — no core/ import (core/dependents.ts pulls the pg driver via db/client, so values from it
  * must never cross into a client bundle), and no message namespace beyond the close label.

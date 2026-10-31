@@ -31,7 +31,7 @@ import { hireEmployee } from '../core/org';
 import { leaveCycleEnd } from '../core/leave';
 import { listLeaveRequestsPage } from '../core/read';
 import { commitLeaveHistoryImport } from '../core/leave-history-import';
-import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows } from '../app/(app)/leave/employee-balances/rows';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -49,8 +49,8 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
-const PAGE = 'app/leave/employee-balances/page.tsx';
-const ROWS = 'app/leave/employee-balances/rows.ts';
+const PAGE = 'app/(app)/leave/employee-balances/page.tsx';
+const ROWS = 'app/(app)/leave/employee-balances/rows.ts';
 const CATALOGUES = { en, ms, ta, th, vi: vi_, zh } as const;
 
 const TODAY = todayInKualaLumpur();

@@ -8,7 +8,7 @@ vi.mock('../lib/session',()=>({getSession:browser.session}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>(key:string,values?:unknown)=>{browser.translate(namespace,key,values);return namespace+'.'+key;}}));
 vi.mock('next/cache',()=>({revalidatePath:browser.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw Error('REDIRECT '+url);}}));
-import {closeAction} from '../app/payroll/actions';
+import {closeAction} from '../app/(app)/payroll/actions';
 import {publicErrorMessage} from '../lib/public-error';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';

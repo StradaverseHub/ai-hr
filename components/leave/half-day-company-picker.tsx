@@ -9,7 +9,7 @@ import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
  *
  * ⚠️ THIS WRAPPER EXISTS BECAUSE OF A LIVE PRODUCTION BREAKAGE, AND DELETING IT WOULD REINSTATE IT.
  *
- * r123 dropped `ChipMultiSelect` straight into app/admin/leave/entitlements/page.tsx, which is a SERVER
+ * r123 dropped `ChipMultiSelect` straight into app/(app)/admin/leave/entitlements/page.tsx, which is a SERVER
  * component, and passed it `removeLabelFor` and `countLabelFor` — closures over the server's `t`.
  * `ChipMultiSelect` is `'use client'`, so React had to serialise those props across the boundary and threw
  * at RENDER time:

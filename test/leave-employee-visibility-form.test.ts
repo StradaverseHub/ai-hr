@@ -9,7 +9,7 @@
  *
  * What this file pins, and why each part cannot be pinned anywhere else:
  *
- *   1. THE FORM↔ACTION CONTRACT (rule 17). Deleting a checkbox is only half the change: app/admin/actions.ts
+ *   1. THE FORM↔ACTION CONTRACT (rule 17). Deleting a checkbox is only half the change: app/(app)/admin/actions.ts
  *      read `fd.get('visibleToEmployee') === 'on'`, and with the box gone that expression is FALSE on every
  *      visibility save — it would have silently hidden every leave type HR touched. The defect lives BETWEEN
  *      the two files, so the assertion spans both. Neither file's types can see it and no render can either.
@@ -56,10 +56,10 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
  * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
  * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
  */
-const panel = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx']
+const panel = ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx', 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
   .map((f) => read(f))
   .join('\n');
-const actions = read('app/admin/actions.ts');
+const actions = read('app/(app)/admin/actions.ts');
 
 /** Strip block + line comments. Every assertion about what the CODE does runs on this: the comments beside
  *  these changes deliberately name the things the code must no longer reference. */
@@ -109,7 +109,7 @@ describe('the Employee Visibility sub-form now has ONE checkbox', () => {
   });
 });
 
-describe('app/admin/actions.ts stops forwarding visibleToEmployee from this form (the contract between the two files)', () => {
+describe('app/(app)/admin/actions.ts stops forwarding visibleToEmployee from this form (the contract between the two files)', () => {
   /** The visibility marker's field block in the action. */
   const fieldBlock = (): string => {
     const from = actions.indexOf("const touchVisibility = fd.get('visibility')");

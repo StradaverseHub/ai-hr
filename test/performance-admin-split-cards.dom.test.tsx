@@ -17,10 +17,10 @@ vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) 
 vi.mock('next/navigation', async (importActual) => ({ ...await importActual<typeof import('next/navigation')>(), useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('../lib/scope', () => ({ scopedSession: ports.session }));
 vi.mock('../packs/performance/service', () => ({ getAssessmentProgress: ports.progress, getAssessmentAssessorProgress: ports.raters }));
-vi.mock('../app/performance/onehr-actions', () => ({ onehrCycleAction: vi.fn(), assessmentArchitectureAction: vi.fn(), assessmentGenerateProfilesAction: vi.fn() }));
-import { CatalogueAdmin } from '../app/performance/onehr/catalogue-admin';
-import { AssessmentProgressAdmin } from '../app/performance/onehr/progress-admin';
-import { ProgressTable } from '../app/performance/onehr/progress-table';
+vi.mock('../app/(app)/performance/onehr-actions', () => ({ onehrCycleAction: vi.fn(), assessmentArchitectureAction: vi.fn(), assessmentGenerateProfilesAction: vi.fn() }));
+import { CatalogueAdmin } from '../app/(app)/performance/onehr/catalogue-admin';
+import { AssessmentProgressAdmin } from '../app/(app)/performance/onehr/progress-admin';
+import { ProgressTable } from '../app/(app)/performance/onehr/progress-table';
 
 const c = en.onehr.catalogueAdmin, p = en.onehr.progressAdmin;
 const CYCLE = '11111111-2222-4333-8444-555555555555';

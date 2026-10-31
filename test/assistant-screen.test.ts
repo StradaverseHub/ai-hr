@@ -23,8 +23,8 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
 describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
   it('the route, its action, and the nav row all exist', () => {
-    expect(fs.existsSync(path.join(ROOT, 'app/assistant/page.tsx'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/assistant/actions.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/assistant/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/assistant/actions.ts'))).toBe(true);
     expect(read('components/sidebar.tsx')).toContain("href: '/assistant'");
   });
 
@@ -38,13 +38,13 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
   it('is in the function-access matrix only as the conditional, layout-authenticated Assistant column', () => {
     // History: ADR-0082 slice 4 kept /assistant OUT of the matrix because the page used getSession and
     // the function-access guard regex knew no session guard (r225's trap). ADR-0131 ("Shared Assistant
-    // page authentication and access reference") replaced that: app/assistant/layout.tsx authenticates
+    // page authentication and access reference") replaced that: app/(app)/assistant/layout.tsx authenticates
     // the workspace and every human review page through the selected browser session, and the matrix
     // carries ONE conditional `assistantSession` column covering exactly those routes
     // (test/function-access.test.ts pins the route set). Role eligibility there is not an Assistant
     // grant: the grant, module, pause and native permission remain with each reader or command.
-    expect(read('app/assistant/page.tsx')).toContain('getSession');
-    expect(read('app/assistant/layout.tsx')).toContain('await getBrowserCommandSession()');
+    expect(read('app/(app)/assistant/page.tsx')).toContain('getSession');
+    expect(read('app/(app)/assistant/layout.tsx')).toContain('await getBrowserCommandSession()');
     const permissions = read('lib/permissions.ts');
     expect(permissions).toContain("{screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',");
     expect(permissions.match(/href:'\/assistant'/g) ?? []).toHaveLength(1);
@@ -55,7 +55,7 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
   it('the screen never renders an unexplained refusal', () => {
     // mayUseAssistant returns three distinct reasons; each has to reach the operator as its own sentence
     // naming who can fix it. A single "no access" would be a dead end.
-    const page = read('app/assistant/page.tsx');
+    const page = read('app/(app)/assistant/page.tsx');
     expect(page).toContain('denied_');
     for (const reason of ['module_off', 'no_grant', 'no_user','unavailable']) {
       expect(read('messages/en.json')).toContain(`denied_${reason}`);
@@ -63,7 +63,7 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
   });
 
   it('renders deterministic canonical cards and fixed bridge copy, never raw stored model prose',()=>{
-    const page=read('app/assistant/page.tsx');expect(page).not.toContain('{h.answer}');
+    const page=read('app/(app)/assistant/page.tsx');expect(page).not.toContain('{h.answer}');
     expect(page).toContain('CanonicalModuleJob');
     expect(page).toContain("from '@/components/assistant/workspace-conversation'");
     expect(page).toContain('<WorkspaceConversation');

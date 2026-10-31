@@ -20,7 +20,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import type { SubmissionFormat, SubmissionGroupKey } from '../app/payroll/payment-submission/registry';
+import type { SubmissionFormat, SubmissionGroupKey } from '../app/(app)/payroll/payment-submission/registry';
 
 const COMPANY = '11111111-2222-3333-4444-555555555555';
 
@@ -52,8 +52,8 @@ const fmt = (p: {
       };
 };
 
-vi.mock('../app/payroll/payment-submission/registry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../app/payroll/payment-submission/registry')>();
+vi.mock('../app/(app)/payroll/payment-submission/registry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../app/(app)/payroll/payment-submission/registry')>();
   return {
     ...actual,
     // The three accessors the screen and the route use. `SUBMISSION_GROUPS` stays REAL — the shelves are
@@ -78,7 +78,7 @@ vi.mock('next-intl/server', () => ({
   getLocale: vi.fn(async () => 'en'),
 }));
 
-import PaymentSubmissionPage from '../app/payroll/payment-submission/page';
+import PaymentSubmissionPage from '../app/(app)/payroll/payment-submission/page';
 
 /** Every value of one prop anywhere in a rendered tree. Walks all props, not only `children`. */
 function propValues(node: unknown, prop: string, acc: string[] = []): string[] {
@@ -188,7 +188,7 @@ describe('20f6c6a8 (b) — the registry drives the screen', () => {
 });
 
 describe('20f6c6a8 (b) — the screen knows no authority (the weaker half, kept honest)', () => {
-  const PAGE = readFileSync(new URL('../app/payroll/payment-submission/page.tsx', import.meta.url), 'utf8');
+  const PAGE = readFileSync(new URL('../app/(app)/payroll/payment-submission/page.tsx', import.meta.url), 'utf8');
   // Comments explain the design and legitimately quote the branches this design is reacting to, so the
   // guard reads the CODE only. Same technique the pack-drift ratchet needs for the same reason.
   const CODE = PAGE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');

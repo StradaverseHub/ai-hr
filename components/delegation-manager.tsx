@@ -15,7 +15,7 @@ import {
   revokeSelfDelegationAction,
   type DelegationActionResult,
   type DelegationContext,
-} from '@/app/delegations/actions';
+} from '@/app/(app)/delegations/actions';
 
 /**
  * Popup parity (feedback 29fe2d45) — ONE building block for BOTH delegation surfaces: the /delegations

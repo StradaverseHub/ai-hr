@@ -43,7 +43,7 @@
  * cannot render one, so `settle()` awaits every async component before `renderToStaticMarkup`.
  *
  * NON-VACUITY (done by the builder, re-derivable by the verifier): put
- * `<LeaveConfigHealthCard rows={configHealth} />` back on a copy of app/admin/leave-config/types/page.tsx
+ * `<LeaveConfigHealthCard rows={configHealth} />` back on a copy of app/(app)/admin/leave-config/types/page.tsx
  * and BOTH §A's "the old mount is gone" case and §C's rendered Leave types case fail; delete the row from
  * a copy of packs/leave/index.ts and §A's position case and §B's highlight case fail on the new address.
  */
@@ -100,8 +100,8 @@ vi.mock('next/headers', () => ({
 import { cloneElement, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
-import BalanceHealthPage from '../app/admin/leave-config/balance-health/page';
-import LeaveTypesPage from '../app/admin/leave-config/types/page';
+import BalanceHealthPage from '../app/(app)/admin/leave-config/balance-health/page';
+import LeaveTypesPage from '../app/(app)/admin/leave-config/types/page';
 import { LEAVE_CONFIG_MAP, leaveConfigPageHeader } from '../components/leave-config-map';
 import { isNavRowActive, isParentActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
@@ -132,10 +132,10 @@ const et = (key: string) => str('en', `admin.entitlementTemplates.${key}`);
 const visible = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, '');
 
 const HEALTH_HREF = '/admin/leave-config/balance-health';
-const HEALTH_PAGE = 'app/admin/leave-config/balance-health/page.tsx';
+const HEALTH_PAGE = 'app/(app)/admin/leave-config/balance-health/page.tsx';
 const TYPES_HREF = '/admin/leave-config/types';
-const TYPES_PAGE = 'app/admin/leave-config/types/page.tsx';
-const BLOCK = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const TYPES_PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
+const BLOCK = 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 
 const NODE = leavePack.navNodes!.find((n) => n.group === 'admin')!;
 const HEALTH_ROW = LEAVE_SETTINGS_DESTINATIONS.find((c) => c.href === HEALTH_HREF)!;

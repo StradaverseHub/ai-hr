@@ -60,11 +60,11 @@
         "sha256": "766e5dde5dfabc7afe760f82bf503b64d70f4236d849579eff5d2aa9b8eae8fd"
       },
       {
-        "path": "app/admin/settings/system-labels/page.tsx",
+        "path": "app/(app)/admin/settings/system-labels/page.tsx",
         "sha256": "69fb27a6fcb65357743c8a57d11d5aa133a922d6bfe165e04553083372ffdb4f"
       },
       {
-        "path": "app/admin/settings/system-labels/import-actions.ts",
+        "path": "app/(app)/admin/settings/system-labels/import-actions.ts",
         "sha256": "c7908f7571773b4fd6f9f9476ffa89131f44c5a1a5eef4da09079c2927b0c028"
       },
       {
@@ -150,11 +150,11 @@
         "sha256": "766e5dde5dfabc7afe760f82bf503b64d70f4236d849579eff5d2aa9b8eae8fd"
       },
       {
-        "path": "app/admin/settings/system-labels/page.tsx",
+        "path": "app/(app)/admin/settings/system-labels/page.tsx",
         "sha256": "69fb27a6fcb65357743c8a57d11d5aa133a922d6bfe165e04553083372ffdb4f"
       },
       {
-        "path": "app/admin/settings/system-labels/import-actions.ts",
+        "path": "app/(app)/admin/settings/system-labels/import-actions.ts",
         "sha256": "c7908f7571773b4fd6f9f9476ffa89131f44c5a1a5eef4da09079c2927b0c028"
       },
       {

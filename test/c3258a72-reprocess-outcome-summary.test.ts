@@ -20,7 +20,7 @@ vi.mock('next-intl/server', () => ({
       messages: JSON.parse(fs.readFileSync(path.resolve(__dirname, `../messages/${state.locale}.json`), 'utf8')),
     }),
 }));
-import { ReprocessOutcomePanel, ReprocessOutcomeRemarks, ReprocessOutcomeStatus } from '../app/payroll/[batchId]/reprocess/outcomes';
+import { ReprocessOutcomePanel, ReprocessOutcomeRemarks, ReprocessOutcomeStatus } from '../app/(app)/payroll/[batchId]/reprocess/outcomes';
 
 const run = { companyId: '22222222-2222-4222-8222-222222222222', payPeriod: '2026-07', runType: 'regular' };
 const at = '2026-07-31T10:00:00.000Z';

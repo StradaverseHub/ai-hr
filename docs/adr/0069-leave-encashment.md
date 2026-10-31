@@ -169,7 +169,7 @@ versa) is worse in an audit-sensitive feature than a hard failure the admin can 
   path is unfreeze → cancel the request (the ledger credit now passes the trigger) → adjust (re-locks).
 - **Notice-period accrual excluded** — flagged as a business decision (§4), not silently assumed; the four
   sweep functions explicitly skip a frozen employment rather than silently growing the locked balance.
-- **Termination typed in directly, bypassing the resignation flow** (`app/people/[employmentId]/actions.ts`
+- **Termination typed in directly, bypassing the resignation flow** (`app/(app)/people/[employmentId]/actions.ts`
   `terminateEmployment`) → creates no `resignation_request`, so `freezeOnResignationApprovalTx` never runs
   and no snapshot exists. `leaverAdvisory` visibly badges this case `encashmentSource: 'live_balance'` rather
   than silently presenting an unfrozen number as if it were authoritative. Extending the freeze to direct

@@ -13,7 +13,7 @@ vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: { personId: 'm
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('notFound');}}));
 vi.mock('../lib/authz', () => ({ requireModule: async () => undefined }));
 vi.mock('../core/read', () => ({ myEmployment: state.own,myOwnEmploymentSubjects:state.selected }));
-vi.mock('../app/attendance/my-records/[date]/actions', () => ({ requestOwnAttendanceDayAction: () => undefined }));
+vi.mock('../app/(app)/attendance/my-records/[date]/actions', () => ({ requestOwnAttendanceDayAction: () => undefined }));
 vi.mock('../components/attendance-figure-cells', () => ({ AttendanceFigureCells: () => createElement('td', { colSpan: 8 }, 'figures') }));
 vi.mock('../packs/attendance/service', async () => ({
   attendanceForEmploymentRange: state.rows,
@@ -22,7 +22,7 @@ vi.mock('../packs/attendance/service', async () => ({
   ...(await import('../core/attendance-derive')),
   ...(await import('../core/attendance-explain')),
 }));
-import Page from '../app/attendance/my-records/[date]/page';
+import Page from '../app/(app)/attendance/my-records/[date]/page';
 beforeEach(() => {
   vi.clearAllMocks(); state.locale = 'en';
   state.selected.mockResolvedValue([{employmentId:'8cfa58c2-dd92-4eb6-8f8c-ab19406115fd',personName:'Own second',company:'Fictional second employer',employeeCode:'SECOND'}]);

@@ -14,7 +14,7 @@
  *
  * ⚠️ AND IT NEVER THROWS ON A BAD LABEL. An unparseable or out-of-range period is returned AS STORED
  * rather than turned into "Invalid Date" or into a guessed month: the honest answer for a row whose own
- * period is unreadable is the row's own value. Same decision as `app/payroll/pcb-detail/page.tsx` made
+ * period is unreadable is the row's own value. Same decision as `app/(app)/payroll/pcb-detail/page.tsx` made
  * when this lived there.
  */
 export function monthYearLabel(payPeriod: string | null | undefined, locale: string): string {

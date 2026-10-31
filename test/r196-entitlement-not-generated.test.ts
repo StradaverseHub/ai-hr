@@ -716,7 +716,7 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
   });
 
   it('Employee Balances captions the same cell, in the same column count', () => {
-    const src = read('app/leave/employee-balances/page.tsx');
+    const src = read('app/(app)/leave/employee-balances/page.tsx');
     expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
     expect(src).toContain('{num(r.ytdEntitled)}');
     // All-employees Inquiry adds four identity columns to the previous sixteen. The notice
@@ -742,7 +742,7 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
   });
 
   it('the export carries it as a column, so the file cannot disagree with the screen', () => {
-    const src = read('app/leave/employee-balances/export/route.ts');
+    const src = read('app/(app)/leave/employee-balances/export/route.ts');
     expect(src).toContain("tInq('colEntitlementStatus')");
     expect(src).toContain('tMe(ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus])');
     // Header and cell must move together — a column added to one list only silently shifts every figure.
@@ -764,10 +764,10 @@ describe('31e39d74: every surface that shows the figure also shows the reason', 
   });
 
   it('the retained HR Leave inquiry captions configuration status after the Personnel duplicate is removed', () => {
-    const src = read('app/leave/employee-balances/page.tsx');
+    const src = read('app/(app)/leave/employee-balances/page.tsx');
     expect(src).toContain('entitlementStatusNeedsNotice(r.entitlementStatus)');
     expect(src).toContain('ENTITLEMENT_STATUS_LABEL_KEY[r.entitlementStatus]');
-    expect(read('app/admin/personnel/[employmentId]/page.tsx')).not.toContain('personnelLeaveBreakdowns');
+    expect(read('app/(app)/admin/personnel/[employmentId]/page.tsx')).not.toContain('personnelLeaveBreakdowns');
   });
 
   it('the derivation is DB-free and framework-free, so server and client share one definition', () => {

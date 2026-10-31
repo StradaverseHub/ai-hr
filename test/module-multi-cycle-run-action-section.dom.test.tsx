@@ -6,7 +6,7 @@ const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn(
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/multi-cycle-run-choices',()=>({readMultiCycleRunModuleActionChoices:source.availability}));vi.mock('../components/assistant/module-multi-cycle-run-action-panel',()=>({ModuleMultiCycleRunActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModuleMultiCycleRunActionSection} from '../components/assistant/module-multi-cycle-run-action-section';
 import {ModuleMultiCycleRunActionPanel} from '../components/assistant/module-multi-cycle-run-action-panel';
-import AssistantMultiCycleRunPage from '../app/assistant/payroll-runs/page';
+import AssistantMultiCycleRunPage from '../app/(app)/assistant/payroll-runs/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000009',review='10000000-0000-4000-8000-000000000003';
 import {choices} from './fixtures/multi-cycle-run-browser';
 const session=()=>({tenantId:tenant,userId:user,personId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});

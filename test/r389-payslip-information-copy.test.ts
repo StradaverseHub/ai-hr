@@ -56,7 +56,7 @@ import {
 import { DEFAULT_PAYSLIP_INFORMATION_FIELDS, PAYSLIP_INFORMATION_FIELDS, selectPayslipInformation, type PayslipInformationField } from '../core/payslip-information';
 import { buildPayslipPdfData, renderPayslipPdf } from '../lib/payslip-pdf';
 import { labels as pdfLabels } from './fixtures/payslip-pdf-fixture';
-import { copyPayslipInformation } from '../app/payroll/payslip-information/actions';
+import { copyPayslipInformation } from '../app/(app)/payroll/payslip-information/actions';
 import { adminCtx, owner, migrateTestDb, resetDb, seedBase, closeAll, createAppUser, harnessSnapshot, type Base } from './harness';
 
 let base: Base;
@@ -115,7 +115,7 @@ function drawnText(bytes: Uint8Array): string[] {
   return out;
 }
 
-/** The employee's own PDF, built the way app/me/payslip/[payslipId]/pdf/route.ts builds it. */
+/** The employee's own PDF, built the way app/(app)/me/payslip/[payslipId]/pdf/route.ts builds it. */
 async function essDocument(ess: SessionContext, slipId: string) {
   const p = (await payslipDetail(ess, slipId))!;
   const informationRows = selectPayslipInformation({ ...p, employee: p.employee }, p.informationFields, names);

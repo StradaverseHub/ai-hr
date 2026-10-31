@@ -8,7 +8,7 @@ import { Card, btnPrimary, inputCls } from '@/components/ui';
  * 7f69bd71 — THE CONFIGURATION RECORD, as the first sub-tab of the Reset records sub-screen
  * (`/admin/leave-config/records?record=configuration`).
  *
- * THIS IS THE BODY OF `app/admin/leave-config/records/entitlement/page.tsx` MOVED, NOT REWRITTEN: the
+ * THIS IS THE BODY OF `app/(app)/admin/leave-config/records/entitlement/page.tsx` MOVED, NOT REWRITTEN: the
  * intro card, the "Record taken" picker with Show and Download as CSV, and the nine-column listing with
  * its four layer labels — exactly what the Entitlements tab showed until this round. The page that owned
  * it is a redirect stub now; the reporter's complaint was where the record SAT, not what it showed.
@@ -26,7 +26,7 @@ import { Card, btnPrimary, inputCls } from '@/components/ui';
  * ⚠️ THE CSV LINK STILL POINTS AT THE OLD `/export` ROUTE HANDLER, AND IT STAYS THERE. The handler is
  * NOT a page: it has no screen column, it was never in lib/permissions.ts, and nothing about this move
  * requires it to move. Re-addressing it would break every download link an administrator has saved and
- * would buy nothing — so `app/admin/leave/entitlements/archive/export/route.ts` is left exactly where it
+ * would buy nothing — so `app/(app)/admin/leave/entitlements/archive/export/route.ts` is left exactly where it
  * is, and this component links to it unchanged.
  *
  * SERVER COMPONENT, and it must stay one: plain markup, one `getTranslations`, only serialisable props

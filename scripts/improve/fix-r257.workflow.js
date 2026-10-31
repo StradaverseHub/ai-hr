@@ -167,9 +167,9 @@ PARAMETER VALUES SUCH AS AN NRIC is persisted into employee_import_run.errors an
 This is an HR product under PDPA. Do not persist raw driver text; map it to a message that names the
 column and the row without echoing the value.
 
-SCOPE FENCE UNCHANGED: app/admin/personnel/import/**, lib/import-schema.ts, core/import-sections.ts,
-lib/import-sections.ts and your tests. Do NOT touch app/admin/personnel/[employmentId]/** or
-app/admin/personnel/page.tsx or app/admin/personnel/new/** — other branches own those. No new migration.
+SCOPE FENCE UNCHANGED: app/(app)/admin/personnel/import/**, lib/import-schema.ts, core/import-sections.ts,
+lib/import-sections.ts and your tests. Do NOT touch app/(app)/admin/personnel/[employmentId]/** or
+app/(app)/admin/personnel/page.tsx or app/(app)/admin/personnel/new/** — other branches own those. No new migration.
 DO NOT absorb Attendance, Leave or Career Movement.`,
   },
   {
@@ -207,10 +207,10 @@ THEN THE TWO MINORS ABOUT YOUR OWN PROOFS, and they are the reason the bar moved
   structurally guaranteed by the harness. Rewrite it so it is capable of failing, or replace it with an
   assertion that is.
 
-SCOPE FENCE: app/admin/personnel/[employmentId]/**, app/admin/personnel/page.tsx, the shared personnel
+SCOPE FENCE: app/(app)/admin/personnel/[employmentId]/**, app/(app)/admin/personnel/page.tsx, the shared personnel
 components, lib/tab-save-dom.ts, lib/unsaved-changes.ts, lib/personnel-tab-sections.ts and your tests.
-Do NOT touch app/admin/personnel/import/** or lib/import-schema.ts (another branch owns the importer),
-app/admin/personnel/new/**, app/me/**, or core/leave-*. No new migration. Do not edit HANDOFF.md.`,
+Do NOT touch app/(app)/admin/personnel/import/** or lib/import-schema.ts (another branch owns the importer),
+app/(app)/admin/personnel/new/**, app/(app)/me/**, or core/leave-*. No new migration. Do not edit HANDOFF.md.`,
   },
 ];
 

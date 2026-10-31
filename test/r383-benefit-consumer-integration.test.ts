@@ -11,8 +11,8 @@ import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setE
 import {payslipForReview} from '../core/payroll-view';
 import {multiCycleWorksheetMY} from '../localization/my/multicycle-worksheet';
 import {explainPcb,pcbSlipSections,pcbClosingSections,pcbWorksheet} from '../core/pcb-explain';
-import {PcbDetailView} from '../app/payroll/pcb-detail/pcb-detail-view';
-import {pcbDetailPdfResponse} from '../app/payroll/pcb-detail/shared';
+import {PcbDetailView} from '../app/(app)/payroll/pcb-detail/pcb-detail-view';
+import {pcbDetailPdfResponse} from '../app/(app)/payroll/pcb-detail/shared';
 import {extractedText} from './helpers/pcb-pdf-text';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import * as schema from '../db/schema';

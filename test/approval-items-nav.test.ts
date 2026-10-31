@@ -15,7 +15,7 @@
  *      "My Absence" rename the same way).
  *
  * Not covered, deliberately: listPendingTasks itself is UNCHANGED by this feedback (the badge reuses
- * the value app/layout.tsx already resolves for the bell), so its existing coverage stands.
+ * the value app/(app)/layout.tsx already resolves for the bell), so its existing coverage stands.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -29,8 +29,8 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
 const sidebar = read('components/sidebar.tsx');
 const flyout = read('components/nav-flyout.tsx');
-const layout = read('app/layout.tsx');
-const actions = read('app/approvals/actions.ts');
+const layout = read('app/(app)/layout.tsx');
+const actions = read('app/(app)/approvals/actions.ts');
 const permissions = read('lib/permissions.ts');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
@@ -191,7 +191,7 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
 
 describe('post-decision refresh', () => {
   it('deciding revalidates the ROOT LAYOUT, not just the /approvals page', () => {
-    // The badge (and the bell's task count) live in app/layout.tsx. revalidatePath(back) defaults to
+    // The badge (and the bell's task count) live in app/(app)/layout.tsx. revalidatePath(back) defaults to
     // type 'page' and would leave both stale after a decision.
     expect(actions).toContain("revalidatePath('/', 'layout')");
     // Both decrement paths go through the shared helper: the row-level actions via done(), and bulk.

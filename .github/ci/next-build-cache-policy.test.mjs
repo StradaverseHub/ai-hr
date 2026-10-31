@@ -7,7 +7,7 @@ const env={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',GI
 const inputs=['tsconfig.json','tsconfig.build.json','pnpm-lock.yaml','package.json','pnpm-workspace.yaml','next.config.ts','deploy/css-cache-guard.sh','cssInputs'];
 const binaries=['typescript/package.json','typescript/lib/tsc.js','typescript/lib/_tsc.js','typescript/lib/typescript.js','next/dist/lib/typescript/runTypeCheckCli.js','next/dist/lib/typescript/runTypeScriptCli.js','next/dist/lib/typescript/runTypeCheck.js','next/dist/build/type-check.js'];
 const context={runtime:{node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8',typescript:'5.9.3'},sourcePath:'/home/runner/work/ai-hr/ai-hr/source',nodeOptions:'--max-old-space-size=6144',inputs:Object.fromEntries(inputs.map(p=>[p,digest])),compiler:Object.fromEntries(binaries.map(p=>[p,digest])),generatedTypes:[{path:'validator.ts',bytes:123,sha256:digest}]};
-const bytes=Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../app/page.tsx','../../lib/member.ts']}));
+const bytes=Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../app/(app)/page.tsx','../../lib/member.ts']}));
 const completedAt='2026-10-26T00:00:00.000Z',now=Date.parse(completedAt)+1000;
 const envelope={kind:'NEXT_APPLICATION_COMPILER_STATE_BUILD_MUST_RUN',releaseAuthorized:false,source:sha,controller:sha,runId:'123',attempt:'1',completedCommand:'canonical-build',completedCommandExit:0,bytes:bytes.length,sha256:hash(bytes),files:2,context,completedAt};
 test('only explicit managed first-attempt build/cache purpose with closed URLs is admitted',()=>{

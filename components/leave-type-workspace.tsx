@@ -48,7 +48,7 @@ const matchesFilter = (item: LeaveTypeWorkspaceItem, filter: LeaveTypeFilter) =>
 
 /**
  * Dialog-close wrapper for the Add Leave Type form's Cancel button (8cc268c4). Exported so the SERVER-rendered
- * addForm slot (app/admin/leave/entitlements/page.tsx) can place a Cancel button beside its Save button —
+ * addForm slot (app/(app)/admin/leave/entitlements/page.tsx) can place a Cancel button beside its Save button —
  * Radix context resolves at runtime because the slot mounts inside this workspace's Dialog.Content.
  */
 export function AddLeaveTypeCancel({ children }: { children: ReactNode }) {
@@ -79,7 +79,7 @@ export function AddLeaveTypeCancel({ children }: { children: ReactNode }) {
  * only the SELECTED panel mounts, so switching types is pure client state: no page reload, no nested tabs.
  *
  * Selection state + URL: the hash `#type-<id>` stays the deep-link contract (feedback 097de541 — the Leave
- * Types tab's Edit links, and the stay-on-save redirect's anchor, app/admin/actions.ts) — the workspace
+ * Types tab's Edit links, and the stay-on-save redirect's anchor, app/(app)/admin/actions.ts) — the workspace
  * selects the targeted type on mount and on hashchange, and writes the hash back via history.replaceState
  * on selection so the current choice survives the stay-on-save redirect. Default selection: first type.
  *

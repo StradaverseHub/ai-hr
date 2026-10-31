@@ -88,7 +88,7 @@ describe('i18n coverage', () => {
   });
 
   it('resolves the Formula editor dynamic catalogue in every locale', () => {
-    const editor=fs.readFileSync(path.resolve(__dirname,'../app/payroll/formula-builder/condition-editor.tsx'),'utf8');
+    const editor=fs.readFileSync(path.resolve(__dirname,'../app/(app)/payroll/formula-builder/condition-editor.tsx'),'utf8');
     const parameterMap=editor.match(/const parameterKeys:Record<string,string>=\{([^}]+)\}/)?.[1];
     expect(parameterMap).toBeTruthy();
     const parameters=new Map([...parameterMap!.matchAll(/'([^']+)':'([^']+)'/g)].map(match=>[match[1],match[2]]));

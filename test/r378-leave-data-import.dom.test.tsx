@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
 import type { LeaveBfRunRow } from '../lib/leave-bf-import-schema';
-import { LeaveDataImport } from '../app/admin/leave-config/data-import/leave-data-import';
+import { LeaveDataImport } from '../app/(app)/admin/leave-config/data-import/leave-data-import';
 
 const actions = vi.hoisted(() => ({ validate: vi.fn(), commit: vi.fn(), bfValidate: vi.fn(), reverse: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/admin/leave-config/history-import/actions', () => ({ validateLeaveHistoryImportAction: actions.validate, commitLeaveHistoryImportAction: actions.commit }));
-vi.mock('../app/admin/leave-config/bf-import/actions', () => ({ validateLeaveBfImportAction: actions.bfValidate, commitLeaveBfImportAction: vi.fn(), reverseLeaveBfImportAction: actions.reverse }));
+vi.mock('../app/(app)/admin/leave-config/history-import/actions', () => ({ validateLeaveHistoryImportAction: actions.validate, commitLeaveHistoryImportAction: actions.commit }));
+vi.mock('../app/(app)/admin/leave-config/bf-import/actions', () => ({ validateLeaveBfImportAction: actions.bfValidate, commitLeaveBfImportAction: vi.fn(), reverseLeaveBfImportAction: actions.reverse }));
 
 function show(bfRuns: LeaveBfRunRow[] = []) { render(<NextIntlClientProvider locale="en" messages={messages}><LeaveDataImport initialType={null} historyRuns={[]} bfRuns={bfRuns} /></NextIntlClientProvider>); }
 beforeEach(() => vi.clearAllMocks());

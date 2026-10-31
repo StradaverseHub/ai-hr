@@ -771,7 +771,7 @@ const codeOnly = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').repla
 
 describe('the Day Type select lives INSIDE the advance-notice sub-form', () => {
   const panel = codeOnly(
-    ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx']
+    ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx', 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx']
       .map((f) => readSrc(f))
       .join('\n'),
   );
@@ -819,8 +819,8 @@ describe('the Day Type select lives INSIDE the advance-notice sub-form', () => {
   });
 });
 
-describe('app/admin/actions.ts reads the select ONLY under the advance-notice marker', () => {
-  const actions = codeOnly(readSrc('app/admin/actions.ts'));
+describe('app/(app)/admin/actions.ts reads the select ONLY under the advance-notice marker', () => {
+  const actions = codeOnly(readSrc('app/(app)/admin/actions.ts'));
 
   it('the field is read inside the touchMinAdvance block and nowhere else', () => {
     const from = actions.indexOf("const touchMinAdvance = fd.get('minAdvance')");

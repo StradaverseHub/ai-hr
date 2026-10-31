@@ -28,11 +28,11 @@
  *   `leave-compute` (it owns the grade-group + scheme + per-type entitlement CRUD; the resolution
  *   math stays in leave-compute). It is leave-domain by function though it is not named `leave-*`, so
  *   it is pack-owned (its tables would otherwise be undeclared, i.e. "spine", which they are not).
- * - Routes: `app/leave/**` (the My Absence self-service home: balances, apply, edit/cancel history,
- *   per-date outcomes, export), `app/admin/leave/**` (config: type master, entitlements, application
- *   rules, approval workflow, payroll/encashment, import, audit), `app/admin/leave-approval/**`
- *   (approval templates + workflow matrix), `app/admin/toil/**` (a redirect stub to Leave Config › Leave
- *   Credit since 3fb1a611), `app/me/leave/**`
+ * - Routes: `app/(app)/leave/**` (the My Absence self-service home: balances, apply, edit/cancel history,
+ *   per-date outcomes, export), `app/(app)/admin/leave/**` (config: type master, entitlements, application
+ *   rules, approval workflow, payroll/encashment, import, audit), `app/(app)/admin/leave-approval/**`
+ *   (approval templates + workflow matrix), `app/(app)/admin/toil/**` (a redirect stub to Leave Config › Leave
+ *   Credit since 3fb1a611), `app/(app)/me/leave/**`
  *   (own-attachment download, kept for the /me?tab=leave deep-link back-compat).
  * - The boundary is enforced by test/leave-pack-drift.test.ts (D11 criterion 4, shrink-only ratchet
  *   seeded in test/pack-drift-allowlist.json under "leave").
@@ -85,11 +85,11 @@
  * - **The payroll seam:** `core/payroll.ts` — see the seam section above (encashment advisory).
  * - **Cross-module spine readers** (dashboards / analytics / approvals / ESS / offboarding / org /
  *   notifications — stay kernel per open decision 6, consume pack contracts/descriptors later):
- *   `app/page.tsx`, `app/approvals/actions.ts`, `app/me/actions.ts`, `app/delegations/{page,actions}.ts`,
- *   `app/admin/personnel/[employmentId]/{page.tsx,actions.ts,encashment-actions.ts}`,
+ *   `app/(app)/page.tsx`, `app/(app)/approvals/actions.ts`, `app/(app)/me/actions.ts`, `app/(app)/delegations/{page,actions}.ts`,
+ *   `app/(app)/admin/personnel/[employmentId]/{page.tsx,actions.ts,encashment-actions.ts}`,
  *   `core/analytics.ts`, `core/read.ts`, `core/org.ts`, `core/offboarding.ts`, `core/notifications.ts`,
  *   `core/admin.ts`, `core/roster.ts`.
- * - **Shared admin actions:** `app/admin/actions.ts` — the cross-cutting admin server actions file
+ * - **Shared admin actions:** `app/(app)/admin/actions.ts` — the cross-cutting admin server actions file
  *   (imports leave, leave-compute, leave-encashment, leave-formula, toil, benefit-scheme). Splits per
  *   surface when the admin actions are themselves pack-partitioned.
  * - **Client widgets** (cannot use the SERVER facade — it drags db/client into the client bundle):
@@ -226,8 +226,8 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     // door onto one screen's worth of settings — the duplication complaint 26e76a9f and e4238594 have
     // each answered once already on this same surface.
     //
-    // The ROUTE survives as a redirect stub (app/admin/leave/page.tsx → /admin/leave/entitlements) so
-    // saved links, the leave-type master actions' ok(LEAVE)/fail(LEAVE) targets in app/admin/actions.ts
+    // The ROUTE survives as a redirect stub (app/(app)/admin/leave/page.tsx → /admin/leave/entitlements) so
+    // saved links, the leave-type master actions' ok(LEAVE)/fail(LEAVE) targets in app/(app)/admin/actions.ts
     // and the import page's back link all still land somewhere real. A stub is NOT a guarded page, so it
     // also left lib/permissions.ts's leaveConfig `routes` in the same change — test/function-access.test.ts
     // fails on a registered route with no guarded page on disk, which is why that is one move, not two.
@@ -253,7 +253,7 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     // The listing that says which leave types can produce a balance at all was drawn at page level on
     // the Leave types tab and named NOWHERE in the menu: the screen that explains a missing balance was
     // the one you had to already know about before you could find it. It has its own address now
-    // (`app/admin/leave-config/balance-health/page.tsx`) and this is the row that opens it.
+    // (`app/(app)/admin/leave-config/balance-health/page.tsx`) and this is the row that opens it.
     //
     // DIRECTLY AFTER ENTITLEMENTS, not at the bottom, because it answers the question you ask ABOUT
     // entitlements — can this leave type produce a balance at all — and the tab it left is the first
@@ -266,7 +266,7 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     // test/leave-config-map.test.ts and test/r266-leave-config-rows.test.ts; this comment was left
     // describing the abandoned shape and is corrected here (r281) rather than left to misdirect the next
     // row. The rule is the one the map's own header states: every fly-out row whose destination lives
-    // under `app/admin/leave-config/**` IS a group, one for one, in order — including a row that owns a
+    // under `app/(app)/admin/leave-config/**` IS a group, one for one, in order — including a row that owns a
     // single screen, whose tab strip then draws nothing. A group of one is not furniture: it is what
     // makes `leaveConfigPageHeader` give the page this row's own `nav.leaveBalanceHealth` heading (r266
     // 10b59703) and what keeps the row↔group agreement 1:1 in both directions. The only child of this
@@ -392,7 +392,7 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     // job-grade rows the central page chips Organization. The central page gained an Area filter plus
     // every filter this page had, so the destination is strictly richer than the row removed.
     //
-    // The ROUTE survives as a redirect stub (app/admin/leave/audit/page.tsx → /admin/audit?module=leave)
+    // The ROUTE survives as a redirect stub (app/(app)/admin/leave/audit/page.tsx → /admin/audit?module=leave)
     // so saved links land somewhere real. A stub is NOT a guarded page, so it also left lib/permissions.ts's
     // leaveConfig `routes` in the same change — test/function-access.test.ts fails on a registered route
     // with no guarded page on disk, which is why that is one move, not two. Same for the export route.
@@ -411,7 +411,7 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     // leaveApprovalWorkflow / leaveApproval (645e67c4, re-affirmed by r266's gate).
     //
     // ⚠️ IT IS NOT IN components/leave-config-map.tsx AND MUST NOT BE. It has no page under
-    // app/admin/leave-config/**, so a map group here would make `leaveConfigPageHeader` claim a page it does
+    // app/(app)/admin/leave-config/**, so a map group here would make `leaveConfigPageHeader` claim a page it does
     // not own and break test/leave-config-map.test.ts's "every screen here IS a declared route on its screen
     // key". The map's own header carries the same note at the point somebody would add it.
     //
@@ -419,7 +419,7 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     // (lib/permissions.ts). test/leave-flyout-nav.test.ts names that exception explicitly rather than
     // relaxing the "every child is a registered route" rule. Knock-on, stated in the approved plan and NOT
     // papered over here, and CORRECTED by the verify pass: there is no per-screen grant to revoke, so the
-    // exposure is not "an admin whose leaveEmployeeBalances is revoked". It is that app/layout.tsx passes a
+    // exposure is not "an admin whose leaveEmployeeBalances is revoked". It is that app/(app)/layout.tsx passes a
     // wider isAdmin than requireAdmin enforces (it ORs in the payroll and perf-comp partners), so a partner
     // who is not an admin sees every adminOnly row, this one included, and is redirected at each page. It
     // predates this row and is not for this row to fix with a bespoke flag.
@@ -443,7 +443,7 @@ export const LEAVE_ADMIN_DESTINATIONS: NavNodeGroupDescriptor = {
     //
     // WHY IT IS BELOW THE INQUIRY ROW rather than with the configuration rows it resembles: the reporter
     // drew it there. The map group order still agrees with the row order, because that agreement is
-    // asserted over the rows whose destinations live under `app/admin/leave-config/**`, and the inquiry
+    // asserted over the rows whose destinations live under `app/(app)/admin/leave-config/**`, and the inquiry
     // row is not one of them (see its note above).
     //
     // NO `ownedSubpaths`: one screen, no tabs, no sub-screen.
@@ -486,7 +486,7 @@ export const LEAVE_SELF_NAV: NavNodeGroupDescriptor = {
     {href:'/leave/credit-details', labelKey:'leaveCreditDetails', icon:CalendarClock, exactHref:true},
     // r404 (42e55e2b) — My Leave › Leave Details: the employee's own balance for every leave type, laid out
     // like HR's Employee Balances. Fourth, after Leave Credit History, as the plan says. NOT module-gated:
-    // leave is core, and the page reads only the signed-in person's own employment (app/leave/details).
+    // leave is core, and the page reads only the signed-in person's own employment (app/(app)/leave/details).
     {href:'/leave/details', labelKey:'leaveDetails', icon:ClipboardList, exactHref:true},
   ],
 };

@@ -8,7 +8,7 @@ vi.mock('../lib/internal-auth/config',()=>({internalSelected:ports.internal,inte
 vi.mock('../lib/internal-auth/mail',()=>({sendInternalMail:ports.send}));
 vi.mock('../db/client',()=>({withTenant:ports.tenant}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
-import {sendEmailDesignTestAction} from '../app/admin/settings/email-templates/actions';
+import {sendEmailDesignTestAction} from '../app/(app)/admin/settings/email-templates/actions';
 import {defaultEmailDocument} from '../lib/email-design/model';
 import {renderEmailDesign} from '../lib/email-design/render';
 import {sampleEmailSystem} from '../lib/email-design/catalogue';

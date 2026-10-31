@@ -81,7 +81,7 @@ const GENERIC = {
 } as const;
 const LOCALES = Object.keys(GENERIC) as (keyof typeof GENERIC)[];
 
-import { saveApprovalTemplateAction } from '../app/admin/leave-approval/actions';
+import { saveApprovalTemplateAction } from '../app/(app)/admin/leave-approval/actions';
 
 let b: Base;
 let admin: SessionContext;

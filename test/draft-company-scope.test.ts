@@ -86,9 +86,9 @@ import {
   listEmployeeDrafts,
   saveEmployeeDraft,
 } from '../core/employee-draft';
-import { draftListScope } from '../app/admin/personnel/list-query';
-import PeoplePage from '../app/admin/personnel/page';
-import { GET as exportPersonnel } from '../app/admin/personnel/export/route';
+import { draftListScope } from '../app/(app)/admin/personnel/list-query';
+import PeoplePage from '../app/(app)/admin/personnel/page';
+import { GET as exportPersonnel } from '../app/(app)/admin/personnel/export/route';
 
 const en = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8'));
 

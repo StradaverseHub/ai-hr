@@ -224,7 +224,7 @@ describe('the Performance block for a line manager and an employee (PM only)', (
     expect(await perf.hasLedPeople(self)).toBe(false);
     expect(await perf.hasLedPeople(mgr)).toBe(true); // the control: the line manager leads their reports in this cycle
     // The page consults exactly these predicates before its redirect (contract across the two files).
-    const page = fs.readFileSync(path.resolve(__dirname, '../app/performance/page.tsx'), 'utf8');
+    const page = fs.readFileSync(path.resolve(__dirname, '../app/(app)/performance/page.tsx'), 'utf8');
     expect(page).toMatch(/const leads = await hasLedPeople\(s\);/);
     expect(page).toMatch(/if \(!performanceAdmin && !manager && !leads && !\(await hasAssignedPerformanceWork\(s, scopeIds\)\)\) redirect\('\/'\);/);
   });

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-import { CyclesCriterion } from '../app/payroll/statutory-forms/open/cycles-criterion';
+import { CyclesCriterion } from '../app/(app)/payroll/statutory-forms/open/cycles-criterion';
 
 const COMPANY = '11111111-2222-3333-4444-555555555555';
 const OTHER = '99999999-8888-7777-6666-555555555555';

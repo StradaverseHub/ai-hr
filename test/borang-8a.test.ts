@@ -34,7 +34,7 @@ import path from 'node:path';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { Borang8AMycoidNotice, Borang8AOneLineNotice, Borang8AUnfinishedNames } from '../app/payroll/borang-8a/notices';
+import { Borang8AMycoidNotice, Borang8AOneLineNotice, Borang8AUnfinishedNames } from '../app/(app)/payroll/borang-8a/notices';
 import { isUnfinishedPersonName } from '../lib/unfinished-name';
 import {
   BORANG_8A_HEADER_KEYS,
@@ -95,15 +95,15 @@ const code = (p: string) =>
 const LIB = read('lib/borang-8a.ts');
 const READ_SRC = read('localization/my/borang-8a.ts');
 const PDF_SRC = read('lib/borang-8a-pdf.ts');
-const SHARED = read('app/payroll/borang-8a/shared.ts');
-const PREVIEW = read('app/payroll/borang-8a/preview/page.tsx');
-const PDF_ROUTE = read('app/payroll/borang-8a/pdf/route.ts');
-const TEXT_ROUTE = read('app/payroll/borang-8a/text/route.ts');
+const SHARED = read('app/(app)/payroll/borang-8a/shared.ts');
+const PREVIEW = read('app/(app)/payroll/borang-8a/preview/page.tsx');
+const PDF_ROUTE = read('app/(app)/payroll/borang-8a/pdf/route.ts');
+const TEXT_ROUTE = read('app/(app)/payroll/borang-8a/text/route.ts');
 // Comment-stripped, for the "must NOT contain" assertions only. See `code` above.
-const SHARED_CODE = code('app/payroll/borang-8a/shared.ts');
-const PREVIEW_CODE = code('app/payroll/borang-8a/preview/page.tsx');
-const PDF_ROUTE_CODE = code('app/payroll/borang-8a/pdf/route.ts');
-const TEXT_ROUTE_CODE = code('app/payroll/borang-8a/text/route.ts');
+const SHARED_CODE = code('app/(app)/payroll/borang-8a/shared.ts');
+const PREVIEW_CODE = code('app/(app)/payroll/borang-8a/preview/page.tsx');
+const PDF_ROUTE_CODE = code('app/(app)/payroll/borang-8a/pdf/route.ts');
+const TEXT_ROUTE_CODE = code('app/(app)/payroll/borang-8a/text/route.ts');
 
 const row = (p: Partial<Borang8ARow> & { employmentId: string; contribution: number }): Borang8ARow => ({
   startDate: '',
@@ -462,7 +462,7 @@ describe('the plain-text twin', () => {
   it('no longer claims PERKESO publishes no blank form — on the page, in the text, or in the comments', () => {
     const CLAIM = /PERKESO publishes no|PERKESO does not publish|publishes no blank (Borang 8A|page for this form)/i;
     expect(text).not.toMatch(CLAIM);
-    for (const f of ['lib/borang-8a.ts', 'lib/borang-8a-pdf.ts', 'localization/my/borang-8a.ts', 'localization/my/reports.ts', 'app/payroll/statutory-forms/page.tsx']) {
+    for (const f of ['lib/borang-8a.ts', 'lib/borang-8a-pdf.ts', 'localization/my/borang-8a.ts', 'localization/my/reports.ts', 'app/(app)/payroll/statutory-forms/page.tsx']) {
       // Lines that QUOTE the retired claim to correct it carry "r408"; nothing else may say it.
       const asserting = read(f).split('\n').filter((l) => CLAIM.test(l) && !/r408|was false|used to|FALSE/i.test(l));
       expect(asserting, f).toEqual([]);
@@ -782,11 +782,11 @@ describe('the three surfaces cannot disagree, and the readiness gate is not a UI
     expect(REGISTERED_ROUTES.has('/payroll/borang-8a/preview')).toBe(true);
     expect(REGISTERED_ROUTES.has('/payroll/borang-8a/pdf')).toBe(false);
     expect(REGISTERED_ROUTES.has('/payroll/borang-8a/text')).toBe(false);
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/borang-8a/preview/page.tsx'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/borang-8a/pdf/route.ts'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/borang-8a/text/route.ts'))).toBe(true);
-    // NOT under app/payroll/statutory-forms/, whose [formId] segment a static sibling would shadow.
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/statutory-forms/borang-8a'))).toBe(false);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/borang-8a/preview/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/borang-8a/pdf/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/borang-8a/text/route.ts'))).toBe(true);
+    // NOT under app/(app)/payroll/statutory-forms/, whose [formId] segment a static sibling would shadow.
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/statutory-forms/borang-8a'))).toBe(false);
   });
 
   /**

@@ -115,7 +115,7 @@ describe('cc74dcb2 — the payroll row to 02 record mapping', () => {
     }
     // The one call site that produces a downloadable file reads the same function, so the shape below is
     // the shape the screen writes. Source-shape, because the call itself needs a request session.
-    const shared = read('app/payroll/borang-a/shared.ts');
+    const shared = read('app/(app)/payroll/borang-a/shared.ts');
     expect(shared).toContain('employees: borangAFileEmployeesFrom(rows)');
     expect(shared).not.toMatch(/employerContribution:\s*r\.employee/);
     expect(shared).not.toMatch(/employeeContribution:\s*r\.employer/);

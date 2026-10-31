@@ -140,7 +140,7 @@ wiki. **Decision: adding to the library requires `hr_admin` / `super_admin`.**
 - `core/knowledge-base.ts` gains `canAuthor` / `assertKbAuthor` / `KbAuthorAdminRequiredError`, called
   first in `createArticle` and `uploadDocument`. That is the enforcement, and it has to be at the service
   boundary: unlike UPDATE and DELETE, the INSERT has **no RLS backstop**, so the service is the only line.
-- `app/knowledge-base/actions.ts` refuses the same two actions fail-fast; `app/knowledge-base/page.tsx`
+- `app/(app)/knowledge-base/actions.ts` refuses the same two actions fail-fast; `app/(app)/knowledge-base/page.tsx`
   omits the composer from the tree for anyone who cannot use it.
 - **Audience is now clamped on every write**: nobody may file a document under an audience they are not
   cleared to read (`KbAudienceAboveClearanceError`). Vacuous for an administrator by construction; it

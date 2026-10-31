@@ -25,7 +25,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { PhotoLightbox } from '../app/admin/personnel/[employmentId]/photo-lightbox';
+import { PhotoLightbox } from '../app/(app)/admin/personnel/[employmentId]/photo-lightbox';
 
 const SRC = '/personnel/photo/person-9';
 

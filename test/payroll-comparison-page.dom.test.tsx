@@ -6,7 +6,7 @@ import en from '../messages/en.json';
 import {DEFAULT_PAYROLL_COMPARISON,payrollComparisonFilters} from '../lib/payroll-period-comparison';
 import {comparePayrollResults} from '../lib/payroll-comparison-result';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import PayrollComparisonPage from '../app/reports/payroll-comparison/[id]/page';
+import PayrollComparisonPage from '../app/(app)/reports/payroll-comparison/[id]/page';
 import {MasterReportAccessError} from '../core/employee-master-access';
 import {runPayrollComparisonReport,recordPayrollComparisonRun} from '../core/custom-reports';
 
@@ -21,7 +21,7 @@ vi.mock('../core/report-payroll-comparison',()=>({payrollComparisonOptions:async
 }}));
 vi.mock('../core/custom-reports',()=>({runPayrollComparisonReport:vi.fn(),recordPayrollComparisonRun:vi.fn(),getCustomReport:vi.fn()}));
 // The editor is not part of this read/denial journey; its submit/retry tests cover that action boundary.
-vi.mock('../app/reports/payroll-comparison/PayrollComparisonEditor',()=>({PayrollComparisonEditor:()=>null}));
+vi.mock('../app/(app)/reports/payroll-comparison/PayrollComparisonEditor',()=>({PayrollComparisonEditor:()=>null}));
 
 function run():Awaited<ReturnType<typeof runPayrollComparisonReport>>{
  const companyId='00000000-0000-0000-0000-000000000001',definition=structuredClone(DEFAULT_PAYROLL_COMPARISON);

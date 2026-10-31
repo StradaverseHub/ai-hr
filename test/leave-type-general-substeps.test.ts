@@ -62,16 +62,16 @@ const here = dirname(fileURLToPath(import.meta.url));
  * taken the guard out rather than moved it.
  */
 const LEAVE_TYPE_SCREEN = [
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
 ];
 const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
-const tabsSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/leave-type-tabs.tsx'), 'utf8');
+const tabsSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-config/types/leave-type-tabs.tsx'), 'utf8');
 const subStepBarSrc = readFileSync(resolve(here, '../components/leave-sub-step-bar.tsx'), 'utf8');
 const generateFormSrc = readFileSync(resolve(here, '../components/leave/generate-form.tsx'), 'utf8');
 const adjustmentFormSrc = readFileSync(resolve(here, '../components/leave/adjustment-form.tsx'), 'utf8');
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
+const pageSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-config/types/page.tsx'), 'utf8');
 /**
  * a6fe37fc ROUND 5 (cutover) — RE-POINTED, NOT DELETED. e4238594's property is that the rows the deleted
  * embed used to maintain are STILL maintained, by the assignment section on the approval screen — the
@@ -79,7 +79,7 @@ const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page
  * now and the old address is a redirect stub that maintains nothing, so the assertion follows the screen.
  */
 const approvalPageSrc = readFileSync(
-  resolve(here, '../app/admin/leave-config/approval-chains/page.tsx'),
+  resolve(here, '../app/(app)/admin/leave-config/approval-chains/page.tsx'),
   'utf8',
 );
 
@@ -465,7 +465,7 @@ describe('e4238594 · the Approval Workflow sub-step is GONE, and nothing is str
   });
 
   it('no per-rule write path survives its screen — the wrappers went at e4238594, the rest at 706d34e8', () => {
-    const approvalActionsSrc = readFileSync(resolve(here, '../app/admin/leave-approval/actions.ts'), 'utf8');
+    const approvalActionsSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-approval/actions.ts'), 'utf8');
     // The 4e9a4d59 stay-on-this-type wrappers had no caller once the embed went (the r100 precedent)…
     expect(approvalActionsSrc).not.toContain('export async function saveLeaveApprovalRuleFromEntitlementsAction');
     expect(approvalActionsSrc).not.toContain('export async function archiveLeaveApprovalRuleFromEntitlementsAction');

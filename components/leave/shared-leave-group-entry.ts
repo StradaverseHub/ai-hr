@@ -48,7 +48,7 @@ export type SharedLeaveGroupEntry = {
   membersLabel: string;
   // ⚠️ r355 (8d3a7bff) — `detailsHref` / `detailsLabel` WERE HERE AND ARE GONE WITH THE PAGE THEY POINTED
   // AT. 76dbcaa1 added them for /leave/shared/[groupId]; that page is deleted, so a required field no
-  // caller can fill would only break the build. app/leave/page.tsx builds these values and
+  // caller can fill would only break the build. app/(app)/leave/page.tsx builds these values and
   // my-leave-dashboard.tsx draws them; r356 deleted the component that used to sit below this type and
   // renamed the file, because "cards" had not been true of it since r302.
 };

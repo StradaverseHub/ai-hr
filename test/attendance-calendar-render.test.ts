@@ -8,12 +8,12 @@ const catalogue=()=>JSON.parse(readFileSync(new URL(`../messages/${state.locale}
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:catalogue()})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{personId:'self'}})}));
 vi.mock('../lib/authz',()=>({requireModule:async()=>undefined}));
-vi.mock('../app/attendance/my-roster/record-list',()=>({AttendanceRecordList:()=>null}));
+vi.mock('../app/(app)/attendance/my-roster/record-list',()=>({AttendanceRecordList:()=>null}));
 vi.mock('../packs/attendance/service',()=>({myAttendanceCalendarWindow:state.view}));
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,run:(tx:unknown)=>unknown)=>run({})}));
 vi.mock('../core/holidays',()=>({originalHolidayCalendarFor:async()=>[]}));
 vi.mock('../core/holiday-replacement-read',()=>({replacementHolidayCalendarContext:async()=>[]}));
-import Page from '../app/attendance/my-roster/page';
+import Page from '../app/(app)/attendance/my-roster/page';
 const fixture=()=>({employmentId:'own',name:'Fictional employee',employeeCode:'CAL01',position:'Analyst',managerName:'Fictional manager',from:'2026-03-16',to:'2026-03-18',legend:[],workDays:2,rosteredDays:1,restDays:1,plannedMinutes:960,lastUpdatedAt:null,days:[
   {date:'2026-03-16',cell:{kind:'shift',shiftId:'day'},shift:{id:'day',code:'DAY',name:'Long daytime shift',startTime:'09:00',endTime:'18:00',breakMinutes:60,workingMinutes:480,color:null},note:null,plannedMinutes:480,attendance:{status:'present',flag:'odd',checkInAt:'09:00',checkOutAt:null}},
   {date:'2026-03-17',cell:{kind:'rest'},shift:null,note:'Retained supervisor note',plannedMinutes:0,attendance:{status:'rest',flag:null,checkInAt:null,checkOutAt:null}},

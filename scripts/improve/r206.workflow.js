@@ -2,7 +2,7 @@
  * r206 — the six approved items that are genuinely buildable, in five workstreams grouped BY FILE AREA.
  *
  * The grouping is not cosmetic. r199 put two payroll items in separate worktrees and they collided on
- * app/payroll/transaction-view/page.tsx twice, once structurally; the integrator had to reconstruct intent
+ * app/(app)/payroll/transaction-view/page.tsx twice, once structurally; the integrator had to reconstruct intent
  * from two diffs. So the two employee-facing leave items travel together, and the payroll pair is split
  * across the two screens they actually touch.
  *
@@ -50,7 +50,7 @@ const WORK = [
       `the split payslip works. What they want is Transaction Detail to stop consolidating the month into one\n` +
       `result and show it per company assignment. Nothing about their figures changes — say that in the code\n` +
       `where a later reader will find it.\n` +
-      `⚠️ app/payroll/transaction-view/ IS THE FILE r199 COLLIDED ON TWICE. Keep your diff inside the\n` +
+      `⚠️ app/(app)/payroll/transaction-view/ IS THE FILE r199 COLLIDED ON TWICE. Keep your diff inside the\n` +
       `Transaction Detail path and do not reflow neighbouring markup.` },
   { slug: 'process', ns: 'r206proc', ids: ['65e2d5de'], migration: null,
     title: 'Payroll Process — improve the Reset / Reprocess workflow',
@@ -58,7 +58,7 @@ const WORK = [
       `⚠️ MUCH OF THIS MAY ALREADY BE LIVE and the plan reports three of six asks already built. r198 shipped\n` +
       `9066bd6c (Remove Employee Payroll: its own screen, search, multi-select, required reason, audited,\n` +
       `refusing to empty a run) and Back navigation across the payroll screens; r197 shipped 152fea7f\n` +
-      `(full-width). VERIFY each ask against app/payroll/[batchId]/remove/, app/payroll/back.ts and\n` +
+      `(full-width). VERIFY each ask against app/(app)/payroll/[batchId]/remove/, app/(app)/payroll/back.ts and\n` +
       `lib/return-to.ts before building anything, and report what you confirmed in alreadyBuilt with\n` +
       `file:line. The plan also flags that ONE ask is a reversal of a change the reporter approved — do not\n` +
       `quietly reverse it; leave it and name it in scopeCuts.` },

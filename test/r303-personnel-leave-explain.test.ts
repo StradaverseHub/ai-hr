@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { PersonnelTabKey } from '../components/personnel-tabs';
 import { RETIRED_PERSONNEL_TABS } from '../lib/personnel-tab-sections';
 const read = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
-const source = read('app/admin/personnel/[employmentId]/page.tsx');
+const source = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 const ast = ts.createSourceFile('page.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 function declaration(name: string) {
   let found: ts.VariableDeclaration | undefined;
@@ -49,7 +49,7 @@ describe('Personnel retains the Others capabilities at their new homes', () => {
   });
   it('preserves the shared self-service history tab while retiring only the admin tab', () => {
     expect(selfServiceHistoryTab).toBe('others');
-    const selfService = read('app/me/profile-editor.tsx');
+    const selfService = read('app/(app)/me/profile-editor.tsx');
     expect(selfService).toContain("key==='others'");
     expect(selfService).toContain("t('requestHistory')");
   });
@@ -67,6 +67,6 @@ describe('Personnel retains the Others capabilities at their new homes', () => {
       if (row.includes('"id":"others.probation_contract_internship_review.')) expect(row).toContain('"tab":"Employment"');
       expect(row).not.toContain('"tab":"Others"');
     }
-    expect(read('app/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain('hrExplanation={r.hrExplanation}');
   });
 });

@@ -1,7 +1,7 @@
 /**
  * M08 — the approver's native task list, one task's facts, its supporting document and the decision. COMPOSITION
  * ONLY: assignment, visibility, authority and every decision belong to the owners the web inbox
- * (app/approvals/page.tsx, app/approvals/actions.ts) already uses. Nothing here decides an approval rule.
+ * (app/(app)/approvals/page.tsx, app/(app)/approvals/actions.ts) already uses. Nothing here decides an approval rule.
  *
  *   list       listPendingTasks (every kind, the inbox's own order), keyset-paged in memory
  *   admission  isCurrentAssignedApproval (core/assigned-approval-focus.ts) — a URL cannot supply assignment
@@ -88,7 +88,7 @@ const summaryOf = (over: Partial<TaskSummaryV2>): TaskSummaryV2 => ({ label: nul
 const label = (v: string | null | undefined) => (v ? v.slice(0, 300) : null);
 
 /**
- * Each native row's summary, from the readers app/approvals/page.tsx lists those rows with (same session, same RLS,
+ * Each native row's summary, from the readers app/(app)/approvals/page.tsx lists those rows with (same session, same RLS,
  * same pending filter), and only the columns that page prints. One read per kind present on the page; a row the
  * reader does not return for this caller gets no summary, so the list never says more than the web page would.
  */
@@ -276,7 +276,7 @@ export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id
     plannedStart: hhmm(a.plannedStartTime), plannedEnd: hhmm(a.plannedEndTime), requestedOtMinutes: a.requestedOtMinutes ?? null, dayType,
     employeeReason: a.reason ?? null, hasAttachment: !!a.hasAttachment,
     expected: { stageIndex: a.workflow?.currentStage ?? null, participantSlot: a.workflow?.currentParticipantSlot ?? null },
-    // The web approver's "Original clock times", under the same condition the web prints it (app/approvals/page.tsx).
+    // The web approver's "Original clock times", under the same condition the web prints it (app/(app)/approvals/page.tsx).
     original: a.proposedCheckIn || a.clockChanges ? originalOf(a.originalClockSnapshot) : null,
     proposedPunches: a.clockChanges ? a.clockChanges.entries.slice(0, 100).flatMap((e) => { const at = hhmm(e.punchAt); return at ? [{ at, direction: e.direction }] : []; }) : null,
   } };

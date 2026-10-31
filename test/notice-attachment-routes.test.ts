@@ -2,8 +2,8 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({session:vi.fn(),admit:vi.fn(),add:vi.fn(),read:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/notice',()=>({noticeAttachmentUploadState:mocks.admit,addNoticeAttachment:mocks.add,getNoticeAttachment:mocks.read,NOTICE_ATTACHMENT_MAX_BYTES:10485760,NoticeAttachmentError:class extends Error{}}));
-import {POST} from '../app/admin/notice-board/[id]/attachments/route';
-import {GET} from '../app/notices/[id]/attachment/[attachmentId]/route';
+import {POST} from '../app/(app)/admin/notice-board/[id]/attachments/route';
+import {GET} from '../app/(app)/notices/[id]/attachment/[attachmentId]/route';
 const url='http://localhost:3197/admin/notice-board/notice/attachments',params=Promise.resolve({id:'notice'});
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue({tenantId:'tenant',userId:'actual'});mocks.admit.mockResolvedValue({id:'notice',contentVersion:1});mocks.add.mockResolvedValue({id:'asset',contentVersion:1,attachment:{id:'asset',fileName:'fictional.txt',mimeType:'text/plain',byteLength:7}});});
 describe('Notice attachment HTTP boundaries',()=>{

@@ -360,7 +360,7 @@ export function explainLeaveSummary(
      * It adds ONE SENTENCE to each of the two lines that are statements about the leave TYPE rather than about
      * the ledger — Full Entitlement and Earned to Date — saying that this type's own figures are nothing and
      * that the working which follows is the pool's. The grid and the export already print those 0.00s
-     * (app/leave/employee-balances/rows.ts); this is how the panel stops contradicting them.
+     * (app/(app)/leave/employee-balances/rows.ts); this is how the panel stops contradicting them.
      *
      * ⚠️ IT DOES NOT TOUCH A FIGURE, AND THEREFORE NOT THE SUM-GUARD EITHER. The guards below keep comparing
      * the POOL's itemised records against the POOL's own figures, which is the comparison that holds by
@@ -709,7 +709,7 @@ export function explainLeaveSummary(
    * Pending Share column shows for it.
    *
    * ⚠️ THE BORROWER BRANCH IS NOT OPTIONAL, AND `borrowed` IS THE ONLY THING THAT CAN SPOT IT. The figures
-   * handed in for a borrower's row are the POOL's (`balanceStoryTypeId`, app/leave/employee-balances/rows.ts),
+   * handed in for a borrower's row are the POOL's (`balanceStoryTypeId`, app/(app)/leave/employee-balances/rows.ts),
    * so the subtraction closes numerically — on figures the row itself does not show. The grid row for that
    * borrower reads Balance 0.00 and Pending Approval 0.00, because the days and the pending both belong to the
    * pool; printing "7.00 balance − 1.00 pending approval" under a row that says 0.00 twice is exactly the

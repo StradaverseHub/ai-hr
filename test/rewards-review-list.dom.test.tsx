@@ -3,7 +3,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {RewardReviewList} from '../app/rewards/review-list';
+import {RewardReviewList} from '../app/(app)/rewards/review-list';
 import {filterRewardReviews,rewardReviewUpcoming} from '../packs/rewards/review-list-model';
 import type {RewardReviewListRow} from '../packs/rewards/service';
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));

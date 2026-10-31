@@ -208,19 +208,19 @@ describe('18c1d92b — the mapping lives in ONE place', () => {
    * that button alone, and that is what the route reads.
    */
   it('the report is requested by the button own name/value, not a query string or a hidden input', () => {
-    const page = fs.readFileSync(path.join(ROOT, 'app/payroll/borang-8a/preview/page.tsx'), 'utf8');
+    const page = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/borang-8a/preview/page.tsx'), 'utf8');
     expect(page).toContain('formAction="/payroll/borang-8a/file"');
     expect(page).toMatch(/name="report"\s*\n?\s*value="1"/);
     // The two shapes that would break it, refused in the page's own source.
     expect(page).not.toContain('/payroll/borang-8a/file?report');
     expect(page).not.toMatch(/<input[^>]*name="report"/);
     // …and the route reads exactly that field.
-    const route = fs.readFileSync(path.join(ROOT, 'app/payroll/borang-8a/file/route.ts'), 'utf8');
+    const route = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/borang-8a/file/route.ts'), 'utf8');
     expect(route).toContain("q.get('report') === '1'");
   });
 
   it('the download delegates to perkesoFileEmployeesFrom instead of restating the fields', () => {
-    const shared = fs.readFileSync(path.join(ROOT, 'app/payroll/borang-8a/shared.ts'), 'utf8');
+    const shared = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/borang-8a/shared.ts'), 'utf8');
     expect(shared).toContain('employees: perkesoFileEmployeesFrom(');
     // The four adjacent six-wide boxes must not be assigned by hand anywhere on the download path.
     expect(shared).not.toMatch(/socsoEmployer:\s*\w+\.socso/);

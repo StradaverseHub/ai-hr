@@ -61,7 +61,7 @@ async function insertReq(p: { employmentId: string; leaveTypeId: string; start: 
   return row.id;
 }
 
-/** Exactly the call app/leave/page.tsx now makes for the rendered rows. */
+/** Exactly the call app/(app)/leave/page.tsx now makes for the rendered rows. */
 const history = async (
   ctx: SessionContext,
   employmentIds: string[],
@@ -216,14 +216,14 @@ describe('5f2e20fb · only the history box is affected (source shape)', () => {
   it('no section above the history read touches hFrom / hTo / hType', () => {
     // The item is explicit: balances, entitlement breakdowns and the secondary groups are untouched. They
     // are all resolved ABOVE the history read on this page, so the slice is the assertion.
-    // UPDATED BY r397: the page's reads moved, unchanged, into app/leave/my-leave-data.ts; the dashboard read is
+    // UPDATED BY r397: the page's reads moved, unchanged, into app/(app)/leave/my-leave-data.ts; the dashboard read is
     // pinned there, and the history filter reaches the page only through loadOwnUpcomingLeave's carrier.
-    const overview = read('app/leave/my-leave-data.ts');
+    const overview = read('app/(app)/leave/my-leave-data.ts');
     const balanceRead = overview.match(/const dashboardP =[^;]+;/)?.[0];
     expect(balanceRead, 'dashboard read exists').toBeTruthy();
     for (const key of ['hFrom', 'hTo', 'hType']) expect(balanceRead).not.toContain(key);
     expect(overview).toContain('loadOwnUpcomingLeave({ session, me, sp })');
-    expect(read('app/leave/history/page.tsx')).toContain('loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds:');
+    expect(read('app/(app)/leave/history/page.tsx')).toContain('loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, eligibleTypeIds:');
     // The leave YEAR the dashboard owns is untouched by the history filter, and rides along as a hidden input
     // so applying a filter cannot reset it. UPDATED BY r302 (6c9802c9): this was the as-at date, which went
     // with the My balances card; the Year selector replaced it, and the carrier moved with it.
@@ -296,7 +296,7 @@ describe('the viewer never disappears from their own Request Leave selector', ()
    * else) still cannot happen, and now cannot happen by construction rather than by a fallback.
    */
   it('the viewer leads the selector, and no narrowing can drop them from it', () => {
-    const page = read('app/leave/page.tsx');
+    const page = read('app/(app)/leave/page.tsx');
     // The viewer heads the list the dialog defaults to.
     expect(page).toMatch(
       /const requestLeaveEmployeeOptions = \[\s*\n\s*\.\.\.active\.filter\(\(e\) => e\.employmentId === me\.employmentId\),/,

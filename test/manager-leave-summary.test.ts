@@ -63,7 +63,7 @@ describe('calendar focus deep link', () => {
 
 describe('726ac8c2 drift guards', () => {
   it('the profile builds the calendar href from the shared builder, never by hand', () => {
-    const page = read('app/personnel/[employmentId]/page.tsx');
+    const page = read('app/(app)/personnel/[employmentId]/page.tsx');
     expect(page).toContain('buildCalendarFocusHref');
     expect(page).toContain('subordinateLeaveSummary');
   });
@@ -71,10 +71,10 @@ describe('726ac8c2 drift guards', () => {
   it('the calendar page validates ?focus= and passes it to the calendar', () => {
     // a00c4f64: the page that reads ?focus= is the Team Leave Tracker now, not the dashboard. Both halves
     // are asserted — the tracker DOES read it, and the dashboard no longer pretends to.
-    const page = read('app/leave/tracker/page.tsx');
+    const page = read('app/(app)/leave/tracker/page.tsx');
     expect(page).toContain('parseCalendarFocus');
     expect(page).toContain('focusPersonId={absFocusPersonId}');
-    expect(read('app/page.tsx')).not.toContain('parseCalendarFocus');
+    expect(read('app/(app)/page.tsx')).not.toContain('parseCalendarFocus');
   });
 
   it('the grid paints the highlight class and expires it on the shared timeout', () => {

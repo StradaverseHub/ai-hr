@@ -43,7 +43,7 @@ const CHIP = 'components/ui/chip-multi-select.tsx';
  * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
  * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
  */
-const PANEL_FILES = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx'];
+const PANEL_FILES = ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx', 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx'];
 
 describe('b9c30be0 · ChipMultiSelect standardized auto-close', () => {
   const chip = stripComments(read(CHIP));

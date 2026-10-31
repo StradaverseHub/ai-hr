@@ -61,13 +61,13 @@ const CARLA: Row = { employmentId: 'emp-carla', name: 'Custom Carla', employeeCo
 
 let nextAdvisory: Advisory = EMPTY;
 
-vi.mock('../app/payroll/process/actions', () => ({
+vi.mock('../app/(app)/payroll/process/actions', () => ({
   validatePayrollSelection: () => Promise.resolve(nextAdvisory),
   checkPayrollCycleReadiness: () => Promise.resolve([]),
   checkUnattachedForSelection: () => Promise.resolve([]),
 }));
 
-import { StepValidation } from '../app/payroll/process/steps/step-validation';
+import { StepValidation } from '../app/(app)/payroll/process/steps/step-validation';
 
 const CATALOGUES = { en, ms, ta, th, vi: viMsg, zh } as const;
 type Locale = keyof typeof CATALOGUES;

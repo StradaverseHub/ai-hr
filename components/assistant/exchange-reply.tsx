@@ -8,7 +8,7 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {ConversationSuggestions} from './chat-reply-boundary';
 import {MAX_TURNS} from '../../core/assistant';
 import {GroundedWorkspaceReply} from './module-jobs';
-import {saveAgentFeedbackAction} from '../../app/assistant/feedback-actions';
+import {saveAgentFeedbackAction} from '../../app/(app)/assistant/feedback-actions';
 type Exchange=Awaited<ReturnType<typeof loadAiWorkspace>>['history'][number];
 export async function ExchangeReply({exchange:h,ctx}:{exchange:Exchange;ctx:SessionContext}){
  const t=await getTranslations('assistant');

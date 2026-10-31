@@ -2,7 +2,7 @@
 import {useEffect,useState,useRef} from 'react';
 import {useTranslations} from 'next-intl';
 import {Field,inputCls} from '@/components/ui';
-import {overtimePositionChoicesAction} from '@/app/admin/attendance/settings/overtime-patterns/actions';
+import {overtimePositionChoicesAction} from '@/app/(app)/admin/attendance/settings/overtime-patterns/actions';
 import type {OvertimeChoice} from './rule-controls';
 /** Catalogue paging changes available choices only; the saved selected IDs remain authoritative. */
 export function OvertimePositionValues({options,selected,onChange}:{options:OvertimeChoice[];selected:string[];onChange:(ids:string[])=>void}){

@@ -41,8 +41,8 @@
  * AND IT REACHES MONEY, which is why r367 is a defect fix and not a preference. A missing debit leaves
  * the ledger balance high; `core/leave-encashment.ts` freezes unused Annual Leave off that same ledger
  * sum at resignation (`ledgerBalanceOf` -> `computeEncashableDays`), so the final payment overpays by
- * exactly the imported days. Five read surfaces carried the overstated figure with it: app/page.tsx,
- * core/my-leave.ts, app/admin/personnel/[employmentId]/page.tsx, app/leave/employee-balances/rows.ts
+ * exactly the imported days. Five read surfaces carried the overstated figure with it: app/(app)/page.tsx,
+ * core/my-leave.ts, app/(app)/admin/personnel/[employmentId]/page.tsx, app/(app)/leave/employee-balances/rows.ts
  * and core/assistant-tools.ts.
  *
  * WHAT r367 DOES: `openingBalancesAreNet`, asked ONCE PER RUN, defaulting to NO.
@@ -428,7 +428,7 @@ async function analyze(
     // r367 - FILLED WHEN THE COLUMN IS BLANK, rather than stored as null. It is the plan's point 5 and
     // it is FUTURE-PROOFING, not a cause of anything: the column is written today and read by nothing,
     // because Employee Balances takes its year from the entitlement CYCLE START
-    // (app/leave/employee-balances/rows.ts: `bd.cycleStart.slice(0, 4)`), not from the request.
+    // (app/(app)/leave/employee-balances/rows.ts: `bd.cycleStart.slice(0, 4)`), not from the request.
     //
     // ⚠️ FROM THE CYCLE, NOT FROM THE CALENDAR YEAR OF THE START DATE, and the difference is the point.
     // A company on an ANNIVERSARY leave cycle (or a leave type carrying a Leave Year Type override,

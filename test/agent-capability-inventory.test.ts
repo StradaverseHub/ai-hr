@@ -57,7 +57,7 @@ describe('ADR-0151 agent capability inventory',()=>{
   expect(stale,'Remove or rename these entries in lib/ai/agent-capability-inventory.ts').toEqual([]);
   // Non-vacuous: the scan really found the application's entry points.
   expect(Object.keys(actual).length).toBeGreaterThan(150);
-  expect(actual['app/leave/actions.ts']).toContain('requestLeaveAction');
+  expect(actual['app/(app)/leave/actions.ts']).toContain('requestLeaveAction');
  });
 
  it('registers only declared module actions, and every declared action has a tier ceiling',()=>{
@@ -84,19 +84,19 @@ describe('ADR-0151 agent capability inventory',()=>{
 
  it('keeps unsupported sensitive actions as handoffs and Payroll reopening in explicit human review',()=>{
   const expectations:[string,string,string][]=[
-   ['app/admin/actions.ts','assignRoleAction','handoff:access_and_authentication'],
-   ['app/admin/privacy/actions.ts','erasePersonPiiAction','handoff:privacy_erasure'],
-   ['app/payroll/actions.ts','resetAction','registered:payroll.reset'],
-   ['app/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
-   ['app/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
-   ['app/operator/actions.ts','setCustomerFeedbackMenuAction','handoff:platform_operator'],
+   ['app/(app)/admin/actions.ts','assignRoleAction','handoff:access_and_authentication'],
+   ['app/(app)/admin/privacy/actions.ts','erasePersonPiiAction','handoff:privacy_erasure'],
+   ['app/(app)/payroll/actions.ts','resetAction','registered:payroll.reset'],
+   ['app/(app)/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
+   ['app/(app)/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
+   ['app/(app)/operator/actions.ts','setCustomerFeedbackMenuAction','handoff:platform_operator'],
   ];
   for(const [file,name,value] of expectations)expect(inventory[file]?.[name],`${file} › ${name}`).toBe(value);
-  expect(inventory['app/payroll/actions.ts']?.unlockAction).toBe('registered:payroll.reopen');
+  expect(inventory['app/(app)/payroll/actions.ts']?.unlockAction).toBe('registered:payroll.reopen');
   expect(AGENT_ACTION_TIER_CEILING['payroll.reopen']).toBe('approve');
   expect(AGENT_ACTIONS.find(action=>action.id==='payroll.reopen')).toMatchObject({
    module:'payroll',policy:{tier:'approve',category:'payroll'},store:'generic_own',browserOwner:'payrollReopen',
-   screen:{entryPoints:['app/payroll/actions.ts#unlockAction']},review:{route:'/assistant/payroll-reopen',handoff:'review_page'},
+   screen:{entryPoints:['app/(app)/payroll/actions.ts#unlockAction']},review:{route:'/assistant/payroll-reopen',handoff:'review_page'},
    humanInputs:['batchId','reason','confirmReopenClosedRun','acknowledgeRecordedDownstreamWarnings'],
   });
   expect(parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'prepare'})).toMatchObject({kind:'prepare',requiresHumanSelection:true,effect:'none',adapter:'module_payroll_reopen_review_v1'});

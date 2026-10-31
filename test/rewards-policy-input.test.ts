@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {defaultPolicy,talents,type RewardPolicy} from '../packs/rewards/model';
-import {rewardPolicyFromForm,RewardPolicyInputError} from '../app/rewards/policy-input';
+import {rewardPolicyFromForm,RewardPolicyInputError} from '../app/(app)/rewards/policy-input';
 import {REWARD_POLICY_GRADES} from '../packs/rewards/policy-grid-validation';
 import {todayInKualaLumpur} from '../lib/hr-date';
 function matrixLines(matrix:Record<string,readonly number[]>,scale:number){

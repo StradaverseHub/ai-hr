@@ -15,7 +15,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { ColumnPicker, type EmployeeColumnChoice } from '../app/admin/personnel/column-picker';
+import { ColumnPicker, type EmployeeColumnChoice } from '../app/(app)/admin/personnel/column-picker';
 
 // The router, stubbed. `refresh()` is RECORDED rather than performed: after Apply the picker asks the
 // server to re-render the table so the columns and the Export link are rebuilt from the SAVED value

@@ -39,8 +39,8 @@ const stripComments = (src: string) =>
  * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
  * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
  */
-const PANEL_FILES = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx'];
-const PAGE = 'app/admin/leave-config/types/page.tsx';
+const PANEL_FILES = ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx', 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx'];
+const PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
 
 describe('38f1fd40 — the Adjustments sub-step is gone', () => {
   // 6e9a126e RELEASE THREE — the Entitlement step no longer HAS sub-steps. It is a pointer to Entitlement
@@ -88,7 +88,7 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
       ['core/admin.ts', 'export function listAdHocLeaveGrants'],
       ['core/leave.ts', 'export async function grantAdHocLeave'],
       ['core/leave.ts', 'export class AdHocLeaveGrantError'],
-      ['app/admin/actions.ts', 'export async function grantAdHocLeaveAction'],
+      ['app/(app)/admin/actions.ts', 'export async function grantAdHocLeaveAction'],
     ] as const) {
       expect(stripComments(read(rel)).includes(symbol), `${rel} still carries ${symbol}`).toBe(false);
     }
@@ -117,7 +117,7 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     // first. The property is untouched: whichever screen mounts the dialog prepares the group-aware
     // company list for it, by the same two names, and no screen it has left keeps a list for a dialog it
     // no longer mounts (which is the e4238594 leftover this file exists to catch).
-    const liveScreen = stripComments(read('app/admin/leave-config/earned-accrual/page.tsx'));
+    const liveScreen = stripComments(read('app/(app)/admin/leave-config/earned-accrual/page.tsx'));
     // `festiveCompanies` was the name the OLD page gave the list it fed EarnedAccrualDialog; the new
     // screen calls the same list `accrualCompanies`, gated by the same `canGroupWide`. The rename is not
     // the removal this case guards against — what matters is that the dialog is still fed a group-aware
@@ -125,13 +125,13 @@ describe('38f1fd40 — the Adjustments sub-step is gone', () => {
     for (const kept of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
       expect(liveScreen.includes(kept), `${kept} must survive — it feeds Run Earned Accrual`).toBe(true);
     }
-    for (const rel of ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/generate/page.tsx']) {
+    for (const rel of ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/generate/page.tsx']) {
       const leftBehind = stripComments(read(rel));
       for (const gone of ['canGroupWide', 'accrualCompanies', '<EarnedAccrualDialog']) {
         expect(leftBehind.includes(gone), `${gone} must leave ${rel} with the dialog`).toBe(false);
       }
     }
-    const typeScreen = stripComments(read('app/admin/leave-config/types/page.tsx'));
+    const typeScreen = stripComments(read('app/(app)/admin/leave-config/types/page.tsx'));
     expect(typeScreen).toContain('accrualPointer');
   });
 

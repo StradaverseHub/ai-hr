@@ -3,7 +3,7 @@
  *
  * The plan told the reporter: with the switch OFF "the phone's position is still saved with the clocking,
  * marked 'geofencing not required', so HR can see where it was made". This renders the REAL day page
- * (app/attendance/individual/[date]/page.tsx) against a real database for the three shapes a punch can have:
+ * (app/(app)/attendance/individual/[date]/page.tsx) against a real database for the three shapes a punch can have:
  *   (a) a geofenced capture  → the matched site, "distance N m of R m allowed";
  *   (b) a switch-OFF capture → "Geofencing not required" + the recorded coordinates as a map link;
  *   (c) a manual (HR-typed) punch → no evidence line at all.
@@ -54,7 +54,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }));
 vi.mock('next/headers', () => ({ cookies: async () => ({ get: () => undefined }), headers: async () => new Headers() }));
 
-import DayPage from '../app/attendance/individual/[date]/page';
+import DayPage from '../app/(app)/attendance/individual/[date]/page';
 
 let b: Base;
 beforeAll(migrateTestDb);

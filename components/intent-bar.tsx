@@ -17,7 +17,7 @@ import { performanceAreaOwnsComposer } from '@/lib/performance-navigation';
  * anywhere, because the command bar keeps its own listener in both themes.
  *
  * Classic renders nothing here: Classic's way in is the search trigger in the header's centre track, which
- * Monolith hides (app/layout.tsx).
+ * Monolith hides (app/(app)/layout.tsx).
  *
  * Every string is the command bar's own (`commandBar.open` / `commandBar.placeholder`), because this IS
  * that control: a second label for the same action would be a second name for one thing.

@@ -219,8 +219,8 @@ Not a Layer-B *file*: it is the government's published PDF page with our data dr
   nothing that belongs in them, and a guessed value on a government form is worse than a gap an
   operator fills in by hand.
 - **Renderer:** `lib/cp22-pdf.ts` (pdf-lib, Node runtime). Routes:
-  `app/payroll/cp22/[employmentId]/pdf` (one joiner), `app/payroll/cp22/batch` (a hire month),
-  `app/payroll/cp22/blank` (the empty fillable page).
+  `app/(app)/payroll/cp22/[employmentId]/pdf` (one joiner), `app/(app)/payroll/cp22/batch` (a hire month),
+  `app/(app)/payroll/cp22/blank` (the empty fillable page).
 - **What it is NOT.** Filing still happens through **e-CP22 on MyTax** — since 1 Sep 2024 posted
   and hand-delivered forms are not accepted. What downloads here is the completed page to key from
   and to keep as the employer's own record. The screen says exactly that beside the button.

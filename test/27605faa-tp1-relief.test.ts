@@ -54,11 +54,11 @@ const src = (p: string) =>
   readFileSync(join(ROOT, p), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const LIST = src('app/payroll/transactions/tp1/page.tsx');
-const ACTIONS = src('app/payroll/transactions/deductions-actions.ts');
+const LIST = src('app/(app)/payroll/transactions/tp1/page.tsx');
+const ACTIONS = src('app/(app)/payroll/transactions/deductions-actions.ts');
 const FORM = src('components/tp1-declaration-form.tsx');
-const NEW = src('app/payroll/transactions/tp1/new/page.tsx');
-const PAGE_SRC = src('app/payroll/transactions/tp1/page.tsx');
+const NEW = src('app/(app)/payroll/transactions/tp1/new/page.tsx');
+const PAGE_SRC = src('app/(app)/payroll/transactions/tp1/page.tsx');
 const FORM_LIST = src('components/tp1-declarations-list.tsx');
 const CORE = src('core/tax-relief.ts');
 
@@ -267,11 +267,11 @@ describe('27605faa · submit and approve in one press', () => {
   });
 
   it('is ADMIN-ONLY on the screen too: only the HR page passes it', () => {
-    const hr = src('app/payroll/transactions/tp1/[year]/[month]/page.tsx');
+    const hr = src('app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx');
     expect(hr, 'the HR screen offers the one-press control').toContain('canSubmitApprove');
     expect(hr).toContain('formAction={adminTp1FormAction}');
     // The employee's own screen renders the SAME component and must not hand it either control.
-    const me = src('app/me/tax-relief/page.tsx');
+    const me = src('app/(app)/me/tax-relief/page.tsx');
     expect(me, 'an employee cannot approve their own').not.toContain('canSubmitApprove');
     expect(me, 'nor discard through this path').not.toContain('discardDraftAction');
   });
@@ -286,7 +286,7 @@ describe('27605faa · submit and approve in one press', () => {
  * 27605faa REVISION 2 — the year and month moved OFF the viewing screen and INTO Add New TP1.
  *
  * ⚠️ THESE FOUR CASES WERE UPDATED, NOT DELETED, because they pinned a decision the reporter then
- * contested. r324 put a month picker on app/payroll/transactions/tp1/page.tsx beside the Add button, and
+ * contested. r324 put a month picker on app/(app)/payroll/transactions/tp1/page.tsx beside the Add button, and
  * asserted it there. Their words: "The Assessment Year and Deduction Month selection is currently
  * displayed on the TP1 viewing page. This is not the correct workflow because these fields are relevant
  * when creating a new TP1 transaction, not when viewing existing transaction history."

@@ -2,7 +2,7 @@
  * e0cd4583 — CP39 PRINTED FORM (LHDN monthly PCB / MTD deduction statement): the form's own model, its
  * dating rule, its pagination and its plain-text rendering. PURE — no DB, no pack, no pdf-lib — so every
  * rule below is unit-testable on its own. Same three-layer split r194 shipped for Borang A: the read is
- * `localization/my/cp39-form.ts`, the drawing is `lib/cp39-form-pdf.ts`, the routes are `app/payroll/cp39/*`.
+ * `localization/my/cp39-form.ts`, the drawing is `lib/cp39-form-pdf.ts`, the routes are `app/(app)/payroll/cp39/*`.
  *
  * ── THIS IS NOT `localization/my/cp39-file.ts`, AND THE TWO MUST NOT MERGE ────────────────────────
  * That module builds the **e-Data PCB text file** — a fixed-width 57/136-character machine format LHDN's

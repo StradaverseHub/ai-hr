@@ -49,8 +49,8 @@ const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf8');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 /**
- * Exactly what BOTH server actions build from a post — `app/admin/leave/adjustments/actions.ts` `idsFrom`
- * and `app/admin/notice-board/actions.ts` `inputFrom`. Modelled here so the two doors can be driven from a
+ * Exactly what BOTH server actions build from a post — `app/(app)/admin/leave/adjustments/actions.ts` `idsFrom`
+ * and `app/(app)/admin/notice-board/actions.ts` `inputFrom`. Modelled here so the two doors can be driven from a
  * real FormData; that the ACTIONS actually contain this expression rather than a re-inlined split is §C's
  * job, and without §C this helper would only be testing itself.
  *
@@ -304,9 +304,9 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
    * would put the population a screen confirms out of step with the population it writes, with both halves'
    * tests still green.
    */
-  const adjAction = read('app/admin/leave/adjustments/actions.ts');
+  const adjAction = read('app/(app)/admin/leave/adjustments/actions.ts');
   const adjForm = read('components/leave/adjustment-form.tsx');
-  const noticeAction = read('app/admin/notice-board/actions.ts');
+  const noticeAction = read('app/(app)/admin/notice-board/actions.ts');
   const noticeForm = read('components/notice/notice-form.tsx');
 
   /**
@@ -382,7 +382,7 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
    * wiring from being deleted afterwards.
    */
   it('both server pages read the employment list and hand it over as PLAIN DATA', () => {
-    const adjPage = read('app/admin/leave-config/adjustments/page.tsx');
+    const adjPage = read('app/(app)/admin/leave-config/adjustments/page.tsx');
     expect(adjPage).toContain('listEmployees');
     expect(adjPage).toContain('employees={employments.map(');
     expect(adjPage).toContain('employeeCode: e.employeeCode');
@@ -390,10 +390,10 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
 
     // Notice Board reads it ONCE in the shared vocabulary module, because two pages mount the same form and
     // a second `listEmployees` call is a second thing to keep in step.
-    const vocab = read('app/admin/notice-board/criteria-options.ts');
+    const vocab = read('app/(app)/admin/notice-board/criteria-options.ts');
     expect(vocab).toContain('listEmployees');
     expect(vocab).toContain('employeeCode: e.employeeCode');
-    for (const rel of ['app/admin/notice-board/new/page.tsx', 'app/admin/notice-board/[id]/page.tsx']) {
+    for (const rel of ['app/(app)/admin/notice-board/new/page.tsx', 'app/(app)/admin/notice-board/[id]/page.tsx']) {
       const page = read(rel);
       expect(page, `${rel} must hand the list over`).toContain('employees={vocab.employees}');
       expect(page.includes("'use client'"), `${rel} must stay a server component`).toBe(false);
@@ -411,7 +411,7 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
     expect(noticeForm).toContain("labels.employeeNoMatchTemplate.replace('{query}'");
     expect(noticeForm).toContain("labels.employeeRemoveTemplate.replace('{name}'");
     // …and no label may arrive as a function. The two pages pass `t('…')` CALLS, whose results are strings.
-    for (const rel of ['app/admin/notice-board/new/page.tsx', 'app/admin/notice-board/[id]/page.tsx']) {
+    for (const rel of ['app/(app)/admin/notice-board/new/page.tsx', 'app/(app)/admin/notice-board/[id]/page.tsx']) {
       expect(read(rel), `${rel} must not send a translator across`).not.toMatch(/employee\w*=\{t\}/);
     }
   });
@@ -437,7 +437,7 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
    * would actually regress — is that each template key is given its own placeholder back as the value.
    */
   it('the three ICU template labels pass their placeholder back in, or they render as a key path', () => {
-    for (const rel of ['app/admin/notice-board/new/page.tsx', 'app/admin/notice-board/[id]/page.tsx']) {
+    for (const rel of ['app/(app)/admin/notice-board/new/page.tsx', 'app/(app)/admin/notice-board/[id]/page.tsx']) {
       const page = read(rel);
       expect(page, `${rel} fEmployeeNoMatch`).toContain("t('fEmployeeNoMatch', { query: '{query}' })");
       expect(page, `${rel} fEmployeeSelectedCount`).toContain("t('fEmployeeSelectedCount', { count: '{count}' })");
@@ -465,9 +465,9 @@ describe('r288 §D · the help strings that were lying are gone, in all six loca
     for (const rel of [
       'components/leave/adjustment-form.tsx',
       'components/notice/notice-form.tsx',
-      'app/admin/notice-board/new/page.tsx',
-      'app/admin/notice-board/[id]/page.tsx',
-      'app/admin/leave-config/adjustments/page.tsx',
+      'app/(app)/admin/notice-board/new/page.tsx',
+      'app/(app)/admin/notice-board/[id]/page.tsx',
+      'app/(app)/admin/leave-config/adjustments/page.tsx',
     ]) {
       const src = read(rel);
       for (const [key] of RETIRED) expect(src, `${rel} still uses ${key}`).not.toContain(`'${key}'`);

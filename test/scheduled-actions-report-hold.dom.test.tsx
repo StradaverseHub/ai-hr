@@ -19,7 +19,7 @@ vi.mock('next-intl/server',()=>({
  getLocale:async()=>state.locale,
  getTranslations:async(namespace:string)=>createTranslator({locale:state.locale,namespace,messages:JSON.parse(readFileSync(join(process.cwd(),'messages',`${state.locale}.json`),'utf8')),onError:error=>{throw error;}}),
 }));
-import Page from '../app/admin/scheduled-actions/page';
+import Page from '../app/(app)/admin/scheduled-actions/page';
 import {JOBS} from '../core/job-run';
 
 const catalog=(locale:string)=>JSON.parse(readFileSync(join(process.cwd(),'messages',`${locale}.json`),'utf8'));

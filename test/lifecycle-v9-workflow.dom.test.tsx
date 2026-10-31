@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { beforeAll, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { WorkflowEditor } from '../app/lifecycle/v9/workflow-editor';
+import { WorkflowEditor } from '../app/(app)/lifecycle/v9/workflow-editor';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import type { Config } from '../lib/lifecycle-v9-model';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';

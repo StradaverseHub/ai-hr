@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import {useActionState,useState,useEffect,useRef} from 'react';
-import {decideApproval,delegateApproval,bulkApprove} from '@/app/letters/approval/actions';
+import {decideApproval,delegateApproval,bulkApprove} from '@/app/(app)/letters/approval/actions';
 import {Field,inputCls,btnPrimary,Card} from '@/components/ui';
 import {LetterSubmit} from './submit';
 import {LetterChoicePicker,type LetterChoiceLabels} from './choice-picker';

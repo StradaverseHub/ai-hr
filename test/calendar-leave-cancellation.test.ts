@@ -18,7 +18,7 @@ vi.mock('next-intl/server', async () => {
     return createTranslator({locale:'en',messages});
   }};
 });
-vi.mock('../app/leave/actions',()=>({requestLeaveCancellationAction:vi.fn(),editLeaveAction:vi.fn(),cancelOwnLeaveAction:vi.fn()}));
+vi.mock('../app/(app)/leave/actions',()=>({requestLeaveCancellationAction:vi.fn(),editLeaveAction:vi.fn(),cancelOwnLeaveAction:vi.fn()}));
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';

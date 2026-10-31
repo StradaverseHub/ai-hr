@@ -20,11 +20,11 @@ vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: renderLocale, messages: catalogues[renderLocale], namespace }),
   getFormatter: async () => ({ dateTime: (date: Date) => date.toISOString() }),
 }));
-vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
+vi.mock('../app/(app)/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
 vi.mock('../core/readiness-actions', () => ({ myReadinessActions: vi.fn() }));
 import { myReadinessActions } from '../core/readiness-actions';
-import { MyReadinessWork } from '../app/me/readiness-work';
-import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
+import { MyReadinessWork } from '../app/(app)/me/readiness-work';
+import { OrchestrationWorkQueue } from '../app/(app)/control-tower/work-queue';
 
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale={renderLocale} messages={catalogues[renderLocale]}>{element}</NextIntlClientProvider>);
 const empty = { scheduledRun: false, actionsUnavailable: false, rows: [], total: 0, verified: 0, inactive: 0, observedAt: null, lastRun: null };

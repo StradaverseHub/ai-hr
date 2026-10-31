@@ -236,9 +236,9 @@ describe('§4 the three retired statuses are gone from every surface that could 
   // Source, not rendered markup: Next embeds the whole i18n catalog, so a rendered-HTML assertion here
   // would find the retired words in the payload of a page that never shows them.
   it.each([
-    'app/performance/new-cycle-form.tsx',
-    'app/performance/actions.ts',
-    'app/payroll/process/steps/step-selection.tsx',
+    'app/(app)/performance/new-cycle-form.tsx',
+    'app/(app)/performance/actions.ts',
+    'app/(app)/payroll/process/steps/step-selection.tsx',
   ])('%s offers no retired status value', (rel) => {
     const src = read(rel);
     for (const v of RETIRED) {
@@ -253,15 +253,15 @@ describe('§4 the three retired statuses are gone from every surface that could 
   // values that ARE unambiguous still get checked, plus the positive assertion that matters most: the
   // status options come from the resolver.
   it('the analytics filter bar sources status options from the resolver and offers no retired status', () => {
-    const src = read('app/analytics/FilterBar.tsx');
+    const src = read('app/(app)/analytics/FilterBar.tsx');
     expect(src).toContain('EMPLOYMENT_STATUSES');
     expect(src).not.toMatch(/['"]on_leave['"]/);
     expect(src).not.toMatch(/['"]offboarding['"]/);
   });
 
   it('the performance eligibility picker is sourced from the resolver, not a private list', () => {
-    expect(read('app/performance/new-cycle-form.tsx')).toContain('EMPLOYMENT_STATUSES');
-    expect(read('app/performance/actions.ts')).toContain('EMPLOYMENT_STATUSES');
+    expect(read('app/(app)/performance/new-cycle-form.tsx')).toContain('EMPLOYMENT_STATUSES');
+    expect(read('app/(app)/performance/actions.ts')).toContain('EMPLOYMENT_STATUSES');
   });
 
   // The i18n guard (scripts/i18n-check.mjs) skips files using more than one namespace and only matches a

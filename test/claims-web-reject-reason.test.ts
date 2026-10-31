@@ -21,7 +21,7 @@ function between(src: string, from: string, to: string): string {
 }
 
 describe('web claim rejection reason', () => {
-  const actions = read('app/approvals/actions.ts');
+  const actions = read('app/(app)/approvals/actions.ts');
 
   it('the single-claim action refuses a reasonless rejection and passes the reason to decideClaim', () => {
     const single = between(actions, 'export async function approveClaimAction', 'await done(');
@@ -37,14 +37,14 @@ describe('web claim rejection reason', () => {
   });
 
   it('the approvals page asks for a required reason when rejecting a claim', () => {
-    const page = read('app/approvals/page.tsx');
+    const page = read('app/(app)/approvals/page.tsx');
     expect(page).toContain("<DecideButtons action={approveClaimAction} id={c.id} disabled={mine(c.personId)} labels={decideLabels} rejectReasonLabel={t('rejectReasonPlaceholder')} nav={nav} />");
     // DecideButtons renders a REQUIRED rejectReason textarea when given a rejectReasonLabel.
     expect(page).toMatch(/<textarea name="rejectReason" required/);
   });
 
   it('the employee list shows the reason through the claims owner reader, translated in every locale', () => {
-    const claims = read('app/claims/page.tsx');
+    const claims = read('app/(app)/claims/page.tsx');
     expect(claims).toMatch(/claimRecordFacts\(s, claims\.filter\(\(c\) => c\.status === 'rejected'\)/);
     expect(claims).toMatch(/t\('rejectReasonShown', \{ reason:/);
     for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {

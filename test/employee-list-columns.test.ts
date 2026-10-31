@@ -45,7 +45,7 @@ import {
   draftMatchesQuery,
   headcountFilters,
   parsePersonnelListQuery,
-} from '../app/admin/personnel/list-query';
+} from '../app/(app)/admin/personnel/list-query';
 
 let b: Base;
 beforeAll(async () => {
@@ -415,7 +415,7 @@ describe('579255c3 — one parse of the query string, for the screen and the exp
 describe('579255c3 — the page wires the Draft card to that preview, not to the visible rows', () => {
   it('reads draftCardCount rather than the filtered row list', async () => {
     const { readFileSync } = await import('node:fs');
-    const src = readFileSync(new URL('../app/admin/personnel/page.tsx', import.meta.url), 'utf8');
+    const src = readFileSync(new URL('../app/(app)/admin/personnel/page.tsx', import.meta.url), 'utf8');
     expect(src).toContain('const draftCardCount = allDrafts.filter');
     expect(src).toContain('bucket: undefined');
     expect(src).toContain("count: draftCardCount");

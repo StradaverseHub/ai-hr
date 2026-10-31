@@ -1,8 +1,8 @@
 /**
  * The Attendance Records number formatters, in ONE place.
  *
- * They used to be copy-pasted, identically, at the top of app/attendance/daily/page.tsx and
- * app/attendance/individual/page.tsx. 7c834696 point 3 adds a third reader — the calculation-breakdown
+ * They used to be copy-pasted, identically, at the top of app/(app)/attendance/daily/page.tsx and
+ * app/(app)/attendance/individual/page.tsx. 7c834696 point 3 adds a third reader — the calculation-breakdown
  * panel, which is a CLIENT island — and a panel that formatted minutes even slightly differently from the
  * cell it explains would be worse than no panel. So the two copies became this import, and the island uses
  * the same functions rather than a fourth copy.

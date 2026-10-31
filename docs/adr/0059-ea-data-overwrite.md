@@ -7,8 +7,8 @@ Date: 2026-06-27
 
 ## Context
 The annual EA (C.P.8A) Statement of Remuneration is a **pure derived read** — both the HTML page
-(`app/payroll/reports/ea/[employmentId]/page.tsx`) and the PDF (`lib/ea-pdf.ts` via
-`app/me/ea/[employmentId]/pdf/route.ts`) go through `employeeEaStatement()` → the MY pack's
+(`app/(app)/payroll/reports/ea/[employmentId]/page.tsx`) and the PDF (`lib/ea-pdf.ts` via
+`app/(app)/me/ea/[employmentId]/pdf/route.ts`) go through `employeeEaStatement()` → the MY pack's
 `eaStatement()` (`localization/my/reports.ts`), which sums the year's payslips. Authorized HR sometimes
 needs to overwrite/amend specific EA-form figures (employment income, allowances, bonus, tax deduction,
 statutory values) — e.g. an arrears or correction known only at filing — **without touching the original

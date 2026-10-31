@@ -3,7 +3,7 @@
  *
  * WHY THIS FILE EXISTS, AND WHY IT IS SMALL. The product explains a rule's scope on screen through
  * `buildOrgCriteriaSections` (core/org-criteria-form.ts) — the axis order, the axis labels and the value
- * labels — plus the two labellers in app/admin/leave/entitlements/templates/leave-type-conditions.ts. That
+ * labels — plus the two labellers in app/(app)/admin/leave/entitlements/templates/leave-type-conditions.ts. That
  * IS the vocabulary, and this file invents none of its own. But those are fed by next-intl translators and
  * session-scoped catalogue reads, neither of which an operator script running as the owner role has, and
  * nothing in core/ turns an `OrgCriteria` object into a sentence. So this helper does exactly that and no

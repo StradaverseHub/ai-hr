@@ -189,7 +189,7 @@ describe('ADR-0080 rung 7: service facade re-exports the implementation unchange
 
 describe('ADR-0080 rung 7: the pay seams (D9) — consumer side established, leave side inline', () => {
   it('consumes the claims taxable payout through the PayrollInputContributor contract (rung 3)', () => {
-    // The contract home is established and claims is registered; payroll (app/payroll/actions.ts)
+    // The contract home is established and claims is registered; payroll (app/(app)/payroll/actions.ts)
     // resolves it BY ID. This rung does not change that seam — it proves the consumer side exists.
     expect(payrollInputContributorById('claims')).toBeDefined();
     expect(listPayrollInputContributors().map((c) => c.id)).toContain('claims');

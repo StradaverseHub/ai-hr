@@ -15,9 +15,9 @@ import { createTranslator } from 'next-intl';
 const ROOT = resolve(__dirname, '..');
 const read = (p: string) => readFileSync(resolve(ROOT, p), 'utf8');
 
-const LOCATIONS_PAGE = 'app/admin/work-locations/page.tsx';
-const GROUP_EDIT_PAGE = 'app/admin/holidays/groups/[id]/page.tsx';
-const GROUP_LIST_PAGE = 'app/admin/holidays/groups/page.tsx';
+const LOCATIONS_PAGE = 'app/(app)/admin/work-locations/page.tsx';
+const GROUP_EDIT_PAGE = 'app/(app)/admin/holidays/groups/[id]/page.tsx';
+const GROUP_LIST_PAGE = 'app/(app)/admin/holidays/groups/page.tsx';
 const WARNING_COMPONENT = 'components/holiday-coverage-warning.tsx';
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;

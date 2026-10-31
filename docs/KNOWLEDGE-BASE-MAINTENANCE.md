@@ -51,20 +51,20 @@ Record the corresponding value under that article's locale only after reviewing 
 
 | Guide area | Primary implementation to review |
 | --- | --- |
-| Setup, people, organization | `app/admin/organization`, `app/admin/personnel`, `app/personnel`, `core/org.ts` |
-| Account activation, roles, audit | `app/admin/users`, `lib/identity`, `core/auth.ts`, `lib/authz.ts` |
-| Leave and team availability | `app/leave`, `app/admin/leave-config`, `app/manage/my-team`, `packs/leave` |
-| Clocking, corrections, roster, import | `app/attendance`, `app/roster`, `app/admin/attendance`, `packs/attendance` |
-| Payroll, statutory outputs and payment | `app/payroll`, `packs/payroll`, current country pack services |
-| Claims and loans | `app/claims`, `app/admin/claims`, `app/admin/loans`, `core/claims.ts` |
-| Performance and goals | `app/performance`, `app/me/performance`, `packs/performance` |
-| Lifecycle and equipment | `app/lifecycle`, `app/admin/lifecycle`, `packs/lifecycle` |
-| Rewards and payroll posting | `app/rewards`, `app/admin/rewards`, `packs/rewards` |
-| Mobile builder and live experience | `app/mobile-preview`, `core/mobile-design.ts`, `lib/mobile-design.ts` |
-| AI, reports and operational tools | `app/control-tower`, `app/assistant`, `app/reports`, `app/analytics` |
-| Notices and workflow email | `app/notices`, `app/admin/notice-board`, `app/me/notifications`, `app/admin/settings/notifications`, `core/notification-email.ts` |
-| Operator provisioning and activation | `app/operator`, `core/operator.ts`, `db/provision.ts`, `scripts/provision-runner.ts` |
-| Installation identity and email | `app/admin/settings/email`, `lib/identity/email-settings.ts`, deployment identity service |
+| Setup, people, organization | `app/(app)/admin/organization`, `app/(app)/admin/personnel`, `app/(app)/personnel`, `core/org.ts` |
+| Account activation, roles, audit | `app/(app)/admin/users`, `lib/identity`, `core/auth.ts`, `lib/authz.ts` |
+| Leave and team availability | `app/(app)/leave`, `app/(app)/admin/leave-config`, `app/(app)/manage/my-team`, `packs/leave` |
+| Clocking, corrections, roster, import | `app/(app)/attendance`, `app/(app)/roster`, `app/(app)/admin/attendance`, `packs/attendance` |
+| Payroll, statutory outputs and payment | `app/(app)/payroll`, `packs/payroll`, current country pack services |
+| Claims and loans | `app/(app)/claims`, `app/(app)/admin/claims`, `app/(app)/admin/loans`, `core/claims.ts` |
+| Performance and goals | `app/(app)/performance`, `app/(app)/me/performance`, `packs/performance` |
+| Lifecycle and equipment | `app/(app)/lifecycle`, `app/(app)/admin/lifecycle`, `packs/lifecycle` |
+| Rewards and payroll posting | `app/(app)/rewards`, `app/(app)/admin/rewards`, `packs/rewards` |
+| Mobile builder and live experience | `app/(app)/mobile-preview`, `core/mobile-design.ts`, `lib/mobile-design.ts` |
+| AI, reports and operational tools | `app/(app)/control-tower`, `app/(app)/assistant`, `app/(app)/reports`, `app/(app)/analytics` |
+| Notices and workflow email | `app/(app)/notices`, `app/(app)/admin/notice-board`, `app/(app)/me/notifications`, `app/(app)/admin/settings/notifications`, `core/notification-email.ts` |
+| Operator provisioning and activation | `app/(app)/operator`, `core/operator.ts`, `db/provision.ts`, `scripts/provision-runner.ts` |
+| Installation identity and email | `app/(app)/admin/settings/email`, `lib/identity/email-settings.ts`, deployment identity service |
 
 The catalog intentionally explains optional modules without claiming they are enabled for every tenant. Features that require separate assignment, module entitlement or installation capability state that prerequisite in the article.
 

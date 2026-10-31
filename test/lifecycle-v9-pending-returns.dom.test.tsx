@@ -1,10 +1,10 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { PendingReturns } from '../app/lifecycle/v9/pending-returns';
+import { PendingReturns } from '../app/(app)/lifecycle/v9/pending-returns';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import type { Case } from '../lib/lifecycle-v9-model';
-import { readV9Case } from '../app/lifecycle/v9/actions';
-vi.mock('../app/lifecycle/v9/actions', () => ({ readV9Case: vi.fn() }));
+import { readV9Case } from '../app/(app)/lifecycle/v9/actions';
+vi.mock('../app/(app)/lifecycle/v9/actions', () => ({ readV9Case: vi.fn() }));
 const c = { id: 'case', revision: 2 } as Case;
 it('keeps held records read-only and retains the catalogue search when a write fails', async () => {
   vi.mocked(readV9Case).mockResolvedValue({ok:true,detail:{case:c,calculation:null,personnelWritableKeys:[],returns:{held:[{id:'held',name:'Held laptop',kind:'device',group:null,source:'asset'}],selected:['selected'],catalogue:[{id:'selected',name:'Extra account',kind:'system',group:'team',active:true},{id:'active',name:'New laptop',kind:'device',group:'team',active:true},{id:'retired',name:'New retired laptop',kind:'device',group:'team',active:false}]}}});

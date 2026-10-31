@@ -4,7 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import ta from '../messages/ta.json';
-import { AccountTargetFields } from '../app/admin/users/account-target-fields';
+import { AccountTargetFields } from '../app/(app)/admin/users/account-target-fields';
 import { Card, Field, SectionHeader, btnPrimary, inputCls } from '../components/ui';
 import '../app/globals.css';
 afterEach(cleanup);

@@ -18,13 +18,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
-import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
+import { deriveHistoryBreakdown } from '../app/(app)/payroll/transaction-view/history-breakdown';
 import {
   HISTORY_EXPORT_FIXED_COLUMNS,
   HISTORY_EXPORT_FREEZE,
   RECORDED_ITEM_PREFIX,
   buildHistoryExport,
-} from '../app/payroll/transaction-view/history-export';
+} from '../app/(app)/payroll/transaction-view/history-export';
 import { toXlsxReport } from '../lib/report-export';
 import en from '../messages/en.json';
 
@@ -514,7 +514,7 @@ describe('417d4937 — the Recorded: columns carry the same repaired label the p
 
   it('the ROUTE reads the catalogue and passes it — the builder alone is inert', () => {
     const route = readFileSync(
-      resolve(__dirname, '..', 'app/payroll/transaction-view/history-export/route.ts'),
+      resolve(__dirname, '..', 'app/(app)/payroll/transaction-view/history-export/route.ts'),
       'utf8',
     );
     // Archived included, exactly as the screen and the Grid export read it: a retired code must still head
@@ -534,7 +534,7 @@ describe('0fcb2557 — the download can never contain a company the caller may n
   // integration test does not notice. "Even if someone edits the link by hand" is the reporter-facing
   // promise, so both the fence and the re-guard are pinned here.
   const src = readFileSync(
-    resolve(__dirname, '..', 'app/payroll/transaction-view/history-export/route.ts'),
+    resolve(__dirname, '..', 'app/(app)/payroll/transaction-view/history-export/route.ts'),
     'utf8',
   );
 

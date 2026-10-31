@@ -5,7 +5,7 @@
  * exactly how the inconsistency arose in the first place.
  *
  * WHY SOURCE ASSERTIONS. Every one of these sections except Documents and Basic Salary's history table is
- * rendered INLINE inside app/admin/personnel/[employmentId]/page.tsx, a 4100-line server component that
+ * rendered INLINE inside app/(app)/admin/personnel/[employmentId]/page.tsx, a 4100-line server component that
  * loads a dozen tables before it renders anything. Mounting it would exercise data loading, not the
  * layout this item is about — the same reasoning test/personnel-payroll-tab-order.test.ts already uses
  * for the card ORDER on this tab. What a reader SEES is covered by the two DOM files

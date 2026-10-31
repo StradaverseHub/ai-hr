@@ -16,7 +16,7 @@ vi.mock('../lib/viewer',()=>({viewerIdentity:async()=>({name:null})}));
 vi.mock('../core/employee-home',()=>({readEmployeeHomeIdentity:async()=>({selectedEmploymentId:null})}));
 vi.mock('../core/ai-workspace',()=>({loadAiWorkspace:async()=>({access:fixture.allowed?{allowed:true}:{allowed:false,reason:'unavailable'},history:[],jobModules:[],taskIds:[],planningPermit:null,planningAvailability:'resting',proposal:null,governedJob:null})}));
 // Unrelated history ports stay explicit; these cases exercise real navigation RSC permissions only.
-vi.mock('../app/assistant/conversation-scope',()=>({assistantBrowserConversationScope:async(...args:unknown[])=>{fixture.scope(...args);return '[]';}}));
+vi.mock('../app/(app)/assistant/conversation-scope',()=>({assistantBrowserConversationScope:async(...args:unknown[])=>{fixture.scope(...args);return '[]';}}));
 vi.mock('../core/assistant-threads',()=>({listOwnAssistantChats:async(...args:unknown[])=>{fixture.savedChats(...args);return{chats:[],nextCursor:null,scopeDigest:'empty-navigation-fixture'};},loadOwnAssistantChat:fixture.selectedChat}));
 vi.mock('../core/assistant',()=>({MAX_TURNS:5}));
 vi.mock('../core/assistant-actions/module-action-entries',()=>({allowedModuleActionEntries:async()=>[]}));
@@ -32,12 +32,12 @@ vi.mock('../components/assistant/native-outcomes',()=>({NativeOutcomes:()=>null,
 vi.mock('../components/assistant/assistant-home-tabs',()=>({AssistantHomeTabs:()=>null}));
 vi.mock('../components/employee-home/tasks-card',()=>({HomeTasksCard:()=>null}));
 vi.mock('../components/employee-home/calendar-card',()=>({HomeCalendarCard:()=>null}));
-vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
-vi.mock('../app/assistant/agent-review-actions',()=>({eraseConversationMetadataAction:vi.fn()}));
-vi.mock('../app/assistant/module-plan-actions',()=>({eraseModuleProposalsAction:vi.fn()}));
-vi.mock('../app/assistant/job-feedback-actions',()=>({eraseGovernedJobFeedbackAction:vi.fn()}));
-vi.mock('../app/assistant/feedback-actions',()=>({saveAgentFeedbackAction:vi.fn(),eraseAgentFeedbackAction:vi.fn()}));
-import AssistantPage from '../app/assistant/page';
+vi.mock('../app/(app)/assistant/actions',()=>({askAssistantAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/agent-review-actions',()=>({eraseConversationMetadataAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/module-plan-actions',()=>({eraseModuleProposalsAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/job-feedback-actions',()=>({eraseGovernedJobFeedbackAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/feedback-actions',()=>({saveAgentFeedbackAction:vi.fn(),eraseAgentFeedbackAction:vi.fn()}));
+import AssistantPage from '../app/(app)/assistant/page';
 import {PersonnelReviewNavigation} from '../components/assistant/personnel-review-navigation';
 type SessionContext=Parameters<typeof PersonnelReviewNavigation>[0]['ctx'];
 const ctx:SessionContext={tenantId:'86000000-0000-4000-8000-000000000001',userId:'86000000-0000-4000-8000-000000000002',personId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};

@@ -20,11 +20,11 @@ const warmCache = () => { mkdirSync(cache(), { recursive: true }); writeFileSync
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'css-guard-'));
-  mkdirSync(join(dir, 'app'), { recursive: true });
+  mkdirSync(join(dir, 'app/(app)'), { recursive: true });
   mkdirSync(join(dir, 'components/x'), { recursive: true });
   writeFileSync(join(dir, 'app/globals.css'), ':root { --a: 1; }\n');
   writeFileSync(join(dir, 'components/x/y.module.css'), '.y { color: red; }\n');
-  writeFileSync(join(dir, 'app/layout.tsx'), "import './globals.css';\nexport default function L() { return null; }\n");
+  writeFileSync(join(dir, 'app/(app)/layout.tsx'), "import './globals.css';\nexport default function L() { return null; }\n");
 });
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -46,7 +46,7 @@ describe('deploy/css-cache-guard.sh', () => {
   it.each([
     ['an edited CSS file', () => writeFileSync(join(dir, 'app/globals.css'), ':root { --a: 2; }\n')],
     ['a new CSS import in the layout', () =>
-      writeFileSync(join(dir, 'app/layout.tsx'), "import './globals.css';\nimport './atelier.css';\nexport default function L() { return null; }\n")],
+      writeFileSync(join(dir, 'app/(app)/layout.tsx'), "import './globals.css';\nimport './atelier.css';\nexport default function L() { return null; }\n")],
     ['a new CSS file', () => writeFileSync(join(dir, 'app/atelier.css'), '.a { color: blue; }\n')],
     ['an edited CSS module under components/', () => writeFileSync(join(dir, 'components/x/y.module.css'), '.y { color: green; }\n')],
   ])('%s clears the cache', (_label, change) => {

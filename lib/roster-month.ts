@@ -312,7 +312,7 @@ export const shiftCodeOf = (s: { code?: string | null; name: string } | undefine
 
 /**
  * THE MACHINE HEADER of the Excel template. Never translated, in any locale, for the same reason
- * app/roster/export/route.ts hard-codes its payload headers (ADR-0047 §9): this row is READ BY A
+ * app/(app)/roster/export/route.ts hard-codes its payload headers (ADR-0047 §9): this row is READ BY A
  * PROGRAM, not by a person.
  *
  * The template used to build these four cells from `t('colEmployeeNo')` &c, and that made Download
@@ -340,7 +340,7 @@ export type RosterTemplateEmployee = {
  * The Download Template payload: the month grid pre-filled with what is ROSTERED — never with the grey
  * ghosts, which have no stored row and must not be hardened into one by a round trip.
  *
- * Shared by app/roster/page.tsx and app/roster/import/page.tsx so the two buttons cannot drift, and so
+ * Shared by app/(app)/roster/page.tsx and app/(app)/roster/import/page.tsx so the two buttons cannot drift, and so
  * there is exactly one place a translated heading could ever be reintroduced.
  */
 export function buildRosterTemplate(p: {

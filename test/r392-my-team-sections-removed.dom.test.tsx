@@ -63,6 +63,6 @@ describe('r392 · My Team without the Today tiles and the attention panel',()=>{
  });
 
  it('the panel’s write actions are gone with it',()=>{
-  expect(existsSync(resolve(process.cwd(),'app/manage/my-team/actions.ts'))).toBe(false);
+  expect(existsSync(resolve(process.cwd(),'app/(app)/manage/my-team/actions.ts'))).toBe(false);
  });
 });

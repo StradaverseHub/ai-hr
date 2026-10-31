@@ -9,8 +9,8 @@ import {personnelField} from '../lib/personnel-field-registry';
 import {__resetUnsavedGuards} from '../lib/unsaved-changes';
 const mocks=vi.hoisted(()=>({save:vi.fn(),history:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
-vi.mock('../app/me/profile-edit-actions',()=>({saveMyProfileEditAction:mocks.save,readMyProfileMovementAction:mocks.history}));
-import {ProfileEditor} from '../app/me/profile-editor';
+vi.mock('../app/(app)/me/profile-edit-actions',()=>({saveMyProfileEditAction:mocks.save,readMyProfileMovementAction:mocks.history}));
+import {ProfileEditor} from '../app/(app)/me/profile-editor';
 const phone='profile.contact_and_permanent_address.phone',preferred='profile.personal_details.preferredname',familyName='family.family_and_dependents.fullname',bankAccount='bank_statutory.bank_information.bankaccountno';
 const recordId='00000000-0000-4000-8000-000000000002';
 function workspace():EssWorkspace{return {employmentId:'00000000-0000-4000-8000-000000000001',personId:recordId,country:'MY',values:{[phone]:'0110000000',[preferred]:'Recorded name',[bankAccount]:'•••• 1234'},baselines:{[phone]:'phone-proof',[preferred]:'name-proof',[bankAccount]:'bank-proof'},registers:[{kind:'dependent',id:recordId,primary:false,values:{[familyName]:'Recorded child'},baselines:{[familyName]:'child-proof'}}],editable:[phone,preferred,familyName,bankAccount],legacyPrimaryEditable:[],addressReview:false,legacyAddress:{},statutoryAvailable:true};}

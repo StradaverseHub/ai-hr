@@ -4,8 +4,8 @@
  * REWRITTEN for r429. The r331 DOM test proved the Mon–Sun row greyed live as a Schedule Group was picked.
  * r429 retires the row (and the picker it followed) from this screen entirely: which days are worked is
  * now set ONLY on the Schedule Group's own "Working Days" section
- * (app/admin/attendance/schedule/group-sections.tsx), and the Shift page shows a READ-ONLY line instead
- * (app/admin/attendance/shift-form.tsx, a server component — its own render is exercised by the render
+ * (app/(app)/admin/attendance/schedule/group-sections.tsx), and the Shift page shows a READ-ONLY line instead
+ * (app/(app)/admin/attendance/shift-form.tsx, a server component — its own render is exercised by the render
  * check, not here).
  *
  * What this file proves about the CLIENT ISLAND that is left (components/shift-time-fields.tsx):

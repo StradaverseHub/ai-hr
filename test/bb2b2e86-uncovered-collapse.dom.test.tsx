@@ -104,9 +104,9 @@ vi.mock('@/packs/leave/service', () => ({
   listEmploymentsWithoutEntitlementTable: (...a: unknown[]) => listEmploymentsWithoutEntitlementTable(...a),
 }));
 
-const { UncoveredEmployeesCard } = await import('../app/admin/leave/entitlements/templates/uncovered-employees');
+const { UncoveredEmployeesCard } = await import('../app/(app)/admin/leave/entitlements/templates/uncovered-employees');
 
-const SOURCE = read('app/admin/leave/entitlements/templates/uncovered-employees.tsx');
+const SOURCE = read('app/(app)/admin/leave/entitlements/templates/uncovered-employees.tsx');
 /**
  * The file's own header explains, at length, that it is a `<details>` and NOT a `useState` island — so a
  * guard for "no useState here" has to read the CODE, or the explanation trips it. (CLAUDE.md §8 names
@@ -327,7 +327,7 @@ describe('§6 · the card is still a server component', () => {
   it('the native element is what does the work', () => {
     expect(CODE).toContain('<details');
     expect(CODE).toContain('<summary');
-    // The label swap is a CSS variant, which is the precedent in app/admin/organization/page.tsx.
+    // The label swap is a CSS variant, which is the precedent in app/(app)/admin/organization/page.tsx.
     expect(CODE).toContain('group-open:hidden');
     expect(CODE).toContain('hidden group-open:inline');
   });

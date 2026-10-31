@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { TemplateVersionHistory } from '../app/lifecycle/v9/template-version-history';
+import { TemplateVersionHistory } from '../app/(app)/lifecycle/v9/template-version-history';
 import type { Template } from '../lib/lifecycle-v9-model';
 const originalShowModal = Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, 'showModal');
 beforeAll(() => Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', ''); } }));

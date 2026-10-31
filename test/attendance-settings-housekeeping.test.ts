@@ -278,8 +278,8 @@ describe('ad52212d round 2 — deleting an overtime pattern NAMES what is using 
 describe('ad52212d round 2 — the list wiring (a contract that spans two files)', () => {
   // 6d091cc0 (r301) — the list MOVED from /admin/attendance-policy/page.tsx (a redirect stub now) to the Schedule
   // Group card on Attendance › Schedule › General. The contract followed it; nothing about it was relaxed.
-  const PAGE = 'app/admin/attendance-policy/schedule-group-card.tsx';
-  const ACTIONS = 'app/admin/attendance-policy/rule-actions.ts';
+  const PAGE = 'app/(app)/admin/attendance-policy/schedule-group-card.tsx';
+  const ACTIONS = 'app/(app)/admin/attendance-policy/rule-actions.ts';
 
   it('the Overtime Pattern list offers Duplicate and an Activate/Deactivate toggle', () => {
     const src = read(PAGE);
@@ -316,10 +316,10 @@ describe('ad52212d round 2 — the list wiring (a contract that spans two files)
     // because "you are on the copy" is only obvious to the operator if the screen says so.
     // test/r301-schedule-general.test.ts runs the action and reads where it went.
     expect(read(ACTIONS)).toContain("okScheduleGroup(copied.id, t('duplicatedToast'), 'general')");
-    expect(read('app/admin/attendance-policy/schedule-panel.ts')).toContain(
+    expect(read('app/(app)/admin/attendance-policy/schedule-panel.ts')).toContain(
       'export const scheduleGroupEditPath = (ruleId: string) => `${scheduleGroupViewPath(ruleId)}/edit`;',
     );
-    expect(read('app/admin/_redirects.ts'), 'and that helper is the only place a schedule path meets a query').toContain(
+    expect(read('app/(app)/admin/_redirects.ts'), 'and that helper is the only place a schedule path meets a query').toContain(
       'export function okScheduleGroup(ruleId: string, msg: string, section = \'\', saveReceipt = \'\'): never {',
     );
   });
@@ -328,7 +328,7 @@ describe('ad52212d round 2 — the list wiring (a contract that spans two files)
     // Round 2 asks for these "across the three lists". This case is the evidence for the claim in this
     // file's header that the Shift half needed nothing — so a later reader can check it instead of
     // trusting it, and so deleting any of them registers as a regression here.
-    const shiftPage = read('app/admin/attendance/page.tsx');
+    const shiftPage = read('app/(app)/admin/attendance/page.tsx');
     for (const action of ['copyShiftAction', 'archiveShiftAction', 'unarchiveShiftAction', 'deleteShiftAction']) {
       expect(shiftPage, `the shift list wires ${action}`).toContain(action);
     }

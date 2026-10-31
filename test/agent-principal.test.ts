@@ -27,8 +27,8 @@ vi.mock('next-intl/server', () => ({
   getTranslations: async (namespace: any) => createTranslator({ locale: visual.locale, messages: copies[visual.locale], namespace }),
   getFormatter: async () => createFormatter({ locale: visual.locale, timeZone: 'Asia/Kuala_Lumpur' }),
 }));
-vi.mock('../app/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
-import { OrchestrationWorkQueue } from '../app/control-tower/work-queue';
+vi.mock('../app/(app)/control-tower/orchestrator-actions', () => ({ refreshOrchestrationAction: vi.fn() }));
+import { OrchestrationWorkQueue } from '../app/(app)/control-tower/work-queue';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';

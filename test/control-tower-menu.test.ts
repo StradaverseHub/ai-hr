@@ -27,11 +27,11 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 describe('r233 — the move out of the Payroll menu', () => {
   it('the old href still RESOLVES, as a forward and not a 404', () => {
     // It shipped live in r229. A bookmark or a link in someone's notes must not break to tidy a menu.
-    const old = read('app/payroll/control-tower/page.tsx');
+    const old = read('app/(app)/payroll/control-tower/page.tsx');
     expect(old).toContain('redirect');
     expect(old).toContain('/control-tower');
-    expect(fs.existsSync(path.join(ROOT, 'app/control-tower/page.tsx'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/control-tower/how-it-works/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/control-tower/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/control-tower/how-it-works/page.tsx'))).toBe(true);
   });
 
   it('and the row is gone from the payroll menu — not duplicated into both', () => {
@@ -102,7 +102,7 @@ describe('ADR-0083 §2.2 — the tower reads a registry, not the word "payroll"'
 });
 
 describe('ADR-0083 — the explainer states what does NOT run', () => {
-  const page = read('app/control-tower/how-it-works/page.tsx');
+  const page = read('app/(app)/control-tower/how-it-works/page.tsx');
   const en = JSON.parse(read('messages/en.json')).controlTower as Record<string, Record<string, string> | string>;
 
   it('renders the autonomy row rather than omitting it', () => {

@@ -30,10 +30,10 @@ const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[^\n]*?\/\/[^\n]*$/gm, '');
 
-const CREDITS = 'app/admin/leave-config/leave-credit/page.tsx';
-const RULES = 'app/admin/leave-config/leave-credit/rules/page.tsx';
-const RULES_TAB = 'app/admin/leave-config/leave-credit/rules-tab.tsx';
-const COMPANY_RULES = 'app/admin/leave-config/company-rules/page.tsx';
+const CREDITS = 'app/(app)/admin/leave-config/leave-credit/page.tsx';
+const RULES = 'app/(app)/admin/leave-config/leave-credit/rules/page.tsx';
+const RULES_TAB = 'app/(app)/admin/leave-config/leave-credit/rules-tab.tsx';
+const COMPANY_RULES = 'app/(app)/admin/leave-config/company-rules/page.tsx';
 
 describe('Leave Config › Leave Credit — the row, the tabs, the registry', () => {
   const node = leavePack.navNodes!.find((n) => n.group === 'admin')!;
@@ -177,18 +177,18 @@ describe('Company rules no longer renders the toil policy form', () => {
 
 describe('/admin/toil redirects to Leave Credit', () => {
   it('is an unguarded stub that forwards its query string', () => {
-    const src = read('app/admin/toil/page.tsx');
+    const src = read('app/(app)/admin/toil/page.tsx');
     expect(src).toContain("redirect(`/admin/leave-config/leave-credit${qs ? `?${qs}` : ''}`)");
     expect(src).toMatch(/for \(const \[k, v\] of Object\.entries\(sp\)\)/);
     expect(/requireAdmin|scopedAdmin|scopedSession/.test(code(src))).toBe(false);
     // The two sweep actions return to Leave Credit, not to the stub.
-    expect(read('app/admin/actions.ts')).toContain("const TOIL_POLICY = '/admin/leave-config/leave-credit';");
+    expect(read('app/(app)/admin/actions.ts')).toContain("const TOIL_POLICY = '/admin/leave-config/leave-credit';");
   });
 });
 
 describe('Leave Adjustments points Replacement Leave at Leave Credit', () => {
   it('the picker leaves the replacement type out, and a note links to Leave Credit', () => {
-    const src = read('app/admin/leave-config/adjustments/page.tsx');
+    const src = read('app/(app)/admin/leave-config/adjustments/page.tsx');
     // 3fb1a611 fix pass (D3) — UPDATED, NOT LOOSENED: both halves now apply only while the tenant has Leave
     // Credit (the page's quiet read of `toil`); without it the picker and the page are main's. Rendered on
     // both arms in test/r299-leave-credit-deploy-day.test.ts.
@@ -243,7 +243,7 @@ describe('My Leave — the Leave Credit request and the Apply form', () => {
     expect(en.replacementRequest.workingDayRefused).toMatch(/cannot earn a credit/);
     expect(en.replacementRequest.table.rosterMismatch).toMatch(/\{roster\}/);
     // The roster read that feeds the adjudication, wired from My Absence to the dialog it opens.
-    expect(read('app/leave/page.tsx')).toContain('dayFactsAction={leaveCreditDayFactsAction}');
+    expect(read('app/(app)/leave/page.tsx')).toContain('dayFactsAction={leaveCreditDayFactsAction}');
   });
 
   it('the Apply summary renders Expiring soon when (and only when) the figure is a number', () => {

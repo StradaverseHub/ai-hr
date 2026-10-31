@@ -9,14 +9,14 @@ import { styleFor } from '@/components/planned-absences';
  * The leave-request table cells, extracted so every surface that lists leave requests renders the SAME
  * thing (feedback 33bf1a2d).
  *
- * THREE tables consume them now: My Leave → Requests (app/leave/page.tsx) and, on Approval Items
- * (app/approvals/page.tsx), BOTH the leave-request queue and the leave-CANCELLATION queue — the r80
+ * THREE tables consume them now: My Leave → Requests (app/(app)/leave/page.tsx) and, on Approval Items
+ * (app/(app)/approvals/page.tsx), BOTH the leave-request queue and the leave-CANCELLATION queue — the r80
  * follow-up, which found the cancellation table still on the pre-r77 bare-text look while the request
  * table beside it had been restyled.
  *
  * Before this module there were two hand-written copies: the My Leave → Requests table
- * (app/leave/page.tsx) had grown avatars, colour-coded type chips and the ADR-0048 duration label, while
- * the Approval Items leave table (app/approvals/page.tsx) still rendered a bare name link and plain type
+ * (app/(app)/leave/page.tsx) had grown avatars, colour-coded type chips and the ADR-0048 duration label, while
+ * the Approval Items leave table (app/(app)/approvals/page.tsx) still rendered a bare name link and plain type
  * text. Same information, two looks — the reporter asked for the (cleaner) My Leave style on both.
  *
  * Copying the markup across would have guaranteed another divergence the next time any one table changed,

@@ -10,7 +10,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];
  if(typeof value!=='string')throw Error('Missing fixture translation');return value.replace(/\{(\w+)\}/g,(_whole,name:string)=>String(args?.[name]??'{'+name+'}'));
 }}));
-vi.mock('../app/assistant/agent-review-actions',()=>({createAgentCandidateAction:async()=>{},evaluateAgentCandidateAction:async()=>{},promoteAgentCandidateAction:async()=>{},rollbackAgentCandidateAction:async()=>{},tryAgentCandidateAction:async()=>{},
+vi.mock('../app/(app)/assistant/agent-review-actions',()=>({createAgentCandidateAction:async()=>{},evaluateAgentCandidateAction:async()=>{},promoteAgentCandidateAction:async()=>{},rollbackAgentCandidateAction:async()=>{},tryAgentCandidateAction:async()=>{},
  createConversationCandidateAction:async()=>{},evaluateConversationCandidateAction:async()=>{},promoteConversationCandidateAction:async()=>{},eraseConversationMetadataAction:async()=>{}}));
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS,PROMPT_HOLDOUT_REQUEST_LIMIT} from '../lib/ai/module-agent-prompt-candidate';

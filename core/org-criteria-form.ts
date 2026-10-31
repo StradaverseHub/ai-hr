@@ -8,7 +8,7 @@
  * `ORG_CRITERIA_FIELDS` renders perfectly, posts perfectly, and narrows NOBODY. Nothing throws. The screen
  * simply selects more people than the operator asked for.
  *
- * 18103ba4 built this section list inside `app/admin/leave/adjustments/page.tsx`. 93249794 (Generate
+ * 18103ba4 built this section list inside `app/(app)/admin/leave/adjustments/page.tsx`. 93249794 (Generate
  * Entitlement) needs the identical question answered on a second screen, and its own build notes are blunt
  * about the alternative: "Two criteria engines is the duplicate-maintenance complaint reproduced." Copying
  * 70 lines of section definitions would have reproduced it one layer up from the resolver — same defect,
@@ -75,7 +75,7 @@ export type OrgCriteriaLabels = {
 /**
  * The reporter's four groups, in their order. Every `name` is a field the shared resolver understands.
  *
- * Moved here VERBATIM from app/admin/leave/adjustments/page.tsx (18103ba4) — the field list, the labels and
+ * Moved here VERBATIM from app/(app)/admin/leave/adjustments/page.tsx (18103ba4) — the field list, the labels and
  * the comments came across unchanged, and `test/leave-adjustment-step-flow.test.ts` asserts the same thing
  * about the same names.
  *

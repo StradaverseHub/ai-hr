@@ -2,9 +2,9 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {ReminderPersonPreview} from '../app/performance/onehr/reminder-person-preview';
+import {ReminderPersonPreview} from '../app/(app)/performance/onehr/reminder-person-preview';
 const mocks=vi.hoisted(()=>({preview:vi.fn()}));
-vi.mock('../app/performance/assessment-reminder-actions',()=>({assessmentReminderPersonPreviewAction:mocks.preview}));
+vi.mock('../app/(app)/performance/assessment-reminder-actions',()=>({assessmentReminderPersonPreviewAction:mocks.preview}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 describe('full email preview and scoped task summary labels',()=>{
  it.each(['full','summary'] as const)('labels the %s mode and keeps the displayed HTML sandboxed without authorizing delivery',async mode=>{

@@ -132,7 +132,7 @@ describe('0406 — a plan can show the reporter what it means', () => {
     expect(rev['v2.png']).toBe(2);
     expect(detail.planRevision).toBe(2);
 
-    // The exact filter app/feedback/[id]/page.tsx renders with — one plan, one design.
+    // The exact filter app/(app)/feedback/[id]/page.tsx renders with — one plan, one design.
     const shown = detail.attachments.filter(
       (a) => a.stage === 'plan' && a.planRevision === detail.planRevision && a.mimeType.startsWith('image/'),
     );

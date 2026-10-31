@@ -20,7 +20,7 @@ import { RosterGrid, type GridEmployee, type ShiftLite } from '../components/ros
 import { cellKey, monthDates, type AssignedCell } from '../lib/roster-month';
 import { SHIFT_COLORS } from '../lib/shift-visual';
 
-vi.mock('../app/roster/actions', () => ({
+vi.mock('../app/(app)/roster/actions', () => ({
   assignCellAction: async () => ({ ok: true as const }),
   bulkAssignAction: async () => ({ ok: true as const }),
   rowAssignAction: async () => ({ ok: true as const }),

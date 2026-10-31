@@ -5,9 +5,9 @@
  *
  *   · components/company-panel.tsx is `'use client'` — a server module may not call a value exported
  *     from it (every export of a "use client" module is a client reference on the server).
- *   · app/admin/organization/[companyId]/page.tsx is a server component and has to VALIDATE the `?tab=`
+ *   · app/(app)/admin/organization/[companyId]/page.tsx is a server component and has to VALIDATE the `?tab=`
  *     it reads off the URL before handing it back to the panel.
- *   · app/admin/actions.ts is `'use server'` — it may only export async functions, so a closed list
+ *   · app/(app)/admin/actions.ts is `'use server'` — it may only export async functions, so a closed list
  *     cannot live there either, and it needs one because the tab goes into a redirect URL.
  *
  * So the list lives in a plain module, the way lib/personnel-tab-sections.ts does for the same reason.

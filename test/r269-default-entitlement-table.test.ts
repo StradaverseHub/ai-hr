@@ -59,7 +59,7 @@ import {
 import { entitlementCoverageFor } from '../core/leave';
 import { benefitSchemeView } from '../core/entitlement-scheme-view';
 import { leaveConfigHealthAll, leaveTypeConfigHealth } from '../lib/leave-config-health';
-import { loadEntitlementTablesData } from '../app/admin/leave/entitlements/templates/entitlement-tables-block';
+import { loadEntitlementTablesData } from '../app/(app)/admin/leave/entitlements/templates/entitlement-tables-block';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -613,7 +613,7 @@ describe('§C · the sentences that made a scheme a precondition are gone, in si
   });
 
   it('the canonical picker and badge remain while Personnel omits the duplicate summary', () => {
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).toContain("t('defaultTableTitle')");
     expect(block).toContain('setLeaveTypeDefaultTemplateAction');
     expect(block).toContain('data-testid="default-entitlement-table-select"');
@@ -621,15 +621,15 @@ describe('§C · the sentences that made a scheme a precondition are gone, in si
     // The picker is the SCOPED mount's: a per-type control on the unfiltered screen would be 24 saves.
     expect(block).toContain('{scoped && scopedType ? (');
 
-    const profile = read('app/admin/personnel/[employmentId]/page.tsx');
+    const profile = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     // 39306a9e removes the redundant Personnel Leave summary; the authoritative table picker above
     // and canonical default/coverage projections tested in this file remain.
     expect(profile).not.toContain('leaveBalancesCard');
     expect(profile).not.toContain('schemeUnmatchedNotice');
-    expect(read('app/leave/employee-balances/page.tsx')).toContain('EntitlementRecalcHistory');
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain('EntitlementRecalcHistory');
 
     // The write reprojects AFTER the transaction has committed — the ordering `setLeaveTypeRules` obeys.
-    const actions = read('app/admin/leave/entitlements/templates/actions.ts');
+    const actions = read('app/(app)/admin/leave/entitlements/templates/actions.ts');
     const body = actions.slice(actions.indexOf('export async function setLeaveTypeDefaultTemplateAction'));
     const head = body.slice(0, body.indexOf('saved(formData'));
     expect(head.indexOf('await setLeaveTypeDefaultTemplate(')).toBeGreaterThan(-1);

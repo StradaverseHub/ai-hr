@@ -4,7 +4,7 @@ import { AttendanceFigureCells, type AttendanceFigureCellsProps } from '@/compon
 
 /**
  * r433 (faca1cfb round 1) — the presentational pieces of the attendance DAY screen
- * (app/attendance/individual/[date]/page.tsx), lifted into one file so the real-browser overflow test measures
+ * (app/(app)/attendance/individual/[date]/page.tsx), lifted into one file so the real-browser overflow test measures
  * the markup the screen ships rather than a copy of it. No logic lives here: every value arrives as a string
  * or number already read by the page, and every figure is rendered by the existing AttendanceFigureCells
  * island with the same working.

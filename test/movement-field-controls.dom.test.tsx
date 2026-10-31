@@ -39,7 +39,7 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
-vi.mock('../app/admin/settings/movement/actions', () => ({
+vi.mock('../app/(app)/admin/settings/movement/actions', () => ({
   saveMovementEventTypeAction: save,
   setMovementEventTypeActiveAction: vi.fn(),
   deleteMovementEventTypeAction: vi.fn(),
@@ -47,13 +47,13 @@ vi.mock('../app/admin/settings/movement/actions', () => ({
   setTerminationReasonActiveAction: vi.fn(),
   deleteTerminationReasonAction: vi.fn(),
 }));
-vi.mock('../app/admin/personnel/[employmentId]/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/[employmentId]/actions', () => ({
   createMovementEventAction: createAction,
   editMovementEventAction: editAction,
 }));
 
-import { EventTypeForm, type EventTypeFormLabels } from '../app/admin/settings/movement/event-type-form';
-import { MovementNewEvent, type MovementCurrentValues } from '../app/admin/personnel/[employmentId]/movement-new-event';
+import { EventTypeForm, type EventTypeFormLabels } from '../app/(app)/admin/settings/movement/event-type-form';
+import { MovementNewEvent, type MovementCurrentValues } from '../app/(app)/admin/personnel/[employmentId]/movement-new-event';
 
 const t = messages.movementSettings;
 const tf = messages.people.detail.movement.form;
@@ -63,7 +63,7 @@ beforeEach(() => {
   save.mockResolvedValue({ ok: false, error: 'Fictional refusal' });
 });
 
-/** Built the way app/admin/settings/movement/event-type-config-page.tsx builds them. */
+/** Built the way app/(app)/admin/settings/movement/event-type-config-page.tsx builds them. */
 const LABELS: EventTypeFormLabels = {
   sections: {
     general: t.config.sections.general,
@@ -305,13 +305,13 @@ describe('1d58019a Step 2 — the New Event form follows the type’s Field Cont
 
 describe('1d58019a Step 2 — source guards', () => {
   it('the Personnel page passes each type’s controls to New Event and Edit, and lists the movement’s documents', () => {
-    const page = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'), 'utf8');
+    const page = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'), 'utf8');
     expect(page.match(/\.\.\.typeControls\(r\.code\)/g) ?? []).toHaveLength(2);
     expect(page).toContain('await movementAttachments(s, employmentId, spMovement)');
     expect(page).toContain('/movement-documents/${doc.id}');
     expect(page).toContain("movementTypeByCode.get(movementEditRow.kind)?.behaviourKind === 'termination'");
     const route = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-documents/[documentId]/route.ts'),
+      path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/movement-documents/[documentId]/route.ts'),
       'utf8',
     );
     expect(route).toContain('readMovementAttachment(s, employmentId, documentId)');

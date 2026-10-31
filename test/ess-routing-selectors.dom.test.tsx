@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within,waitFor} from '@testing-library/react';
-import {ProfileRoutingForm} from '../app/admin/settings/profile-requests/routing-form';
+import {ProfileRoutingForm} from '../app/(app)/admin/settings/profile-requests/routing-form';
 const subject='11111111-1111-4111-8111-111111111111',unselected='44444444-4444-4444-8444-444444444444',hr='22222222-2222-4222-8222-222222222222',revision='33333333-3333-4333-8333-333333333333';
 const labels={help:'Rules use current eligible HR authority',enabled:'Enabled',name:'Rule name',approver:'HR approver',choose:'Choose',employees:'Employees',criteriaHelp:'Positive organisation criteria',remove:'Remove rule',add:'Add rule',save:'Save rules',preview:'Preview',previewFailed:'Preview failed',matched:'Matches',missing:'Missing',overlapping:'Overlap',ineligible:'Ineligible',requestTypes:'Request types',fields:'Profile fields',photo:'Profile photo',included:'Included',excluded:'Excluded',exclusionHelp:'Exclusions take priority',search:'Search',unavailable:'Unavailable — remove or replace',noApprovers:'No eligible HR approvers',noMatches:'No matching options',anyApprover:'Any one eligible HR approver can decide',includedCriteria:'Included criteria',excludedCriteria:'Excluded criteria',selectAllResults:'Select all search results',allMatching:'All matching employees',explicitEmployees:'Selected employees',includeSelected:'Include selected',excludeSelected:'Exclude selected',explicitlyExcluded:'Explicitly excluded',notIncluded:'Not included',transferCriteriaHelp:'Selections remain subject to criteria'};
 function mount(){

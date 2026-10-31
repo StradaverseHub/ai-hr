@@ -23,8 +23,8 @@ vi.mock('../lib/authz',()=>({isGroupAdmin:()=>state.group,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>({provider:{provider:'openrouter',model:'fictional/model'},mayWriteUsers:true,features:[],usage:[],policies:[],userDefault:null,companies:[],companyUsage:[],users:[],moreUsers:false,groups:[],attention:{companies:[],users:[],blocked:[]},runs:[],runFilter:{},legacyBudget:null,spend:null}),bulkAssistantDepartments:async()=>[],previewBulkAssistantAccess:async()=>({matched:0,changing:0})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
-vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
-vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn(),setAgentActionPauseAction:vi.fn()}));
+vi.mock('../app/(app)/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
+vi.mock('../app/(app)/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn(),setAgentActionPauseAction:vi.fn()}));
 vi.mock('../core/ai-inventory',async()=>{
  const {aiInventoryComponents,registryRow,AI_DATA_REGISTER}=await import('../lib/ai/ai-inventory');
  const {AI_FEATURES}=await import('../lib/ai/features');
@@ -43,7 +43,7 @@ vi.mock('../core/ai-inventory',async()=>{
   aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:2},hasMore:true,rows:Array.from({length:3},(_,i)=>({id:`fictional-run-${i}`,actor:'Fictional reviewer',feature:'hr_assistant',operation:'conversation',provider:'openrouter',model:'fictional/model',state:i===1?'failed':'completed',reason:null,actual:120,reserved:400,startedAt:new Date(at.getTime()-i*60000),reportedCredits:'0.001',roundTripMs:900,observationStatus:'reported'}))}),
  };
 });
-import {AiManagementScreen} from '../app/control-tower/agents/screen';
+import {AiManagementScreen} from '../app/(app)/control-tower/agents/screen';
 afterEach(()=>{cleanup();state.group=true;state.alertsUnavailable=false;});
 const session={tenantId:'fictional',userId:'fictional',roles:['hr_admin']} as never;
 const renderPage=async(locale:keyof typeof copies,section:'inventory'|'runs',searchParams={})=>{

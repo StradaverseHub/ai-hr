@@ -6,8 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({send:vi.fn(),refresh:vi.fn(),keep:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:ports.refresh})}));
-vi.mock('../app/performance/onehr-actions',()=>({reviewConversationAction:ports.send,keepCompetencyReflectionAction:ports.keep,saveAssessmentDraftAction:vi.fn()}));
-import { ReviewConversation } from '../app/performance/workspace/review-conversation';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({reviewConversationAction:ports.send,keepCompetencyReflectionAction:ports.keep,saveAssessmentDraftAction:vi.fn()}));
+import { ReviewConversation } from '../app/(app)/performance/workspace/review-conversation';
 beforeEach(()=>{vi.clearAllMocks();ports.send.mockResolvedValue({revision:1,messages:[{id:'reply',role:'assistant',kind:'update',text:'Private draft updated',at:new Date().toISOString()}],draftUpdated:true});});
 afterEach(cleanup);
 describe('Performance conversation layout',()=>{

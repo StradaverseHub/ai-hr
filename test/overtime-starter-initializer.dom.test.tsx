@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 const mocks=vi.hoisted(()=>({initialize:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>{const router={refresh:mocks.refresh};return {useRouter:()=>router};});
-vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({initializeOvertimeStartersAction:mocks.initialize}));
+vi.mock('../app/(app)/admin/attendance/settings/overtime-patterns/actions',()=>({initializeOvertimeStartersAction:mocks.initialize}));
 import {OvertimeStarterInitializer} from '../components/overtime-patterns/starter-initializer';
 const view=(scopeKey='company-a')=><StrictMode><NextIntlClientProvider locale="en" messages={en}><OvertimeStarterInitializer scopeKey={scopeKey}/></NextIntlClientProvider></StrictMode>;
 beforeEach(()=>{vi.clearAllMocks();mocks.initialize.mockResolvedValue({ok:true,value:{created:0}});});

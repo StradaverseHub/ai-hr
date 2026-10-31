@@ -2,7 +2,7 @@
 import {
   SCHEDULE, COMPANY_POLICY, WORK_SCHEDULE_OVERTIME, REGISTERED_DEVICES,
   COMPANY_POLICY_ANCHOR, WORK_SCHEDULE_OVERTIME_ANCHOR,
-} from '../app/admin/attendance-policy/schedule-panel';
+} from '../app/(app)/admin/attendance-policy/schedule-panel';
 
 export type LegacyScheduleFeedback = Readonly<Record<string, string | readonly string[] | undefined>>;
 const targets = new Map([

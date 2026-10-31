@@ -309,7 +309,7 @@ describe('§5 · tablesReadOnly — GATED, never forked, and never at the cost o
   it('a read-only row offers the way to the editor instead, keyed on the lineage and the ONE address', () => {
     // Built from ENTITLEMENT_TEMPLATES rather than a typed path: that constant is already the address every
     // table save returns to, and a literal here would be a second statement about where the screen lives.
-    expect(blockCode).toContain("import { ENTITLEMENT_TEMPLATES } from '@/app/admin/_redirects'");
+    expect(blockCode).toContain("import { ENTITLEMENT_TEMPLATES } from '@/app/(app)/admin/_redirects'");
     expect(blockCode).toContain("t('manageInTables')");
     expect(blockCode).toContain("t('newTableElsewhere')");
     // The link preselects the filter §1 is about — which is the whole reason the filter shipped first. A

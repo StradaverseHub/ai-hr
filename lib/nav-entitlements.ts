@@ -28,7 +28,7 @@ import { isModuleEnabled, type EntitledContext } from '@/core/entitlements';
 /**
  * The module codes that actually contribute nav, i.e. the packs the sidebar mounts by id. Listed here
  * rather than derived from the pack registry because this module is imported by a SERVER component
- * (app/layout.tsx) and the registry's side-effect import pulls the client wiring in with it — the same
+ * (app/(app)/layout.tsx) and the registry's side-effect import pulls the client wiring in with it — the same
  * trap ADR-0080 rung 2 records against listPacks.
  */
 export const MODULE_CODES_WITH_NAV = [

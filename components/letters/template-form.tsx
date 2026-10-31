@@ -7,7 +7,7 @@ import {LETTER_LANGUAGES,type LetterDocument} from '@/lib/letter-model';
 import {letterDocumentToEditor} from '@/lib/letter-editor';
 import type {LetterChoice} from '@/lib/letter-choice';
 import type {LetterTemplatePresentation} from '@/lib/letter-workflow';
-import {saveTemplate} from '@/app/letters/templates/actions';
+import {saveTemplate} from '@/app/(app)/letters/templates/actions';
 import {LetterChoicePicker,type LetterChoiceLabels} from './choice-picker';
 import {LetterRichEditor,type LetterEditorLabels} from './rich-editor';
 type Binding=NonNullable<LetterChoice['field']>&{id:string};

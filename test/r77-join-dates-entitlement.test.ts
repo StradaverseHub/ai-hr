@@ -166,7 +166,7 @@ describe('the Join Date (join_date) drives NO entitlement', () => {
 const REPO = path.resolve(__dirname, '..');
 const leaveSrc = fs.readFileSync(path.join(REPO, 'core/leave.ts'), 'utf8');
 const actionsSrc = fs.readFileSync(
-  path.join(REPO, 'app/admin/personnel/[employmentId]/actions.ts'),
+  path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/actions.ts'),
   'utf8',
 );
 

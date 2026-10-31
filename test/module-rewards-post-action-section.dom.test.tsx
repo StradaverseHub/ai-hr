@@ -6,7 +6,7 @@ const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn(
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-entries',()=>({moduleActionEntryAccess:source.entry}));vi.mock('../core/assistant-actions/module-action-server',()=>({readRewardsPostModuleActionChoices:source.availability}));vi.mock('../components/assistant/module-rewards-post-action-panel',()=>({ModuleRewardsPostActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModuleRewardsPostActionSection} from '../components/assistant/module-rewards-post-action-section';
 import {ModuleRewardsPostActionPanel} from '../components/assistant/module-rewards-post-action-panel';
-import AssistantRewardsPostPage from '../app/assistant/rewards/page';
+import AssistantRewardsPostPage from '../app/(app)/assistant/rewards/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000009',review='10000000-0000-4000-8000-000000000003';
 import {choices} from './fixtures/rewards-post-browser';
 const session=()=>({tenantId:tenant,userId:user,personId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});

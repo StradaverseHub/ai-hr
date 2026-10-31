@@ -9,9 +9,9 @@ const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,params?:Record<string,string|number>)=>{
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing translated conversation copy');return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??''));
 }}));
-vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
-vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
-vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/actions',()=>({askAssistantAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
 // This spy tests the parent composition condition only; separate real-view footer cases own route boundaries.
 vi.mock('../components/assistant/conversation-review-links',()=>({ConversationReviewLinks:async(props:unknown)=>{state.reviewLinks(props);return null;}}));
 vi.mock('../components/assistant/module-specialist-findings',()=>({ModuleSpecialistFindings:()=>null}));
@@ -20,7 +20,7 @@ vi.mock('../components/assistant/conversation-action-proposal',async()=>{const R
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn(),readGovernedSpecialistToolResultTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>({module,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1],scope:'current-caller',data:state.data})}))}));
-import {askAssistantAction} from '../app/assistant/actions';
+import {askAssistantAction} from '../app/(app)/assistant/actions';
 import {loadCanonicalModuleJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
 import {GroundedWorkspaceReply} from '../components/assistant/module-jobs';
 import {projectMineLeaveBalance} from '../core/assistant-leave-projection';

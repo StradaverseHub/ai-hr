@@ -38,7 +38,7 @@ import {
   listOrgScopedApprovalRules,
   setApprovalTemplateActive,
 } from '../core/leave-approval-template';
-import { loadApprovalRuleScopes } from '../app/admin/leave-config/approval-readout';
+import { loadApprovalRuleScopes } from '../app/(app)/admin/leave-config/approval-readout';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;

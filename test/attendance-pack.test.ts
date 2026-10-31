@@ -405,7 +405,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
      */
     {
       href: '/admin/work-locations',
-      why: 'Work Locations — folded into the company view of Attendance › Locations (r428, 83c0d3c8 contest); see the note on the row above. The route survives as a requireAdmin() redirect stub (app/admin/work-locations/page.tsx), kept registered because the screenKey is a permission identity.',
+      why: 'Work Locations — folded into the company view of Attendance › Locations (r428, 83c0d3c8 contest); see the note on the row above. The route survives as a requireAdmin() redirect stub (app/(app)/admin/work-locations/page.tsx), kept registered because the screenKey is a permission identity.',
     },
   ] as const;
   const retiredHrefs: string[] = RETIRED.map((r) => r.href);
@@ -715,7 +715,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   });
 
   it('r431: a SETTINGS_CARDS row is gone from the nav, its page and route are untouched, and the Settings page links to it', () => {
-    const cardsSrc = fs.readFileSync(path.resolve(__dirname, '../app/admin/attendance/settings/cards.ts'), 'utf8');
+    const cardsSrc = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/attendance/settings/cards.ts'), 'utf8');
     for (const row of SETTINGS_CARDS) {
       expect(flattened.filter((c) => c.href === row.href), `${row.href} still has a nav row`).toHaveLength(0);
       const page = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');

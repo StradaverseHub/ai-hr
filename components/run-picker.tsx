@@ -9,8 +9,8 @@ import { RUN_PARAM } from '@/lib/payroll-run-selection';
 /**
  * r372 (item f022dd70) → r407 (item 4f45f9b0) — THE PAYROLL CYCLE MULTI-SELECT, written once.
  *
- * It started life on the Payment Submission download pop-up (app/payroll/payment-submission/). r407 moved it
- * here, unchanged in behaviour, because the statutory criteria step (app/payroll/statutory-forms/open) now
+ * It started life on the Payment Submission download pop-up (app/(app)/payroll/payment-submission/). r407 moved it
+ * here, unchanged in behaviour, because the statutory criteria step (app/(app)/payroll/statutory-forms/open) now
  * asks the same question for Borang A — and SOCSO Borang 8A and LHDN CP39 will ask it next. Two copies of
  * "tick everything ⇒ submit nothing" is how one of them starts submitting `run=1&run=2&run=3` for All.
  *

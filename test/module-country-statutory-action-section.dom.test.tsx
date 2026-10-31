@@ -6,7 +6,7 @@ const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn(
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-server',()=>({readCountryStatutoryModuleActionChoices:source.availability}));vi.mock('../components/assistant/module-country-statutory-action-panel',()=>({ModuleCountryStatutoryActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModuleCountryStatutoryActionSection} from '../components/assistant/module-country-statutory-action-section';
 import {ModuleCountryStatutoryActionPanel} from '../components/assistant/module-country-statutory-action-panel';
-import AssistantCountryStatutoryPage from '../app/assistant/statutory/page';
+import AssistantCountryStatutoryPage from '../app/(app)/assistant/statutory/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000009',review='10000000-0000-4000-8000-000000000003';
 import {choices} from './fixtures/country-statutory-browser';
 const session=()=>({tenantId:tenant,userId:user,personId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});

@@ -3,9 +3,9 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,act} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-vi.mock('../app/performance/onehr-actions',()=>({assessmentTalentInsightAction:vi.fn()}));
-import {assessmentTalentInsightAction} from '../app/performance/onehr-actions';
-import {TalentInsight} from '../app/performance/onehr/talent-insight';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({assessmentTalentInsightAction:vi.fn()}));
+import {assessmentTalentInsightAction} from '../app/(app)/performance/onehr-actions';
+import {TalentInsight} from '../app/(app)/performance/onehr/talent-insight';
 const show=(id='current')=><NextIntlClientProvider locale="en" messages={en}><TalentInsight key={id} reviewId={id} sessionId="bg"/></NextIntlClientProvider>;
 beforeEach(()=>vi.mocked(assessmentTalentInsightAction).mockReset());afterEach(cleanup);
 it('reads the Talent Box cache on opening and generates only after the reviewer chooses to',async()=>{

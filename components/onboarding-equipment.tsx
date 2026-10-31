@@ -2,7 +2,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { currentReq, activeItem, equipmentDate, inGroup, type Actor, type Case, type Config, type EquipmentBulk } from '@/lib/onboarding-model';
-import { changeOnboarding } from '@/app/lifecycle/onboarding/v31-actions';
+import { changeOnboarding } from '@/app/(app)/lifecycle/onboarding/v31-actions';
 type Preferences = NonNullable<Case['equipmentOverrides']>;
 const date = (value: string) => value.split('-').reverse().join('/');
 export function OnboardingEquipment({ c, config, actor, directory, revision, draft }: { c: Case; config: Config; actor: Actor; directory: { id: string; name: string }[]; revision: number; draft?: { ids: string[]; values: Preferences; change: (values: Preferences) => void } }) {

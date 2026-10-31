@@ -39,13 +39,13 @@
  *   `core/tax-relief.ts` (TP1 tax-relief declarations), `core/loans.ts` + `core/loans-compute.ts`
  *   (staff loans + repayment schedule, deducted through payroll), and `core/statutory-authority.ts`
  *   (per-company statutory-body registration/payment references).
- * - Routes: `app/payroll/**` (the batch workbench, process wizard, transactions, transaction-view,
+ * - Routes: `app/(app)/payroll/**` (the batch workbench, process wizard, transactions, transaction-view,
  *   reports, EA/CP39/zakat/TP1 surfaces, history-import, the country-admin configuration
- *   screens whose MOUNTING is registry-driven since 5c), `app/admin/pay-components/**`,
- *   `app/admin/payroll-config/**`, `app/admin/payroll-cycle/**`, `app/admin/payroll-policy/**`,
- *   `app/admin/payroll-permissions/**`, `app/admin/loans/**`, `app/api/payroll/**` (the reprocess
- *   job runner), and the employee-self-service payroll screens `app/me/payslip/**` +
- *   `app/me/tax-relief/**` (kept under /me for the employee, like leave's `app/me/leave`).
+ *   screens whose MOUNTING is registry-driven since 5c), `app/(app)/admin/pay-components/**`,
+ *   `app/(app)/admin/payroll-config/**`, `app/(app)/admin/payroll-cycle/**`, `app/(app)/admin/payroll-policy/**`,
+ *   `app/(app)/admin/payroll-permissions/**`, `app/(app)/admin/loans/**`, `app/api/payroll/**` (the reprocess
+ *   job runner), and the employee-self-service payroll screens `app/(app)/me/payslip/**` +
+ *   `app/(app)/me/tax-relief/**` (kept under /me for the employee, like leave's `app/(app)/me/leave`).
  * - The boundary is enforced by test/payroll-pack-drift.test.ts (D11 criterion 4, shrink-only
  *   ratchet seeded in test/pack-drift-allowlist.json under "payroll").
  *
@@ -100,7 +100,7 @@
  *    by risk choice — the honest resolution of the rung-6 seam.
  * 3. **Attendance-derived allowances — LEFT ON THE ATTENDANCE RATCHET (unchanged).** The batch page's
  *    "transfer allowances" action calls `transferAllowancesToBatch` (core/attendance-allowance, the
- *    attendance pack) directly; `app/payroll/actions.ts` is on the ATTENDANCE ratchet allowlist for
+ *    attendance pack) directly; `app/(app)/payroll/actions.ts` is on the ATTENDANCE ratchet allowlist for
  *    it. Its richer return shape ({applied, ineligible, reversed, gated}) and distinct per-policy
  *    action do not fit the flat contributor contract without a UI/behaviour change; it stays a
  *    documented attendance→payroll seam (candidate for the contract when a second such producer with
@@ -124,7 +124,7 @@
  * shrinks. Grouped by kind:
  *
  * - **Cross-PACK edges (D9 — a pack importing payroll; the strict violations):**
- *   - `core/performance.ts` + `app/performance/[cycleId]/page.tsx` (the PERFORMANCE pack) — the
+ *   - `core/performance.ts` + `app/(app)/performance/[cycleId]/page.tsx` (the PERFORMANCE pack) — the
  *     comp-enactment bonus seam above (`setPayrollInput`) + a payroll read on the cycle detail page.
  *   - Attendance allowance configuration and transfer now consume this pack's facade (ADR-0106);
  *     their two direct-import debt entries were removed. Payroll owns the source projection.
@@ -140,9 +140,9 @@
  * - **Cross-module spine readers** (reporting / ESS / offboarding / admin — stay kernel per open
  *   decision 6, consume pack contracts/descriptors later): `core/report-registry.ts`
  *   (`listProcessedPayslipsAcross` from payroll-view); the personal TP1 action now consumes the facade,
- *   `app/me/page.tsx` (loans), `app/admin/actions.ts`, `app/admin/organization/page.tsx`.
+ *   `app/(app)/me/page.tsx` (loans), `app/(app)/admin/actions.ts`, `app/(app)/admin/organization/page.tsx`.
  * - **Personnel-admin profile surfaces** (payroll config/statutory read on the employment profile):
- *   `app/admin/personnel/{page.tsx,actions.ts}`, `app/admin/personnel/[employmentId]/{page.tsx,actions.ts,cp38-actions.ts}`.
+ *   `app/(app)/admin/personnel/{page.tsx,actions.ts}`, `app/(app)/admin/personnel/[employmentId]/{page.tsx,actions.ts,cp38-actions.ts}`.
  * - **Client widgets** (cannot use the SERVER facade — it drags db/client into the client bundle;
  *   they import payroll TYPES / client helpers): `components/loan-list.tsx`, `components/loan-new-form.tsx`,
  *   `components/tp1-declaration-form.tsx`. Migrate to a client-safe pack entry (the 5b pattern).
@@ -206,7 +206,7 @@ const PAYROLL_ADMIN_NAV: NavNodeGroupDescriptor = {
     // the Transactions hub and the reporter concluded loans were not in Payroll. Having both, they now
     // report the opposite complaint: the same screen offered twice in one menu. There was never a second
     // Loans screen — the row and the hub card were two doors onto /admin/loans — so removing the row
-    // loses no destination. The card (app/payroll/transactions/page.tsx) is the surviving door, and a
+    // loses no destination. The card (app/(app)/payroll/transactions/page.tsx) is the surviving door, and a
     // staff loan belongs there: it is a payroll INPUT, keyed before a run like the other transactions.
     // The SCREEN, its three routes and its lib/permissions.ts entry are untouched and still grantable.
     // 2ef69d1e — Back Pay (Arrears). Ranked into the same TRANSACTIONS phase as the keying screens

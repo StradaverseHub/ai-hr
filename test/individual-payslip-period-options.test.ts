@@ -14,7 +14,7 @@
  *   • `listPayslipRunsFor` (core/payroll-view.ts — `listPayslipPeriodsFor` until r210 widened it) must
  *     return that employee's OWN runs, fenced on the caller's companies — a DB case, because the fence
  *     and the join are SQL. The period cases below read `.payPeriod` off those rows.
- *   • `payslipPeriodOptions` (app/payroll/individual-payslip/period-options.ts) must turn those into
+ *   • `payslipPeriodOptions` (app/(app)/payroll/individual-payslip/period-options.ts) must turn those into
  *     options that (a) all lead somewhere, (b) always include the value the control is displaying, and
  *     (c) degrade to the old wide window rather than to nothing — pure cases, no DB.
  *   • and the page must actually call both, rather than keeping a fixed window beside them.
@@ -37,7 +37,7 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { listPayslipRunsFor } from '../core/payroll-view';
-import { payslipPeriodOptions } from '../app/payroll/individual-payslip/period-options';
+import { payslipPeriodOptions } from '../app/(app)/payroll/individual-payslip/period-options';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -101,7 +101,7 @@ describe('5a29686c — Year / Month options come from the employee’s own paysl
 
 describe('5a29686c — the screen reads the employee’s runs, and the otherRuns card is gone', () => {
   const code = () =>
-    read('app/payroll/individual-payslip/page.tsx')
+    read('app/(app)/payroll/individual-payslip/page.tsx')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
 

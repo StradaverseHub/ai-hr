@@ -59,7 +59,7 @@ describe('fda53352 · (a) the form says Pin. 2023, because that is the revision 
     for (const f of [
       'lib/ea-pdf.ts',
       'lib/ea-field-register.ts',
-      'app/payroll/reports/ea/[employmentId]/page.tsx',
+      'app/(app)/payroll/reports/ea/[employmentId]/page.tsx',
       'docs/forms/ea-cp8a-field-register.md',
     ]) {
       expect(src(f), `${f}`).not.toContain('Pin. 2024');
@@ -138,12 +138,12 @@ describe('fda53352 · (c) an English EA is English all the way to the masthead',
     const s = src('lib/ea-pdf.ts');
     expect(s).toContain("eaFormWords(opts.locale ?? 'en')");
     // All three routes must pass one, or a document gets one language's captions and another's furniture.
-    // M09 — the employee's own form renders in app/me/ea/document.ts (shared by the web and mobile routes); the
-    // assertion followed the render call out of app/me/ea/[employmentId]/pdf/route.ts.
+    // M09 — the employee's own form renders in app/(app)/me/ea/document.ts (shared by the web and mobile routes); the
+    // assertion followed the render call out of app/(app)/me/ea/[employmentId]/pdf/route.ts.
     for (const f of [
-      'app/me/ea/document.ts',
-      'app/payroll/ea/blank/route.ts',
-      'app/payroll/statutory-forms/ea/shared.ts',
+      'app/(app)/me/ea/document.ts',
+      'app/(app)/payroll/ea/blank/route.ts',
+      'app/(app)/payroll/statutory-forms/ea/shared.ts',
     ]) {
       expect(src(f), `${f} passes the document locale`).toMatch(/\{[^}]*\blocale\b[^}]*\}/);
     }

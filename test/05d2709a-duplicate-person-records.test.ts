@@ -573,7 +573,7 @@ describe('05d2709a — suspected duplicate person records', () => {
     // …and not in the CODE either. Comments are stripped first, deliberately: these files DESCRIBE the
     // prohibition at length, and a guard that a header cannot mention the thing it forbids would be
     // reworded away rather than obeyed.
-    for (const file of ['core/duplicate-person.ts', 'app/admin/personnel/duplicates/page.tsx']) {
+    for (const file of ['core/duplicate-person.ts', 'app/(app)/admin/personnel/duplicates/page.tsx']) {
       const code = stripComments(readFileSync(path.join(ROOT, file), 'utf8'));
       const offenders = [...code.matchAll(/\b(confidence|similarity|likelihood|probability|score)[A-Za-z]*/gi)].map(
         (m) => m[0],
@@ -586,7 +586,7 @@ describe('05d2709a — suspected duplicate person records', () => {
     for (const file of [
       'core/duplicate-person.ts',
       'scripts/report-duplicate-person-records.ts',
-      'app/admin/personnel/duplicates/page.tsx',
+      'app/(app)/admin/personnel/duplicates/page.tsx',
     ]) {
       const code = stripComments(readFileSync(path.join(ROOT, file), 'utf8'));
       // Drizzle's writers and raw SQL alike. A merge in this round is out of scope by decision, and an

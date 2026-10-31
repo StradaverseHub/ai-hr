@@ -8,8 +8,8 @@ vi.mock('../packs/leave/service',async importOriginal=>{
  return {...actual,extendedHoursDayForEmployment:m.selfFacts,leaveCreditGrantDayFacts:m.hrFacts};
 });
 import {ToilNotEligibleError,leaveCreditDayFactsUnavailable} from '../packs/leave/service';
-import {leaveCreditDayFactsAction} from '../app/leave/credit/actions';
-import {leaveCreditGrantDayFactsAction} from '../app/admin/leave-config/leave-credit/actions';
+import {leaveCreditDayFactsAction} from '../app/(app)/leave/credit/actions';
+import {leaveCreditGrantDayFactsAction} from '../app/(app)/admin/leave-config/leave-credit/actions';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const ctx={tenantId:'fictional-tenant',userId:'fictional-hr'},date=todayInKualaLumpur();
 const facts={kind:'rest_day',scheduleName:null,shiftCode:null,shiftName:null,attendanceRecordPresent:true,shiftStart:null,shiftEnd:null,actualClockIn:'09:00',actualClockOut:'19:01',measuredExtendedMinutes:0,approvedOtPlan:null,overtimeMinutes:300,alreadyCredited:false};

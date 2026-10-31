@@ -43,10 +43,10 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const LIST = code('app/payroll/page.tsx');
-const ISLAND = code('app/payroll/row-actions.tsx');
-const REPROCESS_PAGE = code('app/payroll/[batchId]/reprocess/page.tsx');
-const REPROCESS_FORM = code('app/payroll/[batchId]/reprocess/reprocess-form.tsx');
+const LIST = code('app/(app)/payroll/page.tsx');
+const ISLAND = code('app/(app)/payroll/row-actions.tsx');
+const REPROCESS_PAGE = code('app/(app)/payroll/[batchId]/reprocess/page.tsx');
+const REPROCESS_FORM = code('app/(app)/payroll/[batchId]/reprocess/reprocess-form.tsx');
 
 /** The body of the row-action island's JSX on the list page — what the ⋯ menu is actually holding. */
 const menuSlot = (() => {
@@ -94,7 +94,7 @@ describe('65e2d5de · A — the Actions column is View plus a menu, and the gate
      * emits that scroll — the focus move, or react-remove-scroll's body lock reflowing the page — was not
      * isolated and is not claimed here; the panel closes on any scroll at all, so it makes no difference.)
      *
-     * So the confirmation still exists and still collects the reason — on app/payroll/[batchId]/reset,
+     * So the confirmation still exists and still collects the reason — on app/(app)/payroll/[batchId]/reset,
      * which additionally NAMES the run (the dialog only ever said "this payroll process"). What must not
      * come back is a confirmation dialog inside the menu; that is asserted positively, by shape, in
      * test/payroll-reset-screen-9f8cd608.test.ts.
@@ -107,7 +107,7 @@ describe('65e2d5de · A — the Actions column is View plus a menu, and the gate
     );
     expect(menuSlot, 'a form is back inside the menu').not.toMatch(/<form/);
     // The confirmation itself, with the batch id and the reason, on the screen that replaced the dialog.
-    const RESET_SCREEN = code('app/payroll/[batchId]/reset/page.tsx');
+    const RESET_SCREEN = code('app/(app)/payroll/[batchId]/reset/page.tsx');
     expect(RESET_SCREEN).toMatch(/<form action=\{resetAction\}/);
     expect(RESET_SCREEN).toContain('<input type="hidden" name="batchId" value={batchId} />');
     expect(RESET_SCREEN).toMatch(/name="reason"/);
@@ -280,7 +280,7 @@ describe('65e2d5de · Da — the premise the reset destination is decided on', (
      * premise is pinned here rather than left in a comment. The destination ITSELF is guarded in
      * test/payroll-draft-resume.test.ts a3 / a3b and test/payroll-reset-flow-7076f8af.test.ts case 1.
      */
-    const FILTERS = code('app/payroll/dashboard-filters.tsx');
+    const FILTERS = code('app/(app)/payroll/dashboard-filters.tsx');
     expect(FILTERS).toContain("value={filters.statuses[0] ?? ''}");
     expect(FILTERS).toContain('statuses: e.target.value ? [e.target.value] : []');
   });

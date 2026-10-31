@@ -7,8 +7,8 @@ import messages from '../messages/en.json';
 import {toast} from 'sonner';
 import { AiConfigForm } from '../components/ai-config-form';
 import type { AiConfigView } from '../core/ai-config';
-import { evaluateProviderCandidateAction, testConnectionAction, setActiveProviderAction, saveAiProviderConfigAction } from '../app/admin/ai/actions';
-vi.mock('../app/admin/ai/actions',()=>({disableAiAction:vi.fn(),removeAiProviderConfigAction:vi.fn(),
+import { evaluateProviderCandidateAction, testConnectionAction, setActiveProviderAction, saveAiProviderConfigAction } from '../app/(app)/admin/ai/actions';
+vi.mock('../app/(app)/admin/ai/actions',()=>({disableAiAction:vi.fn(),removeAiProviderConfigAction:vi.fn(),
  saveAiProviderConfigAction:vi.fn(),setActiveProviderAction:vi.fn(),testConnectionAction:vi.fn(async()=>({ok:true})),evaluateProviderCandidateAction:vi.fn()}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});

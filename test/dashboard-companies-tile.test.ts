@@ -6,7 +6,7 @@
  * which is two different wrong answers depending on the company switcher:
  *
  *   • With a selection it reported the SWITCHER SELECTION SIZE. One company ticked out of eight and the
- *     tile read "1" — while app/page.tsx links that same tile to /admin/organization, which ignores the
+ *     tile read "1" — while app/(app)/page.tsx links that same tile to /admin/organization, which ignores the
  *     switcher entirely (0f1802bf) and listed all eight. A figure that disagrees with its own
  *     destination is what sent a whole round chasing a bug on the Organization screen.
  *   • With NO selection it fell through to count(*) over `company` — so the person who could reach

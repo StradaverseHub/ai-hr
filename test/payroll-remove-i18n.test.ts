@@ -60,17 +60,17 @@ function staticKeysOf(rel: string): string[] {
  * whose name happens to contain "remove" would be a coincidence, not a fence.
  */
 const FILES = [
-  'app/payroll/[batchId]/remove/page.tsx',
-  'app/payroll/[batchId]/remove/remove-form.tsx',
-  'app/payroll/[batchId]/reset/page.tsx',
-  'app/payroll/page.tsx',
-  'app/payroll/[batchId]/page.tsx',
-  'app/payroll/back.ts',
+  'app/(app)/payroll/[batchId]/remove/page.tsx',
+  'app/(app)/payroll/[batchId]/remove/remove-form.tsx',
+  'app/(app)/payroll/[batchId]/reset/page.tsx',
+  'app/(app)/payroll/page.tsx',
+  'app/(app)/payroll/[batchId]/page.tsx',
+  'app/(app)/payroll/back.ts',
 ];
 
 /**
  * The action layer is deliberately NOT in the list above and is asserted by name here instead.
- * `app/payroll/actions.ts` declares a FRESH `const t = await getTranslations(...)` inside each of its
+ * `app/(app)/payroll/actions.ts` declares a FRESH `const t = await getTranslations(...)` inside each of its
  * twenty-odd server actions, several with different namespaces, so a file-level "variable → namespace"
  * extractor binds every call to whichever declaration it saw last and reports keys that are not really
  * missing. Naming the keys is the honest form of the same check for this file.
@@ -106,7 +106,7 @@ describe('Remove Employee Payroll — i18n resolution', () => {
   });
 
   it('removeEmployeePayrollAction: every refusal it can render resolves in all six locales', () => {
-    const src = fs.readFileSync(path.join(ROOT, 'app/payroll/actions.ts'), 'utf8');
+    const src = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/actions.ts'), 'utf8');
     const action = src.slice(src.indexOf('export async function removeEmployeePayrollAction'));
     const body = action.slice(0, action.indexOf('\nexport async function', 1));
     const bad: string[] = [];
@@ -202,7 +202,7 @@ describe('Remove Employee Payroll — every refusal the engine can raise has a t
     // A floor, so a refactor that stops matching cannot make this pass vacuously.
     expect(thrown.length).toBeGreaterThanOrEqual(6);
 
-    const action = bodyOf(SRC('app/payroll/actions.ts'), 'export async function removeEmployeePayrollAction(');
+    const action = bodyOf(SRC('app/(app)/payroll/actions.ts'), 'export async function removeEmployeePayrollAction(');
     const unmapped = thrown.filter((n) => !action.includes(`instanceof ${n}`));
     expect(unmapped, `unmapped in removeEmployeePayrollAction: ${unmapped.join(', ')}`).toEqual([]);
 
@@ -215,7 +215,7 @@ describe('Remove Employee Payroll — every refusal the engine can raise has a t
     // The SECOND surface the page header promises. `enabled` is the one that was missing: both entry
     // points hide their link while `payroll.reset_enabled` is off, so the only way in is a direct visit,
     // and the page answered it with the full selection form.
-    const page = SRC('app/payroll/[batchId]/remove/page.tsx');
+    const page = SRC('app/(app)/payroll/[batchId]/remove/page.tsx');
     const eligibility = bodyOf(SRC('core/payroll.ts'), 'export type RemoveEligibility = {');
     const fields = [...eligibility.matchAll(/^\s{2}(\w+): boolean;/gm)].map((m) => m[1]).sort();
     expect(fields).toEqual(['enabled', 'periodClosed', 'permitted', 'processed']);

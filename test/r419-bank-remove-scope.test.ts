@@ -48,7 +48,7 @@ vi.mock('next-intl/server', async () => {
 
 import { adminCtx, closeAll, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
-import { removeCompanyBankProfileAction } from '../app/admin/actions';
+import { removeCompanyBankProfileAction } from '../app/(app)/admin/actions';
 import { listCompanyBankProfiles, upsertCompanyBankProfile } from '../core/bank-profile';
 import { listCompanyStatutoryAuthorities, upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 

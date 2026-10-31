@@ -3,7 +3,7 @@
 /**
  * r393 (item 685d2380 step 3b) — THE ACTIVE RECORD'S STATUTORY (MALAYSIA) CHROME, for the Create New
  * Employee draft: the section legends, hints and the two plain switches the record renders inline in
- * app/admin/personnel/[employmentId]/page.tsx (statutoryCard) and components/identity-tax-card.tsx, with
+ * app/(app)/admin/personnel/[employmentId]/page.tsx (statutoryCard) and components/identity-tax-card.tsx, with
  * the SAME keys, classes and wording.
  *
  * WHY A COMPONENT AND NOT `useTranslations('people.detail')` IN THE WIZARD. test/i18n-coverage.test.ts

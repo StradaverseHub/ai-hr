@@ -77,9 +77,9 @@ const here = dirname(fileURLToPath(import.meta.url));
  * taken the guard out rather than moved it.
  */
 const LEAVE_TYPE_SCREEN = [
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
 ];
 
 let b: Base;
@@ -387,7 +387,7 @@ describe('b81d3c52 · accrueEarnedLeave — the cumulative is rounded every peri
  * clawback, the restored 12.4, the idempotent second run, the forward-only accrual afterwards.
  *
  * ① NOTHING FIRES IT ANY MORE. The surviving rules writer does not reproject on a rounding change:
- *    `setLeaveTypeRulesAction` reprojects only when `unconfiguredCleared` (app/admin/actions.ts:675-677),
+ *    `setLeaveTypeRulesAction` reprojects only when `unconfiguredCleared` (app/(app)/admin/actions.ts:675-677),
  *    i.e. when the earning-method NOT-CONFIGURED marker is cleared. So this file proves the kernel
  *    computes the right correction, NOT that saving a rounding change causes one to be computed. Closing
  *    that would mean inventing a writer that does not exist, which is not a test's job.
@@ -566,8 +566,8 @@ describe('b81d3c52 · LEDGER AGREEMENT — the projection rounds exactly like th
 // ── (7) Static source guard ───────────────────────────────────────────────────────────────────────────
 describe('b81d3c52 · UI source guard — the dropdown-rendering form posts the tri-state marker; the other preserves', () => {
   const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
-  const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
-  const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
+  const pageSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-config/types/page.tsx'), 'utf8');
+  const actionsSrc = readFileSync(resolve(here, '../app/(app)/admin/actions.ts'), 'utf8');
 
   it('EarningMethodForm renders the Rounding Method select AND posts the tri-state marker', () => {
     const form = panelSrc.slice(panelSrc.indexOf('function EarningMethodForm'), panelSrc.indexOf('function CarryPolicyForm'));

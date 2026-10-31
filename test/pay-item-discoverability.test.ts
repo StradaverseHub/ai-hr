@@ -2,12 +2,12 @@
  * 61bf109d rev2 — Input Type and Formula were not missing, they were UNDISCOVERABLE.
  *
  * Verified deployed (r83): the editable Input Type selector and the row-based Formula builder live in
- * app/admin/pay-components/pay-rule-editor.tsx, rendered inside the Pay Settings section of
+ * app/(app)/admin/pay-components/pay-rule-editor.tsx, rendered inside the Pay Settings section of
  * component-form.tsx on /new and /[code]. The Pay Items LIST showed a derived, read-only Input Type value
  * with nothing pointing at the screen that changes it, and said nothing at all about a formula. So this
  * item is presentation only, and this file covers the three things it changed:
  *
- *   1. app/admin/pay-components/pay-rule-words.ts — the formula, in plain words. THE ONLY REAL LOGIC HERE, so it gets
+ *   1. app/(app)/admin/pay-components/pay-rule-words.ts — the formula, in plain words. THE ONLY REAL LOGIC HERE, so it gets
  *      behavioural tests rather than source assertions, driven through the REAL en.json catalog so what is
  *      asserted is the sentence an administrator actually reads.
  *   2. The list's Input Type cell is a link into the pay item, and prints those words underneath.
@@ -27,7 +27,7 @@ import {
   type FormulaOperand,
   type PayRule,
 } from '../core/pay-rule';
-import { formulaOperandInWords, payRuleInWords, type PayRuleWordsOptions } from '../app/admin/pay-components/pay-rule-words';
+import { formulaOperandInWords, payRuleInWords, type PayRuleWordsOptions } from '../app/(app)/admin/pay-components/pay-rule-words';
 
 const ROOT = join(__dirname, '..');
 const read = (...p: string[]) => readFileSync(join(ROOT, ...p), 'utf8');
@@ -40,7 +40,7 @@ const catalog = (loc: string) =>
 
 const OP_KEY: Record<FormulaOp, string> = { '+': 'op_add', '-': 'op_sub', '*': 'op_mul', '/': 'op_div' };
 
-/** The SAME wiring app/admin/pay-components/page.tsx uses, against the real catalog. */
+/** The SAME wiring app/(app)/admin/pay-components/page.tsx uses, against the real catalog. */
 const optionsFor = (loc: string, names: Record<string, string> = {}): PayRuleWordsOptions => {
   const pr = catalog(loc).payRule;
   return {

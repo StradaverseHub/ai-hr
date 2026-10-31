@@ -1,10 +1,10 @@
 import { expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/me/lifecycle/actions', () => ({ saveOwnLifecycleDocument: vi.fn(), updateOwnLifecycleTask: vi.fn() }));
-import { EmployeeLifecycle } from '../app/me/lifecycle/view';
-import { CaseMailHistory } from '../app/lifecycle/v9/mail-history';
-import { CaseDocument } from '../app/lifecycle/v9/case-document';
+vi.mock('../app/(app)/me/lifecycle/actions', () => ({ saveOwnLifecycleDocument: vi.fn(), updateOwnLifecycleTask: vi.fn() }));
+import { EmployeeLifecycle } from '../app/(app)/me/lifecycle/view';
+import { CaseMailHistory } from '../app/(app)/lifecycle/v9/mail-history';
+import { CaseDocument } from '../app/(app)/lifecycle/v9/case-document';
 import type { LifecycleV9OwnCase } from '../packs/lifecycle/service';
 import type { Document, Mail } from '../lib/lifecycle-v9-model';
 const doc: Document = { id: 'document', templateId: 'template', name: 'Fictional saved form', version: 1, status: 'sent', blocks: [{ id: 'note', type: 'text', text: 'Saved content', section: 'main' }], fields: [], values: {}, edits: {}, hrSignature: null, employeeSignature: null, createdAt: '2026-10-29T00:00:00Z', sentAt: '2026-10-29T00:00:00Z' };

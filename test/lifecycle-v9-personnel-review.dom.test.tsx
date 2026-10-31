@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { PersonnelReview } from '../app/lifecycle/v9/personnel-review';
+import { PersonnelReview } from '../app/(app)/lifecycle/v9/personnel-review';
 import type { Case } from '../lib/lifecycle-v9-model';
 function fixture() { return { id: 'case', state: 'submitted', facts: { employmentId: 'employment' }, documents: [{ id: 'document', name: 'Contact update', fields: [{ pmKey: 'bankAcc', label: 'Bank account no.', sensitive: true }, { pmKey: 'mobile', label: 'Handphone no.', sensitive: false }] }], pmChanges: [{ id: 'bank', documentId: 'document', field: 'bankAcc', before: '123456789012', after: '987654321098', status: 'proposed' }, { id: 'phone', documentId: 'document', field: 'mobile', before: '0111111111', after: '0222222222', status: 'proposed' }, { id: 'unmapped', documentId: 'document', field: 'custom', before: '', after: 'unmapped', status: 'proposed' }] } as unknown as Case; }
 it('masks sensitive proposals until explicitly revealed and pushes only checked supported fields', () => {

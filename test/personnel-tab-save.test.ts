@@ -50,7 +50,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { saveProfileTabAction } from '../app/admin/personnel/[employmentId]/actions';
+import { saveProfileTabAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import {
   ALL_PERSONNEL_TAB_SECTIONS,
   PROFILE_TAB_SECTION_ORDER,
@@ -86,7 +86,7 @@ function stripComments(src: string): string {
   return withoutLines.replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '');
 }
 
-const PAGE = () => stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
+const PAGE = () => stripComments(read('app/(app)/admin/personnel/[employmentId]/page.tsx'));
 const IDENTITY = () => stripComments(read('components/personnel-identity.tsx'));
 
 const key = (section: string, field: string) => `${SECTION_FIELD_PREFIX}.${section}.${field}`;
@@ -387,7 +387,7 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       const tags = formTags(PAGE()).join('\n');
       expect(tags).not.toContain('setDefaultShiftAction');
       expect(tags).not.toContain('setLocationAction');
-      const widget = read('app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx');
+      const widget = read('app/(app)/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx');
       const forms=formTags(widget);
       expect(forms).toHaveLength(1);
       expect(forms[0]).toMatch(/\bonSubmit=\{submit\}/);

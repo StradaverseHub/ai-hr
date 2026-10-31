@@ -32,9 +32,9 @@ const src = (p: string) =>
   readFileSync(join(ROOT, p), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const ACTION = src('app/attendance/individual/[date]/actions.ts');
-const DAY_PAGE = src('app/attendance/individual/[date]/page.tsx');
-const LIST_PAGE = src('app/attendance/individual/page.tsx');
+const ACTION = src('app/(app)/attendance/individual/[date]/actions.ts');
+const DAY_PAGE = src('app/(app)/attendance/individual/[date]/page.tsx');
+const LIST_PAGE = src('app/(app)/attendance/individual/page.tsx');
 
 let b: Base;
 const DATE = '2026-07-27';

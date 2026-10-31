@@ -9,10 +9,10 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
-vi.mock('../app/performance/onehr-actions', () => ({ bulkReleaseAction: vi.fn() }));
-import { ReleaseBoard } from '../app/performance/onehr/release-board';
-import { LedPeople } from '../app/performance/onehr/led-people';
-import { bulkReleaseAction } from '../app/performance/onehr-actions';
+vi.mock('../app/(app)/performance/onehr-actions', () => ({ bulkReleaseAction: vi.fn() }));
+import { ReleaseBoard } from '../app/(app)/performance/onehr/release-board';
+import { LedPeople } from '../app/(app)/performance/onehr/led-people';
+import { bulkReleaseAction } from '../app/(app)/performance/onehr-actions';
 import type { ReleaseBoardRow } from '../packs/performance/service';
 
 const T = en.onehr.resultRelease, L = en.onehr.led;

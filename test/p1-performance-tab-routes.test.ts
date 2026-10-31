@@ -147,7 +147,7 @@ describe('function access and loading shells', () => {
   it('the home and Talent Box routes are their own packages\' pages, outside performanceTabs', () => {
     // PT-X3 and PT-TB landed them with their own guards and SCREENS entries (performanceHome, onehrAssignments).
     for (const route of ['home', 'calibration/talent-box']) {
-      const page = fs.readFileSync(path.join(process.cwd(), 'app/performance', route, 'page.tsx'), 'utf8');
+      const page = fs.readFileSync(path.join(process.cwd(), 'app/(app)/performance', route, 'page.tsx'), 'utf8');
       expect(page, route).toMatch(/await requireModule\('performance'\)/);
       expect(SCREENS.find(screen => screen.screenKey === 'performanceTabs')!.routes, route).not.toContain(`/performance/${route}`);
     }

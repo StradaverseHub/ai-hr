@@ -279,11 +279,11 @@ describe('consolidated Organisation Assignment save — both legs in one submit'
 
 const REPO = path.resolve(__dirname, '..');
 const pageSrc = fs.readFileSync(
-  path.join(REPO, 'app/admin/personnel/[employmentId]/page.tsx'),
+  path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
 const actionsSrc = fs.readFileSync(
-  path.join(REPO, 'app/admin/personnel/[employmentId]/actions.ts'),
+  path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/actions.ts'),
   'utf8',
 );
 

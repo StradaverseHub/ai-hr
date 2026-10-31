@@ -673,12 +673,12 @@ describe('45df860a — an additional run’s working is the WHOLE MONTH, and the
 // ───────────────────────────── One screen, two doors ─────────────────────────────
 
 describe('45df860a — the shared screen, and the two entry points that reach it', () => {
-  const PAGE = 'app/payroll/pcb-detail/page.tsx';
-  const VIEW = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
+  const PAGE = 'app/(app)/payroll/pcb-detail/page.tsx';
+  const VIEW = 'app/(app)/payroll/pcb-detail/pcb-detail-view.tsx';
   /** r351 — where the substituted expressions live now. See the guard that reads it. */
-  const FORMULAS = 'app/payroll/pcb-detail/formulas.ts';
-  const PAYSLIP = 'app/payroll/individual-payslip/page.tsx';
-  const HISTORY = 'app/payroll/transaction-view/history-table.tsx';
+  const FORMULAS = 'app/(app)/payroll/pcb-detail/formulas.ts';
+  const PAYSLIP = 'app/(app)/payroll/individual-payslip/page.tsx';
+  const HISTORY = 'app/(app)/payroll/transaction-view/history-table.tsx';
 
   it('the new route is registered in the function-access matrix', () => {
     // RULE 20. A guarded page with no matrix column is a screen nobody can grant or revoke, and
@@ -908,7 +908,7 @@ describe('45df860a — the shared screen, and the two entry points that reach it
     //
     // ⚠️ r351 MOVED THE ASSEMBLY, SO THIS GUARD MOVED WITH IT — it was NOT satisfied by a leftover literal
     // in the view. The expressions used to be built inline in pcb-detail-view.tsx, which is why the
-    // DOWNLOADED PDF carried none of them; they now live in `app/payroll/pcb-detail/formulas.ts`, which
+    // DOWNLOADED PDF carried none of them; they now live in `app/(app)/payroll/pcb-detail/formulas.ts`, which
     // both the screen and `shared.ts` paint. Every assertion below is the one it was, read out of the file
     // that now owns the string, plus the new per-ROW clamp counts the fourth row made necessary.
     const src = code(FORMULAS);
@@ -1329,7 +1329,7 @@ describe('45df860a — a payroll run processed today closes its own formula', ()
 describe('45df860a — an unparseable payslip id degrades', () => {
   it('shape-checks the id before it reaches the uuid column', () => {
     const src = fs.readFileSync(
-      path.resolve(__dirname, '..', 'app/payroll/pcb-detail/page.tsx'),
+      path.resolve(__dirname, '..', 'app/(app)/payroll/pcb-detail/page.tsx'),
       'utf8',
     );
     expect(src, 'the page must test the id shape').toMatch(/UUID_RE\s*=\s*\/\^\[0-9a-f\]\{8\}/);

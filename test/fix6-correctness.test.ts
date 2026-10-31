@@ -40,7 +40,7 @@ import { checkIn, checkOut } from '../core/attendance';
 import { setRestDay } from '../core/roster';
 import { requestLeave, decideLeave } from '../core/leave';
 import { createLoan, getLoanWithSchedule } from '../core/loans';
-import { amendLoanAction } from '../app/admin/loans/actions';
+import { amendLoanAction } from '../app/(app)/admin/loans/actions';
 import {
   accrueToil,
   closeReplacementLeaveYear,

@@ -28,13 +28,13 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
-import { DocumentsManager, type DocumentVM } from '../app/admin/personnel/[employmentId]/documents-manager';
+import { DocumentsManager, type DocumentVM } from '../app/(app)/admin/personnel/[employmentId]/documents-manager';
 
 // The server actions, stubbed. They are a 'use server' module that reaches Postgres (and the document
 // store) on import; this file is about the screen in front of them, and their own behaviour — upload,
 // mime sniffing, replace, delete, RLS and the audit trail — is proved against a real database in
 // test/employee-documents.test.ts.
-vi.mock('../app/admin/personnel/[employmentId]/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/[employmentId]/actions', () => ({
   uploadEmployeeDocumentAction: vi.fn(),
   updateEmployeeDocumentMetaAction: vi.fn(),
   replaceEmployeeDocumentAction: vi.fn(),

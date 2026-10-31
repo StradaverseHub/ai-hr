@@ -1,7 +1,7 @@
 import {afterEach,expect,it} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import en from '../messages/en.json';
-import {BonusBudgetCards} from '../app/rewards/[unitId]/bonus-budget';
+import {BonusBudgetCards} from '../app/(app)/rewards/[unitId]/bonus-budget';
 import {blankBudget} from '../packs/rewards/engine';
 import {defaultPolicy} from '../packs/rewards/model';
 

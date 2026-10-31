@@ -15,11 +15,11 @@
  *   goals/OKRs + review-goal links, 1:1 check-ins, peer (360°) feedback, calibration sessions,
  *   AI manager-review drafts, review attachments, and the comp seam (enact/decline of
  *   merit/bonus recommendations — see the below-the-radar note).
- * - Routes: `app/performance/**` (cycle list + new-cycle form, cycle detail/calibration, review
+ * - Routes: `app/(app)/performance/**` (cycle list + new-cycle form, cycle detail/calibration, review
  *   detail, attachment download, actions). There are no separate admin config routes — cycle
  *   administration lives in these same screens, gated in-service.
  * - No shared `components/` widgets: the module's client components are colocated under
- *   `app/performance/` (e.g. new-cycle-form.tsx).
+ *   `app/(app)/performance/` (e.g. new-cycle-form.tsx).
  * - The boundary is enforced by test/performance-pack-drift.test.ts (D11 criterion 4, shrink-only
  *   ratchet seeded in test/pack-drift-allowlist.json under "performance").
  *
@@ -31,7 +31,7 @@
  * the employment itself, and its tables (`employment_review`, `employment_review_reminder`,
  * `review_document`) reference employment/resignation, never `review_cycle`; (2) surface — its UI
  * mounts on the personnel admin profile, /me, and the approvals inbox, none under
- * app/performance/**, and it has no row in this pack's nav; (3) consumers — the approvals inbox
+ * app/(app)/performance/**, and it has no row in this pack's nav; (3) consumers — the approvals inbox
  * (`core/approvals-inbox.ts`), the dashboard, `lib/review-letter-build.ts` and
  * `scripts/review-sweep.ts` are all spine surfaces, so packing it would mint four kernel→pack
  * debts on day one. Its ONLY tie to this pack is the `currentAdminManager` helper — see the debt
@@ -87,7 +87,7 @@ import { registerPack, type ModulePack, type NavLinkDescriptor } from '../regist
  *   below it, so `ownedSubpaths` keep this entry lit across the area's employee and leader routes.
  * - Performance admin: OneHR performance administration only. components/sidebar.tsx gates it by
  *   canAdministerOnehr and points it at the admin area's first tab for the latest cycle the viewer administers
- *   (app/layout.tsx); `/performance` (the cycle list) is the address when there is no cycle. It owns every other
+ *   (app/(app)/layout.tsx); `/performance` (the cycle list) is the address when there is no cycle. It owns every other
  *   /performance route (the cycle pages and the admin area).
  *
  * The `group` tag is the pack's placement declaration; the sidebar places each row by

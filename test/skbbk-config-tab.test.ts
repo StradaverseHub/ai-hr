@@ -55,7 +55,7 @@ describe('SKBBK tab: registered alongside the other statutory tabs', () => {
 });
 
 describe('SKBBK page: read-only rate table + SOCSO-scoped Advanced edit', () => {
-  const page = read('app/payroll/configuration/skbbk/page.tsx');
+  const page = read('app/(app)/payroll/configuration/skbbk/page.tsx');
 
   it('reads the active ruleset (no new store) and renders the SKBBK column from the SOCSO bands', () => {
     expect(page.includes('pack.statutoryConfig.readActive(s)')).toBe(true);

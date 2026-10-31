@@ -7,9 +7,9 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
-vi.mock('../app/rewards/actions', () => ({ lumpAction: vi.fn(), previewRewardLumpAction: vi.fn(() => new Promise(() => {})) }));
-import { rewardReviewTitle } from '../app/rewards/[unitId]/unit-scope';
-import { UnitLumpSum } from '../app/rewards/[unitId]/lump-sum';
+vi.mock('../app/(app)/rewards/actions', () => ({ lumpAction: vi.fn(), previewRewardLumpAction: vi.fn(() => new Promise(() => {})) }));
+import { rewardReviewTitle } from '../app/(app)/rewards/[unitId]/unit-scope';
+import { UnitLumpSum } from '../app/(app)/rewards/[unitId]/lump-sum';
 
 const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 afterEach(cleanup);

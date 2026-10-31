@@ -3,12 +3,12 @@ import path from 'node:path';
 import {afterEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import {MovementNewEvent,type MovementCurrentValues} from '../app/admin/personnel/[employmentId]/movement-new-event';
+import {MovementNewEvent,type MovementCurrentValues} from '../app/(app)/admin/personnel/[employmentId]/movement-new-event';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import messages from '../messages/en.json';
 const actions=vi.hoisted(()=>({createMovementEventAction:vi.fn(async (_data:FormData)=>{}),editMovementEventAction:vi.fn(async (_data:FormData)=>{})}));
-vi.mock('../app/admin/personnel/[employmentId]/actions',()=>actions);
+vi.mock('../app/(app)/admin/personnel/[employmentId]/actions',()=>actions);
 const today=todayInKualaLumpur(),day=(n:number)=>new Date(Date.parse(today+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
 const current:MovementCurrentValues={companyId:'company-a',companyName:'Fictional Main',departmentId:'department-a',positionId:null,businessUnitId:null,locationId:null,employmentType:'full_time',gradeId:null,managerEmploymentId:null,basicSalary:'3000.00',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',orgDivision:null,employmentCategory:null,orgRegion:null,orgBranch:null,orgTeam:null,orgSection:null,orgLine:null,orgBase:null};
 const profileOptions:Record<string,{value:string;label:string}[]>={};
@@ -43,7 +43,7 @@ describe('pending Movement Edit retains its saved target independently of curren
   expect(screen.getByRole('alert')).toBeInTheDocument();expect(container.querySelector('form')).toBeNull();expect(screen.queryByRole('option',{name:'Fictional Destination Manager'})).toBeNull();
  });
  it('wires the actual page to a canonical pending-only edit read, preserving the separate current prop',()=>{
-  const source=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
+  const source=fs.readFileSync(path.resolve(__dirname,'../app/(app)/admin/personnel/[employmentId]/page.tsx'),'utf8');
   const start=source.indexOf('const movementEditRow'),end=source.indexOf('const hireCorrectionCard',start);
   expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start+500);const parent=source.slice(start,end);
   expect(parent).toContain('movementPendingEditInput(s, employmentId, movementEditRow.id)');expect(parent).toContain("movementEditRow.status === 'pending'");expect(parent).toContain('pendingInput: movementEditInput?.values');expect(parent).toContain('{...movementFormProps}');

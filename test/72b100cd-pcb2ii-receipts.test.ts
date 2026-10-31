@@ -12,7 +12,7 @@
  *
  *   1. ⚠️ ONE WRITER. The obvious way to build a second screen is to give it a second server action, and
  *      two writers of a money-adjacent record is how two screens come to disagree about what an employer
- *      paid a tax authority. The action moved UP to app/payroll/pcb-payment-actions.ts and BOTH screens
+ *      paid a tax authority. The action moved UP to app/(app)/payroll/pcb-payment-actions.ts and BOTH screens
  *      import that exact file; a source scan asserts no other module under app/ or core/ writes the
  *      table. (The guard shape 8cd601d0 used the week before: comment-stripped source, because these
  *      files explain the rule at length and a bare grep matches the prose.)
@@ -58,10 +58,10 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 /** Source with comments stripped: these files explain the one-writer rule in prose a grep would match. */
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
-const SCREEN = 'app/payroll/statutory-forms/pcb2ii/receipts/page.tsx';
-const ACTIONS = 'app/payroll/pcb-payment-actions.ts';
-const PICKER = 'app/payroll/statutory-forms/pcb2ii/page.tsx';
-const CP39 = 'app/payroll/cp39/preview/page.tsx';
+const SCREEN = 'app/(app)/payroll/statutory-forms/pcb2ii/receipts/page.tsx';
+const ACTIONS = 'app/(app)/payroll/pcb-payment-actions.ts';
+const PICKER = 'app/(app)/payroll/statutory-forms/pcb2ii/page.tsx';
+const CP39 = 'app/(app)/payroll/cp39/preview/page.tsx';
 const ROUTE = '/payroll/statutory-forms/pcb2ii/receipts';
 
 const MONTHS = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const;
@@ -88,8 +88,8 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import ReceiptsPage from '../app/payroll/statutory-forms/pcb2ii/receipts/page';
-import { recordPcbPaymentAction } from '../app/payroll/pcb-payment-actions';
+import ReceiptsPage from '../app/(app)/payroll/statutory-forms/pcb2ii/receipts/page';
+import { recordPcbPaymentAction } from '../app/(app)/payroll/pcb-payment-actions';
 
 let b: Base;
 let foreignCompanyId: string;
@@ -209,8 +209,8 @@ describe('72b100cd · one writer of pcb_payment, imported by both screens', () =
   });
 
   /** The old per-screen home must not come back as a copy beside the shared one. */
-  it('no per-screen copy of the action survives under app/payroll/cp39', () => {
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp39/actions.ts'))).toBe(false);
+  it('no per-screen copy of the action survives under app/(app)/payroll/cp39', () => {
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/cp39/actions.ts'))).toBe(false);
   });
 
   /**

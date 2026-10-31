@@ -18,7 +18,7 @@ async function main() {
   }
   // MYT, not UTC. This is scheduled for 02:00 local on the 1st; toISOString() resolves to the previous
   // UTC day there — the last day of the PREVIOUS month — which would accrue against the wrong period.
-  // The admin "Run earned accrual" button already uses this helper (app/admin/actions.ts).
+  // The admin "Run earned accrual" button already uses this helper (app/(app)/admin/actions.ts).
   const asOf = todayInKualaLumpur();
   const owner = createDb(ownerUrl);
   // ADR-0077 slice 9 — standing is consulted BEFORE any transaction opens. A tenant that is not in

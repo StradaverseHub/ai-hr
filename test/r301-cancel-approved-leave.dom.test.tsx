@@ -25,7 +25,7 @@ import th from '../messages/th.json';
 import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-import { LeaveTypeTabs, type LeaveTypeTabsData } from '../app/admin/leave-config/types/leave-type-tabs';
+import { LeaveTypeTabs, type LeaveTypeTabsData } from '../app/(app)/admin/leave-config/types/leave-type-tabs';
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '../components/leave/leave-history-cards';
 
 const CATALOGUES = { en, ms, ta, th, vi, zh } as const;

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { MatchingRules } from '../app/lifecycle/v9/workspace-settings';
+import { MatchingRules } from '../app/(app)/lifecycle/v9/workspace-settings';
 import { v9EmploymentLabels } from '../lib/lifecycle-v9-employment';
 import type { Rules } from '../lib/lifecycle-v9-model';
 function Editor() {

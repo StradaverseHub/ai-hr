@@ -42,7 +42,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidat
 import {
   removeProfileOptionAction,
   saveProfileOptionsAction,
-} from '../app/admin/settings/system-labels/profile-options/actions';
+} from '../app/(app)/admin/settings/system-labels/profile-options/actions';
 import {
   EMPLOYMENT_PROFILE_CATEGORIES,
   PERSON_PROFILE_CATEGORIES,
@@ -60,8 +60,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, p), 'utf8');
 const gridSrc = read('../components/system-labels-grid.tsx');
 const optionsGridSrc = read('../components/profile-options-grid.tsx');
-const orgPageSrc = read('../app/admin/settings/system-labels/page.tsx');
-const profileTabSrc = read('../app/admin/settings/system-labels/profile-options/page.tsx');
+const orgPageSrc = read('../app/(app)/admin/settings/system-labels/page.tsx');
+const profileTabSrc = read('../app/(app)/admin/settings/system-labels/profile-options/page.tsx');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const RELOCATED = ['division', 'branch', 'region', 'line', 'section', 'team', 'base', 'category'] as const;

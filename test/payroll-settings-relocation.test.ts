@@ -208,7 +208,7 @@ describe('hiring defaults service (the relocated settings, same behaviour)', () 
 
 describe('step 4 — the company statutory block has ONE writer', () => {
   it('the payroll-config save path no longer writes company statutory', () => {
-    const action = readSource('app/admin/payroll-config/actions.ts');
+    const action = readSource('app/(app)/admin/payroll-config/actions.ts');
     // The second writer is gone. Grepping the source is the point: the duplicate write lived in the
     // server action, so a service-level test could never have seen it.
     expect(action).not.toMatch(/companyStatutory/);
@@ -225,9 +225,9 @@ describe('step 4 — the company statutory block has ONE writer', () => {
    * rendered anywhere, so no POST from any Pay Schedule screen can carry one.
    */
   const PAY_SCHEDULE_PAGES = [
-    'app/admin/payroll-config/page.tsx',
-    'app/admin/payroll-config/[companyId]/page.tsx',
-    'app/admin/payroll-config/[companyId]/edit/page.tsx',
+    'app/(app)/admin/payroll-config/page.tsx',
+    'app/(app)/admin/payroll-config/[companyId]/page.tsx',
+    'app/(app)/admin/payroll-config/[companyId]/edit/page.tsx',
   ];
 
   it('no Pay Schedule screen renders a statutory field name (no posted field names)', () => {
@@ -241,13 +241,13 @@ describe('step 4 — the company statutory block has ONE writer', () => {
   });
 
   it('the company read screen still SHOWS the statutory values and points at their owner', () => {
-    const page = readSource('app/admin/payroll-config/[companyId]/page.tsx');
+    const page = readSource('app/(app)/admin/payroll-config/[companyId]/page.tsx');
     expect(page).toMatch(/statutoryEditInOrganization/);
     expect(page).toMatch(/\/admin\/organization/);
   });
 
   it('step 1 — the settings hub has one card for the payroll-config screen, not three', () => {
-    const hub = readSource('app/payroll/setup/page.tsx');
+    const hub = readSource('app/(app)/payroll/setup/page.tsx');
     const hrefs = [...hub.matchAll(/href: '(\/admin\/payroll-config)'/g)];
     expect(hrefs).toHaveLength(1);
     expect(hub).not.toMatch(/key: 'period'/);

@@ -29,10 +29,10 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
   // Team Leave Tracker route, because the sidebar lights a row by path prefix and every /leave/* screen
   // kept "My Leave" lit while an administrator read somebody else's leave record. So the panel assertions
   // follow the panel, and /leave is asserted to have kept none of it.
-  const src = read('app/leave/tracker/page.tsx');
-  const leavePage = read('app/leave/page.tsx');
+  const src = read('app/(app)/leave/tracker/page.tsx');
+  const leavePage = read('app/(app)/leave/page.tsx');
   const ownHistory = read('components/leave/own-leave-history.tsx');
-  const balancesPage = read('app/leave/employee-balances/page.tsx');
+  const balancesPage = read('app/(app)/leave/employee-balances/page.tsx');
 
   it('the retired listing is absent; inquiry retains its shared employee controls and filter panel', () => {
     expect(src).not.toContain('fields={employeeFilterFields}');
@@ -101,7 +101,7 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
   });
 
   it('5f2e20fb: My Leave History carries the SAME filter control, prefixed so old admin links stay inert', () => {
-    // Three fields, one multi + two dates, exactly the shape app/leave/employee-records/page.tsx uses.
+    // Three fields, one multi + two dates, exactly the shape app/(app)/leave/employee-records/page.tsx uses.
     expect(ownHistory).toMatch(/import \{ FilterChips, FilterPanel, type FilterField \} from '@\/components\/filter-panel'/);
     expect(ownHistory).toContain("kind: 'multi'");
     expect((ownHistory.match(/kind: 'date'/g) ?? []).length).toBe(2);
@@ -134,8 +134,8 @@ describe('leave filter panel: surviving inquiry and dedicated own History surfac
   it('ad965821: the ESS apply dropdown is built from the ELIGIBILITY-filtered read', () => {
     // The defect lived in the CONTRACT between this page and core/read.ts (AGENTS rule 17), so it is pinned
     // on both halves: a unit test of either one passes throughout.
-    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
-    expect(read('app/leave/my-leave-data.ts')).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/(app)/leave/my-leave-data.ts).
+    expect(read('app/(app)/leave/my-leave-data.ts')).toContain('listEligibleLeaveTypesFor(session, me.employmentId, locale)');
     // REV 2 pinned a UNION here — the option list drawn from every subject a line manager could pick,
     // because LeaveDurationFields intersects `types` with the selected subject's set and a viewer-only
     // array made the on-behalf offer eligible(manager) ∩ eligible(report).
@@ -293,10 +293,10 @@ describe('leave filter panel: component supports multi-select additively', () =>
   });
 });
 
-// afd0a87c — the 'leave export route: admin-gated CSV + Excel' block is gone with app/leave/export/route.ts.
+// afd0a87c — the 'leave export route: admin-gated CSV + Excel' block is gone with app/(app)/leave/export/route.ts.
 // That route served the retired org-wide register and its only links in the whole application were on the
 // section that has been removed; an unreachable admin download is worse than none. The surviving
-// per-employee download is app/leave/employee-records/export/route.ts, guarded by its own tests.
+// per-employee download is app/(app)/leave/employee-records/export/route.ts, guarded by its own tests.
 
 describe('leave filter panel: i18n keys exist in en.json', () => {
   it('leave.filters carries the panel + page strings', () => {

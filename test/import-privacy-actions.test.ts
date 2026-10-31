@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getBrowserCommandSession:boundary.session}));
 vi.mock('../core/personnel-import-evaluation',()=>({eraseOwnImportEvaluationMetadata:boundary.erase}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(location:string)=>{throw Object.assign(Error('fixture navigation'),{location});}}));
-import {eraseImportPreparationHistoryAction} from '../app/assistant/import-privacy-actions';
+import {eraseImportPreparationHistoryAction} from '../app/(app)/assistant/import-privacy-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user',roles:[],grants:[]};
 beforeEach(()=>{boundary.session.mockReset();boundary.erase.mockReset();boundary.session.mockResolvedValue(ctx);});
 async function location(){try{await eraseImportPreparationHistoryAction();throw Error('Expected navigation');}catch(error){const value=(error as {location?:unknown}).location;if(typeof value!=='string')throw error;return value;}}

@@ -11,7 +11,7 @@
  *
  * WHAT THIS PINS, and why each one is here rather than left to review:
  *   1. percent mode renders NO carryForwardMax number input  — the defect itself;
- *   2. percent mode DOES post an explicit hidden zero        — `app/admin/actions.ts` reads
+ *   2. percent mode DOES post an explicit hidden zero        — `app/(app)/admin/actions.ts` reads
  *      carryForwardMax as `num(...) ?? null`, which is NOT tri-state, so an omitted field would clear
  *      it anyway; the explicit zero is what makes the intent readable at the call site;
  *   3. fixed_max mode STILL renders its cap input            — the reporter asked for percentage only;

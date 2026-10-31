@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useId,useRef,useState} from 'react';
-import {readProtectedAnalysisAction,type ProtectedAnalysisDomain,type ProtectedAnalysisNotice} from '@/app/analytics/ai-actions';
+import {readProtectedAnalysisAction,type ProtectedAnalysisDomain,type ProtectedAnalysisNotice} from '@/app/(app)/analytics/ai-actions';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {previousPayrollComparisonPeriod} from '@/lib/payroll-period-comparison';
 import {ThinkingIndicator} from './thinking-indicator';

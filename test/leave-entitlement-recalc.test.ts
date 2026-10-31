@@ -16,7 +16,7 @@
  * Three consequences, all of them stated rather than absorbed:
  *  • THE CORRECTION IS TWO CALLS, NOT ONE. `updateLeavePolicy` recalculated as a side effect of saving.
  *    No template writer does — `createEntitlementTemplate`, `updateEntitlementTemplate`,
- *    `createEligibilityRule` and their actions in app/admin/leave/entitlements/templates/actions.ts all
+ *    `createEligibilityRule` and their actions in app/(app)/admin/leave/entitlements/templates/actions.ts all
  *    write and return. So each correction below writes the successor version and then runs the cohort
  *    recalculation explicitly, which is what an operator's save would have to do.
  *  • THE RETURN SHAPE IS `{ affected, totalDelta }`. `packBlocked` belonged to the policy-side reprojection;
@@ -270,7 +270,7 @@ describe('49809272 — upfront correction (up / down / below the statutory minim
    * ⚠️ THAT IS A GAP IN THE PRODUCT, NOT ONLY IN THIS FILE, and it is recorded here rather than quietly
    * dropped. core/leave.ts's own header for reprojectEntitlementForLeaveTypeCohort says it fires "when an
    * entitlement TEMPLATE or an ELIGIBILITY RULE for the type is written" — no call site does that today
-   * (app/admin/leave/entitlements/templates/actions.ts writes and returns; only setLeaveTypeRulesAction
+   * (app/(app)/admin/leave/entitlements/templates/actions.ts writes and returns; only setLeaveTypeRulesAction
    * fires the cohort, and only when it clears the not-configured marker). Until a writer calls it, an
    * operator correcting an entitlement table moves nobody's balance until some unrelated event happens to
    * reproject them. Wiring that is a product change and belongs in its own item; this file proves the

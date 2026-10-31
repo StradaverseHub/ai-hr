@@ -8,8 +8,8 @@ import zh from '../messages/zh.json';
 import vietnamese from '../messages/vi.json';
 import th from '../messages/th.json';
 import ta from '../messages/ta.json';
-vi.mock('../app/admin/settings/email/actions',()=>({saveEmailRetention:vi.fn()}));
-import {EmailRetentionForm} from '../app/admin/settings/email/retention-form';
+vi.mock('../app/(app)/admin/settings/email/actions',()=>({saveEmailRetention:vi.fn()}));
+import {EmailRetentionForm} from '../app/(app)/admin/settings/email/retention-form';
 const show=(days:number|null=null)=>render(<NextIntlClientProvider locale="en" messages={messages}><EmailRetentionForm policy={{days,revision:2,lastRunAt:null,lastDeleted:0}}/></NextIntlClientProvider>);
 afterEach(cleanup);
 describe('delivery history retention controls',()=>{

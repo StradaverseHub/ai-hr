@@ -6,7 +6,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('next-intl/server',()=>({getLocale:mocks.locale,getTranslations:vi.fn()}));
 vi.mock('../lib/real-auth',()=>({appOrigin:()=> 'https://hr.example.test'}));
 vi.mock('../packs/performance/service',()=>({previewAssessmentReminder:mocks.preview,getAssessmentReminders:vi.fn(),queueAssessmentReminders:vi.fn(),saveAssessmentReminderRules:vi.fn(),saveAssessmentReminderWords:vi.fn()}));
-import {assessmentReminderPersonPreviewAction} from '../app/performance/assessment-reminder-actions';
+import {assessmentReminderPersonPreviewAction} from '../app/(app)/performance/assessment-reminder-actions';
 const viewer={tenantId:'11111111-1111-4111-8111-111111111111',userId:'22222222-2222-4222-8222-222222222222',roles:['hr_admin']};
 const cycle='33333333-3333-4333-8333-333333333333',tasks=[{key:'own_competency' as const,count:1,closesAt:null}];
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(viewer);mocks.locale.mockResolvedValue('en');});

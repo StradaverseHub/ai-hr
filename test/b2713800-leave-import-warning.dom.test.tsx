@@ -21,7 +21,7 @@ import { render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
-import { LeaveLedgerImport } from '../app/admin/leave/import/leave-ledger-import';
+import { LeaveLedgerImport } from '../app/(app)/admin/leave/import/leave-ledger-import';
 import type { LeaveImportPreview } from '../lib/leave-import-schema';
 
 vi.mock('next/navigation', () => ({
@@ -31,7 +31,7 @@ vi.mock('next/navigation', () => ({
 
 const validateMock = vi.fn();
 const commitMock = vi.fn();
-vi.mock('../app/admin/leave/import/actions', () => ({
+vi.mock('../app/(app)/admin/leave/import/actions', () => ({
   validateLeaveImportAction: (...a: unknown[]) => validateMock(...a),
   commitLeaveImportAction: (...a: unknown[]) => commitMock(...a),
 }));

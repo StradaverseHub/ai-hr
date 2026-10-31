@@ -2,8 +2,8 @@
 import React from 'react';
 import {describe,it,expect,vi,afterEach} from 'vitest';
 import {render,screen,cleanup,fireEvent} from '@testing-library/react';
-vi.mock('../app/performance/onehr-actions',()=>({saveAssessmentDraftAction:vi.fn()}));
-import {AssessmentDraftForm,flushAssessmentDrafts} from '../app/performance/onehr/draft-form';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({saveAssessmentDraftAction:vi.fn()}));
+import {AssessmentDraftForm,flushAssessmentDrafts} from '../app/(app)/performance/onehr/draft-form';
 afterEach(cleanup);
 describe('submitted assessment view',()=>{
  it('shows the retained reflection without a form, draft privacy claim or autosave',async()=>{

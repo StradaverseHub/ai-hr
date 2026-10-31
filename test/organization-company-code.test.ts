@@ -4,7 +4,7 @@
  * ── WHAT WAS ACTUALLY WRONG ───────────────────────────────────────────────────────────────────────
  * Nothing was missing from the DATABASE. `company.company_label` has existed since bc5d4891
  * (db/schema.ts, commented "short name / abbreviation / internal code"); the listing has headed it
- * "Code" since defd4644 (app/admin/organization/company-rows.tsx maps `code: c.companyLabel`); the
+ * "Code" since defd4644 (app/(app)/admin/organization/company-rows.tsx maps `code: c.companyLabel`); the
  * company's own General tab reads and writes it. The ONE screen it was absent from was
  * /admin/organization/new — so a company was created, and only then could somebody go and find it again
  * on another screen to give it a code.
@@ -66,11 +66,11 @@ vi.mock('next-intl', () => ({
 
 import { adminCtx, closeAll, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
-import { createCompanyAction } from '../app/admin/actions';
+import { createCompanyAction } from '../app/(app)/admin/actions';
 import { listCompanies } from '../core/read';
-import { selectCompanyRows } from '../app/admin/organization/company-rows';
-import NewCompanyPage from '../app/admin/organization/new/page';
-import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
+import { selectCompanyRows } from '../app/(app)/admin/organization/company-rows';
+import NewCompanyPage from '../app/(app)/admin/organization/new/page';
+import CompanyMaintenancePage from '../app/(app)/admin/organization/[companyId]/page';
 // 7d2df42a — the two components whose PROPS carry the duplicate-code warning's data. Asserted as
 // elements, not as markup: the warning is invisible until somebody types, so the only thing a server
 // render can prove is that each screen was handed the right list (§8, "pin it across both files").

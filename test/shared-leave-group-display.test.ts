@@ -415,7 +415,7 @@ describe('46afcc48 · HIDING EVERY MEMBER CHANGES NEITHER THE POT NOR THE VERDIC
 // ── THE SCREEN ─────────────────────────────────────────────────────────────────────────────────────
 
 describe('46afcc48 · the Leave tab draws the group at its placement', () => {
-  const leavePage = read('../app/leave/page.tsx');
+  const leavePage = read('../app/(app)/leave/page.tsx');
   // ⚠️ r356 — THESE TWO CASES WERE READING A FILE NOTHING RENDERED. `cardsCmp` was
   // `components/leave/shared-leave-group-cards.tsx`, whose <SharedLeaveGroupCards> had no render site
   // after r302 folded both placements into the one dashboard grid — the case below this one asserts
@@ -426,8 +426,8 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
   const cardsCmp = read('../components/leave/my-leave-dashboard.tsx');
 
   it('the page reads the placed groups and renders BOTH placements', () => {
-    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
-    expect(read('../app/leave/my-leave-data.ts')).toContain("import { sharedLeaveGroupBalances } from '@/core/leave-shared-group'");
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/(app)/leave/my-leave-data.ts).
+    expect(read('../app/(app)/leave/my-leave-data.ts')).toContain("import { sharedLeaveGroupBalances } from '@/core/leave-shared-group'");
     expect(leavePage).toContain('sharedGroupsPrimary');
     expect(leavePage).toContain('sharedGroupsSecondary');
     // 46afcc48: PRIMARY groups no longer render in their own <SharedLeaveGroupCards> Card — they are passed
@@ -465,7 +465,7 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     const shortPageAt = leavePage.indexOf('if (me == null || admin) {');
     expect(shortPageAt).toBeGreaterThan(-1);
     expect(leavePage.indexOf('await loadMyLeave(')).toBeGreaterThan(shortPageAt);
-    expect(read('../app/leave/my-leave-data.ts')).toMatch(/sharedLeaveGroupBalances\(session, me\.employmentId, \{ locale, asOf \}\)/);
+    expect(read('../app/(app)/leave/my-leave-data.ts')).toMatch(/sharedLeaveGroupBalances\(session, me\.employmentId, \{ locale, asOf \}\)/);
   });
 
   it('the card prints the pooled figure through the shared day formatter, never a private toFixed', () => {
@@ -516,7 +516,7 @@ describe('46afcc48 · the Leave tab draws the group at its placement', () => {
     const cfg = read('../components/leave-shared-group-config.tsx');
     expect(cfg).toContain('name="essPlacement"');
     expect(cfg.match(/name="essPlacement"/g) ?? [], 'create AND edit must both carry it').toHaveLength(2);
-    const actions = read('../app/admin/actions.ts');
+    const actions = read('../app/(app)/admin/actions.ts');
     expect(actions).toContain("essPlacement: String(fd.get('essPlacement') ?? '')");
     expect(actions.match(/essPlacement: String\(fd\.get\('essPlacement'\) \?\? ''\)/g) ?? []).toHaveLength(2);
   });

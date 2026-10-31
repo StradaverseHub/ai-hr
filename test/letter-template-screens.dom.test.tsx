@@ -14,12 +14,12 @@ const catalogues={en,ms,zh,ta,th,vi:viMessages};
 vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'current-user'},scopeIds:mocks.scopeIds,allowedCount:2})}));
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterTemplates:mocks.list,getLetterTemplate:mocks.detail,listLetterTemplateVersions:mocks.history}));
-vi.mock('../app/letters/templates/actions',()=>({saveTemplate:mocks.save,updateTemplate:mocks.update,previewTemplate:mocks.preview}));
+vi.mock('../app/(app)/letters/templates/actions',()=>({saveTemplate:mocks.save,updateTemplate:mocks.update,previewTemplate:mocks.preview}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.templates'|'letters.fields')=>createTranslator({locale:mocks.locale,messages:{letters:{templates:catalogues[mocks.locale].letters.templates,fields:catalogues[mocks.locale].letters.fields}},namespace})}));
-import TemplatesPage from '../app/letters/templates/page';
-import TemplatePage from '../app/letters/templates/[versionId]/page';
-import NewPage from '../app/letters/templates/new/page';
-import EditPage from '../app/letters/templates/[versionId]/edit/page';
+import TemplatesPage from '../app/(app)/letters/templates/page';
+import TemplatePage from '../app/(app)/letters/templates/[versionId]/page';
+import NewPage from '../app/(app)/letters/templates/new/page';
+import EditPage from '../app/(app)/letters/templates/[versionId]/edit/page';
 const companyId='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002',templateId='00000000-0000-4000-8000-000000000003',fieldId='00000000-0000-4000-8000-000000000004';
 const day=todayInKualaLumpur(),definition={key:'employeeName',label:'Employee name',description:'Canonical name',kind:'text',source:'employee.name',required:true,editable:false,sensitive:false};
 function detail(){return {root:{id:templateId,companyId,revision:4,code:'LETTER',deactivated:false},version:{id:versionId,ordinal:2,name:'Fictional template',category:'confirmation',effectiveFrom:day,status:'submitted',createdBy:'other-author',document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'<script>untrusted literal</script>',marks:['bold']},{type:'field',key:'employeeName'}]}]},presentation:{letterheadAssetId:null,signatoryUserId:'signer'}},fields:[{id:fieldId,definition,active:true,ordinal:3}],appearance:{letterhead_name:null,signatory_name:'Fictional signer'}};}

@@ -40,10 +40,10 @@ const src = (p: string) =>
   readFileSync(join(ROOT, p), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const PAGE = src('app/roster/page.tsx');
-const EXPORT = src('app/roster/export/route.ts');
-const EXCEPTIONS = src('app/roster/exceptions/page.tsx');
-const EDIT = src('app/roster/edit/[employmentId]/page.tsx');
+const PAGE = src('app/(app)/roster/page.tsx');
+const EXPORT = src('app/(app)/roster/export/route.ts');
+const EXCEPTIONS = src('app/(app)/roster/exceptions/page.tsx');
+const EDIT = src('app/(app)/roster/edit/[employmentId]/page.tsx');
 const CORE = src('core/roster.ts');
 
 /** A fixed "today" — never the clock, so a case cannot change meaning overnight. 2026-08-12 is a

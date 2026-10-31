@@ -1,9 +1,9 @@
 /**
  * ONE way to print a feedback timestamp (e14334ef).
  *
- * Lifted verbatim from `app/feedback/[id]/page.tsx`, which had it as a local `fmtDate` used for plan
+ * Lifted verbatim from `app/(app)/feedback/[id]/page.tsx`, which had it as a local `fmtDate` used for plan
  * versions, approvals, block questions and answers. The board list now shows Last Updated too, and a
- * second copy of the same `toLocaleString` options in `app/feedback/bulk-table.tsx` is exactly how the
+ * second copy of the same `toLocaleString` options in `app/(app)/feedback/bulk-table.tsx` is exactly how the
  * list and the detail page start disagreeing about what "14 Aug 2026, 09:32" means.
  *
  * ═══ THE ONE THING THAT WAS ADDED ═══

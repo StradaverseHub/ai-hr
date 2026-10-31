@@ -1,6 +1,6 @@
 /**
  * GET /api/mobile/v1/notifications — the caller's in-app notifications, newest first (ADR-0088 §2–§3).
- * Read-only. The same read the web bell makes (app/layout.tsx), with no employment filter: the
+ * Read-only. The same read the web bell makes (app/(app)/layout.tsx), with no employment filter: the
  * `notification_recipient_rls` policy (0078) admits only rows whose recipient employment is the caller's
  * own person, for administrators as much as anyone, so this cannot list someone else's.
  *

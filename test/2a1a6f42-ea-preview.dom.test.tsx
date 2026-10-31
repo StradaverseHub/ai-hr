@@ -26,8 +26,8 @@ import { describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { EaEmployeePicker, type EaPickerRow, type EaPickerStrings } from '../app/payroll/statutory-forms/ea/employee-picker';
-import { MAX_EA_SELECTION } from '../app/payroll/statutory-forms/ea/limits';
+import { EaEmployeePicker, type EaPickerRow, type EaPickerStrings } from '../app/(app)/payroll/statutory-forms/ea/employee-picker';
+import { MAX_EA_SELECTION } from '../app/(app)/payroll/statutory-forms/ea/limits';
 // The SHIPPING catalogues, not fixtures — a missing or blank `eaPreview` would be missing from these six
 // files, and that is the whole point of the locale block below. (jsdom gives import.meta.url an http URL,
 // so readFileSync off it is not available here; static imports are how the other DOM tests load messages.)
@@ -44,7 +44,7 @@ const LOCALES = Object.keys(CATALOGUES) as Loc[];
 
 const words = (loc: Loc) => CATALOGUES[loc].payroll.statutoryForms as unknown as Record<string, string>;
 
-/** Exactly what `app/payroll/statutory-forms/ea/page.tsx` hands the picker, resolved for one locale. */
+/** Exactly what `app/(app)/payroll/statutory-forms/ea/page.tsx` hands the picker, resolved for one locale. */
 function stringsFor(loc: Loc): EaPickerStrings {
   const w = words(loc);
   return {

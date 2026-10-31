@@ -14,13 +14,13 @@ vi.mock('../components/system-testing/execution-review', () => ({ TestingExecuti
 vi.mock('../components/system-testing/instruction-editor', () => ({ TestingInstructionEditor: () => null }));
 vi.mock('../components/system-testing/action-form', () => ({ TestingActionForm: () => null }));
 vi.mock('../components/system-testing/guide', () => ({ TestingGuide: () => null }));
-vi.mock('../app/admin/system-testing/workspace-actions', () => ({ assignTestingCaseAction: vi.fn(), raiseLegacyTestingFeedbackAction: vi.fn() }));
+vi.mock('../app/(app)/admin/system-testing/workspace-actions', () => ({ assignTestingCaseAction: vi.fn(), raiseLegacyTestingFeedbackAction: vi.fn() }));
 vi.mock('../lib/permissions', () => ({ SCREENS: [] }));
-vi.mock('../app/feedback/board', () => ({ feedbackBoardOpen: () => true }));
+vi.mock('../app/(app)/feedback/board', () => ({ feedbackBoardOpen: () => true }));
 vi.mock('../components/ui', () => ({ Card: () => null, PageHeader: () => null, inputCls: '', pageWideCls: '' }));
-import PersonalPage from '../app/system-testing/executions/[id]/page';
-import TeamPage from '../app/admin/system-testing/executions/[id]/page';
-import MasterPage from '../app/admin/system-testing/[id]/page';
+import PersonalPage from '../app/(app)/system-testing/executions/[id]/page';
+import TeamPage from '../app/(app)/admin/system-testing/executions/[id]/page';
+import MasterPage from '../app/(app)/admin/system-testing/[id]/page';
 
 const id = '7777ff7e-86ab-4f55-a7cd-912531170d84', versionId = '35bcda35-407d-401f-968d-fe566c7a5d48';
 const testerB = { userId: '82faac81-d98d-4d3a-8ae7-700af1c57781', tenantId: '646bb364-bbfe-49a2-9761-d4a92d926e94', roles: ['employee'] };

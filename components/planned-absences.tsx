@@ -141,7 +141,7 @@ export async function PlannedAbsences({
   // Partial Leave Cancellation from the calendar (ADR-0065): a pill is cancellable when the viewer is the
   // subject (own leave — emp.id is the personId), the row is approved + full_day, it is a plain request OR a
   // cancellation-split survivor (parentGroupId null OR isCancellationSplit), no cancellation is already pending
-  // on it, and the read layer resolved ≥1 candidate date. This mirrors the Leave page gate (app/leave/page.tsx
+  // on it, and the read layer resolved ≥1 candidate date. This mirrors the Leave page gate (app/(app)/leave/page.tsx
   // :264-269) exactly so a date never looks cancellable here but is rejected on submit (or vice-versa).
   const canOfferCancel = !!cancelAction;
   const cancelEligible = (personId: string, l: Leave): boolean =>

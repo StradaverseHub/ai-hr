@@ -2,7 +2,7 @@
  * b372e923 — A PAYROLL RESULT LINK ON EVERY ROW OF A COMPLETED REPROCESS.
  *
  * The reprocess result table named every employee it had just recalculated and gave you no way to open
- * any of them: `app/payroll/[batchId]/reprocess/page.tsx` imported `next/link` zero times. To read one
+ * any of them: `app/(app)/payroll/[batchId]/reprocess/page.tsx` imported `next/link` zero times. To read one
  * person's result you had to leave the screen, go back to the Payroll Process list, find the same person
  * on the run and open them from there.
  *
@@ -53,9 +53,9 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { batchDetail, createBatch, generatePayslips, getReprocessJob, reprocessSelectedEmployees } from '../core/payroll';
 import { listRecomputeDisclosure } from '../core/payroll-view';
-import { PAYROLL_RESULT_PATH, payrollResultHref } from '../app/payroll/payroll-result-href';
-import { reprocessResultHrefs } from '../app/payroll/[batchId]/reprocess/result-links';
-import { reprocessSelectedAction } from '../app/payroll/actions';
+import { PAYROLL_RESULT_PATH, payrollResultHref } from '../app/(app)/payroll/payroll-result-href';
+import { reprocessResultHrefs } from '../app/(app)/payroll/[batchId]/reprocess/result-links';
+import { reprocessSelectedAction } from '../app/(app)/payroll/actions';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 // `reprocessSelectedAction` resolves its own session/translations and always redirects; mirror the
@@ -81,10 +81,10 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const REPROCESS_DIR = 'app/payroll/[batchId]/reprocess';
+const REPROCESS_DIR = 'app/(app)/payroll/[batchId]/reprocess';
 const PAGE = code(`${REPROCESS_DIR}/page.tsx`);
 const OUTCOMES = code(`${REPROCESS_DIR}/outcomes.tsx`);
-const RUN_SCREEN = code('app/payroll/[batchId]/page.tsx');
+const RUN_SCREEN = code('app/(app)/payroll/[batchId]/page.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const MESSAGES = Object.fromEntries(
   LOCALES.map((l) => [l, JSON.parse(fs.readFileSync(path.join(ROOT, `messages/${l}.json`), 'utf8'))]),

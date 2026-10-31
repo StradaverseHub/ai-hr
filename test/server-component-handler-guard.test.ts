@@ -3,10 +3,10 @@
  *
  * A React Server Component cannot pass a function prop (onChange / onClick / onSubmit / …) to the
  * client boundary — doing so throws "Event handlers cannot be passed to Client Component props." at
- * request time. This exact bug shipped on /analytics: app/analytics/page.tsx put an inline
+ * request time. This exact bug shipped on /analytics: app/(app)/analytics/page.tsx put an inline
  * `onChange` on a <select>, and because the page is searchParams-dynamic the build never rendered it,
  * so the crash only surfaced in production. The fix extracts the interactive control into a
- * 'use client' island (app/analytics/YearSelect.tsx).
+ * 'use client' island (app/(app)/analytics/YearSelect.tsx).
  *
  * This guard sweeps every app/**\/page.tsx that is a Server Component (no top-of-file 'use client')
  * and fails if it contains a JSX event-handler attribute — catching the whole class of regression,
@@ -51,10 +51,10 @@ describe('Server Components pass no event-handler props (feedback 978b2914)', ()
   }
 
   it('the specific fix stands: /analytics uses the YearSelect client island', () => {
-    const page = readFileSync(root + 'app/analytics/page.tsx', 'utf8');
+    const page = readFileSync(root + 'app/(app)/analytics/page.tsx', 'utf8');
     expect(page).toMatch(/import \{ YearSelect \} from '\.\/YearSelect'/);
     expect(page).not.toMatch(/onChange=/);
-    const island = readFileSync(root + 'app/analytics/YearSelect.tsx', 'utf8');
+    const island = readFileSync(root + 'app/(app)/analytics/YearSelect.tsx', 'utf8');
     expect(island).toMatch(/^'use client'/);
     expect(island).toMatch(/requestSubmit/);
   });

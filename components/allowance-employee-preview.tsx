@@ -4,7 +4,7 @@ import {useTranslations} from 'next-intl';
 import {Button,inputCls} from '@/components/ui';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import type {AllowanceRules} from '@/lib/attendance-allowance-rules';
-import {previewAllowanceEmployeeSelection} from '@/app/admin/attendance-allowance/actions';
+import {previewAllowanceEmployeeSelection} from '@/app/(app)/admin/attendance-allowance/actions';
 export function AllowanceEmployeePreview({companyId,rules,method}:{companyId:string;rules:AllowanceRules;method:string}) {
   const t=useTranslations('allowanceV4'),old=useTranslations('allowanceV2');
   const [month,setMonth]=useState(todayInKualaLumpur().slice(0,7));

@@ -759,7 +759,7 @@ async function analyze(
     //
     // THE ISSUING COUNTRY IS GOVERNED BY THE `nationality` CATALOG, NOT `country`. That is not a typo: the
     // Passport card's Issuing Country picker is fed from the tenant's nationality list
-    // (app/admin/personnel/[employmentId]/page.tsx → IdentityFields `countryOptions`), so the value the
+    // (app/(app)/admin/personnel/[employmentId]/page.tsx → IdentityFields `countryOptions`), so the value the
     // product itself stores in this column is a DEMONYM — "Malaysian", not "Malaysia"; the separate
     // `passportIssuingCountryCode` field carries the ISO code precisely because one cannot be derived from
     // the other (e4b541c6, components/personnel-identity.tsx). Checking it against `country` rejected every

@@ -114,7 +114,7 @@ Atelier is the default authenticated workspace: neutral surfaces, compact contro
 
 Public sign-in is a distinct, owner-specified indigo-and-white surface with AIHR identity. Its palette is scoped locally and remains light across app themes. Its typography resolves the existing font variable. The login composition belongs to its surface brief, not to every future screen.
 
-Performance & Talent is the second scoped surface (D-P1-32 D3, APR-025, ADR-0152). Every page under `/performance`, employee and administration, renders inside `<div data-area-theme="performance">` (app/performance/layout.tsx), and app/performance/area-theme.css re-declares the app's own tokens there: a navy band with the area title, white 12px cards on a light grey page, navy headings and primary, hairline rows, red for AI actions with the app's own sparkles icon, pills, segmented tabs and a stage rail (`pt-*` classes). The area looks the same in Classic, Monolith and Atelier: the `monolith:` and `atelier:` variants do not match inside it and the themes' structural rules are reverted there. It has its own navy-tinted dark variant; light/dark stays the user's setting. Control sizes follow the source on a fine pointer and keep 44px targets on a coarse one. Portaled overlays (dialogs, menus, toasts) render outside the wrapper and keep the user's theme. No logo or client name is drawn.
+Performance & Talent is the second scoped surface (D-P1-32 D3, APR-025, ADR-0152). Every page under `/performance`, employee and administration, renders inside `<div data-area-theme="performance">` (app/(app)/performance/layout.tsx), and app/(app)/performance/area-theme.css re-declares the app's own tokens there: a navy band with the area title, white 12px cards on a light grey page, navy headings and primary, hairline rows, red for AI actions with the app's own sparkles icon, pills, segmented tabs and a stage rail (`pt-*` classes). The area looks the same in Classic, Monolith and Atelier: the `monolith:` and `atelier:` variants do not match inside it and the themes' structural rules are reverted there. It has its own navy-tinted dark variant; light/dark stays the user's setting. Control sizes follow the source on a fine pointer and keep 44px targets on a coarse one. Portaled overlays (dialogs, menus, toasts) render outside the wrapper and keep the user's theme. No logo or client name is drawn.
 
 **Key Characteristics:**
 - Flat shell and cards with hairline boundaries.
@@ -122,7 +122,7 @@ Performance & Talent is the second scoped surface (D-P1-32 D3, APR-025, ADR-0152
 - Orange action/focus accent in Atelier; independent indigo sign-in.
 - Human-confirmation signature and semantic status labels.
 
-Evidence: app/atelier.css, app/globals.css, app/layout.tsx, components/ui.tsx, components/ui/{button,input,card}.tsx, app/login/{login.css,login-shell.tsx,internal-form.tsx}, and lib/ui-theme.ts. Direction lives in .impeccable/surfaces/app-layout-tsx.md and app-login-page-tsx.md. Desktop, phone and 681px login captures and desktop/phone appearance-settings captures were checked against this source.
+Evidence: app/atelier.css, app/globals.css, app/(app)/layout.tsx, components/ui.tsx, components/ui/{button,input,card}.tsx, app/(auth)/login/{login.css,login-shell.tsx,internal-form.tsx}, and lib/ui-theme.ts. Direction lives in .impeccable/surfaces/app-layout-tsx.md and app-login-page-tsx.md. Desktop, phone and 681px login captures and desktop/phone appearance-settings captures were checked against this source.
 
 ## Colors
 

@@ -139,7 +139,7 @@ async function offerOnLeavePage(leaveRequestId: string, today = TODAY) {
   return offers.get(leaveRequestId);
 }
 
-/** The Team Leave Tracker's candidate dates for one row (plannedAbsences, as app/leave/tracker/page.tsx calls it). */
+/** The Team Leave Tracker's candidate dates for one row (plannedAbsences, as app/(app)/leave/tracker/page.tsx calls it). */
 async function offerOnTracker(leaveRequestId: string, today = TODAY) {
   const pa = await plannedAbsences(subjectCtx, [b.companyId], { from: MON, to: FRI }, today, {
     personIds: [subject.personId],

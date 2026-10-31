@@ -10,7 +10,7 @@
  * WHY THIS IS A DATABASE TEST AND NOT A SOURCE ASSERTION. The claim spans three files that a unit test of
  * any one of them satisfies: the page posts filterPage/filterSize, the action decides the address, and
  * the screen re-renders the list from that address. So each case here runs the REAL server action against
- * a real holiday master, then rebuilds the list exactly as app/admin/holidays/page.tsx does from the
+ * a real holiday master, then rebuilds the list exactly as app/(app)/admin/holidays/page.tsx does from the
  * address the action answered with, and asks the only question that matters: IS THE ROW ON THAT PAGE.
  *
  * def44f29 — the action RETURNS the address now instead of redirecting to it. Add and Edit moved into a
@@ -34,7 +34,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(() => undefined), revalidateTag: vi.fn(() => undefined) }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-import { saveHolidayAction } from '../app/admin/actions';
+import { saveHolidayAction } from '../app/(app)/admin/actions';
 import { createHoliday, listHolidays } from '../core/admin';
 import { paginateRows, parsePageQuery } from '../lib/pagination';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
@@ -67,7 +67,7 @@ async function save(fields: Record<string, string>): Promise<string> {
 }
 
 /**
- * Rebuild the holiday list for an address the way app/admin/holidays/page.tsx does — same filters, same
+ * Rebuild the holiday list for an address the way app/(app)/admin/holidays/page.tsx does — same filters, same
  * order, same slice — and answer which rows the admin would actually see.
  */
 async function rowsOnScreen(path: string): Promise<string[]> {

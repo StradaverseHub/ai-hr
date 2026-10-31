@@ -19,12 +19,12 @@ import th from '../messages/th.json';
 import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-vi.mock('../app/payroll/payslip-information/actions', () => ({
+vi.mock('../app/(app)/payroll/payslip-information/actions', () => ({
   savePayslipInformation: vi.fn(async () => ({ error: '', saved: true })),
   copyPayslipInformation: vi.fn(async () => ({ error: '', copiedTo: [] })),
 }));
 
-import { SettingsForm } from '../app/payroll/payslip-information/settings-form';
+import { SettingsForm } from '../app/(app)/payroll/payslip-information/settings-form';
 
 const OTHERS = [{ id: 'co-b', name: 'XYZ Company' }, { id: 'co-c', name: 'Demo Company' }];
 

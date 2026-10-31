@@ -62,7 +62,7 @@ const nextConfig: NextConfig = {
         source: '/:path*',
         headers: [
           // 'self', NOT 'none'. The Knowledge Base renders an in-product PDF preview as
-          // <iframe src="/knowledge-base/<id>/download?inline=1"> (app/knowledge-base/[id]/page.tsx),
+          // <iframe src="/knowledge-base/<id>/download?inline=1"> (app/(app)/knowledge-base/[id]/page.tsx),
           // which is same-origin — 'none' refuses to frame our own document and the preview goes blank.
           // 'self' still blocks every cross-origin frame, which is the clickjacking the header is for.
           { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'" },

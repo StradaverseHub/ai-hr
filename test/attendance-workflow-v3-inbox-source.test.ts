@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-const page = readFileSync(new URL('../app/approvals/page.tsx', import.meta.url), 'utf8');
+const page = readFileSync(new URL('../app/(app)/approvals/page.tsx', import.meta.url), 'utf8');
 function section(from: string, to: string) {
     const start = page.indexOf(from), end = page.indexOf(to, start);
     expect(start).toBeGreaterThanOrEqual(0);

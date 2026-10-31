@@ -462,7 +462,7 @@ const winAnsi = (s: string) => s;
 
 const interp = (s: string, vars: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`);
 
-/** The label bundle EXACTLY as app/me/ea/[employmentId]/pdf/route.ts builds it, minus next-intl. */
+/** The label bundle EXACTLY as app/(app)/me/ea/[employmentId]/pdf/route.ts builds it, minus next-intl. */
 function bundleFor(locale: string): EaPdfLabels {
   const msgs = JSON.parse(readFileSync(new URL(`../messages/${locale}.json`, import.meta.url), 'utf8'));
   const ea = msgs.payroll.ea as Record<string, string> & { override: Record<string, string> };

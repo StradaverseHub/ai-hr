@@ -10,16 +10,16 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
-vi.mock('../app/performance/leaders/actions', () => ({
+vi.mock('../app/(app)/performance/leaders/actions', () => ({
   previewHodChangeAction: vi.fn(), applyHodChangeAction: vi.fn(), appointLeaderSeatAction: vi.fn(), endLeaderSeatAction: vi.fn(),
   createCalibrationGroupAction: vi.fn(), renameCalibrationGroupAction: vi.fn(), calibrationGroupMembersAction: vi.fn(),
   addCalibrationGroupMembersAction: vi.fn(), endCalibrationGroupMemberAction: vi.fn(), generateCalibrationScopesAction: vi.fn(),
 }));
 
-import { LeadersAdmin } from '../app/performance/leaders/leaders-admin';
-import { GenerateCalibrationScopes } from '../app/performance/leaders/generate-scopes';
-import type { HodPreviewView, LeadersData } from '../app/performance/leaders/model';
-import { applyHodChangeAction, appointLeaderSeatAction, generateCalibrationScopesAction, previewHodChangeAction } from '../app/performance/leaders/actions';
+import { LeadersAdmin } from '../app/(app)/performance/leaders/leaders-admin';
+import { GenerateCalibrationScopes } from '../app/(app)/performance/leaders/generate-scopes';
+import type { HodPreviewView, LeadersData } from '../app/(app)/performance/leaders/model';
+import { applyHodChangeAction, appointLeaderSeatAction, generateCalibrationScopesAction, previewHodChangeAction } from '../app/(app)/performance/leaders/actions';
 
 const L = en.onehr.leaders;
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;

@@ -6,7 +6,7 @@ import {PDFDocument,StandardFonts} from 'pdf-lib';
 import en from '../messages/en.json';
 import '../app/globals.css';
 import '../app/atelier.css';
-vi.mock('@/app/assistant/file-import-actions',()=>({prepareAssistantImportAction:async()=>({ok:true,draft:{columns:['employee_no','amount'],rows:[['E001','-25.50']],spans:[]}})}));
+vi.mock('@/app/(app)/assistant/file-import-actions',()=>({prepareAssistantImportAction:async()=>({ok:true,draft:{columns:['employee_no','amount'],rows:[['E001','-25.50']],spans:[]}})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:()=>{}})}));
 const {AssistantFileImport}=await import('../components/assistant/file-import');
 const {AssistantImportHandoffProvider}=await import('../components/assistant/import-handoff');

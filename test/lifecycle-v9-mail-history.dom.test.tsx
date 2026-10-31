@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CaseMailHistory } from '../app/lifecycle/v9/mail-history';
+import { CaseMailHistory } from '../app/(app)/lifecycle/v9/mail-history';
 import type { Mail } from '../lib/lifecycle-v9-model';
 const failed = (): Mail => ({ id: 'fictional-delivery', key: 'fictional-key', workflowId: 'workflow', templateId: null, to: ['employee'], cc: [], subject: 'Fictional saved message', body: 'Original saved content', documentIds: [], fileIds: [], status: 'failed', test: false, at: '2026-10-29T02:00:00Z', deliveredAt: null, failure: 'smtpTemporary', delivery: { version: 1, queuedBy: { id: 'hr', name: 'Fictional HR' }, sender: 'hr', linkDocumentIds: [], pdfDocumentIds: [], toNames: ['Fictional employee'], ccNames: [] } });
 it('requires a review reason and queues a new retry without relabeling the failed receipt as sent', async () => {

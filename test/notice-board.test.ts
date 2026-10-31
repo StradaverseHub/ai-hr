@@ -43,7 +43,7 @@ import {
   updateNotice,
   type EmployeeNoticeRow,
 } from '../core/notice';
-import { EMPLOYMENT_TYPE_VALUES } from '../app/admin/notice-board/criteria-options';
+import { EMPLOYMENT_TYPE_VALUES } from '../app/(app)/admin/notice-board/criteria-options';
 import { dispatchNotifications } from '../core/notifications';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -509,7 +509,7 @@ describe('6e122302 · the i18n keys the coverage guard cannot reach', () => {
   });
 
   it('every criteria-vocabulary label resolves — the file that renders them opens THREE namespaces, so check C skips it entirely', () => {
-    // app/admin/notice-board/criteria-options.ts reads `admin.profileOptions.category.<labelKey>` and
+    // app/(app)/admin/notice-board/criteria-options.ts reads `admin.profileOptions.category.<labelKey>` and
     // `people.wizard.employmentType.<value>`. Both label sets already ship; this proves the eight axes and
     // four types this module actually asks for are among them. r127 shipped this exact screen shape with
     // both sets missing, behind a green suite, a green build and a 200.

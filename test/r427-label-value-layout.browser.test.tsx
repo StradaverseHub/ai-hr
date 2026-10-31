@@ -15,7 +15,7 @@ import { StackedBody, StackedHead, StackedRow, StackedTable, StackedTd, StackedT
 import { StatCells } from '../components/ui/stat-cells';
 import { StatusWord } from '../components/ui/status-word';
 import { Segmented } from '../components/ui/segmented';
-import { FixedWidthRuler } from '../app/admin/attendance/file-mappings/fixed-width-ruler';
+import { FixedWidthRuler } from '../app/(app)/admin/attendance/file-mappings/fixed-width-ruler';
 import { inputCls } from '../components/ui';
 
 const html = document.documentElement;

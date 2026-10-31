@@ -1,4 +1,4 @@
-vi.mock('../app/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
+vi.mock('../app/(app)/performance/assessment-rewrite-actions',()=>({rewriteAssessmentFieldAction:vi.fn()}));
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -14,13 +14,13 @@ vi.mock('next/navigation',async importActual=>({...await importActual<typeof imp
 vi.mock('../lib/scope',()=>({scopedSession:ports.session}));
 // D-P1-32 PT-X2: the session page reads the Calibration strip's gate facts; none here, so the strip draws nothing.
 vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibration,getPerformanceAreaFacts:async()=>({performanceOn:false,items:[],ownFeedbackReport:'none'})}));
-vi.mock('../app/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
-vi.mock('../app/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
-import CalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
-import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
-import { KpiEditor } from '../app/performance/onehr/kpi-editor';
-import { OnehrReviewView } from '../app/performance/onehr/review-view';
-import { ItemNavigator } from '../app/performance/workspace/item-navigator';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({assessmentCalibrationPersonAction:ports.person,assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),saveCalibrationBandAction:vi.fn(),assessmentInsightAction:vi.fn(),onehrReviewAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),onehrFeedbackAction:vi.fn(),onehrDraftAction:vi.fn(),saveAssessmentDraftAction:vi.fn(),saveAssessmentKpiSettingAction:vi.fn().mockResolvedValue({revision:2})}));
+vi.mock('../app/(app)/performance/actions',()=>({uploadAttachmentAction:vi.fn()}));
+import CalibrationPage from '../app/(app)/performance/assessment/calibration/[sessionId]/page';
+import { AssessmentCalibrationView } from '../app/(app)/performance/onehr/calibration-view';
+import { KpiEditor } from '../app/(app)/performance/onehr/kpi-editor';
+import { OnehrReviewView } from '../app/(app)/performance/onehr/review-view';
+import { ItemNavigator } from '../app/(app)/performance/workspace/item-navigator';
 const show=(element:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
 /** Every element of `type` in a returned element tree, walking props.children (the page wraps the view, PT-X2). */
 function elementsOf(node:React.ReactNode,type:unknown):React.ReactElement[]{

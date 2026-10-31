@@ -21,11 +21,11 @@ function fixture() {
   const base = join(repo, 'scratchpad'); mkdirSync(base, { recursive: true });
   const root = mkdtempSync(join(base, 'testing-release-')); roots.push(root);
   const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  mkdirSync(join(root, 'lib/system-testing'), { recursive: true }); mkdirSync(join(root, 'app'));
+  mkdirSync(join(root, 'lib/system-testing'), { recursive: true }); mkdirSync(join(root, 'app/(app)'), { recursive: true });
   writeFileSync(join(root, '.gitignore'), '.next/\nevidence/\n.gate-receipt.json\n');
-  writeFileSync(join(root, 'app/page.tsx'), 'export default function Page(){ return "fictional release fixture"; }\n');
+  writeFileSync(join(root, 'app/(app)/page.tsx'), 'export default function Page(){ return "fictional release fixture"; }\n');
   const entry = structuredClone(JSON.parse(readFileSync(join(repo, 'lib/system-testing/catalogue.json'), 'utf8')).entries[0]);
-  entry.sources = ['app/page.tsx']; entry.reviewedSourceHash = 'b'.repeat(64);
+  entry.sources = ['app/(app)/page.tsx']; entry.reviewedSourceHash = 'b'.repeat(64);
   const catalogue = { format: 1, revision: 'fictional.release', entries: [entry] };
   writeFileSync(join(root, 'lib/system-testing/catalogue.json'), JSON.stringify(catalogue));
   git('init', '-q'); git('config', 'user.email', 'fictional@example.invalid'); git('config', 'user.name', 'Fictional Release');
@@ -45,25 +45,25 @@ describe('selected System Testing release provenance', () => {
   it('prepares exact clean committed source and does not restamp unreviewed guide fingerprints', () => {
     const f = fixture();
     expect(f.record.identity.sourceRef).toBe(f.candidate);
-    expect(f.record.sourceHashRecord).toEqual([{ path: 'app/page.tsx', sha256: hash(readFileSync(join(f.root, 'app/page.tsx'))) }]);
+    expect(f.record.sourceHashRecord).toEqual([{ path: 'app/(app)/page.tsx', sha256: hash(readFileSync(join(f.root, 'app/(app)/page.tsx'))) }]);
     expect(verifyInstalledTestingBuild(f.record, f.root)).toEqual(f.record);
     expect(JSON.parse(readFileSync(join(f.root, 'lib/system-testing/catalogue.json'), 'utf8')).entries[0].reviewedSourceHash).toBe('b'.repeat(64));
     expect(f.record.activeServiceVerified).toBe(false);
     expect(() => prepareSystemTestingBuild({ worktree: f.root, candidate: 'a'.repeat(40), buildRecordId: randomUUID() })).toThrow();
-    writeFileSync(join(f.root, 'app/page.tsx'), 'uncommitted changed source');
+    writeFileSync(join(f.root, 'app/(app)/page.tsx'), 'uncommitted changed source');
     expect(() => prepareSystemTestingBuild({ worktree: f.root, candidate: f.candidate, buildRecordId: randomUUID() })).toThrow(/clean/);
   });
 
   it('refuses installed source/catalogue/path changes and symlink source despite a self-consistent transferred record', () => {
     for (const mode of ['source', 'catalogue', 'extra', 'missing', 'symlink']) {
       const f = fixture(), record = structuredClone(f.record);
-      if (mode === 'source') writeFileSync(join(f.root, 'app/page.tsx'), 'changed after rsync');
+      if (mode === 'source') writeFileSync(join(f.root, 'app/(app)/page.tsx'), 'changed after rsync');
       if (mode === 'catalogue') writeFileSync(join(f.root, 'lib/system-testing/catalogue.json'), JSON.stringify({ ...f.catalogue, revision: 'changed' }));
       if (mode === 'extra') record.sourceHashRecord.push({ path: 'core/extra.ts', sha256: 'a'.repeat(64) });
       if (mode === 'missing') record.sourceHashRecord = [];
       if (mode === 'extra' || mode === 'missing') record.identity.contentHash = sourceContentDigest(record.sourceHashRecord);
       if (mode === 'symlink') {
-        rmSync(join(f.root, 'app/page.tsx')); writeFileSync(join(f.root, 'outside.tsx'), 'fictional external file'); symlinkSync(join(f.root, 'outside.tsx'), join(f.root, 'app/page.tsx'));
+        rmSync(join(f.root, 'app/(app)/page.tsx')); writeFileSync(join(f.root, 'outside.tsx'), 'fictional external file'); symlinkSync(join(f.root, 'outside.tsx'), join(f.root, 'app/(app)/page.tsx'));
       }
       expect(() => verifyInstalledTestingBuild(record, f.root), mode).toThrow();
     }
@@ -124,7 +124,7 @@ describe('actual build exit and separate non-arrival observation', () => {
       if (mode === 'stale') buildId(f.root, 'previous-build');
       expect(() => runTestingProductionBuild({ ...f, worktree: f.root, sourceRef: f.candidate, build: () => {
         if (mode === 'exit' || mode === 'signal' || mode === 'source') buildId(f.root, 'partial-new-build');
-        if (mode === 'source') writeFileSync(join(f.root, 'app/page.tsx'), 'changed while compiling');
+        if (mode === 'source') writeFileSync(join(f.root, 'app/(app)/page.tsx'), 'changed while compiling');
         return { status: mode === 'exit' ? 9 : mode === 'signal' ? null : 0, signal: mode === 'signal' ? 'SIGTERM' : null };
       } }), mode).toThrow();
       expect(existsSync(join(saved.buildDirectory, 'successful-build.json')), mode).toBe(false);

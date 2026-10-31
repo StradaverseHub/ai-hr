@@ -21,7 +21,7 @@ export function demoSwitcherEnabled(): boolean {
  * switcher deliberately left on. Distinct from demoSwitcherEnabled(), which is ALSO true in ordinary
  * local development; that difference is the entire point of having a second predicate.
  *
- * Used to fence off the operator console (core/operator.ts + app/operator). On the demo, anyone past
+ * Used to fence off the operator console (core/operator.ts + app/(app)/operator). On the demo, anyone past
  * SHARE_PASSWORD can become any seeded identity through the switcher, so a consultant kicking the tyres
  * could otherwise reach a screen that creates real customers. A developer running `pnpm dev` locally is
  * not that, and must keep working — hence the NODE_ENV half of the condition rather than a bare flag

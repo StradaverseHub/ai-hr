@@ -520,7 +520,7 @@ describe('Payroll — removeEmployeePayroll (DB)', () => {
     // — the screen knows before the button is pressed — is pinned where the mechanism now lives: the page
     // resolves the setting and feeds it to the reader. A contract across two files, so source-shape.
     const removePage = readFileSync(
-      resolve(__dirname, '..', 'app/payroll/[batchId]/remove/page.tsx'),
+      resolve(__dirname, '..', 'app/(app)/payroll/[batchId]/remove/page.tsx'),
       'utf8',
     );
     expect(removePage, 'the page must resolve the setting itself').toContain(

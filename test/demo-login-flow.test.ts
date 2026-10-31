@@ -12,7 +12,7 @@
  * ═══ THE FOUR PROPERTIES PINNED HERE ═══
  *
  *  1. On the demo the fallback is withheld, so "no cookie" means SIGNED OUT.
- *  2. That state raises `AuthRequiredError` — the error `app/layout.tsx` turns into a redirect to
+ *  2. That state raises `AuthRequiredError` — the error `app/(app)/layout.tsx` turns into a redirect to
  *     /login. A plain Error would render a 500 on the product's front door.
  *  3. LOCAL DEV KEEPS THE FALLBACK. `lib/session.ts`'s header says the dev switcher exists so `pnpm dev`
  *     and the test harness are "never forced through WorkOS"; withholding it everywhere would send every
@@ -32,8 +32,8 @@ import { resolveDevPrincipal } from '../lib/session';
 import { AuthRequiredError } from '../lib/auth-errors';
 
 const SESSION = fs.readFileSync(path.resolve(__dirname, '../lib/session.ts'), 'utf8');
-const LOGIN = fs.readFileSync(path.resolve(__dirname, '../app/login/page.tsx'), 'utf8');
-const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/layout.tsx'), 'utf8');
+const LOGIN = fs.readFileSync(path.resolve(__dirname, '../app/(auth)/login/page.tsx'), 'utf8');
+const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/(app)/layout.tsx'), 'utf8');
 const AUTH_ACTIONS = fs.readFileSync(path.resolve(__dirname, '../app/auth-actions.ts'), 'utf8');
 const IDENTITY = fs.readFileSync(path.resolve(__dirname, '../app/identity-actions.ts'), 'utf8');
 
@@ -94,7 +94,7 @@ describe('demo sign-in flow', () => {
      * browser stores the cookie before following the Location. Reintroducing a server action here
      * reintroduces the race, so the shape is pinned rather than the behaviour.
      */
-    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/login/as/route.ts'), 'utf8');
+    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/(auth)/login/as/route.ts'), 'utf8');
     expect(LOGIN).toContain('method="post" action="/login/as"');
     expect(LOGIN).not.toContain('action={signInAs}');
     expect(ROUTE).toContain('status: 303');
@@ -111,7 +111,7 @@ describe('demo sign-in flow', () => {
      * A relative Location is resolved by the browser against the URL IT used, so the public origin
      * survives without this route knowing what it is.
      */
-    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/login/as/route.ts'), 'utf8');
+    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/(auth)/login/as/route.ts'), 'utf8');
     expect(ROUTE).not.toContain('NextResponse.redirect(');
     expect(ROUTE).not.toContain('req.url');
     expect(ROUTE).toMatch(/headers: \{ Location: location \}/);
@@ -120,7 +120,7 @@ describe('demo sign-in flow', () => {
   it('never writes an identity the chooser does not offer', () => {
     // `dev_user` selects the principal the whole app runs as, so a hand-crafted post must not be able to
     // set an arbitrary one. The endpoint checks the id against the same list the page renders.
-    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/login/as/route.ts'), 'utf8');
+    const ROUTE = fs.readFileSync(path.resolve(__dirname, '../app/(auth)/login/as/route.ts'), 'utf8');
     expect(ROUTE).toContain('listPrincipals()');
     expect(ROUTE).toMatch(/allowed\.some\(\(p\) => p\.userId === userId\)/);
     expect(ROUTE).toContain('if (!demoSwitcherEnabled())');

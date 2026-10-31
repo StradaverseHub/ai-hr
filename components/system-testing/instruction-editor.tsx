@@ -2,7 +2,7 @@
 import { useActionState,useEffect,useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { saveTestingInstructionAction } from '@/app/admin/system-testing/workspace-actions';
+import { saveTestingInstructionAction } from '@/app/(app)/admin/system-testing/workspace-actions';
 import { INITIAL_TESTING_ACTION_STATE } from '@/lib/system-testing/action-model';
 import { TESTING_AREAS,TESTING_CATEGORIES,TESTING_PRIORITIES,TESTING_LIMITS,type InstructionDefinition } from '@/lib/system-testing/model';
 import { btnPrimary,inputCls } from '@/components/ui';

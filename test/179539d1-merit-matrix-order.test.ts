@@ -14,7 +14,7 @@ describe('179539d1 merit matrix reference row order', () => {
   });
 
   it('the Budget tab reference table renders its rows through meritMatrixRows, not the stored key order', () => {
-    const page = readFileSync('app/rewards/[unitId]/page.tsx', 'utf8');
+    const page = readFileSync('app/(app)/rewards/[unitId]/page.tsx', 'utf8');
     const start = page.indexOf("t('meritMatrix')");
     expect(start).toBeGreaterThanOrEqual(0);
     const section = page.slice(start, start + 1500);

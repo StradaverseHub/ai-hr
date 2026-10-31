@@ -44,7 +44,7 @@
 // filled one is trusted. `renderEaPdf(blankEaPdfData(), labels, { blank: true })` is that document, and it
 // is THIS renderer — a second "blank version" code path would be a second form to keep in step with the
 // arrangement, which is the duplication the file's opening note exists to prevent (and exactly what
-// app/payroll/cp22/blank/route.ts refused to do for the CP22).
+// app/(app)/payroll/cp22/blank/route.ts refused to do for the CP22).
 //
 // WHY A FLAG AND NOT AN EMPTY VALUE. Every partB/partC/partD/partE amount on `EaPdfData` is a REQUIRED
 // number, deliberately (see the type's own comments: an optional money field is one a caller can forget,
@@ -230,7 +230,7 @@ export type EaRenderOptions = {
    * languages and its English edition has an English masthead, so an English EA drawn with the Malay
    * furniture is a document the agency does not issue.
    *
-   * Defaults to English. `app/me/ea/[employmentId]/pdf/route.ts` and the blank route already resolve a
+   * Defaults to English. `app/(app)/me/ea/[employmentId]/pdf/route.ts` and the blank route already resolve a
    * document locale for the CAPTIONS; this makes the furniture follow the same one.
    */
   locale?: string;

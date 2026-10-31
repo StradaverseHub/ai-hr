@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { ChecklistPreview } from '../app/lifecycle/v9/checklist-preview';
+import { ChecklistPreview } from '../app/(app)/lifecycle/v9/checklist-preview';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { fictionalV9Case } from './fixtures/lifecycle-v9/case';
 it('previews the matched checklist using the last-day anchor without assigning or changing work',()=>{

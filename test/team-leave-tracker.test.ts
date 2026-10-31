@@ -26,7 +26,7 @@
  *
  * ── REWRITTEN BY 388e53c2, DELIBERATELY ──────────────────────────────────────────────────────────────
  *
- * This file pinned app/leave/tracker/page.tsx by SOURCE — its imports, its thirteen props, its person-id
+ * This file pinned app/(app)/leave/tracker/page.tsx by SOURCE — its imports, its thirteen props, its person-id
  * expression — so it could not survive that page gaining a second render branch by preserving behaviour
  * alone. It was rewritten rather than repointed, and the rewrite KEEPS ITS INTENT and sharpens it:
  *
@@ -53,8 +53,8 @@ const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
-const trackerPage = read('app/leave/tracker/page.tsx');
-const dashboard = read('app/page.tsx');
+const trackerPage = read('app/(app)/leave/tracker/page.tsx');
+const dashboard = read('app/(app)/page.tsx');
 const sidebar = read('components/sidebar.tsx');
 
 describe('the Leave Team row stays ungated — the access the move must not remove', () => {
@@ -168,7 +168,7 @@ describe('the calendar is the SAME screen, not a rebuild', () => {
 
   it('posts the UNCHANGED leave actions — the cancel/withdraw paths are not forked', () => {
     expect(trackerPage).toContain(
-      "import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions'",
+      "import { requestLeaveCancellationAction, adminCancelLeaveAction, cancelOwnLeaveAction } from '@/app/(app)/leave/actions'",
     );
   });
 
@@ -229,7 +229,7 @@ describe('r378 · legacy HR inquiry links redirect while explicit calendar inten
   });
 
   it('the moved picker stays scoped and navigates to balances instead of posting to the retired listing', () => {
-    const balances = read('app/leave/employee-balances/page.tsx');
+    const balances = read('app/(app)/leave/employee-balances/page.tsx');
     expect(balances).toContain('await scopedAdmin()');
     expect(balances).toContain('scopeIds');
     expect(balances).toContain('<EmployeeScopePanel');
@@ -316,10 +316,10 @@ describe('the Dashboard no longer carries the calendar', () => {
       .map((p) => p.split(':')[0].replace('?', '').trim())
       .filter(Boolean);
     expect(declaredParams).toEqual(['moduleUnavailable','employmentId','workspace']);
-    // …which also retires app/page.tsx from the leave pack's drift allowlist (the ratchet only shrinks).
+    // …which also retires app/(app)/page.tsx from the leave pack's drift allowlist (the ratchet only shrinks).
     expect(dashboard).not.toContain("from '@/core/leave'");
     const allowlist = JSON.parse(read('test/pack-drift-allowlist.json')) as Record<string, string[]>;
-    expect(allowlist.leave).not.toContain('app/page.tsx');
+    expect(allowlist.leave).not.toContain('app/(app)/page.tsx');
   });
 
   it('keeps the Team Away Today COUNT — it never came from the calendar read', () => {
@@ -352,9 +352,9 @@ describe('every pointer at the old location follows the calendar', () => {
 
   it('the HR-admin cancel dialog returns to the calendar, and the action whitelists that surface', () => {
     expect(read('components/planned-absences-grid.tsx')).toContain('back="/leave/tracker"');
-    expect(read('app/leave/actions.ts')).toContain("if (backRaw === '/leave/tracker') back = '/leave/tracker?calendar=1';");
+    expect(read('app/(app)/leave/actions.ts')).toContain("if (backRaw === '/leave/tracker') back = '/leave/tracker?calendar=1';");
     // The cancel paths must also refresh the page they were posted from.
-    expect(read('app/leave/actions.ts')).toContain("revalidatePath('/leave/tracker')");
+    expect(read('app/(app)/leave/actions.ts')).toContain("revalidatePath('/leave/tracker')");
   });
 
   it('THE PANEL NAVIGATES TO ITS OWN PATH — no hardcoded dashboard URL survives', () => {
@@ -371,7 +371,7 @@ describe('every pointer at the old location follows the calendar', () => {
   it('no user-visible copy still describes the Leave Calendar as the pinned full-width card', () => {
     // The pointers above are all hrefs; these are PROSE, and they are the half a code-only sweep misses.
     // Two of them render UNCONDITIONALLY on Settings → Dashboard → Templates (templateRow2Desc at
-    // app/admin/settings/dashboard/page.tsx:464, templateDerivedNote at :479), so after the move an HR
+    // app/(app)/admin/settings/dashboard/page.tsx:464, templateDerivedNote at :479), so after the move an HR
     // admin was being told a card that no longer exists is pinned across the full width. The third
     // (dashboard.pinnedRowHint) sits behind `fixedKeys.length > 0` and is unreachable while
     // FIXED_ROW_KEYS is empty — generalised anyway, because that list is kept for the NEXT full-width

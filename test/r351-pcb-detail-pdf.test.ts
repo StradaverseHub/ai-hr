@@ -5,8 +5,8 @@ import { extractedText as drawnText } from './helpers/pcb-pdf-text';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { PDFDocument, PDFDict, PDFName } from 'pdf-lib';
-import { pcbPdfText, renderPcbDetailPdf } from '../app/payroll/pcb-detail/slip-pdf';
-import { pcbFormulaBlocks } from '../app/payroll/pcb-detail/formulas';
+import { pcbPdfText, renderPcbDetailPdf } from '../app/(app)/payroll/pcb-detail/slip-pdf';
+import { pcbFormulaBlocks } from '../app/(app)/payroll/pcb-detail/formulas';
 import { explainPcb, type PcbExplanation, type PcbReliefBreakdown } from '../core/pcb-explain';
 import { pcbMonth } from '../localization/my/payroll';
 

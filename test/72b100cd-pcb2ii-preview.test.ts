@@ -36,19 +36,19 @@ import { hireEmployee } from '../core/org';
 import { upsertCompanyStatutoryAuthority } from '../core/statutory-authority';
 import { createMovementEvent } from '../core/movement';
 import { pcb2iiStatement } from '../localization/my/pcb2ii';
-import { MAX_EA_SELECTION } from '../app/payroll/statutory-forms/ea/limits';
+import { MAX_EA_SELECTION } from '../app/(app)/payroll/statutory-forms/ea/limits';
 import { adminCtx, closeAll, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import type { SessionContext } from '../db/client';
 
 const ROOT = join(__dirname, '..');
 const src = (p: string) => readFileSync(join(ROOT, p), 'utf8');
-const SHARED = src('app/payroll/statutory-forms/pcb2ii/shared.ts');
-const PREVIEW_ROUTE = src('app/payroll/statutory-forms/pcb2ii/preview/route.ts');
-const DOWNLOAD_ROUTE = src('app/payroll/statutory-forms/pcb2ii/download/route.ts');
-const SCREEN = src('app/payroll/statutory-forms/pcb2ii/page.tsx');
-const EA_SCREEN = src('app/payroll/statutory-forms/ea/page.tsx');
+const SHARED = src('app/(app)/payroll/statutory-forms/pcb2ii/shared.ts');
+const PREVIEW_ROUTE = src('app/(app)/payroll/statutory-forms/pcb2ii/preview/route.ts');
+const DOWNLOAD_ROUTE = src('app/(app)/payroll/statutory-forms/pcb2ii/download/route.ts');
+const SCREEN = src('app/(app)/payroll/statutory-forms/pcb2ii/page.tsx');
+const EA_SCREEN = src('app/(app)/payroll/statutory-forms/ea/page.tsx');
 /** The picker BOTH screens use. r328 put the preview on it as two optional props; r331 switched the EA on. */
-const PICKER = src('app/payroll/statutory-forms/ea/employee-picker.tsx');
+const PICKER = src('app/(app)/payroll/statutory-forms/ea/employee-picker.tsx');
 const SEED = src('db/seed.ts');
 
 /**
@@ -62,8 +62,8 @@ const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/
 let scope: { s: SessionContext; scopeIds: string[] };
 vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
 
-import { GET as previewGET } from '../app/payroll/statutory-forms/pcb2ii/preview/route';
-import { GET as downloadGET } from '../app/payroll/statutory-forms/pcb2ii/download/route';
+import { GET as previewGET } from '../app/(app)/payroll/statutory-forms/pcb2ii/preview/route';
+import { GET as downloadGET } from '../app/(app)/payroll/statutory-forms/pcb2ii/download/route';
 
 let b: Base;
 let employmentId: string;
@@ -245,7 +245,7 @@ describe('72b100cd · a preview is NOT a lighter surface — every refusal is th
    * company's people's tax numbers and identity card numbers by editing the URL.
    *
    * NON-VACUITY: delete the `if (!scopeIds.includes(companyId)) return notFound();` line from
-   * app/payroll/statutory-forms/pcb2ii/shared.ts and this expectation fails with 200 (verified r328).
+   * app/(app)/payroll/statutory-forms/pcb2ii/shared.ts and this expectation fails with 200 (verified r328).
    */
   it('an OUT-OF-SCOPE company is a bare 404 on BOTH routes', async () => {
     scope = { s: ctxFor(), scopeIds: [foreignCompanyId] }; // the admin can reach anything BUT this company

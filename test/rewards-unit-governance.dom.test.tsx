@@ -3,7 +3,7 @@ import {render,screen,cleanup} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {SeniorAwardFields} from '../app/rewards/[unitId]/senior-award-fields';
+import {SeniorAwardFields} from '../app/(app)/rewards/[unitId]/senior-award-fields';
 afterEach(cleanup);
 describe('Senior offline decision salary input choice',()=>{
  it('submits only the selected salary representation when switching from an existing salary to an increment',async()=>{

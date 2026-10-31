@@ -151,7 +151,7 @@ describe('§2 da7463b4 — permanent → correspondence is declared once', () =>
     // The phones are the half of the pairing that is NOT `permanent*`-prefixed, so they are the half a
     // refactor silently drops. Each of the four ids must exist as a literal somewhere a screen renders.
     const sources = [
-      read('app/admin/personnel/[employmentId]/page.tsx'),
+      read('app/(app)/admin/personnel/[employmentId]/page.tsx'),
       read('components/person-name-fields.tsx'),
       read('components/address-fields.tsx'),
     ].join('\n');
@@ -225,7 +225,7 @@ describe('§3 da7463b4 — every word this screen borrows exists in all six loca
     // `people.detail` directly in wizard.tsx would therefore have dropped every `people.wizard.*` key on
     // that screen out of static coverage — a loss with no symptom. The record's words come across inside
     // components that already speak `people.detail` instead.
-    const wizard = read('app/admin/personnel/new/wizard.tsx');
+    const wizard = read('app/(app)/admin/personnel/new/wizard.tsx');
     const namespaces = [...wizard.matchAll(/useTranslations\('([^']+)'\)/g)].map((m) => m[1]);
     expect([...new Set(namespaces)], 'wizard.tsx must stay single-namespace').toEqual(['people.wizard']);
   });
@@ -286,7 +286,7 @@ describe('da7463b4 — a draft becomes an employee carrying both addresses', () 
     expect(p.correspondenceCity).toBe('Kuala Lumpur');
     expect(p.correspondenceMobilePhone).toBe('+60 12-000 1111');
     expect(p.correspondenceHomePhone).toBe('+60 3-9999 8888');
-    // They are the SAME columns app/admin/personnel/[employmentId]/page.tsx reads back onto the Profile
+    // They are the SAME columns app/(app)/admin/personnel/[employmentId]/page.tsx reads back onto the Profile
     // tab's Contact & Address card — core/read.ts selects them and test/personnel-…-address.test.ts pins
     // that side. Nothing here is a draft-only copy of an address.
     expect(p.permanentAddressLine1).not.toBe(p.correspondenceAddressLine1);

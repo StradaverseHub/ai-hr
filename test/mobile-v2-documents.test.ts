@@ -52,8 +52,8 @@ const pdf = await import('../app/api/mobile/v2/payslips/[id]/pdf/route');
 const eaList = await import('../app/api/mobile/v2/ea/route');
 const eaPdf = await import('../app/api/mobile/v2/ea/pdf/route');
 const shares = await import('../app/api/mobile/v2/documents/share-events/route');
-const webPayslip = await import('../app/me/payslip/[payslipId]/pdf/route');
-const webEa = await import('../app/me/ea/[employmentId]/pdf/route');
+const webPayslip = await import('../app/(app)/me/payslip/[payslipId]/pdf/route');
+const webEa = await import('../app/(app)/me/ea/[employmentId]/pdf/route');
 
 type Role = 'employee' | 'hr_admin';
 let base: Base;

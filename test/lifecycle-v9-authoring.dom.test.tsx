@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { EmailDefinition } from '../app/lifecycle/v9/email-definition';
+import { EmailDefinition } from '../app/(app)/lifecycle/v9/email-definition';
 import { newV9Email, newV9Template } from '../lib/lifecycle-v9-authoring';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';

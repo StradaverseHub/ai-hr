@@ -3,12 +3,12 @@ import path from 'node:path';
 import {describe,it,expect,vi} from 'vitest';
 import {render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import {MovementNewEvent} from '../app/admin/personnel/[employmentId]/movement-new-event';
-import type {MovementCurrentValues} from '../app/admin/personnel/[employmentId]/movement-new-event';
+import {MovementNewEvent} from '../app/(app)/admin/personnel/[employmentId]/movement-new-event';
+import type {MovementCurrentValues} from '../app/(app)/admin/personnel/[employmentId]/movement-new-event';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import messages from '../messages/en.json';
-vi.mock('../app/admin/personnel/[employmentId]/actions',()=>({createMovementEventAction:vi.fn(),editMovementEventAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/[employmentId]/actions',()=>({createMovementEventAction:vi.fn(),editMovementEventAction:vi.fn()}));
 
 const current:MovementCurrentValues={companyId:'company-a',companyName:'Fictional A',departmentId:'department-a',positionId:null,businessUnitId:null,locationId:null,employmentType:'full_time',gradeId:null,managerEmploymentId:null,basicSalary:'3500.00',currency:'MYR',payMode:'monthly',paymentTerm:'monthly',orgDivision:null,employmentCategory:null,orgRegion:null,orgBranch:null,orgTeam:null,orgSection:null,orgLine:null,orgBase:null};
 const profileOptions:Record<string,{value:string;label:string}[]>={};
@@ -44,7 +44,7 @@ describe('an inactive custom Movement keeps its authorized Edit behavior metadat
   expect(screen.queryByRole('option',{name:inactive.label})).toBeNull();
  });
  it('the actual parent passes active-only New Event metadata and active plus exactly the edited code for Edit',()=>{
-  const source=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
+  const source=fs.readFileSync(path.resolve(__dirname,'../app/(app)/admin/personnel/[employmentId]/page.tsx'),'utf8');
   const propsStart=source.indexOf('const movementFormProps'),propsEnd=source.indexOf('const newEventCard',propsStart);
   expect(propsStart).toBeGreaterThanOrEqual(0);expect(propsEnd).toBeGreaterThan(propsStart+500);
   const props=source.slice(propsStart,propsEnd);

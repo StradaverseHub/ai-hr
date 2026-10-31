@@ -4,9 +4,9 @@ import {fileURLToPath} from 'node:url';
 import {describe,expect,it} from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const LISTING = 'app/admin/personnel/page.tsx';
-const PROFILE = 'app/admin/personnel/[employmentId]/page.tsx';
-const ISLAND = 'app/admin/personnel/employee-switcher.tsx';
+const LISTING = 'app/(app)/admin/personnel/page.tsx';
+const PROFILE = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
+const ISLAND = 'app/(app)/admin/personnel/employee-switcher.tsx';
 
 // ───────────────────────────── 3. layout + wiring (static source) ─────────────────────────────
 
@@ -24,12 +24,12 @@ describe('c002b3c3 · the module is full width, once, in one place', () => {
   it('the value is the one the codebase already uses for wide screens (not a fourth number)', () => {
     // If this ever fails, the fix is to converge — not to add another cap.
     //
-    // 152fea7f REPOINTED THIS WITNESS. It used to name app/payroll/transactions/fixed/page.tsx, but the
+    // 152fea7f REPOINTED THIS WITNESS. It used to name app/(app)/payroll/transactions/fixed/page.tsx, but the
     // whole Payroll module has since moved OFF `mx-auto max-w-[100rem]` and onto `pageWideCls` (true
     // full-browser width) — so that file is no longer evidence of anything about this cap. Leave Inquiry
     // is the witness now: it still carries the cap and test/leave-inquiry-layout.test.ts pins it there,
     // so the two guards fail together rather than one drifting silently past the other.
-    expect(read('app/leave/page.tsx')).toContain('mx-auto max-w-[100rem]');
+    expect(read('app/(app)/leave/page.tsx')).toContain('mx-auto max-w-[100rem]');
   });
 });
 

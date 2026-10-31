@@ -1,5 +1,5 @@
 {
-  "app/admin/personnel/[employmentId]/page.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/page.tsx": [
     {
       "tag": "input",
       "context": "emergencyDialogForm",
@@ -497,7 +497,7 @@
       "reason": "Address-copy provenance marker for the Person update event; copied address values bind to their separate canonical descriptors."
     }
   ],
-  "app/admin/personnel/[employmentId]/movement-new-event.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx": [
     {
       "tag": "input",
       "context": "MovementNewEvent",
@@ -531,7 +531,7 @@
       "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry."
     }
   ],
-  "app/admin/personnel/[employmentId]/hire-correction-form.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/hire-correction-form.tsx": [
     {
       "tag": "input",
       "context": "HireCorrectionForm",
@@ -606,7 +606,7 @@
       "reason": "Generic table page-size navigation; no Personnel fact or writer."
     }
   ],
-  "app/admin/personnel/[employmentId]/documents-manager.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/documents-manager.tsx": [
     {
       "tag": "input",
       "context": "documentDialogForm",
@@ -701,7 +701,7 @@
       "reason": "Personnel tab return-state transport across dialog portals; no employee value or owner mutation."
     }
   ],
-  "app/admin/personnel/employee-switcher.tsx": [
+  "app/(app)/admin/personnel/employee-switcher.tsx": [
     {
       "tag": "input",
       "context": "EmployeeSwitcher",
@@ -710,7 +710,7 @@
       "reason": "Authorized employee-switch search/navigation; no Personnel fact or writer."
     }
   ],
-  "app/admin/personnel/new/create-form.tsx": [
+  "app/(app)/admin/personnel/new/create-form.tsx": [
     {
       "tag": "input",
       "context": "fields",
@@ -720,7 +720,7 @@
       "reason": "Employee-code reservation mode chooser, validated by resolveEmployeeIdMode; the held Employee ID fact is separately bound. This radio is an operation choice, not an independent employee value."
     }
   ],
-  "app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx": [
     {
       "tag": "input",
       "context": "HolidayCalendarAssignments",
@@ -738,7 +738,7 @@
       "reason": "Dated calendar action transport pointer; saveEmploymentHolidayCalendarAssignment validates the current employment scope and replacement identity before any revision write. This does not edit a Personnel fact."
     }
   ],
-  "app/admin/personnel/[employmentId]/workforce-record.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/workforce-record.tsx": [
     {
       "tag": "input",
       "context": "WorkforceScopedRecord",
@@ -756,7 +756,7 @@
       "reason": "Compare-and-swap snapshot for saveWorkforceCodeAction; the owner compares this exact previous code under its row lock before changing the bound employeeCode fact."
     }
   ],
-  "app/admin/personnel/[employmentId]/workforce-value-form.tsx": [
+  "app/(app)/admin/personnel/[employmentId]/workforce-value-form.tsx": [
     {
       "tag": "input",
       "context": "Identity",
@@ -806,7 +806,7 @@
       "reason": "Finite add/update/archive command discriminator for saveWorkforceRecordAction; both forms use the same canonical owner with fresh permission and version checks."
     }
   ],
-  "app/admin/personnel/information-correction-form.tsx": [
+  "app/(app)/admin/personnel/information-correction-form.tsx": [
     {
       "tag": "textarea",
       "name": "informationCorrectionReason",

@@ -13,10 +13,10 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...p
 vi.mock('../lib/scope', () => ({ scopedAdmin: async () => ({ s: { tenantId: 'tenant', userId: 'actor' }, scopeIds: ['company'] }) }));
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
 vi.mock('../packs/rewards/service', async () => ({ listRewardUnits: ports.list, rewardCoverageForUnits: async () => [], rewardPolicyMemberships:vi.fn(async()=>[{companyId:'company',businessUnitId:'bu-1'},{companyId:'company',businessUnitId:'bu-2'}]),rewardSetupChoices: ports.choices, rewardSharedPolicyChoices: ports.shared, rewardDueWording: (await import('../packs/rewards/calendar')).rewardDueWording }));
-vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
-vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
-import AdminPage from '../app/admin/rewards/page';
-import { RewardReviewCreateForm } from '../app/admin/rewards/create-review-form';
+vi.mock('../app/(app)/rewards/actions', () => ({ createRewardAction: vi.fn(), deleteRewardAction: vi.fn() }));
+vi.mock('../app/(app)/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
+import AdminPage from '../app/(app)/admin/rewards/page';
+import { RewardReviewCreateForm } from '../app/(app)/admin/rewards/create-review-form';
 
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 /** Resolve nested async server components (the row actions) before rendering. */

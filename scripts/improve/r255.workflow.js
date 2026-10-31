@@ -166,7 +166,7 @@ So request points 1, 3, 4, 5 and 6 are shipped. Building them again would be the
 
 THE ACTUAL BLOCKER is C4, the batch SCOPE check, core/payroll-individual-txn.ts:788-796 — it tests scope
 membership (departments ∪ explicit employments), NEVER status, and fires identically on a DRAFT run.
-app/payroll/transactions/individual/actions.ts:69-70 maps it to the key \`employeeNotInScope\`, whose text
+app/(app)/payroll/transactions/individual/actions.ts:69-70 maps it to the key \`employeeNotInScope\`, whose text
 is the sentence the reporter quoted. Production: 12 of 27 batches are scoped, 11 of those processed.
 
 BUILD:
@@ -230,7 +230,7 @@ EFFECTIVE DATING SURVIVES (ADR-0001/0003): a save CLOSES the current version and
 consolidated Save must still call the SAME services per section, in order — never one blanket write, and
 never bypass a service to write a table directly.
 
-SCOPE FENCE: do NOT touch app/admin/personnel/new/** — another workstream owns it this round.`,
+SCOPE FENCE: do NOT touch app/(app)/admin/personnel/new/** — another workstream owns it this round.`,
   },
   {
     slug: 'draft-tabs',
@@ -268,7 +268,7 @@ THE FOUR TABS THAT DO NOT APPEAR ON A DRAFT stay absent, and the plan told the r
 Movement, Attendance, Leave and Documents describe things that have happened to an employment, and a
 draft has none. Do not add them.
 
-SCOPE FENCE: do NOT modify anything under app/admin/personnel/[employmentId]/** — another workstream is
+SCOPE FENCE: do NOT modify anything under app/(app)/admin/personnel/[employmentId]/** — another workstream is
 restructuring that screen's save behaviour this round. If reusing one of its components looks right, say
 so in your report and leave it for the next round.`,
   },

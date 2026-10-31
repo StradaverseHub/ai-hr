@@ -179,7 +179,7 @@ describe('8c284478 — Salutation on Personal Details', () => {
 
   // ── (ui) drift guard: position + wiring on the Personal Details form ─────
   it('renders the Salutation dropdown BEFORE Full Name on the Personal Details form, fed by the catalog', () => {
-    const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+    const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     // Anchor the slice on the Personal Details form's action (the page contains many other forms).
     const marker = PAGE.indexOf('action={setPersonAction}');
     expect(marker).toBeGreaterThan(-1);

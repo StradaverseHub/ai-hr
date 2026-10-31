@@ -1,6 +1,6 @@
 import { beforeAll,expect,it,vi } from 'vitest';
 import { fireEvent,render,screen,waitFor } from '@testing-library/react';
-import { DocumentTextEditor } from '../app/lifecycle/v9/document-text-editor';
+import { DocumentTextEditor } from '../app/(app)/lifecycle/v9/document-text-editor';
 import type { Document } from '../lib/lifecycle-v9-model';
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 const document:Document={id:'doc',templateId:'template',name:'Fictional letter',version:1,status:'draft',blocks:[{id:'title',type:'heading',text:'Template title',section:''},{id:'body',type:'text',text:'For {employee.name}',section:''},{id:'signature',type:'signature',text:'',label:'Signature',section:''}],fields:[],values:{},edits:{},hrSignature:null,employeeSignature:null,createdAt:'',sentAt:null,mergeValues:{'employee.name':'Fictional person'}};

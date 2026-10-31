@@ -35,8 +35,8 @@ const readCode = (p: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
 
-const LANDING = 'app/invite/[token]/page.tsx';
-const ACTIVATE = 'app/invite/[token]/activate/page.tsx';
+const LANDING = 'app/(auth)/invite/[token]/page.tsx';
+const ACTIVATE = 'app/(auth)/invite/[token]/activate/page.tsx';
 
 describe('invitation activation wiring', () => {
   it('the landing page sends the user to the activate route, not the callback', () => {

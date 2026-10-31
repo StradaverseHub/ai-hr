@@ -649,7 +649,7 @@ export function CompanyPanel({
   /**
    * 65b22c00 — the tab to open on, read off `?tab=` by the page.
    *
-   * Every save on this screen now returns to THIS screen (app/admin/_redirects.ts okCompany), and a
+   * Every save on this screen now returns to THIS screen (app/(app)/admin/_redirects.ts okCompany), and a
    * redirect re-initialises this component's `tab` state. Without the round trip through the URL an
    * administrator who saved a statutory body would stop being thrown to the company LIST and start being
    * thrown to the General tab instead — the same fault, smaller. Feedback bd2f0bb2 is the personnel
@@ -681,7 +681,7 @@ export function CompanyPanel({
      * 15e5bd93 rev 2 (r353) — `saveStatutoryTab` STOOD HERE AND IS GONE, with the consolidated statutory
      * Save it named. The reporter contested r352's one-Save-for-the-tab shape along with the in-tab
      * editing it depended on, and asked for Save and Cancel on each body's own card on a dedicated screen.
-     * `app/admin/organization/statutory-tab-actions.ts` is retired rather than left bound to nothing:
+     * `app/(app)/admin/organization/statutory-tab-actions.ts` is retired rather than left bound to nothing:
      * a `'use server'` export nothing submits to is a second writer of `company_statutory_my` that no
      * screen exercises and no reader can see is dead.
      *
@@ -830,7 +830,7 @@ export function CompanyPanel({
       {/* 3783fd87 — THE GREY. This wash (`bg-muted/20`) over `bg-background` section blocks was the
           "excessive grey background" the reporter reported: the panel is not inside a white card by
           itself, so the whole maintenance screen read as grey-on-grey. The page now wraps the panel in a
-          Card (app/admin/organization/[companyId]/page.tsx) and every block below is a white card with a
+          Card (app/(app)/admin/organization/[companyId]/page.tsx) and every block below is a white card with a
           LINE around it instead of a filled grey rectangle. A border-t still separates the tabs from the
           identity strip — separation by line, not by fill. */}
       <div className="border-t border-border px-4 py-4">

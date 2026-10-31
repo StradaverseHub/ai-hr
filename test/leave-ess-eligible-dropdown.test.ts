@@ -234,7 +234,7 @@ describe('ad965821 · eligibleLeaveTypeIdsFor — the on-behalf-of map', () => {
     // manager could not file Maternity for a female report. Both halves passed their own unit tests
     // throughout, which is why this asserts the two composed.
     //
-    // UPDATED BY 5206539f (AGENTS rule 18): app/leave/page.tsx no longer builds that union, because a line
+    // UPDATED BY 5206539f (AGENTS rule 18): app/(app)/leave/page.tsx no longer builds that union, because a line
     // manager no longer has an Employee selector to build it for — on-behalf application is the named
     // permission `leave.apply_on_behalf` now. This case therefore pins the READ's own semantics (per
     // employment, never intersected) rather than a live composition on that screen; it is the contract any

@@ -76,8 +76,8 @@ import { createAttendanceRule, getAttendanceRule, type AttendanceRuleView } from
 import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupOvertimeAction,
-} from '../app/admin/attendance/schedule/actions';
-import { updateAttendanceRuleAction, saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
+} from '../app/(app)/admin/attendance/schedule/actions';
+import { updateAttendanceRuleAction, saveScheduleGroupGeneralAction } from '../app/(app)/admin/attendance-policy/rule-actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { readFileSync } from 'node:fs';
 import { join as pathJoin, resolve as pathResolve } from 'node:path';
@@ -193,7 +193,7 @@ beforeEach(async () => {
 describe('A. round trip — posting back what the form renders changes nothing', () => {
   it('the Attendance tab’s six figures round-trip unchanged', async () => {
     const before = snap((await getAttendanceRule(actionCtx!, ruleId))!);
-    // Exactly what app/admin/attendance/schedule/page.tsx renders as defaultValue on that tab.
+    // Exactly what app/(app)/admin/attendance/schedule/page.tsx renders as defaultValue on that tab.
     await captureRedirect(() =>
       saveScheduleGroupAttendanceAction(
         fd({
@@ -394,7 +394,7 @@ describe('C2. an open rounding form survives an unrelated settings save', () => 
     // 665de026 — the fields moved off the list page onto the per-group screen, so the source this case
     // reads moved with them. The contract it pins is identical and still pinned across BOTH files.
     const page = readFileSync(
-      pathJoin(rootDir, 'app/admin/attendance/schedule/group-sections.tsx'),
+      pathJoin(rootDir, 'app/(app)/admin/attendance/schedule/group-sections.tsx'),
       'utf8',
     );
     expect(page, 'the rounding select is keyed on the band boundary').toContain('roundingMode_${row.fromMinutes}');

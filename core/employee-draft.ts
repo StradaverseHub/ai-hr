@@ -290,7 +290,7 @@ const str = (v: string | undefined) => {
  * REQUIRED, not optional. The defect this item fixes was a caller that simply did not pass a scope: the
  * Personnel list, its Draft card and its export all read every draft RLS allowed while the employees beside
  * them followed the selected company. A default of "unscoped" would let the next caller repeat that, so
- * every caller has to say what it is showing. `draftListScope` (app/admin/personnel/list-query.ts) is the
+ * every caller has to say what it is showing. `draftListScope` (app/(app)/admin/personnel/list-query.ts) is the
  * one place the screen and the export build this from the top-bar scope.
  */
 export type DraftListScope = {

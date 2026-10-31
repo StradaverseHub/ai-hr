@@ -80,12 +80,12 @@ vi.mock('next/headers', () => ({
 import { cloneElement, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
-import ResetRecordsPage from '../app/admin/leave-config/records/page';
-import EntitlementRecordStub from '../app/admin/leave-config/records/entitlement/page';
-import BalanceRecordStub from '../app/admin/leave-config/records/balances/page';
-import OlderArchiveStub from '../app/admin/leave/entitlements/archive/page';
-import OlderLedgerArchiveStub from '../app/admin/leave/entitlements/ledger-archive/page';
-import AdjustmentsPage from '../app/admin/leave-config/adjustments/page';
+import ResetRecordsPage from '../app/(app)/admin/leave-config/records/page';
+import EntitlementRecordStub from '../app/(app)/admin/leave-config/records/entitlement/page';
+import BalanceRecordStub from '../app/(app)/admin/leave-config/records/balances/page';
+import OlderArchiveStub from '../app/(app)/admin/leave/entitlements/archive/page';
+import OlderLedgerArchiveStub from '../app/(app)/admin/leave/entitlements/ledger-archive/page';
+import AdjustmentsPage from '../app/(app)/admin/leave-config/adjustments/page';
 import {
   LEAVE_CONFIG_MAP,
   LEAVE_CONFIG_RECORD_IDS,
@@ -111,14 +111,14 @@ const en = CATALOGUES.en as { admin: Record<string, Record<string, string>>; nav
 const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj);
 
-const PAGE = 'app/admin/leave-config/records/page.tsx';
+const PAGE = 'app/(app)/admin/leave-config/records/page.tsx';
 const CONFIGURATION = 'components/leave/reset-record-configuration.tsx';
 const BALANCES = 'components/leave/reset-record-balances.tsx';
-const STUB_ENTITLEMENT = 'app/admin/leave-config/records/entitlement/page.tsx';
-const STUB_BALANCES = 'app/admin/leave-config/records/balances/page.tsx';
-const STUB_OLDER_ARCHIVE = 'app/admin/leave/entitlements/archive/page.tsx';
-const STUB_OLDER_LEDGER = 'app/admin/leave/entitlements/ledger-archive/page.tsx';
-const ADJUSTMENTS = 'app/admin/leave-config/adjustments/page.tsx';
+const STUB_ENTITLEMENT = 'app/(app)/admin/leave-config/records/entitlement/page.tsx';
+const STUB_BALANCES = 'app/(app)/admin/leave-config/records/balances/page.tsx';
+const STUB_OLDER_ARCHIVE = 'app/(app)/admin/leave/entitlements/archive/page.tsx';
+const STUB_OLDER_LEDGER = 'app/(app)/admin/leave/entitlements/ledger-archive/page.tsx';
+const ADJUSTMENTS = 'app/(app)/admin/leave-config/adjustments/page.tsx';
 const ROUTE = '/admin/leave-config/records';
 const CSV_CONFIGURATION = '/admin/leave/entitlements/archive/export';
 const CSV_BALANCES = '/admin/leave/entitlements/ledger-archive/export';
@@ -223,12 +223,12 @@ describe('7f69bd71 — one guarded sub-screen on the existing leaveConfig column
   });
 
   it('the two CSV route handlers are exactly where every saved download link expects them', () => {
-    for (const rel of ['app/admin/leave/entitlements/archive/export/route.ts', 'app/admin/leave/entitlements/ledger-archive/export/route.ts']) {
+    for (const rel of ['app/(app)/admin/leave/entitlements/archive/export/route.ts', 'app/(app)/admin/leave/entitlements/ledger-archive/export/route.ts']) {
       expect(exists(rel), rel).toBe(true);
       expect(read(rel)).toContain('export async function GET');
       expect(read(rel)).not.toContain('redirect(');
     }
-    expect(exists('app/admin/leave-config/records/export/route.ts'), 'no new export handler').toBe(false);
+    expect(exists('app/(app)/admin/leave-config/records/export/route.ts'), 'no new export handler').toBe(false);
   });
 });
 
@@ -272,7 +272,7 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     // (Employee Leave Inquiry → /leave/employee-balances, the Leave Inquiry door the reporter asked for
     // twice), so a bare count no longer says what this case means. The property is restated exactly: the
     // five CONFIGURATION rows — the children whose destinations live under the module — are unchanged, in
-    // order, and none of them is the sub-screen. A row added under app/admin/leave-config still fails here.
+    // order, and none of them is the sub-screen. A row added under app/(app)/admin/leave-config still fails here.
     expect(rows.map((r) => r.href)).not.toContain(ROUTE);
     //
     // r279 (3fbf7a02) — UPDATED, NOT LOOSENED, and for the same reason again. A later, unrelated item
@@ -280,7 +280,7 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
     // page level on the Leave types tab, named nowhere in the menu). This case's property is untouched —
     // 7f69bd71 added no fly-out row, and the Reset records sub-screen is still reached only from a link
     // — so the list is restated exactly rather than turned into a count or a "contains": a row added
-    // under app/admin/leave-config by anything OTHER than the commit that names it here still fails.
+    // under app/(app)/admin/leave-config by anything OTHER than the commit that names it here still fails.
     const configRows = rows.filter((r) => r.href.startsWith('/admin/leave-config/'));
     expect(configRows.map((r) => r.href)).toEqual([
       '/admin/leave-config/types',
@@ -299,7 +299,7 @@ describe('7f69bd71 — the map: two tabs per row, the record ids excluded by typ
       '/admin/leave-config/approval-chains',
       '/admin/leave-config/company-rules',
       // r281 (a73d1e14) — Special Setting, the row Half Day Deduction moved onto, named here for the same
-      // reason every other addition is: a row added under app/admin/leave-config by anything OTHER than
+      // reason every other addition is: a row added under app/(app)/admin/leave-config by anything OTHER than
       // the commit that names it here still fails.
       '/admin/leave-config/special-setting',
     ]);
@@ -321,14 +321,14 @@ describe('7f69bd71 — one foot link on Adjust balances, below the recent adjust
 
   it('Import, Entitlements, Entitlement tables, Generate, Approval and Company rules carry no link to the records', () => {
     for (const rel of [
-      'app/admin/leave-config/import/page.tsx',
-      'app/admin/leave-config/types/page.tsx',
-      'app/admin/leave-config/entitlement-tables/page.tsx',
-      'app/admin/leave-config/generate/page.tsx',
-      'app/admin/leave-config/earned-accrual/page.tsx',
-      'app/admin/leave-config/approval-chains/page.tsx',
-      'app/admin/leave-config/company-rules/page.tsx',
-      'app/admin/leave-config/special-setting/page.tsx',
+      'app/(app)/admin/leave-config/import/page.tsx',
+      'app/(app)/admin/leave-config/types/page.tsx',
+      'app/(app)/admin/leave-config/entitlement-tables/page.tsx',
+      'app/(app)/admin/leave-config/generate/page.tsx',
+      'app/(app)/admin/leave-config/earned-accrual/page.tsx',
+      'app/(app)/admin/leave-config/approval-chains/page.tsx',
+      'app/(app)/admin/leave-config/company-rules/page.tsx',
+      'app/(app)/admin/leave-config/special-setting/page.tsx',
     ]) {
       const code = withoutComments(read(rel));
       expect(code, rel).not.toContain('LEAVE_CONFIG_RECORDS_HREF');
@@ -621,8 +621,8 @@ describe('7f69bd71 — Leave Adjustments and Entitlements render two tabs; the f
       expect(count(html, 'aria-current="page"')).toBe(1);
     }
     // …and the pages really do mount it with those ids (the r266 rule, re-read here so this render is theirs).
-    expect(withoutComments(read('app/admin/leave-config/types/page.tsx'))).toContain('<LeaveConfigMap current="leaveTypes" />');
-    expect(withoutComments(read('app/admin/leave-config/entitlement-tables/page.tsx'))).toContain('<LeaveConfigMap current="entitlementTables" />');
+    expect(withoutComments(read('app/(app)/admin/leave-config/types/page.tsx'))).toContain('<LeaveConfigMap current="leaveTypes" />');
+    expect(withoutComments(read('app/(app)/admin/leave-config/entitlement-tables/page.tsx'))).toContain('<LeaveConfigMap current="entitlementTables" />');
     const imp = await renderTabs('importLeaveData');
     expect(count(imp, '<li ')).toBe(2);
     expect(imp).not.toContain('Balance record');
@@ -688,10 +688,10 @@ describe('7f69bd71 — the sidebar predicate lights Leave Adjustments on the sub
 
 describe('7f69bd71 verify fixes — the stub owns its record, and the explanation names no reset', () => {
   const STUBS: ReadonlyArray<readonly [string, string]> = [
-    ['app/admin/leave/entitlements/archive/page.tsx', 'configuration'],
-    ['app/admin/leave/entitlements/ledger-archive/page.tsx', 'balances'],
-    ['app/admin/leave-config/records/entitlement/page.tsx', 'configuration'],
-    ['app/admin/leave-config/records/balances/page.tsx', 'balances'],
+    ['app/(app)/admin/leave/entitlements/archive/page.tsx', 'configuration'],
+    ['app/(app)/admin/leave/entitlements/ledger-archive/page.tsx', 'balances'],
+    ['app/(app)/admin/leave-config/records/entitlement/page.tsx', 'configuration'],
+    ['app/(app)/admin/leave-config/records/balances/page.tsx', 'balances'],
   ];
 
   it('a forwarded ?record= cannot send a bookmark to the other record', () => {

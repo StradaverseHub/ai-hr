@@ -22,7 +22,7 @@ export function oneParam(url: URL, key: string): string | undefined {
 /**
  * `?from&to` — both or neither. Neither ⇒ the calendar month `today` falls in. A window is at most
  * ATTENDANCE_WINDOW_MAX_DAYS calendar days, both ends included; a longer, inverted or malformed one is REFUSED
- * (400), never truncated (the r367 lesson, app/attendance/my-records/range.ts).
+ * (400), never truncated (the r367 lesson, app/(app)/attendance/my-records/range.ts).
  */
 export function attendanceWindowOf(url: URL, today: string): { from: string; to: string } {
   const from = oneParam(url, 'from'), to = oneParam(url, 'to');

@@ -7,7 +7,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({saveLetterTemplate:mocks.save,decideLetterTemplate:mocks.decide,setLetterTemplateActive:mocks.active,getLetterTemplate:mocks.detail,previewLetterTemplate:mocks.preview}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {saveTemplate,updateTemplate,previewTemplate} from '../app/letters/templates/actions';
+import {saveTemplate,updateTemplate,previewTemplate} from '../app/(app)/letters/templates/actions';
 const day=todayInKualaLumpur();
 const companyId='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002',signatoryUserId='00000000-0000-4000-8000-000000000003',fieldId='00000000-0000-4000-8000-000000000004',ctx={tenantId:'fixture',userId:'actual-user'},editor={type:'doc',content:[{type:'paragraph'}]};
 function form(){const data=new FormData();for(const [key,value]of Object.entries({companyId,code:'LETTER',name:'Fictional letter',category:'confirmation',effectiveFrom:day,editor:JSON.stringify(editor),language:'en',signatoryUserId,letterheadAssetId:'',fieldVersionId:fieldId,intent:'submit'}))data.set(key,value);return data;}

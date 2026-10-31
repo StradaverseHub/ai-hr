@@ -67,7 +67,7 @@ const WORK = [
       `  B3 TWO READERS OF THE 'REGULAR RUN ONLY' INVARIANT ARE NOW STALE. core/payroll-view.ts ` +
       `listUnattachedTxnSummary documents that invariant in its docstring and keys its LEFT JOIN on ` +
       `run_type='regular'; unattachedHoldersOutsideSelection returns [] on the same reasoning. Your change ` +
-      `falsifies both, so the Payroll Process wizard's Validation pre-flight (app/payroll/process/actions.ts:103) ` +
+      `falsifies both, so the Payroll Process wizard's Validation pre-flight (app/(app)/payroll/process/actions.ts:103) ` +
       `goes SILENT for exactly the rows a regular run now abandons. Update the join, the derivation AND the ` +
       `comment — the comment is the guard here.\n\n` +
       `  S1 (should-fix) The multi-run picker disappeared: with any configured cycle the run <select> is gone, ` +
@@ -79,8 +79,8 @@ const WORK = [
     mandate:
       `ONE SHOULD-FIX, and it is the exact defect these two items exist to remove — four surfaces that can ` +
       `disagree about one payslip.\n\n` +
-      `app/payroll/individual-payslip/page.tsx:555 and :570 render the new Overtime and Bonus sub-lines ` +
-      `UNGUARDED, while lib/payslip-pdf.ts:1048-1058 and app/me/payslip/[payslipId]/page.tsx:66-67 gate the ` +
+      `app/(app)/payroll/individual-payslip/page.tsx:555 and :570 render the new Overtime and Bonus sub-lines ` +
+      `UNGUARDED, while lib/payslip-pdf.ts:1048-1058 and app/(app)/me/payslip/[payslipId]/page.tsx:66-67 gate the ` +
       `identical lists behind payItemLinesReconcile. The lists are NOT interchangeable: b.bonus / b.overtime ` +
       `come from payslipDisplayEarnings (the DISPLAY boxes) while componentsByBucket is grouped by the KERNEL ` +
       `bucket, and core/pay-display-category.ts exists precisely because those two diverge (an item declared ` +

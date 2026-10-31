@@ -3,7 +3,7 @@ import {useActionState,useEffect,useRef,useState} from 'react';
 import {Field,inputCls,btnPrimary} from '@/components/ui';
 import type {LetterField,LetterValue} from '@/lib/letter-model';
 import type {LetterAutomationTrigger} from '@/core/letters';
-import {saveAutomationSettings} from '@/app/letters/settings/automation/actions';
+import {saveAutomationSettings} from '@/app/(app)/letters/settings/automation/actions';
 import {LetterCustomInputs} from './custom-inputs';
 export type LetterAutomationFormLabels=Record<'enabled'|'disabled'|'status'|'startOn'|'customHelp'|'ownerHelp'|'scopeUnavailable'|'save'|'saving'|'currency',string>;
 export function LetterAutomationForm({companyId,templateId,versionId,trigger,ordinal=0,initialEnabled=true,startOn,minDate,fields=[],values={},canEnable,labels,errors}:{companyId:string;templateId:string;versionId?:string;trigger:LetterAutomationTrigger;ordinal?:number;initialEnabled?:boolean;startOn:string;minDate?:string;fields?:LetterField[];values?:Record<string,LetterValue|null>;canEnable:boolean;labels:LetterAutomationFormLabels;errors:Record<string,string>}){

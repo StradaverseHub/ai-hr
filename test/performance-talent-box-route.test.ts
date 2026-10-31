@@ -4,7 +4,7 @@
  * own workspace items. The page's DOM is pinned in performance-talent-box-route.dom.test.tsx.
  */
 import { describe,expect,it } from 'vitest';
-import { talentBoxRoute } from '../app/performance/calibration/talent-box/talent-box-route';
+import { talentBoxRoute } from '../app/(app)/performance/calibration/talent-box/talent-box-route';
 import type { PerformanceWorkspaceItem } from '../packs/performance/service';
 import { SCREENS } from '../lib/permissions';
 import { assessmentReturnPath } from '../lib/performance-navigation';

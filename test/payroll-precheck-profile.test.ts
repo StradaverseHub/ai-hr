@@ -13,12 +13,12 @@ describe('Payroll pre-check correction destinations',()=>{
   expect(payrollPrecheckProfileHref('../elsewhere?tab=profile#x','missingBank')).toBe('/admin/personnel/..%2Felsewhere%3Ftab%3Dprofile%23x?tab=bankStatutory');
  });
  it('wires both actual batch link groups and the persisted run scope to their shared owners',()=>{
-  const page=readFileSync(new URL('../app/payroll/[batchId]/page.tsx',import.meta.url),'utf8');
+  const page=readFileSync(new URL('../app/(app)/payroll/[batchId]/page.tsx',import.meta.url),'utf8');
   expect(page).toContain("payrollPrecheckProfileHref(r.employmentId, 'nothingPayable')");
   expect(page).toContain('payrollPrecheckProfileHref(r.employmentId, key)');
   expect(page).not.toContain('href={`/people/${r.employmentId}`}');
   expect(page).toMatch(/payrollReadiness\(s,\s*\{\s*companyId: batch.companyId,\s*payPeriod: batch.payPeriod,\s*scope,/);
-  const target=readFileSync(new URL('../app/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
+  const target=readFileSync(new URL('../app/(app)/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
   expect(target).toContain('await requireWorkforceAccess()');expect(target).toContain('tabKey="payroll"');expect(target).toContain('tabKey="bankStatutory"');
  });
 });

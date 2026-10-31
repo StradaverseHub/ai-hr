@@ -207,7 +207,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       expect(SETTINGS_ROW, `the Settings row stays lit on ${href}`).toContain(`'${href}'`);
     }
     // The ticket order (Attendance allowance, then Locations) is now the order of the cards.
-    const cards = fs.readFileSync(path.resolve(__dirname, '../app/admin/attendance/settings/cards.ts'), 'utf8');
+    const cards = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/attendance/settings/cards.ts'), 'utf8');
     const positions = TICKET_TAIL_HREFS.map((href) => cards.indexOf(`'${href}'`));
     expect(positions.every((i) => i > -1), 'every tail screen is a card').toBe(true);
     const sorted = [...positions].sort((a, b) => a - b);
@@ -240,7 +240,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
         `${href} must not duplicate the Settings card as a flyout row`,
       ).toBe(0);
       expect(navigationPlacement(href)).toEqual({area:'ops',module:'attendance',section:'config'});
-      const cards=fs.readFileSync(path.resolve(__dirname,'../app/admin/attendance/settings/cards.ts'),'utf8');
+      const cards=fs.readFileSync(path.resolve(__dirname,'../app/(app)/admin/attendance/settings/cards.ts'),'utf8');
       expect(cards.match(/key: 'locations', href: '\/admin\/work-locations\/clocking'/g)).toHaveLength(1);
       const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
       const guard = stub.indexOf('requireAdmin()');
@@ -315,7 +315,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     // Settings row owns '/admin/attendance' so it lights on the shift library. Stated as three claims
     // (no row, first card, owned) so none can be satisfied by a quoted string appearing somewhere else.
     expect(rowDecl('/admin/attendance'), 'Shift is not a nav row any more').toBeUndefined();
-    const cards = fs.readFileSync(path.resolve(__dirname, '../app/admin/attendance/settings/cards.ts'), 'utf8');
+    const cards = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/attendance/settings/cards.ts'), 'utf8');
     const firstCard = cards.indexOf('{ key:');
     expect(firstCard, 'cards.ts lists cards').toBeGreaterThan(-1);
     expect(cards.slice(firstCard, firstCard + 60), 'Shift is the first card').toContain(`href: '/admin/attendance'`);
@@ -458,7 +458,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
      * and the ones it does not (it explains two reversals), which is the same reason
      * test/attendance-my-records-split.test.ts strips comments before every source assertion.
      */
-    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/attendance/my-roster/record-list.tsx'), 'utf8');
+    const pageSrc = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/my-roster/record-list.tsx'), 'utf8');
     const page = pageSrc.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
     expect(page, 'the employee screen resolves the caller’s own employment').toMatch(/ownAttendanceRecordSubject\(\s*s,\s*state\.employmentId\)/);
     expect(page, 'and the attendance read is keyed on that employment, not on a company scope').toMatch(
@@ -467,7 +467,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
     expect(page, 'and it resolves no company scope at all').not.toContain('scopeIds');
     expect(page, 'and carries no admin page guard').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
     // Calendar/List now share one authenticated shell. The renderer consumes that same session.
-    const shell=fs.readFileSync(path.resolve(__dirname,'../app/attendance/my-roster/page.tsx'),'utf8')
+    const shell=fs.readFileSync(path.resolve(__dirname,'../app/(app)/attendance/my-roster/page.tsx'),'utf8')
       .replace(/\/\*[\s\S]*?\*\//g,' ').replace(/(^|[^:])\/\/[^\n]*/g,'$1');
     expect(shell, 'the session is resolved at the shared route boundary').toContain('await scopedSession()');
     expect(shell, 'the list receives that authenticated session').toMatch(/<AttendanceRecordList\s+s=\{s\}/);
@@ -712,7 +712,7 @@ describe('sidebar Attendance labels (f60cd403 rename)', () => {
 
   it('renames Attendance record → Records', () => {
     // f3e6c36e (r287) — `nav.attendanceRecords` is DELIBERATELY not retired even though no sidebar row
-    // uses it any more: app/reports/page.tsx still labels its `/attendance` link with it, and that link
+    // uses it any more: app/(app)/reports/page.tsx still labels its `/attendance` link with it, and that link
     // is the administrator's Employee Attendance screen. Deleting the key would blank a label on the
     // Reports index in six locales, which nothing else here would catch.
     expect(en.nav.attendanceRecords).toBe('Records');

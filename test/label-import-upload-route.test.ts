@@ -2,8 +2,8 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {LABEL_UPLOAD_REQUEST_MAX_BYTES} from '../lib/system-label-upload';
 const calls=vi.hoisted(()=>({admin:vi.fn(async()=>({s:{}})),preview:vi.fn(),apply:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:calls.admin}));
-vi.mock('../app/admin/settings/system-labels/import-actions',()=>({previewLabelsAction:calls.preview,importLabelsAction:calls.apply}));
-import {POST} from '../app/admin/settings/system-labels/import/route';
+vi.mock('../app/(app)/admin/settings/system-labels/import-actions',()=>({previewLabelsAction:calls.preview,importLabelsAction:calls.apply}));
+import {POST} from '../app/(app)/admin/settings/system-labels/import/route';
 beforeEach(()=>{vi.clearAllMocks();calls.preview.mockResolvedValue({ok:true,preview:{token:'t',rows:[],valid:false,mode:'add'}});calls.apply.mockResolvedValue({ok:true,summary:{imported:1,updated:0,skipped:0,failed:0}});});
 const request=(operation:string,size=1)=>{const body=new FormData();body.set('operation',operation);body.set('file',new File([new Uint8Array(size)],'fictional.xls'));return new Request('http://localhost/admin/settings/system-labels/import',{method:'POST',headers:{Origin:'http://localhost'},body});};
 describe('authenticated bounded Labels wizard transport',()=>{

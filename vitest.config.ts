@@ -33,7 +33,7 @@ process.env.VITEST_MAX_WORKERS = String(WORKERS);
  */
 export default defineConfig({
   // Mirror the tsconfig "@/*" → "./*" path alias so tests can import app/ modules that use it
-  // (e.g. app/analytics/labels.ts imports '@/core/analytics').
+  // (e.g. app/(app)/analytics/labels.ts imports '@/core/analytics').
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('.', import.meta.url)),

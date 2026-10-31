@@ -2,7 +2,7 @@
  * Feedback 29710798 — one success notification after a leave submission, not two.
  *
  * WHY THERE WERE TWO. `requestLeaveAction` redirected with the opaque marker `?toast=leaveSubmitted`, and two
- * independent listeners answered it: `ToastFromQuery`, mounted globally in app/layout.tsx, which fires
+ * independent listeners answered it: `ToastFromQuery`, mounted globally in app/(app)/layout.tsx, which fires
  * `toast.success(params.get('toast'))` for ANY `?toast=` on ANY page — so it showed the raw word
  * "leaveSubmitted" — and a /leave-only client component that translated the marker into the proper sentence.
  * Deleting the global one was never an option: every other redirect in the app relies on it. So the marker
@@ -19,9 +19,9 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const actions = read('app/leave/actions.ts');
-const page = read('app/leave/page.tsx');
-const layout = read('app/layout.tsx');
+const actions = read('app/(app)/leave/actions.ts');
+const page = read('app/(app)/leave/page.tsx');
+const layout = read('app/(app)/layout.tsx');
 
 describe('29710798: the submit path has exactly one success emitter', () => {
   it('requestLeaveAction redirects with LOCALISED text, not the ?toast=leaveSubmitted marker', () => {

@@ -386,7 +386,7 @@ describe('ADR-0086 — config CRUD threads the archetype; there is no mapping le
 
   it('updateLocation no longer accepts a calendar at all, so a Save cannot re-map one', () => {
     // A source-level pin rather than a behavioural one: the input type is what a screen or an action posts
-    // through, and the Calendar control left app/admin/locations in the same change.
+    // through, and the Calendar control left app/(app)/admin/locations in the same change.
     //
     // ⚠️ COMMENTS ARE STRIPPED FIRST, and that is not tidiness. The pack-drift ratchet shipped with exactly
     // this bug (CLAUDE.md §8: "the ratchet reads comments"): a guard whose stated purpose is "the code no

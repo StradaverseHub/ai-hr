@@ -78,12 +78,12 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-import { setEmploymentScheduleGroupAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setEmploymentScheduleGroupAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 
 const REPO = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(REPO, rel), 'utf8');
-const PAGE = () => read('app/admin/personnel/[employmentId]/page.tsx');
-const ACTIONS = () => read('app/admin/personnel/[employmentId]/actions.ts');
+const PAGE = () => read('app/(app)/admin/personnel/[employmentId]/page.tsx');
+const ACTIONS = () => read('app/(app)/admin/personnel/[employmentId]/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 /** A fixed past Wednesday — inside every shift's Mon–Fri pattern, and never "today". */

@@ -14,7 +14,7 @@ import { DateField } from './ui/date-field';
 import { formatDmy } from '@/lib/date-display';
 import { PayStructureFields, type PayModeOption } from './pay-structure-fields';
 import { CurrencySelect } from './currency-select';
-import { editCompensationAction, supersedeCompensationAction } from '@/app/admin/personnel/[employmentId]/actions';
+import { editCompensationAction, supersedeCompensationAction } from '@/app/(app)/admin/personnel/[employmentId]/actions';
 
 export type SalaryStatus = 'active' | 'future' | 'historical';
 

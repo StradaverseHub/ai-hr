@@ -1,5 +1,5 @@
 /**
- * D-P1-32 PT-X4 — the ONE module Overview (app/performance/onehr/module-overview.tsx), keyed by module: the count
+ * D-P1-32 PT-X4 — the ONE module Overview (app/(app)/performance/onehr/module-overview.tsx), keyed by module: the count
  * at each of the module's stages from the existing Review progress reader, and, once the module's window has
  * closed, who is not done (for 360 Feedback, the raters, from the raters' reader). A module the cycle does not run
  * shows that, and the reader's fallback to another module is never counted as this one.
@@ -15,7 +15,7 @@ const ports = vi.hoisted(() => ({ progress: vi.fn(), raters: vi.fn(), session: v
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as never }), getLocale: async () => 'en' }));
 vi.mock('../lib/scope', () => ({ scopedSession: ports.session }));
 vi.mock('../packs/performance/service', () => ({ getAssessmentProgress: ports.progress, getAssessmentAssessorProgress: ports.raters }));
-import { LATE_SHOWN, ModuleOverview } from '../app/performance/onehr/module-overview';
+import { LATE_SHOWN, ModuleOverview } from '../app/(app)/performance/onehr/module-overview';
 
 const CYCLE = '11111111-2222-4333-8444-555555555555';
 const o = en.performanceAdmin.overview, labels = en.onehr.progressAdmin.labels;

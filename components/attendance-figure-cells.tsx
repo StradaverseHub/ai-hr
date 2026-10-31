@@ -34,7 +34,7 @@ import { fmtClock, fmtHours2, fmtShort } from './attendance-format';
  * the step-by-step working, the rounding, and the final result."
  *
  * ── WHY THIS IS A CLIENT ISLAND, AND WHY IT TAKES THE WHOLE ROW ─────────────────────────────────────
- * app/attendance/daily and app/attendance/individual are SERVER components and must stay that way: they
+ * app/(app)/attendance/daily and app/(app)/attendance/individual are SERVER components and must stay that way: they
  * do the scoped reads. A hover needs state, so it has to be a client island — and the only thing that
  * may cross that boundary is SERIALISABLE DATA. r123 shipped a server page that handed a client component
  * two closures over the server's translator; React cannot serialise a function, so the page threw at

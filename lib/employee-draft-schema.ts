@@ -614,7 +614,7 @@ export function stepKey(n: number): DraftTabKey {
  * `commitTab`), so for anyone who has been on the screen the URL is the FRESHER of the two statements:
  * `current_step` is only written when Save is pressed. A reloaded or shared draft link must therefore
  * reopen the tab the URL names — which is exactly what the ACTIVATED record does with the same parameter
- * (app/admin/personnel/[employmentId]/page.tsx passes it straight to `defaultTab`), and unifying those two
+ * (app/(app)/admin/personnel/[employmentId]/page.tsx passes it straight to `defaultTab`), and unifying those two
  * screens is the whole of item 759dfc7d work item 2. A URL that names a tab it will not open is worse
  * than no parameter at all.
  *

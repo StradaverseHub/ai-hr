@@ -1,7 +1,7 @@
 /**
  * D-P1-32 PT-X2: which slice of the review workspace each employee/leader tab route renders.
  *
- * A tab route is a thin page over the EXISTING workspace (app/performance/workspace): it fixes the view and
+ * A tab route is a thin page over the EXISTING workspace (app/(app)/performance/workspace): it fixes the view and
  * module, and narrows the worklist to the same items its tab gate reads (tab-model.ts), so a tab that shows
  * always has something to open and a route never shows an item its tab would not count. The paths are the
  * registry's hrefs; test/p1-performance-tab-routes.test.ts pins both equalities against the registry.

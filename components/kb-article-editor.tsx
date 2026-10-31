@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import { Eye, Pencil } from 'lucide-react';
-import { updateDocumentAction } from '@/app/knowledge-base/actions';
+import { updateDocumentAction } from '@/app/(app)/knowledge-base/actions';
 import { Field, btnGhost, btnPrimary, inputCls } from '@/components/ui';
 import { Markdown } from '@/components/markdown';
 import { cn } from '@/lib/utils';

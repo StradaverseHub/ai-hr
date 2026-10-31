@@ -24,7 +24,7 @@ import { EA_FORM_WORDS } from '../lib/ea-pdf';
 import { EA_REGISTER, EA_REGISTER_NOTHING_FEEDS, renderEaFieldRegisterMarkdown } from '../lib/ea-field-register';
 
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
-const PAGE = read('app/payroll/reports/ea/[employmentId]/page.tsx');
+const PAGE = read('app/(app)/payroll/reports/ea/[employmentId]/page.tsx');
 const RENDERER = read('lib/ea-pdf.ts');
 // r220 — the fifty-odd `payroll.ea` captions moved out of the /me route into a bundle both EA PDF routes
 // call (the blank C.P.8A is the second). See test/ea-pdf-i18n-keys.test.ts for why.
@@ -114,7 +114,7 @@ describe('6036dab7 — every EA box reaches every surface', () => {
     // screen and this suite would say nothing. r367 — the list is empty, so this loop guards the seam
     // rather than a member; the case that stops `eis` and `skbbk` vanishing is now the one above, which
     // no longer excuses them.
-    const html = read('app/payroll/reports/ea/[employmentId]/page.tsx');
+    const html = read('app/(app)/payroll/reports/ea/[employmentId]/page.tsx');
     for (const f of NOT_ON_THE_PRINTED_FORM) {
       expect(EA_FIELDS as readonly string[], `${f} left the vocabulary`).toContain(f);
       expect(html, `${f} is not rendered on the HTML statement either`).toContain(`ea.partE.${f}`);
@@ -501,9 +501,9 @@ describe('r220 — the field register and the drawn form describe the same page'
    */
   it('both downloads exist as routes, and the register is served from the constant rather than from docs/', () => {
     const root = path.resolve(__dirname, '..');
-    expect(fs.existsSync(path.join(root, 'app/payroll/ea/blank/route.ts'))).toBe(true);
-    expect(fs.existsSync(path.join(root, 'app/payroll/ea/field-register/route.ts'))).toBe(true);
-    const route = read('app/payroll/ea/field-register/route.ts');
+    expect(fs.existsSync(path.join(root, 'app/(app)/payroll/ea/blank/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(root, 'app/(app)/payroll/ea/field-register/route.ts'))).toBe(true);
+    const route = read('app/(app)/payroll/ea/field-register/route.ts');
     expect(route).toContain('renderEaFieldRegisterMarkdown()');
     // Reading docs/ at request time would 404 the download on any deploy that did not carry the folder.
     expect(route).not.toContain('readFileSync');

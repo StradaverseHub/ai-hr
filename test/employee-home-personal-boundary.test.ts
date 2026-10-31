@@ -14,7 +14,7 @@ const ctx={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictio
 beforeEach(()=>{vi.resetAllMocks();m.cards.mockResolvedValue([]);m.missing.mockImplementation(()=>{throw Error('fixture-not-found');});});
 describe('personal Home selection refusal',()=>{
  it('keeps the optional greeting entitlement at the page boundary so its resolution failure cannot take down Home cards',async()=>{
-  const page=readFileSync('app/page.tsx','utf8');
+  const page=readFileSync('app/(app)/page.tsx','utf8');
   expect(page).toContain("greetingsEnabled={isModuleEnabledOrFalse(s,'notifications')}");
   m.preferences.mockResolvedValue(defaultEmployeeHomePreferences());
   m.identity.mockResolvedValue({version:1,role:'employee',employmentState:'selected',selectedEmploymentId:'own',companyEstablished:true,employments:[{employmentId:'own',employeeCode:'A',company:'Fictional A'}]});

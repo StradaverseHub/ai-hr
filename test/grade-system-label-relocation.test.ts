@@ -53,16 +53,16 @@ import { listJobGrades } from '../core/read';
 import {
   removeJobGradeGridAction,
   saveJobGradesGridAction,
-} from '../app/admin/settings/actions';
+} from '../app/(app)/admin/settings/actions';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, p), 'utf8');
 const gridSrc = read('../components/system-labels-grid.tsx');
 const gradeGridSrc = read('../components/grade-labels-grid.tsx');
-const labelsPageSrc = read('../app/admin/settings/system-labels/page.tsx');
-const entitlementsPageSrc = read('../app/admin/leave-config/types/page.tsx');
-const adminActionsSrc = read('../app/admin/actions.ts');
+const labelsPageSrc = read('../app/(app)/admin/settings/system-labels/page.tsx');
+const entitlementsPageSrc = read('../app/(app)/admin/leave-config/types/page.tsx');
+const adminActionsSrc = read('../app/(app)/admin/actions.ts');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
@@ -171,7 +171,7 @@ describe('b1b81a08 · the origin — Grade is gone from Leave Config', () => {
     expect(entitlementsPageSrc.includes('GRADES_OPEN_COOKIE')).toBe(false);
   });
 
-  it('the four redirecting grade actions are gone from app/admin/actions.ts', () => {
+  it('the four redirecting grade actions are gone from app/(app)/admin/actions.ts', () => {
     for (const action of [
       'export async function createJobGradeAction',
       'export async function updateJobGradeAction',

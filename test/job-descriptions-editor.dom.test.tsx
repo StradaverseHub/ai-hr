@@ -8,10 +8,10 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
-import {JobEditor} from '../app/admin/job-descriptions/editor';
+import {JobEditor} from '../app/(app)/admin/job-descriptions/editor';
 import {DEFAULT_FORM,type JobInput} from '../packs/job-descriptions/model';
 import type {Masters} from '../packs/job-descriptions/service';
-vi.mock('../app/admin/job-descriptions/actions',()=>({saveDraftAction:vi.fn(async()=>({error:''}))}));
+vi.mock('../app/(app)/admin/job-descriptions/actions',()=>({saveDraftAction:vi.fn(async()=>({error:''}))}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 const companyId='11111111-1111-4111-8111-111111111111';
 const reviewerId='22222222-2222-4222-8222-222222222222';
@@ -25,5 +25,5 @@ describe('linked job editor observable interactions',()=>{
  it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders each linked form and standard choice caption without missing messages in %s',async locale=>{const user=userEvent.setup();const messages=catalogues[locale];const t=createTranslator({locale,messages,namespace:'jobDescriptions',onError:error=>{throw error;}});const view=mount(locale);expect(view.getByRole('option',{name:t('employmentTypes.full_time')})).toBeInTheDocument();for(const tab of ['analysis','description','specification','quality'] as const){await user.click(view.getByRole('button',{name:t(tab)}));expect(view.container.textContent).not.toContain('MISSING_MESSAGE');expect(view.container.textContent).not.toContain('FORMATTING_ERROR');}expect(view.getByRole('checkbox',{name:t('fields.quality.sources')})).toBeInTheDocument();});
 });
 it('keeps oversize files from reaching the native multipart action transport',async()=>{
- const {AttachmentFileInput}=await import('../app/admin/job-descriptions/attachment-file-input');const user=userEvent.setup();const view=render(<NextIntlClientProvider locale="en" messages={en}><form aria-label="Supporting upload"><label>Evidence file<AttachmentFileInput/></label></form></NextIntlClientProvider>);const file=new File([new Uint8Array(2097153)],'large.txt',{type:'text/plain'});const control=view.getByLabelText('Evidence file');await user.upload(control,file);expect(control).toBeInvalid();expect(view.getByRole('alert')).toHaveTextContent('2 MB');
+ const {AttachmentFileInput}=await import('../app/(app)/admin/job-descriptions/attachment-file-input');const user=userEvent.setup();const view=render(<NextIntlClientProvider locale="en" messages={en}><form aria-label="Supporting upload"><label>Evidence file<AttachmentFileInput/></label></form></NextIntlClientProvider>);const file=new File([new Uint8Array(2097153)],'large.txt',{type:'text/plain'});const control=view.getByLabelText('Evidence file');await user.upload(control,file);expect(control).toBeInvalid();expect(view.getByRole('alert')).toHaveTextContent('2 MB');
 });

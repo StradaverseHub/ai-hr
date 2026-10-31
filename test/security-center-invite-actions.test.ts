@@ -4,7 +4,7 @@ vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../core/auth',()=>({inviteUser:m.invite,revokeInvitation:vi.fn(),setAppUserArchived:vi.fn()}));
 vi.mock('next/cache',()=>({revalidatePath:m.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
-import {inviteUserAction} from '../app/admin/actions';
+import {inviteUserAction} from '../app/(app)/admin/actions';
 const principal={tenantId:'fixture-tenant',userId:'server-actor'};
 function form(){const value=new FormData();Object.entries({accountType:'existing',personId:'fixture-person',email:'fixture@example.test',emailLocale:'ms',role:'employee',companyId:'group',returnTo:'https://foreign.test',userId:'forged'}).forEach(([key,text])=>value.set(key,text));return value;}
 beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(principal);m.invite.mockResolvedValue(undefined);});

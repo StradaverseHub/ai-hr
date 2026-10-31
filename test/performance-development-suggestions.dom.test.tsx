@@ -5,8 +5,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({suggest:vi.fn(),apply:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:ports.refresh})}));
-vi.mock('../app/performance/onehr-actions',()=>({developmentSuggestionsAction:ports.suggest,applyDevelopmentSuggestionsAction:ports.apply}));
-import { DevelopmentSuggestions } from '../app/performance/onehr/development-suggestions';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({developmentSuggestionsAction:ports.suggest,applyDevelopmentSuggestionsAction:ports.apply}));
+import { DevelopmentSuggestions } from '../app/(app)/performance/onehr/development-suggestions';
 const goal=(area:string)=>({area,title:area,itemIds:['tc:0'],onJob:'Lead a practical assignment',fromOthers:'Ask for mentor feedback',formalLearning:'Study the method'});
 function show(){render(<NextIntlClientProvider locale="en" messages={en}><form><input type="hidden" name="reviewId" value="review"/><label>Aspiration<input name="aspiration" defaultValue="My saved aspiration"/></label><DevelopmentSuggestions reviewId="review"/></form></NextIntlClientProvider>);}
 afterEach(()=>{cleanup();vi.clearAllMocks();});

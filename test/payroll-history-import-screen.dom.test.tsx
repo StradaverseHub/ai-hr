@@ -3,11 +3,11 @@ import {cleanup,render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
-import {HistoryWorkflow} from '../app/payroll/history-import/history-workflow';
-import {RevisionPreview} from '../app/payroll/history-import/revision-preview';
+import {HistoryWorkflow} from '../app/(app)/payroll/history-import/history-workflow';
+import {RevisionPreview} from '../app/(app)/payroll/history-import/revision-preview';
 import type {HistoryRevisionPlan,HistoryRevisionRow} from '../lib/payroll-history-revisions';
 const confirm=vi.hoisted(()=>vi.fn());
-vi.mock('../app/payroll/history-import/workflow-actions',()=>({confirmHistoryUploadAction:confirm}));
+vi.mock('../app/(app)/payroll/history-import/workflow-actions',()=>({confirmHistoryUploadAction:confirm}));
 vi.mock('next/link',()=>({default:({href,children,...props}:any)=><a href={href} {...props}>{children}</a>}));
 function row(i=0):HistoryRevisionRow{return {companyId:'company-a',companyName:'Company A',currency:'MYR',employmentId:'employee-a',employeeNo:String(i).padStart(4,'0'),period:'2024-01',cycleId:'cycle-a',cycleName:'Monthly',rowNums:[i+2],operation:'replace',reasons:[],recordId:'record-a',expectedRevisionId:'revision-a',expectedSnapshotId:'snapshot-a',valueHash:'hash',overwrite:true,beforeValues:{basicSalary:'5000.00',allowance:'0.00',overtimePay:'0.00',bonus:'0.00',grossPay:'5000.00',statutory:{pcb:0},otherDeductions:'0.00',totalDeductions:'0.00',netPay:'5000.00',employerCost:'5000.00'},values:{basicSalary:'6000.00',allowance:'0.00',overtimePay:'0.00',bonus:'0.00',grossPay:'6000.00',statutory:{pcb:0},otherDeductions:'0.00',totalDeductions:'0.00',netPay:'6000.00',employerCost:'6000.00'}};}
 const plan=(rows=[row()]):HistoryRevisionPlan=>({version:1,rows,issues:[],counts:{created:0,replaced:rows.length,unchanged:0,invalid:0},companyIds:['company-a'],sourceHash:'source-hash',previewHash:'preview-hash'});

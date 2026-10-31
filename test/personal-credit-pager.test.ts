@@ -26,7 +26,7 @@ describe('Personal earned-credit ceiling guidance', () => {
     expect(html).not.toContain('Reports');
     expect(html).toContain('value="25"');
     expect(html).toContain('value="200"');
-    const page = readFileSync('app/leave/credit-details/page.tsx', 'utf8');
+    const page = readFileSync('app/(app)/leave/credit-details/page.tsx', 'utf8');
     expect(page).toContain("truncatedHint={t('truncatedHint')}");
   });
   it('still prefers an actual complete-set export and omits warnings on complete pages', async () => {

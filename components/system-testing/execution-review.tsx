@@ -6,7 +6,7 @@ import { TestingGuide } from './guide';
 import { TestingObservationForm } from './observation-form';
 import { TestingActionForm } from './action-form';
 import { TestingScreenshotUpload } from './screenshot-upload';
-import { raiseTestingFeedbackAction,requestTestingRetestAction } from '@/app/admin/system-testing/workspace-actions';
+import { raiseTestingFeedbackAction,requestTestingRetestAction } from '@/app/(app)/admin/system-testing/workspace-actions';
 import { Card,PageHeader,pageWideCls } from '@/components/ui';
 /** feedbackOpen: the operator's Feedback switch (0696). Off hides every link to and raise onto the board. */
 export async function TestingExecutionReview({ data,team=false,feedbackOpen }: { data:Awaited<ReturnType<typeof getTestingExecution>>;team?:boolean;feedbackOpen:boolean }) {

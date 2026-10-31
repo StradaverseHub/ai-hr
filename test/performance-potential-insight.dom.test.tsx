@@ -3,9 +3,9 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-vi.mock('../app/performance/onehr-actions',()=>({assessmentPotentialInsightAction:vi.fn()}));
-import {assessmentPotentialInsightAction} from '../app/performance/onehr-actions';
-import {PotentialInsight} from '../app/performance/onehr/potential-insight';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({assessmentPotentialInsightAction:vi.fn()}));
+import {assessmentPotentialInsightAction} from '../app/(app)/performance/onehr-actions';
+import {PotentialInsight} from '../app/(app)/performance/onehr/potential-insight';
 afterEach(()=>{cleanup();vi.resetAllMocks();});
 it('reads the scoped cache first and generates only on request',async()=>{
  vi.mocked(assessmentPotentialInsightAction).mockResolvedValueOnce({pending:true,source:null,data:null}).mockResolvedValueOnce({pending:false,source:'plain',data:{paragraph:'Stored anonymous themes.'}});

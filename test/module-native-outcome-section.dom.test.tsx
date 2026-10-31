@@ -12,7 +12,7 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>(key:s
 vi.mock('../core/module-native-outcome-workspace',()=>({loadOwnNativeOutcomeWorkspace:source.workspace}));
 vi.mock('../core/module-native-outcomes',()=>({reopenOwnNativeOutcomeAssociation:source.reopen}));
 vi.mock('../core/assistant-actions/own-notification-preferences-source',()=>({resolveOwnNotificationServerIdentity:source.notification}));
-vi.mock('../app/assistant/native-outcome-actions',()=>({recordNativeOutcomeAction:source.record,reopenNativeOutcomeAction:vi.fn(),eraseNativeOutcomesAction:source.erase}));
+vi.mock('../app/(app)/assistant/native-outcome-actions',()=>({recordNativeOutcomeAction:source.record,reopenNativeOutcomeAction:vi.fn(),eraseNativeOutcomesAction:source.erase}));
 import {NativeOutcomes,NativeOutcomePrivacy} from '../components/assistant/native-outcomes';
 import {NativeOutcomeForm} from '../components/assistant/native-outcome-form';
 const job='10000000-0000-4000-8000-000000000001',actionId='10000000-0000-4000-8000-000000000002',associationId='10000000-0000-4000-8000-000000000003';

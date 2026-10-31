@@ -14,7 +14,7 @@
  * kept 76dbcaa1's "View details" link at the foot of the merged block. The reporter contested the round on
  * the PAGE behind that link: it repeated the heading they had just clicked, led with the policy limits, had
  * no way back, and — once r341 had moved the tile's figures onto the card — told them almost nothing new. The
- * page (app/leave/shared/[groupId]/page.tsx) is deleted and its route deregistered from lib/permissions.ts.
+ * page (app/(app)/leave/shared/[groupId]/page.tsx) is deleted and its route deregistered from lib/permissions.ts.
  *
  * WHAT CHANGED IN THIS FILE, and what deliberately did not:
  *   · the old cases asserted the link was PRESENT with href '/leave/shared/g-special' in all six locales and

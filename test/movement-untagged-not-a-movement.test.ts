@@ -53,7 +53,7 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-import { setDirectSuperiorAction, setEmploymentInfoAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setDirectSuperiorAction, setEmploymentInfoAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 
 let b: Base;
 const email = () => `unt_${randomUUID().slice(0, 8)}@t.local`;

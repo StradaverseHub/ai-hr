@@ -775,7 +775,7 @@ export async function runReportSpec(
    * one number — the exact fault lib/money.ts exists to make unrepresentable, arriving through the
    * report builder rather than a hand-written screen.
    *
-   * The precedent is `app/payroll/transaction-view/outstanding-table.tsx`: take the single-total path
+   * The precedent is `app/(app)/payroll/transaction-view/outstanding-table.tsx`: take the single-total path
    * ONLY when there is one currency, and emit per-currency subtotals otherwise. No grand total is
    * invented across the buckets, because there is no number to give.
    *

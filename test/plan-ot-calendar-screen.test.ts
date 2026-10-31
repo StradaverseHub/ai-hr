@@ -38,11 +38,11 @@ import { formatMinutesToHM, plannedOvertimeMinutes } from '../lib/overtime-durat
 const root = (p: string) => path.resolve(__dirname, '..', p);
 const read = (p: string) => fs.readFileSync(root(p), 'utf8');
 
-const APPLY = read('app/attendance/plan-ot/apply/page.tsx');
-const FIELDS = read('app/attendance/plan-ot/apply/plan-ot-fields.tsx');
-const LIST = read('app/attendance/plan-ot/page.tsx');
+const APPLY = read('app/(app)/attendance/plan-ot/apply/page.tsx');
+const FIELDS = read('app/(app)/attendance/plan-ot/apply/plan-ot-fields.tsx');
+const LIST = read('app/(app)/attendance/plan-ot/page.tsx');
 const CAL = read('components/ot-plan-calendar.tsx');
-const ACTIONS = read('app/me/actions.ts');
+const ACTIONS = read('app/(app)/me/actions.ts');
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const MESSAGES: Record<string, { me: Record<string, string> }> = Object.fromEntries(
@@ -244,7 +244,7 @@ describe('E · the two right-hand panels, and what happened to their keys', () =
     //   "The key me.otAlreadyApprovedForDate is kept for that path".
     // It was not kept for that path — it names no date, and the action needs one. There are now TWO
     // refusals, they read differently because the way out of each differs, and both are resolved in
-    // app/me/actions.ts where the typed error is caught. me.otAlreadyApprovedForDate is RETIRED, not
+    // app/(app)/me/actions.ts where the typed error is caught. me.otAlreadyApprovedForDate is RETIRED, not
     // deleted (asserted above), and this screen must still never render it.
     for (const key of ['otPlanApprovedNotCounted', 'otAlreadyCountedForDate']) {
       keyEverywhere(key);
@@ -350,7 +350,7 @@ describe('F · the contract between the form and the server action', () => {
   it('on a phone Submit is pinned to the bottom of the screen, and is an ordinary footer row from lg up', () => {
     // The approved picture draws it pinned, with the hours and the date beside it. `sticky bottom-0`
     // only works because nothing between this row and `main` clips overflow — components/ui/card.tsx
-    // carries no overflow-hidden, and the scroll container is main itself (app/layout.tsx).
+    // carries no overflow-hidden, and the scroll container is main itself (app/(app)/layout.tsx).
     //
     // ⚠️ c7c69a18 (r369) MOVED THE BREAKPOINT FROM `md` TO `lg`, and this case is UPDATED rather than
     // loosened. Until then it asserted, and the case was titled, "an ordinary footer row from md up":
@@ -457,7 +457,7 @@ describe('H · c7c69a18 — the field names this screen asks for', () => {
     keyEverywhere('otDurationLabel');
     // RETIRED, NEVER DELETED. me.otHoursLabel is unreferenced after this round and stays in all six
     // catalogues at its own wording, so anything that resolves it later does not silently acquire this
-    // screen's. (The approved plan's build note said app/approvals/page.tsx shares this key; it does not —
+    // screen's. (The approved plan's build note said app/(app)/approvals/page.tsx shares this key; it does not —
     // that file opens getTranslations('approvals') and reads approvals.otHoursLabel, whose value is "OT".)
     keyEverywhere('otHoursLabel');
     expect(MESSAGES.en.me.otHoursLabel, 'the retired key keeps its own wording').toBe('Overtime hours');

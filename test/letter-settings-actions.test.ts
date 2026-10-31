@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({saveLetterPolicy:mocks.save,addLetterAsset:mocks.asset}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {savePolicySettings,uploadLetterAsset} from '../app/letters/settings/actions';
+import {savePolicySettings,uploadLetterAsset} from '../app/(app)/letters/settings/actions';
 const companyId='00000000-0000-4000-8000-000000000001',signerId='00000000-0000-4000-8000-000000000002',ctx={tenantId:'fixture',userId:'actual-user'};
 function form(){const data=new FormData();for(const [key,value]of Object.entries({companyId,category:'confirmation',expectedOrdinal:'4',signatoryUserId:signerId,signingMode:'authenticated',referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:'365',sensitiveLinkMinutes:'15',acknowledgement:'acknowledge',approvalDueHours:'48',acknowledgementDueDays:'7',reminderHours:'24',enabled:'yes',stages:JSON.stringify([{key:'signatory',label:'Authorised signatory',userIds:[signerId],allowDelegation:false}])}))data.set(key,value);return data;}
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);mocks.save.mockResolvedValue({ordinal:5});mocks.asset.mockResolvedValue({id:signerId});});

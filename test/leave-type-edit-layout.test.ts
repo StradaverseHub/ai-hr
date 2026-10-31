@@ -31,9 +31,9 @@ const here = dirname(fileURLToPath(import.meta.url));
  * taken the guard out rather than moved it.
  */
 const LEAVE_TYPE_SCREEN = [
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
 ];
 const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
 

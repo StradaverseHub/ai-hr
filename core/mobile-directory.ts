@@ -2,11 +2,11 @@
  * The staff directory in the app (lib/mobile-api/v2/directory.ts). COMPOSITION ONLY, over the owners the web's own
  * People directory reads, in one tenant transaction (one snapshot):
  *
- *   scope    allowedCompanies — what lib/scope.ts scopedSession hands app/personnel/page.tsx as `scopeIds` when no
+ *   scope    allowedCompanies — what lib/scope.ts scopedSession hands app/(app)/personnel/page.tsx as `scopeIds` when no
  *            company-switcher cookie narrows it (the app has no switcher)
  *   rows     listEmployeesPage(ctx, {companyIds, q, status:'active', limit, offset}) — the web list's own read, its
  *            search, its `active` filter (not terminated) and its order (name ascending); RLS decides visibility
- *   phone    person.phone of exactly the rows listed, read under the same RLS: the value app/personnel/[employmentId]
+ *   phone    person.phone of exactly the rows listed, read under the same RLS: the value app/(app)/personnel/[employmentId]
  *            (employeeDetail, the same employment ⋈ person ⋈ company join) prints to the same viewer
  *
  * DISCLOSURE. The listing row also carries the employee ID, lifecycle dates, grade, cost centre and reporting line;

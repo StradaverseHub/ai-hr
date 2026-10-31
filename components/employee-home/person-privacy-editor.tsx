@@ -5,7 +5,7 @@ import {useTranslations} from 'next-intl';
 import {unstable_rethrow} from 'next/navigation';
 import {Button} from '@/components/ui';
 import type {HomePersonPrivacy} from '@/lib/employee-home-person-privacy';
-import {saveHomePersonPrivacyAction,type HomePersonPrivacySaveState} from '@/app/me/home/privacy-actions';
+import {saveHomePersonPrivacyAction,type HomePersonPrivacySaveState} from '@/app/(app)/me/home/privacy-actions';
 
 export function HomePersonPrivacyEditor({initial,saved=false}:{initial:HomePersonPrivacy;saved?:boolean}){
  const t=useTranslations('employeeHome.personPrivacy');

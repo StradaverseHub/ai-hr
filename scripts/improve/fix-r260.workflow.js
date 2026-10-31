@@ -76,14 +76,14 @@ request must succeed and must redact it.
 ⚠️ BLOCKER 2 — THREE STATIC GUARDS ARE RED AND YOU RAN NEITHER FILE. Your report claims "23 files / 288
 tests, exit 0" and lists neither test/me-tabs.test.ts nor test/company-panel-bank-statutory-layout.test.ts
 in guardsRun. Run alone they give 3 failed / 229 passed:
-  · me-tabs.test.ts:93 — form action={myRequestProfileChange} moved to app/me/request-change-card.tsx
+  · me-tabs.test.ts:93 — form action={myRequestProfileChange} moved to app/(app)/me/request-change-card.tsx
   · me-tabs.test.ts:247 — the [data-tour="me-bank"] anchor moved to request-change-card.tsx:128
   · company-panel-bank-statutory-layout.test.ts — the masking literal moved to lib/profile-requestable-fields.ts
 The BEHAVIOUR is fine (the form, the anchor and the masking all render). RE-POINT the guards at the new
 files, exactly as you already did for test/me-profile-visibility.test.ts. AGENTS 18: update the case,
 never relax it. The parent's full gate cannot go green until these three pass.
 ⚠️ AND THIS IS THE SECOND ROUND RUNNING THAT A BUILD REPORTED GUARDS GREEN WITHOUT RUNNING THEM. Before
-you commit, run EVERY test file that greps app/me/ or lib/profile-* and name them all.
+you commit, run EVERY test file that greps app/(app)/me/ or lib/profile-* and name them all.
 
 ⚠️ MAJOR — THE APPROVER IS SHOWN RAW STORED VALUES. On /admin/personnel, describeProposed resolves a
 select option to \`.value\` instead of its label, so an approver sees "Tax Category → 2" and
@@ -96,9 +96,9 @@ cannot drift again. An approver deciding a pay-affecting PCB change must not be 
 
 THEN THE MINORS in your findings file. Fix what you can; anything you leave, say so in "remaining".
 
-SCOPE FENCE: app/me/**, core/profile.ts, core/pdpa.ts (only if the erasure test needs it),
+SCOPE FENCE: app/(app)/me/**, core/profile.ts, core/pdpa.ts (only if the erasure test needs it),
 db/migrations/0458*, lib/profile-requestable-fields.ts, the admin approval surface, your tests, docs/,
-six locales. Do NOT touch app/admin/leave-config/**. Do NOT change the migration NUMBER.`,
+six locales. Do NOT touch app/(app)/admin/leave-config/**. Do NOT change the migration NUMBER.`,
   },
   {
     slug: 'leave-round4',
@@ -132,10 +132,10 @@ rule carries its own chain — and never that everything routing a request is sh
 
 THEN THE MINORS in your findings file.
 
-SCOPE FENCE: app/admin/leave-config/**, lib/permissions.ts, your tests, six locales. You MAY read
-core/leave-approval-template.ts and app/admin/leave-approval/** to widen what is selected, and may add a
+SCOPE FENCE: app/(app)/admin/leave-config/**, lib/permissions.ts, your tests, six locales. You MAY read
+core/leave-approval-template.ts and app/(app)/admin/leave-approval/** to widen what is selected, and may add a
 read-only projection there if that is the cleanest route — but change no action, no signature and no
-write path, and do not touch app/admin/leave/**, components/leave-type-panel.tsx or app/me/**.
+write path, and do not touch app/(app)/admin/leave/**, components/leave-type-panel.tsx or app/(app)/me/**.
 NO MIGRATION — everything you need is already stored.`,
   },
 ];

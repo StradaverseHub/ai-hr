@@ -236,7 +236,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   // KNOWN, DISCLOSED EXPOSURE — and the verify pass CORRECTED how it was first written here. There is no
   // per-screen grant to revoke: `canReach` is derived from the guard (see rolesForGuard below) and the
   // Function Access grid is presentational, so "an admin whose leaveEmployeeBalances is revoked" cannot
-  // happen. The REAL exposure, which predates this row: app/layout.tsx passes
+  // happen. The REAL exposure, which predates this row: app/(app)/layout.tsx passes
   // `isAdmin={isAdmin(session) || canManagePayroll(session) || canManagePerfComp(session)}`, wider than
   // requireAdmin's `isAdmin(s)`, so a payroll or perf-comp partner who is NOT an admin sees the whole
   // adminOnly group — every Leave Config row, this one included — and is redirected at each page. Sixth
@@ -639,7 +639,7 @@ export const SCREENS: readonly ScreenEntry[] = [
       '/admin/leave-config/settings',
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/import'` STOOD HERE and is DELIBERATELY GONE.
       // Import leave data is `/admin/leave-config/import` now; the old address is an unguarded redirect
-      // stub (app/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it
+      // stub (app/(app)/admin/leave/import/page.tsx), and a stub is not a screen this grid can describe, so it
       // left `routes` in the SAME commit that emptied the page — the /admin/leave (df00b85f) and
       // /admin/leave/audit (f1b994e3) precedent. test/function-access.test.ts fails BOTH ways.
       // a6fe37fc ROUND 5 (cutover) — `'/admin/leave/entitlements'` STOOD HERE and is DELIBERATELY GONE.
@@ -895,7 +895,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // of a screen is not a second screen, exactly as '[shiftId]' rides the shift library below.
     // requireAdmin, same guard and same admin surface as the shift library it sits beside, so it rides
     // THIS column rather than minting one. It is a STATIC segment declared before '[shiftId]' here for
-    // readability only — on disk Next resolves app/admin/attendance/schedule-assignment/page.tsx ahead
+    // readability only — on disk Next resolves app/(app)/admin/attendance/schedule-assignment/page.tsx ahead
     // of the dynamic sibling either way, exactly as '/admin/attendance/new' already does; and a
     // '[employmentId]' nested UNDER that static segment does not collide with '[shiftId]' beside it.
     // 1c5602cc (r263): '/admin/attendance/schedule' — the tabbed Schedule configuration screen (General
@@ -905,7 +905,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // schedule' rides `attendancePolicyConfig` below. Registered in the SAME commit as the page —
     // test/function-access.test.ts fails in BOTH directions, so neither half may land alone. Another
     // STATIC segment declared ahead of '[shiftId]' for readability only; on disk Next resolves
-    // app/admin/attendance/schedule/page.tsx ahead of the dynamic sibling either way.
+    // app/(app)/admin/attendance/schedule/page.tsx ahead of the dynamic sibling either way.
     // a57f0584 (r328): '/roster/edit/[employmentId]' — one employee's month on a screen of its own,
     // replacing the panel that opened at the foot of the roster. It calls `scopedAdmin()`, which is
     // `requireAdmin` plus the active company scope and derives the SAME two admin roles this column's
@@ -1038,7 +1038,7 @@ export const SCREENS: readonly ScreenEntry[] = [
     // authority is the group administrator's (core/clocking-location.ts assertGroupAdmin + RLS).
     //
     // THE THREE OLD ADDRESSES STAY REGISTERED because they still exist as requireAdmin() REDIRECT STUBS
-    // (app/admin/locations/**), exactly as the four /admin/attendance-policy stubs above do: each calls
+    // (app/(app)/admin/locations/**), exactly as the four /admin/attendance-policy stubs above do: each calls
     // the guard before it redirects, so test/function-access.test.ts counts it, a non-administrator
     // following an old bookmark is refused rather than told where the screen went, and a stale link
     // lands on the register instead of a 404. Both halves are pinned — a route registered here with no

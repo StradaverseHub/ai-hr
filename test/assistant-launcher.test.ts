@@ -20,7 +20,7 @@ vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,work:(tx:unknown)=>un
 vi.mock('../core/tenant-settings',()=>({setTenantSetting:owner.write}));
 import {resolvePageContext,PAGE_AREAS} from '../lib/ai/page-context';
 import {readLauncherSettings,assistantLauncherFor,setAssistantLauncher,LauncherSettingsError} from '../core/assistant-launcher';
-import {askFromLauncherAction,askFromWorkspaceAction} from '../app/assistant/launcher-actions';
+import {askFromLauncherAction,askFromWorkspaceAction} from '../app/(app)/assistant/launcher-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user'};
 const id='0b6f5e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
 beforeEach(()=>{for(const fn of [owner.session,owner.ask,owner.workspace,owner.thread,owner.reply,owner.access,owner.provider,owner.write])fn.mockReset();owner.settings={};owner.session.mockResolvedValue(ctx);owner.access.mockResolvedValue({allowed:true});owner.provider.mockResolvedValue({provider:'openrouter'});});

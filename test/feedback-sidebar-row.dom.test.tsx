@@ -1,4 +1,4 @@
-/** 0696 — the Feedback sidebar row follows the operator's per-customer switch. app/layout.tsx passes
+/** 0696 — the Feedback sidebar row follows the operator's per-customer switch. app/(app)/layout.tsx passes
  * feedbackAccess from feedback.menu_enabled; /feedback refuses on its own when the switch is off. */
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render} from '@testing-library/react';
@@ -8,7 +8,7 @@ import messages from '../messages/en.json';
 vi.mock('next/navigation',()=>({usePathname:()=>'/',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
-vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));
+vi.mock('../app/(app)/delegations/actions',()=>({loadDelegationContextAction:vi.fn()}));
 vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 
 import {Sidebar} from '../components/sidebar';

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { AttendanceStageEditorV3, emptyAttendanceV3Level } from '../app/admin/attendance/approval-workflow/stage-editor-v3';
+import { AttendanceStageEditorV3, emptyAttendanceV3Level } from '../app/(app)/admin/attendance/approval-workflow/stage-editor-v3';
 import type { AttendanceLevelProblem, AttendanceV3Level } from '../lib/attendance-workflow-v3';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';

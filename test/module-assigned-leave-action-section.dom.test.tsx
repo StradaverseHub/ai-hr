@@ -6,7 +6,7 @@ const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),choices:vi.fn()}));
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-server',()=>({readAssignedLeaveModuleActionChoices:source.choices}));vi.mock('../components/assistant/module-assigned-leave-action-panel',()=>({ModuleAssignedLeaveActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModuleAssignedLeaveActionSection} from '../components/assistant/module-assigned-leave-action-section';
 import {ModuleAssignedLeaveActionPanel} from '../components/assistant/module-assigned-leave-action-panel';
-import AssistantAssignedLeaveDecisionPage from '../app/assistant/approvals/page';
+import AssistantAssignedLeaveDecisionPage from '../app/(app)/assistant/approvals/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000002',review='10000000-0000-4000-8000-000000000003';
 const session=()=>({tenantId:tenant,userId:user,personId:undefined as string|undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});
 function elements(value:unknown):ReactElement[]{if(Array.isArray(value))return value.flatMap(elements);if(!isValidElement(value))return[];return[value,...elements((value.props as {children?:unknown}).children)];}

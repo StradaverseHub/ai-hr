@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import {afterEach,describe,expect,it} from 'vitest';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
-import {PermissionMatrix} from '../app/admin/settings/profile-requests/permission-matrix';
+import {PermissionMatrix} from '../app/(app)/admin/settings/profile-requests/permission-matrix';
 afterEach(cleanup);
 const labels={editable:'Editable',viewOnly:'View Only',hide:'Hide',field:'Field',all:'Select all',primaryOnly:'Primary only',waiting:'Waiting',groupHelp:'Group limits take priority',tabPermission:'Tab access',sectionPermission:'Section access'};
 const baseRows=[{id:'name',label:'Name',group:'Profile',canEdit:true,permission:'editable' as const,primaryOnly:false,waiting:1},{id:'contact',label:'Contact',group:'Emergency Contacts',canEdit:true,permission:'viewOnly' as const,primaryOnly:true,waiting:0},{id:'salary',label:'Salary',group:'Payroll',canEdit:false,permission:'viewOnly' as const,primaryOnly:false,waiting:0}];

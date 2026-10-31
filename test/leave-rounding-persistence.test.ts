@@ -30,7 +30,7 @@
  * input" grep cannot catch on its own. The static guard lives in leave-entitlement-rounding.test.ts.
  *
  * Module mocks mirror test/entitlement-save-stay.test.ts (the established precedent for driving
- * app/admin/actions.ts from the harness): redirect() throws in real Next.js, so the mock must throw too.
+ * app/(app)/admin/actions.ts from the harness): redirect() throws in real Next.js, so the mock must throw too.
  */
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -57,7 +57,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 import * as schema from '../db/schema';
 import type { RoundingBand } from '../core/leave-compute';
-import { setLeaveTypeRulesAction } from '../app/admin/actions';
+import { setLeaveTypeRulesAction } from '../app/(app)/admin/actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;

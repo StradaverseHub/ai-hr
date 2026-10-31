@@ -63,6 +63,6 @@ describe('Personnel repeated-register file contract',()=>{
     const registers=source('core/personnel-register-import.ts');expect(registers).toContain('app.is_admin_for');expect(registers).toContain(".for('update')");
     for(const writer of ['addQualification','updateQualification','addEmergencyContact','updateEmergencyContact'])expect(registers).toContain(`${writer}(ctx,`);
     expect(registers).not.toMatch(/\.insert\(|\.update\(/);
-    expect(source('app/admin/personnel/import/employee-import.tsx')).toContain('registerTexts');
+    expect(source('app/(app)/admin/personnel/import/employee-import.tsx')).toContain('registerTexts');
   });
 });

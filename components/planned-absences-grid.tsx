@@ -130,7 +130,7 @@ export function PlannedAbsencesGrid({
     // a00c4f64: the calendar is the whole page now, so arriving on /leave/tracker already lands on it —
     // no anchor jump to pair with. This still brings the ROW into view inside the roster, which is the
     // half that always mattered. Honoured explicitly for reduced motion — the global CSS reset cannot suppress
-    // a JS smooth-scroll option (same reasoning as app/approvals/attention-on-arrival.tsx).
+    // a JS smooth-scroll option (same reasoning as app/(app)/approvals/attention-on-arrival.tsx).
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     focusRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
     const timer = window.setTimeout(() => setFocusActive(false), CALENDAR_FOCUS_MS);

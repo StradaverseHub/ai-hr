@@ -42,9 +42,9 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
-import { setPersonAction } from '../app/admin/personnel/[employmentId]/actions';
-import { addCp38Action } from '../app/admin/personnel/[employmentId]/cp38-actions';
-import { assignPolicyAction } from '../app/admin/payroll-policy/actions';
+import { setPersonAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
+import { addCp38Action } from '../app/(app)/admin/personnel/[employmentId]/cp38-actions';
+import { assignPolicyAction } from '../app/(app)/admin/payroll-policy/actions';
 
 const fd = (o: Record<string, string>) => {
   const f = new FormData();

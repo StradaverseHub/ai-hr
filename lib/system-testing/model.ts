@@ -18,7 +18,7 @@ export const testingUuid = z.string().uuid();
  * checks remain authority. Generated Testing record and build IDs continue to use testingUuid. */
 export const testingAccountId = z.guid();
 /** Relative reviewed repository paths only; never a URL, a supplied filesystem target or a git ref. */
-export const testingSourcePath = z.string().max(240).regex(/^(?:app|core|lib|packs|components)\/[A-Za-z0-9_./\[\]-]+\.(?:ts|tsx|json)$/).refine(p => !p.split('/').some(s => s === '.' || s === '..' || s === ''));
+export const testingSourcePath = z.string().max(240).regex(/^(?:app|core|lib|packs|components)\/[A-Za-z0-9_./\[\]()-]+\.(?:ts|tsx|json)$/).refine(p => !p.split('/').some(s => s === '.' || s === '..' || s === ''));
 export const instructionStepSchema = z.strictObject({ id: testingSemanticId, action: text, expected: text });
 export const instructionDefinitionSchema = z.strictObject({
   format: z.literal(1), title: short, objective: text, functionKey: testingSemanticId,

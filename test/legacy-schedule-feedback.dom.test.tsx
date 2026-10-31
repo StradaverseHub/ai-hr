@@ -18,13 +18,13 @@ vi.mock('../lib/scope', () => ({scopedAdmin: async () => ({s: {}, scopeIds: []})
 vi.mock('../core/read', () => ({allowedCompanies: async () => []}));
 vi.mock('next-intl/server', () => ({getTranslations: async () => (key: string) => key}));
 vi.mock('../components/attendance-settings-navigation', () => ({AttendanceSettingsNavigation: () => null}));
-vi.mock('../app/admin/attendance-policy/registered-devices-card', () => ({RegisteredDevicesCard: () => null}));
+vi.mock('../app/(app)/admin/attendance-policy/registered-devices-card', () => ({RegisteredDevicesCard: () => null}));
 vi.mock('sonner', () => ({toast: {success: state.success, error: state.error}}));
 
 import {LegacyScheduleAnchor} from '../components/legacy-schedule-anchor';
 import {ToastFromQuery} from '../components/ui/toast-trigger';
-import OldWorkSchedulePage from '../app/admin/attendance-policy/schedule/page';
-import RegisteredDevicesPage from '../app/admin/attendance/settings/registered-devices/page';
+import OldWorkSchedulePage from '../app/(app)/admin/attendance-policy/schedule/page';
+import RegisteredDevicesPage from '../app/(app)/admin/attendance/settings/registered-devices/page';
 import {
   hasPendingLegacyScheduleRedirect, legacyScheduleAnchorRedirect, legacyWorkScheduleRedirect, legacyScheduleDestinationHash,
 } from '../lib/legacy-schedule-redirect';

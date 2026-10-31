@@ -5,7 +5,7 @@
  * deliberate — it is the same shape as the screen and the same shape the Download Template hands out, so
  * "download, type the codes, send it back" is one artefact end to end.
  *
- * It follows app/attendance/import's contract exactly: `analyzeRosterImport({dryRun:true})` returns a
+ * It follows app/(app)/attendance/import's contract exactly: `analyzeRosterImport({dryRun:true})` returns a
  * preview and writes nothing; the same call with `dryRun:false` re-derives everything server-side and
  * writes. The client preview is never trusted — a commit repeats the whole analysis.
  *

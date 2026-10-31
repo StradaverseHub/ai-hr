@@ -71,10 +71,10 @@ const src = (p: string) =>
 const CORE_TP3 = src('core/tp3.ts');
 const CORE_PAYROLL = src('core/payroll.ts');
 const PDF = src('lib/tp3-pdf.ts');
-const ROUTE = src('app/payroll/transactions/tp3/pdf/route.ts');
-const PAGE = src('app/payroll/transactions/tp3/page.tsx');
+const ROUTE = src('app/(app)/payroll/transactions/tp3/pdf/route.ts');
+const PAGE = src('app/(app)/payroll/transactions/tp3/page.tsx');
 const FIELDS=src('components/tp3-declaration-fields.tsx');
-const ACTIONS = src('app/payroll/transactions/tp3/actions.ts');
+const ACTIONS = src('app/(app)/payroll/transactions/tp3/actions.ts');
 const MIGRATION = readFileSync(join(ROOT, 'db/migrations/0480_employee_tp3.sql'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

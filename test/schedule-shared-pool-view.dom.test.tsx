@@ -15,8 +15,8 @@ vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>create
 vi.mock('../core/attendance-rule',()=>({countEmploymentsInRule:async()=>0}));
 vi.mock('../core/schedule-group-controls',()=>({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
-vi.mock('../app/admin/attendance-policy/rule-actions',()=>({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
-vi.mock('../app/admin/attendance/schedule/actions',()=>({saveScheduleGroupAttendanceAction:vi.fn(),saveScheduleGroupOvertimeAction:vi.fn(),saveScheduleGroupControlAction:vi.fn()}));
+vi.mock('../app/(app)/admin/attendance-policy/rule-actions',()=>({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
+vi.mock('../app/(app)/admin/attendance/schedule/actions',()=>({saveScheduleGroupAttendanceAction:vi.fn(),saveScheduleGroupOvertimeAction:vi.fn(),saveScheduleGroupControlAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor',()=>({ScheduleRotationEditor:()=>null}));
 vi.mock('../packs/attendance/service',()=>({
   getScheduleRotation:async()=>({versions:[],revision:'pool-version',memberships:[{shiftId:'shared-one'},{shiftId:'shared-two'}]}),
@@ -26,7 +26,7 @@ vi.mock('../core/roster',()=>({listShiftsForTenant:async()=>['one','two'].map(ke
   id:`shared-${key}`,name:`Shared shift ${key}`,code:`SHARED-${key}`,ruleId:'another-default-group',type:'normal',startTime:'09:00',endTime:'18:00',
   crossesMidnight:false,breakMinutes:60,normalMinutesOverride:null,normalHoursRoundingMinutes:null,archivedAt:null,
 }))}));
-import {ScheduleGroupSections} from '../app/admin/attendance/schedule/group-sections';
+import {ScheduleGroupSections} from '../app/(app)/admin/attendance/schedule/group-sections';
 
 const rule={
   id:'view-group',tenantId:'tenant',companyId:null,name:'Shared-pool group',label:null,description:null,isDefault:false,status:'active',dutyRosterControl:false,

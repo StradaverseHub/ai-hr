@@ -11,9 +11,9 @@ import { cn } from '@/lib/utils';
 /**
  * r401 — THE DASHBOARD IN MONOLITH (docs/design/monolith/reference/P-Dashboard.dc.html; README §3, §4, §7 step 4).
  *
- * RENDERING ONLY. app/page.tsx runs every read exactly as it always has and hands the SAME values here; this
+ * RENDERING ONLY. app/(app)/page.tsx runs every read exactly as it always has and hands the SAME values here; this
  * file decides how each of the user's chosen cards looks under <html data-ui-theme="monolith">, nothing else.
- * The Classic cards stay inline in app/page.tsx, byte for byte. Nothing here reads, widens or invents data:
+ * The Classic cards stay inline in app/(app)/page.tsx, byte for byte. Nothing here reads, widens or invents data:
  * every figure, name, date and status word on these nodes is one of the values passed in.
  *
  * THE CUSTOMIZER STILL ARRANGES THE SCREEN. Each node is keyed by the same cardKey the Classic map uses, so

@@ -414,7 +414,7 @@ describe('payroll cycle master (ADR-0069)', () => {
 
   it('wizard flag-filter: with multi_cycle_payroll off, only regular-mapped cycles are exposed even when non-regular are active', async () => {
     // The service returns the full active list; the wizard filter is the entitlement rule. Assert the
-    // rule the wizard applies (app/payroll/process/page.tsx:40 —
+    // rule the wizard applies (app/(app)/payroll/process/page.tsx:40 —
     // `const multiCycle = isModuleEnabled(s, 'multi_cycle_payroll')`) using the REAL predicate against
     // a REAL snapshot, so the branch is decided by the tenant's row rather than by re-reading whatever
     // this test just wrote into the environment (which is what the pre-slice-3 version did).

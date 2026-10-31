@@ -6,7 +6,7 @@
  * claims within the batch's claim cut-off window are summed into `payroll_input.claim_allowance`
  * and reserved onto the draft batch (idempotent, draft-only, scope-narrowed — all the
  * implementation's own rules, byte-identical to before this seam existed). The contract moves the
- * SEAM, not the logic: the payroll surface (`app/payroll/actions.ts`) no longer imports
+ * SEAM, not the logic: the payroll surface (`app/(app)/payroll/actions.ts`) no longer imports
  * `core/claims`; it resolves this contributor by id through the kernel's contract home
  * (`packs/contracts.ts`). The only translation here is vocabulary — the implementation reports
  * `claims` (its domain word for source records); the contract calls that `sourceCount`.

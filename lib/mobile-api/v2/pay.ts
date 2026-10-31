@@ -16,7 +16,7 @@
  * D7: the payslip is VIEWED natively; the PDF and the EA form leave the app only through the OS share sheet,
  * after an explicit confirmation the server has acknowledged, and every share is audited without a figure.
  *
- * NOTHING HERE IS COMPUTED. Every amount is the payslip document owner's own figure (app/me/payslip/document.ts →
+ * NOTHING HERE IS COMPUTED. Every amount is the payslip document owner's own figure (app/(app)/me/payslip/document.ts →
  * lib/payslip-pdf.ts payslipPresentationRows, the rows the web statement draws), sent as a decimal string with
  * two places — the precision the web statement prints — and the app does no arithmetic on it. Labels are the
  * document's own strings. Which payslips exist, which are released and which are the caller's own belong to

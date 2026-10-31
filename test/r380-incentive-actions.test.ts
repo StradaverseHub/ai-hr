@@ -4,7 +4,7 @@ const mocks=vi.hoisted(()=>({requireAdmin:vi.fn(),packFor:vi.fn(),get:vi.fn(),sa
 vi.mock('../lib/authz',()=>({requireAdmin:mocks.requireAdmin}));
 vi.mock('../localization/registry',()=>({packFor:mocks.packFor}));
 vi.mock('next/navigation',()=>({redirect:mocks.redirect}));
-import {saveIncentiveDeclarationAction,revokeIncentiveDeclarationAction} from '../app/admin/personnel/[employmentId]/incentive-actions';
+import {saveIncentiveDeclarationAction,revokeIncentiveDeclarationAction} from '../app/(app)/admin/personnel/[employmentId]/incentive-actions';
 const employmentId='11111111-1111-4111-8111-111111111111';
 const batchId='55555555-5555-4555-8555-555555555555';
 const job='66666666-6666-4666-8666-666666666666';

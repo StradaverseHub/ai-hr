@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { CaseDocument } from '../app/lifecycle/v9/case-document';
+import { CaseDocument } from '../app/(app)/lifecycle/v9/case-document';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import type { Document } from '../lib/lifecycle-v9-model';
 

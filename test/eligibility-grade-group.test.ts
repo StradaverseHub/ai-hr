@@ -41,7 +41,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 
 const ROOT = path.resolve(__dirname, '..');
 const FORM = path.join(ROOT, 'components/leave/eligibility-rule-form.tsx');
-const BLOCK = path.join(ROOT, 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+const BLOCK = path.join(ROOT, 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
 const formSrc = fs.readFileSync(FORM, 'utf8');
 const blockSrc = fs.readFileSync(BLOCK, 'utf8');
 

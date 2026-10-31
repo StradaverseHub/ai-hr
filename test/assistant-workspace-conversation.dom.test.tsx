@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const state=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier}));
+vi.mock('../app/(app)/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier}));
 import {ConversationSuggestions,ConversationClarification} from '../components/assistant/chat-reply-boundary';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;

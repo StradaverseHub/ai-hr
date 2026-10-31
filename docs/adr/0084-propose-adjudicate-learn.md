@@ -196,7 +196,7 @@ the ledger.
 **As built (r237, `core/readiness-nudge.ts`).** Three corrections and one divergence:
 
 - **The routing table is read out of the product, not assumed.** Only `no_bank_account` has an ESS path
-  (`app/me/actions.ts` carries `bankAccountNo` through an approval), so it addresses the employee and the
+  (`app/(app)/me/actions.ts` carries `bankAccountNo` through an approval), so it addresses the employee and the
   other five gaps go to `hrAdminsForCompany`. The ADR feared the deferred reporting-graph resolver would
   block HR routing; it does not — that resolver is for APPROVER (manager) routing, and HR admins were
   always resolvable.

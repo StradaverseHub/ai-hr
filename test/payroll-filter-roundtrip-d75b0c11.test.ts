@@ -125,23 +125,23 @@ import {
   generateAction,
   reprocessSelectedAction,
   unlockAction,
-} from '../app/payroll/actions';
+} from '../app/(app)/payroll/actions';
 import {
   asArray,
   dashboardHref,
   parseMonths,
   parseYear,
   type DashboardFilters,
-} from '../app/payroll/dashboard-logic';
-import { payrollProcessBack } from '../app/payroll/back';
-import PayrollListPage from '../app/payroll/page';
-import BatchPage from '../app/payroll/[batchId]/page';
-import ReprocessPage from '../app/payroll/[batchId]/reprocess/page';
-import RemovePage from '../app/payroll/[batchId]/remove/page';
-import ResetPage from '../app/payroll/[batchId]/reset/page';
-import AnomaliesPage from '../app/payroll/[batchId]/anomalies/page';
-import ProcessWizardPage from '../app/payroll/process/page';
-import ProcessResultPage from '../app/payroll/process/result/page';
+} from '../app/(app)/payroll/dashboard-logic';
+import { payrollProcessBack } from '../app/(app)/payroll/back';
+import PayrollListPage from '../app/(app)/payroll/page';
+import BatchPage from '../app/(app)/payroll/[batchId]/page';
+import ReprocessPage from '../app/(app)/payroll/[batchId]/reprocess/page';
+import RemovePage from '../app/(app)/payroll/[batchId]/remove/page';
+import ResetPage from '../app/(app)/payroll/[batchId]/reset/page';
+import AnomaliesPage from '../app/(app)/payroll/[batchId]/anomalies/page';
+import ProcessWizardPage from '../app/(app)/payroll/process/page';
+import ProcessResultPage from '../app/(app)/payroll/process/result/page';
 import {
   adminCtx,
   closeAll,

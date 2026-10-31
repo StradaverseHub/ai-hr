@@ -28,9 +28,9 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const leavePage = read('app/leave/page.tsx');
+const leavePage = read('app/(app)/leave/page.tsx');
 const ownHistory = read('components/leave/own-leave-history.tsx');
-const historyRoute = read('app/leave/history/page.tsx');
+const historyRoute = read('app/(app)/leave/history/page.tsx');
 const groupsCmp = read('components/leave/secondary-leave-groups.tsx');
 const section = read('components/collapsible-card-section.tsx');
 const historyCmp = read('components/leave/leave-history-cards.tsx');
@@ -40,7 +40,7 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
  * Where the self-service render branch ends.
  *
  * This used to be ADMIN_MARKER = '{admin && (' — the opening guard of the HR-admin inquiry surface, which
- * was the last thing on the page. 388e53c2 MOVED that surface to app/leave/tracker/page.tsx, so there is
+ * was the last thing on the page. 388e53c2 MOVED that surface to app/(app)/leave/tracker/page.tsx, so there is
  * no `{admin && (` left to slice at and this file had to be rewritten rather than repointed.
  *
  * ITS INTENT IS UNCHANGED and is worth restating, because it is the reason a bare `leavePage.includes()`
@@ -252,10 +252,10 @@ describe('56a0deb9 §3: breakdown + history side by side for self-service; admin
     expect(guardAt, 'the short-page guard').toBeGreaterThan(-1);
     // …and it comes BEFORE the self-service reads it protects.
     // r302: the balance read is the per-year dashboard read now (it calls leaveBalances inside core/my-leave.ts).
-    // UPDATED BY r397: the reads are made by ONE loader call (app/leave/my-leave-data.ts); the call comes after the
+    // UPDATED BY r397: the reads are made by ONE loader call (app/(app)/leave/my-leave-data.ts); the call comes after the
     // guard, and the loader holds the reads.
     expect(leavePage.indexOf('await loadMyLeave('), 'the loader call').toBeGreaterThan(guardAt);
-    const loader = read('app/leave/my-leave-data.ts');
+    const loader = read('app/(app)/leave/my-leave-data.ts');
     for (const r of ['myLeaveDashboard(session', 'loadOwnUpcomingLeave({', 'listEmployees(session']) {
       expect(loader.indexOf(r), r).toBeGreaterThan(-1);
     }

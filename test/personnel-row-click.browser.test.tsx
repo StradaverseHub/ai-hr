@@ -14,7 +14,7 @@
  * positioned ancestor does not vanish — it stretches to the initial containing block, i.e. the whole
  * page, covering the row under test and everything else besides. A single-row fixture is structurally
  * blind to the worse bug. So the fixture is three rows inside a `relative` wrapper standing in for
- * `<main className="relative …">` in app/layout.tsx, with a paragraph below the table: the escape route
+ * `<main className="relative …">` in app/(app)/layout.tsx, with a paragraph below the table: the escape route
  * an unpinned overlay would actually take in this app, so a leak has somewhere to be caught.
  *
  * SECOND, and this is the one that matters: THE ENGINE THIS RUNS IN IS NOT THE ENGINE THAT BREAKS. The
@@ -22,7 +22,7 @@
  * eight green assertions here said so. WebKit does not: `position: relative` on a table row computes as
  * `static` (bug 240961, fixed on trunk only in April 2026 — after the newest Safari this machine can
  * run — and every browser on iOS is WebKit). That is measured, on the real row markup in this machine's
- * own WebKit; app/admin/personnel/row-link.tsx records what was probed and what each probe answered.
+ * own WebKit; app/(app)/admin/personnel/row-link.tsx records what was probed and what each probe answered.
  * So the last case here re-runs every confinement probe with the rows forced to `position: static`,
  * which is the shape WebKit hands us whatever the stylesheet says. Nothing in the row may depend on a
  * row being a containing block, and that case is what proves it. A Chromium pass alone would not have.
@@ -35,8 +35,8 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { EmployeeRow, employeeRowHref, type EmployeeRowProps } from '../app/admin/personnel/employee-row';
-import { DraftRow, draftRowHref, type DraftRowProps } from '../app/admin/personnel/draft-row';
+import { EmployeeRow, employeeRowHref, type EmployeeRowProps } from '../app/(app)/admin/personnel/employee-row';
+import { DraftRow, draftRowHref, type DraftRowProps } from '../app/(app)/admin/personnel/draft-row';
 import type { EmployeeColumnKey } from '../lib/employee-columns';
 import '../app/globals.css';
 

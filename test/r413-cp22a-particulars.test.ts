@@ -28,7 +28,7 @@ import { cp22aParticulars, employeeEaStatement } from '../core/reporting';
 
 let scope: { s: SessionContext; scopeIds: string[] };
 vi.mock('@/lib/scope', () => ({ scopedAdmin: vi.fn(async () => scope) }));
-import { GET as pdfGET } from '../app/payroll/cp22a/[employmentId]/pdf/route';
+import { GET as pdfGET } from '../app/(app)/payroll/cp22a/[employmentId]/pdf/route';
 
 /** The stamped figures per period — distinct, so a wrongly included slip cannot hide in a total. */
 const STAMP: Record<string, { pcb: number; zakat: number; epf: number }> = {
@@ -240,7 +240,7 @@ describe('r413 · cp22aParticulars — the year so far, from processed payroll, 
      * ⚠️ THE CROSS-COMPANY REFUSAL. An hr_admin grant on ANY company makes `isAdmin` true; RLS alone lets
      * a tenant admin read every company. Only the scope check stands between a company-B admin and a
      * company-A leaver's IC, TIN and pay. NON-VACUITY: delete the `scopeIds.includes(...)` line in
-     * app/payroll/cp22a/[employmentId]/pdf/route.ts and this returns 200 (mutation-checked in r413).
+     * app/(app)/payroll/cp22a/[employmentId]/pdf/route.ts and this returns 200 (mutation-checked in r413).
      */
     it('is a bare 404 to an admin scoped to ANOTHER company', async () => {
       const [fc] = await owner.db

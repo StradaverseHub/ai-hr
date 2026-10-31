@@ -48,12 +48,12 @@ const KEPT_KEYS = ['chipAddPlaceholder', 'chipRemoveLabel', 'chipCountLabel'] as
  * new trigger summary. Adding a caller means adding it here and deciding, deliberately, which side it is on.
  */
 const CHIP_CALLERS = [
-  'app/performance/new-cycle-form.tsx',
+  'app/(app)/performance/new-cycle-form.tsx',
   'components/leave-shared-group-config.tsx',
   // a6fe37fc Round 5 — the panel was deleted with its page; the leave TYPE screen is these three files.
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
   'components/notice/notice-form.tsx',
   'components/leave/half-day-company-picker.tsx',
   'components/leave/eligibility-rule-form.tsx',

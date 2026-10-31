@@ -1,12 +1,12 @@
 import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {beforeEach,expect,it,vi} from 'vitest';
 import {Tp3DeclarationFields} from '../components/tp3-declaration-fields';
-import {MyTp3EditableForm} from '../app/me/tp3/form-client';
+import {MyTp3EditableForm} from '../app/(app)/me/tp3/form-client';
 import {amountField,employerNameField,employerTinField,subField} from '../lib/tp3-form-input';
 import {todayInKualaLumpur} from '../lib/hr-date';
 
 const {action}=vi.hoisted(()=>({action:vi.fn()}));
-vi.mock('../app/me/tp3/actions',()=>({myTp3FormAction:action}));
+vi.mock('../app/(app)/me/tp3/actions',()=>({myTp3FormAction:action}));
 vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>key)}));
 vi.mock('next-intl/server',()=>({getLocale:async()=> 'en',getTranslations:async()=>((key:string)=>key)}));
 vi.mock('../packs/payroll/service',async()=>{

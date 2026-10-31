@@ -72,13 +72,13 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
-import ScheduleAssignmentPage from '../app/admin/attendance/schedule-assignment/page';
-import ShiftArrangementPage from '../app/admin/attendance/schedule-assignment/[employmentId]/page';
-import BulkScheduleGroupPage from '../app/admin/attendance/schedule-assignment/bulk/page';
+import ScheduleAssignmentPage from '../app/(app)/admin/attendance/schedule-assignment/page';
+import ShiftArrangementPage from '../app/(app)/admin/attendance/schedule-assignment/[employmentId]/page';
+import BulkScheduleGroupPage from '../app/(app)/admin/attendance/schedule-assignment/bulk/page';
 import {
   bulkAssignScheduleGroupAction,
   setScheduleGroupAssignmentAction,
-} from '../app/admin/attendance/schedule-assignment/actions';
+} from '../app/(app)/admin/attendance/schedule-assignment/actions';
 
 const root = path.join(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
@@ -464,8 +464,8 @@ describe('§2 employment.attendance_rule_id still has exactly one writer', () =>
   });
 
   it('(12) BOTH doors go through the service — the personnel card and the Attendance screens', () => {
-    const personnel = read('app/admin/personnel/[employmentId]/actions.ts');
-    const attendance = read('app/admin/attendance/schedule-assignment/actions.ts');
+    const personnel = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
+    const attendance = read('app/(app)/admin/attendance/schedule-assignment/actions.ts');
     expect(personnel).toContain('setEmploymentScheduleGroup(s, {');
     expect(attendance).toContain('setEmploymentScheduleGroup(s, { employmentId, attendanceRuleId }');
     expect(attendance).toContain('setEmploymentScheduleGroupBulk(s, {');
@@ -626,8 +626,8 @@ describe('§3 the Schedule Assignment screens', () => {
     const emp = await makeEmp('Ann');
     await assignDefaultShift(a, { employmentId: emp, shiftId: allowed.id });
     await setEmploymentScheduleGroup(a, { employmentId: emp, attendanceRuleId: group.id });
-    const card = read('app/admin/personnel/[employmentId]/page.tsx');
-    const detail = read('app/admin/attendance/schedule-assignment/[employmentId]/page.tsx');
+    const card = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
+    const detail = read('app/(app)/admin/attendance/schedule-assignment/[employmentId]/page.tsx');
     const poolProjection = 'allowedPool={groupPool?{baseShiftIds:groupPool.memberships.map(m=>m.shiftId),versions:groupPool.versions.map(v=>({effectiveFrom:v.effectiveFrom,allowedShiftIds:v.allowedShiftIds}))}:undefined}';
     // 7e4a9dd6 removes Personnel's obsolete Shift Arrangement editor. Preserve the canonical
     // Schedule Assignment picker and group writer rather than requiring that duplicate to return.
@@ -654,11 +654,11 @@ describe('§3 the Schedule Assignment screens', () => {
 
   it('(20) no screen writes a group NAME, a group COUNT or a shift’s membership into its source', () => {
     const files = [
-      'app/admin/attendance/schedule-assignment/page.tsx',
-      'app/admin/attendance/schedule-assignment/[employmentId]/page.tsx',
-      'app/admin/attendance/schedule-assignment/bulk/page.tsx',
-      'app/admin/attendance/schedule-assignment/bulk/bulk-form.tsx',
-      'app/admin/attendance/schedule-assignment/actions.ts',
+      'app/(app)/admin/attendance/schedule-assignment/page.tsx',
+      'app/(app)/admin/attendance/schedule-assignment/[employmentId]/page.tsx',
+      'app/(app)/admin/attendance/schedule-assignment/bulk/page.tsx',
+      'app/(app)/admin/attendance/schedule-assignment/bulk/bulk-form.tsx',
+      'app/(app)/admin/attendance/schedule-assignment/actions.ts',
     ];
     for (const f of files) {
       // Comments are allowed to discuss the split; CODE may not name a group. Strip block + line comments.

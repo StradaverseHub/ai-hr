@@ -8,10 +8,10 @@ vi.mock('../lib/scope', () => ({ scopedSession: async () => ({ s: session, scope
 vi.mock('../lib/authz', () => ({ requireModule: vi.fn() }));
 vi.mock('next-intl/server', () => ({ getLocale: async () => 'en', getTranslations: async () => createTranslator({ locale: 'en', messages: { attendanceHistory: en.attendanceHistory }, namespace: 'attendanceHistory', onError: error => { throw error; } }) }));
 vi.mock('../packs/attendance/service', () => ({ listAttendanceCorrections: list, resolveApprovedOt: (requested: number, system: number | null, method: string) => method === 'requested' ? requested : system ?? 0 }));
-vi.mock('../app/attendance/actions', () => ({ decideCorrectionAction: vi.fn() }));
+vi.mock('../app/(app)/attendance/actions', () => ({ decideCorrectionAction: vi.fn() }));
 vi.mock('../components/attendance-workflow-progress', () => ({ AttendanceWorkflowProgress: () => <p>Saved request workflow</p> }));
 vi.mock('../components/pager', () => ({ Pager: () => null }));
-import Page from '../app/attendance/application-history/visible/page';
+import Page from '../app/(app)/attendance/application-history/visible/page';
 beforeEach(() => vi.clearAllMocks()); afterEach(cleanup);
 it('uses the former Overview reader unchanged and keeps noncurrent rows visible without action forms', async () => {
   list.mockResolvedValue([

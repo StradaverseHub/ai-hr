@@ -11,7 +11,7 @@ vi.mock('../lib/authz',()=>({requireAdmin:async()=>ADMIN}));
 vi.mock('next/cache',()=>({revalidatePath:()=>{}}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{redirected=url;throw Error('NEXT_REDIRECT');}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>key}));
-import {createMovementEventAction,editMovementEventAction} from '../app/admin/personnel/[employmentId]/actions';
+import {createMovementEventAction,editMovementEventAction} from '../app/(app)/admin/personnel/[employmentId]/actions';
 const day=(n:number)=>new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{vi.restoreAllMocks();await resetDb();b=await seedBase();ADMIN=adminCtx(b);redirected='';});

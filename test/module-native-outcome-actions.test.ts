@@ -7,7 +7,7 @@ vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));
 vi.mock('../core/module-native-outcomes',()=>({recordOwnNativeOutcomeAssociation:source.record,reopenOwnNativeOutcomeAssociation:source.reopen,eraseOwnNativeOutcomeAssociations:source.erase}));
 vi.mock('../core/module-native-outcome-workspace',()=>({loadOwnNativeOutcomeWorkspace:source.workspace}));
 vi.mock('../core/assistant-actions/own-notification-preferences-source',()=>({resolveOwnNotificationServerIdentity:source.notification}));
-import {recordNativeOutcomeAction,reopenNativeOutcomeAction,eraseNativeOutcomesAction} from '../app/assistant/native-outcome-actions';
+import {recordNativeOutcomeAction,reopenNativeOutcomeAction,eraseNativeOutcomesAction} from '../app/(app)/assistant/native-outcome-actions';
 const job='10000000-0000-4000-8000-000000000001',actionId='10000000-0000-4000-8000-000000000002',nonce='10000000-0000-4000-8000-000000000003',associationId='10000000-0000-4000-8000-000000000004';
 const session=()=>({tenantId:job,userId:actionId,personId:nonce,roles:['employee'],grants:[{role:'employee',companyId:null as string|null}]});
 const reference={source:'review' as const,action:'leave.apply' as const,actionId};

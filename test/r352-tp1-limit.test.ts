@@ -84,7 +84,7 @@ import {
   Tp1LimitError,
 } from '../core/tax-relief';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
-import { adminTp1FormAction } from '../app/payroll/transactions/deductions-actions';
+import { adminTp1FormAction } from '../app/(app)/payroll/transactions/deductions-actions';
 
 const YEAR = 2026;
 const ROOT = path.resolve(__dirname, '..');
@@ -379,8 +379,8 @@ describe('0df7dd44 · the TP1 annual-limit refusal', () => {
   // ═══════════════ E. the redirect-on-refusal spelling is gone from the paths that key amounts ═══════
 
   it('no amount-carrying TP1 action redirects on refusal any more', () => {
-    const admin = read('app/payroll/transactions/deductions-actions.ts');
-    const me = read('app/me/actions.ts');
+    const admin = read('app/(app)/payroll/transactions/deductions-actions.ts');
+    const me = read('app/(app)/me/actions.ts');
 
     const adminStart = admin.indexOf('export async function adminTp1FormAction');
     const adminEnd = admin.indexOf('// ── Section F — employer consent', adminStart);

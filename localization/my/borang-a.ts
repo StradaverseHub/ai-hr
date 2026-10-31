@@ -22,7 +22,7 @@ import {employmentInformationAt,informationReportRelation} from '../../core/info
  *     (./statutory-identity.ts) on `epf_citizenship` and `person.nationality` — Borang 8A's rule, shared.
  *   • `employment.employee_code` — the upload file's staff-number field. Not printed on the form.
  *   • `company_statutory_authority` for authority `epf` — the authorised-representative block at the foot
- *     of the form, with its own admin screen at app/admin/organization/[companyId]. MEASURED: ONE row
+ *     of the form, with its own admin screen at app/(app)/admin/organization/[companyId]. MEASURED: ONE row
  *     across nine companies, carrying a signatory but no phone and no e-mail.
  * The reporter's own wording, "add an epf_reference_no column and an epf_member_no column", describes
  * fields that were already there under different names. No migration.
@@ -56,7 +56,7 @@ import {employmentInformationAt,informationReportRelation} from '../../core/info
  * ── THE ROWS ARE NOT FILTERED BY READINESS ────────────────────────────────────────────────────────
  * Everybody the run paid is returned, including the people who cannot yet appear on a filed form. The
  * review screen has to NAME them, which it cannot do if the read has already dropped them; the gate lives
- * in `app/payroll/borang-a/shared.ts` and refuses the DOCUMENT, not the preview. Anyone who left before
+ * in `app/(app)/payroll/borang-a/shared.ts` and refuses the DOCUMENT, not the preview. Anyone who left before
  * the cycle simply has no payslip in it and is therefore already absent (the form's own note 3).
  *
  * ── r418 (item 5c31d379): THEY ARE FILTERED BY CONTRIBUTION, HERE AND ONLY HERE ───────────────────
@@ -485,7 +485,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
       //
       // r372 ADDED THE FOURTH, AND IT IS NOT AN ABSENCE. The first three are things we do not have; the
       // fourth is a month whose own runs disagree about the wage, where we have TWO figures and neither is
-      // the month's. The existing gate (app/payroll/borang-a/shared.ts) blocks the PDF, the text export and
+      // the month's. The existing gate (app/(app)/payroll/borang-a/shared.ts) blocks the PDF, the text export and
       // the i-Akaun file on ANY entry in this list, so naming it here is what holds the document — and the
       // review screen still renders the table, which is the only way the person gets named at all.
       readiness: accs

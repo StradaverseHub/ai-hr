@@ -20,8 +20,8 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { getStatutoryProfileMY, setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips } from '../core/payroll';
-import { saveZakatElectionAction } from '../app/payroll/transactions/zakat/election-actions';
-import { setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
+import { saveZakatElectionAction } from '../app/(app)/payroll/transactions/zakat/election-actions';
+import { setStatutoryAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 // The action layer calls requireAdmin() (Clerk/session) which is unavailable in the test harness. Mock the

@@ -16,7 +16,7 @@
  * The audited seam: a module holds approved, payable amounts (taxable claims; later
  * attendance-derived allowances, loan instalments, …) and queues them onto a DRAFT payroll batch
  * as `payroll_input` rows — today via per-module prefill buttons on the batch page
- * (`app/payroll/actions.ts`), each a distinct user action with its own toast. The contract mirrors
+ * (`app/(app)/payroll/actions.ts`), each a distinct user action with its own toast. The contract mirrors
  * that exact shape: `contribute(ctx, { batchId })` performs the module's whole prefill
  * (idempotent, draft-only — the implementation's own rules, unchanged) and reports what it queued.
  * The payroll surface resolves a contributor BY ID (per-button consumption, matching today's UI);

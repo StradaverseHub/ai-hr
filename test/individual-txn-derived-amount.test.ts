@@ -63,7 +63,7 @@ import {
   createIndividualTxnAction,
   previewTxnAmountAction,
   updateIndividualTxnAction,
-} from '../app/payroll/transactions/individual/actions';
+} from '../app/(app)/payroll/transactions/individual/actions';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const PERIOD = '2026-05';

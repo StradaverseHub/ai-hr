@@ -8,7 +8,7 @@ let b:Base,ctx:ReturnType<typeof adminCtx>,redirected='';
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>ctx}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{redirected=url;throw Error('NEXT_REDIRECT');}}));
-import {publishNoticeAction,archiveNoticeAction,restoreNoticeAction} from '../app/admin/notice-board/actions';
+import {publishNoticeAction,archiveNoticeAction,restoreNoticeAction} from '../app/(app)/admin/notice-board/actions';
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();ctx=adminCtx(b);redirected='';});
 const form=(id:string)=>{const fd=new FormData();fd.set('id',id);return fd;};

@@ -90,14 +90,14 @@ const code = (p: string) =>
 const LIB = read('lib/borang-a.ts');
 const READ_SRC = read('localization/my/borang-a.ts');
 const PDF_SRC = read('lib/borang-a-pdf.ts');
-const PREVIEW = read('app/payroll/borang-a/preview/page.tsx');
+const PREVIEW = read('app/(app)/payroll/borang-a/preview/page.tsx');
 const READ_CODE = code('localization/my/borang-a.ts');
 const LIB_CODE = code('lib/borang-a.ts');
-const SHARED_CODE = code('app/payroll/borang-a/shared.ts');
-const PREVIEW_CODE = code('app/payroll/borang-a/preview/page.tsx');
-const PDF_ROUTE_CODE = code('app/payroll/borang-a/pdf/route.ts');
-const TEXT_ROUTE_CODE = code('app/payroll/borang-a/text/route.ts');
-const FILE_ROUTE_CODE = code('app/payroll/borang-a/file/route.ts');
+const SHARED_CODE = code('app/(app)/payroll/borang-a/shared.ts');
+const PREVIEW_CODE = code('app/(app)/payroll/borang-a/preview/page.tsx');
+const PDF_ROUTE_CODE = code('app/(app)/payroll/borang-a/pdf/route.ts');
+const TEXT_ROUTE_CODE = code('app/(app)/payroll/borang-a/text/route.ts');
+const FILE_ROUTE_CODE = code('app/(app)/payroll/borang-a/file/route.ts');
 
 const row = (p: Partial<BorangARow> & { employmentId: string }): BorangARow => ({
   memberNo: '17955667',

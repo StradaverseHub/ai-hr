@@ -1,8 +1,8 @@
 import {useState} from 'react';
 import {afterEach,describe,expect,it} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
-import {EmployeeTransfer} from '../app/admin/settings/profile-requests/routing-form';
-import {PermissionMatrix} from '../app/admin/settings/profile-requests/permission-matrix';
+import {EmployeeTransfer} from '../app/(app)/admin/settings/profile-requests/routing-form';
+import {PermissionMatrix} from '../app/(app)/admin/settings/profile-requests/permission-matrix';
 import {editableProfileRoute,type ProfileRouteRule} from '../lib/profile-routing-policy';
 const labels={included:'Included',excluded:'Excluded',search:'Search',selectAllResults:'Select all results',includeSelected:'Include selected',excludeSelected:'Exclude selected',noMatches:'No matches',allMatching:'All matching',explicitEmployees:'Selected employees'};
 const employees=[{id:'one',label:'Ann One'},{id:'two',label:'Ann Two'},{id:'three',label:'Bob Three'}];

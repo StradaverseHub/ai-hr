@@ -14,7 +14,7 @@ vi.mock('next-intl/server',()=>({
  getTranslations:async(namespace:any)=>createTranslator({locale:visual.locale,messages:copies[visual.locale],namespace}),
  getFormatter:async()=>createFormatter({locale:visual.locale,timeZone:'Asia/Kuala_Lumpur'}),
 }));
-import { RankedBuildList } from '../app/control-tower/opportunities/build-list';
+import { RankedBuildList } from '../app/(app)/control-tower/opportunities/build-list';
 import { eq } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { agentBuildList } from '../core/agent-build-list';
@@ -41,7 +41,7 @@ describe('group-admin ranked build-list source',()=>{
   const ctx=await group(),view=await agentBuildList(ctx,30),assessment=await assessProcesses(ctx,30);
   const source=assessment.processes.find(p=>p.id==='leave')!;
   expect(source.staffActionsPer30).toBe(6);expect(source.peopleAffected).toBe(2);
-  const entry=view.entries.find(r=>r.id==='app/leave/actions.ts#adminCancelLeaveAction')!;
+  const entry=view.entries.find(r=>r.id==='app/(app)/leave/actions.ts#adminCancelLeaveAction')!;
   expect(entry).toMatchObject({basis:'leave',staffActionsPer30:6,peopleAffected:2,measurement:'measured'});
   expect(view.entries.filter(r=>r.basis==='leave').every(r=>r.staffActionsPer30===source.staffActionsPer30&&r.peopleAffected===source.peopleAffected)).toBe(true);
   expect(view.entries).toHaveLength(Object.values(view.totals).reduce((n,v)=>n+v,0));
@@ -73,6 +73,6 @@ describe('group-admin ranked build-list source',()=>{
   const ctx=await group();
   await setModule(base.tenantId,'claims','disabled');
   const view=await agentBuildList(ctx,30);
-  expect(view.entries.find(r=>r.id==='app/claims/actions.ts#submitClaimAction')).toMatchObject({measurement:'module_off',staffActionsPer30:null,peopleAffected:null});
+  expect(view.entries.find(r=>r.id==='app/(app)/claims/actions.ts#submitClaimAction')).toMatchObject({measurement:'module_off',staffActionsPer30:null,peopleAffected:null});
  });
 });

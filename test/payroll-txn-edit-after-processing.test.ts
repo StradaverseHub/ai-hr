@@ -40,7 +40,7 @@ import {
   updateIndividualTxn,
 } from '../core/payroll-individual-txn';
 import { exportIndividualTxnsCsv, listIndividualTxnsAcross } from '../core/payroll-view';
-import { buildTxnPanel } from '../app/payroll/transactions/individual/existing-context';
+import { buildTxnPanel } from '../app/(app)/payroll/transactions/individual/existing-context';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, setSetting, type Base } from './harness';
 
 describe('49e7e0a2 — one-off transactions are editable after processing, and say so', () => {

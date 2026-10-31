@@ -7,9 +7,9 @@ import { cleanup,fireEvent,render,screen,within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/performance/onehr-actions',()=>({agreeDepartmentAction:vi.fn(),assessmentInsightAction:vi.fn(),saveCalibrationBandAction:vi.fn()}));
-import { CalibrationRoster,type CalibrationRosterRow } from '../app/performance/onehr/calibration-roster';
-import { assessmentInsightAction } from '../app/performance/onehr-actions';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({agreeDepartmentAction:vi.fn(),assessmentInsightAction:vi.fn(),saveCalibrationBandAction:vi.fn()}));
+import { CalibrationRoster,type CalibrationRosterRow } from '../app/(app)/performance/onehr/calibration-roster';
+import { assessmentInsightAction } from '../app/(app)/performance/onehr-actions';
 const rows:CalibrationRosterRow[]=[['alice','Alice Tan','x','Unit X','AE'],['bob','Bob Lim','x','Unit X','ME'],['cara','Cara Lee','y','Unit Y','UA']].map(([id,name,companyId,company,performance])=>({id,name,companyId,company,performance:performance as CalibrationRosterRow['performance'],grade:'12',potential:'Mid',performanceSource:'manager',potentialSource:'manager',locked:false,potentialPct:70,journey:[{tier:'self',performance:'ME',potential:'Mid'},{tier:'manager',performance:'ME',potential:'Mid'}]}));
 function show(grid=false,agree=false){render(<NextIntlClientProvider locale="en" messages={en}><CalibrationRoster sessionId="session" revision={1} agree={agree?{sessionId:'session',revision:1,axis:'performance',eligibleIds:['alice','bob']}:undefined} rows={rows} cards={rows.map(r=>({id:r.id,content:<p>{r.name} supporting review</p>}))} axes={{pm:true,pot:grid}} grid={grid} reference={{AE:20,ME:70,UA:0}}/></NextIntlClientProvider>);}
 beforeEach(()=>localStorage.clear());

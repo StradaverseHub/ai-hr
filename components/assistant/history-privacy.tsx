@@ -1,5 +1,5 @@
 import {getTranslations} from 'next-intl/server';
-import {eraseAssistantHistoryAction} from '../../app/assistant/history-privacy-actions';
+import {eraseAssistantHistoryAction} from '../../app/(app)/assistant/history-privacy-actions';
 import {ConfirmSubmit} from '../ui/confirm-submit';
 /** Render for the authenticated owner even when Assistant access has been revoked. Clearing is
  * irreversible, so it asks first (shared confirm dialog). The outcome sits OUTSIDE the collapsible so

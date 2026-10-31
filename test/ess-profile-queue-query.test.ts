@@ -7,8 +7,8 @@ vi.mock('@/core/read',()=>({allowedCompanies:f.companies}));
 vi.mock('@/lib/scope',()=>({getScopeIds:f.scope}));
 vi.mock('@/core/profile',()=>({listProfileChangeRequests:f.list}));
 vi.mock('@/core/profile-routing',()=>({profileRouteCounts:f.counts,profileRerouteCandidates:f.reroutes}));
-vi.mock('@/app/admin/personnel/profile-changes/actions',()=>({decideProfileChangeAction:vi.fn(),rerouteProfileChangeAction:vi.fn()}));
-import Page from '../app/admin/personnel/profile-changes/page';
+vi.mock('@/app/(app)/admin/personnel/profile-changes/actions',()=>({decideProfileChangeAction:vi.fn(),rerouteProfileChangeAction:vi.fn()}));
+import Page from '../app/(app)/admin/personnel/profile-changes/page';
 beforeEach(()=>vi.clearAllMocks());
 describe('relocated profile queue invalid-query boundary',()=>{
  for(const requestId of ['-'.repeat(36),'a'.repeat(36),'11111111-1111-1111-11111111111','not-a-request'])it(`refuses ${requestId} before company/queue/count queries`,async()=>{

@@ -22,7 +22,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { getStatutoryProfileMY, setStatutoryProfileMY } from '../localization/my/statutory';
-import { setTp3Action, setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setTp3Action, setStatutoryAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
@@ -42,7 +42,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('TP3 / Zakat relocation — source layout (a6a47698)', () => {

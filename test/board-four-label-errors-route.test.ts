@@ -2,9 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as XLSX from 'xlsx';
 const calls=vi.hoisted(()=>({admin:vi.fn(async()=>({s:{}})),preview:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:calls.admin}));
-vi.mock('../app/admin/settings/system-labels/import-actions',()=>({previewLabelsAction:calls.preview}));
+vi.mock('../app/(app)/admin/settings/system-labels/import-actions',()=>({previewLabelsAction:calls.preview}));
 import { LABEL_UPLOAD_REQUEST_MAX_BYTES } from '../lib/system-label-upload';
-import { POST } from '../app/admin/settings/system-labels/errors/route';
+import { POST } from '../app/(app)/admin/settings/system-labels/errors/route';
 beforeEach(()=>{vi.clearAllMocks();calls.preview.mockResolvedValue({ok:true,preview:{rows:[{sheet:'division',row:2,outcome:'error',message:'Code is required.',values:{Code:''}}]}});});
 describe('authenticated label error download',()=>{
   it('returns a real safe Excel attachment using the current validated preview',async()=>{

@@ -31,8 +31,8 @@ vi.mock('next-intl/server', () => ({
   getLocale: vi.fn(async () => 'en'),
 }));
 
-import PaymentSubmissionPage from '../app/payroll/payment-submission/page';
-import { SUBMISSION_FORMATS, formatsInGroup } from '../app/payroll/payment-submission/registry';
+import PaymentSubmissionPage from '../app/(app)/payroll/payment-submission/page';
+import { SUBMISSION_FORMATS, formatsInGroup } from '../app/(app)/payroll/payment-submission/registry';
 
 /** Every value of one prop anywhere in a rendered tree (the seam test's walker, same reason). */
 function propValues(node: unknown, prop: string, acc: string[] = []): string[] {
@@ -65,7 +65,7 @@ function elementTypes(node: unknown, acc: string[] = []): string[] {
 
 const render = () => PaymentSubmissionPage({ searchParams: Promise.resolve({ companyId: COMPANY }) });
 
-const SRC = readFileSync(new URL('../app/payroll/payment-submission/page.tsx', import.meta.url), 'utf8');
+const SRC = readFileSync(new URL('../app/(app)/payroll/payment-submission/page.tsx', import.meta.url), 'utf8');
 // Comments legitimately describe the control that was removed and quote the field names it submitted, so
 // the guard reads the CODE only — the same technique the sibling seam test needs for the same reason.
 const CODE = SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -157,13 +157,13 @@ describe('r372 — the payroll-cycle selection reaches all three files', () => {
   });
 
   it('the CP39 builder parses the selection and hands it to the pack, not to a filename', () => {
-    const code = src('app/payroll/payment-submission/registry.ts');
+    const code = src('app/(app)/payroll/payment-submission/registry.ts');
     expect(code).toContain('parseRunSelection(query)');
     expect(code).toContain('runSeqs: selection.runSeqs');
   });
 
   it('the EPF and PERKESO loaders parse the same query and forward it to the read', () => {
-    for (const p of ['app/payroll/borang-a/shared.ts', 'app/payroll/borang-8a/shared.ts']) {
+    for (const p of ['app/(app)/payroll/borang-a/shared.ts', 'app/(app)/payroll/borang-8a/shared.ts']) {
       const code = src(p);
       expect(code, p).toContain('parseRunSelection(p.query)');
       expect(code, p).toContain('runSeqs: selection.runSeqs');
@@ -181,7 +181,7 @@ describe('r372 — the payroll-cycle selection reaches all three files', () => {
   });
 
   it('the eligible-runs route reaches payroll through the pack FACADE, never the implementation', () => {
-    const code = src('app/payroll/payment-submission/runs/route.ts');
+    const code = src('app/(app)/payroll/payment-submission/runs/route.ts');
     expect(code).toContain("from '@/packs/payroll/service'");
     // ADR-0080 D9. The ratchet would catch this too; saying it here names WHY for the next reader.
     expect(code).not.toMatch(/from '@?\/?(\.\.\/)*core\/payroll/);

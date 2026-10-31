@@ -101,9 +101,9 @@ function evalCount(src: string, names: string[], varName: string): number {
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
 
 describe('4ca06dea · every surface that predicts the refusal counts the server’s exact four', () => {
-  const STEP = read('app/payroll/process/steps/step-validation.tsx');
-  const CARD = read('app/payroll/[batchId]/page.tsx');
-  const ACTION = read('app/payroll/actions.ts');
+  const STEP = read('app/(app)/payroll/process/steps/step-validation.tsx');
+  const CARD = read('app/(app)/payroll/[batchId]/page.tsx');
+  const ACTION = read('app/(app)/payroll/actions.ts');
   const CORE = read('core/payroll.ts');
 
   it('(e) the server’s exact set is EXACTLY the four — a silent fifth addition fails here', () => {
@@ -138,8 +138,8 @@ describe('4ca06dea · every surface that predicts the refusal counts the server�
     // A count with no row disables Process without saying why. Both screens render the group, flagged
     // `true` (= blocker red), and the merge in core is what lets the row reach the wizard at all.
     for (const [p, src] of [
-      ['app/payroll/process/steps/step-validation.tsx', STEP],
-      ['app/payroll/[batchId]/page.tsx', CARD],
+      ['app/(app)/payroll/process/steps/step-validation.tsx', STEP],
+      ['app/(app)/payroll/[batchId]/page.tsx', CARD],
     ] as const) {
       expect(strip(src), p).toMatch(/\['unpayablePayMode',[\s\S]{0,60}?, true\]/);
     }

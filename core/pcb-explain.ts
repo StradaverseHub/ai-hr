@@ -654,7 +654,7 @@ export function explainPcb(
  * Feedback 7f251381 — THE SAME RECORDED FIGURES, LAID OUT AS LHDN LAYS THEM OUT.
  *
  * WHY A SECOND LAYOUT IS NOT A SECOND ANSWER. `explainPcb` above already returns every figure the tax
- * working used, and `app/payroll/pcb-detail/pcb-detail-view.tsx` already explains them in an order that
+ * working used, and `app/(app)/payroll/pcb-detail/pcb-detail-view.tsx` already explains them in an order that
  * reads well. The reporter's problem is not that the figures are wrong or missing — it is that they are in
  * OUR arrangement, so their sheet and ours cannot be laid side by side and read down. This function
  * re-orders what `explainPcb` returned into LHDN's worksheet sequence, under LHDN's symbols, so a
@@ -1100,7 +1100,7 @@ export type PcbChildProfile = {
  *
  * COUNTED IN THE READ LAYER, never here: summing the grid is arithmetic, and core/pcb-explain.ts holds
  * none (test/7f251381-pcb-lhdn-worksheet.test.ts refuses an operator below its marker). The sum is where
- * the other sum on this surface is — `priorRemuneration` in app/payroll/pcb-detail/slip-data.ts.
+ * the other sum on this surface is — `priorRemuneration` in app/(app)/payroll/pcb-detail/slip-data.ts.
  */
 export type PcbChildHeadCount = {
   count: number;
@@ -1465,7 +1465,7 @@ export function pcbReliefScheduleSection(p: {
  * they reconcile:
  *
  *   · THE ITEMISATION is what the employee was PAID, summed off the four money columns of this tax
- *     year's payslips before the payroll month being explained (`app/payroll/pcb-detail/slip-data.ts`,
+ *     year's payslips before the payroll month being explained (`app/(app)/payroll/pcb-detail/slip-data.ts`,
  *     the same shape `localization/my/reports.ts` eaStatement uses for the EA's Part B).
  *   · THE TOTALS (Y, K, Σ(Y−K), X, Z) are the ACCUMULATORS the run itself was computed against, read
  *     off the payslip's own stamp. Y accumulates `bases.pcb` — the figure PCB is CHARGED on — which
@@ -1920,7 +1920,7 @@ export function pcbClosingSections(x: PcbExplanation): PcbSlipSection[] {
 /**
  * ad7bc503 — THE TWO STATIC CAPTION MAPS THIS SURFACE RESOLVES, IN ONE PLACE.
  *
- * They were private to `app/payroll/pcb-detail/pcb-detail-view.tsx`, and that is why the DOWNLOADED
+ * They were private to `app/(app)/payroll/pcb-detail/pcb-detail-view.tsx`, and that is why the DOWNLOADED
  * document carried neither the payroll cycle nor the marital tax status the reporter's section 1 asks for:
  * the only copy of each map was inside a React component. They are mappings from a stored value to a
  * message key — the same kind of thing as every caption on the worksheet above — so they live here and both
@@ -1947,7 +1947,7 @@ export const CATEGORY_LABEL: Record<number, 'category1' | 'category2' | 'categor
 // ═════════════════ r372 — ONE ORDERED SECTION LIST, AND BOTH SURFACES ITERATE IT ═════════════════
 //
 // WHAT WAS WRONG, AND IT WAS NOT A MISSING SECTION. Every FIGURE on this surface already had one source:
-// `page.tsx` and `pcbDetailModel` in app/payroll/pcb-detail/shared.ts call `explainPcb`, `pcbWorksheet`,
+// `page.tsx` and `pcbDetailModel` in app/(app)/payroll/pcb-detail/shared.ts call `explainPcb`, `pcbWorksheet`,
 // `pcbSlipSections` and `pcbClosingSections` with identical arguments over one payslip's own stamp. The
 // LAYOUT did not. The screen's order was hand-placed JSX in `pcb-detail-view.tsx`; the document's was
 // imperative `sections.push` in shared.ts — TWO independent orderings of one document. They had already

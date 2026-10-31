@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import type {AttendanceHistoryRow} from '../packs/attendance/service';
 const {bulk, refresh}=vi.hoisted(()=>({bulk:vi.fn(),refresh:vi.fn()}));
-vi.mock('../app/attendance/application-history/actions',()=>({attendanceHistoryBulkAction:bulk}));
+vi.mock('../app/(app)/attendance/application-history/actions',()=>({attendanceHistoryBulkAction:bulk}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh})}));
 vi.mock('next/link',()=>({default:({children,...props}:React.ComponentProps<'a'>)=><a {...props}>{children}</a>}));
 import {AttendanceHistoryTable} from '../components/attendance-history-table';

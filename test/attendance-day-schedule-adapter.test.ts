@@ -5,7 +5,7 @@ vi.mock('../lib/scope',()=>({scopedAdmin:scope}));
 vi.mock('../core/read',()=>({listEmployees:list}));
 vi.mock('../packs/attendance/service',()=>({saveAttendanceDayEdit:save,amendExistingAttendanceApplication:vi.fn(),attendanceApplicationDetail:vi.fn(),requestAttendanceCorrection:vi.fn(),decideAttendanceCorrection:vi.fn(),ClockDataChangedError:class extends Error{},AttendancePayrollClosedError:class extends Error{}}));
 vi.mock('next/cache',()=>({revalidatePath:revalidate}));
-import {saveAttendanceDayChangesAction,saveAttendanceDayScheduleAction} from '../app/attendance/individual/[date]/actions';
+import {saveAttendanceDayChangesAction,saveAttendanceDayScheduleAction} from '../app/(app)/attendance/individual/[date]/actions';
 const input=(kind='schedule')=>{const fd=new FormData();for(const[key,value]of Object.entries({kind,employmentId:'target',date:'2026-10-30',baseline:'native',reason:'Fictional reviewed correction',shiftId:'shift',dayKind:'rest_day',confirmPayrollRecalculation:'on'}))fd.set(key,value);return fd;};
 beforeEach(()=>vi.clearAllMocks());
 it('delegates the mounted schedule payload to the same scoped native owner and revalidation',async()=>{const fd=input();expect(await saveAttendanceDayScheduleAction(fd)).toEqual({ok:true});expect(save).toHaveBeenCalledWith(expect.any(Object),{kind:'schedule',employmentId:'target',date:'2026-10-30',baseline:'native',reason:'Fictional reviewed correction',shiftId:'shift',dayKind:'rest_day',confirmPayrollRecalculation:true});expect(scope).toHaveBeenCalledTimes(1);expect(list).toHaveBeenCalledTimes(1);expect(revalidate).toHaveBeenCalledWith('/attendance/individual/[date]','page');expect(fd.get('kind')).toBe('schedule');});

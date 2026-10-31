@@ -4,23 +4,23 @@
  * attendance or leave rule.
  *
  *   records      attendanceForEmploymentRange + attendancePunchesForRange, flagOf / personalAttendanceStatus
- *                (app/attendance/my-roster/record-list.tsx and app/attendance/my-records/[date])
+ *                (app/(app)/attendance/my-roster/record-list.tsx and app/(app)/attendance/my-records/[date])
  *   roster       myRosterWindow (core/roster.ts — My Roster's own read); crossing midnight by shiftCrossesMidnight,
  *                the rule a shift is saved with
  *   day          the records read for one date + myAttendanceCorrections({date}); the correction form is offered by
  *                the day screen's own predicate (not future, nothing pending)
  *   history      myAttendanceCorrectionsPage (the request-status list's read, keyset-paged) + myAttendanceCorrectionCounts;
- *                status words and the withdraw predicate from app/attendance/request-ui.tsx / request-status canCancel;
+ *                status words and the withdraw predicate from app/(app)/attendance/request-ui.tsx / request-status canCancel;
  *                the routing is the workflow snapshot recorded with the request (attendanceWorkflowsForTx)
  *   correction   requestAttendanceCorrection, in the mobile command receipt's transaction (its existing `existingTx`)
  *   withdraw     cancelOwnAttendanceCorrection, in the receipt's transaction (D13 seam)
- *   OT plan      app/attendance/plan-ot/apply + myRequestOvertime (app/me/actions.ts): the minutes derived from the
+ *   OT plan      app/(app)/attendance/plan-ot/apply + myRequestOvertime (app/(app)/me/actions.ts): the minutes derived from the
  *                planned window by plannedOvertimeMinutes, then requestAttendanceCorrection with requestedOtMinutes,
  *                the window, the reason and the remark, in the receipt's transaction. The page refuses only a login
  *                with no employment, and the attendance layout only a tenant without the module; nothing else.
  *   Leave Credit replacementRequestAvailability + leaveCreditOfferForEmployment + pickReplacementLeaveType (My Leave),
  *                extendedHoursDayForEmployment + leaveCreditClaimReview (the Leave Credit table's per-date reads),
- *                submitLeaveCreditRequest in the receipt's transaction (D13 seam) — app/leave/credit/actions.ts
+ *                submitLeaveCreditRequest in the receipt's transaction (D13 seam) — app/(app)/leave/credit/actions.ts
  *
  * SCOPE. `employmentId` is the caller's OWN selected employment, already verified by the route
  * (lib/mobile-api/request.ts mobileEmployment). Every read narrows to it, so a row RLS would show a manager (a
@@ -153,7 +153,7 @@ export async function ownAttendanceDay(ctx: SessionContext, employmentId: string
   const row = rows[0];
   if (!row) return NOT_FOUND;
   const today = todayInKualaLumpur();
-  // app/attendance/my-records/[date]/page.tsx: the form is disabled while a request for the date waits, and for a future date.
+  // app/(app)/attendance/my-records/[date]/page.tsx: the form is disabled while a request for the date waits, and for a future date.
   const pending = requests.some((r) => r.status === 'pending');
   const future = date > today;
   return {
@@ -172,7 +172,7 @@ function applicationKindOf(r: RequestRow): AttendanceApplicationKind {
   return attendanceApplicationType(r) === 'self_overtime' ? 'overtime' : 'correction';
 }
 
-/** app/attendance/request-ui.tsx statusLabel: a cancelled row reads Withdrawn unless its provenance says HR cancelled it. */
+/** app/(app)/attendance/request-ui.tsx statusLabel: a cancelled row reads Withdrawn unless its provenance says HR cancelled it. */
 function displayOf(r: RequestRow): AttendanceApplicationSummaryV2['displayStatus'] {
   if (r.status === 'cancelled') return r.cancellationKind === 'cancelled' ? 'cancelled' : 'withdrawn';
   return r.status as 'pending' | 'approved' | 'rejected';
@@ -422,7 +422,7 @@ export function replacementLeaveRefusal(e: unknown): ReplacementLeaveRefusal {
 }
 
 /**
- * Submit a Leave Credit request (submitLeaveCreditRequest, as app/leave/credit/actions.ts does: the tenant's
+ * Submit a Leave Credit request (submitLeaveCreditRequest, as app/(app)/leave/credit/actions.ts does: the tenant's
  * Replacement Leave type, the roster-adjudicated day types, the claimed windows, the reason, the consent), inside
  * the receipt's transaction. GRANTS NOTHING: a manager's approval mints the credit.
  */

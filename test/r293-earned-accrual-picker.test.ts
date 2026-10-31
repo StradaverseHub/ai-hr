@@ -38,7 +38,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitl
 const here = __dirname;
 const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
 
-const PAGE = 'app/admin/leave-config/earned-accrual/page.tsx';
+const PAGE = 'app/(app)/admin/leave-config/earned-accrual/page.tsx';
 const DIALOG = 'components/leave/earned-accrual-dialog.tsx';
 const CARD = 'components/earned-accrual-card.tsx';
 const POPOVER = 'components/ui/multi-select-popover.tsx';
@@ -204,7 +204,7 @@ describe('§2 the screen derives the facts — it does not restate them', () => 
     expect(popover).toContain('const selectAll = () => onChange(new Set([...selected, ...selectableVisibleIds]));');
     // Presentation-only, as the component has always been: the tag arrives already translated.
     expect(popover).not.toMatch(/useTranslations|next-intl/);
-    const callSites = ['app/payroll/dashboard-filters.tsx', 'components/attendance/location-assignment.tsx',
+    const callSites = ['app/(app)/payroll/dashboard-filters.tsx', 'components/attendance/location-assignment.tsx',
       'components/leave/adjustment-form.tsx', 'components/leave/generate-form.tsx',
       'components/notice/notice-form.tsx', 'components/replacement-eligibility-picker.tsx'];
     for (const rel of callSites) {

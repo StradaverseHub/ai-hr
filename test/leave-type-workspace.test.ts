@@ -10,7 +10,7 @@
  *     time, switched client-side (no reload, no nested tabs).
  *
  * Deep-links keep working: the Leave Types tab's Edit links (#type-<id>, feedback 097de541) and the
- * stay-on-save redirect's anchor (app/admin/actions.ts) select the targeted type in the workspace.
+ * stay-on-save redirect's anchor (app/(app)/admin/actions.ts) select the targeted type in the workspace.
  *
  * 8cc268c4 (Add Leave Type pop-up): the Add Leave button no longer swaps the right pane to the create form
  * (the old ADD-sentinel selection) — it opens a Radix Dialog titled "Add Leave Type" over the current view,
@@ -36,13 +36,13 @@ const workspaceSrc = readFileSync(resolve(here, '../components/leave-type-worksp
  * taken the guard out rather than moved it.
  */
 const LEAVE_TYPE_SCREEN = [
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
 ];
 const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
-const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
+const pageSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-config/types/page.tsx'), 'utf8');
+const actionsSrc = readFileSync(resolve(here, '../app/(app)/admin/actions.ts'), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 

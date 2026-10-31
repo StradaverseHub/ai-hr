@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
-import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
-import { filterGridRows, pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
-import { historyGridDisplayGroup, historyGridDisplayRows, historyGridLabelKey } from '../app/payroll/transaction-view/history-grid-presentation';
+import { HistoryGrid } from '../app/(app)/payroll/transaction-view/history-grid';
+import { filterGridRows, pivotHistoryGrid } from '../app/(app)/payroll/transaction-view/history-pivot';
+import { historyGridDisplayGroup, historyGridDisplayRows, historyGridLabelKey } from '../app/(app)/payroll/transaction-view/history-grid-presentation';
 import { EpfElection } from '../components/epf-election';
 import { clientPackFor } from '../localization/registry.client';
 import { mapEpfUiMode } from '../lib/epf-mode-map';
@@ -37,7 +37,7 @@ function renderGrid(rows = [payroll()]) {
 }
 
 it('d670e4d6: Personnel uses the same precision-safe projection as other EPF field consumers', () => {
-  const page = readFileSync('app/admin/personnel/[employmentId]/page.tsx', 'utf8');
+  const page = readFileSync('app/(app)/admin/personnel/[employmentId]/page.tsx', 'utf8');
   expect(page).toContain('employeeRate={countryPack?.client.payroll.epfRateToPercent?.(statutory?.epfEmployeeRate) ?? null}');
   expect(page).toContain('employerRate={countryPack?.client.payroll.epfRateToPercent?.(statutory?.epfEmployerRate) ?? null}');
 });

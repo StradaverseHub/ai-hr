@@ -5,7 +5,7 @@ Each row is a class in `shell.css` and the markup the design boards use (see `re
 | Primitive | Class | Build as | Retune from `components/ui` |
 | --- | --- | --- | --- |
 | Rail | `.rail`, `.it`, `.kids`, `.gl` | `components/sidebar.tsx` rewrite; groups and hrefs unchanged | — |
-| Top line | `.top` | header in `app/layout.tsx`; company switcher as mono text | `company-switcher.tsx` |
+| Top line | `.top` | header in `app/(app)/layout.tsx`; company switcher as mono text | `company-switcher.tsx` |
 | Intent bar | `.intent` | `IntentBar` wrapping `command-bar.tsx`; always visible on hubs | `command-bar.tsx` |
 | Header | kicker + `h1` + actions | `PageHeader({ kicker, title, actions, cells })` | page header pattern |
 | Stat cell | `.cells`, `.cell` | `Cells([{ label, value, unit, sub, signal }])` | KPI tiles |

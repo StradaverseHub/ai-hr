@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest';
 const ROOT = join(__dirname, '..');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const messages = (loc: string) => JSON.parse(readFileSync(join(ROOT, `messages/${loc}.json`), 'utf8'));
-const DAY_PAGE = readFileSync(join(ROOT, 'app/attendance/individual/[date]/page.tsx'), 'utf8');
+const DAY_PAGE = readFileSync(join(ROOT, 'app/(app)/attendance/individual/[date]/page.tsx'), 'utf8');
 
 /** The previous-value clause, per locale, exactly as the retired sentence spelled it. A revival in ANY
  *  locale is the failure the deep-merge hides, so the phrase is checked in the language it was written in

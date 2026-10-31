@@ -6,7 +6,7 @@ import en from '../messages/en.json';
 import {HomePersonPrivacySection} from '../components/employee-home/person-privacy-section';
 const state=vi.hoisted(()=>({read:vi.fn(),save:vi.fn()}));
 vi.mock('../core/employee-home-person-privacy',()=>({readOwnHomePersonPrivacy:state.read}));
-vi.mock('../app/me/home/privacy-actions',()=>({saveHomePersonPrivacyAction:state.save}));
+vi.mock('../app/(app)/me/home/privacy-actions',()=>({saveHomePersonPrivacyAction:state.save}));
 vi.mock('next/navigation',()=>({unstable_rethrow:()=>{}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:keyof typeof en.employeeHome.personPrivacy)=>en.employeeHome.personPrivacy[key])}));
 const session={tenantId:'fictional-tenant',userId:'fictional-login',personId:'fictional-person',roles:['employee']};

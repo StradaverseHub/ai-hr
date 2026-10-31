@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import {prepareAssistantImportAction} from '@/app/assistant/file-import-actions';
+import {prepareAssistantImportAction} from '@/app/(app)/assistant/file-import-actions';
 import {IMPORT_DESTINATIONS,importDraftCsv,type AssistantImportTarget,type ImportDraft} from '@/lib/assistant-import';
 import {readAssistantImportFile,type ImportFileSource} from '@/lib/assistant-import-file';
 import {useAssistantImportHandoff} from './import-handoff';

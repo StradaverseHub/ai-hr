@@ -190,10 +190,10 @@ describe('e7eb5d83 stage 1 — draft claims and limit reservation', () => {
     }
     // The badge map: a status with no entry renders through the neutral fallback and is invisible as a
     // state. Read from source rather than rendered, because the page is an async server component.
-    const page = readFileSync(`${root}app/claims/page.tsx`, 'utf8');
+    const page = readFileSync(`${root}app/(app)/claims/page.tsx`, 'utf8');
     const block = page.slice(page.indexOf('const STATUS_STYLE'), page.indexOf('const rm ='));
     const missing = CLAIM_STATUSES.filter((s) => !new RegExp(`\\b${s}:\\s*'`).test(block));
-    expect(missing, `app/claims/page.tsx STATUS_STYLE has no entry for: ${missing.join(', ')}`).toEqual([]);
+    expect(missing, `app/(app)/claims/page.tsx STATUS_STYLE has no entry for: ${missing.join(', ')}`).toEqual([]);
   });
 
   it('the 0392 CHECK refuses a draft that carries payout provenance', async () => {

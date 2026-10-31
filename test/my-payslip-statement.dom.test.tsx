@@ -1,6 +1,6 @@
 import {render,screen,within} from '@testing-library/react';
 import {expect,it} from 'vitest';
-import {PersonalPayslipStatement} from '../app/me/payslip/statement';
+import {PersonalPayslipStatement} from '../app/(app)/me/payslip/statement';
 import {data,labels} from './fixtures/payslip-pdf-fixture';
 import {payslipPresentationRows,type PayslipPdfData} from '../lib/payslip-pdf';
 import {formatMoney,formatRate} from '../lib/money';

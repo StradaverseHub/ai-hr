@@ -1,6 +1,6 @@
 // 6522d26a — shared builder for the employment-review outcome letter: reads the completed review
 // (RLS-gated), assembles the i18n labels and renders the A4 PDF. Extracted from the letter route so the
-// on-demand download (app/admin/personnel/[employmentId]/review/[reviewId]/letter/route.ts) and the
+// on-demand download (app/(app)/admin/personnel/[employmentId]/review/[reviewId]/letter/route.ts) and the
 // "save letter to record" action (uploadReviewDocument kind system_letter) emit byte-identical letters.
 // Read-only — persistence (and its DomainEvent) belongs to the caller.
 import { getTranslations } from 'next-intl/server';

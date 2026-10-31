@@ -70,12 +70,12 @@ type CreateArgs = {
 };
 const createDraftAction = vi.fn(async (_p: CreateArgs) => ({ id: 'draft-1', employeeCode: ISSUED }));
 const checkEmployeeCodeAction = vi.fn(async (code: string) => ({ code, taken: false }));
-vi.mock('../app/admin/personnel/new/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/new/actions', () => ({
   createDraftAction: (...a: unknown[]) => createDraftAction(...(a as [CreateArgs])),
   checkEmployeeCodeAction: (...a: unknown[]) => checkEmployeeCodeAction(...(a as [string])),
 }));
 
-const { CreateEmployeeDialog } = await import('../app/admin/personnel/create-employee-dialog');
+const { CreateEmployeeDialog } = await import('../app/(app)/admin/personnel/create-employee-dialog');
 
 const rule = (over: Partial<EmployeeIdRule> = {}): EmployeeIdRule => ({
   hasConfig: true,
@@ -184,7 +184,7 @@ describe('the Employee ID is a read-only field, not a sentence', () => {
     //   "S000001E is the ID that will be issued and reserved the moment you press Create."
     // `import.meta.url` is an http:// URL under the jsdom project, so paths are resolved from the repo
     // root (vitest's cwd) rather than from this file — the same reason test/dom-setup.ts exists.
-    const src = readFileSync(resolve(process.cwd(), 'app/admin/personnel/new/create-form.tsx'), 'utf8');
+    const src = readFileSync(resolve(process.cwd(), 'app/(app)/admin/personnel/new/create-form.tsx'), 'utf8');
     // COMMENTS STRIPPED FIRST, for the reason test/function-access.test.ts strips them: the comment that
     // explains the retirement QUOTES the call it retired, and the first version of this assertion was
     // satisfied — in the failing direction — by that prose. A guard that prose can answer is not a guard.

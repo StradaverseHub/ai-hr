@@ -74,12 +74,12 @@ const LOCALES = Object.keys(CATALOGUES) as (keyof typeof CATALOGUES)[];
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const WIZARD = 'app/admin/personnel/new/wizard.tsx';
-const PERSONNEL_PAGE = 'app/admin/personnel/[employmentId]/page.tsx';
+const WIZARD = 'app/(app)/admin/personnel/new/wizard.tsx';
+const PERSONNEL_PAGE = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 const SALARY_HISTORY = 'components/salary-history-table.tsx';
-const PERSONNEL_ACTIONS = 'app/admin/personnel/[employmentId]/actions.ts';
+const PERSONNEL_ACTIONS = 'app/(app)/admin/personnel/[employmentId]/actions.ts';
 const PAY_STRUCTURE = 'components/pay-structure-fields.tsx';
-const MOVEMENT_FORM = 'app/admin/personnel/[employmentId]/movement-new-event.tsx';
+const MOVEMENT_FORM = 'app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx';
 const BASIC_SALARY_FIELD = 'payroll.basic_salary_and_salary_history.basicsalary';
 const RATE_FIELD = 'payroll.basic_salary_and_salary_history.rateamount';
 const REMARKS_FIELD = 'payroll.basic_salary_and_salary_history.remarks';
@@ -355,8 +355,8 @@ describe('§2 the forms, read from source', () => {
     // 3. Every OTHER min="0.01" in the tree is on something that is not a basic salary. Counted rather
     //    than listed, so a new one has to be looked at.
     const all = [
-      'app/payroll/transactions/fixed/add-fixed-dialog.tsx',
-      'app/payroll/transactions/fixed/[id]/page.tsx',
+      'app/(app)/payroll/transactions/fixed/add-fixed-dialog.tsx',
+      'app/(app)/payroll/transactions/fixed/[id]/page.tsx',
       'components/claim-form.tsx',
       'components/loan-new-form.tsx',
     ];
@@ -366,7 +366,7 @@ describe('§2 the forms, read from source', () => {
   it('the prose that asserted the OLD rule is retired, in both places that carried it', () => {
     // CLAUDE.md §8 — prose outlives the kernel. Two file headers stated that the initial basic salary is
     // REQUIRED; a later round reading either would reinstate the refusal the reporter rejected.
-    expect(read('app/admin/personnel/actions.ts')).not.toContain(
+    expect(read('app/(app)/admin/personnel/actions.ts')).not.toContain(
       'the initial basic salary is still required',
     );
     expect(read('lib/employee-draft-schema.ts')).not.toContain(

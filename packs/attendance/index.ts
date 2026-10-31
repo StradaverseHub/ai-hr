@@ -24,22 +24,22 @@
  *   `core/clocking-location.ts` — clocking sites ARE pack-owned: they exist solely for the clock
  *   portal's geofence/device gate and per-employee site assignment, not for the org spine
  *   (`core/location.ts`, the office/worksite spine, stays kernel).
- * - Routes: `app/attendance/**` (records/daily/individual/import/ot-report + the R63–R65 clock
- *   portal), `app/admin/attendance/`, `app/admin/attendance-policy/**`,
- *   `app/admin/attendance-allowance/`.
+ * - Routes: `app/(app)/attendance/**` (records/daily/individual/import/ot-report + the R63–R65 clock
+ *   portal), `app/(app)/admin/attendance/`, `app/(app)/admin/attendance-policy/**`,
+ *   `app/(app)/admin/attendance-allowance/`.
  *
- *   639bf4a5 (r336) — `app/admin/locations/` (clocking-site admin) IS NO LONGER ON THIS LIST, and the
+ *   639bf4a5 (r336) — `app/(app)/admin/locations/` (clocking-site admin) IS NO LONGER ON THIS LIST, and the
  *   matching entry left test/attendance-pack-drift.test.ts's ALWAYS_ALLOWED in the same commit. The
- *   register moved to Organization as "Physical Work Location" (app/admin/work-locations/), taking its
+ *   register moved to Organization as "Physical Work Location" (app/(app)/admin/work-locations/), taking its
  *   clocking points with it at the reporter's approval. It reads this pack the way every other outside
  *   caller does — through `packs/attendance/service` — and the ratchet SHRANK by one entry rather than
- *   gaining one. The old addresses stay as guarded redirect stubs under app/admin/locations/ and import
+ *   gaining one. The old addresses stay as guarded redirect stubs under app/(app)/admin/locations/ and import
  *   nothing from this pack.
  *
  *   ⚠️ 639bf4a5 rev 2 (r338) — THE MENU ROW CAME BACK TO THIS PACK AND THE SURFACE CLAIM DID NOT, which
  *   is not a contradiction: the ratchet is about IMPORTS, not menus. The reporter asked for the screen
  *   back under Attendance as "Locations", so ATTENDANCE_NAV carries the row again (see the note beside
- *   it) — but app/admin/work-locations/** still consumes this pack ONLY through the published facade, so
+ *   it) — but app/(app)/admin/work-locations/** still consumes this pack ONLY through the published facade, so
  *   it needs no claim here and none is added. ADR-0080 allowlists only ever shrink; re-adding the
  *   deleted prefix at the new address would re-open the same hole and fail the guard by design.
  * - The boundary is enforced by test/attendance-pack-drift.test.ts (D11 criterion 4, shrink-only
@@ -52,12 +52,12 @@
  * each other — cross-module effects ride kernel-owned interfaces). They are allowlisted in the
  * ratchet until that contract exists; the list only shrinks.
  *
- * - `app/payroll/actions.ts` — `transferAllowancesToBatch`: attendance-derived allowances feed
+ * - `app/(app)/payroll/actions.ts` — `transferAllowancesToBatch`: attendance-derived allowances feed
  *   payroll input. Its contract HOME now exists: rung 3 established `PayrollInputContributor`
  *   (packs/contracts.ts) with claims as the first implementor (packs/claims/payroll.ts). This
  *   attendance path deliberately did NOT migrate at rung 3 (one seam per rung) — it stays
  *   allowlisted until a later rung registers an attendance contributor, no later than Payroll (7).
- * - `app/approvals/{page,actions}.ts` — the approvals workspace lists and
+ * - `app/(app)/approvals/{page,actions}.ts` — the approvals workspace lists and
  *   decides attendance corrections. Cross-module approvals substrate is KERNEL (ADR-0080 open
  *   decision 6); needs an approvals contract, not the pack facade.
  *   The shared assigned-work inbox now consumes metadata through the public service facade.
@@ -138,7 +138,7 @@ import { registerPack, type ModulePack, type NavNodeGroupDescriptor } from '../r
  * f3e6c36e (r287) — the `attendanceRecords` row that this paragraph and the one above used to name is
  * gone from here. It pointed at `/attendance`, the screen both audiences shared; it is now `myRecords`
  * pointing at `/attendance/my-records`, and `/attendance` belongs to the Administration row alone. The
- * reasoning is on the row itself. `nav.attendanceRecords` is NOT retired — app/reports/page.tsx still
+ * reasoning is on the row itself. `nav.attendanceRecords` is NOT retired — app/(app)/reports/page.tsx still
  * labels its `/attendance` link with it, and that link is the admin screen.
  *
  * 2aef3cd8 (r362) — that row reads "Attendance Overview" now, and the screen behind it is BLANK below its
@@ -367,7 +367,7 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // reporter that the Work Schedule row opens a page headed "Shift settings", and an earlier draft of
     // this comment repeated it. It is FALSE, checked in the rendered DOM: /admin/attendance-policy/schedule
     // renders PageHeader title={tr('scheduleSectionTitle')} = "Company work schedule & overtime rates"
-    // (app/admin/attendance-policy/schedule/page.tsx:120-122). "Shift settings" is admin.attendancePolicy.
+    // (app/(app)/admin/attendance-policy/schedule/page.tsx:120-122). "Shift settings" is admin.attendancePolicy.
     // pageTitle, the H1 of /admin/attendance — the row labelled "Shift" two rows up. The namespace was
     // grepped without checking which page rendered it (AGENTS 7). There is no nav/title disagreement here
     // to repair; the cutover is a consolidation of CONTENT.
@@ -378,7 +378,7 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
     // 0bade264 (r209) — SCHEDULE ASSIGNMENT: every employee's current shift arrangement in ONE list.
     // View / Edit has moved twice since: r209 linked into the personnel card, r263 (a485afa1) opened a
     // panel on the list, and r265 (a485afa1 rev 2) opens the employee's OWN page under this route
-    // (app/admin/attendance/schedule-assignment/[employmentId]). It is still one record with the
+    // (app/(app)/admin/attendance/schedule-assignment/[employmentId]). It is still one record with the
     // personnel card — the page mounts the card's own control and calls the card's own writer — which
     // is how both surfaces act on one record without a duplicate editor drifting. No nav row for the
     // sub-page: it is reached from the list, exactly as a shift's edit page is reached from the library.
@@ -423,9 +423,9 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * keep it un-gated, and the reporter did not answer. Their words, their structure. Un-gating it later
      * is one hand-written MODULE_OF_HREF exemption, nothing more.
      *
-     * ⚠️ THE PACK'S SURFACE CLAIM DOES NOT COME BACK WITH IT. `app/admin/locations/` left this file's
+     * ⚠️ THE PACK'S SURFACE CLAIM DOES NOT COME BACK WITH IT. `app/(app)/admin/locations/` left this file's
      * surface list and test/attendance-pack-drift.test.ts's allowlist in r336, and both stay as they are:
-     * the ratchet is about IMPORTS, not menus. app/admin/work-locations/** reads the clocking register
+     * the ratchet is about IMPORTS, not menus. app/(app)/admin/work-locations/** reads the clocking register
      * through `packs/attendance/service` like any other outside consumer, so it needs no claim — and
      * ADR-0080 allowlists only ever shrink.
      *
@@ -450,7 +450,7 @@ const ATTENDANCE_NAV: NavNodeGroupDescriptor = {
      * screen left for a second row to open — a row pointing at the same address this one already owns
      * would be the duplicate-menu complaint the reporter raised about the FIRST screen, reintroduced for
      * the second. The OLD address (`/admin/work-locations`, unmoved since r336) survives as a guarded
-     * redirect stub (../../app/admin/work-locations/page.tsx) that forwards here, resolving `?focus=` to
+     * redirect stub (../../app/(app)/admin/work-locations/page.tsx) that forwards here, resolving `?focus=` to
      * its company — so a bookmark still lands on a real screen; `ownedSubpaths` is what keeps the ROW lit
      * while an operator is standing on a page at that now-redirected address (test/attendance-pack-drift
      * is unaffected: the ratchet is about imports, not menus or highlighting).
@@ -503,7 +503,7 @@ const ATTENDANCE_MANAGE_LINKS = [
   /**
    * 1661123d (r317) — IMPORT'S MANAGE ROW IS GONE, and Roster's stays. They are not a pair any more.
    *
-   * The row was `managerUp` while app/attendance/import/page.tsx calls `requireAdmin()`, which redirects
+   * The row was `managerUp` while app/(app)/attendance/import/page.tsx calls `requireAdmin()`, which redirects
    * a non-admin to '/'. So it advertised a screen every manager was bounced out of — found while r314
    * was moving both rows, pre-existing, and put to the reporter rather than fixed on our own judgement:
    * the opposite fix (let managers import) widens who can write other people's attendance, because
@@ -513,7 +513,7 @@ const ATTENDANCE_MANAGE_LINKS = [
    * NOBODY LOST A FUNCTION. No manager could import attendance before; the menu simply stopped saying
    * they could. Import remains exactly where r314 put it for administrators, in the Attendance node.
    *
-   * ROSTER IS DIFFERENT AND UNTOUCHED: app/roster/page.tsx is `scopedSession`, so it genuinely works for
+   * ROSTER IS DIFFERENT AND UNTOUCHED: app/(app)/roster/page.tsx is `scopedSession`, so it genuinely works for
    * a manager. That asymmetry is why the two rows had to be checked separately rather than as a pair.
    */
 ];

@@ -58,10 +58,10 @@ const root = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(root, rel), 'utf8');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
-const trackerPage = read('app/leave/tracker/page.tsx');
-const leavePage = read('app/leave/page.tsx');
+const trackerPage = read('app/(app)/leave/tracker/page.tsx');
+const leavePage = read('app/(app)/leave/page.tsx');
 const nav = read('components/leave/leave-inquiry-nav.tsx');
-const actions = read('app/leave/actions.ts');
+const actions = read('app/(app)/leave/actions.ts');
 
 /** The admin surface is everything before the calendar banner; the calendar is everything after it. */
 const CALENDAR_BANNER = '  // ── The Leave Calendar';
@@ -112,7 +112,7 @@ describe('388e53c2 · every inbound pointer at /leave/tracker still resolves', (
     // dashboard_card_config carries live per-tenant rows, so a tenant may hold its own href here. The
     // route SURVIVING is what protects them — this move deliberately did not rename it.
     expect(CARD_META.teamAwayToday.href).toBe('/leave/tracker');
-    expect(read('app/page.tsx')).toContain('href="/leave/tracker?calendar=1"');
+    expect(read('app/(app)/page.tsx')).toContain('href="/leave/tracker?calendar=1"');
     expect(read('lib/dashboard-layout.ts')).toContain("href: '/leave/tracker'");
   });
 
@@ -145,7 +145,7 @@ describe('r378 · inquiry has exactly two destinations under Leave Config', () =
     expect(nav).toContain("{ key: 'records', href: hrefFor('/leave/employee-records', 'records'), label: t('employeeLeaveRecord') }");
     expect(nav).toContain("p.set('emp', employmentId)");
     for(const key of ['pickerQ','pickerCompany','pickerDepartment','pickerStatus'])expect(nav).toContain(key);
-    for(const rel of ['employee-balances','employee-records'])expect(read(`app/leave/${rel}/page.tsx`)).toContain('<LeaveInquiryNav');
+    for(const rel of ['employee-balances','employee-records'])expect(read(`app/(app)/leave/${rel}/page.tsx`)).toContain('<LeaveInquiryNav');
     expect(trackerPage).not.toContain('<LeaveInquiryNav');
   });
 });
@@ -189,10 +189,10 @@ describe('388e53c2 · My Leave means your own leave again', () => {
     // above the early return — so the list follows the read rather than the read being kept for the list.
     // r302 (6c9802c9): the balance read became the per-year dashboard read (core/my-leave.ts calls
     // leaveBalances inside it), so the list follows the read again — the property is unchanged.
-    // UPDATED BY r397: every self-service read is made by ONE loader call (app/leave/my-leave-data.ts), so the
+    // UPDATED BY r397: every self-service read is made by ONE loader call (app/(app)/leave/my-leave-data.ts), so the
     // property is that the CALL comes after the early return — and that the loader holds the reads.
     expect(leavePage.indexOf('await loadMyLeave('), 'the loader call').toBeGreaterThan(guardAt);
-    const loader = read('app/leave/my-leave-data.ts');
+    const loader = read('app/(app)/leave/my-leave-data.ts');
     for (const r of ['myLeaveDashboard(session', 'loadOwnUpcomingLeave({ session', 'listEmployees(session']) {
       expect(loader.indexOf(r), r).toBeGreaterThan(-1);
     }
@@ -221,7 +221,7 @@ describe('388e53c2 · My Leave means your own leave again', () => {
       // r302 (6c9802c9) — the employee's balances are the dashboard now (the My balances table is gone by the
       // approved plan); what this case defends — the self-service half is still here — is unchanged.
       '<MyLeaveDashboard',
-      // UPDATED BY r397: the own-leave reads are made by the page's loader (app/leave/my-leave-data.ts).
+      // UPDATED BY r397: the own-leave reads are made by the page's loader (app/(app)/leave/my-leave-data.ts).
       'await loadMyLeave({ session',
       'const ess = !admin;',
     ]) {

@@ -43,7 +43,7 @@ vi.mock('@/localization/my/cp39-file', () => ({
 const recordFileReport = vi.fn(async () => undefined);
 vi.mock('@/core/reporting', () => ({ recordFileReport }));
 
-const { GET } = await import('../app/payroll/reports/cp39-file/route');
+const { GET } = await import('../app/(app)/payroll/reports/cp39-file/route');
 
 const req = (companyId: string, extra = '') =>
   new Request(`http://localhost/payroll/reports/cp39-file?companyId=${companyId}&periodKey=2026-01${extra}`);

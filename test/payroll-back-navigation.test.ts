@@ -7,9 +7,9 @@
  * Statutory Configuration pages, every one of which already passes `back={back}` from `settingsBack()`.
  * The real figure before this change was 24 of 35, and the screens genuinely without any Back were:
  *
- *   app/payroll/process/result           · app/payroll/individual-payslip
- *   app/payroll/transaction-view         · app/payroll/statutory-adjustment
- *   app/payroll/back-pay                 · app/payroll/statutory-forms
+ *   app/(app)/payroll/process/result           · app/(app)/payroll/individual-payslip
+ *   app/(app)/payroll/transaction-view         · app/(app)/payroll/statutory-adjustment
+ *   app/(app)/payroll/back-pay                 · app/(app)/payroll/statutory-forms
  *
  * plus `[batchId]/anomalies`, which HAD one — hand-rolled as a small <Link> above the header instead of
  * in PageHeader's own slot — and has been moved into the header rather than added.
@@ -18,9 +18,9 @@
  * the CONTRACT BETWEEN two files (the list writes `?from=…`, the destination reads it), and a unit test of
  * either half passes whatever the other half does. So both halves are asserted here, against the source.
  *
- *   A. Every page under app/payroll that renders PageHeader passes `back`, unless it is on the explicit
+ *   A. Every page under app/(app)/payroll that renders PageHeader passes `back`, unless it is on the explicit
  *      allowlist of MODULE LANDING PAGES — the four screens that are Payroll flyout entries with no
- *      parent to go back to. The next screen added under app/payroll cannot quietly skip Back.
+ *      parent to go back to. The next screen added under app/(app)/payroll cannot quietly skip Back.
  *   B. The Payroll Process list hands its own filter query to every row link as `?from=…`.
  *   C. The screens that receive it resolve it through `payrollListReturnTo`, never raw.
  *   D. `payrollListReturnTo` itself: it keeps a real filter query and refuses every off-site shape.
@@ -53,16 +53,16 @@ const PAYROLL = path.join(ROOT, 'app', 'payroll');
  * working a payroll run, and the reporter's complaint was about exactly that journey.
  */
 const NO_BACK_ALLOWLIST = new Set([
-  'app/payroll/page.tsx',
-  'app/payroll/reports/page.tsx',
-  'app/payroll/setup/page.tsx',
-  'app/payroll/transactions/page.tsx',
+  'app/(app)/payroll/page.tsx',
+  'app/(app)/payroll/reports/page.tsx',
+  'app/(app)/payroll/setup/page.tsx',
+  'app/(app)/payroll/transactions/page.tsx',
   // 20f6c6a8 (r336) — Payment Submission is the fifth, and it is allowlisted for the same reason as
   // `/payroll/reports`, whose shape it shares exactly: pick a month, see the files this employer can file
   // for it, download them. An operator does not arrive here from a payroll run the way they arrive at
   // back-pay or statutory-adjustment — they come from the sidebar to FILE, which is why a Back link here
   // would point at Payroll Process, a screen that is not its parent.
-  'app/payroll/payment-submission/page.tsx',
+  'app/(app)/payroll/payment-submission/page.tsx',
 ]);
 
 function pagesRenderingPageHeader(): string[] {
@@ -127,16 +127,16 @@ describe('Payroll back navigation (source shape)', () => {
 
   it('C. the screens that receive `?from=` resolve it through payrollListReturnTo, never raw', () => {
     for (const rel of [
-      'app/payroll/[batchId]/page.tsx',
-      'app/payroll/[batchId]/reprocess/page.tsx',
-      'app/payroll/[batchId]/remove/page.tsx',
-      'app/payroll/[batchId]/reset/page.tsx',
+      'app/(app)/payroll/[batchId]/page.tsx',
+      'app/(app)/payroll/[batchId]/reprocess/page.tsx',
+      'app/(app)/payroll/[batchId]/remove/page.tsx',
+      'app/(app)/payroll/[batchId]/reset/page.tsx',
       // d75b0c11 — Anomalies sends Back to the RUN, and hands the run its own `?from=` back so the
       // chain is unbroken a screen deeper than 9066bd6c reached.
-      'app/payroll/[batchId]/anomalies/page.tsx',
+      'app/(app)/payroll/[batchId]/anomalies/page.tsx',
       // …and the wizard + its terminal Result screen, both through the shared helper below.
-      'app/payroll/back.ts',
-      'app/payroll/process/actions.ts',
+      'app/(app)/payroll/back.ts',
+      'app/(app)/payroll/process/actions.ts',
     ]) {
       const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
       expect(src, `${rel} must whitelist ?from= by shape`).toContain('payrollListReturnTo');
@@ -155,18 +155,18 @@ describe('Payroll back navigation (source shape)', () => {
      * because a redirect is the only way onto it and neither run action carried the value.
      *
      * The helper is the subject rather than the href because it is also where the SINGLE next-intl
-     * namespace lives (app/payroll/back.ts): a page that inlined `getTranslations('payroll.list')`
+     * namespace lives (app/(app)/payroll/back.ts): a page that inlined `getTranslations('payroll.list')`
      * alongside its own namespace would silently switch off test/i18n-coverage.test.ts Check C for
      * itself, which only statically resolves single-namespace files.
      */
     for (const rel of [
-      'app/payroll/back-pay/page.tsx',
-      'app/payroll/individual-payslip/page.tsx',
-      'app/payroll/statutory-adjustment/page.tsx',
-      'app/payroll/statutory-forms/page.tsx',
-      'app/payroll/transaction-view/page.tsx',
-      'app/payroll/process/page.tsx',
-      'app/payroll/process/result/page.tsx',
+      'app/(app)/payroll/back-pay/page.tsx',
+      'app/(app)/payroll/individual-payslip/page.tsx',
+      'app/(app)/payroll/statutory-adjustment/page.tsx',
+      'app/(app)/payroll/statutory-forms/page.tsx',
+      'app/(app)/payroll/transaction-view/page.tsx',
+      'app/(app)/payroll/process/page.tsx',
+      'app/(app)/payroll/process/result/page.tsx',
     ]) {
       const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
       expect(src, `${rel} must build Back through payrollProcessBack`).toContain('payrollProcessBack');
@@ -195,7 +195,7 @@ describe('Payroll back navigation (source shape)', () => {
       .replace(/(^|[^:])\/\/.*$/gm, '$1');
     const bodyOf = (fn: string) => {
       const start = actions.indexOf(`export async function ${fn}(`);
-      expect(start, `${fn} is gone from app/payroll/actions.ts`).toBeGreaterThan(-1);
+      expect(start, `${fn} is gone from app/(app)/payroll/actions.ts`).toBeGreaterThan(-1);
       const next = actions.indexOf('export async function ', start + 10);
       return actions.slice(start, next === -1 ? undefined : next);
     };

@@ -38,7 +38,7 @@ vi.mock('next/link', () => ({
     </a>
   ),
 }));
-vi.mock('../app/admin/settings/movement/actions', () => ({
+vi.mock('../app/(app)/admin/settings/movement/actions', () => ({
   saveMovementEventTypeAction: save,
   setMovementEventTypeActiveAction: setTypeActive,
   deleteMovementEventTypeAction: vi.fn(),
@@ -47,8 +47,8 @@ vi.mock('../app/admin/settings/movement/actions', () => ({
   deleteTerminationReasonAction: vi.fn(),
 }));
 
-import { DeleteExplanation } from '../app/admin/settings/movement/delete-explanation';
-import { EventTypeForm, type EventTypeFormLabels } from '../app/admin/settings/movement/event-type-form';
+import { DeleteExplanation } from '../app/(app)/admin/settings/movement/delete-explanation';
+import { EventTypeForm, type EventTypeFormLabels } from '../app/(app)/admin/settings/movement/event-type-form';
 
 const t = messages.movementSettings;
 
@@ -138,7 +138,7 @@ describe('1d58019a — Delete on a row that cannot be deleted explains why and o
   });
 });
 
-/** Built the way app/admin/settings/movement/event-type-config-page.tsx builds them. */
+/** Built the way app/(app)/admin/settings/movement/event-type-config-page.tsx builds them. */
 const LABELS: EventTypeFormLabels = {
   sections: {
     general: t.config.sections.general,

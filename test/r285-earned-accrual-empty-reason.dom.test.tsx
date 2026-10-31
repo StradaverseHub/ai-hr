@@ -39,7 +39,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Both action modules are server modules; in jsdom they would drag the database in. The COMMIT is stubbed
 // to a no-op (nothing here runs an accrual); the PREVIEW returns whatever the test under way set up.
-vi.mock('@/app/admin/actions', () => ({ runEarnedAccrualAction: async () => ({ granted: 0, forfeits: 0 }) }));
+vi.mock('@/app/(app)/admin/actions', () => ({ runEarnedAccrualAction: async () => ({ granted: 0, forfeits: 0 }) }));
 let preview: {
   rows: EarnedAccrualGroup[];
   asOf: string;
@@ -47,7 +47,7 @@ let preview: {
   archivedHint: ArchivedLeaveTypeHint[];
   earnedToDateTotal: number;
 };
-vi.mock('@/app/admin/leave-config/earned-accrual/actions', () => ({
+vi.mock('@/app/(app)/admin/leave-config/earned-accrual/actions', () => ({
   previewEarnedAccrualWithReasonAction: async () => preview,
 }));
 

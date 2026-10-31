@@ -35,7 +35,7 @@ import { ClaimLimitsGrid, type ClaimLimitGridRow } from '../components/claim-lim
 // The grid imports the server action directly (that is the point — a closure prop across the RSC boundary
 // 500s). In jsdom that module would drag the database in, so it is stubbed to a no-op: nothing here
 // submits.
-vi.mock('@/app/admin/claims/limits/actions', () => ({
+vi.mock('@/app/(app)/admin/claims/limits/actions', () => ({
   setGradeClaimLimitsAction: async () => {},
 }));
 

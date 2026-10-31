@@ -3,9 +3,9 @@ import { page } from 'vitest/browser';
 import { cleanup, render } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-import { LoginShell } from '../app/login/login-shell';
+import { LoginShell } from '../app/(auth)/login/login-shell';
 import '../app/globals.css';
-import '../app/login/login.css';
+import '../app/(auth)/login/login.css';
 
 afterEach(async () => { cleanup(); document.body.style.margin = ''; await page.viewport(1280, 720); });
 const visible = (el: Element | null) => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().width > 0;

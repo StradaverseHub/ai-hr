@@ -29,15 +29,15 @@ import {
   ReprocessForm,
   type ReprocessAddCandidate,
   type ReprocessCandidate,
-} from '../app/payroll/[batchId]/reprocess/reprocess-form';
+} from '../app/(app)/payroll/[batchId]/reprocess/reprocess-form';
 
 // The server action, stubbed. It is a 'use server' module that reaches Postgres on import; what this file
 // is about is the screen in front of it, and the action's own behaviour is proved against a real database
 // in test/payroll-reprocess-route-e440991b.test.ts.
-vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
+vi.mock('../app/(app)/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
 // Imported so the Enter cases below can assert the recalculation was never enqueued — the same mock the
 // form is rendered against, not a second one.
-import { reprocessSelectedAction } from '../app/payroll/actions';
+import { reprocessSelectedAction } from '../app/(app)/payroll/actions';
 
 const wrap = (ui: ReactNode) =>
   render(

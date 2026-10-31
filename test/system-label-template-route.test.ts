@@ -3,7 +3,7 @@ const mocks=vi.hoisted(()=>({scope:vi.fn(),download:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:mocks.scope}));
 vi.mock('../core/system-label-import',()=>({downloadSystemLabelTemplate:mocks.download}));
 vi.mock('../lib/hr-date',()=>({todayInKualaLumpur:()=> '2026-10-19'}));
-import { GET } from '../app/admin/settings/system-labels/template/route';
+import { GET } from '../app/(app)/admin/settings/system-labels/template/route';
 beforeEach(()=>{vi.clearAllMocks();mocks.scope.mockResolvedValue({s:{tenantId:'tenant'},scopeIds:['selected-company']});mocks.download.mockResolvedValue(Buffer.from('template bytes'));});
 describe('scoped Labels template route',()=>{
   it('passes the global company selection and uses the exact Kuala Lumpur download name',async()=>{

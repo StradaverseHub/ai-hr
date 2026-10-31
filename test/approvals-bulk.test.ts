@@ -29,7 +29,7 @@ import {
   type BulkRow,
 } from '../lib/approvals-bulk';
 
-// A faithful copy of the server action's dispatcher (app/approvals/actions.ts dispatchBulkItem). The action
+// A faithful copy of the server action's dispatcher (app/(app)/approvals/actions.ts dispatchBulkItem). The action
 // is a 'use server' module wired to cookies/redirect/next-intl, so we exercise the same core services +
 // runBulkDecide loop here with an explicit manager session.
 // b833a077 (r362) — `case 'travel'` stood in this copy too and is gone with My Travel. The copy is

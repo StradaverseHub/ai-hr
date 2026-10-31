@@ -1,6 +1,6 @@
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-import {validateTxnImportAction,commitTxnImportAction} from '../app/payroll/transactions/import-excel/actions';
-import {buildTxnTemplateReference} from '../app/payroll/transactions/import-excel/reference';
+import {validateTxnImportAction,commitTxnImportAction} from '../app/(app)/payroll/transactions/import-excel/actions';
+import {buildTxnTemplateReference} from '../app/(app)/payroll/transactions/import-excel/reference';
 import type {SessionContext} from '../db/client';
 const mocks=vi.hoisted(()=>({scope:vi.fn(),employees:vi.fn(),components:vi.fn(),validate:vi.fn(),commit:vi.fn(),revalidate:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:mocks.scope}));

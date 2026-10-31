@@ -540,8 +540,8 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
 
     // …and BOTH surfaces render it from the row rather than from a placeholder. This is the assertion
     // that stops the hardcoded null coming back the next time either file is touched.
-    const PAGE = fs.readFileSync(path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/page.tsx'), 'utf8');
-    const PDF = fs.readFileSync(path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'), 'utf8');
+    const PAGE = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx'), 'utf8');
+    const PDF = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'), 'utf8');
     expect(PAGE).toContain('approvedByName: full.approvedByName');
     expect(PDF).toContain('name: row.approvedByName');
   });
@@ -552,11 +552,11 @@ describe('LHDN TP1 (1/2026) — the full e-form', () => {
    * item labels, their sub-lines, the frequency notes, the declaration and the provenance band — comes
    * from the `taxRelief` namespace, and messages/{ta,zh,th,vi}.json translate all of it. Resolving that
    * namespace against the VIEWER's UI locale therefore handed four of our six locales a statutory form
-   * whose whole of Section C read as rows of '?'. Same allowlist app/me/ea/[employmentId]/pdf carries.
+   * whose whole of Section C read as rows of '?'. Same allowlist app/(app)/me/ea/[employmentId]/pdf carries.
    */
   it('prints the statutory form only in a language the embedded font can set', () => {
     const ROUTE = fs.readFileSync(
-      path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'),
+      path.join(ROOT, 'app/(app)/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'),
       'utf8',
     );
     expect(ROUTE).toContain("TP1_LANGS = ['en', 'ms']");

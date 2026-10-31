@@ -3,7 +3,7 @@
  *
  * "For a pending request the row says who it is waiting for and at which approval level." and "approval steps
  * other than the direct manager are labelled 'HR review' even when they are not" — the row's Approver cell and
- * the View panel's progress are built on the SERVER (app/leave/page.tsx → lib/my-leave-history.ts), so no DOM
+ * the View panel's progress are built on the SERVER (app/(app)/leave/page.tsx → lib/my-leave-history.ts), so no DOM
  * test sees them and a FORMATTING_ERROR in one would pass tsc, the suite and `next build`. They are run here
  * through next-intl's own `createTranslator` in all six locales with onError collected, and their English
  * wording is pinned for the arms the plan names.

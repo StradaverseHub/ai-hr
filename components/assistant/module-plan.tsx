@@ -2,8 +2,8 @@
 import {randomUUID} from 'node:crypto';
 import {getTranslations} from 'next-intl/server';
 import {Card} from '../ui';
-import {proposeModulePlanAction,eraseModuleProposalsAction,evaluateHumanPlannerAction} from '../../app/assistant/module-plan-actions';
-import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
+import {proposeModulePlanAction,eraseModuleProposalsAction,evaluateHumanPlannerAction} from '../../app/(app)/assistant/module-plan-actions';
+import {runGovernedPlanAction} from '../../app/(app)/assistant/governed-job-actions';
 import {OwnClearForm} from './own-clear';
 import type {OwnModulePlanView} from '../../core/module-agent-releases';
 /** First render asks nothing, so it reports no failure: only a submitted request's own status may say

@@ -168,7 +168,7 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
   });
 
   /**
-   * The Area control's strings, pinned HERE because nothing else can see them: app/admin/audit/page.tsx
+   * The Area control's strings, pinned HERE because nothing else can see them: app/(app)/admin/audit/page.tsx
    * now reads TWO namespaces (admin.audit for the filters, components.auditTable for the area labels —
    * deliberately the chip's own strings, so the label on the option and the label on the row are one
    * string in six languages), and test/i18n-coverage.test.ts check C skips multi-namespace files. A

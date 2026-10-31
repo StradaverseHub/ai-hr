@@ -30,7 +30,7 @@ export const btnGhost =
  * whole window instead, and this const exists so they do it by the SAME means. Two modules going
  * full-width with two different hand-written class strings is exactly the drift this keeps producing.
  *
- * No horizontal padding on purpose: <body> already carries `p-3 lg:p-4` (app/layout.tsx), so the page
+ * No horizontal padding on purpose: <body> already carries `p-3 lg:p-4` (app/(app)/layout.tsx), so the page
  * gutters are the floating-shell gutters and stay identical to every centred screen's.
  */
 export const pageWideCls = 'w-full space-y-6';
@@ -110,7 +110,7 @@ export function Field({
  *
  * `object-cover` keeps the face centred inside the circle at any of the size classes callers pass (the
  * same fitting components/company-logo.tsx uses). The lightbox is the place that shows the WHOLE photo at
- * its natural aspect ratio — see app/admin/personnel/[employmentId]/photo-lightbox.tsx.
+ * its natural aspect ratio — see app/(app)/admin/personnel/[employmentId]/photo-lightbox.tsx.
  */
 export function Avatar({ name, src, className }: { name: string; src?: string | null; className?: string }) {
   if (src) {

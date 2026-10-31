@@ -1,10 +1,10 @@
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {PcbDetailView} from '../app/payroll/pcb-detail/pcb-detail-view';
+import {PcbDetailView} from '../app/(app)/payroll/pcb-detail/pcb-detail-view';
 import fs from 'node:fs';
 import {describe, it, expect, vi} from 'vitest';
 import {readPcbExemptions, pcbExemptionDetail, type PcbExemptionSnapshot} from '../core/pcb-exemptions';
-import {pcbExemptionTable} from '../app/payroll/pcb-detail/exemption-table';
+import {pcbExemptionTable} from '../app/(app)/payroll/pcb-detail/exemption-table';
 import {pcbDetailLayout, explainPcb, pcbClosingSections, pcbWorksheet} from '../core/pcb-explain';
 import {statutory} from '../localization/my/payroll';
 const state=vi.hoisted(()=>({locale:'en'}));

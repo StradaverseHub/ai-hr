@@ -1,5 +1,5 @@
 /** Actual admission-Tx resolver for RELEASE-owned reviewed inference certificates. No record is
- * seeded, no app/admin/model can mint one, and model/key metadata is never control verification. */
+ * seeded, no app/(app)/admin/model can mint one, and model/key metadata is never control verification. */
 import {createHmac} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';

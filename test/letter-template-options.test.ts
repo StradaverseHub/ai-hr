@@ -4,7 +4,7 @@ import {LetterWorkflowError} from '../lib/letter-workflow';
 const mocks=vi.hoisted(()=>({session:vi.fn(),fields:vi.fn(),heads:vi.fn(),signers:vi.fn(),employees:vi.fn(),delegates:vi.fn(),assets:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({listLetterFields:mocks.fields,listLetterTemplateHeads:mocks.heads,listLetterSignatories:mocks.signers,listLetterEmployeeChoices:mocks.employees,listLetterDelegates:mocks.delegates,listLetterSettingAssets:mocks.assets}));
-import {GET} from '../app/letters/templates/options/route';
+import {GET} from '../app/(app)/letters/templates/options/route';
 const companyId='00000000-0000-4000-8000-000000000001',id='00000000-0000-4000-8000-000000000002',ctx={tenantId:'fixture',userId:'actual-user'};
 const request=(kind='field',extra='')=>new Request(`https://fixture.test/letters/templates/options?companyId=${companyId}&kind=${kind}${extra}`);
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);});

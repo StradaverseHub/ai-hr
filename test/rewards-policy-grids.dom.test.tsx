@@ -2,14 +2,14 @@ import {describe,it,expect,vi} from 'vitest';
 import {fireEvent,render,screen,within,cleanup} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {RewardPolicyYearContext} from '../app/rewards/policy-year-context';
+import {RewardPolicyYearContext} from '../app/(app)/rewards/policy-year-context';
 import {defaultPolicy} from '../packs/rewards/model';
 import {rewardEligibilitySummary} from '../packs/rewards/policy-eligibility';
 import {sharedRewardPolicyProjection} from '../packs/rewards/shared-policy-projection';
-import {PolicyMatrixGrid} from '../app/rewards/policy-matrix-grid';
-import {BranchPolicyFields} from '../app/rewards/branch-policy-fields';
+import {PolicyMatrixGrid} from '../app/(app)/rewards/policy-matrix-grid';
+import {BranchPolicyFields} from '../app/(app)/rewards/branch-policy-fields';
 import {REWARD_POLICY_GRADES,policyGridIssues,parsePolicyGridDecimal,policyGridRows} from '../packs/rewards/policy-grid-validation';
-vi.mock('../app/rewards/policy-grid-actions',()=>({loadPreviousRewardPolicyMatrices:vi.fn(async()=>[{id:'prior',name:'Previous policy',revision:2,year:2025,ranges:{H:[10000,20000,30000]},bonusMatrix:{H:[0,10000,20000,30000,40000]},branchFactors:{retail:[0,10000,15000,20000,25000]}}])}));
+vi.mock('../app/(app)/rewards/policy-grid-actions',()=>({loadPreviousRewardPolicyMatrices:vi.fn(async()=>[{id:'prior',name:'Previous policy',revision:2,year:2025,ranges:{H:[10000,20000,30000]},bonusMatrix:{H:[0,10000,20000,30000,40000]},branchFactors:{retail:[0,10000,15000,20000,25000]}}])}));
 function wrap(node:React.ReactNode){return <NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>;}
 const validBonus=()=>Object.fromEntries(REWARD_POLICY_GRADES.map(grade=>[grade,[0,10000,20000,30000,40000]]));
 describe('approved Rewards policy grids',()=>{

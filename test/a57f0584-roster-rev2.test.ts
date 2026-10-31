@@ -37,12 +37,12 @@ const src = (p: string) =>
   readFileSync(join(ROOT, p), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const PAGE = src('app/roster/page.tsx');
+const PAGE = src('app/(app)/roster/page.tsx');
 const GRID = src('components/roster-grid.tsx');
-const EDIT = src('app/roster/edit/[employmentId]/page.tsx');
-const PICKER = src('app/roster/edit/[employmentId]/date-picker.tsx');
-const EXCEPTIONS = src('app/roster/exceptions/page.tsx');
-const ACTIONS = src('app/roster/actions.ts');
+const EDIT = src('app/(app)/roster/edit/[employmentId]/page.tsx');
+const PICKER = src('app/(app)/roster/edit/[employmentId]/date-picker.tsx');
+const EXCEPTIONS = src('app/(app)/roster/exceptions/page.tsx');
+const ACTIONS = src('app/(app)/roster/actions.ts');
 
 // ── 1. THE DATE FORMAT ───────────────────────────────────────────────────────────────────────────
 
@@ -147,7 +147,7 @@ describe('a57f0584 · Edit opens a screen, and comes back', () => {
    */
   it('no server action is passed into the client island', () => {
     expect(PICKER, 'the island is a client component').toContain("'use client'");
-    expect(PICKER, 'and imports no action').not.toContain('@/app/roster/actions');
+    expect(PICKER, 'and imports no action').not.toContain('@/app/(app)/roster/actions');
     expect(PICKER).not.toContain("from '../../actions'");
     expect(EDIT, 'the form owns the action').toContain('<form action={saveRosterRowAction}');
     expect(EDIT, 'and the island is rendered inside it, taking data only').toMatch(

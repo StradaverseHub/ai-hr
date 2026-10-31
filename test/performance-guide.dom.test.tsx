@@ -3,9 +3,9 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 const mocks=vi.hoisted(()=>({ask:vi.fn(),report:vi.fn(),download:vi.fn()}));
-vi.mock('../app/performance/onehr-actions',()=>({askPerformanceGuideAction:mocks.ask,performanceGuideReportAction:mocks.report,performanceGuideExportAction:mocks.download}));
-import {PerformanceGuide} from '../app/performance/workspace/performance-guide';
-import {PerformanceGuideReportPanel} from '../app/performance/onehr/guide-report';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({askPerformanceGuideAction:mocks.ask,performanceGuideReportAction:mocks.report,performanceGuideExportAction:mocks.download}));
+import {PerformanceGuide} from '../app/(app)/performance/workspace/performance-guide';
+import {PerformanceGuideReportPanel} from '../app/(app)/performance/onehr/guide-report';
 const renderGuide=()=>render(<NextIntlClientProvider locale="en" messages={messages}><PerformanceGuide/></NextIntlClientProvider>);
 beforeEach(()=>{cleanup();vi.clearAllMocks();HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};Element.prototype.scrollIntoView=vi.fn();});
 it('offers a standalone guide, sends only recent local history and clears it on a new page mount',async()=>{

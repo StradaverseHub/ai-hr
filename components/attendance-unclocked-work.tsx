@@ -3,7 +3,7 @@ import {useState,useTransition,type FormEvent} from 'react';
 import {useTranslations} from 'next-intl';
 import Link from 'next/link';
 import {Button,Card,inputCls} from './ui';
-import {submitUnclockedAttendanceWorkAction} from '@/app/attendance/individual/[date]/actions';
+import {submitUnclockedAttendanceWorkAction} from '@/app/(app)/attendance/individual/[date]/actions';
 export function AttendanceUnclockedWork({employmentId,date}:{employmentId:string;date:string}){
  const t=useTranslations('attendance.unclockedWork'),[rows,setRows]=useState([0]),[next,setNext]=useState(1),
   [positioned,setPositioned]=useState(false),[requestedRows,setRequestedRows]=useState([0]),[requestedNext,setRequestedNext]=useState(1),

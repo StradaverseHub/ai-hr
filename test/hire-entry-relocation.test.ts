@@ -21,18 +21,18 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import * as personnelActions from '../app/admin/personnel/actions';
+import * as personnelActions from '../app/(app)/admin/personnel/actions';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const listPage = read('app/admin/personnel/page.tsx');
-const wizardPage = read('app/admin/personnel/new/page.tsx');
-const wizard = read('app/admin/personnel/new/wizard.tsx');
-const wizardActions = read('app/admin/personnel/new/actions.ts');
+const listPage = read('app/(app)/admin/personnel/page.tsx');
+const wizardPage = read('app/(app)/admin/personnel/new/page.tsx');
+const wizard = read('app/(app)/admin/personnel/new/wizard.tsx');
+const wizardActions = read('app/(app)/admin/personnel/new/actions.ts');
 const draftCore = read('core/employee-draft.ts');
 // 034a5080 — the prompt that now opens over the list. The href and the tour anchor moved here.
-const createDialog = read('app/admin/personnel/create-employee-dialog.tsx');
+const createDialog = read('app/(app)/admin/personnel/create-employee-dialog.tsx');
 /** Comments stripped, for the reason test/function-access.test.ts strips them: this file's assertions are
  *  about what the code DOES, and the headers here explain the very idioms being asserted absent. */
 const codeOf = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
@@ -59,7 +59,7 @@ describe('the entry point opens a prompt, and is still a link to the dedicated s
    * deleted, and the list is still not a data-entry surface (the describe below is untouched).
    *
    * WHAT IS PINNED NOW, and it is not weaker. The href and the tour anchor did not disappear; they MOVED
-   * into app/admin/personnel/create-employee-dialog.tsx with the button they belong to, and the trigger is
+   * into app/(app)/admin/personnel/create-employee-dialog.tsx with the button they belong to, and the trigger is
    * still a real Link so ⌘-click, middle-click and a JS-less browser still reach the full screen. So the
    * anchor is still asserted to appear EXACTLY ONCE — counted across both files, which is stronger than
    * counting it in one of them, because a second copy anywhere now fails.
@@ -84,7 +84,7 @@ describe('the entry point opens a prompt, and is still a link to the dedicated s
 
   it('the prompt renders the SHARED create body, not a second copy of the Employee ID block', () => {
     // The whole risk of 034a5080 is two answers to "which Employee ID is this employee getting". There is
-    // one: `CreateEmployeeFields` in app/admin/personnel/new/create-form.tsx, which both surfaces render.
+    // one: `CreateEmployeeFields` in app/(app)/admin/personnel/new/create-form.tsx, which both surfaces render.
     expect(createDialogCode).toContain('CreateEmployeeFields');
     expect(createDialogCode).toContain("from './new/create-form'");
     // And the confirmation reports the code the SERVER issued, never the previewed sample. The behaviour
@@ -122,7 +122,7 @@ describe('the list screen is no longer a data-entry surface', () => {
     expect('hireAction' in personnelActions).toBe(false);
     expect(typeof personnelActions.decideProfileChangeAction).toBe('function');
     // And the reason is written where the next reader will look for the missing action.
-    expect(read('app/admin/personnel/actions.ts')).toContain('`hireAction` USED TO LIVE HERE');
+    expect(read('app/(app)/admin/personnel/actions.ts')).toContain('`hireAction` USED TO LIVE HERE');
   });
 
   it('the shared hire-employee client component is deleted', () => {
@@ -225,7 +225,7 @@ describe('the dedicated screen carries the whole job', () => {
   });
 
   it('the four-field Create screen is a screen of its own, and it is the reserving one', () => {
-    const createForm = read('app/admin/personnel/new/create-form.tsx');
+    const createForm = read('app/(app)/admin/personnel/new/create-form.tsx');
     // Exactly four questions. Asserted as an ABSENCE of the six that left, because the failure mode this
     // item exists to prevent is a field creeping back onto the first screen and making it long again.
     for (const gone of ['NationalityPicker', 'IdentityNumberField', 'BirthDateFields', 'PersonDetailsFields']) {
@@ -250,15 +250,15 @@ describe('the dedicated screen carries the whole job', () => {
     // still asserted end to end — the listing emits the row inside its table, and the row still carries
     // the Draft badge and the held Employee ID.
     expect(listPage).toContain('<DraftRow');
-    expect(read('app/admin/personnel/draft-row.tsx')).toContain('<StatusBadge status="draft"');
+    expect(read('app/(app)/admin/personnel/draft-row.tsx')).toContain('<StatusBadge status="draft"');
     expect(listPage).toContain('d.reservedEmployeeCode');
     // And Draft is an option on the status filter, so HR can pull up exactly who is outstanding.
     //
-    // 579255c3 moved the literal into a NAMED constant (app/admin/personnel/list-query.ts), because the
+    // 579255c3 moved the literal into a NAMED constant (app/(app)/admin/personnel/list-query.ts), because the
     // same value now has three readers — the filter option, the Draft headcount card, and the export —
     // and three copies of a magic string is how one of them gets missed. Asserted at both ends rather
     // than loosened: the page must use the constant, and the constant must still be 'draft'.
     expect(listPage).toContain('value: DRAFT_BUCKET');
-    expect(read('app/admin/personnel/list-query.ts')).toContain("export const DRAFT_BUCKET = 'draft'");
+    expect(read('app/(app)/admin/personnel/list-query.ts')).toContain("export const DRAFT_BUCKET = 'draft'");
   });
 });

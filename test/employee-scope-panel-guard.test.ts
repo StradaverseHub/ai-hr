@@ -65,20 +65,20 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { hireEmployee } from '../core/org';
 import { EmployeeScopePanel } from '../components/collapsible-employee-panel';
 import { EmployeeSearchField } from '../components/employee-search-field';
-import ZakatTransactionPage from '../app/payroll/transactions/zakat/page';
-import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
-import LoansPage from '../app/admin/loans/page';
+import ZakatTransactionPage from '../app/(app)/payroll/transactions/zakat/page';
+import IndividualPayslipPage from '../app/(app)/payroll/individual-payslip/page';
+import LoansPage from '../app/(app)/admin/loans/page';
 import { LoanList } from '../components/loan-list';
 import { CollapsibleEmployeePanel } from '../components/collapsible-employee-panel';
 // EmployeeSearchField is imported once, above — both r179 workstreams added it independently and the
 // merge kept both copies. Keep a single import here.
-import TransactionViewPage from '../app/payroll/transaction-view/page';
-import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
+import TransactionViewPage from '../app/(app)/payroll/transaction-view/page';
+import { HistoryGrid } from '../app/(app)/payroll/transaction-view/history-grid';
 // 9949f91a (r369) — the two Leave Inquiry tabs join the file. Their fence is company SCOPE (`scopedAdmin` +
 // `listEmployees(s, scopeIds)`), the same as Zakat's, so the foreign id used against them is a real
 // employment in a real second company that scope excludes.
-import EmployeeBalancesPage from '../app/leave/employee-balances/page';
-import EmployeeRecordsPage from '../app/leave/employee-records/page';
+import EmployeeBalancesPage from '../app/(app)/leave/employee-balances/page';
+import EmployeeRecordsPage from '../app/(app)/leave/employee-records/page';
 
 /** Depth-first walk of a rendered React element tree collecting every node whose `type` identity matches.
  *  Copied from organization-companies-unscoped.test.ts — the established way to inspect what a SERVER

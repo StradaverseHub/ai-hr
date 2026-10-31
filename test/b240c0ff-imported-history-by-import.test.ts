@@ -32,10 +32,10 @@ import {
   payslipForReview,
 } from '../core/payroll-view';
 import { listBatches } from '../core/payroll';
-import { applyFilters } from '../app/payroll/dashboard-logic';
+import { applyFilters } from '../app/(app)/payroll/dashboard-logic';
 import { payrollRunLabel, payslipCycleLabel } from '../core/payslip-cycle-label';
-import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
-import { pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
+import { deriveHistoryBreakdown } from '../app/(app)/payroll/transaction-view/history-breakdown';
+import { pivotHistoryGrid } from '../app/(app)/payroll/transaction-view/history-pivot';
 import { buildPayslipPdfData, payslipPresentationRows } from '../lib/payslip-pdf';
 import { PAYROLL_HISTORY_HEADERS } from '../lib/payroll-history-import-schema';
 import { toCsv } from '../lib/csv';

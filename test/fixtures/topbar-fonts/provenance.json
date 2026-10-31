@@ -1,7 +1,7 @@
 {
   "sourceCommit": "c39e768cb9e9934d4833d36bb44e1c6bf9837db0",
   "sourceBuildId": "26ecnMOvfLJ50eVnBjcl-",
-  "purpose": "Actual next/font Latin assets for topbar replica typography; application font definitions remain in app/layout.tsx.",
+  "purpose": "Actual next/font Latin assets for topbar replica typography; application font definitions remain in app/(app)/layout.tsx.",
   "assets": [
     {
       "file": "jakarta-latin.woff2",

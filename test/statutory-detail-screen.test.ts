@@ -42,10 +42,10 @@ import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, saveStatutoryAdjustment } from '../core/payroll';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import { explainStatutory } from '../core/statutory-explain';
-import StatutoryDetailPage from '../app/payroll/statutory-detail/page';
-import TransactionViewPage from '../app/payroll/transaction-view/page';
-import { StatutoryDetailView } from '../app/payroll/statutory-detail/statutory-detail-view';
-import { GET as statutoryExportGET } from '../app/payroll/statutory-detail/export/route';
+import StatutoryDetailPage from '../app/(app)/payroll/statutory-detail/page';
+import TransactionViewPage from '../app/(app)/payroll/transaction-view/page';
+import { StatutoryDetailView } from '../app/(app)/payroll/statutory-detail/statutory-detail-view';
+import { GET as statutoryExportGET } from '../app/(app)/payroll/statutory-detail/export/route';
 
 /** Depth-first walk collecting every node whose `type` identity matches. Same helper as the panel guard;
  *  `panel` is walked as well as `children` because Transaction View mounts its tabs inside one. */

@@ -123,7 +123,7 @@ describe('i18n — every locale carries the Age keys with valid tokens', () => {
  * falling back to the shared Not Available key) — only the file they assert it in has moved.
  */
 describe('drift guards (source assertions)', () => {
-  const page = read('app/admin/personnel/[employmentId]/page.tsx');
+  const page = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
   const src = read('components/birth-date-fields.tsx');
 
   it('the Personnel page renders the shared group and hands it the tenant-resolved today', () => {

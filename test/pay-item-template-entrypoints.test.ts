@@ -9,13 +9,13 @@ vi.mock('../core/pay-components', () => ({ listPayComponents: mocks.list }));
 vi.mock('../core/pay-component-import', () => ({ payItemVocabulary: mocks.vocabulary }));
 vi.mock('../lib/pay-component-workbook', () => ({ buildPayItemWorkbook: mocks.build }));
 vi.mock('next-intl/server', () => ({ getTranslations: mocks.translations }));
-import { GET } from '../app/admin/pay-components/template/route';
+import { GET } from '../app/(app)/admin/pay-components/template/route';
 
 beforeEach(() => { vi.resetAllMocks(); mocks.build.mockResolvedValue(Buffer.from('fictional template bytes')); });
 describe('Pay Items single template entry point and canonical authorized catalogue', () => {
   it('retains only the import modal link while retaining import, CSV and create controls', () => {
-    const page = readFileSync(new URL('../app/admin/pay-components/page.tsx', import.meta.url), 'utf8');
-    const modal = readFileSync(new URL('../app/admin/pay-components/import-pay-items.tsx', import.meta.url), 'utf8');
+    const page = readFileSync(new URL('../app/(app)/admin/pay-components/page.tsx', import.meta.url), 'utf8');
+    const modal = readFileSync(new URL('../app/(app)/admin/pay-components/import-pay-items.tsx', import.meta.url), 'utf8');
     expect(page).not.toContain("t('downloadTemplate')");
     expect(modal.match(/href="\/admin\/pay-components\/template"/g)).toHaveLength(1);
     expect(page).toContain('<ImportPayItems />');

@@ -3,7 +3,7 @@ const state=vi.hoisted(()=>({roles:['employee'],notFound:new Error('fixture-not-
 // The admission boundary is already satisfied; this test covers the route segment after admission.
 vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:async()=>({s:{tenantId:'11111111-1111-1111-1111-111111111111',roles:state.roles},scopeIds:[]})}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw state.notFound;},redirect:()=>{throw new Error('Unexpected redirect');},useRouter:()=>({}),usePathname:()=>'/'}));
-import Page from '../app/admin/personnel/[employmentId]/page';
+import Page from '../app/(app)/admin/personnel/[employmentId]/page';
 beforeEach(()=>{state.roles=['employee'];});
 describe('Personnel malformed pointer after Workforce admission',()=>{
  it.each([['employee'],['hr_admin']])('refuses malformed IDs before either record lane for %s',async role=>{

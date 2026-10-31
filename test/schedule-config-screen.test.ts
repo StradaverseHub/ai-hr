@@ -46,7 +46,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { REGISTERED_ROUTES } from '../lib/permissions';
 import { attendancePack } from '../packs/attendance';
-import { SCHEDULE_BUILT_SECTIONS, SCHEDULE_SECTION_KEYS } from '../app/admin/attendance/schedule/sections';
+import { SCHEDULE_BUILT_SECTIONS, SCHEDULE_SECTION_KEYS } from '../app/(app)/admin/attendance/schedule/sections';
 import { DAY_TYPE_INCLUSION_KEYS } from '../core/leave';
 
 const root = path.resolve(__dirname, '..');
@@ -59,7 +59,7 @@ const OLD_WORK_SCHEDULE_ROUTE = '/admin/attendance-policy/schedule';
 const OLD_SCHEDULE_GROUP_ROUTE = '/admin/attendance-policy';
 /** Both rows the reporter asked to be folded into Schedule. Their ROUTES survive; their rows do not. */
 const CONSOLIDATED = [OLD_SCHEDULE_GROUP_ROUTE, OLD_WORK_SCHEDULE_ROUTE] as const;
-const PAGE_REL = 'app/admin/attendance/schedule/page.tsx';
+const PAGE_REL = 'app/(app)/admin/attendance/schedule/page.tsx';
 
 const navHrefs = (attendancePack.navNodes ?? []).flatMap((n) => (n.children ?? []).map((c) => c.href));
 
@@ -72,7 +72,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     expect(navHrefs, 'the Settings row is the way into it').toContain('/admin/attendance/settings');
     const settings = (attendancePack.navNodes ?? []).flatMap((n) => n.children ?? []).find((c) => c.href === '/admin/attendance/settings');
     expect(settings?.ownedSubpaths, 'and it stays lit on the Schedule screen').toContain(NEW_ROUTE);
-    expect(read('app/admin/attendance/settings/cards.ts'), 'the Settings page links to Schedule').toContain(`href: '${NEW_ROUTE}'`);
+    expect(read('app/(app)/admin/attendance/settings/cards.ts'), 'the Settings page links to Schedule').toContain(`href: '${NEW_ROUTE}'`);
   });
 
   /**
@@ -130,7 +130,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     for(const marker of ["t('shiftsTitle')",'<CompanyPolicyCard','<WorkScheduleOvertimeCard',"t('gapsTitle')"])
       expect(src,`${marker} has its own destination`).not.toContain(marker);
     for(const [destination,component] of [['company-policy','CompanyPolicyCard'],['work-schedule-overtime','WorkScheduleOvertimeCard'],['registered-devices','RegisteredDevicesCard']] as const){
-      const page=read(`app/admin/attendance/settings/${destination}/page.tsx`);
+      const page=read(`app/(app)/admin/attendance/settings/${destination}/page.tsx`);
       expect(page).toContain('scopedAdmin()');expect(page).toContain(`<${component}`);
       expect(REGISTERED_ROUTES.has(`/admin/attendance/settings/${destination}`)).toBe(true);
     }
@@ -140,7 +140,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
     expect(src, 'nor to the retired editor routes').not.toContain('/admin/attendance-policy/rules/');
     // 665de026 — the row actions open the group's own PAGES, and the panel that used to open over this
     // list is gone with the `?editGroup=` parameter that addressed it. The card is the file that links.
-    const card = read('app/admin/attendance-policy/schedule-group-card.tsx');
+    const card = read('app/(app)/admin/attendance-policy/schedule-group-card.tsx');
     for (const helper of ['scheduleGroupNewPath()', 'scheduleGroupViewPath(r.id)', 'scheduleGroupEditPath(r.id)']) {
       expect(card, `the Schedule Group list links to ${helper}`).toContain(helper);
     }
@@ -156,7 +156,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
       if(route===OLD_WORK_SCHEDULE_ROUTE)expect(stub).toContain('redirect(legacyWorkScheduleRedirect(await searchParams))');
       else expect(stub, `${route} redirects to its owning destination`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);
     }
-    const panel = read('app/admin/attendance-policy/schedule-panel.ts');
+    const panel = read('app/(app)/admin/attendance-policy/schedule-panel.ts');
     expect(panel).toContain(`export const SCHEDULE = '${NEW_ROUTE}';`);
     // 665de026 — the three per-group addresses are built in ONE place, from SCHEDULE, so a link and a
     // redirect can never disagree about where a Schedule Group lives.
@@ -176,7 +176,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
   });
 
   it('the page guards itself, and does not rely on the menu to hide it', () => {
-    expect(read('app/admin/attendance/schedule/page.tsx')).toMatch(/requireAdmin\(\)/);
+    expect(read('app/(app)/admin/attendance/schedule/page.tsx')).toMatch(/requireAdmin\(\)/);
   });
 });
 
@@ -247,7 +247,7 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
      * A section is built when the page renders it, not when a variable holding it exists, so the map is
      * what is read.
      */
-    const sections = read('app/admin/attendance/schedule/group-sections.tsx');
+    const sections = read('app/(app)/admin/attendance/schedule/group-sections.tsx');
     const map = /const bodyFor: Record<ScheduleSectionKey, ReactNode> = \{([\s\S]*?)\n  \};/.exec(sections);
     expect(map, 'group-sections.tsx no longer maps every section key to a body').not.toBeNull();
     const wiring = Object.fromEntries(
@@ -289,7 +289,7 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
    * form over that switch is a second way to get that date wrong. The tab SHOWS the switch and says where
    * it is edited; what it must never grow is a control.
    *
-   * The action refuses it too — app/admin/attendance/schedule/actions.ts never reads a form field by that
+   * The action refuses it too — app/(app)/admin/attendance/schedule/actions.ts never reads a form field by that
    * name, and test/schedule-tab-writers.test.ts proves that against a real row including for a crafted
    * request body. This case is the other half: the CONTROL must not appear, because a control that saves
    * nothing is its own defect even when the writer is safe.
@@ -298,7 +298,7 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     // 665de026 — the Attendance SECTION moved off the list page onto the per-group screen, so the source
     // this case reads moved with it. The invariant is identical and is now asserted over BOTH files:
     // neither the list nor a group's page may grow a second control over the switch.
-    const src = read('app/admin/attendance/schedule/group-sections.tsx') + read('app/admin/attendance/schedule/page.tsx');
+    const src = read('app/(app)/admin/attendance/schedule/group-sections.tsx') + read('app/(app)/admin/attendance/schedule/page.tsx');
     expect(
       src,
       'no input, checkbox or select named applyDeductions may exist on this screen. It is edited on the ' +
@@ -334,20 +334,20 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     expect(
       appFiles.filter((f) => /name=["'{`]?applyDeductions/.test(read(f))),
       'exactly one control over the deduction switch exists, and it is the Schedule Group editor’s',
-    ).toEqual(['app/admin/attendance-policy/rules/rule-form.tsx']);
+    ).toEqual(['app/(app)/admin/attendance-policy/rules/rule-form.tsx']);
     // Resolved, not string-matched: any file importing THAT rule-form.tsx, by whatever relative spelling or the
-    // @/ alias (app/admin/leave-approval has an unrelated RuleForm of its own). Type-only imports are not mounts.
+    // @/ alias (app/(app)/admin/leave-approval has an unrelated RuleForm of its own). Type-only imports are not mounts.
     const importsRuleForm = (f: string) =>
       [...read(f).matchAll(/import\s+(?!type\b)[^;]*?from '([^']*rule-form)'/g)].some((m) => {
         const spec = m[1];
         const resolved = spec.startsWith('@/') ? spec.slice(2) : path.posix.join(path.posix.dirname(f), spec);
-        return resolved === 'app/admin/attendance-policy/rules/rule-form';
+        return resolved === 'app/(app)/admin/attendance-policy/rules/rule-form';
       });
     expect(
       appFiles.filter((f) => importsRuleForm(f)).sort(),
       'and that editor is mounted by the Add Schedule page and the Edit Schedule sections, and nothing else',
     ).toEqual(
-      ['app/admin/attendance/schedule/group-sections.tsx', 'app/admin/attendance/schedule/new/page.tsx'].sort(),
+      ['app/(app)/admin/attendance/schedule/group-sections.tsx', 'app/(app)/admin/attendance/schedule/new/page.tsx'].sort(),
     );
   });
 
@@ -355,7 +355,7 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     // Non-vacuity for the assertion above: "attendance" and "overtime" could be present as empty
     // fragments and the key-set check would still pass. These are the stored columns the plans promised,
     // named one by one, so a section emptied out in a later round fails here rather than silently.
-    const src = read('app/admin/attendance/schedule/group-sections.tsx');
+    const src = read('app/(app)/admin/attendance/schedule/group-sections.tsx');
     for (const field of [
       'lateGracePeriodMinutes',
       'earlyGracePeriodMinutes',
@@ -380,7 +380,7 @@ describe('1c5602cc — the reporter\'s named sections; r277 built two, 665de026 
     // That is the item: the reporter asked for one Schedule Group to be one screen.
     expect(src, 'the sections are rendered for a single rule').toMatch(/rule: AttendanceRuleView;/);
     expect(
-      read('app/admin/attendance/schedule/page.tsx'),
+      read('app/(app)/admin/attendance/schedule/page.tsx'),
       'and the groups come from the rule library, tenant-wide',
     ).toMatch(/listAttendanceRules/);
     expect(src, 'there is no group picker on a group\'s own page').not.toMatch(/selectedGroup/);
@@ -421,11 +421,11 @@ describe('1c5602cc — every string on the screen exists in all six locales', ()
   // binding, and a key used on the Edit page but missing from ta.json would have gone unnoticed if this
   // had stayed pointed at the list.
   const SCREEN_FILES = [
-    'app/admin/attendance/schedule/page.tsx',
-    'app/admin/attendance/schedule/group-sections.tsx',
-    'app/admin/attendance/schedule/new/page.tsx',
-    'app/admin/attendance/schedule/[ruleId]/page.tsx',
-    'app/admin/attendance/schedule/[ruleId]/edit/page.tsx',
+    'app/(app)/admin/attendance/schedule/page.tsx',
+    'app/(app)/admin/attendance/schedule/group-sections.tsx',
+    'app/(app)/admin/attendance/schedule/new/page.tsx',
+    'app/(app)/admin/attendance/schedule/[ruleId]/page.tsx',
+    'app/(app)/admin/attendance/schedule/[ruleId]/edit/page.tsx',
   ];
   const usedKeys = () => {
     // Lookbehind excludes the OTHER namespace bindings — `tp('dayMon')` (admin.attendancePolicy),
@@ -480,7 +480,7 @@ describe('1c5602cc — every string on the screen exists in all six locales', ()
  * read), which is what actually makes each sentence false.
  */
 describe('1c5602cc — the "Not configured here" card is tied to the absences it claims', () => {
-  const PAGE = 'app/admin/attendance/schedule/page.tsx';
+  const PAGE = 'app/(app)/admin/attendance/schedule/page.tsx';
   /** Every gap entry the page actually renders: `t('gapRotationTitle')` → `gapRotation`. */
   const renderedGaps = () =>
     [...new Set([...read(PAGE).matchAll(/t\('(gap[A-Z]\w*?)(?:Title|Body)'\)/g)].map((m) => m[1]))].sort();
@@ -506,9 +506,9 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
   it('rotation storage has replaced its obsolete gap card with an atomic editor', () => {
     expect(schemaIdentifiers()).toContain('attendance_rotation');
     expect(read(PAGE)).not.toMatch(/gapRotation/);
-    const group = read('app/admin/attendance/schedule/group-sections.tsx');
+    const group = read('app/(app)/admin/attendance/schedule/group-sections.tsx');
     expect(group).toContain('ScheduleRotationEditor');
-    expect(read('app/admin/attendance/schedule/rotation-actions.ts')).toContain('saveScheduleRotation');
+    expect(read('app/(app)/admin/attendance/schedule/rotation-actions.ts')).toContain('saveScheduleRotation');
     for (const locale of ['en','ms','ta','th','vi','zh']) {
       const messages = JSON.parse(read(`messages/${locale}.json`));
       expect(messages.admin.scheduleConfig).not.toHaveProperty('gapRotationTitle');
@@ -523,7 +523,7 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
     expect(controls).toContain('app.can_admin_employment');
     expect(controls).toContain('lockPayrollForAttendanceChange');
     expect(controls).toContain('roster.manual-changes');
-    expect(read('app/admin/attendance/schedule/group-sections.tsx')).toContain("controlPanel('duty')");
+    expect(read('app/(app)/admin/attendance/schedule/group-sections.tsx')).toContain("controlPanel('duty')");
     const roster=read('core/roster.ts');
     for(const writer of ['assignShift','setRestDay','clearRoster','assignShiftBulk','setRestDayBulk','copyRoster']){
       const start=roster.indexOf(`export async function ${writer}(`);
@@ -575,10 +575,10 @@ describe('1c5602cc — the "Not configured here" card is tied to the absences it
       editors.sort(),
       `admin.scheduleConfig.gapOtCapBody tells the reporter the monthly overtime-hour limit is "Stored on ` +
         `the payroll policy, not on the schedule, and edited under Payroll. Shown there so one figure has ` +
-        `one owner." A screen outside app/admin/payroll-policy now touches it, so it has two owners or a ` +
+        `one owner." A screen outside app/(app)/admin/payroll-policy now touches it, so it has two owners or a ` +
         `new one. If it is now edited (or shown) on the schedule, DELETE gapOtCapTitle/gapOtCapBody from ` +
         `all six messages/*.json and render the figure instead — that is the one plan promise this round ` +
         `did not deliver.`,
-    ).toEqual(['app/admin/payroll-policy/actions.ts', 'app/admin/payroll-policy/policy-wizard.tsx'].sort());
+    ).toEqual(['app/(app)/admin/payroll-policy/actions.ts', 'app/(app)/admin/payroll-policy/policy-wizard.tsx'].sort());
   });
 });

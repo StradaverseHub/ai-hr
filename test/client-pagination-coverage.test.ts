@@ -26,16 +26,16 @@ const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
  *  follows a newly added draft row. Same pager, same contract; a fuller set of assertions. Do not add a
  *  grid to only one of the two lists. */
 const CLIENT_GRIDS = [
-  'app/feedback/bulk-table.tsx',
+  'app/(app)/feedback/bulk-table.tsx',
   'components/loan-list.tsx',
   'components/salary-history-table.tsx',
-  'app/payroll/transaction-view/history-table.tsx',
-  'app/payroll/transaction-view/individual-table.tsx',
+  'app/(app)/payroll/transaction-view/history-table.tsx',
+  'app/(app)/payroll/transaction-view/individual-table.tsx',
   'components/roster-grid.tsx',
 ];
 
 /** Grids carrying a multi-select whose action applies to the selection. */
-const SELECTING_GRIDS = ['app/feedback/bulk-table.tsx', 'components/roster-grid.tsx'];
+const SELECTING_GRIDS = ['app/(app)/feedback/bulk-table.tsx', 'components/roster-grid.tsx'];
 
 describe('client-side list grids are paginated', () => {
   it.each(CLIENT_GRIDS)('%s slices its rows and renders the pager', (rel) => {
@@ -51,7 +51,7 @@ describe('client-side list grids are paginated', () => {
   it('sorts before it pages, never within the page', () => {
     const salary = read('components/salary-history-table.tsx');
     expect(salary.indexOf('.sort(')).toBeLessThan(salary.indexOf('paginateRows('));
-    const individual = read('app/payroll/transaction-view/individual-table.tsx');
+    const individual = read('app/(app)/payroll/transaction-view/individual-table.tsx');
     expect(individual.indexOf('.sort(')).toBeLessThan(individual.indexOf('paginateRows('));
     // Both page the already-ordered set, not the raw rows.
     expect(salary).toMatch(/paginateRows\(filtered, /);
@@ -67,7 +67,7 @@ describe('client-side list grids are paginated', () => {
   });
 
   it('tells the reviewer that a bulk selection covers this page only', () => {
-    expect(read('app/feedback/bulk-table.tsx')).toMatch(/bulkPageScope/);
+    expect(read('app/(app)/feedback/bulk-table.tsx')).toMatch(/bulkPageScope/);
     const en = JSON.parse(read('messages/en.json')) as { feedback: Record<string, string> };
     expect(en.feedback.bulkPageScope).toBeTruthy();
   });
@@ -85,7 +85,7 @@ describe('client-side list grids are paginated', () => {
     const core = read('core/feedback.ts');
     expect(core).toMatch(/export const FEEDBACK_LIST_LIMIT = \d+;/);
     expect(core, 'the cap must BE the constant, not a literal beside it').toMatch(/\.limit\(FEEDBACK_LIST_LIMIT\)/);
-    const page = read('app/feedback/page.tsx');
+    const page = read('app/(app)/feedback/page.tsx');
     expect(page, 'the page compares the returned row count against the cap').toMatch(/FEEDBACK_LIST_LIMIT/);
     expect(page, 'and renders the notice').toMatch(/listTruncated/);
     const en = JSON.parse(read('messages/en.json')) as { feedback: Record<string, string> };

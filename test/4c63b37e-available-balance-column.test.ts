@@ -36,7 +36,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { hireEmployee } from '../core/org';
 import { leaveBalances } from '../core/read';
 import { decideLeave, requestLeave } from '../core/leave';
-import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows } from '../app/(app)/leave/employee-balances/rows';
 import { formatDays } from '../lib/day-format';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -142,7 +142,7 @@ beforeEach(async () => {
 
 describe('4c63b37e · (a) the column is on the screen and in the export, immediately after Balance', () => {
   it('the screen puts the header and the cell at the same index — between Balance and Date', () => {
-    const page = read('app/leave/employee-balances/page.tsx');
+    const page = read('app/(app)/leave/employee-balances/page.tsx');
     const thead = page.slice(page.indexOf('<thead'), page.indexOf('</thead>'));
     const headers = [...thead.matchAll(/<th\b[^>]*>\{([^}]+)\}<\/th>/g)].map((m) => m[1].trim());
     const balance = headers.indexOf("tMe('leaveBalanceTable.colBalance')");
@@ -163,10 +163,10 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
   /** Its OWN case, because an assertion sitting after a failing one in the same `it` is never reached — and a
    *  guard that cannot be reached is not a guard. */
   it('the view performs no arithmetic: the figure is the row’s own `available`', () => {
-    expect(code('app/leave/employee-balances/page.tsx'), 'no subtraction in the cell').not.toMatch(
+    expect(code('app/(app)/leave/employee-balances/page.tsx'), 'no subtraction in the cell').not.toMatch(
       /r\.balance\s*[-!]/,
     );
-    expect(code('app/leave/employee-balances/page.tsx'), 'the cell reads the row').toContain('{num(r.available)}');
+    expect(code('app/(app)/leave/employee-balances/page.tsx'), 'the cell reads the row').toContain('{num(r.available)}');
   });
 
   /**
@@ -175,7 +175,7 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
    * heading. This compares the two lists structurally rather than trusting that both were edited.
    */
   it("the export's header list and row tuple agree in length and in the new column's index", () => {
-    const route = read('app/leave/employee-balances/export/route.ts');
+    const route = read('app/(app)/leave/employee-balances/export/route.ts');
     /** The top-level entries of one bracketed list, comments stripped, in order. */
     const entries = (block: string) =>
       block
@@ -204,10 +204,10 @@ describe('4c63b37e · (a) the column is on the screen and in the export, immedia
   });
 
   it('no new read and no new call into the undated My Leave summary', () => {
-    const rows = code('app/leave/employee-balances/rows.ts');
-    const page = code('app/leave/employee-balances/page.tsx');
-    const route = code('app/leave/employee-balances/export/route.ts');
-    const inquiry = code('app/leave/employee-balances/inquiry-data.ts');
+    const rows = code('app/(app)/leave/employee-balances/rows.ts');
+    const page = code('app/(app)/leave/employee-balances/page.tsx');
+    const route = code('app/(app)/leave/employee-balances/export/route.ts');
+    const inquiry = code('app/(app)/leave/employee-balances/inquiry-data.ts');
     for (const [name, src] of [
       ['rows.ts', rows],
       ['page.tsx', page],

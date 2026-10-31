@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({createLetterDraftBatch:mocks.create,getLetterTemplate:mocks.template,getStaffLetter:mocks.detail,refreshLetterDraft:mocks.refresh,withdrawLetterDraft:mocks.withdraw,submitLetterBatch:mocks.submit}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {createGeneration,updateGeneration} from '../app/letters/generate/actions';
+import {createGeneration,updateGeneration} from '../app/(app)/letters/generate/actions';
 const companyId='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002',batchId='00000000-0000-4000-8000-000000000003',employeeId='00000000-0000-4000-8000-000000000004',operationKey='00000000-0000-4000-8000-000000000005',letterId='00000000-0000-4000-8000-000000000006',ctx={tenantId:'fixture',userId:'actual-user'};
 const fields=[{id:'mapping',definition:{key:'allowance',label:'Allowance',description:'Typed amount',source:'custom.currency',kind:'currency',required:false,editable:true,sensitive:true}},{id:'canonical',definition:{key:'employeeName',label:'Employee name',description:'Canonical name',source:'employee.name',kind:'text',required:true,editable:false,sensitive:false}}];
 function form(){const result=new FormData();for(const [key,value]of Object.entries({companyId,versionId,operationKey,employmentId:employeeId,'custom:allowance:value':'1200.50','custom:allowance:currency':'MYR'}))result.set(key,value);return result;}

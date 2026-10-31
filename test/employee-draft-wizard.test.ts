@@ -420,7 +420,7 @@ describe('§2 every computed translation key resolves, in all six locales', () =
         .map(field => ({ tab: field === 'company' ? 'job' : 'profile', field })),
     ];
     expect(new Set(pointers.map(pointer => pointer.field))).toEqual(names);
-    const wizard = read('app/admin/personnel/new/wizard.tsx');
+    const wizard = read('app/(app)/admin/personnel/new/wizard.tsx');
     expect(wizard).toContain('draftActivationFieldLabels([{tab:key,field}]');
     expect(wizard, 'the outstanding list goes through the shared resolver').toContain('{missing[k].map(field=>missingFieldLabel(k,field)).join');
     for (const loc of LOCALES) {
@@ -867,7 +867,7 @@ describe('§6 migration 0355 — allow_manual_override on existing active setups
   it('a NEW setup created through the settings form starts with manual entry permitted', () => {
     // The screen's checkbox now defaults to ticked; without it, 0355 would flip the old rows on and the
     // very next setup an administrator created would silently be off again.
-    expect(read('app/admin/settings/employee-id/page.tsx')).toContain('editing?.allowManualOverride ?? true');
+    expect(read('app/(app)/admin/settings/employee-id/page.tsx')).toContain('editing?.allowManualOverride ?? true');
   });
 });
 

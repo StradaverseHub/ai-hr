@@ -65,7 +65,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // ADR-0077 D3 SERVICE GATE (r294, closing r292's stated gap). `withTenant` here is
 // `withPayrollTenant`: every TP1 entry point in this file — the whole declare → submit → approve write
 // path included — refuses a tenant without the Payroll module. A `layout.tsx` covers /me/tax-relief and
-// /payroll/transactions/tp1 for a RENDER; it covers no server action, and `app/me/actions.ts`
+// /payroll/transactions/tp1 for a RENDER; it covers no server action, and `app/(app)/me/actions.ts`
 // (saveTp1Draft / submitTp1) posts from a CORE segment that has no payroll layout above it.
 //
 // Safe to bind because every consumer outside the payroll route trees takes only the PURE exports, which

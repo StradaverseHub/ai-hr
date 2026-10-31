@@ -234,13 +234,13 @@ describe('e7eb5d83 — configurable claim management', () => {
   it('the limits page VALIDATES ?gradeId= against the session\'s own grade list before using it', () => {
     // The guard is what makes the refusal above reachable from the URL. Pinned as source so it cannot be
     // deleted in a refactor that still passes every behavioural test above.
-    const src = read('app/admin/claims/limits/page.tsx');
+    const src = read('app/(app)/admin/claims/limits/page.tsx');
     expect(src).toMatch(/activeGrades\.some\(\(g\) => g\.id === rawGradeId\)/);
     expect(src).toMatch(/searchParams/);
   });
 
   it('the mileage page validates every URL parameter against what the session can see', () => {
-    const src = read('app/admin/claims/mileage/page.tsx');
+    const src = read('app/(app)/admin/claims/mileage/page.tsx');
     // e7eb5d83 rev 4 point 5 — ?claimTypeId= is gone entirely: the screen resolves its claim type from
     // claim_type.is_mileage instead of accepting one from the URL, so the parameter that used to need a
     // guard no longer exists. The remaining two keep the same guard the limits screen uses.
@@ -253,7 +253,7 @@ describe('e7eb5d83 — configurable claim management', () => {
   it('the mileage page renders an EMPTY STATE rather than falling back to the first claim type', () => {
     // The dangerous version of this screen picks types[0] when nothing is marked, and the admin saves
     // distance bands onto Medical. Pinned as source because the failure is silent: the save succeeds.
-    const src = read('app/admin/claims/mileage/page.tsx');
+    const src = read('app/(app)/admin/claims/mileage/page.tsx');
     expect(src).not.toMatch(/\?\? types\[0\]/); // the fallback EXPRESSION, not the prose that explains it
     expect(src).toMatch(/noMileageType/);
   });
@@ -644,7 +644,7 @@ describe('e7eb5d83 — configurable claim management', () => {
     expect(() => read('components/claim-limit-editor.tsx')).toThrow(/ENOENT/);
 
     const grid = read('components/claim-limits-grid.tsx');
-    const action = read('app/admin/claims/limits/actions.ts');
+    const action = read('app/(app)/admin/claims/limits/actions.ts');
     for (const src of [grid, action]) {
       // No rate control, no rate parse, no rate posted — the plan's promise that "saving limits will
       // never touch a rate again". It is only SAFE because setClaimPolicyTx inherits rate_config when the
@@ -676,13 +676,13 @@ describe('e7eb5d83 — configurable claim management', () => {
     expect(tabs).not.toMatch(/'forms'/);
     // The route survives for bookmarks — as a guarded permanent redirect, which lib/permissions.ts and
     // test/function-access.test.ts both still require to exist on disk.
-    const forms = read('app/admin/claims/forms/page.tsx');
+    const forms = read('app/(app)/admin/claims/forms/page.tsx');
     expect(forms).toMatch(/permanentRedirect\('\/admin\/claims'\)/);
     expect(forms).toMatch(/requireAdmin/);
   });
 
   it('the Claim Types list opens its create form from a disclosure, not permanently', () => {
-    const src = read('app/admin/claims/page.tsx');
+    const src = read('app/(app)/admin/claims/page.tsx');
     expect(src).toMatch(/<details className="group" open=\{error != null\}>/);
     expect(src).toMatch(/addNewType/);
   });

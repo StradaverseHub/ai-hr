@@ -83,7 +83,7 @@ THEN THE MINORS, and two of them are about honesty rather than behaviour:
   removing a schedule arrangement are done from this screen as well, not only from Personnel Management",
   which tells them removal ALREADY exists in Personnel Management. It does not, and does not gain it
   here. Put the correction in "reporterOwed" in plain words — the parent will carry it to the board.
-- The scope fence said app/admin/attendance/schedule-assignment/** and the diff adds 124 lines to the
+- The scope fence said app/(app)/admin/attendance/schedule-assignment/** and the diff adds 124 lines to the
   shared core/shift-arrangement.ts. The new writer is defensible — the alternative was a second writer,
   which the plan forbids — but say it plainly in "remaining" rather than leaving it unremarked.
 - The test file now carries FILE-LEVEL vi.mock of ../lib/authz, next/cache, next/navigation and
@@ -92,8 +92,8 @@ THEN THE MINORS, and two of them are about honesty rather than behaviour:
 - Clean up after yourself: the local dev database is left carrying fabricated shift ladders from two
   rounds of render checking, including a superseded 2026-10-01 period on EMP-0001.
 
-SCOPE FENCE unchanged: app/admin/attendance/schedule-assignment/**, core/shift-arrangement.ts, your
-tests, six locales. Do NOT touch app/admin/personnel/** and do NOT touch packs/attendance/index.ts —
+SCOPE FENCE unchanged: app/(app)/admin/attendance/schedule-assignment/**, core/shift-arrangement.ts, your
+tests, six locales. Do NOT touch app/(app)/admin/personnel/** and do NOT touch packs/attendance/index.ts —
 the other agent owns that file this round.`,
   },
   {
@@ -102,9 +102,9 @@ the other agent owns that file this round.`,
     item: '1c5602cc',
     extra: `⚠️ YOUR MAJOR IS THAT THE PLAN'S HEADLINE CLAIM IS FALSE — AND IT IS THE PARENT'S ERROR, NOT
 YOURS. The approved plan says a menu row named "Work Schedule" opens a page named "Shift settings". THE
-PARENT HAS RE-CHECKED AND THE VERIFIER IS RIGHT: app/admin/attendance-policy/schedule/page.tsx:120-122
+PARENT HAS RE-CHECKED AND THE VERIFIER IS RIGHT: app/(app)/admin/attendance-policy/schedule/page.tsx:120-122
 renders PageHeader title={tr('scheduleSectionTitle')}, NOT admin.attendancePolicy.pageTitle. That
-"Shift settings" string is the H1 of app/admin/attendance/page.tsx:54 — the row labelled "Shift". The
+"Shift settings" string is the H1 of app/(app)/admin/attendance/page.tsx:54 — the row labelled "Shift". The
 parent grepped the namespace and never checked which page rendered it.
 
 WHAT YOU MUST DO:
@@ -135,9 +135,9 @@ THEN THE MINORS:
 packs/attendance/index.ts. Keep your change to the ONE import and the ONE nav row so the union resolves
 cleanly.
 
-SCOPE FENCE unchanged: app/admin/attendance/schedule/**, packs/attendance/index.ts, lib/permissions.ts,
-your tests, six locales. Do NOT touch app/admin/attendance/schedule-assignment/** or
-app/admin/attendance-policy/**.`,
+SCOPE FENCE unchanged: app/(app)/admin/attendance/schedule/**, packs/attendance/index.ts, lib/permissions.ts,
+your tests, six locales. Do NOT touch app/(app)/admin/attendance/schedule-assignment/** or
+app/(app)/admin/attendance-policy/**.`,
   },
 ];
 

@@ -55,9 +55,9 @@ const getPath = (obj: unknown, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
 const HREF = '/admin/leave-config/data-import';
-const PAGE = 'app/admin/leave-config/data-import/page.tsx';
-const ISLAND = 'app/admin/leave-config/bf-import/leave-bf-import.tsx';
-const ACTIONS = 'app/admin/leave-config/bf-import/actions.ts';
+const PAGE = 'app/(app)/admin/leave-config/data-import/page.tsx';
+const ISLAND = 'app/(app)/admin/leave-config/bf-import/leave-bf-import.tsx';
+const ACTIONS = 'app/(app)/admin/leave-config/bf-import/actions.ts';
 const SERVICE = 'core/leave-bf-import.ts';
 const CONTRACT = 'lib/leave-bf-import-schema.ts';
 const MIGRATION = 'db/migrations/0497_leave_bf_import.sql';

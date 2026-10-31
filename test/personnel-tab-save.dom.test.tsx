@@ -6,7 +6,7 @@
  * does with a click and a keystroke — not a class string in a source file. Everything below drives
  * components/tab-save-scope.tsx through real events.
  *
- * WHY A STAND-IN AND NOT THE REAL PAGE. app/admin/personnel/[employmentId]/page.tsx is a 4,700-line async
+ * WHY A STAND-IN AND NOT THE REAL PAGE. app/(app)/admin/personnel/[employmentId]/page.tsx is a 4,700-line async
  * server component that reads the database before it emits a field; it cannot be rendered here. What CAN
  * be rendered is the scope with cards shaped exactly like the real ones — separate `<form>`s carrying
  * `data-save-section`, each with the hidden carry-through inputs the real cards use, and a bucket (b)
@@ -52,7 +52,7 @@ vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }
 
 import { TabSaveScope } from '../components/tab-save-scope';
 import { Combobox } from '../components/ui/combobox';
-import { EmployeeSwitcher } from '../app/admin/personnel/employee-switcher';
+import { EmployeeSwitcher } from '../app/(app)/admin/personnel/employee-switcher';
 import { firstDirtyGuard, __resetUnsavedGuards } from '../lib/unsaved-changes';
 import type { TabSaveResult } from '../lib/personnel-tab-sections';
 
@@ -128,7 +128,7 @@ function Screen({
 
       {/* The two anchor shapes the screen-leaving guard has to tell apart: a real in-app link, and the
           Employment History workbook anchor, which is bare BY DESIGN and downloads without going
-          anywhere (app/admin/personnel/[employmentId]/page.tsx). */}
+          anywhere (app/(app)/admin/personnel/[employmentId]/page.tsx). */}
       <a href="/admin/personnel">Back to list</a>
       <a href={`/admin/personnel/${EMPLOYMENT_ID}/movement-export`} data-unsaved-guard="ignore">
         Export to Excel

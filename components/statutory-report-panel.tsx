@@ -6,7 +6,7 @@ import type { ReportResult } from '@/localization/country-pack';
  * The body of a generated statutory report: its caveats, its headline figures, the employees who would
  * go up INCOMPLETE, the money totals, and the table itself.
  *
- * LIFTED, NOT COPIED (6babf4f6). This markup was inline in app/payroll/reports/page.tsx and the redesign
+ * LIFTED, NOT COPIED (6babf4f6). This markup was inline in app/(app)/payroll/reports/page.tsx and the redesign
  * needs the identical thing on the new per-form screen. Copying it would have produced two tables that
  * drift — one gaining a column, one keeping the red "missing field" cell — for figures that are supposed
  * to be the same figures. The generator was never duplicated (241817ef spent two rounds undoing that

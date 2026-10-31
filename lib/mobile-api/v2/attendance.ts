@@ -137,7 +137,7 @@ export type AttendanceRosterV2 = z.infer<typeof AttendanceRosterV2>;
 export const ATTENDANCE_APPLICATION_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
 export const AttendanceApplicationStatus = z.enum(ATTENDANCE_APPLICATION_STATUSES);
 export type AttendanceApplicationStatus = z.infer<typeof AttendanceApplicationStatus>;
-/** What the employee reads (app/attendance/request-ui.tsx statusLabel): a cancelled row is `withdrawn` unless HR cancelled it. */
+/** What the employee reads (app/(app)/attendance/request-ui.tsx statusLabel): a cancelled row is `withdrawn` unless HR cancelled it. */
 export const AttendanceApplicationDisplay = z.enum(['pending', 'approved', 'rejected', 'withdrawn', 'cancelled']);
 export type AttendanceApplicationDisplay = z.infer<typeof AttendanceApplicationDisplay>;
 /** lib/attendance-workflow.ts attendanceApplicationType (correction / overtime), and HR's clock-data proposals. */
@@ -224,7 +224,7 @@ export const AttendanceDayResult = z.union([
     /** The caller's own applications for this date, newest first. */
     applications: z.array(AttendanceApplicationSummaryV2).max(100),
     /**
-     * Whether the web's day screen offers its correction form (app/attendance/my-records/[date]): not for a future
+     * Whether the web's day screen offers its correction form (app/(app)/attendance/my-records/[date]): not for a future
      * date, not while an application for the date is pending. The kernel re-decides on submit.
      */
     correction: z.object({ offered: z.boolean(), blockedBy: z.enum(['future', 'pending']).nullable() }),

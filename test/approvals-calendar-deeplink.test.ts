@@ -157,7 +157,7 @@ describe('pill href composition (focusForCalendarPill + buildApprovalAttentionHa
 
 describe('drift guards (source assertions)', () => {
   it('the approvals page anchors both sections with ids built from APPROVAL_SECTION_ID', () => {
-    const src = read('app/approvals/page.tsx');
+    const src = read('app/(app)/approvals/page.tsx');
     // a34eedde widened this import: the page now also stamps per-row ids from the same module.
     expect(src).toContain("import { APPROVAL_SECTION_ID, approvalRowDomId } from '@/lib/approvals-focus'");
     expect(src).toContain('id={APPROVAL_SECTION_ID.leave}');
@@ -171,7 +171,7 @@ describe('drift guards (source assertions)', () => {
   });
 
   it('the approvals page narrows listLeaveRequests to PENDING (the 200-row-cap pre-fix, step 1)', () => {
-    const src = read('app/approvals/page.tsx');
+    const src = read('app/(app)/approvals/page.tsx');
     // Focused Home arrival keeps the pending-only invariant and selects its proven record before
     // the legacy queue ceiling. The ordinary inbox retains the active company UX filter and cap.
     const call=src.match(/listLeaveRequests\(s, queueScope,[^\n]+/);
@@ -199,7 +199,7 @@ describe('drift guards (source assertions)', () => {
       expect(call).toContain('employmentIds: historyEmploymentIds');
       expect(call).not.toContain('companyIds:');
     }
-    const route = read('app/leave/history/page.tsx');
+    const route = read('app/(app)/leave/history/page.tsx');
     const guard = route.indexOf('if (!me || isAdmin(session))');
     const load = route.indexOf('await loadOwnLeaveHistory(');
     expect(guard).toBeGreaterThan(-1);
@@ -264,7 +264,7 @@ describe('drift guards (source assertions)', () => {
   });
 
   it('every supported approval queue gives its actual row a focusable stable anchor', () => {
-    const src = read('app/approvals/page.tsx');
+    const src = read('app/(app)/approvals/page.tsx');
     for(const [queue,row] of [['sortedLeave','r'],['sortedCancellations','c'],['sortedReplacement','r'],
       ['sortedClaims','c'],['visibleCorrections','c'],['sortedResignations','r'],
       ['sortedManagerReviews','r'],['sortedHrReviews','r']]){
@@ -278,7 +278,7 @@ describe('drift guards (source assertions)', () => {
   });
 
   it('the arrival island parses the hash through the shared parser', () => {
-    const src = read('app/approvals/attention-on-arrival.tsx');
+    const src = read('app/(app)/approvals/attention-on-arrival.tsx');
     expect(src).toContain('parseApprovalAttentionHash');
     expect(src).toContain('approvalRowDomId(');
     expect(src).toContain('approvals-row-attention');

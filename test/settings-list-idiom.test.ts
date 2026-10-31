@@ -34,7 +34,7 @@ const declaresUseClient = (src: string) => /^\s*['"]use client['"]\s*;/m.test(sr
 /** Comments in these files DISCUSS the very shapes asserted against; scan the code, not the prose. */
 const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 /** Every settings LIST that has adopted the idiom. A new one joins this array. */
-const LISTS = ['app/admin/settings/hiring-defaults/page.tsx', 'app/admin/settings/movement/page.tsx'] as const;
+const LISTS = ['app/(app)/admin/settings/hiring-defaults/page.tsx', 'app/(app)/admin/settings/movement/page.tsx'] as const;
 
 describe('the shared System Settings list idiom', () => {
   it('is a server module with no translations of its own', () => {

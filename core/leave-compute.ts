@@ -1120,7 +1120,7 @@ export function composeEntitlement(p: {
  *   - the employee's remaining balance is driven down toward zero.
  *
  * That is a CLAWBACK OF DAYS PEOPLE ALREADY HOLD, triggered by an ordinary profile save (the reproject is
- * wired to `app/admin/personnel/[employmentId]/actions.ts`, `core/movement-apply.ts` and the leave-type
+ * wired to `app/(app)/admin/personnel/[employmentId]/actions.ts`, `core/movement-apply.ts` and the leave-type
  * rules writer). And the statutory floor no longer props the figure up, because fa3f4ccb made it ADVISORY
  * at the reporter's written request. The approved plan promises the reporter that the reset moves nobody's
  * balance; without this guard that promise is false the first time anyone saves a profile.

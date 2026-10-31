@@ -33,7 +33,7 @@
  * fixture in which "the employment's company" and "this employer" are different answers.
  *
  * ⚠️ AND BOTH DOORS GET IT FROM THE READ. r331 (2a1a6f42) factored the EA download and the EA preview
- * onto one gate in `app/payroll/statutory-forms/ea/shared.ts`; both routes are four lines over
+ * onto one gate in `app/(app)/payroll/statutory-forms/ea/shared.ts`; both routes are four lines over
  * `eaPdfResponse`, and a null statement becomes `notFound()` at exactly one place there. So the refusal
  * is asserted through BOTH `preview/route.ts` and `download/route.ts` — not because they could differ,
  * but so that the day someone gives the preview a gate of its own, this file says which surface moved.
@@ -90,8 +90,8 @@ vi.mock('next-intl/server', () => {
   };
 });
 
-import { GET as previewGET } from '../app/payroll/statutory-forms/ea/preview/route';
-import { GET as downloadGET } from '../app/payroll/statutory-forms/ea/download/route';
+import { GET as previewGET } from '../app/(app)/payroll/statutory-forms/ea/preview/route';
+import { GET as downloadGET } from '../app/(app)/payroll/statutory-forms/ea/download/route';
 
 const YEAR = '2026';
 

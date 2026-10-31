@@ -14,7 +14,7 @@ vi.mock('next/navigation', () => ({ usePathname: () => '/', useSearchParams: () 
 vi.mock('../lib/session', () => ({ getSession: vi.fn() }));
 vi.mock('../core/entitlements', () => ({ isModuleEnabled: vi.fn() }));
 
-import { CalibrationList } from '../app/performance/onehr/calibration-list';
+import { CalibrationList } from '../app/(app)/performance/onehr/calibration-list';
 import { Sidebar } from '../components/sidebar';
 import { calibrationToDo, calibrationWindowState, sortCalibrationSessions, type CalibrationListSession } from '../packs/performance/onehr/calibration-list-model';
 import { defaultPolicy } from '../packs/performance/onehr/model';

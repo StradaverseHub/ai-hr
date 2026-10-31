@@ -5,7 +5,7 @@
  * (`core/performance`) directly — they import the facade, `packs/performance/service`. The
  * always-allowed importers are the pack surface itself: the `packs/performance/` wiring + facade,
  * the implementation file, and the pack's own routes (cycle/review screens + attachment download
- * under app/performance/ — the module has no separate admin routes). test/ is never scanned —
+ * under app/(app)/performance/ — the module has no separate admin routes). test/ is never scanned —
  * performance tests exercise the implementation directly by design.
  *
  * Ratchet semantics on the seeded allowlist (test/pack-drift-allowlist.json "performance",
@@ -28,7 +28,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const ALWAYS_ALLOWED = [
   'packs/performance/', // the pack itself: wiring (index.ts) + service facade
   'core/performance.ts', // the implementation file
-  'app/performance/', // module routes: cycles, calibration, reviews, attachments, actions
+  'app/(app)/performance/', // module routes: cycles, calibration, reviews, attachments, actions
 ];
 
 describe('ADR-0080 D9: performance pack import ratchet (rung 4)', () => {

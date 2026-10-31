@@ -13,7 +13,7 @@ The consultant cluster reads as "the payroll engine is strong but its *configura
 
 | # | Ask | Reality today | True gap |
 |---|-----|---------------|----------|
-| 9 | Payment-item classes (Allowance/Deduction/Contribution/Non-Payable) | `payComponentKindEnum` has exactly these 4 kinds; admin catalog edits them (`app/admin/pay-components`) | **Mostly DONE** — already enabled on the demo. Polish only. |
+| 9 | Payment-item classes (Allowance/Deduction/Contribution/Non-Payable) | `payComponentKindEnum` has exactly these 4 kinds; admin catalog edits them (`app/(app)/admin/pay-components`) | **Mostly DONE** — already enabled on the demo. Polish only. |
 | 14 | EA-form line on PCB-subject components | No `eaFormLine` column; the EA form generator (`localization/my/reports.ts`) already defines the line taxonomy | Add a component→EA-line attribute, reusing the generator's taxonomy |
 | 15 | Rounding method (Up/Down/Nearest) | No column; component amounts use fixed `Math.round` (`core/payroll.ts:51`) | Add a per-component rounding attribute (NON-statutory amounts only) |
 | 21 | Edit/Delete a pay component (guard historical use) | `upsertPayComponent` + `archivePayComponent` exist; **no guard** against archiving a component already used in a closed batch | Add a usage guard mirroring closed-batch immutability |
@@ -48,7 +48,7 @@ Every slice keeps the substrate discipline (a `DomainEvent` after each state-cha
   - `rounding_method text default 'none'` — `none | up | down | nearest`. Applies **only to the component's own payable amount** before it enters gross. **Statutory contributions (EPF/SOCSO/EIS/PCB) keep their own legislated rounding** — this attribute never touches them.
 - **Service** (`core/pay-components.ts`): extend `upsertPayComponent` to persist the two attributes; add a delete/archive **guard** — refuse to archive a component referenced by a `payroll_batch_component` or `employment_pay_component` tied to a **closed** batch (mirror the closed-batch immutability already enforced on payslips). Append `pay-component.archived` / `.updated` events.
 - **Kernel** (`core/payroll.ts`): when typed components are on, apply `rounding_method` to each component amount as it's summed into gross (behind the existing flag; off ⇒ unchanged).
-- **UI** (`app/admin/pay-components`): add EA-line select + rounding select to the editor; wire Edit + Delete with the guard surfaced as a friendly error.
+- **UI** (`app/(app)/admin/pay-components`): add EA-line select + rounding select to the editor; wire Edit + Delete with the guard surfaced as a friendly error.
 - **Tests:** rounding math per method; archive-guard blocks a closed-batch component, allows an unused one; byte-identical payslip when the flag is off; EA-line persists + round-trips.
 
 ### 1B — Company payroll-config surface (#17 + #7)

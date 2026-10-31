@@ -138,7 +138,7 @@ export const normalizeEmployerNo = (e: string): string => {
  * file cannot name it differently — an operator who cannot match a downloaded file to a month uploads the
  * wrong one, and LHDN's portal keys the submission off the name. `buildCp39File` calls this rather than
  * formatting the name inline, so a second surface that comes to offer this file (the Payment Submission
- * shelf is the one waiting on it — see app/payroll/payment-submission/registry.ts) asks THIS function and
+ * shelf is the one waiting on it — see app/(app)/payroll/payment-submission/registry.ts) asks THIS function and
  * is not able to invent a second spelling.
  *
  * `employerNo` is normalised here, so a caller holding the employer's raw "E 908915-10" gets the same name

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-const actions = readFileSync(new URL('../app/approvals/actions.ts', import.meta.url), 'utf8');
-const shell = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+const actions = readFileSync(new URL('../app/(app)/approvals/actions.ts', import.meta.url), 'utf8');
+const shell = readFileSync(new URL('../app/(app)/layout.tsx', import.meta.url), 'utf8');
 const toast = readFileSync(new URL('../components/ui/toast-trigger.tsx', import.meta.url), 'utf8');
 function actionSection(start: string, end: string) {
     const first = actions.indexOf(start), last = actions.indexOf(end, first);

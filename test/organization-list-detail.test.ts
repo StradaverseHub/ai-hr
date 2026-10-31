@@ -65,21 +65,21 @@ import {
   parseCompanySort,
   parseCompanyStatus,
   type CompanyListInput,
-} from '../app/admin/organization/company-rows';
-import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
+} from '../app/(app)/admin/organization/company-rows';
+import CompanyMaintenancePage from '../app/(app)/admin/organization/[companyId]/page';
 // 15e5bd93 rev 2 (r353) — the SECOND guarded route onto one company's data. A second door must not be an
 // easier door, so the refusal this file runs for the detail page is run for it too.
 // rev 3 (r355) added a THIRD, `…/statutory/[authority]`, and rev 4 (r372) DELETED it: the reporter
 // contested that per-body page as "an unnecessary intermediate page", so every body is a card on the
 // statutory screen itself. Its import, its render helper and its two cases are removed rather than
 // loosened — there is no route left to refuse anything.
-import CompanyStatutorySetupPage from '../app/admin/organization/[companyId]/statutory/page';
+import CompanyStatutorySetupPage from '../app/(app)/admin/organization/[companyId]/statutory/page';
 // 7a595a02 (r403) — the THIRD guarded route onto one company's data: the read-only view. Same rule as the
 // statutory screen above: a second door must not be an easier door, so the refusal is RUN, not scanned.
-import CompanyViewPage from '../app/admin/organization/[companyId]/view/page';
+import CompanyViewPage from '../app/(app)/admin/organization/[companyId]/view/page';
 import { StatutorySetupScreen } from '../components/statutory-setup-screen';
-import NewCompanyPage from '../app/admin/organization/new/page';
-import { createCompanyAction } from '../app/admin/actions';
+import NewCompanyPage from '../app/(app)/admin/organization/new/page';
+import { createCompanyAction } from '../app/(app)/admin/actions';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function findByType(node: unknown, type: unknown, acc: any[] = []): any[] {
@@ -498,7 +498,7 @@ describe('/admin/organization/[companyId] — the scope refusal and the parent p
 // ───────────────────────────────────────────────────────────────────────────────────────────────────
 describe('/admin/organization/new — the create form has its own screen', () => {
   const LISTING = fs.readFileSync(
-    path.resolve(__dirname, '../app/admin/organization/page.tsx'),
+    path.resolve(__dirname, '../app/(app)/admin/organization/page.tsx'),
     'utf8',
   );
 
@@ -570,7 +570,7 @@ describe('/admin/organization/new — the create form has its own screen', () =>
     expect(html).toContain('required');
     // …and `legalName` is the ONLY required one. The code is nullable free text (the General tab can
     // clear it), so a create form that refused a blank would contradict the edit form — see the header
-    // of app/admin/organization/new/page.tsx.
+    // of app/(app)/admin/organization/new/page.tsx.
     expect([...html.matchAll(/<input[^>]*\brequired\b[^>]*>/g)]).toHaveLength(1);
     expect(html).toMatch(/name="legalName"[^>]*\brequired\b|\brequired\b[^>]*name="legalName"/);
   });
@@ -647,7 +647,7 @@ describe('i18n — every new Organization string in all six locales', () => {
       expect(org[l], `messages/${l}.json admin.organization.open`).not.toHaveProperty('open');
     }
     expect(
-      fs.readFileSync(path.resolve(__dirname, '../app/admin/organization/page.tsx'), 'utf8'),
+      fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/organization/page.tsx'), 'utf8'),
     ).not.toContain("t('open')");
   });
 });
@@ -663,10 +663,10 @@ describe('i18n — every new Organization string in all six locales', () => {
  */
 describe('Organization listing — View · Edit · Archive (3c2f55d7 rev 2)', () => {
   const ROWS = fs.readFileSync(
-    path.resolve(__dirname, '../app/admin/organization/company-rows.tsx'),
+    path.resolve(__dirname, '../app/(app)/admin/organization/company-rows.tsx'),
     'utf8',
   );
-  const LIST = fs.readFileSync(path.resolve(__dirname, '../app/admin/organization/page.tsx'), 'utf8');
+  const LIST = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/organization/page.tsx'), 'utf8');
 
   it('offers all three actions on every row', () => {
     for (const l of ['labels.view', 'labels.edit', 'labels.archive', 'labels.unarchive']) {
@@ -689,7 +689,7 @@ describe('Organization listing — View · Edit · Archive (3c2f55d7 rev 2)', ()
   /**
    * ⚠️ REVERSED BY 7a595a02 (r403). This case read "View and Edit both open the company page — there is no
    * read-only rendering of it", and pinned two identical hrefs. The read-only view now exists
-   * (app/admin/organization/[companyId]/view), so View — and the company's NAME — go there, and Edit alone
+   * (app/(app)/admin/organization/[companyId]/view), so View — and the company's NAME — go there, and Edit alone
    * opens the editor. Updated, not deleted: the half that still holds (Edit opens the editor) is asserted.
    */
   it('View and the company name open the read-only view; Edit alone opens the editor', () => {

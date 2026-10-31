@@ -7,7 +7,7 @@ import {personnelHeaderSuggestions,preparePersonnelHeaderAssistancePacket,type P
 import {z} from 'zod';
 import {EmployeeImportEvaluationBindingSchema,type EmployeeImportEvaluationBinding} from '@/lib/personnel-import-evaluation';
 import {capturePersonnelImportHeaders,capturePersonnelImportHeaderProposal,type PersonnelImportHeaderProposal} from '@/lib/personnel-import-assistance';
-import {preparePersonnelImportHeadersAction,assistPersonnelImportHeadersAction,reopenPersonnelImportHeadersAction} from '@/app/admin/personnel/import/assistance-actions';
+import {preparePersonnelImportHeadersAction,assistPersonnelImportHeadersAction,reopenPersonnelImportHeadersAction} from '@/app/(app)/admin/personnel/import/assistance-actions';
 import type {PersonnelImportHeaderOptions} from '@/lib/personnel-import-contract';
 export type PersonnelImportHeaderAssistanceAnnotation=Readonly<{attemptId:string;attemptVersion:number;adoptedMappings:number}>;
 export type PersonnelImportHeaderReviewMessages=Readonly<{title:string;localOnly:string;sheet:string;column:string;sourceHeading:string;sampleValues:string;destination:string;chooseField:string;unresolved:string;ambiguous:string;duplicate:string;applyMapping:string;cancel:string;reviewHeadings:string;invalidSource:string;acceptedRevision:string;sourceChanged:string;unknownSheet:string;aiTitle:string;aiDescription:string;aiChoose:string;aiConsent:string;aiSend:string;aiWorking:string;aiUnavailable:string;aiUncertain:string;aiReopen:string;aiNewRequest:string;aiReady:string;aiUseSuggestion:string;aiNoHeadings:string;aiLimit:string;aiSelected:string;aiStale:string;aiPrepareUnknown:string;}>;

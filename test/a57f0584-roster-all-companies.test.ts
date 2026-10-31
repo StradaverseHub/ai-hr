@@ -33,8 +33,8 @@ const src = (p: string) =>
   readFileSync(join(ROOT, p), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const PAGE = src('app/roster/page.tsx');
-const EXPORT = src('app/roster/export/route.ts');
+const PAGE = src('app/(app)/roster/page.tsx');
+const EXPORT = src('app/(app)/roster/export/route.ts');
 const GRID = src('components/roster-grid.tsx');
 
 let b: Base;
@@ -162,7 +162,7 @@ describe('a57f0584 · what must NOT have widened', () => {
       'rosterExceptionCount(s, { from: view.from, to: view.to, companyIds, today: todayIso, ...(teamScope?{employmentIds:teamScope.employmentIds}:{}) })',
     );
     expect(PAGE).toContain('listDepartments(s, { companyIds })');
-    const exceptions = src('app/roster/exceptions/page.tsx');
+    const exceptions = src('app/(app)/roster/exceptions/page.tsx');
     expect(exceptions, 'the exceptions screen resolves the company set the same way').toContain(
       'const companyIds = companyId ? [companyId] : companies.map((c) => c.id);',
     );

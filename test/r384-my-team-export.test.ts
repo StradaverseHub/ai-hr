@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {myTeamReport} from '../app/manage/my-team/export/report';
+import {myTeamReport} from '../app/(app)/manage/my-team/export/report';
 import {formatMyTeamCell,type MyTeamTranslate} from '../components/my-team/presentation';
 import {toCsvReport,toXlsxReport} from '../lib/report-export';
 import {parseCsv} from '../lib/csv';

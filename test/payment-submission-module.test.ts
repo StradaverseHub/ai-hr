@@ -16,7 +16,7 @@
  * transposing two nine-wide fields once produced "a file of the right length whose own totals still
  * agreed, and 214 tests stayed green". A test that rebuilt the expected bytes here would share whatever
  * mistake the module made. Comparing against the SHIPPED loader — the exact function
- * `app/payroll/borang-a/file/route.ts` and `app/payroll/borang-8a/file/route.ts` call — cannot.
+ * `app/(app)/payroll/borang-a/file/route.ts` and `app/(app)/payroll/borang-8a/file/route.ts` call — cannot.
  *
  * The fixtures stay in the picture: `test/kwsp-borang-a-file.test.ts` and `test/perkeso-socso-file.test.ts`
  * pin those loaders' writers to `test/fixtures/kwsp-borang-a-epforma2.txt` and
@@ -41,14 +41,14 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { createBatch, generatePayslips } from '../core/payroll';
-import { loadBorangAFile } from '../app/payroll/borang-a/shared';
-import { loadBorang8AFile } from '../app/payroll/borang-8a/shared';
+import { loadBorangAFile } from '../app/(app)/payroll/borang-a/shared';
+import { loadBorang8AFile } from '../app/(app)/payroll/borang-8a/shared';
 import {
   SUBMISSION_FORMATS,
   formatsInGroup,
   submissionFormat,
   type SubmissionBuild,
-} from '../app/payroll/payment-submission/registry';
+} from '../app/(app)/payroll/payment-submission/registry';
 
 const PERIOD = '2026-07';
 let b: Base;
@@ -138,7 +138,7 @@ describe('20f6c6a8 (a) — the shelf hands over the SAME bytes the shipped scree
 
   it('EPF: byte-identical to what the Borang A file route produces for the same month', async () => {
     const throughShelf = bytesOf(await build('my.epf.borang-a'));
-    // THE SHIPPED PATH, called directly — the same function app/payroll/borang-a/file/route.ts calls.
+    // THE SHIPPED PATH, called directly — the same function app/(app)/payroll/borang-a/file/route.ts calls.
     const throughRoute = await loadBorangAFile({
       companyId: b.companyId,
       periodKey: PERIOD,
@@ -199,7 +199,7 @@ describe('20f6c6a8 (a) — the shelf hands over the SAME bytes the shipped scree
      * screen one menu row away handed over the identical bytes, which is the r296 defect.
      *
      * 0d02d4a1 built the door — `CountryPack.paymentFiles`, resolved through the localization registry by
-     * `app/payroll/payment-submission/pack-file.ts` — so the row is now downloadable AND the boundary is
+     * `app/(app)/payroll/payment-submission/pack-file.ts` — so the row is now downloadable AND the boundary is
      * still intact. BOTH halves are asserted here, because flipping `available` by importing the MY writer
      * back into a generic registry is exactly what the old assertion existed to prevent, and it would
      * satisfy the first half alone. The bytes, the file name and the refusals are proved against a real
@@ -213,7 +213,7 @@ describe('20f6c6a8 (a) — the shelf hands over the SAME bytes the shipped scree
     expect(lhdn!.verification).toBe('specification-sample');
     // THE OTHER HALF. No file under this module may name a pack — the door is the registry seam.
     for (const file of ['registry.ts', 'pack-file.ts', 'download/route.ts', 'page.tsx']) {
-      const src = readFileSync(new URL(`../app/payroll/payment-submission/${file}`, import.meta.url), 'utf8');
+      const src = readFileSync(new URL(`../app/(app)/payroll/payment-submission/${file}`, import.meta.url), 'utf8');
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
       expect(code, `${file} must not name a country pack directly`).not.toContain('localization/my');
     }
@@ -285,7 +285,7 @@ describe('20f6c6a8 (c) — generating a file writes NOTHING', () => {
     // The two shipped `/payroll/reports/*` file routes DO record on download. This module deliberately
     // does not, and a count is a snapshot: this guard is what stops the import coming back.
     for (const file of ['registry.ts', 'download/route.ts', 'page.tsx']) {
-      const src = readFileSync(new URL(`../app/payroll/payment-submission/${file}`, import.meta.url), 'utf8');
+      const src = readFileSync(new URL(`../app/(app)/payroll/payment-submission/${file}`, import.meta.url), 'utf8');
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
       expect(code, `${file} must not record a report`).not.toContain('recordFileReport');
       expect(code, `${file} must not record a report`).not.toContain('recordReport');
@@ -404,7 +404,7 @@ describe('20f6c6a8 — the registry itself', () => {
   });
 
   it('the download route dispatches through the registry and branches on no authority', () => {
-    const src = readFileSync(new URL('../app/payroll/payment-submission/download/route.ts', import.meta.url), 'utf8');
+    const src = readFileSync(new URL('../app/(app)/payroll/payment-submission/download/route.ts', import.meta.url), 'utf8');
     const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
     expect(code).toContain('submissionFormat(');
     expect(code).toContain('format.build(');

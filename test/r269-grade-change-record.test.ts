@@ -339,7 +339,7 @@ describe('§B · the history carries the date the change took effect; the ledger
   });
 
   it('the callers pass both — the contract lives across two files, so it is pinned across both', () => {
-    const actions = read('app/admin/personnel/[employmentId]/actions.ts');
+    const actions = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
     // Read BEFORE the write, or the "previous" grade is the new one.
     const create = actions.slice(actions.indexOf('export async function createMovementEventAction'));
     const head = create.slice(0, create.indexOf('await createMovementEvent('));
@@ -495,7 +495,7 @@ describe('§C · when a new grade matches no entitlement table, somebody is told
     // …and "Showing 50 of 70." renders only because the cap bit, which is the other half of the contract.
     expect(out.total).toBeGreaterThan(out.rows.length);
     // The card passes no limit at all — pinned in the rendering test, quoted here so the two stay a pair.
-    const card = read('app/admin/leave/entitlements/templates/uncovered-employees.tsx');
+    const card = read('app/(app)/admin/leave/entitlements/templates/uncovered-employees.tsx');
     expect(card).toContain('listEmploymentsWithoutEntitlementTable(s, { asOf })');
   });
 });
@@ -542,7 +542,7 @@ describe('§D · one criteria summariser, two Covers columns', () => {
   });
 
   it('the tables list renders the column, and BOTH columns go through the one summariser', () => {
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     // r271 (6d29e11c) — the grid and the tables list MERGED, so the Covers column and the grid's Job
     // grade column became one column. `colCovers` is retired with the header it named; `gridColGrade` is
     // the header that survives, and it is the same fact under the name the reporter drew.
@@ -566,7 +566,7 @@ describe('§D · one criteria summariser, two Covers columns', () => {
   });
 
   it('Leave inquiry retains dated grade history and configuration retains uncovered employees', () => {
-    const profile = read('app/admin/personnel/[employmentId]/page.tsx');
+    const profile = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     // Approved Personnel cleanup removes its duplicate Leave warning/card. Coverage remains in
     // Leave configuration, and dated grade effects remain visible in the canonical inquiry history.
     expect(profile).not.toContain('schemeUnmatchedNotice');
@@ -574,15 +574,15 @@ describe('§D · one criteria summariser, two Covers columns', () => {
     expect(history).toContain("t('recalcColGrade')");
     // 39306a9e retains this history under Leave inquiry after removing the Personnel duplicate.
     expect(history).toContain('{formatDmy(r.tookEffectOn)}');
-    expect(read('app/leave/employee-balances/page.tsx')).toContain('<EntitlementRecalcHistory rows={recalcAudit} />');
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain('<EntitlementRecalcHistory rows={recalcAudit} />');
     expect(profile).not.toContain('recalcHistoryCard');
     // The redundant Personnel Leave summary remains absent after the approved cleanup.
     expect(profile).not.toContain('leaveBalancesCard');
 
-    const page = read('app/admin/leave-config/entitlement-tables/page.tsx');
+    const page = read('app/(app)/admin/leave-config/entitlement-tables/page.tsx');
     expect(page).toContain('<UncoveredEmployeesCard s={s} asOf={data.today} />');
     // NEVER inside the block: the Entitlements screen composes that block once per leave type.
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).not.toContain('UncoveredEmployeesCard');
   });
 

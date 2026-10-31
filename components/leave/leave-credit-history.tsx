@@ -4,7 +4,7 @@
  * r389 bc3e203d · LEAVE CREDIT HISTORY — the client half: the table (cards on a phone), the read-only View
  * panel, Cancel on a pending row, and the filter form.
  *
- * DB-free. Every row arrives as plain data from app/leave/credit/page.tsx, already filtered, counted, sorted
+ * DB-free. Every row arrives as plain data from app/(app)/leave/credit/page.tsx, already filtered, counted, sorted
  * and paged on the server by lib/leave-credit-history.ts; this file draws what it is given and filters
  * nothing. All copy comes from useTranslations INSIDE the island (the house pattern for client widgets), so
  * no translator crosses the server→client boundary. Labels are reused from the catalogues that already own

@@ -59,11 +59,11 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const LIST_PAGE = code('app/payroll/page.tsx');
-const RUN_PAGE = code('app/payroll/[batchId]/page.tsx');
-const REPROCESS_PAGE = code('app/payroll/[batchId]/reprocess/page.tsx');
-const REPROCESS_FORM = code('app/payroll/[batchId]/reprocess/reprocess-form.tsx');
-const ACTIONS = code('app/payroll/actions.ts');
+const LIST_PAGE = code('app/(app)/payroll/page.tsx');
+const RUN_PAGE = code('app/(app)/payroll/[batchId]/page.tsx');
+const REPROCESS_PAGE = code('app/(app)/payroll/[batchId]/reprocess/page.tsx');
+const REPROCESS_FORM = code('app/(app)/payroll/[batchId]/reprocess/reprocess-form.tsx');
+const ACTIONS = code('app/(app)/payroll/actions.ts');
 const EN = JSON.parse(fs.readFileSync(path.join(ROOT, 'messages/en.json'), 'utf8')) as Record<string, never>;
 const msg = (dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), EN);
@@ -132,7 +132,7 @@ describe('e440991b — the way in: the payroll run screen', () => {
     expect(RUN_PAGE, 'the disclosure card is still rendered here').not.toContain("t('disclosureTitle')");
     expect(RUN_PAGE, 'the run screen still reads the disclosure').not.toContain('listRecomputeDisclosure');
     expect(
-      fs.existsSync(path.join(ROOT, 'app/payroll/[batchId]/reprocess-panel.tsx')),
+      fs.existsSync(path.join(ROOT, 'app/(app)/payroll/[batchId]/reprocess-panel.tsx')),
       'the old panel file survived',
     ).toBe(false);
   });

@@ -154,7 +154,7 @@ export function LeaveDurationFields({
    * WHEN THIS IS PRESENT, `types` IS A SUPERSET AND MUST BE (rev 2). The filter below intersects `types`
    * with the selected subject's set, so whatever arrives in `types` bounds every subject: handing down the
    * VIEWER's own list produced eligible(manager) ∩ eligible(report), which is how a male manager lost the
-   * ability to apply for Maternity on behalf of a female report. app/leave/page.tsx therefore passes the
+   * ability to apply for Maternity on behalf of a female report. app/(app)/leave/page.tsx therefore passes the
    * UNION of every selectable subject's set, and this prop is what turns it back into one person's list.
    *
    * An ineligible type is ABSENT from the select — not disabled, not greyed, not counted. That is the
@@ -181,7 +181,7 @@ export function LeaveDurationFields({
   summaryAction: (p: { employmentId: string; leaveTypeId: string }) => Promise<LeaveApplySummary | null>;
 }) {
   const t = useTranslations('leave');
-  // Cross-namespace reuse (already the convention on this page — app/leave/page.tsx holds two translators):
+  // Cross-namespace reuse (already the convention on this page — app/(app)/leave/page.tsx holds two translators):
   // the column headers and the "{value} Days" figure format already exist elsewhere.
   const tAtt = useTranslations('attendance');
   const tCommon = useTranslations('common');
@@ -272,7 +272,7 @@ export function LeaveDurationFields({
   useEffect(() => {
     // employmentId is required only when the caller renders the employee select here (/leave, on-behalf-of);
     // /me has no employeeOptions and resolves the caller's own employment server-side (see
-    // app/me/actions.ts myPreviewLeaveDeduction), so an empty employmentId is fine there.
+    // app/(app)/me/actions.ts myPreviewLeaveDeduction), so an empty employmentId is fine there.
     const employmentReady = !employeeOptions || !!employmentId;
     if (!previewAction || effectiveDuration === 'hourly' || !employmentReady || !typeId || !start) {
       setPreview(null);

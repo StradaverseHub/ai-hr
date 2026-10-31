@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { ChecklistPopulation } from '../app/lifecycle/v9/checklist-population';
+import { ChecklistPopulation } from '../app/(app)/lifecycle/v9/checklist-population';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { nativeV9Facts } from '../lib/lifecycle-v9-native';
 import { blankCase, type Environment } from '../lib/onboarding-model';

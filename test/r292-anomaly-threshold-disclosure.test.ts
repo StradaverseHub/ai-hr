@@ -34,7 +34,7 @@
  * render one, so `settle()` awaits every async component before `renderToStaticMarkup`.
  *
  * NON-VACUITY (builder-run, verifier-re-derivable): delete the disclosure block from a copy of
- * app/payroll/[batchId]/anomalies/page.tsx and §B's three render cases and §C's configured case all fail on
+ * app/(app)/payroll/[batchId]/anomalies/page.tsx and §B's three render cases and §C's configured case all fail on
  * the missing sentence; make `thresholdsInForce` ignore the config row and §A's agreement case and §C fail.
  */
 import { randomUUID } from 'node:crypto';
@@ -99,7 +99,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import AnomaliesPage from '../app/payroll/[batchId]/anomalies/page';
+import AnomaliesPage from '../app/(app)/payroll/[batchId]/anomalies/page';
 
 const EN = JSON.parse(readFileSync(fileURLToPath(new URL('../messages/en.json', import.meta.url)), 'utf8')) as {
   anomaly: Record<string, string>;

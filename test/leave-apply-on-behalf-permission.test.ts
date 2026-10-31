@@ -4,7 +4,7 @@
  * WHAT WAS WRONG. Nothing in the system named the power to submit leave for somebody else. The Leave
  * screen showed its Employee selector to anyone with a direct report — an accident of the org chart, not a
  * permission — and offered every employee in the viewer's scope, not those reports. Underneath, the door
- * was simply open: app/leave/actions.ts passed the posted `employmentId` straight into requestLeave, and
+ * was simply open: app/(app)/leave/actions.ts passed the posted `employmentId` straight into requestLeave, and
  * requestLeave never asked who was posting. RLS could not fence it, because RLS here is SYMMETRIC: a
  * manager may legitimately SEE a subordinate, so every row policy passes on the write.
  *
@@ -365,11 +365,11 @@ describe('leave.apply_on_behalf — the key itself', () => {
 
 describe('the key is grantable, and the screen that grants it says so', () => {
   it('the ONE screen that can hand this key to a role names leave in its own heading', () => {
-    // app/admin/payroll-permissions is the only surface that writes payroll_permission_grant rows, so it is
+    // app/(app)/admin/payroll-permissions is the only surface that writes payroll_permission_grant rows, so it is
     // the only place `leave.apply_on_behalf` can be granted. Its route, its module and its table all still
     // say "payroll" — renaming them is a migration and its own ticket — which leaves the WORDING as the only
     // thing telling an operator sent to grant a LEAVE permission that they are on the right page.
-    const page = read('app/admin/payroll-permissions/page.tsx');
+    const page = read('app/(app)/admin/payroll-permissions/page.tsx');
     expect(page, 'the admin screen no longer mentions the key it grants').toContain('leave.apply_on_behalf');
     const en = JSON.parse(read('messages/en.json')) as {
       admin: { payrollPermissions: { title: string; subtitle: string } };
@@ -391,14 +391,14 @@ describe('the key is grantable, and the screen that grants it says so', () => {
 });
 
 describe('the screen and the service read ONE permission (AGENTS rule 17)', () => {
-  const page = read('app/leave/page.tsx');
+  const page = read('app/(app)/leave/page.tsx');
   const core = read('core/leave.ts');
-  const actions = read('app/leave/actions.ts');
+  const actions = read('app/(app)/leave/actions.ts');
 
   it('the Employee selector’s visibility is the PERMISSION, not the org chart', () => {
-    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts), which asks
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/(app)/leave/my-leave-data.ts), which asks
     // it in the viewer's own company. The decision pinned is the same: the selector is the PERMISSION.
-    const loader = read('app/leave/my-leave-data.ts');
+    const loader = read('app/(app)/leave/my-leave-data.ts');
     expect(loader).toContain('return canApplyLeaveOnBehalf(session, myCompanyId);');
     expect(loader).toContain('.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;');
     expect(page).toContain('canApplyOnBehalf,'); // destructured off the loader's result
@@ -449,7 +449,7 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
   it('the /me self-service path still posts no employmentId at all', () => {
     // Untouched by this item, and asserted so it stays that way: /me resolves the caller's own employment
     // server-side (resolveMe) and never reads one off the form, so the gate above can only ever see `self`.
-    const me = read('app/me/actions.ts');
+    const me = read('app/(app)/me/actions.ts');
     const fn = me.slice(me.indexOf('export async function myRequestLeave'));
     const body = fn.slice(0, fn.indexOf('\nexport '));
     expect(body).toContain('const { s, employmentId } = await resolveMe();');

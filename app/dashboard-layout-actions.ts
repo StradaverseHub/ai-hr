@@ -20,7 +20,7 @@ import { listDashboardCards } from '@/core/dashboard-card-config';
 import { BUILTIN_ROLE_DASHBOARD_CARDS, type DashboardCardChoice } from '@/lib/dashboard-layout';
 import type { SessionContext } from '@/db/client';
 
-/** Resolve the caller's dashboard role exactly like app/page.tsx does — never from client input. */
+/** Resolve the caller's dashboard role exactly like app/(app)/page.tsx does — never from client input. */
 async function callerDashboardRole(s: SessionContext): Promise<DashboardRole> {
   const me = await myEmployment(s);
   const reportingLines = me ? await reportingLinesFor(s, me.employmentId) : null;

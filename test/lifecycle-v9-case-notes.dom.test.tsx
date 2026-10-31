@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { CaseNotes } from '../app/lifecycle/v9/case-notes';
+import { CaseNotes } from '../app/(app)/lifecycle/v9/case-notes';
 import { fictionalV9Case } from './fixtures/lifecycle-v9/case';
 vi.mock('../lib/onboarding-copy',()=>({useOnboardingCopy:()=>((text:string)=>text)}));
 it('retains a failed note and offers editing only for the actual author',async()=>{

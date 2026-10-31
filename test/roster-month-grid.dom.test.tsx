@@ -35,7 +35,7 @@ import {
 // The server actions are the boundary this component talks over; the grid's own logic is what is under
 // test, so they are stubbed rather than reached for (they would drag next/cache and a database in).
 const assign = vi.fn(async () => ({ ok: true as const }));
-vi.mock('../app/roster/actions', () => ({
+vi.mock('../app/(app)/roster/actions', () => ({
   assignCellAction: (...a: unknown[]) => assign(...(a as [])),
   bulkAssignAction: async () => ({ ok: true as const }),
   rowAssignAction: async () => ({ ok: true as const }),

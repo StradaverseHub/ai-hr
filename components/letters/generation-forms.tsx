@@ -3,7 +3,7 @@ import {createContext,useActionState,useCallback,useContext,useEffect,useId,useM
 import {Field,inputCls,btnPrimary,btnGhost} from '@/components/ui';
 import type {LetterChoice} from '@/lib/letter-choice';
 import type {LetterField,LetterValue} from '@/lib/letter-model';
-import {createGeneration,updateGeneration} from '@/app/letters/generate/actions';
+import {createGeneration,updateGeneration} from '@/app/(app)/letters/generate/actions';
 import {LetterChoicePicker,type LetterChoiceLabels} from './choice-picker';
 import {LetterCustomInputs} from './custom-inputs';
 export type GenerationFormLabels={department:string;branch:string;hiredFrom:string;hiredTo:string;filterHelp:string;invalidRange:string;selected:string;addShown:string;remove:string;limit:string;commonValues:string;customHelp:string;create:string;working:string;reason:string;currency:string};

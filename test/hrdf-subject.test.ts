@@ -78,7 +78,7 @@ import {
 } from '../core/payroll';
 import { hireEmployee } from '../core/org';
 import { personnelFormName } from '../lib/personnel-form-contract';
-import { setOthersStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setOthersStatutoryAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import {
   adminCtx,
   closeAll,
@@ -127,7 +127,7 @@ describe('hrdfSubject resolver (pack vocabulary)', () => {
 });
 
 describe('Others Statutory — source layout + i18n (0df0c635)', () => {
-  const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+  const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 
   it('(g) renders the Others Statutory card on the Bank & Statutory panel BELOW the existing statutory cards', () => {
     const start = PAGE.indexOf('bankStatutory: (');
@@ -163,7 +163,7 @@ describe('Others Statutory — source layout + i18n (0df0c635)', () => {
     const others = PAGE.slice(PAGE.indexOf('const othersStatutoryCard'), PAGE.indexOf('const tp3Card'));
     expect(others).not.toContain('type="checkbox"');
     // …and the action must map the three values, not coerce a checkbox's 'on'.
-    const ACTIONS = read('app/admin/personnel/[employmentId]/actions.ts');
+    const ACTIONS = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
     const fn = ACTIONS.slice(ACTIONS.indexOf('export async function setOthersStatutoryAction'));
     expect(fn).toContain("hrdfChoice === 'yes' ? true : hrdfChoice === 'no' ? false : null");
   });

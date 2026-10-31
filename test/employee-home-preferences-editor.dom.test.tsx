@@ -12,7 +12,7 @@ import {HomePreferencesEditor} from '../components/employee-home/preferences-edi
 import {defaultEmployeeHomePreferences,EMPLOYEE_HOME_CARD_DEFAULTS} from '../lib/employee-home';
 import {parseHomePreferenceForm} from '../lib/employee-home-preferences-form';
 const state=vi.hoisted(()=>({save:vi.fn()}));
-vi.mock('../app/me/home/actions',()=>({saveHomePreferencesAction:state.save}));
+vi.mock('../app/(app)/me/home/actions',()=>({saveHomePreferencesAction:state.save}));
 vi.mock('next/navigation',()=>({unstable_rethrow:()=>{}}));
 const catalogues={en,ms,zh,ta,th,vi:viWords};
 beforeEach(()=>{vi.clearAllMocks();state.save.mockReset();state.save.mockResolvedValue({error:'invalid'});});afterEach(cleanup);

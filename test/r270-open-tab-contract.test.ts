@@ -20,8 +20,8 @@ import { readFileSync } from 'node:fs';
  * the page must SEND the tab, and the component must LET IT WIN. Either half alone is green and broken.
  */
 
-const TABS = 'app/admin/leave-config/types/leave-type-tabs.tsx';
-const PAGE = 'app/admin/leave-config/types/page.tsx';
+const TABS = 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx';
+const PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 

@@ -20,7 +20,7 @@
  * reader staring at an unsaved preview whose submit button no longer exists (3c2f55d7 rev 2).
  *
  * ── WHY THE PANEL IS PORTALLED AND `position: fixed`, NOT `absolute` (r227) ─────────────────────────
- * THE PANEL WAS BEING CLIPPED, NOT OVERLAPPED, and the difference decides the fix. app/layout.tsx gives
+ * THE PANEL WAS BEING CLIPPED, NOT OVERLAPPED, and the difference decides the fix. app/(app)/layout.tsx gives
  * <main> `overflow-y-auto`; per CSS Overflow 3 a non-visible overflow on ONE axis computes the other axis
  * to `auto` as well, so <main> is a scroll container on both axes. An absolutely-positioned panel is laid
  * out inside that container and is TRIMMED at its edge. Raising z-index fixes nothing: the panel was
@@ -36,7 +36,7 @@
  * reported as a narrow-window fault and the approved plan repeats that; the clamp below fixes both
  * readings, so nothing about the remedy changes.
  *
- * THIS EXACT TRAP WAS FIXED HERE BEFORE — r206 / item 65e2d5de, app/payroll/row-actions.tsx, whose
+ * THIS EXACT TRAP WAS FIXED HERE BEFORE — r206 / item 65e2d5de, app/(app)/payroll/row-actions.tsx, whose
  * docblock states the rule verbatim, and components/attendance-figure-cells.tsx carries the
  * viewport-clamped variant copied below. The remedy is two parts, and both are load-bearing:
  *   1. createPortal to document.body — the panel leaves the scroll container's subtree entirely, so no
@@ -59,7 +59,7 @@
  * scroll would throw away a file the reader had already picked. Following the anchor is the only option
  * that keeps the pick alive.
  *
- * BOTH MOUNT SITES GET THIS. The Personnel employee header (app/admin/personnel/[employmentId]/page.tsx)
+ * BOTH MOUNT SITES GET THIS. The Personnel employee header (app/(app)/admin/personnel/[employmentId]/page.tsx)
  * and the company logo editor (components/company-logo.tsx) render the same island under the same
  * scrolling ancestor; there is no per-caller positioning and there must not be one.
  */

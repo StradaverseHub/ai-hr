@@ -1,6 +1,6 @@
 /**
  * Global Delegation (Phase 1) — pure presentation helpers for the /delegations screen. Kept in a
- * NON-'use client' module so the server component (app/delegations/page.tsx) can import and CALL them at
+ * NON-'use client' module so the server component (app/(app)/delegations/page.tsx) can import and CALL them at
  * render time without tripping the RSC boundary guard (test/rsc-boundary-guard.test.ts).
  */
 

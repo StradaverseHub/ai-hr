@@ -35,7 +35,7 @@ function tsxFiles(dir: string, out: string[] = []): string[] {
 /**
  * Strip comments before counting tags.
  *
- * Learned the hard way while writing this guard: app/leave/page.tsx carries a comment that EXPLAINS the
+ * Learned the hard way while writing this guard: app/(app)/leave/page.tsx carries a comment that EXPLAINS the
  * rule — "it renders its own <form>, and nesting one inside…" — and a naive scan counted that prose as a
  * real opening tag, reporting a correctly-written page as an offender. A guard that fires on the comment
  * documenting it is worse than no guard, because the next person learns to ignore it.

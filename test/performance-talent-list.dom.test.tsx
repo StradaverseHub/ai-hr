@@ -3,15 +3,15 @@ import { afterEach,expect,it,vi } from 'vitest';
 import { cleanup,fireEvent,render,screen,within,waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-import { TalentList } from '../app/performance/onehr/talent-list';
-import type { CalibrationRosterRow } from '../app/performance/onehr/calibration-roster';
+import { TalentList } from '../app/(app)/performance/onehr/talent-list';
+import type { CalibrationRosterRow } from '../app/(app)/performance/onehr/calibration-roster';
 import type { TalentListFilters,TalentListSort } from '../packs/performance/onehr/talent-list-model';
 const ports=vi.hoisted(()=>({save:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:ports.refresh})}));
-vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:ports.save}));
-import { CalibrationBandForm } from '../app/performance/onehr/calibration-band-form';
-import { TalentBoxMove } from '../app/performance/onehr/talent-box-move';
-import { TalentBandHistory } from '../app/performance/onehr/talent-band-history';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({saveCalibrationBandAction:ports.save}));
+import { CalibrationBandForm } from '../app/(app)/performance/onehr/calibration-band-form';
+import { TalentBoxMove } from '../app/(app)/performance/onehr/talent-box-move';
+import { TalentBandHistory } from '../app/(app)/performance/onehr/talent-band-history';
 const people:CalibrationRosterRow[]=[
  {id:'a',name:'Alice Tan',department:'Finance',grade:'12',performance:'AE',potential:'High'},
  {id:'b',name:'Bob Lim',department:'Operations',grade:'2',performance:'ME',potential:'Mid'},

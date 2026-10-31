@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 /**
  * Pending-approval count badge for the "Approval Items" rail row (feedback 836118c4).
  *
- * Purely presentational — the number is computed server-side in app/layout.tsx as
+ * Purely presentational — the number is computed server-side in app/(app)/layout.tsx as
  * `listPendingTasks(...).length` (the SAME user-scoped queue the bell's Task tab renders) and threaded
  * through <Sidebar approvalCount>. Nothing is queried here.
  *

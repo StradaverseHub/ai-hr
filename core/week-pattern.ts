@@ -69,7 +69,7 @@ export const weekPatternFor = (
  *  not the pattern lookup, so only the step that needs it stays there. The Shift form's day row needs the
  *  lookup WITHOUT a date — it is editing a weekly template, not a calendar — and a client island cannot
  *  import core/attendance.ts at all, so before this the form carried its own copy (`kindOf` in
- *  app/admin/attendance/shift-form.tsx). That copy is gone.
+ *  app/(app)/admin/attendance/shift-form.tsx). That copy is gone.
  *
  *  Rest stays the COMPLEMENT — a weekday in none of the three arrays — which is exactly what "not ticked"
  *  has always meant. The arrays are pairwise disjoint (core/roster.ts, core/attendance-rule.ts, and a DB

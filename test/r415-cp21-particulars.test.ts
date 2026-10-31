@@ -55,10 +55,10 @@ vi.mock('next-intl/server', () => ({
 }));
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import { GET as pdfGET } from '../app/payroll/cp21/[employmentId]/pdf/route';
-import Cp21PreviewPage from '../app/payroll/cp21/[employmentId]/preview/page';
-import EventPage from '../app/payroll/statutory-forms/event/page';
-import { GET as continueGET } from '../app/payroll/statutory-forms/event/continue/route';
+import { GET as pdfGET } from '../app/(app)/payroll/cp21/[employmentId]/pdf/route';
+import Cp21PreviewPage from '../app/(app)/payroll/cp21/[employmentId]/preview/page';
+import EventPage from '../app/(app)/payroll/statutory-forms/event/page';
+import { GET as continueGET } from '../app/(app)/payroll/statutory-forms/event/continue/route';
 
 const ROOT = path.resolve(__dirname, '..');
 const BASELINE = 'f6a540b0';
@@ -406,7 +406,7 @@ describe('r415 · the PDF route and the preview', () => {
 
   /**
    * ⚠️ THE CROSS-COMPANY REFUSAL. NON-VACUITY: delete the `scopeIds.includes(...)` line in
-   * app/payroll/cp21/[employmentId]/pdf/route.ts and the PDF case returns 200; delete
+   * app/(app)/payroll/cp21/[employmentId]/pdf/route.ts and the PDF case returns 200; delete
    * `|| !scopeIds.includes(particulars.companyId)` from the preview page and it renders.
    */
   it('is a bare 404 — PDF and preview — to an admin scoped to ANOTHER company', async () => {
@@ -446,7 +446,7 @@ describe('r415 · the PDF route and the preview', () => {
   });
 
   it('page and PDF route both run the company-scope check (source guard; slice found and long)', () => {
-    for (const f of ['app/payroll/cp21/[employmentId]/preview/page.tsx', 'app/payroll/cp21/[employmentId]/pdf/route.ts']) {
+    for (const f of ['app/(app)/payroll/cp21/[employmentId]/preview/page.tsx', 'app/(app)/payroll/cp21/[employmentId]/pdf/route.ts']) {
       const src = code(fs.readFileSync(path.join(ROOT, f), 'utf8'));
       expect(src.length, f).toBeGreaterThan(800);
       expect(src, f).toMatch(/scopeIds\.includes\(particulars\.companyId\)/);

@@ -1,6 +1,6 @@
 /**
  * D-P1-32 D3 (APR-025, ADR-0152) — the Performance & Talent area theme, rendered through the REAL segment layout
- * (app/performance/layout.tsx). jsdom applies no stylesheet, so this pins markup and wiring only; the cascade
+ * (app/(app)/performance/layout.tsx). jsdom applies no stylesheet, so this pins markup and wiring only; the cascade
  * itself is test/performance-area-theme.browser.test.tsx and the stylesheet's source rules are
  * test/performance-area-theme.test.ts.
  *
@@ -34,7 +34,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/performance',
 }));
 
-import PerformanceLayout from '../app/performance/layout';
+import PerformanceLayout from '../app/(app)/performance/layout';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle } from '../components/ui/card';
 import { ClientPager } from '../components/client-pager';

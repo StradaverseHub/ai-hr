@@ -11,7 +11,7 @@
  * the preview and the downloaded PDF (the last two are one route, `?inline=1`) — and each resolves it from
  * a different read. Written out twice, the rule "the cycle name, or the run-type word when there is none"
  * is one edit away from a downloaded file disagreeing with the screen it came from, which is the class of
- * defect app/payroll/individual-payslip and lib/payslip-pdf.ts are both full of notes about. So the rule
+ * defect app/(app)/payroll/individual-payslip and lib/payslip-pdf.ts are both full of notes about. So the rule
  * is a function, and both callers hand it their own strings.
  *
  * PURE AND DB-FREE, like core/payslip-segment.ts beside it: the caller's read supplies the cycle name and

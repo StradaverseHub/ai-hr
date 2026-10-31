@@ -342,7 +342,7 @@ export type SharedLeaveGroupBalance = {
    *
    * ⚠️ r355 (8d3a7bff) — THE CALLER CHANGED AND THE FIELD DID NOT. This said "so a caller can offer one
    * Apply action per reason", which was /leave/shared/[groupId]'s per-reason Apply buttons; that page is
-   * deleted. The surviving reader is app/leave/page.tsx, which builds `groupNameByTypeId` from exactly this
+   * deleted. The surviving reader is app/(app)/leave/page.tsx, which builds `groupNameByTypeId` from exactly this
    * list to put the pool's members under one <optgroup> in the Request Leave picker. Same ids, same reason
    * for carrying them (one pass, so the picker and the card cannot disagree about who is in the pool).
    *

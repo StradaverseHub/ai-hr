@@ -54,7 +54,7 @@ const today = () => todayInKualaLumpur();
  *  override. Still needed: drafts carrying it exist on production, and §3/§6 pin that they keep it. */
 const probationDefault = () => computeProvisionalEndOn(today(), 'full_time', 3) ?? today();
 
-/** The seed EXACTLY as app/admin/personnel/new/page.tsx applies it to a loaded draft (r392: the company's
+/** The seed EXACTLY as app/(app)/admin/personnel/new/page.tsx applies it to a loaded draft (r392: the company's
  *  hiring-defaults probation LENGTH, 3 months when unconfigured — no longer an end date). */
 const seeded = (data: EmployeeDraftData, probationMonths = 3) =>
   withEmploymentDefaults(data, { hiredOn: today(), probationMonths });
@@ -252,7 +252,7 @@ describe('§4 the seed defaults, it does not overrule', () => {
 // ── §5 the wiring, so the seed cannot quietly stop being applied ──────────────────────────────────
 describe('§5 the screen that shows the defaults is the screen that seeds them', () => {
   it('the continue form hands the SEEDED data to the wizard, not the raw draft', () => {
-    const src = read('app/admin/personnel/new/page.tsx');
+    const src = read('app/(app)/admin/personnel/new/page.tsx');
     expect(src, 'page.tsx applies the seed').toContain('withEmploymentDefaults(draft.data');
     expect(src).toMatch(/initialData=\{withEmploymentDefaults\(/);
     // The old half-fix is gone rather than sitting alongside the new one: two seeding functions is how
@@ -263,7 +263,7 @@ describe('§5 the screen that shows the defaults is the screen that seeds them',
   });
 
   it('the wizard displays the SAME constant it stores, rather than a second literal', () => {
-    const src = read('app/admin/personnel/new/wizard.tsx');
+    const src = read('app/(app)/admin/personnel/new/wizard.tsx');
     expect(src).toContain('DEFAULT_EMPLOYMENT_TYPE');
     // The bare literal is what made the screen's answer and the blob's answer two separate claims.
     expect(src, "no second hand-typed 'full_time' on the draft screen").not.toContain("?? 'full_time'");
@@ -298,7 +298,7 @@ describe('§6 a new full-time draft is seeded the company probation LENGTH, not 
   });
 
   it('the page passes the hiring-defaults probation length, not an end date', () => {
-    const src = read('app/admin/personnel/new/page.tsx');
+    const src = read('app/(app)/admin/personnel/new/page.tsx');
     expect(src).toContain('withEmploymentDefaults(draft.data, { hiredOn: today, probationMonths })');
     expect(src, 'read from core/hiring-defaults, defaulted by resolveProbationMonths').toMatch(
       /resolveProbationMonths\(\(await getHiringDefaults\(session, draftCompanyId\)\)\?\.probationMonths\)/,

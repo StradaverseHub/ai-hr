@@ -70,8 +70,8 @@ import {
 } from '../core/payroll-cycle';
 import { listFixedTransactionsAcross } from '../core/payroll-view';
 import { commitTxnImport, type TxnImportRecord } from '../core/payroll-txn-import';
-import { createFixedTransactionAction, updateFixedTransactionAction } from '../app/payroll/transactions/fixed/actions';
-import FixedTransactionDetailPage from '../app/payroll/transactions/fixed/[id]/page';
+import { createFixedTransactionAction, updateFixedTransactionAction } from '../app/(app)/payroll/transactions/fixed/actions';
+import FixedTransactionDetailPage from '../app/(app)/payroll/transactions/fixed/[id]/page';
 import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');

@@ -2,7 +2,7 @@
  * r301 (board 83511d3b) · CANCEL APPROVED LEAVE — the screens, the words, and the contract between the card and
  * the action.
  *
- *   · every refusal says exactly why: localizeLeaveError (shared by app/me/actions.ts and app/leave/actions.ts)
+ *   · every refusal says exactly why: localizeLeaveError (shared by app/(app)/me/actions.ts and app/(app)/leave/actions.ts)
  *     maps each refusal to its OWN sentence, read through a real translator over the English catalogue — no
  *     refusal the service raises falls back to the old one-size "This leave date can't be cancelled.";
  *   · the card posts its marker and the fields the action reads, is hidden for Emergency Leave, and the action
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
 
-// app/me/actions.ts's framework edges, faked the way test/r299-leave-credit-cancel.test.ts fakes them, so each
+// app/(app)/me/actions.ts's framework edges, faked the way test/r299-leave-credit-cancel.test.ts fakes them, so each
 // refusal is read as the SENTENCE the employee sees. MISSING_MESSAGE / FORMATTING_ERROR throw, as next-intl does.
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => null) }));
 vi.mock('next/navigation', () => ({
@@ -42,7 +42,7 @@ vi.mock('next-intl/server', () => ({
   },
 }));
 
-import { localizeLeaveError } from '../app/me/actions';
+import { localizeLeaveError } from '../app/(app)/me/actions';
 import {
   LeaveCancellationNotAllowedError,
   LeaveCancellationTooCloseError,
@@ -104,8 +104,8 @@ describe('EVERY REFUSAL SAYS EXACTLY WHY', () => {
 });
 
 describe('THE CARD AND ITS ACTION', () => {
-  const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
-  const actions = read('app/admin/actions.ts');
+  const tabs = read('app/(app)/admin/leave-config/types/leave-type-tabs.tsx');
+  const actions = read('app/(app)/admin/actions.ts');
 
   it('is hidden for Emergency Leave (role first, code fallback) and sits on the "How it is applied for" tab', () => {
     const markerAt = tabs.indexOf('<input type="hidden" name="cancelApproved" value="1" />');
@@ -166,7 +166,7 @@ describe('THE BUTTON, THE STATUS AND THE LEVEL — on the server, through one pr
   });
 
   it('/approvals shows the level a cancellation is waiting at, and Pending Cancellation', () => {
-    const page = read('app/approvals/page.tsx');
+    const page = read('app/(app)/approvals/page.tsx');
     const section = page.slice(page.indexOf('APPROVAL_SECTION_ID.leaveCancellation'));
     expect(section).toContain("{tLeave('pendingCancellationStatus')}");
     expect(section).toContain("t('stepOfN', { n: (c.currentStepIndex ?? 0) + 1, total: c.stepCount })");

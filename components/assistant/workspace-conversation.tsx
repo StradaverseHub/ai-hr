@@ -1,7 +1,7 @@
 "use client";
 import {Fragment,useCallback,useEffect,useLayoutEffect,useRef,useState,type ReactNode} from 'react';
 import {useTranslations} from 'next-intl';
-import {askFromWorkspaceAction,loadEarlierChatAction,type LauncherReply} from '../../app/assistant/launcher-actions';
+import {askFromWorkspaceAction,loadEarlierChatAction,type LauncherReply} from '../../app/(app)/assistant/launcher-actions';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {WorkspaceComposer} from './workspace-composer';
 import {ThinkingIndicator} from './thinking-indicator';

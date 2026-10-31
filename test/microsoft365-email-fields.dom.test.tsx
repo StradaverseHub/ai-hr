@@ -8,7 +8,7 @@ import zh from '../messages/zh.json';
 import vi from '../messages/vi.json';
 import th from '../messages/th.json';
 import ta from '../messages/ta.json';
-import {SavedEmailConnectionFields} from '../app/admin/settings/email/connection-fields';
+import {SavedEmailConnectionFields} from '../app/(app)/admin/settings/email/connection-fields';
 import {defaultEmailConfig,type EmailConfig} from '../lib/identity/email-model';
 const m=messages.identityEmail;
 const config:EmailConfig={...defaultEmailConfig,host:'smtp.example.test',from:'hr@example.test',user:'relay-user'};

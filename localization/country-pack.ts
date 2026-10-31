@@ -189,7 +189,7 @@ export type ChildReliefInput = {
  * but rides the SOCSO bands, so it is NOT in the overview grid).
  *
  * The descriptor carries no component ref: these routes are the pack's own UI files (kept physically
- * in `app/payroll/configuration/*` pending migration under `localization/my/ui/` — open decision 2).
+ * in `app/(app)/payroll/configuration/*` pending migration under `localization/my/ui/` — open decision 2).
  * The `key` is the ROUTE-OWNERSHIP marker: generic config routes resolve the acting company's pack
  * and 404 unless it declares a section with their key (the gate moves from "route exists" to "pack
  * declares the section", ADR-0080 D4). For MY — which declares every section — this never 404s.
@@ -748,7 +748,7 @@ export interface CountryPack {
    * nothing rather than an empty file under a foreign agency's name (`pcb2iiStatement`'s reasoning, D-14).
    *
    * ⚠️ THIS IS THE MEMBER THAT LETS A GENERIC SCREEN HAND OVER A COUNTRY-SPECIFIC FILE WITHOUT NAMING THE
-   * PACK. `app/payroll/payment-submission` is shared by every country this product will ever support, and
+   * PACK. `app/(app)/payroll/payment-submission` is shared by every country this product will ever support, and
    * the drift ratchet (test/country-pack-drift.test.ts, D1/D7) refuses it any direct reach into a pack -
    * correctly, and the allowlist only ever shrinks. Before this member existed the LHDN e-Data row on that
    * screen had to be listed as UNAVAILABLE while `/payroll/reports/*` served the very same file, because

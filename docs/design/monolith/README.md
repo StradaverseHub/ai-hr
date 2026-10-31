@@ -28,7 +28,7 @@ Radius is 0 except pills (999px). No drop shadows on UI, only the object's long 
 
 - Display and body: **Schibsted Grotesk** (Google Fonts). Weights 400, 500, 600. Headlines 500 with tracking −0.04em; page `h1` 56px on product screens (88–96px only on the concept/hub boards).
 - Labels, figures, status words: **DM Mono** 11px, uppercase, tracking 0.12em (the `.mono` class). All numbers use `font-variant-numeric: tabular-nums` (the `.num` class).
-- In `app/layout.tsx` swap `Plus_Jakarta_Sans` for `Schibsted_Grotesk` (variable `--font-schibsted`) and `Geist_Mono` for `DM_Mono` (variable `--font-dm-mono`, weights 400 and 500). Keep the CJK fallbacks.
+- In `app/(app)/layout.tsx` swap `Plus_Jakarta_Sans` for `Schibsted_Grotesk` (variable `--font-schibsted`) and `Geist_Mono` for `DM_Mono` (variable `--font-dm-mono`, weights 400 and 500). Keep the CJK fallbacks.
 
 ## 3. The shell
 
@@ -77,7 +77,7 @@ Respect `prefers-reduced-motion` and the `motion` switch: everything still rende
 ## 7. Rollout plan for the build session
 
 1. **Tokens and fonts** — `tokens.css` into `globals.css`, fonts in `layout.tsx`. The app turns bone and ink immediately. Check contrast on the few places that used white-on-indigo.
-2. **Shell** — rebuild `components/sidebar.tsx` (rail), the top bar in `app/layout.tsx` (top line), and surface the command bar as the intent bar. Remove rounded panels, shadows and the canvas frame.
+2. **Shell** — rebuild `components/sidebar.tsx` (rail), the top bar in `app/(app)/layout.tsx` (top line), and surface the command bar as the intent bar. Remove rounded panels, shadows and the canvas frame.
 3. **Primitives** — the shared pieces in `components/ui`: button (pill, txt), input (underline), badge (status word), card (section with hairline), plus new `Section`, `Cells`, `Kv`, `Steps`, `Ruler`, `Note`, `Empty`, `Panel`. Keep APIs; change rendering.
 4. **Screens by module**, hub first — each `app/**/page.tsx` has a board under `reference/` or in the canvas with the exact layout, copy and status vocabulary: Dashboard and My Profile, Payroll, Leave, Attendance, Claims, Personnel and Organization, Statutory and reports, Admin settings.
 5. **Objects** — add `useOrbit()` and the compact objects to hubs only, then the heavy ones (tower, campus, cabinet) where the room exists.

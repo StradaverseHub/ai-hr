@@ -12,7 +12,7 @@ const invitations = vi.hoisted(() => ({ startInvitation: vi.fn(), acceptInternal
 const identity = vi.hoisted(() => ({ currentInternalIdentity: vi.fn() }));
 vi.mock('../lib/internal-auth/invitations', () => invitations);
 vi.mock('../lib/internal-auth/web-session', () => identity);
-import { POST } from '../app/login/api/[operation]/route';
+import { POST } from '../app/(auth)/login/api/[operation]/route';
 const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(43);
 function request(operation: string, body: unknown, headers: Record<string, string> = {}) {
   return POST(new NextRequest(`https://hr.test/login/api/${operation}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), { params: Promise.resolve({ operation }) });

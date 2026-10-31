@@ -53,13 +53,13 @@ export const PAYROLL_PERMISSION_KEYS = [
   // and with a leave key stored in it that name is now a MISNOMER. It is plain text with no enum and no
   // foreign key (db/schema.ts), so it stores this key correctly today and NO migration was needed. Renaming
   // the table (and this module) is its own ticket and its own migration — deliberately not smuggled into a
-  // permission fix. The admin screen that grants it (app/admin/payroll-permissions) says out loud that it is
+  // permission fix. The admin screen that grants it (app/(app)/admin/payroll-permissions) says out loud that it is
   // not payroll-only, so an operator looking for a LEAVE permission has some reason to open it.
   //
   // ── READ THIS BEFORE GRANTING IT TO A NON-ADMIN ROLE ──────────────────────────────────────────────────
   // The key is honoured EVERYWHERE — core/leave.ts requestLeave refuses any on-behalf submission without it,
   // whatever screen or script sent it — but the SCREEN that offers the power was only ever finished for the
-  // roles that hold it by default, and those roles never open it. app/leave/page.tsx renders the Request
+  // roles that hold it by default, and those roles never open it. app/(app)/leave/page.tsx renders the Request
   // Leave dialog for `ess = !isAdmin(session)` only, so an hr_admin / super_admin never sees the dialog at
   // all (they file leave from the HR screens). Grant this key to any OTHER role and that role does see it,
   // with two limits nobody would guess from the grant:
@@ -95,7 +95,7 @@ export const PAYROLL_PERMISSION_KEYS = [
   //
   // ⚠️ THE SHIPPED LIMIT, STATED PLAINLY (same honesty leave.apply_on_behalf documents above): the key is
   // enforced in the SERVICE, so it refuses whatever screen or script calls markReportFiled. But the only
-  // screen that OFFERS the control today is app/payroll/reports/page.tsx, which is `requireAdmin()`.
+  // screen that OFFERS the control today is app/(app)/payroll/reports/page.tsx, which is `requireAdmin()`.
   // Granting this key to payroll_partner therefore authorises the action without yet giving that role a
   // way to reach it. Widening that page is a separate decision about who may read every statutory report
   // for a company, and it was deliberately not smuggled into this one.

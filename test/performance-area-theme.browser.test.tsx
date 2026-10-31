@@ -1,6 +1,6 @@
 /**
  * D-P1-32 D3 (APR-025, ADR-0152) — the Performance & Talent area theme in a REAL engine: compiled Tailwind,
- * app/globals.css, app/atelier.css and app/performance/area-theme.css, read back with getComputedStyle.
+ * app/globals.css, app/atelier.css and app/(app)/performance/area-theme.css, read back with getComputedStyle.
  *
  * What jsdom cannot see and this pins: inside <div data-area-theme="performance"> a shared Card and Button
  * compute the SAME values in Classic, Monolith and Atelier (the tokens, the `monolith:` / `atelier:` variant
@@ -12,7 +12,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { Sparkles } from 'lucide-react';
 import '../app/globals.css';
 import '../app/atelier.css';
-import '../app/performance/area-theme.css';
+import '../app/(app)/performance/area-theme.css';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle } from '../components/ui/card';
 

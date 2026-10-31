@@ -188,7 +188,7 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
   });
 
   it('the builder imports LEVEL_KINDS instead of re-listing the kinds', () => {
-    const src = readFileSync(join(ROOT, 'app/admin/leave-approval/step-list-editor.tsx'), 'utf8');
+    const src = readFileSync(join(ROOT, 'app/(app)/admin/leave-approval/step-list-editor.tsx'), 'utf8');
     expect(src).toContain("from '@/lib/leave-approval-kinds'");
     // The arm that matters: no second hand-kept list. Before r293 this file declared its own KIND_OPTIONS
     // array of seven string literals, and nothing failed when it fell behind the kernel const.
@@ -219,7 +219,7 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
       }
     }
     // And the page must actually USE them: a catalogue entry nothing reads is not a label on a screen.
-    const page = readFileSync(join(ROOT, 'app/admin/leave-config/approval-chains/page.tsx'), 'utf8');
+    const page = readFileSync(join(ROOT, 'app/(app)/admin/leave-config/approval-chains/page.tsx'), 'utf8');
     expect(page).toContain('const kindLabels: Record<LeaveLevelKind, string>');
     for (const kind of LEVEL_KINDS) expect(page, `kindLabels is missing ${kind}`).toContain(`${kind}: t(`);
   });
@@ -230,8 +230,8 @@ describe('r293 — the vocabulary the builder offers is the kernel’s, not a co
        Phase 2 taught only one of them about `manager_manager`, so the TEMPLATE LIST printed "Direct
        manager" for a Manager's-Manager level — a wrong name, which a reader believes, not a blank. Found
        by rendering the page and reading the markup; nothing in tsc, eslint or the suite saw it. */
-    const editor = readFileSync(join(ROOT, 'app/admin/leave-approval/step-list-editor.tsx'), 'utf8');
-    const manager = readFileSync(join(ROOT, 'app/admin/leave-approval/template-manager.tsx'), 'utf8');
+    const editor = readFileSync(join(ROOT, 'app/(app)/admin/leave-approval/step-list-editor.tsx'), 'utf8');
+    const manager = readFileSync(join(ROOT, 'app/(app)/admin/leave-approval/template-manager.tsx'), 'utf8');
     expect(editor).toContain('const KIND_LABEL_FIELD: Record<LeaveLevelKind, keyof StepListLabels>');
     for (const kind of LEVEL_KINDS) expect(editor, `KIND_LABEL_FIELD is missing ${kind}`).toContain(`${kind}: '`);
     // The other file must USE it, not re-derive it. A second `case 'hr_admin':` here is the whole defect.

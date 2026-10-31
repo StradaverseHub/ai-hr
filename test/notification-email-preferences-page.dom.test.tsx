@@ -23,7 +23,7 @@ vi.mock('../components/ui',async()=>{
  const box=({children}:{children?:React.ReactNode})=>createElement('div',null,children);
  return {PageHeader:()=>null,Card:box,SectionHeader:()=>null,ErrorBanner:({message}:{message?:string})=>message?createElement('p',{role:'alert'},message):null,Field:box,inputCls:'test',btnPrimary:'test'};
 });
-import PreferencesPage from '../app/me/notifications/page';
+import PreferencesPage from '../app/(app)/me/notifications/page';
 const userId='user-current',employmentId='own-employment';
 const identity={issuer:'https://localhost:3543/auth/fixture-tenant',subject:'internal-subject',email:'recipient@report-acceptance.invalid',emailVerified:true};
 const preference={recipientEmploymentId:employmentId,category:'employee_master_reports',enabled:true,emailConsentUserId:userId,emailAfterSequence:42,emailLocale:'en',reportConsentVerifiedAt:new Date('2026-10-16T00:00:00Z'),reportConsentIssuer:identity.issuer,reportConsentSubject:identity.subject,reportConsentAddressHash:createHash('sha256').update(identity.email).digest('hex')};

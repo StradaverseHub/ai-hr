@@ -6,7 +6,7 @@ import en from '../messages/en.json';
 import {AllowanceEmployeePicker} from '../components/allowance-employee-picker';
 import type {AllowanceEmployeePageInput} from '../core/attendance-allowance-selection';
 const {search}=vi.hoisted(()=>({search:vi.fn()}));
-vi.mock('../app/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:search}));
+vi.mock('../app/(app)/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:search}));
 const catalogue=Array.from({length:120},(_,i)=>({id:`employee-${i+1}`,code:`F${String(i+1).padStart(3,'0')}`,name:`Fictional employee ${String(i+1).padStart(3,'0')}`,department:'Fictional department',businessUnit:'Fictional business unit'}));
 function Harness({initial=[]}:{initial?:string[]}) {
  const [values,setValues]=useState(initial);

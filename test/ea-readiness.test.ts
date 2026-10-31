@@ -139,7 +139,7 @@ describe('b36a8a91 — a box the employee’s record should hold and does not', 
 });
 
 describe('b36a8a91 — the review screen says whether the form is ready', () => {
-  const PAGE = read('app/payroll/reports/ea/[employmentId]/page.tsx');
+  const PAGE = read('app/(app)/payroll/reports/ea/[employmentId]/page.tsx');
 
   it('derives the panel from the statement it has ALREADY read, and prints both states', () => {
     expect(PAGE).toContain('eaReadiness(ea)');

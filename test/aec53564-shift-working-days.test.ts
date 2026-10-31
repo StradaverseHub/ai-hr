@@ -9,12 +9,12 @@
  *
  * What replaces it: core/roster.ts normalizeShiftInput now treats weeklyPattern / halfPattern / offPattern
  * as UNDEFINED-MEANS-PRESERVE (the same contract otRule / ruleId already used), and
- * app/admin/attendance/shift-actions.ts never sets any of the three keys at all — so every save through the
+ * app/(app)/admin/attendance/shift-actions.ts never sets any of the three keys at all — so every save through the
  * real action preserves whatever the shift already had. This file pins exactly that, end to end through
  * `updateShiftAction` / `createShiftAction`, plus the direct-service contract both actions rely on.
  */
 import { randomUUID } from 'node:crypto';
-import { scheduleGroupSectionHref } from '../app/admin/attendance/schedule/sections';
+import { scheduleGroupSectionHref } from '../app/(app)/admin/attendance/schedule/sections';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as schema from '../db/schema';
@@ -33,7 +33,7 @@ vi.mock('next/navigation', () => ({
   },
 }));
 
-import { createShiftAction, updateShiftAction } from '../app/admin/attendance/shift-actions';
+import { createShiftAction, updateShiftAction } from '../app/(app)/admin/attendance/shift-actions';
 
 let b: Base;
 
@@ -215,7 +215,7 @@ describe('D1/D2/D4 — the SERVICE contract every caller (the form, a script, a 
 
 /**
  * aec53564 — THE LINK ITSELF, unchanged by r429: the Shift form's READ-ONLY Schedule Group line
- * (app/admin/attendance/shift-form.tsx) still links to the group's "Working Days" section with this exact
+ * (app/(app)/admin/attendance/shift-form.tsx) still links to the group's "Working Days" section with this exact
  * helper, so the shape pinned here is still what the product produces.
  */
 describe('aec53564 · the Schedule Group link is built by the helper, not by hand', () => {

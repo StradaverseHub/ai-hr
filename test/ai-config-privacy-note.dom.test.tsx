@@ -24,7 +24,7 @@ vi.mock('../lib/authz', () => ({ requireAdmin: async () => ({ tenantId: 'fixture
 vi.mock('../core/ai-config', () => ({ getAiConfigView: async () => ({ storable: true, envFallback: null, usingEnvFallback: false, providers: [] }) }));
 vi.mock('../core/entitlements', () => ({ isModuleEnabledOrFalse: () => false }));
 vi.mock('../components/ai-config-form', () => ({ AiConfigForm: () => null }));
-import { AiProviderScreen as AiConfigPage } from '../app/admin/ai/provider-screen';
+import { AiProviderScreen as AiConfigPage } from '../app/(app)/admin/ai/provider-screen';
 
 describe('/admin/ai privacy note', () => {
   it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders the all-features note in %s', async locale => {

@@ -2,8 +2,8 @@
  * r389 bc3e203d · LEAVE CREDIT HISTORY — the employee's own Leave Credit requests, what each one asked for,
  * what happened to it, and what has happened to the credit it minted since.
  *
- * PURE: no database, no clock, no translator. The page (app/leave/credit/page.tsx), its export
- * (app/leave/credit/export/route.ts) and the client island (components/leave/leave-credit-history.tsx) all
+ * PURE: no database, no clock, no translator. The page (app/(app)/leave/credit/page.tsx), its export
+ * (app/(app)/leave/credit/export/route.ts) and the client island (components/leave/leave-credit-history.tsx) all
  * read the SAME filter, sort and count functions from here, so "the file downloads what you are looking at"
  * is a property of one function rather than a promise between three files.
  *

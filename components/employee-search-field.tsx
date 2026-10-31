@@ -7,7 +7,7 @@ import { EMPLOYEE_SEARCH_RESULT_CAP, matchEmployees } from '@/lib/employee-searc
 
 /**
  * WHO MOUNTS THIS (the header used to say "nobody", and that stopped being true):
- *   • the two Leave Inquiry pickers — app/leave/employee-balances + employee-records (38b94df7),
+ *   • the two Leave Inquiry pickers — app/(app)/leave/employee-balances + employee-records (38b94df7),
  *   • the authorised-signatory picker on each statutory card in components/company-panel.tsx (3c2f55d7
  *     rev 2), which is the first consumer to post a PERSON id rather than an employment id — `value` is
  *     whatever the caller wants submitted, so that needed no change here.
@@ -18,7 +18,7 @@ import { EMPLOYEE_SEARCH_RESULT_CAP, matchEmployees } from '@/lib/employee-searc
  * six catalogues, and test/employee-scope-panel-guard.test.ts asserts those two screens mount this control
  * ZERO times. Keeping it was the right call rather than deleting a working, tested control and
  * re-deriving it. `lib/employee-search.ts` is a separate matter and has live consumers either way (via
- * `app/admin/personnel/employee-search.ts`).
+ * `app/(app)/admin/personnel/employee-search.ts`).
  *
  * ───────────────────────────────────────────────────────────────────────────────────────────────────
  * THE SHARED "search for an employee" FILTER FIELD — built once for 98e69987 (Transaction Detail) and
@@ -28,7 +28,7 @@ import { EMPLOYEE_SEARCH_RESULT_CAP, matchEmployees } from '@/lib/employee-searc
  * HOW IT DIFFERS FROM THE TWO CONTROLS THAT ALREADY EXIST, because the difference is the whole reason this
  * file is here rather than a third caller of one of them:
  *
- *  - `app/admin/personnel/employee-switcher.tsx` searches the same way but NAVIGATES: picking a person is
+ *  - `app/(app)/admin/personnel/employee-switcher.tsx` searches the same way but NAVIGATES: picking a person is
  *    `router.push(...)`. That is right for a switcher between profile routes and wrong for a filter, where
  *    the choice has to sit still until the reader presses Apply alongside the other filters.
  *  - `components/ui/combobox.tsx` posts a value the right way but filters with a plain case-insensitive

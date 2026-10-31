@@ -8,7 +8,7 @@ import en from '../messages/en.json';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const {save,refresh}=vi.hoisted(()=>({save:vi.fn(async(_data:FormData)=>({ok:true})),refresh:vi.fn()}));
-vi.mock('../app/attendance/individual/[date]/actions',()=>({saveAttendanceDayChangesAction:save,adminCorrectAttendanceDayAction:vi.fn()}));
+vi.mock('../app/(app)/attendance/individual/[date]/actions',()=>({saveAttendanceDayChangesAction:save,adminCorrectAttendanceDayAction:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh})}));
 vi.mock('sonner',()=>({toast:{success:vi.fn()}}));
 

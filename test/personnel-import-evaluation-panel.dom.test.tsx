@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PersonnelImportEvaluationPanel, type PersonnelImportEvaluationHandle } from '../components/personnel-import-evaluation-panel';
 import type { EmployeeImportEvaluationReceipt } from '../lib/personnel-import-evaluation';
 const actions = vi.hoisted(() => ({ begin: vi.fn(), prepare: vi.fn(), reopen: vi.fn(), record: vi.fn(), associate: vi.fn() }));
-vi.mock('../app/admin/personnel/import/actions', () => ({ beginEmployeeImportEvaluationAction: actions.begin, prepareEmployeeImportEvaluationCommitAction: actions.prepare, reopenEmployeeImportEvaluationAction: actions.reopen, recordEmployeeImportEvaluationTelemetryAction: actions.record, associateReusedEmployeeImportHeaderAction: actions.associate }));
+vi.mock('../app/(app)/admin/personnel/import/actions', () => ({ beginEmployeeImportEvaluationAction: actions.begin, prepareEmployeeImportEvaluationCommitAction: actions.prepare, reopenEmployeeImportEvaluationAction: actions.reopen, recordEmployeeImportEvaluationTelemetryAction: actions.record, associateReusedEmployeeImportHeaderAction: actions.associate }));
 vi.mock('next-intl', () => ({ useTranslations: () => ((key: string) => key) }));
 vi.mock('../components/ui', () => ({ Button: ({ children, variant: _, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
         variant?: string;

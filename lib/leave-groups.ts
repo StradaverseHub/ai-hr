@@ -20,7 +20,7 @@
 // 464b58e6 finished that job on the SCREEN. One mechanism was still being offered through two controls: the
 // Employee Visibility sub-form carried a "Visible to employee" checkbox writing this very flag, directly
 // above the placement select whose "Hidden" option writes it too. The checkbox is gone and the placement
-// control is the single writer; app/admin/actions.ts no longer forwards visibleToEmployee from that form.
+// control is the single writer; app/(app)/admin/actions.ts no longer forwards visibleToEmployee from that form.
 // Nothing here changed, and nothing here should: hidden is still this flag, resolved in this function.
 //
 // GUARDRAIL: nothing here is ever consulted for entitlement / eligibility / accrual / workflow / payroll. It

@@ -34,7 +34,7 @@ vi.mock('next/navigation', () => ({
 const saveDraftAction = vi.fn(async () => ({ id: 'draft-1' }));
 const discardDraftAction = vi.fn(async () => ({ok:true as const}));
 const createEmployeeAction = vi.fn(async () => ({ ok:true as const, employmentId: 'emp-1' }));
-vi.mock('../app/admin/personnel/new/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/new/actions', () => ({
   saveDraftAction: (...a: unknown[]) => saveDraftAction(...(a as [])),
   discardDraftAction: (...a: unknown[]) => discardDraftAction(...(a as [])),
   createEmployeeAction: (...a: unknown[]) => createEmployeeAction(...(a as [])),
@@ -42,12 +42,12 @@ vi.mock('../app/admin/personnel/new/actions', () => ({
 
 // The compensation server actions — a 'use server' module that reaches Postgres on import. Their
 // behaviour is proved against a real database in the node suite beside this file.
-vi.mock('../app/admin/personnel/[employmentId]/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/[employmentId]/actions', () => ({
   editCompensationAction: vi.fn(),
   supersedeCompensationAction: vi.fn(),
 }));
 
-const { EmployeeWizard } = await import('../app/admin/personnel/new/wizard');
+const { EmployeeWizard } = await import('../app/(app)/admin/personnel/new/wizard');
 
 const wizard = messages.people.wizard;
 const detail = messages.people.detail;

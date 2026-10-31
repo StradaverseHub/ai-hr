@@ -3,7 +3,7 @@ import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import {describe,expect,it,vi} from 'vitest';
 import type {ButtonHTMLAttributes,FormHTMLAttributes} from 'react';
 import messages from '../messages/en.json';
-import ReplacementHolidayPage from '../app/admin/holidays/replacements/page';
+import ReplacementHolidayPage from '../app/(app)/admin/holidays/replacements/page';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const mocks=vi.hoisted(()=>({review:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>createTranslator({locale:'en',messages,namespace:'replacementHoliday'})}));
@@ -11,7 +11,7 @@ vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{},scopeIds:['fixture-comp
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:'fixture-company',name:'Fictional company'}]}));
 vi.mock('../core/holiday-replacements',()=>({listReplacementHolidayPolicies:async()=>[]}));
 vi.mock('../core/holiday-replacement-read',()=>({replacementHolidayReviewRows:mocks.review,replacementHolidayHistory:async()=>[]}));
-vi.mock('../app/admin/holidays/replacements/actions',()=>({adjustReplacementAction:vi.fn(),saveReplacementPolicyAction:vi.fn()}));
+vi.mock('../app/(app)/admin/holidays/replacements/actions',()=>({adjustReplacementAction:vi.fn(),saveReplacementPolicyAction:vi.fn()}));
 vi.mock('../components/attendance-settings-navigation',()=>({AttendanceSettingsNavigation:()=>null}));
 vi.mock('../components/attendance-settings-action-form',()=>({
   AttendanceSettingsActionForm:({submitAction:_,...props}:FormHTMLAttributes<HTMLFormElement>&{submitAction:unknown})=><form {...props}/>,

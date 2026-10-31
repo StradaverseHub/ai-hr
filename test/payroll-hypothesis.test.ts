@@ -259,7 +259,7 @@ describe('the contracts between files that nothing else checks', () => {
    * MISSING_MESSAGE — a tsc-clean, suite-green, 200-returning crash.
    */
   it('every claim has a line on the queue page and a string behind it', () => {
-    const page = read('app/payroll/[batchId]/anomalies/page.tsx');
+    const page = read('app/(app)/payroll/[batchId]/anomalies/page.tsx');
     for (const claim of HYPOTHESIS_CLAIMS) {
       expect(page, `queue page has no copy for '${claim}'`).toContain(`${claim}: t('action.hypothesis`);
     }

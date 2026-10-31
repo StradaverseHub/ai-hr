@@ -41,7 +41,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { leaveBalances, leaveEntitlementBreakdown } from '../core/read';
-import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows } from '../app/(app)/leave/employee-balances/rows';
 import { ESS_VIEW_COMPONENT_KEYS } from '../core/ess-view';
 import {
   ENTITLEMENT_PANEL_SECTIONS,

@@ -168,7 +168,7 @@ describe('real sign-in on, signed in (authkit() replaced; the SDK header helpers
     expect(forwarded(res, 'x-pathname')).toBe('/leave');
   });
 
-  // Signed in at WorkOS, /login renders (app/login/page.tsx sends a LINKED account home and tells an UNLINKED
+  // Signed in at WorkOS, /login renders (app/(auth)/login/page.tsx sends a LINKED account home and tells an UNLINKED
   // one so). Redirecting home here looped forever for a WorkOS login with no AI HR account:
   // home → AuthRequiredError → /login → home. The redirect must not come back.
   it('/login when already signed in reaches the page instead of bouncing home', async () => {

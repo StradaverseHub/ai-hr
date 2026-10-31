@@ -194,7 +194,7 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
         expect(src).not.toContain("includes('payroll'))throw");
         expect(src).not.toContain('requireAdmin(');
       }
-      const page = readFileSync(new URL('../app/rewards/[unitId]/page.tsx', import.meta.url), 'utf8');
+      const page = readFileSync(new URL('../app/(app)/rewards/[unitId]/page.tsx', import.meta.url), 'utf8');
       expect(page).toContain('<RewardPostPanel posting={v.posting}');
       expect(page).not.toContain('postAction} className');
     });

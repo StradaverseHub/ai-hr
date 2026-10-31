@@ -24,7 +24,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-import { SourceTxnBlock } from '../app/payroll/transaction-view/source-txn-block';
+import { SourceTxnBlock } from '../app/(app)/payroll/transaction-view/source-txn-block';
 import type { PayslipSourceTxnRow } from '../core/payroll-view';
 
 const THIS_RUN = '00000000-0000-0000-0000-0000000000b1';
@@ -151,7 +151,7 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
   // `${batchId}:${employmentId}` — so the surplus renders nothing and ships anyway. No DOM assertion can
   // see that, which is exactly why it is pinned on the source of both callers and of the read.
   it('Transaction View → History passes the scoped company ids, the runs AND the employees on screen', () => {
-    const page = src('app/payroll/transaction-view/page.tsx');
+    const page = src('app/(app)/payroll/transaction-view/page.tsx');
     expect(page).toContain('const historyEmploymentIds = [...new Set(shownHistoryRows.map((r) => r.employmentId))];');
     expect(page).toMatch(
       /listPayslipSourceTxns\(s, \{\s*companyIds,\s*batchIds: historyBatchIds,\s*employmentIds: historyEmploymentIds,\s*\}\)/,
@@ -160,7 +160,7 @@ describe('417d4937 — both screens read the ledger, fenced', () => {
   });
 
   it('Individual Payslip passes the scoped company ids, its own run and its own employee', () => {
-    const page = src('app/payroll/individual-payslip/page.tsx');
+    const page = src('app/(app)/payroll/individual-payslip/page.tsx');
     expect(page).toMatch(
       /listPayslipSourceTxns\(s, \{\s*companyIds,\s*batchIds: \[row\.batchId\],\s*employmentIds: \[row\.employmentId\],\s*\}\)/,
     );

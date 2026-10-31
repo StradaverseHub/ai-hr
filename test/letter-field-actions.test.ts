@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({saveLetterField:mocks.save}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {saveField} from '../app/letters/fields/actions';
+import {saveField} from '../app/(app)/letters/fields/actions';
 const companyId='00000000-0000-4000-8000-000000000001',id='00000000-0000-4000-8000-000000000002',ctx={tenantId:'fixture',userId:'actual-user'};
 function form(){const result=new FormData();for(const [key,value]of Object.entries({companyId,key:'letterSalary',label:'Letter salary',source:'compensation.basicSalary',kind:'text',description:'Canonical salary',active:'yes',expectedOrdinal:'2'}))result.set(key,value);return result;}
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);});

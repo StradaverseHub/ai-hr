@@ -36,7 +36,7 @@ describe('full hire organisation contract',()=>{
   expect(catalog.display('division','DIV-A')).toBe('Shared (DIV-A)');
  });
  it('binds Personnel Category display to its live owner label, retaining the canonical code as fallback',()=>{
-  const page=readFileSync(new URL('../app/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
+  const page=readFileSync(new URL('../app/(app)/admin/personnel/[employmentId]/page.tsx',import.meta.url),'utf8');
   const start=page.indexOf('<PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory"');
   expect(start).toBeGreaterThanOrEqual(0);
   const end=page.indexOf('</PersonnelField>',start);expect(end).toBeGreaterThan(start);

@@ -27,7 +27,7 @@
  * class string or checked against one:
  *
  *  • The header grid, the right cluster, the shell and the rail width are copied VERBATIM from
- *    app/layout.tsx / components/sidebar.tsx. test/topbar-overlap-guard.test.ts fails if the copies
+ *    app/(app)/layout.tsx / components/sidebar.tsx. test/topbar-overlap-guard.test.ts fails if the copies
  *    and the sources ever differ, so this file cannot quietly measure a header the app no longer has.
  *  • The UserMenu is THE REAL COMPONENT — it is the thing under test.
  *  • The bell / language / theme controls are stand-ins carrying `inline-flex size-9 …`, the same
@@ -70,11 +70,11 @@ const { UserMenu } = await import('../components/user-menu');
 
 /* ── Copied VERBATIM from the sources. Pinned by test/topbar-overlap-guard.test.ts. ─────────────── */
 
-/** app/layout.tsx — <body>. */
+/** app/(app)/layout.tsx — <body>. */
 export const SHELL_BODY_CLS = 'h-dvh overflow-hidden bg-canvas p-3 font-sans lg:p-4';
-/** app/layout.tsx — the rail/content row. */
+/** app/(app)/layout.tsx — the rail/content row. */
 export const SHELL_ROW_CLS = 'flex h-full gap-3 lg:gap-4';
-/** app/layout.tsx — the content column that the header sits at the top of. */
+/** app/(app)/layout.tsx — the content column that the header sits at the top of. */
 export const SHELL_COL_CLS = 'flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4';
 /** components/sidebar.tsx — the expanded rail. The collapsed state (w-[66px]) only gives MORE room. */
 export const RAIL_WIDTH_CLS = 'w-[232px]';
@@ -87,12 +87,12 @@ export const RAIL_WIDTH_CLS = 'w-[232px]';
 export const RAIL_VISIBILITY_CLS = 'hidden h-full shrink-0';
 export const RAIL_DEFAULT_BREAKPOINT_CLS = 'sm:block';
 export const RAIL_TEAM_BREAKPOINT_CLS = 'min-[900px]:block';
-/** app/layout.tsx — the three-lane header grid. */
+/** app/(app)/layout.tsx — the three-lane header grid. */
 export const HEADER_CLS =
   'grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)]';
-/** app/layout.tsx — the right cluster the account control lives in. */
+/** app/(app)/layout.tsx — the right cluster the account control lives in. */
 export const RIGHT_CLUSTER_CLS = 'flex min-w-0 items-center justify-end gap-2 2xl:gap-2.5';
-/** app/layout.tsx — the divider that drops below md. */
+/** app/(app)/layout.tsx — the divider that drops below md. */
 export const DIVIDER_CLS = 'hidden h-5 w-px shrink-0 bg-border md:block';
 /** Desktop icons retain their 36px width budget; every trigger is 44px high and phone targets widen to44px. */
 export const ICON_CLS = 'inline-flex size-9 items-center justify-center min-h-11 max-sm:min-w-11 rounded-lg text-muted-foreground';
@@ -376,7 +376,7 @@ describe('topbar fits the window at every width (r374)', () => {
  * test/topbar-overlap-guard.test.ts, exactly like the Classic strings above.
  * ════════════════════════════════════════════════════════════════════════════════════════════════ */
 
-/** app/layout.tsx — the Monolith utilities appended to each shell element's Classic class string. */
+/** app/(app)/layout.tsx — the Monolith utilities appended to each shell element's Classic class string. */
 export const MONO_BODY_CLS = 'monolith:bg-background! monolith:p-0!';
 export const MONO_ROW_CLS = 'monolith:gap-0!';
 export const MONO_COL_CLS =

@@ -156,7 +156,7 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     // That test was carefully built and passed honestly — it just encoded the wrong requirement. Under
     // the old deployment flag the scenario was unreachable (nobody edits .env mid-month), but a
     // per-tenant entitlement lapses on a trial ending, a downgrade, or non-payment, and at that moment
-    // the employee is still owed the day they worked. app/admin/toil/page.tsx ALSO hid the button that
+    // the employee is still owed the day they worked. app/(app)/admin/toil/page.tsx ALSO hid the button that
     // calls this — see the surface test at the bottom of this file, which is the half that makes
     // ungating the service mean anything in production.
     const { employmentId, accrualId } = await accrue(3000, { allowFirstScheduleEligible: true });
@@ -198,7 +198,7 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
      * WHY A SOURCE-LEVEL TEST, AND WHY IT IS THE IMPORTANT ONE.
      *
      * Ungating `runToilExpiry` / `closeReplacementLeaveYear` changed NOTHING in production on its own.
-     * app/admin/toil/page.tsx is their only caller — there is no cron; app/admin/actions.ts says so
+     * app/(app)/admin/toil/page.tsx is their only caller — there is no cron; app/(app)/admin/actions.ts says so
      * ("manual; a scheduled job will do this later") and deploy/DEPLOY.md's crontab lists four jobs,
      * none of them a TOIL sweep. The page rendered both buttons, and the outstanding-liability ledger,
      * inside `{envOn && …}` where `envOn` was the very predicate that used to throw. So a tenant whose
@@ -213,10 +213,10 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     // sweeps are on Leave Config › Leave Credit's Credits tab now, which is therefore the page this reads. The
     // mechanism is renamed (`showSettlement`/`outstanding` → `showCredits`/`windDown`) and the property is
     // asserted exactly as before: an outstanding liability keeps the settlement reachable with the module off.
-    expect(fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/toil/page.tsx'), 'utf8')).toContain(
+    expect(fs.readFileSync(path.resolve(__dirname, '..', 'app/(app)/admin/toil/page.tsx'), 'utf8')).toContain(
       'redirect(`/admin/leave-config/leave-credit',
     );
-    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/page.tsx'), 'utf8');
+    const src = fs.readFileSync(path.resolve(__dirname, '..', 'app/(app)/admin/leave-config/leave-credit/page.tsx'), 'utf8');
 
     // 1. The ledger read is UNCONDITIONAL — an admin can always see what is outstanding.
     expect(src, 'the replacement-leave summary must not be gated on the module').toContain(
@@ -249,7 +249,7 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    (test/toil.test.ts covers the refusal).
     //
     //    296fc027 MOVED THE FORM, NOT THE RULE, and a6fe37fc Round 5 moved it once more: the policy
-    //    editor lives on app/admin/leave-config/company-rules/page.tsx — a replacement-leave policy is a
+    //    editor lives on app/(app)/admin/leave-config/company-rules/page.tsx — a replacement-leave policy is a
     //    COMPANY rule (IA §2.0.3) and now shares one screen with the other three — while the ledger and
     //    the two sweeps stay HERE, precisely because the two halves are gated DIFFERENTLY and putting
     //    them on one screen is what made that easy to get wrong. So this section reads the OTHER file.
@@ -267,8 +267,8 @@ describe('TOIL expiry sweep (ADR-0033 33-4)', () => {
     //    3fb1a611 (r299) — the editor moved AGAIN, to Leave Credit's Rules tab: the form component and the
     //    route that mounts it are read together as "the configuration page".
     const cfg =
-      fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/rules-tab.tsx'), 'utf8') +
-      fs.readFileSync(path.resolve(__dirname, '..', 'app/admin/leave-config/leave-credit/rules/page.tsx'), 'utf8');
+      fs.readFileSync(path.resolve(__dirname, '..', 'app/(app)/admin/leave-config/leave-credit/rules-tab.tsx'), 'utf8') +
+      fs.readFileSync(path.resolve(__dirname, '..', 'app/(app)/admin/leave-config/leave-credit/rules/page.tsx'), 'utf8');
     // The sweeps must NOT have followed the form onto the configuration screen — that would re-gate a
     // statutory settlement behind a page that is read-only without the module.
     //

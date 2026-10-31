@@ -29,7 +29,7 @@ import {
   ringState,
   secondsOf,
   type ClockPunch,
-} from '../app/attendance/clock/clock-display';
+} from '../app/(app)/attendance/clock/clock-display';
 
 // ─── Pure display derivations ────────────────────────────────────────────────────────────────────────
 
@@ -151,7 +151,7 @@ describe('formatElapsed', () => {
 
 // ─── Source guards on the client island ('use client' — not renderable in a node test) ───────────────
 
-const ISLAND = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/clock-client.tsx'), 'utf8');
+const ISLAND = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/clock/clock-client.tsx'), 'utf8');
 const CAPTURE = fs.readFileSync(path.resolve(__dirname, '../components/attendance-clock-button.tsx'), 'utf8');
 
 describe('clock-client source guards (r430 — Switch removed, always-on buttons, device gate removed, conditional photo)', () => {
@@ -256,8 +256,8 @@ describe('clock-client source guards (r430 — Switch removed, always-on buttons
     expect(ISLAND).toContain("fetch('/api/attendance/clock',{method:'POST'");
     expect(ISLAND).toContain('stream.current?.getTracks().forEach(track=>track.stop())');
     for (const [file, names] of [
-      ['../app/me/actions.ts', ['myCheckIn', 'myCheckOut']],
-      ['../app/attendance/clock/actions.ts', ['clockInAction', 'clockOutAction']],
+      ['../app/(app)/me/actions.ts', ['myCheckIn', 'myCheckOut']],
+      ['../app/(app)/attendance/clock/actions.ts', ['clockInAction', 'clockOutAction']],
     ] as const) {
       const source = fs.readFileSync(path.resolve(__dirname, file), 'utf8');
       for (const name of names) {

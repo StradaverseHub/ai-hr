@@ -15,7 +15,7 @@ import type { ReactNode } from 'react';
  * therefore render this, and the `action` is a prop precisely so there is one control and two callers.
  *
  * ── NOT A CLIENT COMPONENT, ON PURPOSE ──────────────────────────────────────────────────────────────
- * The leave equivalent (app/approvals/leave-decide-controls.tsx) is `'use client'` because it toggles
+ * The leave equivalent (app/(app)/approvals/leave-decide-controls.tsx) is `'use client'` because it toggles
  * the reason box with `useState`. This one uses `<details>`, which is the browser's own disclosure and
  * needs no JavaScript — the same idiom /me already uses for its fold-out forms. That keeps it a SERVER
  * component, which matters here for a specific reason: a server page may not pass a function prop to a

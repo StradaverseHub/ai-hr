@@ -91,7 +91,7 @@ withdrawal is real and belongs in the round entry, not in a diff nobody reads.
 3. The resolver change: `holidayDatesFor` and `effectiveHolidayState` **in one commit**, with
    `test/holiday-calendar-resolution.test.ts` and `test/holiday-calendar-coverage.test.ts` **updated with
    the reason** — never deleted (CLAUDE.md §8: a guard pinning a decision you are reversing is updated).
-4. The screens: the site register half of `app/admin/locations`. The clocking half stays;
+4. The screens: the site register half of `app/(app)/admin/locations`. The clocking half stays;
    `admin.locations` is 95 keys × 6 locales and the split must keep the survivors.
    ⚠️ **Addendum 2026-09-24 (639bf4a5, r336) — step 4 WAS INCOMPLETE, and the miss was a live false
    statement.** `admin.locations.stateNote` was deleted as planned, but `admin.locations.pageDescription`
@@ -106,7 +106,7 @@ withdrawal is real and belongs in the round entry, not in a diff nobody reads.
    The reporter contested r336's relocation; the register is Attendance › **Locations** again, still at
    `/admin/work-locations`, and it is a COMPANY LISTING with Add / View / Edit on screens of their own
    (ADR-0070's r338 amendment has the shape). What matters to THIS ADR is that the State control now
-   lives on `app/admin/work-locations/location-form.tsx` rather than on the register's inline strips, so
+   lives on `app/(app)/admin/work-locations/location-form.tsx` rather than on the register's inline strips, so
    the assertion that no such control exists was RE-POINTED at that file — a guard left reading the
    listing would have been green on a form that had regrown one. The namespace-wide check (the retired
    sentence absent from EVERY string in `admin.locations`, in all six locales) is carried through

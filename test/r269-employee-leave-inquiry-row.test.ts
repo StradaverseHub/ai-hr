@@ -20,7 +20,7 @@
  *
  * The SOURCE-SHAPE half pins the promises a later round could quietly undo with no behaviour test
  * noticing: six children with the new one LAST, its href and ownedSubpaths, its ABSENCE from
- * LEAVE_CONFIG_MAP (it has no page under app/admin/leave-config/**), its registration on the
+ * LEAVE_CONFIG_MAP (it has no page under app/(app)/admin/leave-config/**), its registration on the
  * `leaveEmployeeBalances` column rather than on `leaveConfig`, the unchanged route, the label in six
  * catalogues, and the header link's removal in the Entitlements page source.
  *
@@ -45,7 +45,7 @@
  * NON-VACUITY (done by the builder, re-derivable by the verifier): remove `ownedSubpaths` from the new row
  * in a copy of packs/leave/index.ts and the highlight case "the Leave Config row answers for BOTH inquiry
  * paths" fails on /leave/employee-records; put the header `actions` link back on a copy of
- * app/admin/leave-config/types/page.tsx and both the source case and the RENDERED Entitlements case fail.
+ * app/(app)/admin/leave-config/types/page.tsx and both the source case and the RENDERED Entitlements case fail.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -118,8 +118,8 @@ vi.mock('next/headers', () => ({
 import { cloneElement, createElement, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { NextIntlClientProvider } from 'next-intl';
-import EntitlementsPage from '../app/admin/leave-config/types/page';
-import EmployeeBalancesPage from '../app/leave/employee-balances/page';
+import EntitlementsPage from '../app/(app)/admin/leave-config/types/page';
+import EmployeeBalancesPage from '../app/(app)/leave/employee-balances/page';
 import { LEAVE_CONFIG_MAP } from '../components/leave-config-map';
 import { isNavRowActive, isParentActive } from '../components/nav-flyout';
 import { REGISTERED_ROUTES, SCREENS } from '../lib/permissions';
@@ -138,7 +138,7 @@ const CATALOGUES = Object.fromEntries(LOCALES.map((l) => [l, JSON.parse(read(`me
 /** Strip <script> before counting — a key in the RSC payload is not a screen (CLAUDE.md §8). */
 const visible = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, '');
 
-const ENTITLEMENTS_PAGE = 'app/admin/leave-config/types/page.tsx';
+const ENTITLEMENTS_PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
 const BALANCES_HREF = '/leave/employee-balances';
 const RECORDS_HREF = '/leave/employee-records';
 const TRACKER_HREF = '/leave/tracker';
@@ -169,8 +169,8 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
     expect(INQUIRY_ROW.href).toBe(BALANCES_HREF);
     // The page that answers is the one that was always there. A new page under the Leave Config module
     // would be the "second address for one screen" this item deliberately does not do.
-    expect(exists('app/leave/employee-balances/page.tsx')).toBe(true);
-    expect(exists('app/admin/leave-config/employee-balances/page.tsx')).toBe(false);
+    expect(exists('app/(app)/leave/employee-balances/page.tsx')).toBe(true);
+    expect(exists('app/(app)/admin/leave-config/employee-balances/page.tsx')).toBe(false);
     expect(REGISTERED_ROUTES.has(BALANCES_HREF)).toBe(true);
     // …and the other two rail screens keep their addresses too, so every saved and export link resolves.
     for (const href of [TRACKER_HREF, RECORDS_HREF]) expect(REGISTERED_ROUTES.has(href)).toBe(true);
@@ -196,11 +196,11 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
 
   it('it is NOT a Leave Config screen: no map group, and its own permission column keeps its own name', () => {
     // A map group would make `leaveConfigPageHeader` claim a page it does not own (there is no page under
-    // app/admin/leave-config for it) and break test/leave-config-map.test.ts. The heading the reporter sees
+    // app/(app)/admin/leave-config for it) and break test/leave-config-map.test.ts. The heading the reporter sees
     // on arrival comes from the inquiry page's own PageHeader instead.
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey as string)).not.toContain('employeeLeaveInquiry');
     expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(BALANCES_HREF);
-    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('balancesTitle')");
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain("tInq('balancesTitle')");
     // Registered on its OWN scopedAdmin column since 20c699f8 — NOT folded into leaveConfig, which would
     // hand every Leave Config grantee the inquiry screens.
     expect(SCREENS.find((s) => s.screenKey === 'leaveConfig')!.routes).not.toContain(BALANCES_HREF);
@@ -252,7 +252,7 @@ describe('5ca446db — six rows in the Leave Config fly-out, the new one last', 
     // simply lost it.
     for (const kept of ['<LeaveConfigMap current="leaveTypes"', '<EntitlementTablesBlock', '<LeaveTypeWorkspace'])
       expect(src, kept).toContain(kept);
-    expect(read('app/admin/leave-config/balance-health/page.tsx')).toContain('<LeaveConfigHealthCard');
+    expect(read('app/(app)/admin/leave-config/balance-health/page.tsx')).toContain('<LeaveConfigHealthCard');
   });
 });
 

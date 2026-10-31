@@ -4,7 +4,7 @@
  * to assert.)
  *
  * THIS FILE IS A REWRITE, NOT A DELETION, AND THE DISTINCTION MATTERS. Its previous incarnation pinned
- * app/admin/leave/replacement/page.tsx as a deliberate PLACEHOLDER — no form, no server action, no data
+ * app/(app)/admin/leave/replacement/page.tsx as a deliberate PLACEHOLDER — no form, no server action, no data
  * access — because 645e67c4's expected_behavior said in terms that no functional components were required
  * at that stage. That was a real decision and the assertions existed to stop it eroding silently. 296fc027
  * is the ticket that reverses it on purpose, so the assertions are reversed on purpose too, in the same
@@ -20,7 +20,7 @@
  * page must NOW carry the policy form, or the move did not happen.
  *
  * THE OTHER HALF OF THE MOVE IS ASSERTED HERE TOO, and it is the half most likely to be undone by accident:
- * app/admin/toil/page.tsx must KEEP the balance ledger and the two settle-and-expire sweeps, and must keep
+ * app/(app)/admin/toil/page.tsx must KEEP the balance ledger and the two settle-and-expire sweeps, and must keep
  * the WIND-DOWN ARGUMENT that explains why those two are deliberately not entitlement-gated. Somebody
  * tidying up "the page that lost its form" is exactly who would delete that paragraph, and the consequence
  * — a tenant whose module lapses being unable to settle a statutory convert-to-pay obligation it already
@@ -46,7 +46,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  *
  * 3fb1a611 (r299) — RE-POINTED AGAIN, NOT DELETED, and both halves of 296fc027's split moved:
  *   · the EDITOR left Company rules entirely for Leave Config › Leave Credit's Rules tab
- *     (`app/admin/leave-config/leave-credit/rules-tab.tsx`, mounted by that page) — PAGE_REL below;
+ *     (`app/(app)/admin/leave-config/leave-credit/rules-tab.tsx`, mounted by that page) — PAGE_REL below;
  *   · the LEDGER summary and the two settlement sweeps left /admin/toil (a redirect stub now) for the same
  *     page's Credits tab — CREDIT_PAGE_REL below, which is also where the guard, the gate and the WIND-DOWN
  *     argument now live.
@@ -54,11 +54,11 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
  * What 296fc027 bought by splitting the screens — configuration gated on the module, settlement not — is
  * preserved on ONE screen: the Rules tab and Add require `toil`; the sweeps stay reachable in a wind-down view.
  */
-const PAGE_REL = 'app/admin/leave-config/leave-credit/rules-tab.tsx';
-const RULES_PAGE_REL = 'app/admin/leave-config/leave-credit/rules/page.tsx';
-const CREDIT_PAGE_REL = 'app/admin/leave-config/leave-credit/page.tsx';
-const COMPANY_RULES_REL = 'app/admin/leave-config/company-rules/page.tsx';
-const TOIL_REL = 'app/admin/toil/page.tsx';
+const PAGE_REL = 'app/(app)/admin/leave-config/leave-credit/rules-tab.tsx';
+const RULES_PAGE_REL = 'app/(app)/admin/leave-config/leave-credit/rules/page.tsx';
+const CREDIT_PAGE_REL = 'app/(app)/admin/leave-config/leave-credit/page.tsx';
+const COMPANY_RULES_REL = 'app/(app)/admin/leave-config/company-rules/page.tsx';
+const TOIL_REL = 'app/(app)/admin/toil/page.tsx';
 const PICKER_REL = 'components/replacement-eligibility-picker.tsx';
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
@@ -77,7 +77,7 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(REGISTERED_ROUTES.has('/admin/leave-config/leave-credit')).toBe(true);
     // The old address is a stub with no guard, which is why it left the registry with its page.
     expect(REGISTERED_ROUTES.has('/admin/leave/replacement')).toBe(false);
-    const stub = read('app/admin/leave/replacement/page.tsx');
+    const stub = read('app/(app)/admin/leave/replacement/page.tsx');
     expect(stub).toContain('redirect(');
     expect(stub).toContain('/admin/leave-config/leave-credit/rules');
   });
@@ -156,7 +156,7 @@ describe('296fc027 · Replacement Leave configuration page', () => {
     expect(read(PAGE_REL)).not.toContain("tr('leaveFromRecordedOnly')");
     expect(read(PAGE_REL)).not.toContain('name="replacementLeaveFrom"');
     // Absent from the form ⇒ undefined in the action ⇒ not written by setToilPolicy's upsert.
-    expect(read('app/admin/actions.ts')).toContain("replacementLeaveFrom: fd.has('replacementLeaveFrom')");
+    expect(read('app/(app)/admin/actions.ts')).toContain("replacementLeaveFrom: fd.has('replacementLeaveFrom')");
     expect(read('core/toil.ts')).toContain(
       '...(p.replacementLeaveFrom !== undefined ? { replacementLeaveFrom: p.replacementLeaveFrom } : {}),',
     );

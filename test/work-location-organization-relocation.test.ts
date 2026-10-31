@@ -22,7 +22,7 @@
  *     rename it and so does r338; it is the one thing about this item that has never changed.
  *   • the i18n namespace `admin.locations`.
  *   • the DRIFT RATCHET. test/attendance-pack-drift.test.ts's allowlist is untouched: the ratchet is
- *     about IMPORTS, not menus, and app/admin/work-locations/** still consumes the clocking service
+ *     about IMPORTS, not menus, and app/(app)/admin/work-locations/** still consumes the clocking service
  *     through the published facade. Asserted below — a re-added entry fails that guard by design.
  *
  * ⚠️ AND THE ROW'S RETURN RE-GATES THE REGISTER, KNOWINGLY. MODULE_OF_HREF is built by flatMap over the
@@ -91,24 +91,24 @@ import { NextIntlClientProvider } from 'next-intl';
 // r428 (83c0d3c8 contest) — the default export is the REDIRECT STUB now (`WorkLocationsRedirect`); the
 // import name is kept because every reference below the "THE OLD ADDRESSES STILL RESOLVE" section is
 // about exactly that — the stub's own behaviour, not a page that renders.
-import WorkLocationsPage from '../app/admin/work-locations/page';
-import ClockingListPage from '../app/admin/work-locations/clocking/page';
-import NewLocationPage from '../app/admin/work-locations/new/page';
-import ViewLocationPage from '../app/admin/work-locations/[id]/page';
-import EditLocationPage from '../app/admin/work-locations/[id]/edit/page';
-import LocationsRedirect from '../app/admin/locations/page';
-import NewClockingLocationRedirect from '../app/admin/locations/clocking/new/page';
-import EditClockingLocationRedirect from '../app/admin/locations/clocking/[id]/page';
+import WorkLocationsPage from '../app/(app)/admin/work-locations/page';
+import ClockingListPage from '../app/(app)/admin/work-locations/clocking/page';
+import NewLocationPage from '../app/(app)/admin/work-locations/new/page';
+import ViewLocationPage from '../app/(app)/admin/work-locations/[id]/page';
+import EditLocationPage from '../app/(app)/admin/work-locations/[id]/edit/page';
+import LocationsRedirect from '../app/(app)/admin/locations/page';
+import NewClockingLocationRedirect from '../app/(app)/admin/locations/clocking/new/page';
+import EditClockingLocationRedirect from '../app/(app)/admin/locations/clocking/[id]/page';
 import {
   createLocationAction,
   updateLocationAction,
   archiveLocationAction,
   restoreLocationAction,
-} from '../app/admin/actions';
-import { CLOCKING_LIST, CLOCKING_NEW_PAGE, LOCATIONS_LIST, clockingEditPage } from '../app/admin/work-locations/clocking/form-fields';
-import { LOCATION_NEW_PAGE, locationEditPage, locationViewPage } from '../app/admin/work-locations/location-fields';
+} from '../app/(app)/admin/actions';
+import { CLOCKING_LIST, CLOCKING_NEW_PAGE, LOCATIONS_LIST, clockingEditPage } from '../app/(app)/admin/work-locations/clocking/form-fields';
+import { LOCATION_NEW_PAGE, locationEditPage, locationViewPage } from '../app/(app)/admin/work-locations/location-fields';
 
-import { ATTENDANCE_SETTINGS_CARDS } from '../app/admin/attendance/settings/cards';
+import { ATTENDANCE_SETTINGS_CARDS } from '../app/(app)/admin/attendance/settings/cards';
 import { navigationPlacement, navigationRouteOwner } from '../lib/navigation-workspaces';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -125,9 +125,9 @@ const HREF = '/admin/work-locations';
 const OLD_HREF = '/admin/locations';
 const SIDEBAR = read('components/sidebar.tsx');
 const PACK = read('packs/attendance/index.ts');
-const LIST_SRC = read('app/admin/work-locations/page.tsx');
+const LIST_SRC = read('app/(app)/admin/work-locations/page.tsx');
 /** r428 — the company's "Work locations" section now lives on the clocking list's CompanyView half. */
-const CLOCKING_SRC = read('app/admin/work-locations/clocking/page.tsx');
+const CLOCKING_SRC = read('app/(app)/admin/work-locations/clocking/page.tsx');
 /** Count occurrences of the QUOTED href, so a prose mention in a comment is not a nav row. */
 const countQuoted = (haystack: string, href: string) => haystack.split(`'${href}'`).length - 1;
 
@@ -184,7 +184,7 @@ describe('1cd86ea5 — Locations has one Settings card; redirects and role guard
   });
 
   it('the old address is a requireAdmin() redirect stub, guard first, landing on the Locations screen', () => {
-    const stub = read('app/admin/work-locations/page.tsx');
+    const stub = read('app/(app)/admin/work-locations/page.tsx');
     const guard = stub.indexOf('requireAdmin()');
     const fwd = stub.indexOf('redirect(');
     expect(guard, 'guards itself').toBeGreaterThan(-1);
@@ -200,18 +200,18 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
   it('the drift ratchet still authorises NEITHER address — a re-added entry fails by design', () => {
     const drift = read('test/attendance-pack-drift.test.ts');
     const always = drift.slice(drift.indexOf('const ALWAYS_ALLOWED'), drift.indexOf('describe('));
-    expect(countQuoted(always, 'app/admin/locations/'), 'r336 removed the old surface claim').toBe(0);
+    expect(countQuoted(always, 'app/(app)/admin/locations/'), 'r336 removed the old surface claim').toBe(0);
     expect(
-      countQuoted(always, 'app/admin/work-locations/'),
+      countQuoted(always, 'app/(app)/admin/work-locations/'),
       'and r338 did NOT re-open it at the new address — the ratchet is about imports, not menus',
     ).toBe(0);
   });
 
   it('every screen in the tree reads clocking through the pack facade, never the implementation', () => {
     for (const rel of [
-      'app/admin/work-locations/clocking/page.tsx',
-      'app/admin/work-locations/clocking/[id]/page.tsx',
-      'app/admin/work-locations/clocking/[id]/edit/page.tsx',
+      'app/(app)/admin/work-locations/clocking/page.tsx',
+      'app/(app)/admin/work-locations/clocking/[id]/page.tsx',
+      'app/(app)/admin/work-locations/clocking/[id]/edit/page.tsx',
     ]) {
       const src = read(rel);
       expect(src, `${rel} imports the facade`).toContain("from '@/packs/attendance/service'");
@@ -220,7 +220,7 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
       );
     }
     // r423 — the WORK location screens read no clocking at all any more (they show none).
-    for (const rel of ['app/admin/work-locations/page.tsx', 'app/admin/work-locations/[id]/page.tsx', 'app/admin/work-locations/[id]/edit/page.tsx']) {
+    for (const rel of ['app/(app)/admin/work-locations/page.tsx', 'app/(app)/admin/work-locations/[id]/page.tsx', 'app/(app)/admin/work-locations/[id]/edit/page.tsx']) {
       const src = read(rel);
       expect(src, `${rel} reads no clocking`).not.toContain('listClockingLocations');
       expect(src).not.toMatch(/from '@\/core\/clocking-location'/);
@@ -230,7 +230,7 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
   });
 
   it('the old tree holds nothing but guarded redirect stubs', () => {
-    const dir = path.join(ROOT, 'app/admin/locations');
+    const dir = path.join(ROOT, 'app/(app)/admin/locations');
     const files: string[] = [];
     const walk = (d: string) => {
       for (const e of fs.readdirSync(d, { withFileTypes: true })) {
@@ -241,10 +241,10 @@ describe('639bf4a5 — the menu moved, the import boundary did not', () => {
     };
     walk(dir);
     expect(files.sort(), 'only the three stubs and their shared forwarder are left').toEqual([
-      'app/admin/locations/clocking/[id]/page.tsx',
-      'app/admin/locations/clocking/new/page.tsx',
-      'app/admin/locations/page.tsx',
-      'app/admin/locations/redirect-stub.ts',
+      'app/(app)/admin/locations/clocking/[id]/page.tsx',
+      'app/(app)/admin/locations/clocking/new/page.tsx',
+      'app/(app)/admin/locations/page.tsx',
+      'app/(app)/admin/locations/redirect-stub.ts',
     ]);
     for (const rel of files) {
       expect(read(rel), `${rel} imports nothing from the attendance pack`).not.toMatch(
@@ -488,7 +488,7 @@ describe('r428 (83c0d3c8 contest) (c) — a company with TWO locations: both ren
 describe('639bf4a5 (d) — the listing is scoped by adminOnly, not by the company switcher', () => {
   it('a company-scoped admin sees THEIR company on step 1, and a foreign ?company= falls back to it rather than disclosing the sister company', async () => {
     /**
-     * app/admin/organization/page.tsx: *the filter IS the permission boundary*. Feedback ab77dc1f is the
+     * app/(app)/admin/organization/page.tsx: *the filter IS the permission boundary*. Feedback ab77dc1f is the
      * incident — a tenant-wide list disclosed how many companies the organisation has to someone whose
      * access did not otherwise reveal it. r428 — a company-scoped admin's STEP 1 lists only companies they
      * administer (unchanged), and `?company=<foreign id>` is a comparison against that same set: it never
@@ -636,9 +636,9 @@ describe('639bf4a5 (f) — Save, Cancel and Back all land on the listing, query 
 
 describe('639bf4a5 (h) — create, edit, archive and restore still work, from the dedicated screens', () => {
   it('all four actions still write, and every one of them lands back inside the Locations screens', () => {
-    // The trap: app/admin/actions.ts builds its redirects from one `LOCATIONS` constant, and a move that
+    // The trap: app/(app)/admin/actions.ts builds its redirects from one `LOCATIONS` constant, and a move that
     // repointed the pages but not the constant would leave every save bouncing to a redirect stub.
-    expect(read('app/admin/actions.ts'), 'the actions read the address from the shared contract').toContain(
+    expect(read('app/(app)/admin/actions.ts'), 'the actions read the address from the shared contract').toContain(
       'const LOCATIONS = LOCATIONS_LIST;',
     );
   });
@@ -787,7 +787,7 @@ describe('639bf4a5 (h) — create, edit, archive and restore still work, from th
  * holidays to follow — and a SENTENCE that promises it is worse still.
  *
  * ⚠️ THE GUARD MOVED WITH THE FORM, WHICH IS THE WHOLE POINT OF IT. The controls were on the register's
- * inline strips when r336 wrote this; they are on app/admin/work-locations/location-form.tsx now. A guard
+ * inline strips when r336 wrote this; they are on app/(app)/admin/work-locations/location-form.tsx now. A guard
  * left reading the register would be green on a screen that had regrown the control.
  *
  * The retired sentences are quoted in full so a future round cannot restore one by copy-paste. The column
@@ -843,11 +843,11 @@ describe('639bf4a5 (g) — ADR-0086: no State control, and no holiday claim in a
         .filter((l) => !/^\s*(\/\/|\*)/.test(l))
         .join('\n');
     for (const rel of [
-      'app/admin/work-locations/location-form.tsx',
-      'app/admin/work-locations/page.tsx',
-      'app/admin/work-locations/[id]/page.tsx',
-      'app/admin/work-locations/[id]/edit/page.tsx',
-      'app/admin/work-locations/new/page.tsx',
+      'app/(app)/admin/work-locations/location-form.tsx',
+      'app/(app)/admin/work-locations/page.tsx',
+      'app/(app)/admin/work-locations/[id]/page.tsx',
+      'app/(app)/admin/work-locations/[id]/edit/page.tsx',
+      'app/(app)/admin/work-locations/new/page.tsx',
     ]) {
       const src = strip(read(rel));
       expect(src.split('name="state"').length - 1, `${rel}: no state control`).toBe(0);
@@ -855,7 +855,7 @@ describe('639bf4a5 (g) — ADR-0086: no State control, and no holiday claim in a
     }
     // …and the four fields ADR-0086 KEEPS are the exact set the form posts, so the absence above means
     // something rather than being satisfied by a form that renders nothing.
-    const form = strip(read('app/admin/work-locations/location-form.tsx'));
+    const form = strip(read('app/(app)/admin/work-locations/location-form.tsx'));
     const posted = [...new Set([...form.matchAll(/\sname="([^"]+)"/g)].map((m) => m[1]))].filter(
       (n) => !['locationId', 'companyId', 'returnTo'].includes(n),
     );
@@ -866,7 +866,7 @@ describe('639bf4a5 (g) — ADR-0086: no State control, and no holiday claim in a
     // Not a cosmetic detail: `updateLocation` reads an ABSENT `state` as "keep" and a null one as
     // "clear", so an action that passed `|| null` would wipe the stored value on the first unrelated
     // rename. The form not having the field is only half of it; the action is the other half.
-    const actions = read('app/admin/actions.ts');
+    const actions = read('app/(app)/admin/actions.ts');
     const fn = actions.slice(
       actions.indexOf('export async function updateLocationAction'),
       actions.indexOf('export async function archiveLocationAction'),
@@ -1007,9 +1007,9 @@ describe('639bf4a5 — the label is "Locations", in all six locales', () => {
 describe('639bf4a5 — the /admin/locations addresses redirect, guard first; they do not 404', () => {
   it('each stub calls the guard BEFORE it redirects', () => {
     for (const rel of [
-      'app/admin/locations/page.tsx',
-      'app/admin/locations/clocking/new/page.tsx',
-      'app/admin/locations/clocking/[id]/page.tsx',
+      'app/(app)/admin/locations/page.tsx',
+      'app/(app)/admin/locations/clocking/new/page.tsx',
+      'app/(app)/admin/locations/clocking/[id]/page.tsx',
     ]) {
       const src = read(rel);
       const guard = src.indexOf('await requireAdmin()');
@@ -1104,7 +1104,7 @@ describe('r428 — the /admin/work-locations address redirects, guard first, and
   });
 
   it('guards itself before it forwards', () => {
-    const src = read('app/admin/work-locations/page.tsx');
+    const src = read('app/(app)/admin/work-locations/page.tsx');
     const guard = src.indexOf('await requireAdmin()');
     const fwd = src.indexOf('redirect(');
     expect(guard, 'calls requireAdmin()').toBeGreaterThan(-1);

@@ -5,17 +5,18 @@
  * segment, so a page folder without one brings back the frozen-click navigation measured on 2026-10-07.
  * A new page is caught here, not in production. The exceptions are full-screen pages outside the app
  * shell (no sidebar to keep, their own design): sign-in, invitation, password reset, the mobile preview —
- * and the app/admin/locations redirect stubs.
+ * and the app/(app)/admin/locations redirect stubs.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = process.cwd();
-// app/admin/locations is a tree of guarded REDIRECT stubs (the screen moved to Organization); its own guard
+// app/(app)/admin/locations is a tree of guarded REDIRECT stubs (the screen moved to Organization); its own guard
 // (test/work-location-organization-relocation.test.ts) pins it to nothing but the stubs, and a page that only
 // redirects has nothing to show a skeleton for.
-const EXEMPT = [/^app\/login(\/|$)/, /^app\/invite(\/|$)/, /^app\/reset-password(\/|$)/, /^app\/mobile-preview(\/|$)/, /^app\/admin\/locations(\/|$)/];
+// The login flow, and the catch-all that only answers unmatched URLs with the shell's 404.
+const EXEMPT = [/^app\/\(auth\)(\/|$)/, /^app\/\(app\)\/\[\.\.\.missing\](\/|$)/, /^app\/\(app\)\/mobile-preview(\/|$)/, /^app\/\(app\)\/admin\/locations(\/|$)/];
 
 function pageDirs(dir: string): string[] {
   const out: string[] = [];
@@ -29,14 +30,14 @@ function pageDirs(dir: string): string[] {
 
 type LoadingContract={namespace:string;key:string;parent?:{folder:string;specifier:string}};
 const LOCALIZED:Readonly<Record<string,LoadingContract>>={
-  'app/attendance/my-roster':{namespace:'attendance.myCalendar',key:'loading'},
-  'app/me/ea':{namespace:'myEa',key:'loading'},
-  'app/me/payslip':{namespace:'myPayslip',key:'loading'},
-  'app/me/tp3':{namespace:'myTp3',key:'loading'},
-  'app/payroll/formula-builder':{namespace:'payFormula',key:'loading'},
-  'app/payroll/formula-builder/new':{namespace:'payFormula',key:'loading',parent:{folder:'app/payroll/formula-builder',specifier:'../loading'}},
-  'app/payroll/formula-builder/[id]':{namespace:'payFormula',key:'loading',parent:{folder:'app/payroll/formula-builder',specifier:'../loading'}},
-  'app/payroll/formula-builder/evaluations/[id]':{namespace:'payFormula',key:'traceLoading'},
+  'app/(app)/attendance/my-roster':{namespace:'attendance.myCalendar',key:'loading'},
+  'app/(app)/me/ea':{namespace:'myEa',key:'loading'},
+  'app/(app)/me/payslip':{namespace:'myPayslip',key:'loading'},
+  'app/(app)/me/tp3':{namespace:'myTp3',key:'loading'},
+  'app/(app)/payroll/formula-builder':{namespace:'payFormula',key:'loading'},
+  'app/(app)/payroll/formula-builder/new':{namespace:'payFormula',key:'loading',parent:{folder:'app/(app)/payroll/formula-builder',specifier:'../loading'}},
+  'app/(app)/payroll/formula-builder/[id]':{namespace:'payFormula',key:'loading',parent:{folder:'app/(app)/payroll/formula-builder',specifier:'../loading'}},
+  'app/(app)/payroll/formula-builder/evaluations/[id]':{namespace:'payFormula',key:'traceLoading'},
 };
 const readLoading=(folder:string)=>fs.readFileSync(path.join(ROOT,folder,'loading.tsx'),'utf8');
 function assertLocalizedLoading(folder:string,read:(folder:string)=>string,visited=new Set<string>()):void {
@@ -61,8 +62,8 @@ describe('r394 · every page folder has a loading boundary', () => {
 
   it('finds the app\'s pages (the sweep is not empty)', () => {
     expect(dirs.length).toBeGreaterThan(200);
-    expect(dirs).toContain('app/leave');
-    expect(dirs).toContain('app/leave/history');
+    expect(dirs).toContain('app/(app)/leave');
+    expect(dirs).toContain('app/(app)/leave/history');
   });
 
   it('each non-exempt page folder re-exports the shared RouteLoading shell', () => {
@@ -81,21 +82,21 @@ describe('r394 · every page folder has a loading boundary', () => {
   });
 
   it('accepts only the two exact Formula parent delegates and checks their real owner',()=>{
-    for(const folder of ['app/payroll/formula-builder/new','app/payroll/formula-builder/[id]']){
+    for(const folder of ['app/(app)/payroll/formula-builder/new','app/(app)/payroll/formula-builder/[id]']){
       const visited:string[]=[];
       assertLocalizedLoading(folder,wanted=>{visited.push(wanted);return readLoading(wanted);});
-      expect(visited).toEqual([folder,'app/payroll/formula-builder']);
+      expect(visited).toEqual([folder,'app/(app)/payroll/formula-builder']);
       for(const wrong of ["export {default} from './missing';","export {default} from '../../loading';","export {default} from '/foreign/loading';",readLoading(folder)+"\nthrow new Error('extra child code');"]){
         expect(()=>assertLocalizedLoading(folder,wanted=>wanted===folder?wrong:readLoading(wanted))).toThrow();
       }
       expect(()=>assertLocalizedLoading(folder,wanted=>{
-        if(wanted==='app/payroll/formula-builder')throw new Error('missing owner');return readLoading(wanted);
+        if(wanted==='app/(app)/payroll/formula-builder')throw new Error('missing owner');return readLoading(wanted);
       })).toThrow('missing owner');
     }
   });
 
   it('refuses a missing namespace, status, correct key or reduced-motion boundary through a delegate',()=>{
-    const owner='app/payroll/formula-builder',source=readLoading(owner);
+    const owner='app/(app)/payroll/formula-builder',source=readLoading(owner);
     const wrong=[source.replace("getTranslations('payFormula')","getTranslations('foreign')"),
       source.replace('role="status"','role="none"'),source.replace("t('loading')","t('other')"),source+'\n// animate-pulse'];
     for(const changed of wrong){expect(changed).not.toBe(source);

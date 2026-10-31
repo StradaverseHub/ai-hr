@@ -9,7 +9,7 @@
  *      checkbox with no `name`, so its value rode a hidden input. A hidden input is submitted ALWAYS,
  *      whatever its value — so an unticked box still put `applyToEarlyOt` into the FormData carrying an
  *      empty string.
- *   2. THE READER (app/admin/attendance-policy/rule-actions.ts). `bool()` asked only whether the field was
+ *   2. THE READER (app/(app)/admin/attendance-policy/rule-actions.ts). `bool()` asked only whether the field was
  *      PRESENT (`fd.get(key) != null`). `'' != null` is true, so the flag saved as ON on every save.
  *
  * The result was a setting that could never be turned off, on a flag that FOLDS PRE-SHIFT MINUTES INTO
@@ -26,7 +26,7 @@ import { describe, expect, it } from 'vitest';
 
 const root = join(__dirname, '..');
 const editor = readFileSync(join(root, 'components/attendance-rule-ot-editor.tsx'), 'utf8');
-const actions = readFileSync(join(root, 'app/admin/attendance-policy/rule-actions.ts'), 'utf8');
+const actions = readFileSync(join(root, 'app/(app)/admin/attendance-policy/rule-actions.ts'), 'utf8');
 
 /** Strip block and line comments — this file's own explanation quotes the broken expression, and the
  *  import ratchet's comment false positive is the standing lesson about scanning source with comments in. */
@@ -170,7 +170,7 @@ describe('7c834696: OT rounding direction, a free Round To, and no pre-filled 1.
    * keep passing against labels the real screen no longer asks for.
    */
   it('the rule form reads the new label keys, and the retired Yes/No pair is gone everywhere', () => {
-    const form = stripComments(readFileSync(join(root, 'app/admin/attendance-policy/rules/rule-form.tsx'), 'utf8'));
+    const form = stripComments(readFileSync(join(root, 'app/(app)/admin/attendance-policy/rules/rule-form.tsx'), 'utf8'));
     for (const k of ['roundingModeNone', 'roundingModeDown', 'roundingModeUp', 'otRoundToHint', 'otRateFlatSuffix', 'otRateUnset']) {
       expect(form, `rule-form.tsx no longer reads ${k}`).toContain(`t('${k}')`);
     }

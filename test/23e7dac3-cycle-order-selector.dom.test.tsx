@@ -33,7 +33,7 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
-import { StepPeriod, type CycleOption, type ExistingRun } from '../app/payroll/process/steps/step-period';
+import { StepPeriod, type CycleOption, type ExistingRun } from '../app/(app)/payroll/process/steps/step-period';
 
 const COMPANY = { id: 'co-1', name: 'Acme Sdn Bhd', sharedSystemLabels: true };
 const PERIOD = '2026-05';
@@ -161,7 +161,7 @@ describe('23e7dac3 · the selector is open only while the refusal is live', () =
   });
 
   it('the selector it protects really is open (the two statements are read from one file)', () => {
-    const stepSrc = readFileSync(join(process.cwd(), 'app/payroll/process/steps/step-period.tsx'), 'utf8');
+    const stepSrc = readFileSync(join(process.cwd(), 'app/(app)/payroll/process/steps/step-period.tsx'), 'utf8');
     // The reporter's line 85, as it now reads: regular still gated on regularExists, non-regular not.
     expect(stepSrc).toContain("disabled: c.runType === 'regular' ? regularExists : false,");
     expect(stepSrc).not.toContain('!regularExists,');

@@ -21,7 +21,7 @@ import { createBatch,generatePayslips } from '../packs/payroll/service';
 let b:Base,CALLER:SessionContext;
 vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:CALLER,scopeIds:[b.companyId]})}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
-const {adminCorrectAttendanceDayAction}=await import('../app/attendance/individual/[date]/actions');
+const {adminCorrectAttendanceDayAction}=await import('../app/(app)/attendance/individual/[date]/actions');
 const DATE=()=>todayInKualaLumpur(new Date(Date.now()-86400000));
 const nextDay=(date:string)=>new Date(Date.parse(date+'T00:00:00Z')+86400000).toISOString().slice(0,10);
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();CALLER=adminCtx(b);});

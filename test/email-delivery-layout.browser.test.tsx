@@ -22,10 +22,10 @@ vi.mock('../lib/identity/email-model',()=>({defaultEmailConfig:{host:'',port:465
 vi.mock('../lib/internal-auth/account-email-view',()=>({withInternalRecoveryLabels:async(_session:unknown,_actor:unknown,items:unknown)=>items}));
 vi.mock('../core/account-email',()=>({readAccountEmailHistory:async()=>({items:[{id:'delivery-fixture',kind:'invitation',email:'alexandra.christina.consultant@synthetic-company.example.test',status:'sent',attempts:1,error:null,createdAt:new Date('2026-10-27T01:00:00Z'),canRetry:true}],hasMore:true,nextCursor:'synthetic-next-page'})}));
 vi.mock('../core/account-email-retention',()=>({readAccountEmailRetention:async()=>({days:null,revision:0,lastRunAt:null,lastDeleted:0})}));
-vi.mock('../app/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),saveEmailRetention:vi.fn()}));
-vi.mock('../app/admin/settings/email/demo-actions',()=>({testDemoSmtpConnection:vi.fn()}));
-vi.mock('../app/admin/settings/notifications/actions',()=>({retryAccountEmailAction:vi.fn()}));
-const {default:EmailPage}=await import('../app/admin/settings/email/page');
+vi.mock('../app/(app)/admin/settings/email/actions',()=>({saveEmailDraft:vi.fn(),testEmailDraft:vi.fn(),activateEmailDraft:vi.fn(),saveEmailRetention:vi.fn()}));
+vi.mock('../app/(app)/admin/settings/email/demo-actions',()=>({testDemoSmtpConnection:vi.fn()}));
+vi.mock('../app/(app)/admin/settings/notifications/actions',()=>({retryAccountEmailAction:vi.fn()}));
+const {default:EmailPage}=await import('../app/(app)/admin/settings/email/page');
 const {AccountEmailDeliveries}=await import('../components/account-email-deliveries');
 
 const relay={host:'smtp.office365.com',port:587,security:'starttls' as const,from:'no-reply@synthetic-company.example.test',fromName:'Synthetic OneHR',replyTo:'',auth:true,user:'service-mailbox@synthetic-company.example.test'};

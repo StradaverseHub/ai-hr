@@ -132,7 +132,7 @@ const cleanTxnKind = (v: unknown): PayrollTxnKind | undefined =>
  * narrowing to nothing — so a mis-spelled or renamed value silently shows EVERYTHING instead of showing
  * an empty grid. That is deliberate (a tampered param must not reach Postgres, where an invalid enum cast
  * throws) but it means adding a value here without adding it to the callers' own whitelists
- * (app/payroll/transaction-view/page.tsx, app/payroll/transaction-view/export/route.ts) produces an
+ * (app/(app)/payroll/transaction-view/page.tsx, app/(app)/payroll/transaction-view/export/route.ts) produces an
  * unfiltered list, not an error. test/existing-txn-context.test.ts pins the three sets against each other.
  */
 export type IndividualTxnStatusFilter = 'draft' | 'processed' | 'closed' | 'unattached' | 'reprocess';
@@ -925,7 +925,7 @@ export async function unattachedHoldersOutsideBatchScope(
 ): Promise<UnattachedHolderRow[]> {
   const resolved = await withTenant(ctx, (tx) => resolveBatchScopeFilter(tx, p.scope));
   // `employmentIds: null` ⇒ no scope ⇒ whole company. The caller only reaches here for a SCOPED draft
-  // (app/payroll/[batchId]/page.tsx gates on `isScoped`), so this stays the plain early return it was —
+  // (app/(app)/payroll/[batchId]/page.tsx gates on `isScoped`), so this stays the plain early return it was —
   // the cycle-abandonment half is carried through `runType` for the scoped case it is asked about.
   if (resolved.employmentIds == null || resolved.employmentIds.length === 0) return [];
   return unattachedHoldersOutsideSelection(ctx, {
@@ -1456,7 +1456,7 @@ export type PayslipReviewRow = ProcessedPayslipViewRow & {
    * THE EXPOSURE, STATED RATHER THAN IMPLIED. This read is fenced only by `scopedAdmin` (lib/scope.ts), so
    * any admin whose company scope includes the employer can now download a payslip carrying an employee's
    * full account number, before release. That is new for THIS document and not new for the product: the
-   * same number is already shown unmasked to admins at app/admin/claims/reimbursements/page.tsx and in the
+   * same number is already shown unmasked to admins at app/(app)/admin/claims/reimbursements/page.tsx and in the
    * payment summary CSV (core/payroll.ts). The review SCREEN shows it in full too (b19042d0), under the
    * same scopedAdmin fence; a company can hide it by switching Bank Account off in its payslip setting.
    */
@@ -1518,7 +1518,7 @@ export function sumPayslipEmployerPeriodTotals(
  * employee-facing screen and exactly wrong for a reviewer — the whole point of this screen is to check a
  * run BEFORE anyone in the company sees it. The gate is not weakened, bypassed or parameterised; this is a
  * different read with a different fence (scopedAdmin's companyIds), which is the same decision
- * app/payroll/transaction-view already made and documented.
+ * app/(app)/payroll/transaction-view already made and documented.
  *
  * Fails CLOSED on an empty scope, like every read in this file. An out-of-scope payslipId returns null,
  * so a tampered URL is indistinguishable from a missing payslip.

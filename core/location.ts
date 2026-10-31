@@ -69,7 +69,7 @@ async function cleanBranch(tx: Tx, v: string | null | undefined, legacy: string 
 //
 // `location` carries TWO partial unique indexes — location_code_uq (tenant, code) and location_branch_uq
 // (tenant, company, branch), both WHERE archived_at IS NULL. Until this block, tripping either one let the
-// raw driver error out to app/admin/_redirects.ts `fail()`, which puts `(e as Error).message` straight in
+// raw driver error out to app/(app)/admin/_redirects.ts `fail()`, which puts `(e as Error).message` straight in
 // the ?error= banner — and drizzle's message is "Failed query: update "location" set "code" = $1, …
 // params: TWO,Two,MY,,BUKIT JALIL,…". SQL and parameter VALUES, shown to an HR admin.
 //

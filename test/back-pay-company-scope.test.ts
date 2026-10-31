@@ -117,13 +117,13 @@ describe('2ef69d1e — a back pay run is fenced to its own company', () => {
   });
 
   it('the page and the export route re-check the company in APPLICATION code, not only in RLS', () => {
-    // RLS is the backstop; the house convention (app/payroll/[batchId]/export/route.ts) is that the
+    // RLS is the backstop; the house convention (app/(app)/payroll/[batchId]/export/route.ts) is that the
     // route re-checks too, so a guessed id 404s identically to one that does not exist and cannot be
     // used to probe which run ids are real. Source-level because that is where the omission was.
     const read = (p: string) => require('node:fs').readFileSync(require('node:path').resolve(__dirname, '..', p), 'utf8');
-    const page = read('app/payroll/back-pay/page.tsx');
-    const route = read('app/payroll/back-pay/export/route.ts');
-    const actions = read('app/payroll/back-pay/actions.ts');
+    const page = read('app/(app)/payroll/back-pay/page.tsx');
+    const route = read('app/(app)/payroll/back-pay/export/route.ts');
+    const actions = read('app/(app)/payroll/back-pay/actions.ts');
     expect(page, 'page must fence the run detail').toMatch(/scopeIds\.includes\(\s*detailRaw\.run\.companyId/);
     expect(route, 'export route must use scopedAdmin, not bare isAdmin').toContain('scopedAdmin()');
     expect(route, 'export route must re-check the company').toMatch(/scopeIds\.includes\(detail\.run\.companyId\)/);

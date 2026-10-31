@@ -34,7 +34,7 @@
  *      look like it "went back". Also note `company` (URL) maps to `companyId` (reader argument) — the
  *      two names differ deliberately and neither may be tidied to match the other.
  *
- * DELIBERATELY NOT ASSERTED: that app/payroll/transactions/fixed/page.tsx stays narrow. The request cited
+ * DELIBERATELY NOT ASSERTED: that app/(app)/payroll/transactions/fixed/page.tsx stays narrow. The request cited
  * it as the screen to copy and it was capped at `mx-auto max-w-[100rem]`, so "match Fixed Transaction" and
  * "full width" were two different looks; the approved plan resolved that by following transaction-view and
  * explicitly leaving Fixed Transaction alone as a possible follow-on the reporter had to ask for. Pinning
@@ -51,8 +51,8 @@ import { describe, expect, it } from 'vitest';
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-const BACK_PAY = 'app/payroll/back-pay/page.tsx';
-const STATUTORY = 'app/payroll/statutory-adjustment/page.tsx';
+const BACK_PAY = 'app/(app)/payroll/back-pay/page.tsx';
+const STATUTORY = 'app/(app)/payroll/statutory-adjustment/page.tsx';
 const READER = 'core/payroll.ts';
 const PAGES = [BACK_PAY, STATUTORY] as const;
 

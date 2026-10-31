@@ -277,7 +277,7 @@ describe('leaveBalances — resolved placement', () => {
   });
 
   // 5ff7daff — THE CONTRACT, not just the pure function. The reported symptom ("where is my replacement
-  // leave") is produced by leaveBalances, and app/leave/page.tsx picks the Replacement card with
+  // leave") is produced by leaveBalances, and app/(app)/leave/page.tsx picks the Replacement card with
   // `b.placement === 'primary' && isReplacementLeaveType(b)`. A unit test of resolvePlacement alone would
   // have stayed green while leaveBalances went on passing only the code — so the assertion is made HERE,
   // on the row the screen actually reads.

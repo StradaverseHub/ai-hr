@@ -100,7 +100,7 @@ describe('"today" is resolved in MYT, never off a UTC timestamp', () => {
 
   // A punch stamped with a UTC date and a host-local time disagrees with itself for those eight hours:
   // yesterday's date beside today's time. Both halves must come off the same clock.
-  it.each(['app/attendance/clock/actions.ts', 'app/me/actions.ts'])(
+  it.each(['app/(app)/attendance/clock/actions.ts', 'app/(app)/me/actions.ts'])(
     '%s stamps a punch date and time from the same MYT clock',
     (rel) => {
       const src = readFileSync(join(root, rel), 'utf8');

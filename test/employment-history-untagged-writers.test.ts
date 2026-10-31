@@ -57,8 +57,8 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
 
-import * as personnelActions from '../app/admin/personnel/[employmentId]/actions';
-import { setCompensationAction, setLocationAction } from '../app/admin/personnel/[employmentId]/actions';
+import * as personnelActions from '../app/(app)/admin/personnel/[employmentId]/actions';
+import { setCompensationAction, setLocationAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 
 let b: Base;
 
@@ -399,7 +399,7 @@ describe('r78c — one movement, one Employment History row', () => {
     // the bug. Asserted at source rather than by rendering the component with hand-made props: a component
     // test can pass on a fixture that never crossed the RSC transport.
     const src = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
+      path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'),
       'utf8',
     );
     for (const field of ['company', 'division', 'department', 'jobTitle', 'basic']) {

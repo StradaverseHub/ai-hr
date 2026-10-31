@@ -126,7 +126,7 @@ THEN:
 FAMILY AND QUALIFICATION STAY OUT — every form on them is a child record, so a tab-wide Save would have
 nothing to save. That is a finding to communicate, not a thing to build.
 
-SCOPE FENCE UNCHANGED: do not touch app/admin/personnel/new/**.`,
+SCOPE FENCE UNCHANGED: do not touch app/(app)/admin/personnel/new/**.`,
   },
 ];
 

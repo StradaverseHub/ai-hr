@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,render} from '@testing-library/react';
-import {AttentionOnArrival} from '../app/approvals/attention-on-arrival';
+import {AttentionOnArrival} from '../app/(app)/approvals/attention-on-arrival';
 const id='21d29ae1-dc1c-4479-a7bf-cb882f12ef66';
 let scroll:ReturnType<typeof vi.fn>;
 beforeEach(()=>{

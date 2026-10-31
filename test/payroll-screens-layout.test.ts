@@ -16,7 +16,7 @@
  * A width is a string; tsc, the suite and `next build` are all indifferent to it, so the only thing
  * that can hold sixteen files to one decision is an assertion that reads them. That is this file.
  *
- * One case in section A deliberately does NOT read the round's edit list: it walks app/payroll from
+ * One case in section A deliberately does NOT read the round's edit list: it walks app/(app)/payroll from
  * disk. A guard whose input is the set of files just changed can only ever confirm that the change
  * happened, and the drift this file exists to catch is in the screens NOBODY thought about.
  *
@@ -86,39 +86,39 @@ const capsPage = (raw: string) => {
  * Every Payroll list / table / workspace screen that was NOT already on `pageWideCls`. Eleven under
  * /payroll and five Payroll-owned screens under /admin (Loans, Pay Items, Payroll Cycles, Payroll
  * Policies, Payroll Settings) — the module is split across two route trees and a guard that only
- * walked app/payroll would miss a third of it.
+ * walked app/(app)/payroll would miss a third of it.
  */
 const STANDARDISED = [
-  'app/payroll/page.tsx',
-  // 65e2d5de — the three screens under app/payroll/[batchId] that 152fea7f's sweep missed: the run VIEW
+  'app/(app)/payroll/page.tsx',
+  // 65e2d5de — the three screens under app/(app)/payroll/[batchId] that 152fea7f's sweep missed: the run VIEW
   // screen (max-w-6xl), Reprocess and Remove Employee Payroll (max-w-5xl, on BOTH branches each — the
   // refusal render as well as the main one). They are the working screens of the Payroll Process
   // workflow and were the last three still boxed into a narrow column.
-  'app/payroll/[batchId]/page.tsx',
-  'app/payroll/[batchId]/reprocess/page.tsx',
-  'app/payroll/[batchId]/remove/page.tsx',
-  'app/payroll/individual-payslip/page.tsx',
-  'app/payroll/process/page.tsx',
-  'app/payroll/reports/page.tsx',
-  'app/payroll/setup/page.tsx',
-  'app/payroll/statutory-forms/page.tsx',
-  'app/payroll/transactions/page.tsx',
-  'app/payroll/transactions/fixed/page.tsx',
-  'app/payroll/transactions/individual/page.tsx',
-  'app/payroll/transactions/tp1/page.tsx',
-  'app/payroll/transactions/zakat/page.tsx',
-  'app/admin/loans/page.tsx',
-  'app/admin/pay-components/page.tsx',
-  'app/admin/payroll-config/page.tsx',
-  'app/admin/payroll-cycle/page.tsx',
-  'app/admin/payroll-policy/page.tsx',
+  'app/(app)/payroll/[batchId]/page.tsx',
+  'app/(app)/payroll/[batchId]/reprocess/page.tsx',
+  'app/(app)/payroll/[batchId]/remove/page.tsx',
+  'app/(app)/payroll/individual-payslip/page.tsx',
+  'app/(app)/payroll/process/page.tsx',
+  'app/(app)/payroll/reports/page.tsx',
+  'app/(app)/payroll/setup/page.tsx',
+  'app/(app)/payroll/statutory-forms/page.tsx',
+  'app/(app)/payroll/transactions/page.tsx',
+  'app/(app)/payroll/transactions/fixed/page.tsx',
+  'app/(app)/payroll/transactions/individual/page.tsx',
+  'app/(app)/payroll/transactions/tp1/page.tsx',
+  'app/(app)/payroll/transactions/zakat/page.tsx',
+  'app/(app)/admin/loans/page.tsx',
+  'app/(app)/admin/pay-components/page.tsx',
+  'app/(app)/admin/payroll-config/page.tsx',
+  'app/(app)/admin/payroll-cycle/page.tsx',
+  'app/(app)/admin/payroll-policy/page.tsx',
 ] as const;
 
 /** The three that were already there, and against which "the same setting" is defined. */
 const ALREADY_WIDE = [
-  'app/payroll/transaction-view/page.tsx',
-  'app/payroll/back-pay/page.tsx',
-  'app/payroll/statutory-adjustment/page.tsx',
+  'app/(app)/payroll/transaction-view/page.tsx',
+  'app/(app)/payroll/back-pay/page.tsx',
+  'app/(app)/payroll/statutory-adjustment/page.tsx',
 ] as const;
 
 /**
@@ -130,39 +130,39 @@ const ALREADY_WIDE = [
 const WIDENED_LATER = [
   // 7ad37961 (r210) — the Edit TP1 Relief page. See NARROW_FORMS in section C for why the single-record
   // exception no longer holds for it.
-  'app/payroll/transactions/tp1/[year]/[month]/page.tsx',
+  'app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx',
   // 711adcd2 (r254) — the Pay Item form, for the SAME reason and on the reporter's own drawing. See
   // NARROW_FORMS in section C.
-  'app/admin/pay-components/component-form.tsx',
+  'app/(app)/admin/pay-components/component-form.tsx',
   // r402 (f3cf2444) — the statutory-form criteria step, on the reporter's own request ("the first step
   // also uses the full screen width instead of a narrow box"). See CAPPED_BY_DESIGN in section A for the
   // r256 reason it used to be capped; the boxes now sit in one row across the width instead.
-  'app/payroll/statutory-forms/open/page.tsx',
+  'app/(app)/payroll/statutory-forms/open/page.tsx',
   // r407 (4f45f9b0) — the Borang A review screen became the full-width in-app viewer ("Preview then
   // shows the actual Borang A inside the system, across the full width of the screen"). It left
   // CAP_SURVIVORS / CAPPED_BY_DESIGN; the sheet keeps its A4 proportions inside the viewer's frame.
-  'app/payroll/borang-a/preview/page.tsx',
+  'app/(app)/payroll/borang-a/preview/page.tsx',
   // r408 (e74af58c) — the Borang 8A review screen followed it onto the shared full-width viewer ("the
   // preview shows the actual PDF across the full width of the screen at its true A4 shape"). It left
   // CAP_SURVIVORS / CAPPED_BY_DESIGN for the same reason Borang A did.
-  'app/payroll/borang-8a/preview/page.tsx',
+  'app/(app)/payroll/borang-8a/preview/page.tsx',
   // r409 (79f3f64d) — the CP39 review screen became the same full-width viewer ("This is the same path as
   // EA, Borang A and Borang 8A"), and Form E / CP8D gained one. Both left / never entered CAP_SURVIVORS.
-  'app/payroll/cp39/preview/page.tsx',
-  'app/payroll/cp8d/preview/page.tsx',
+  'app/(app)/payroll/cp39/preview/page.tsx',
+  'app/(app)/payroll/cp8d/preview/page.tsx',
   // Approved multi-company history preview and recovery workflow now spans the full page.
-  'app/payroll/history-import/page.tsx',
+  'app/(app)/payroll/history-import/page.tsx',
 ] as const;
 
 const ALL_WIDE = [...STANDARDISED, ...ALREADY_WIDE, ...WIDENED_LATER];
 
 /**
- * THE MODULE AS IT IS ON DISK, not as this round edited it. Every `.tsx` under app/payroll is walked,
+ * THE MODULE AS IT IS ON DISK, not as this round edited it. Every `.tsx` under app/(app)/payroll is walked,
  * so a screen that exists today and was never touched — and, more to the point, a screen added
  * tomorrow — is inside the enumeration without anyone remembering to list it here.
  *
  * Known limit, stated rather than hidden: the five Payroll-owned screens under /admin cannot be
- * discovered the same way (app/admin also holds Personnel and the org screens, which keep the old cap
+ * discovered the same way (app/(app)/admin also holds Personnel and the org screens, which keep the old cap
  * legitimately), so they come from STANDARDISED. A SIXTH Payroll screen filed under /admin would
  * therefore escape this walk until it is added there.
  */
@@ -178,8 +178,8 @@ const tsxUnder = (rel: string): string[] =>
     );
 
 const PAYROLL_MODULE_ON_DISK = [
-  ...tsxUnder('app/payroll'),
-  ...STANDARDISED.filter((f) => f.startsWith('app/admin/')),
+  ...tsxUnder('app/(app)/payroll'),
+  ...STANDARDISED.filter((f) => f.startsWith('app/(app)/admin/')),
 ].sort();
 
 /**
@@ -202,7 +202,7 @@ const PAYROLL_MODULE_ON_DISK = [
  * previews now show the real page at its true A4 shape), so the figures table is the one survivor.
  */
 const CAP_SURVIVORS = [
-  'app/payroll/statutory-forms/[formId]/page.tsx',
+  'app/(app)/payroll/statutory-forms/[formId]/page.tsx',
 ] as const;
 
 describe('152fea7f · A — every Payroll screen uses the one full-width container', () => {
@@ -260,45 +260,45 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
    */
   const CAPPED_BY_DESIGN = [
     // Printed statutory documents — see CAP_SURVIVORS.
-    'app/payroll/statutory-forms/[formId]/page.tsx',
+    'app/(app)/payroll/statutory-forms/[formId]/page.tsx',
     // r256 858a1128 — the per-form CRITERIA step STOOD HERE (`max-w-3xl`, "a prompt stretched across a 27"
     // monitor puts its label at one edge and its select at the other"). ⚠️ r402 (f3cf2444) moved it to
     // WIDENED_LATER on the reporter's request; the label-at-one-edge worry is answered by laying the boxes
     // out in a row of equal columns rather than one long line.
     // One-record previews and forms — section C's category.
-    'app/payroll/cp22/[employmentId]/preview/page.tsx',
-    'app/payroll/reports/ea/[employmentId]/page.tsx',
-    'app/payroll/transactions/fixed/[id]/page.tsx',
+    'app/(app)/payroll/cp22/[employmentId]/preview/page.tsx',
+    'app/(app)/payroll/reports/ea/[employmentId]/page.tsx',
+    'app/(app)/payroll/transactions/fixed/[id]/page.tsx',
     // 7ad37961's TP1 month page STOOD HERE for two rounds and is now in WIDENED_LATER instead — r210
     // withdrew the exception for that ONE page, on the reporter's request, and the reasoning is recorded
     // in NARROW_FORMS below. Its `[year]` sibling is a REDIRECT (47 lines, no layout, nothing to cap), so
     // it belongs in no list here either. Everything else on this list keeps its cap.
-    'app/payroll/transactions/zakat/election/page.tsx',
+    'app/(app)/payroll/transactions/zakat/election/page.tsx',
     // Statutory Configuration — single-record settings forms, one agency each.
-    'app/payroll/configuration/page.tsx',
-    'app/payroll/configuration/eis/page.tsx',
-    'app/payroll/configuration/epf/page.tsx',
-    'app/payroll/configuration/hrdf/page.tsx',
-    'app/payroll/configuration/pcb/page.tsx',
-    'app/payroll/configuration/skbbk/page.tsx',
-    'app/payroll/configuration/socso/page.tsx',
+    'app/(app)/payroll/configuration/page.tsx',
+    'app/(app)/payroll/configuration/eis/page.tsx',
+    'app/(app)/payroll/configuration/epf/page.tsx',
+    'app/(app)/payroll/configuration/hrdf/page.tsx',
+    'app/(app)/payroll/configuration/pcb/page.tsx',
+    'app/(app)/payroll/configuration/skbbk/page.tsx',
+    'app/(app)/payroll/configuration/socso/page.tsx',
     // Narrow by nature: a task list, a wizard outcome, an upload form, a panel host, a detail read-out —
     // none of them a grid the reporter asked to widen. Untouched by any width round, and named so.
-    'app/payroll/[batchId]/anomalies/page.tsx',
-    'app/payroll/process/result/page.tsx',
-    'app/payroll/pcb-detail/page.tsx',
+    'app/(app)/payroll/[batchId]/anomalies/page.tsx',
+    'app/(app)/payroll/process/result/page.tsx',
+    'app/(app)/payroll/pcb-detail/page.tsx',
     // 6b4ca488 — the Statutory Explanation, capped for the SAME reason its PCB sibling above is and with
     // the same `mx-auto max-w-5xl`: it is one payslip's working read top to bottom, six short blocks of
     // label-and-figure rows, not a grid anybody reconciles sideways. Stretching that to a 27" monitor
     // puts a caption at one edge and its number at the other. Its Transaction View twin is NOT a second
     // exception — the tab renders the same component inside that screen's own pageWideCls container.
-    'app/payroll/statutory-detail/page.tsx',
-    'app/payroll/transactions/adjustments/page.tsx',
-    'app/payroll/transactions/import-components/page.tsx',
+    'app/(app)/payroll/statutory-detail/page.tsx',
+    'app/(app)/payroll/transactions/adjustments/page.tsx',
+    'app/(app)/payroll/transactions/import-components/page.tsx',
     // A viewport-bounded upload/preview dialog, not its parent Individual Transactions page.
-    'app/payroll/transactions/import-excel/individual-import.tsx',
+    'app/(app)/payroll/transactions/import-excel/individual-import.tsx',
     // Not a page at all: an INNER measure inside the transaction-view history tab.
-    'app/payroll/transaction-view/history-table.tsx',
+    'app/(app)/payroll/transaction-view/history-table.tsx',
   ] as const;
 
   it('no Payroll file on disk caps its container except the ones named as deliberate', () => {
@@ -328,7 +328,7 @@ describe('152fea7f · A — every Payroll screen uses the one full-width contain
 // ─────────────────── B. Individual Payslip prints at a page width ───────────────────
 
 describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () => {
-  const PAYSLIP = 'app/payroll/individual-payslip/page.tsx';
+  const PAYSLIP = 'app/(app)/payroll/individual-payslip/page.tsx';
 
   it('keeps its print cap, and keeps it CENTRED', () => {
     // `print:max-w-4xl` was carried alongside `mx-auto`, and inherited the centring from it. pageWideCls
@@ -360,7 +360,7 @@ describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () 
  * list is still the first kind, and widening one of them still needs its own argument here.
  *
  * ── THE SECOND EXIT, AND ITS ARGUMENT (r254, 711adcd2) ──────────────────────────────────────────────
- * `app/admin/pay-components/component-form.tsx` was on this list and has moved to WIDENED_LATER. This is
+ * `app/(app)/admin/pay-components/component-form.tsx` was on this list and has moved to WIDENED_LATER. This is
  * NOT the rule being softened for a second time; it is the same test applied to a record that changed
  * shape, and the reporter is the one who changed it. 711adcd2 splits the Pay Item into FOUR titled
  * sections they drew themselves — General Information, Ordinary Rate of Pay, Calculation, Statutory
@@ -376,11 +376,11 @@ describe('152fea7f · B — widening the SCREEN did not widen the PRINTOUT', () 
  * case to make a red gate green would have retired the rule for all six.
  */
 const NARROW_FORMS = [
-  'app/payroll/transactions/fixed/[id]/page.tsx',
-  'app/payroll/transactions/zakat/election/page.tsx',
-  'app/payroll/reports/ea/[employmentId]/page.tsx',
-  'app/admin/loans/new/page.tsx',
-  'app/admin/loans/[id]/page.tsx',
+  'app/(app)/payroll/transactions/fixed/[id]/page.tsx',
+  'app/(app)/payroll/transactions/zakat/election/page.tsx',
+  'app/(app)/payroll/reports/ea/[employmentId]/page.tsx',
+  'app/(app)/admin/loans/new/page.tsx',
+  'app/(app)/admin/loans/[id]/page.tsx',
 ] as const;
 
 describe('152fea7f · C — the single-record forms were deliberately NOT swept in', () => {
@@ -397,13 +397,13 @@ describe('152fea7f · C — the single-record forms were deliberately NOT swept 
 
 /** Every Payroll screen with an employee list; `individual` mounts it inside its workspace island. */
 const PANEL_SCREENS = [
-  'app/payroll/transaction-view/page.tsx',
-  'app/payroll/individual-payslip/page.tsx',
-  'app/payroll/transactions/fixed/page.tsx',
-  'app/payroll/transactions/individual/txn-workspace.tsx',
-  'app/payroll/transactions/tp1/page.tsx',
-  'app/payroll/transactions/zakat/page.tsx',
-  'app/admin/loans/page.tsx',
+  'app/(app)/payroll/transaction-view/page.tsx',
+  'app/(app)/payroll/individual-payslip/page.tsx',
+  'app/(app)/payroll/transactions/fixed/page.tsx',
+  'app/(app)/payroll/transactions/individual/txn-workspace.tsx',
+  'app/(app)/payroll/transactions/tp1/page.tsx',
+  'app/(app)/payroll/transactions/zakat/page.tsx',
+  'app/(app)/admin/loans/page.tsx',
 ] as const;
 
 describe('152fea7f · D — full width was NOT bought by removing the employee list', () => {

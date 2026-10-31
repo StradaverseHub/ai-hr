@@ -22,7 +22,7 @@ const OLD: Record<(typeof LOCALES)[number], string> = {
 
 describe('r431 Team Directory (edabd693)', () => {
   it('the directory profile renders no link to the admin record, for an administrator or anyone', () => {
-    const src = read('app/personnel/[employmentId]/page.tsx');
+    const src = read('app/(app)/personnel/[employmentId]/page.tsx');
     // Slice from the render onwards so the doc comment (which names the admin route) is excluded.
     const start = src.indexOf('  return (\n    <div className="mx-auto max-w-3xl');
     expect(start, 'render marker found').toBeGreaterThanOrEqual(0);

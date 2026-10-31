@@ -4,8 +4,8 @@ import { cleanup,fireEvent,render,screen,waitFor } from '@testing-library/react'
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({load:vi.fn()}));
-vi.mock('../app/performance/onehr-actions',()=>({assessmentInsightAction:ports.load}));
-import { PerformanceInsight } from '../app/performance/onehr/performance-insight';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({assessmentInsightAction:ports.load}));
+import { PerformanceInsight } from '../app/(app)/performance/onehr/performance-insight';
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 it('ignores an older response that arrives after a reopened view has lost access',async()=>{
  let resolveOld!:(value:unknown)=>void;ports.load.mockImplementationOnce(()=>new Promise(resolve=>{resolveOld=resolve;})).mockResolvedValueOnce({error:'Assessment is no longer assigned.'});

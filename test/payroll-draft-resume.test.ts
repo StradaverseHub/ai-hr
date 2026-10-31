@@ -35,13 +35,13 @@ import { createLoan, prefillLoansForBatch } from '../core/loans';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { hireEmployee } from '../core/org';
-import { resumeHref, materializeToggle } from '../app/payroll/process/selection-logic';
+import { resumeHref, materializeToggle } from '../app/(app)/payroll/process/selection-logic';
 // 65e2d5de — the reset destination is composed from payrollListAfterReset + withQueryParam (it was
 // resumeHref until the reporter reversed it — see a3); the Step-2 search is the predicate below.
 import { adjustmentReturnTo, payrollListAfterReset, payrollListReturnTo, withQueryParam } from '../lib/return-to';
 import { matchesEmployeeSearch } from '../lib/employee-search';
 // a3b runs the LIST's own filter arithmetic over the post-reset row, rather than asserting another string.
-import { applyFilters } from '../app/payroll/dashboard-logic';
+import { applyFilters } from '../app/(app)/payroll/dashboard-logic';
 import {
   adminCtx,
   closeAll,

@@ -57,7 +57,7 @@ const EXPECTED_SET = [
   // /payroll/guide was the first, ADR-0083 r233's /payroll/control-tower the second). Recorded here
   // rather than quietly dropped, because a deletion from this list is exactly what this guard exists to
   // catch. THE DESTINATION IS NOT LOST: /admin/loans is still reached from the Transaction Entry hub
-  // card (app/payroll/transactions/page.tsx), which is where it was reachable from before 6d72816e added
+  // card (app/(app)/payroll/transactions/page.tsx), which is where it was reachable from before 6d72816e added
   // this row. The screen, its three routes and its lib/permissions.ts entry are untouched, so it remains
   // grantable and revocable per person. This reverses 6d72816e on the reporter's own request: with both
   // doors present they reported the same screen being offered twice in one menu.
@@ -71,7 +71,7 @@ const EXPECTED_SET = [
   //
   // IT IS A MOVE, NOT A LOSS, WHICH IS WHY THE GUARD'S PROMISE SURVIVES. The screen was promoted to its
   // own top-level section at /control-tower (a control plane whose first domain is payroll, ADR-0083
-  // §2.2). The old href still RESOLVES — app/payroll/control-tower/page.tsx forwards to the new one — so
+  // §2.2). The old href still RESOLVES — app/(app)/payroll/control-tower/page.tsx forwards to the new one — so
   // no bookmark breaks; it simply no longer appears in this menu. Every entry that came from the retired
   // tab strip is untouched, character for character.
   { href: '/payroll/transaction-view', labelKey: 'payrollTransactionView' },
@@ -121,7 +121,7 @@ describe('1459e116 — the payroll fly-out carries the retired tab strip, unbrok
     // as hard and no nav guard would see it. The two links that existed (Payroll Settings and the
     // payroll run screen) were repointed at the report's new home, not removed.
     expect(NODE.children.some((c) => c.href === '/payroll/guide')).toBe(false);
-    expect(exists('app/payroll/guide/page.tsx'), 'the guide route is still on disk').toBe(false);
+    expect(exists('app/(app)/payroll/guide/page.tsx'), 'the guide route is still on disk').toBe(false);
     const offenders: string[] = [];
     const walk = (dir: string) => {
       for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
@@ -187,7 +187,7 @@ describe('1459e116 — the tab strip is gone, not merely bypassed', () => {
         else if (e.name.endsWith('.tsx') && read(rel).includes('PayrollTabs')) offenders.push(rel);
       }
     };
-    walk('app/payroll');
+    walk('app/(app)/payroll');
     expect(offenders, 'PayrollTabs references left behind').toEqual([]);
   });
 

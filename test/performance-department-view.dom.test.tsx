@@ -10,7 +10,7 @@ import en from '../messages/en.json';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/performance/department', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 
-import { DepartmentViewScreen } from '../app/performance/onehr/department-view';
+import { DepartmentViewScreen } from '../app/(app)/performance/onehr/department-view';
 import { departmentForest, departmentSpread, fixedHalfEven, formatOverallScore, formatSpreadPct, pickDepartmentCycle, type DepartmentCycle, type DepartmentViewRow } from '../packs/performance/onehr/department-view-model';
 
 const t = en.onehr.department;

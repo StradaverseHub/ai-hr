@@ -76,7 +76,7 @@ export class ClockingLocationLinkError extends Error {
 
 /**
  * f9afd1ce — thrown by every writer when the caller is not a group administrator. The message names the
- * rule in the words the plan gave the reporter, because `app/admin/_redirects.ts fail()` copies it into
+ * rule in the words the plan gave the reporter, because `app/(app)/admin/_redirects.ts fail()` copies it into
  * the banner verbatim: a company administrator who tries must be told WHY, and what they still can do.
  */
 export class ClockingLocationAuthorityError extends Error {
@@ -137,7 +137,7 @@ function isUniqueViolation(e: unknown): boolean {
 
 /**
  * A clocking location with this name already exists in the TENANT (clocking_location_name_uq is per
- * tenant since 0459 — one record per physical place). Typed so app/admin/actions.ts can say so in the
+ * tenant since 0459 — one record per physical place). Typed so app/(app)/admin/actions.ts can say so in the
  * admin's language; without it `fail()` copies drizzle's "Failed query: insert into … params: …" into
  * the banner, which is what the `location` master shipped with before 1fff489c.
  */

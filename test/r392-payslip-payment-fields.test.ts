@@ -216,7 +216,7 @@ describe('r392 a setting without Bank Account prints no account number', () => {
     expect((await rowsFor(['employee'])).map(r => r.key)).toEqual(['employee']);
     expect((await rowsFor(['bankAccount', 'employee'])).map(r => [r.key, r.value])).toEqual([['bankAccount', ACCOUNT], ['employee', pdfData.employee]]);
     // The screen renders the selection and nothing else: no appended block, no second source for the account.
-    const page = read('app/payroll/individual-payslip/page.tsx');
+    const page = read('app/(app)/payroll/individual-payslip/page.tsx');
     const start = page.indexOf("<Block title={tSlip('employeeProfile')}>");
     const end = page.indexOf('</Block>', start);
     expect(start, 'the Employee Profile block was found').toBeGreaterThanOrEqual(0);
@@ -233,9 +233,9 @@ describe('r392 a setting without Bank Account prints no account number', () => {
 // ── 3. The TRAP: the raw enum never prints, the account is never blank ──────────────────────────────────
 
 const SURFACES = {
-  review: 'app/payroll/individual-payslip/page.tsx',
-  adminPdf: 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
-  essPdf: 'app/me/payslip/[payslipId]/pdf/route.ts',
+  review: 'app/(app)/payroll/individual-payslip/page.tsx',
+  adminPdf: 'app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts',
+  essPdf: 'app/(app)/me/payslip/[payslipId]/pdf/route.ts',
 } as const;
 
 describe('r392 every surface feeds the translated method, the full account and the cycle label', () => {
@@ -246,8 +246,8 @@ describe('r392 every surface feeds the translated method, the full account and t
     expect(review).toContain('payrollCycle: payslipCycleLabel({cycleName:row.cycleName,runTypeLabel:tTxn(`individual.cycle.${row.runType}`)}),');
     for (const f of [SURFACES.adminPdf, SURFACES.essPdf]) {
       const src = read(f);
-      const assembly = f === 'app/me/payslip/[payslipId]/pdf/route.ts' ? read('app/me/payslip/document.ts') : src;
-      if (f === 'app/me/payslip/[payslipId]/pdf/route.ts') expect(src).toContain('myPayslipDocument(await getSession(),payslipId)');
+      const assembly = f === 'app/(app)/me/payslip/[payslipId]/pdf/route.ts' ? read('app/(app)/me/payslip/document.ts') : src;
+      if (f === 'app/(app)/me/payslip/[payslipId]/pdf/route.ts') expect(src).toContain('myPayslipDocument(await getSession(),payslipId)');
       const call = assembly.slice(assembly.indexOf('informationRows: selectPayslipInformation(payslipInformationData(p, {'), assembly.indexOf('p.informationFields', assembly.indexOf('informationRows:')));
       expect(call.length, `${f}: the informationRows call was found`).toBeGreaterThan(100);
       expect(call, `${f} must feed the TRANSLATED method`).toContain('paymentMethod: strings.paymentMethod');
@@ -297,7 +297,7 @@ describe('r392 on real reads: raw bank_transfer never prints and the account is 
     expect(review.bankAccountFull).toBe(ACCOUNT);
     expect('bankAccount' in review, 'precondition: the read has no bankAccount key').toBe(false);
 
-    // The review page, resolved exactly as app/payroll/individual-payslip/page.tsx resolves it.
+    // The review page, resolved exactly as app/(app)/payroll/individual-payslip/page.tsx resolves it.
     const t = await getTranslations('payroll.individualPayslip');
     const tTxn = await getTranslations('payroll.transactions');
     const labels = await payslipInformationLabels();

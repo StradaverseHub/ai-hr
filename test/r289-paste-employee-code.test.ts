@@ -359,7 +359,7 @@ describe('r289 §C · Notice Board: a mixed paste cannot produce a draft that ov
   });
 
   it('the draft page uses the canonical notice preview and blocks an incomplete audience', () => {
-    const page = read('app/admin/notice-board/[id]/page.tsx');
+    const page = read('app/(app)/admin/notice-board/[id]/page.tsx');
     expect(page).toContain('await noticeAudiencePreview(s,n.id)');
     expect(page).toContain('published?n.recipientCount:(projected?.count??0)');
     expect(page).toContain('disabled={Boolean(projected?.incomplete)||reach===0}');
@@ -408,11 +408,11 @@ describe('r289 §D · one rule, one normaliser, six call sites', () => {
     /(?:merge|resolve)EmploymentSelection\(\s*(?:\[\.\.\.picked\]|(?:fd|formData)\.getAll\('employmentIds'\)\.map\(String\)),\s*(?:pastedRaw|String\((?:fd|formData)\.get\('employmentIdsRaw'\) \?\? ''\)),\s*(?:await )?[\w.]+(?:\(\w*\))?,?\s*\)/;
 
   const SITES: [string, string][] = [
-    ['Generate Entitlement · write', 'app/admin/actions.ts'],
+    ['Generate Entitlement · write', 'app/(app)/admin/actions.ts'],
     ['Generate Entitlement · screen', 'components/leave/generate-form.tsx'],
-    ['Leave Adjustments · write', 'app/admin/leave/adjustments/actions.ts'],
+    ['Leave Adjustments · write', 'app/(app)/admin/leave/adjustments/actions.ts'],
     ['Leave Adjustments · screen', 'components/leave/adjustment-form.tsx'],
-    ['Notice Board · write', 'app/admin/notice-board/actions.ts'],
+    ['Notice Board · write', 'app/(app)/admin/notice-board/actions.ts'],
     ['Notice Board · screen', 'components/notice/notice-form.tsx'],
   ];
 
@@ -426,9 +426,9 @@ describe('r289 §D · one rule, one normaliser, six call sites', () => {
 
   it('the three WRITE paths read that population themselves rather than trusting the post', () => {
     for (const rel of [
-      'app/admin/actions.ts',
-      'app/admin/leave/adjustments/actions.ts',
-      'app/admin/notice-board/actions.ts',
+      'app/(app)/admin/actions.ts',
+      'app/(app)/admin/leave/adjustments/actions.ts',
+      'app/(app)/admin/notice-board/actions.ts',
     ]) {
       const src = read(rel);
       expect(src, `${rel} must read the population`).toContain('listEmployeePickOptions');
@@ -443,7 +443,7 @@ describe('r289 §D · one rule, one normaliser, six call sites', () => {
     // Notice Board's copy crosses the boundary as a STRING, so it substitutes its own placeholder — and
     // the page must pass the placeholder back in or next-intl renders the key path behind a green 200.
     expect(read('components/notice/notice-form.tsx')).toContain("labels.pasteUnmatchedTemplate.replace('{list}'");
-    for (const rel of ['app/admin/notice-board/new/page.tsx', 'app/admin/notice-board/[id]/page.tsx']) {
+    for (const rel of ['app/(app)/admin/notice-board/new/page.tsx', 'app/(app)/admin/notice-board/[id]/page.tsx']) {
       expect(read(rel), rel).toContain("t('fPasteUnmatched', { list: '{list}' })");
     }
   });

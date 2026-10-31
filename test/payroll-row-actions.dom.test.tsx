@@ -17,7 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { PayrollRowActions } from '../app/payroll/row-actions';
+import { PayrollRowActions } from '../app/(app)/payroll/row-actions';
 
 const trigger = () => screen.queryByRole('button', { name: 'More actions' });
 

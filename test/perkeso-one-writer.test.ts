@@ -106,7 +106,7 @@ async function hire(p: { name: string; salary: number; ic: string; skbbk?: boole
 const PERIOD = '2026-07';
 
 /**
- * SCREEN A — /payroll/borang-8a/file. The composition of `app/payroll/borang-8a/shared.ts`, which cannot
+ * SCREEN A — /payroll/borang-8a/file. The composition of `app/(app)/payroll/borang-8a/shared.ts`, which cannot
  * be called directly from a node test because it resolves the session through `scopedAdmin()`. Everything
  * below `reportPreview` is the real path, and the case at the bottom of this file pins that shared.ts
  * still composes it exactly this way.
@@ -308,8 +308,8 @@ describe('r296 — one writer, and the source says so', () => {
 
   /** Both routes' bytes come from the one module, and neither names the other's. */
   it('both download routes reach lib/perkeso-socso-file, and only it', () => {
-    const reports = read('app/payroll/reports/socso-eis-file/route.ts');
-    const borang = read('app/payroll/borang-8a/file/route.ts');
+    const reports = read('app/(app)/payroll/reports/socso-eis-file/route.ts');
+    const borang = read('app/(app)/payroll/borang-8a/file/route.ts');
     expect(reports).toContain("from '@/localization/my/socso-eis-file'");
     expect(borang).toContain("from '@/lib/perkeso-socso-file'");
     // One filename helper, so the same artefact cannot arrive under two names again.
@@ -319,12 +319,12 @@ describe('r296 — one writer, and the source says so', () => {
 
   /**
    * THE CONTRACT BETWEEN THIS TEST AND `shared.ts`. `screenA` above reproduces six lines of
-   * app/payroll/borang-8a/shared.ts because the real function resolves a session. If shared.ts ever stops
+   * app/(app)/payroll/borang-8a/shared.ts because the real function resolves a session. If shared.ts ever stops
    * composing it this way, the end-to-end cases above would be measuring something the screen no longer
    * does — so the composition is pinned on the file itself.
    */
-  it('app/payroll/borang-8a/shared.ts composes the file the way screenA reproduces it', () => {
-    const shared = read('app/payroll/borang-8a/shared.ts');
+  it('app/(app)/payroll/borang-8a/shared.ts composes the file the way screenA reproduces it', () => {
+    const shared = read('app/(app)/payroll/borang-8a/shared.ts');
     expect(shared).toContain('perkesoLayoutForPeriod(periodYear, periodMonth)');
     expect(shared).toContain('employees: perkesoFileEmployeesFrom(rows)');
     expect(shared).toContain('layout,');

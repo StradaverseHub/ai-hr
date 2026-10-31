@@ -1,5 +1,5 @@
 /**
- * r398 — the Monolith shell's WIRING, which the DOM test cannot see because app/layout.tsx is a server
+ * r398 — the Monolith shell's WIRING, which the DOM test cannot see because app/(app)/layout.tsx is a server
  * component that reads a session (see test/r398-monolith-shell.dom.test.tsx for the rendered half).
  *
  *  • The `monolith:` variant is keyed on the same attribute as the Monolith tokens.
@@ -22,7 +22,7 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const CLASSIC_BASE = 'f79f0259f529dfafd1426fbf70389c8555495858';
 const onMain = (p: string) => execFileSync('git', ['show', `${CLASSIC_BASE}:${p}`], { cwd: ROOT, encoding: 'utf8' });
 
-const LAYOUT = read('app/layout.tsx');
+const LAYOUT = read('app/(app)/layout.tsx');
 const SIDEBAR = read('components/sidebar.tsx');
 const CSS = read('app/globals.css');
 
@@ -44,7 +44,7 @@ const RESPONSIVE_NOTIFICATION_PANEL = 'fixed right-3 z-50 mt-2 w-[22rem] max-w-[
 // ea0fba3de also permits the phone content column to shrink into its main scroller.
 // This exact old-to-new mapping adds only max-sm:min-h-0; desktop classes stay identical.
 const CLASSIC_APPROVED_MOBILE_REPAIRS:Record<string,Record<string,string>> = {
-  "app/layout.tsx": {
+  "app/(app)/layout.tsx": {
     "flex min-w-0 flex-1 flex-col gap-3 lg:gap-4": "flex min-w-0 max-sm:min-h-0 flex-1 flex-col gap-3 lg:gap-4"
   },
   "components/company-switcher.tsx": {
@@ -62,7 +62,7 @@ const HR_BRAND_BADGE = 'grid size-10 shrink-0 place-items-center rounded-2xl bg-
 describe('Monolith shell wiring', () => {
   it('the monolith: variant keys on <html data-ui-theme="monolith">, like the tokens', () => {
     // D-P1-32 D3: updated, not replaced — the variant still keys on the same attribute, and an area theme
-    // (<div data-area-theme>, app/performance/area-theme.css) is excluded at zero specificity.
+    // (<div data-area-theme>, app/(app)/performance/area-theme.css) is excluded at zero specificity.
     expect(CSS).toContain("@custom-variant monolith (&:where([data-ui-theme='monolith'] *):not(:where([data-area-theme], [data-area-theme] *)));");
     expect(CSS).toContain(":root[data-ui-theme='monolith'] {");
   });
@@ -96,7 +96,7 @@ describe('Monolith shell wiring', () => {
 });
 
 describe('Classic shell baseline, with the approved mobile notification positioning repair', () => {
-  for (const file of ['app/layout.tsx', 'components/sidebar.tsx', 'components/company-switcher.tsx', 'components/notification-center.tsx']) {
+  for (const file of ['app/(app)/layout.tsx', 'components/sidebar.tsx', 'components/company-switcher.tsx', 'components/notification-center.tsx']) {
     it(file, () => {
       const before = classNames(onMain(file));
       // Non-vacuity: a file whose classes could not be read would pass the loop below on nothing.

@@ -160,7 +160,7 @@ describe('i18n — every locale carries the Year of Service keys with valid toke
 });
 
 describe('drift guards (source assertions)', () => {
-  const src = read('app/admin/personnel/[employmentId]/page.tsx');
+  const src = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 
   it('the page computes the figure from the Group Join Date via serviceYearsMonthsDaysAt', () => {
     // 4ea70bb7 UPDATED this case. The figure is no longer computed by an IIFE of its own: the same
@@ -288,7 +288,7 @@ describe('Employment tab service figures — day-precise and independent (4ea70b
 });
 
 describe('Employment tab source guards (4ea70bb7)', () => {
-  const src = read('app/admin/personnel/[employmentId]/page.tsx');
+  const src = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 
   it('both captions resolve through the Y/M/D helper, not through serviceLength', () => {
     expect(src).toContain('const groupServiceLabel = fmtServiceYmd(emp.hiredOn);');
@@ -336,7 +336,7 @@ describe('Personnel Management rename (4ea70bb7)', () => {
   });
 
   it.each(LOCALES)('locale %s keeps the employee-facing directory its OWN name', (loc) => {
-    // THE TRAP: people.list.title is rendered by app/personnel/page.tsx (the directory everybody sees), by
+    // THE TRAP: people.list.title is rendered by app/(app)/personnel/page.tsx (the directory everybody sees), by
     // the Excel export header and by the leave tracker. It must NOT have become "Personnel Management".
     const listTitle = at(catalogues[loc], 'people.list.title');
     const adminTitle = at(catalogues[loc], 'people.list.adminTitle');
@@ -363,14 +363,14 @@ describe('Personnel Management rename (4ea70bb7)', () => {
     // people.detail is shared by the admin record and the employee-facing profile. The admin one goes to
     // /admin/personnel (Personnel Management); the employee one goes to /personnel (Personnel). A rename
     // in place would have moved both — the people.list.title trap, one namespace down.
-    const adminDetail = read('app/admin/personnel/[employmentId]/page.tsx');
-    const employeeDetail = read('app/personnel/[employmentId]/page.tsx');
+    const adminDetail = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
+    const employeeDetail = read('app/(app)/personnel/[employmentId]/page.tsx');
     expect(adminDetail).toContain("{ href: '/admin/personnel', label: t('backToPersonnelAdmin') }");
     expect(adminDetail).not.toContain("t('backToPeople')");
     expect(employeeDetail).toContain("{ href: '/personnel', label: t('backToPeople') }");
     expect(employeeDetail).not.toContain("t('backToPersonnelAdmin')");
     // people.import is admin-only, so its backLabel was renamed in place — no second key.
-    expect(read('app/admin/personnel/import/page.tsx')).toContain(
+    expect(read('app/(app)/admin/personnel/import/page.tsx')).toContain(
       "back={{ href: '/admin/personnel', label: t('backLabel') }}",
     );
   });
@@ -396,8 +396,8 @@ describe('Personnel Management rename (4ea70bb7)', () => {
   });
 
   it('the admin list renders adminTitle and the employee directory still renders title', () => {
-    const adminList = read('app/admin/personnel/page.tsx');
-    const directory = read('app/personnel/page.tsx');
+    const adminList = read('app/(app)/admin/personnel/page.tsx');
+    const directory = read('app/(app)/personnel/page.tsx');
     expect(adminList).toContain("title={t('adminTitle')}");
     expect(adminList).not.toContain("title={t('title')}");
     expect(directory).toContain("title={t('title')}");
@@ -413,7 +413,7 @@ describe('Personnel Management rename (4ea70bb7)', () => {
   });
 
   it('the Create New Employee wizard back link reads the renamed key', () => {
-    const wizard = read('app/admin/personnel/new/page.tsx');
+    const wizard = read('app/(app)/admin/personnel/new/page.tsx');
     expect(wizard).toContain("getTranslations('people.wizard')");
     expect(wizard).toContain("back={{ href: '/admin/personnel', label: t('backLabel') }}");
   });

@@ -6,7 +6,7 @@ const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),choices:vi.fn()}));
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-server',()=>({readToilRequestModuleActionChoices:source.choices}));vi.mock('../components/assistant/module-toil-request-action-panel',()=>({ModuleToilRequestActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModuleToilRequestActionSection} from '../components/assistant/module-toil-request-action-section';
 import {ModuleToilRequestActionPanel} from '../components/assistant/module-toil-request-action-panel';
-import AssistantToilRequestPage from '../app/assistant/toil/page';
+import AssistantToilRequestPage from '../app/(app)/assistant/toil/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000002',review='10000000-0000-4000-8000-000000000003';
 const session=()=>({tenantId:tenant,userId:user,personId:review,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});
 function elements(value:unknown):ReactElement[]{if(Array.isArray(value))return value.flatMap(elements);if(!isValidElement(value))return[];return[value,...elements((value.props as {children?:unknown}).children)];}

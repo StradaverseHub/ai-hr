@@ -14,10 +14,10 @@ import zh from '../messages/zh.json';
 import { OfflineClockReviewReason } from '../lib/mobile-offline-receipt';
 const m = vi.hoisted(() => ({ resolve: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: m.refresh, push: vi.fn() }) }));
-vi.mock('../app/attendance/application-history/offline-actions', () => ({ resolveOfflineClaimAction: m.resolve }));
-import { OfflineClaimsReview } from '../app/attendance/application-history/offline-review';
-import type { OfflineReviewRow } from '../app/attendance/application-history/offline-data';
-import { defaultOfflineResolutionTime, offlineResolutionTimes, OFFLINE_SECOND_STEP_LIMIT } from '../app/attendance/application-history/offline-time';
+vi.mock('../app/(app)/attendance/application-history/offline-actions', () => ({ resolveOfflineClaimAction: m.resolve }));
+import { OfflineClaimsReview } from '../app/(app)/attendance/application-history/offline-review';
+import type { OfflineReviewRow } from '../app/(app)/attendance/application-history/offline-data';
+import { defaultOfflineResolutionTime, offlineResolutionTimes, OFFLINE_SECOND_STEP_LIMIT } from '../app/(app)/attendance/application-history/offline-time';
 
 const R = en.offlineClocking.review;
 /** A whole minute well in the past, so every instant here is derived from the clock rather than written down. */

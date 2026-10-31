@@ -10,8 +10,8 @@ vi.mock('next/navigation',()=>({notFound:()=>{throw Error('notFound');},useRoute
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:'claims'|'pagination')=>createTranslator({locale:'en',namespace,messages:en})}));
 vi.mock('../core/read',()=>({myEmployment:state.legacy,myOwnEmploymentSubjects:state.own}));
 vi.mock('../packs/claims/service',()=>({getEmployeeClaimTypes:state.types,listClaimsForEmployment:state.claims,claimRecordFacts:async()=>new Map()}));
-vi.mock('../app/claims/actions',()=>({cancelClaimAction:vi.fn(),deleteDraftAction:vi.fn(),submitClaimAction:vi.fn(),submitDraftsAction:vi.fn()}));
-import Page from '../app/claims/page';
+vi.mock('../app/(app)/claims/actions',()=>({cancelClaimAction:vi.fn(),deleteDraftAction:vi.fn(),submitClaimAction:vi.fn(),submitDraftsAction:vi.fn()}));
+import Page from '../app/(app)/claims/page';
 const own='5b9c9f7f-bd09-4d8d-a34d-201b1abf79e2';
 beforeEach(()=>{vi.clearAllMocks();state.own.mockResolvedValue([{employmentId:own,personName:'Fictional owner',company:'Fictional second employer',employeeCode:'SECOND'}]);state.legacy.mockResolvedValue({employmentId:'legacy-first',name:'Fictional owner'});state.types.mockResolvedValue([]);state.claims.mockResolvedValue([]);});
 describe('Home claims destination uses its selected own employment',()=>{

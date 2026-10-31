@@ -62,12 +62,12 @@ export type ApprovalTemplateInput = {
 /**
  * r304 (board 85875e4b) — A REFUSAL THIS SERVICE RAISES ON PURPOSE, worded for the administrator.
  *
- * The template drawer (app/admin/leave-approval/template-manager.tsx, via saveApprovalTemplateAction) shows
+ * The template drawer (app/(app)/admin/leave-approval/template-manager.tsx, via saveApprovalTemplateAction) shows
  * the message of THIS class verbatim and nothing else's. Everything else a save can throw — a database
  * refusal (RLS, a constraint drizzle wraps as "Failed query: … params: <tenant id>,…"), a lost connection,
  * a missing session — is not a sentence for a screen; the action replaces it with one localized line and
  * logs it. A whitelist by class rather than a regex over the text, so a failure nobody anticipated cannot
- * walk through (the app/admin/attendance/schedule-assignment/actions.ts reasoning).
+ * walk through (the app/(app)/admin/attendance/schedule-assignment/actions.ts reasoning).
  *
  * Raised on the create / update path only, which is the only path whose caller reads it. The other writers
  * in this file still throw plain Errors to actions that redirect with them.
@@ -234,7 +234,7 @@ export async function listTemplateAssignments(ctx: SessionContext): Promise<Temp
  *
  * Tenant-wide, like `listTemplateAssignments`: `leave_approval_policy` is readable across the tenant (the
  * requester resolves their own chain in their own transaction), so the CALLER must trim the result to the
- * companies in view — see app/admin/leave-config/approval-readout.tsx.
+ * companies in view — see app/(app)/admin/leave-config/approval-readout.tsx.
  */
 export type OrgScopedApprovalRule = {
   id: string;

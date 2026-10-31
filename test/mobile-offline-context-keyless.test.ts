@@ -114,8 +114,8 @@ describe('keyless offline context contract (owner decision D16)',()=>{
 function offlineModules(){
  const flat=['core','lib','lib/mobile-api','packs/attendance','mobile/lib'].flatMap(dir=>readdirSync(dir).filter(name=>/offline|signed-clock/.test(name)&&/\.tsx?$/.test(name)).map(name=>join(dir,name)));
  const walk=(dir:string):string[]=>readdirSync(dir).flatMap(name=>{const path=join(dir,name);return statSync(path).isDirectory()?walk(path):/\.tsx?$/.test(name)?[path]:[];});
- const routes=['app/api/mobile/v2/integrity/ios/offline','app/api/mobile/v2/integrity/android/offline','app/attendance/offline-claims'].flatMap(walk);
- const screens=['app/attendance/application-history','app/admin/attendance-policy'].flatMap(dir=>readdirSync(dir).filter(name=>name.startsWith('offline')).map(name=>join(dir,name)));
+ const routes=['app/api/mobile/v2/integrity/ios/offline','app/api/mobile/v2/integrity/android/offline','app/(app)/attendance/offline-claims'].flatMap(walk);
+ const screens=['app/(app)/attendance/application-history','app/(app)/admin/attendance-policy'].flatMap(dir=>readdirSync(dir).filter(name=>name.startsWith('offline')).map(name=>join(dir,name)));
  return [...flat,...routes,...screens].sort();
 }
 describe('no offline module reads a signing key or signs (owner decision D16)',()=>{

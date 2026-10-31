@@ -251,7 +251,7 @@ describe('cp22MonthCohort — who started in one month', () => {
  * rather than assumed.
  */
 describe('the CP22 batch route', () => {
-  const ROUTE = code('app/payroll/cp22/batch/route.ts');
+  const ROUTE = code('app/(app)/payroll/cp22/batch/route.ts');
 
   // `isAdmin` is true for an hr_admin grant on ANY company, so it would let a guessed companyId pull
   // another company's whole month of joiners.
@@ -346,7 +346,7 @@ describe('the CP22 copy says what the download is', () => {
 
   // r418 — and no screen renders a retired one: the month panel was its only reader.
   it('no screen reads a retired month-panel key', () => {
-    const page = code('app/payroll/statutory-forms/page.tsx');
+    const page = code('app/(app)/payroll/statutory-forms/page.tsx');
     expect(page.length).toBeGreaterThan(5000);
     for (const k of RETIRED_R418) expect(page, k).not.toContain(`tCp22('${k}'`);
     expect(page).not.toContain('cp22MonthCohort');

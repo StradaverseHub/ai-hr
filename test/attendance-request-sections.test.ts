@@ -6,7 +6,7 @@
  * have been running on HR's Individual Attendance table since bbada39c. What stage one adds is the
  * grouping and the prefill — so what can silently go wrong is (a) somebody quietly re-implementing a
  * detection here, (b) the precedence between the sections drifting, and (c) a prefill that the request
- * service will refuse. All three are pinned below, with no DB and no fixtures: app/attendance/requests/
+ * service will refuse. All three are pinned below, with no DB and no fixtures: app/(app)/attendance/requests/
  * sections.ts imports only the pure derivation module, which is exactly why that module exists.
  *
  * THE PRODUCTION SHAPES ARE THE FIXTURES. Every case below is a real row shape measured on production on
@@ -22,7 +22,7 @@ import {
   groupExceptions,
   parseSection,
   type ExceptionDayInput,
-} from '../app/attendance/requests/sections';
+} from '../app/(app)/attendance/requests/sections';
 
 /** A clean, fully-clocked 09:00–18:00 workday. Every case below is this, with one thing changed. */
 const clean = (over: Partial<ExceptionDayInput> = {}): ExceptionDayInput => ({

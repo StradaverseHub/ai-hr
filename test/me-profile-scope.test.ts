@@ -26,8 +26,8 @@ import {readOwnProfileWorkspace} from '../core/profile-edit';
 import {readOwnProfileFacts} from '../core/profile-view';
 import {PERSONNEL_FIELDS,personnelField} from '../lib/personnel-field-registry';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import { myProfileRecord } from '../app/me/record';
-import { ME_WITHHELD_COLUMNS } from '../app/me/visible-fields';
+import { myProfileRecord } from '../app/(app)/me/record';
+import { ME_WITHHELD_COLUMNS } from '../app/(app)/me/visible-fields';
 import { person } from '../db/schema';
 import type { SessionContext } from '../db/client';
 import {

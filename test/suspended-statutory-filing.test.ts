@@ -96,8 +96,8 @@ describe('the override is set at exactly the right call sites', () => {
 
   it('both Layer-B file routes declare their agency — and they are the ONLY callers', () => {
     for (const [path, agency] of [
-      ['app/payroll/reports/cp39-file/route.ts', 'LHDN'],
-      ['app/payroll/reports/socso-eis-file/route.ts', 'PERKESO'],
+      ['app/(app)/payroll/reports/cp39-file/route.ts', 'LHDN'],
+      ['app/(app)/payroll/reports/socso-eis-file/route.ts', 'PERKESO'],
     ] as const) {
       const src = readFileSync(path, 'utf8');
       expect(src).toMatch(/recordFileReport\(/);
@@ -204,9 +204,9 @@ describe('the export routes write nothing, so they survive suspension by constru
   // Asserted on the SOURCE rather than by driving an HTTP route: the guarantee is that these paths have
   // no write in them at all, which is a stronger and more durable statement than one request passing.
   it.each([
-    'app/reports/export/route.ts',
-    'app/analytics/export/route.ts',
-    // afd0a87c — app/leave/export/route.ts is DELETED. It was the filtered export for the org-wide leave
+    'app/(app)/reports/export/route.ts',
+    'app/(app)/analytics/export/route.ts',
+    // afd0a87c — app/(app)/leave/export/route.ts is DELETED. It was the filtered export for the org-wide leave
     // register, whose only links in the whole application were on the section that has been removed; an
     // unreachable admin download is worse than none. A route that does not exist cannot write.
   ])('%s performs no insert, update or event append', (path) => {

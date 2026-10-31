@@ -437,7 +437,7 @@ export type ReportDef = {
    * Payroll Cycle box for a generator that ignored it would be a control that silently does nothing, on a
    * statutory return. `action` is the screen the step's Continue opens (the form's own preview), which
    * runs the server-side "is there anything to file" gate and sends a refusal back to the step.
-   * `app/payroll/statutory-forms/criteria.ts` turns this into the `cycles` criterion; my.borang-a declares
+   * `app/(app)/payroll/statutory-forms/criteria.ts` turns this into the `cycles` criterion; my.borang-a declares
    * it (r407), my.borang-8a (r408, item e74af58c) and my.cp39 (r409, item 79f3f64d).
    */
   runSelection?: { action: string };
@@ -740,7 +740,7 @@ async function cp39(ctx: SessionContext, params: ReportParams): Promise<ReportRe
   // slice 0 and it stays total: a period that cannot name a month cannot name a batch either, so it lands
   // here and the card renders exactly as it always did.
   //
-  // Nothing is lost by returning before the extras: `loadCp39Form` answers 'no-batch' (app/payroll/cp39/
+  // Nothing is lost by returning before the extras: `loadCp39Form` answers 'no-batch' (app/(app)/payroll/cp39/
   // shared.ts) before it ever looks at `meta.formHeader`, and `meta.notes` are rendered only inside
   // `StatutoryReportPanel`, which the no-batch branch of both screens does not reach. The four queries
   // this used to run on the empty path were discarded work.
@@ -1160,7 +1160,7 @@ async function cp8d(ctx: SessionContext, params: ReportParams): Promise<ReportRe
 
 // ── EA statement (C.P.8A) — per employee ────────────────────────────────────
 // 1.2.6 EA Data Overwrite — the EA-form fields HR may amend (overlay) WITHOUT touching payroll. A plain
-// const tuple (not a pgEnum), mirroring app/admin/pay-components discriminators. `gross` is independently
+// const tuple (not a pgEnum), mirroring app/(app)/admin/pay-components discriminators. `gross` is independently
 // overridable (HR may set a known total directly); otherwise it is recomputed from the post-overlay
 // components so the printed Part B lines always sum to their own total (see the merge below).
 //
@@ -2534,7 +2534,7 @@ export const MY_STATUTORY_LINKS: StatutoryFormLink[] = [
   // row still opens it.
   //
   // 587ee719 — TWO ENTRIES, ONE RENDERER. The reporter listed "C.P.8A (EA) – English" and
-  // "C.P.8A (EA) – BM" as separate forms, and until this round they were not: app/me/ea/[employmentId]/pdf
+  // "C.P.8A (EA) – BM" as separate forms, and until this round they were not: app/(app)/me/ea/[employmentId]/pdf
   // resolved `payroll.ea` against the VIEWER's UI locale, so the same entry produced whichever language
   // the screen happened to be set to. The route now takes a `lang` param (en/ms, defaulting to the
   // request locale) and these two entries carry it. There is still exactly ONE EA renderer (lib/ea-pdf.ts)

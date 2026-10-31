@@ -1,11 +1,11 @@
 import { beforeAll, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { CaseEmails } from '../app/lifecycle/v9/email-composer';
-import { readV9Email } from '../app/lifecycle/v9/actions';
+import { CaseEmails } from '../app/(app)/lifecycle/v9/email-composer';
+import { readV9Email } from '../app/(app)/lifecycle/v9/actions';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import type { Case, EmailPreview } from '../lib/lifecycle-v9-model';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/lifecycle/v9/actions', () => ({ readV9Email: vi.fn() }));
+vi.mock('../app/(app)/lifecycle/v9/actions', () => ({ readV9Email: vi.fn() }));
 beforeAll(() => { HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); }; });
 const c = { id: 'case-id', module: 'off', revision: 3, state: 'submitted', facts: { name: 'Fictional leaver' }, emailEdits: {} } as Case;
 function preview(holds: string[] = []): EmailPreview { return { emailId: 'e3', name: 'Acceptance email', subject: 'Hello Fictional leaver', body: 'Your reviewed letter is attached.', edit: { subject: 'Hello {employee.name}', body: 'Your reviewed letter is attached.' }, to: [{ id: 'employee', name: 'Fictional leaver' }], cc: [{ id: 'manager', name: 'Fixture manager' }], documents: [], holds, canSend: !holds.length }; }

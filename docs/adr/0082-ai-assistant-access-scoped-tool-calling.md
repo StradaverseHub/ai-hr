@@ -100,7 +100,7 @@ Four new pieces, one extended:
 | `core/assistant-tools.ts` | The typed read-only tool registry; every tool wraps an existing `core/read.ts` function |
 | `core/assistant.ts` | The loop: budget check → converse → execute tools → repeat under a hard cap → audit |
 | `core/assistant.ts` and `core/assistant-access.ts` | Existing Assistant budget/access; gateway allowances are owned by ADR-0116 |
-| `app/assistant/` | The screen, streaming, six locales |
+| `app/(app)/assistant/` | The screen, streaming, six locales |
 
 ### 2.2 The gateway learns to converse — and this is the real engineering
 
@@ -318,7 +318,7 @@ something.
   *Amended 2026-10 (review R6):* no longer true of the whole prefix. The conversation strategy and the
   registry-derived proposal catalogue are per user; they are appended after the constant blocks so the
   shared part of the prefix stays first (`lib/ai/assistant-conversation-system.ts`).
-- **`app/assistant/page.tsx` needs a column in `lib/permissions.ts`'s `SCREENS`** or
+- **`app/(app)/assistant/page.tsx` needs a column in `lib/permissions.ts`'s `SCREENS`** or
   `test/function-access.test.ts`'s reverse-completeness case fails and the route becomes a screen
   nobody can grant or revoke (AGENTS rule 20).
 - Six locales — `en`, `ms`, `ta`, `th`, `vi`, `zh`. The UI strings are ordinary i18n work. **The model

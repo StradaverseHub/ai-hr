@@ -23,7 +23,7 @@ import { createCompany, setCompanyDefaultPayrollCycle } from '../core/admin';
 import { DEFAULT_PAYROLL_CYCLES, listPayrollCycles, setPayrollCycleActive } from '../core/payroll-cycle';
 import { companiesMissingCycle, runMultiCompanyPayroll } from '../core/payroll-run-group';
 import { createBatch } from '../core/payroll';
-import { preferredCycleId } from '../app/payroll/process/selection-logic';
+import { preferredCycleId } from '../app/(app)/payroll/process/selection-logic';
 import type { SessionContext } from '../db/client';
 
 let b: Base;

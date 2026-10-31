@@ -3,7 +3,7 @@
  * did not quietly drop one.
  *
  * WHY A SOURCE-SHAPE TEST AND NOT A UNIT TEST OF EITHER HALF. The defect this protects against lives in
- * the CONTRACT BETWEEN two files: shiftFields() in app/admin/attendance/shift-actions.ts is a FULL-ROW
+ * the CONTRACT BETWEEN two files: shiftFields() in app/(app)/admin/attendance/shift-actions.ts is a FULL-ROW
  * OVERWRITE for the fields still ON the form, and most of the rest are deliberately UNDEFINED-MEANS-
  * PRESERVE (core/roster.ts). So an input that stops rendering either NULLS a column on the next save (the
  * still-rendered set) or silently depends on the action never reading it (the retired set) — and every
@@ -25,12 +25,12 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (p: string) => readFileSync(root + p, 'utf8');
 
-const ACTIONS = read('app/admin/attendance/shift-actions.ts');
-const FORM = read('app/admin/attendance/shift-form.tsx');
+const ACTIONS = read('app/(app)/admin/attendance/shift-actions.ts');
+const FORM = read('app/(app)/admin/attendance/shift-form.tsx');
 const TIME_FIELDS = read('components/shift-time-fields.tsx');
 const OT_FIELDS = read('components/shift-ot-window-fields.tsx');
 const COLOR_FIELDS=read('components/shift-color-picker.tsx');
-const PAY_FORM=read('app/admin/attendance-policy/shift-pay-settings.tsx');
+const PAY_FORM=read('app/(app)/admin/attendance-policy/shift-pay-settings.tsx');
 
 /**
  * ⚠️ COMMENTS STRIPPED, AND A MUTATION IS WHY.
@@ -112,7 +112,7 @@ describe('r429 (f6819e19) — the redesigned Shift form still posts every field 
   it('the pay editor stays mounted at its dedicated destination, while basic shift saves omit pay fields',()=>{
     expect(stripComments(FORM)).not.toContain('<ShiftOtWindowFields');
     expect(PAY_FORM).toContain('<ShiftOtWindowFields');expect(PAY_FORM).toContain('saveShiftPayAction');
-    expect(read('app/admin/attendance/settings/work-schedule-overtime/page.tsx')).toContain('<ShiftPaySettings');
+    expect(read('app/(app)/admin/attendance/settings/work-schedule-overtime/page.tsx')).toContain('<ShiftPaySettings');
     const start=ACTIONS.indexOf('function shiftFields('),end=ACTIONS.indexOf('const errTarget',start);expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
     const fields=stripComments(ACTIONS.slice(start,end));expect(fields.length).toBeGreaterThan(1000);
     expect(fields).not.toContain('differential');expect(fields).not.toContain('otWindows');expect(OT_FIELDS).toContain('name="otWindows"');
@@ -204,11 +204,11 @@ describe('r429 (f6819e19) — every message key the shift screen asks for exists
   }
 
   for (const [label, src, least] of [
-    ['app/admin/attendance/shift-form.tsx', FORM, 18],
+    ['app/(app)/admin/attendance/shift-form.tsx', FORM, 18],
     ['components/shift-time-fields.tsx', TIME_FIELDS, 40],
     ['components/shift-ot-window-fields.tsx', OT_FIELDS, 5],
     ['components/shift-color-picker.tsx',COLOR_FIELDS,10],
-    ['app/admin/attendance-policy/shift-pay-settings.tsx',PAY_FORM,8],
+    ['app/(app)/admin/attendance-policy/shift-pay-settings.tsx',PAY_FORM,8],
   ] as const) {
     it(`${label} — every key resolves in the namespace its own translator is bound to`, () => {
       const asked = askedFor(src);

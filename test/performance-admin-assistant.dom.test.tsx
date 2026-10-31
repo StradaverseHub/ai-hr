@@ -4,8 +4,8 @@ import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 const mocks=vi.hoisted(()=>({load:vi.fn(),ask:vi.fn(),tool:vi.fn(),push:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:mocks.push})}));
-vi.mock('../app/performance/onehr-actions',()=>({performanceAdminAssistantAction:mocks.load,performanceAdminAskAction:mocks.ask,performanceAdminToolAction:mocks.tool}));
-import {PerformanceAdminAssistant} from '../app/performance/onehr/admin-assistant';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({performanceAdminAssistantAction:mocks.load,performanceAdminAskAction:mocks.ask,performanceAdminToolAction:mocks.tool}));
+import {PerformanceAdminAssistant} from '../app/(app)/performance/onehr/admin-assistant';
 const setup=async()=>{render(<NextIntlClientProvider locale="en" messages={messages}><PerformanceAdminAssistant cycleId="cycle"/></NextIntlClientProvider>);fireEvent.click(screen.getByRole('button',{name:'Performance admin assistant'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Check cycle readiness'})).toBeEnabled());};
 beforeEach(()=>{cleanup();vi.clearAllMocks();HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};mocks.load.mockResolvedValue({cycle:{id:'cycle',name:'Cycle'},history:[]});});
 it('supports a direct report without a provider and exposes complete report and download links',async()=>{

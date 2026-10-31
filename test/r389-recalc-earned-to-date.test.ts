@@ -49,7 +49,7 @@ import type { RoundingBand } from '../core/leave-compute';
 import { leaveBalances, leaveBalancesAll, leaveEntitlementBreakdown, type LeaveEntitlementBreakdown } from '../core/read';
 import { myLeaveDashboard } from '../core/my-leave';
 import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
-import { employeeBalanceRows, type EmployeeBalanceRow } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows, type EmployeeBalanceRow } from '../app/(app)/leave/employee-balances/rows';
 import { ENTITLEMENT_PANEL_SECTIONS, reconciledBalance, type PanelData } from '../components/leave/entitlement-panel-config';
 import type { EntitlementBreakdownData } from '../components/leave/EntitlementBreakdown';
 import { explainLeaveSummary } from '../lib/leave-summary-explain';

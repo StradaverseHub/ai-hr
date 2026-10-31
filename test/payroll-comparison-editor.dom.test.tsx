@@ -10,9 +10,9 @@ const {save,sample}=vi.hoisted(()=>({
   save:vi.fn(async(_form:FormData):Promise<{error:string}|null>=>null),
   sample:vi.fn(async()=>{}),
 }));
-vi.mock('../app/reports/payroll-comparison/actions',()=>({savePayrollComparisonAction:save,createPayrollComparisonSampleAction:sample}));
+vi.mock('../app/(app)/reports/payroll-comparison/actions',()=>({savePayrollComparisonAction:save,createPayrollComparisonSampleAction:sample}));
 vi.mock('next/link',()=>({default:({href,children,...props}:React.ComponentProps<'a'>)=><a href={href} {...props}>{children}</a>}));
-import {PayrollNewReportDialog} from '../app/reports/payroll-comparison/PayrollComparisonEditor';
+import {PayrollNewReportDialog} from '../app/(app)/reports/payroll-comparison/PayrollComparisonEditor';
 
 const labels=messages.payrollComparison;
 function mount(){

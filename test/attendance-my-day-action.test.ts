@@ -14,7 +14,7 @@ vi.mock('../packs/attendance/service', () => ({
   AttendancePayrollClosedError: class extends Error {},
   AttendanceWorkflowError: class extends Error { constructor(public code:string){super(code);} },
 }));
-import { requestOwnAttendanceDayAction } from '../app/attendance/my-records/[date]/actions';
+import { requestOwnAttendanceDayAction } from '../app/(app)/attendance/my-records/[date]/actions';
 import { AttendanceCorrectionFutureDateError, AttendanceCorrectionPendingError, AttendancePayrollClosedError, AttendanceWorkflowError } from '../packs/attendance/service';
 const form = () => {
   const data = new FormData();

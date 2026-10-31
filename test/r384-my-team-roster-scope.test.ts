@@ -1,13 +1,13 @@
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import type {MyTeamSnapshot} from '../lib/my-team-types';
-import {myTeamNavigation} from '../app/manage/my-team/server';
+import {myTeamNavigation} from '../app/(app)/manage/my-team/server';
 import {describe,it,expect,vi,beforeEach} from 'vitest';
 import {serializeMyTeamQuery,MyTeamQueryError} from '../lib/my-team-query';
 import type {SessionContext} from '../db/client';
 const resolveScope=vi.hoisted(()=>vi.fn());
 vi.mock('@/core/my-team',()=>({resolveMyTeamRosterScope:resolveScope}));
-import {rosterTeamContext,rosterTeamWindow} from '../app/roster/my-team-scope';
+import {rosterTeamContext,rosterTeamWindow} from '../app/(app)/roster/my-team-scope';
 const company='11111111-1111-4111-8111-111111111111',outside='22222222-2222-4222-8222-222222222222';
 const ctx={roles:['manager']} as SessionContext;
 const token=serializeMyTeamQuery({view:'month',scope:'all',anchorDate:'2026-10-01',companyIds:[company,outside],search:'Ali',tile:'late'}).toString();
@@ -52,7 +52,7 @@ describe('Team-linked roster destination resolves its authority afresh',()=>{
   expect(rosterTeamWindow(team,'2026-10-02')).toMatchObject({kind:'week',from:'2026-09-28',to:'2026-10-04'});
  });
  it('the roster page, existing roster export and exceptions all consume the corrected shared window',()=>{
-  for(const path of ['app/roster/page.tsx','app/roster/export/route.ts','app/roster/exceptions/page.tsx']){
+  for(const path of ['app/(app)/roster/page.tsx','app/(app)/roster/export/route.ts','app/(app)/roster/exceptions/page.tsx']){
    const body=readFileSync(resolve(process.cwd(),path),'utf8').replace(/\/\*[\s\S]*?\*\//g,' ');
    expect(body,path).toContain('const win =');expect(body,path).toMatch(/rosterTeamWindow\(team,/);
    expect(body,path).not.toMatch(/(?:teamScope|team\.scope)\.from\.slice\(0,7\)/);

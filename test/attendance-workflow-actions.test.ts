@@ -3,7 +3,7 @@ const { scope, save, preview, enable, revalidate } = vi.hoisted(() => ({ scope: 
 vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('next/cache', () => ({ revalidatePath: revalidate }));
 vi.mock('../packs/attendance/service', async () => ({ ...await import('../lib/attendance-workflow'), saveAttendanceWorkflow: save, previewAttendanceWorkflow: preview, setAttendanceWorkflowEnabled: enable }));
-import { saveAttendanceWorkflowAction, previewAttendanceWorkflowAction, setAttendanceWorkflowEnabledAction } from '../app/admin/attendance/approval-workflow/actions';
+import { saveAttendanceWorkflowAction, previewAttendanceWorkflowAction, setAttendanceWorkflowEnabledAction } from '../app/(app)/admin/attendance/approval-workflow/actions';
 import type { AttendanceWorkflowInput } from '../lib/attendance-workflow';
 const input: AttendanceWorkflowInput = { companyId: 'company', applicationType: 'self_overtime', code: 'OT', name: 'Review', priority: 100, criteria: {}, stages: [], active: false };
 beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'hr' }, scopeIds: ['company'] }); save.mockResolvedValue({ lineageId: 'stored-lineage' }); });

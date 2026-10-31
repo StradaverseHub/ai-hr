@@ -97,10 +97,10 @@ import { NextIntlClientProvider } from 'next-intl';
 import {
   removeScheduleArrangementAction,
   saveScheduleAssignmentAction,
-} from '../app/admin/attendance/schedule-assignment/actions';
-import ScheduleAssignmentPage from '../app/admin/attendance/schedule-assignment/page';
-import ShiftArrangementPage from '../app/admin/attendance/schedule-assignment/[employmentId]/page';
-import { setDefaultShiftAction } from '../app/admin/personnel/[employmentId]/actions';
+} from '../app/(app)/admin/attendance/schedule-assignment/actions';
+import ScheduleAssignmentPage from '../app/(app)/admin/attendance/schedule-assignment/page';
+import ShiftArrangementPage from '../app/(app)/admin/attendance/schedule-assignment/[employmentId]/page';
+import { setDefaultShiftAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 /**
@@ -972,10 +972,10 @@ describe('a485afa1 — the two doors write ONE record, and the panel can take on
 });
 
 describe('a485afa1 — ONE record, TWO doors: the row opens its own page, through the shared control and writer', () => {
-  const LIST = 'app/admin/attendance/schedule-assignment/page.tsx';
-  const DETAIL = 'app/admin/attendance/schedule-assignment/[employmentId]/page.tsx';
-  const ACTIONS = 'app/admin/attendance/schedule-assignment/actions.ts';
-  const CARD = 'app/admin/personnel/[employmentId]/page.tsx';
+  const LIST = 'app/(app)/admin/attendance/schedule-assignment/page.tsx';
+  const DETAIL = 'app/(app)/admin/attendance/schedule-assignment/[employmentId]/page.tsx';
+  const ACTIONS = 'app/(app)/admin/attendance/schedule-assignment/actions.ts';
+  const CARD = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
   const list = read(LIST);
   const detail = read(DETAIL);
   const actions = read(ACTIONS);
@@ -1090,7 +1090,7 @@ describe('a485afa1 — ONE record, TWO doors: the row opens its own page, throug
     // Exactly the three pages: a FOURTH page.tsx under this screen would need its own entry, so the folder
     // shape is pinned. status-chip.tsx is the ONE chip the list and the detail page render (a page.tsx may
     // export nothing but its default, and a second copy of the class map is the drift this file refuses).
-    const dir = path.join(root, 'app/admin/attendance/schedule-assignment');
+    const dir = path.join(root, 'app/(app)/admin/attendance/schedule-assignment');
     expect(fs.readdirSync(dir).sort(), 'the screen is a list, its actions, one chip and two sub-routes').toEqual([
       '[employmentId]',
       'actions.ts',

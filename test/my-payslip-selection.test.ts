@@ -1,6 +1,6 @@
 import {describe,expect,it} from 'vitest';
-import {resolvePersonalPayslipSelection} from '../app/me/payslip/selection-state';
-import {resolvePayslipSelection,type PayslipRun} from '../app/payroll/individual-payslip/period-options';
+import {resolvePersonalPayslipSelection} from '../app/(app)/me/payslip/selection-state';
+import {resolvePayslipSelection,type PayslipRun} from '../app/(app)/payroll/individual-payslip/period-options';
 const runs:PayslipRun[]=[
  {payslipId:'own-bonus',companyId:'own-company',payPeriod:'2025-03',runType:'bonus',runSeq:2},
  {payslipId:'own-regular',companyId:'own-company',payPeriod:'2025-03',runType:'regular',runSeq:1},

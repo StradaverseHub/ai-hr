@@ -3,7 +3,7 @@ import {beforeEach,describe,it,expect,vi} from 'vitest';
 const state=vi.hoisted(()=>({session:vi.fn(),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:state.session}));
 vi.mock('next/navigation',()=>({redirect:state.redirect}));
-import AssistantLayout from '../app/assistant/layout';
+import AssistantLayout from '../app/(app)/assistant/layout';
 import {AuthRequiredError} from '../lib/auth-errors';
 beforeEach(()=>{vi.clearAllMocks();state.redirect.mockImplementation(()=>{throw Error('FRAMEWORK_LOGIN_REDIRECT');});});
 describe('one authenticated Assistant shell',()=>{

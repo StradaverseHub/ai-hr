@@ -96,7 +96,7 @@ import {
 } from '../core/admin';
 import { companyDeleteStatus } from '../core/read';
 import { pgSqlState } from '../lib/db-error';
-import { deleteCompanyAction } from '../app/admin/actions';
+import { deleteCompanyAction } from '../app/(app)/admin/actions';
 import { COMPANY_DELETE_BLOCKS, COMPANY_DELETE_REFUSAL_KEY, type CompanyDeleteBlock } from '../lib/company-delete';
 
 const messagesFor = (l: string) =>

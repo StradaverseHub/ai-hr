@@ -11,7 +11,7 @@ vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn(),revalidateTag:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(href:string)=>{throw Object.assign(new Error('Redirect'),{href});}}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
-const {requestLeaveAction,leaveApplySummaryAction}=await import('../app/leave/actions');
+const {requestLeaveAction,leaveApplySummaryAction}=await import('../app/(app)/leave/actions');
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();});
 const today=()=>todayInKualaLumpur(),add=(n:number)=>new Date(Date.parse(today()+'T12:00:00Z')+n*86400000).toISOString().slice(0,10);
 async function fixture(){

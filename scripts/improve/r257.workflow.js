@@ -162,8 +162,8 @@ DO NOT RUN THE SCRIPT AGAINST PRODUCTION YOURSELF. Build it, test it against the
 in notBuilt that the production baseline is the parent's to capture.
 
 SCOPE FENCE: core/leave-approval-policy.ts, core/leave-approval-consolidation.ts, the new script and the
-new test. You are the ONLY agent in this round touching core/leave-*. Do not touch app/admin/personnel/**
-or app/me/** — two other agents are in those trees.`,
+new test. You are the ONLY agent in this round touching core/leave-*. Do not touch app/(app)/admin/personnel/**
+or app/(app)/me/** — two other agents are in those trees.`,
   },
   {
     slug: 'personnel-close',
@@ -174,14 +174,14 @@ or app/me/** — two other agents are in those trees.`,
 420ebab5 has been built across FOUR rounds (r253 personnel-row, r254/r255 personnel-save, r256
 personnel-tabs) and has never been closed. Much of the approved plan at ${PLANS}/420ebab5.txt is already
 SHIPPED on main. Measured before this brief was written:
-  · Part 1, the clickable row — SHIPPED. app/admin/personnel/employee-row.tsx, a per-CELL transparent
+  · Part 1, the clickable row — SHIPPED. app/(app)/admin/personnel/employee-row.tsx, a per-CELL transparent
     link overlay (the positioning context is the <td>, never the <tr>, because WebKit computes
     position:relative on a row as static). Read its header before touching anything near it.
   · The classification of all 35 forms into (a) field edits and (b) child-record lifecycle — WRITTEN,
     at docs/audits/420ebab5-personnel-save-classification.md.
   · Consolidated per-tab save — FIVE tabs are wired through one shared runTabSave:
     PROFILE, BANK_STATUTORY, ATTENDANCE, JOB and PAYROLL (lib/personnel-tab-sections.ts orders,
-    app/admin/personnel/[employmentId]/actions.ts save*TabAction).
+    app/(app)/admin/personnel/[employmentId]/actions.ts save*TabAction).
   · The unsaved-changes guard — lib/unsaved-changes.ts, a module-level registry joining two client
     islands that React context cannot.
   · The before/after change summary — lib/tab-save-dom.ts diffTab returns every field whose submitted
@@ -210,9 +210,9 @@ THE THINGS MOST LIKELY STILL OPEN — verify each, and fix only what is genuinel
     and ADD THE GUARD for the ordering so the next round cannot repeat it.
 
 SCOPE FENCES, and they are hard because two other agents are working beside you:
-  · DO NOT TOUCH app/admin/personnel/import/** or lib/import-schema.ts — another agent owns the importer
+  · DO NOT TOUCH app/(app)/admin/personnel/import/** or lib/import-schema.ts — another agent owns the importer
     this round.
-  · DO NOT TOUCH app/admin/personnel/new/** (the draft wizard) or app/me/** — those are 759dfc7d and
+  · DO NOT TOUCH app/(app)/admin/personnel/new/** (the draft wizard) or app/(app)/me/** — those are 759dfc7d and
     9583deac, which are NOT being built this round.
   · DO NOT TOUCH core/leave-*.
   · No new migration.`,
@@ -260,9 +260,9 @@ ALSO PROMISED: errors continue to be reported by row, field and reason, as they 
 per-section flow is built ALONGSIDE the existing wide template — the reporter was promised they are
 "never without a working import", so do NOT delete the current template in this round.
 
-SCOPE FENCE: app/admin/personnel/import/**, lib/import-schema.ts, and any new lib/ file you need.
-DO NOT TOUCH app/admin/personnel/[employmentId]/** or app/admin/personnel/page.tsx — another agent is
-consolidating that screen this round. DO NOT TOUCH app/admin/personnel/new/** or app/me/**.
+SCOPE FENCE: app/(app)/admin/personnel/import/**, lib/import-schema.ts, and any new lib/ file you need.
+DO NOT TOUCH app/(app)/admin/personnel/[employmentId]/** or app/(app)/admin/personnel/page.tsx — another agent is
+consolidating that screen this round. DO NOT TOUCH app/(app)/admin/personnel/new/** or app/(app)/me/**.
 No new migration; if you think you need one, stop and say so in notBuilt.`,
   },
 ];

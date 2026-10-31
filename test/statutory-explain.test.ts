@@ -344,9 +344,9 @@ describe('6b4ca488 — the explanation STRUCTURALLY cannot recompute', () => {
     // Three consumers, one derivation. A fourth that assembled the six items itself would be free to
     // drift from the screen it claims to reproduce — the failure the export route's header forbids.
     for (const rel of [
-      'app/payroll/statutory-detail/page.tsx',
-      'app/payroll/statutory-detail/export/route.ts',
-      'app/payroll/transaction-view/page.tsx',
+      'app/(app)/payroll/statutory-detail/page.tsx',
+      'app/(app)/payroll/statutory-detail/export/route.ts',
+      'app/(app)/payroll/transaction-view/page.tsx',
     ]) {
       expect(code(rel), `${rel} must derive through explainStatutory`).toContain('explainStatutory(');
     }
@@ -354,12 +354,12 @@ describe('6b4ca488 — the explanation STRUCTURALLY cannot recompute', () => {
 
   it('ONE display: both doors mount the same component, and the export reuses the shared serializer', () => {
     // 45df860a's rule, applied to the other five bodies: two displays of one calculation drift.
-    expect(code('app/payroll/statutory-detail/page.tsx')).toContain('StatutoryDetailView');
-    expect(code('app/payroll/transaction-view/page.tsx'), 'the tab must not render its own version').toContain(
+    expect(code('app/(app)/payroll/statutory-detail/page.tsx')).toContain('StatutoryDetailView');
+    expect(code('app/(app)/payroll/transaction-view/page.tsx'), 'the tab must not render its own version').toContain(
       "import { StatutoryDetailView } from '../statutory-detail/statutory-detail-view'",
     );
     // The plan says reuse the existing grid-export route pattern rather than writing a new exporter.
-    const exp = code('app/payroll/statutory-detail/export/route.ts');
+    const exp = code('app/(app)/payroll/statutory-detail/export/route.ts');
     expect(exp, 'reuse the shared xlsx serializer').toContain('toXlsxReport');
     expect(exp, 'and the same scope fence the page uses').toContain('scopedAdmin');
     expect(exp, 'the payslip id is re-guarded through the SAME read, not trusted').toContain('payslipForReview');
@@ -372,7 +372,7 @@ describe('6b4ca488 — the explanation STRUCTURALLY cannot recompute', () => {
   });
 
   it('the PCB working is linked, never rebuilt — one MTD display in the product', () => {
-    const view = code('app/payroll/statutory-detail/statutory-detail-view.tsx');
+    const view = code('app/(app)/payroll/statutory-detail/statutory-detail-view.tsx');
     expect(view, 'PCB drills through to the existing screen').toContain('/payroll/pcb-detail?payslipId=');
     for (const forbidden of ['explainPcb', 'pcbMeta', 'currentPcbReliefs']) {
       expect(view, `the Statutory Explanation must not reimplement the MTD working (${forbidden})`).not.toContain(
@@ -587,8 +587,8 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
       'export const isSetByHand',
     );
     for (const rel of [
-      'app/payroll/statutory-detail/statutory-detail-view.tsx',
-      'app/payroll/statutory-detail/export/route.ts',
+      'app/(app)/payroll/statutory-detail/statutory-detail-view.tsx',
+      'app/(app)/payroll/statutory-detail/export/route.ts',
     ]) {
       const src = code(rel);
       // Not a bare 'adjustment' — both files legitimately carry `adjustment: 'cycleAdjustment'`, the
@@ -613,8 +613,8 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
       reason: 'grandfathered',
     });
     for (const rel of [
-      'app/payroll/statutory-detail/statutory-detail-view.tsx',
-      'app/payroll/statutory-detail/export/route.ts',
+      'app/(app)/payroll/statutory-detail/statutory-detail-view.tsx',
+      'app/(app)/payroll/statutory-detail/export/route.ts',
     ]) {
       const src = code(rel);
       for (const forbidden of ['.epfManual', "['epfManual']", '"epfManual"'])
@@ -640,8 +640,8 @@ describe('208beb8b — a figure a payroll officer typed is not the schedule’s'
       }
       return out;
     };
-    const view = maps('app/payroll/statutory-detail/statutory-detail-view.tsx');
-    const file = maps('app/payroll/statutory-detail/export/route.ts');
+    const view = maps('app/(app)/payroll/statutory-detail/statutory-detail-view.tsx');
+    const file = maps('app/(app)/payroll/statutory-detail/export/route.ts');
     // Every member of the union, named in the type's own declaration, is mapped in BOTH files.
     const union = [
       ...code('core/statutory-explain.ts')

@@ -220,7 +220,7 @@ describe('d0d2c9d1 — unattachedHoldersOutsideSelection (pre-flight, informatio
     // Anchored to the onStatusChange CALL SITE, not to the file: an over-broad guard would match a
     // comment that merely cites the invariant, which is exactly how r86 lost a round.
     const src = require('node:fs').readFileSync(
-      new URL('../app/payroll/process/steps/step-validation.tsx', import.meta.url),
+      new URL('../app/(app)/payroll/process/steps/step-validation.tsx', import.meta.url),
       'utf8',
     ) as string;
     const calls = [...src.matchAll(/onStatusChange\(([^)]*)\)/g)].map((m) => m[1]);

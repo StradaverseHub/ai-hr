@@ -7,7 +7,7 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
-import { EaEmployeePicker, type EaPickerStrings } from '../app/payroll/statutory-forms/ea/employee-picker';
+import { EaEmployeePicker, type EaPickerStrings } from '../app/(app)/payroll/statutory-forms/ea/employee-picker';
 
 const catalogs = { en, ms, ta, th, vi, zh };
 function strings(locale: keyof typeof catalogs): EaPickerStrings {

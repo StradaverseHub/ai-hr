@@ -133,7 +133,7 @@ export type LeaveConfigScreenId =
    * there would inherit that row's heading and description — "adjust balances" — which is precisely
    * what this tool must never be read as doing: an imported record moves no balance at all. Taking a
    * group of its own is also what this component's own rule requires (every fly-out row whose
-   * destination lives under app/admin/leave-config IS a group, one for one, in order), and it is what
+   * destination lives under app/(app)/admin/leave-config IS a group, one for one, in order), and it is what
    * makes `leaveConfigPageHeader` give the page its OWN row heading. The tab strip draws nothing for a
    * group of one — Balance Health, Run earned accrual and Special Setting are the precedents.
    *
@@ -186,12 +186,12 @@ export type LeaveConfigScreenId =
  * ⚠️ 5ca446db (r269) — THE FLY-OUT HAS ONE MORE ROW THAN THIS MAP HAS GROUPS, AND THAT IS CORRECT.
  * (r279: seven rows, six groups. The counts move; the RULE below does not, which is why it is written as
  * a rule rather than as two numbers. Every row whose destination is a page under
- * `app/admin/leave-config/**` IS a group here, one for one, in the same order — including a row that owns
+ * `app/(app)/admin/leave-config/**` IS a group here, one for one, in the same order — including a row that owns
  * a single screen, whose tab row then renders nothing. The ONE row that is not a group is the one whose
  * destination is not a Leave Config page at all:)
  * The LAST row ("Employee Leave Inquiry", packs/leave/index.ts LEAVE_ADMIN_NAV, last child) opens
  * `/leave/employee-balances` — a LEAVE INQUIRY screen that is not a Leave Config screen: it has no page
- * under `app/admin/leave-config/**`, it is registered on its own `leaveEmployeeBalances` permission
+ * under `app/(app)/admin/leave-config/**`, it is registered on its own `leaveEmployeeBalances` permission
  * column rather than on `leaveConfig`, and its heading comes from its own PageHeader
  * (`leave.inquiry.balancesTitle`), not from `leaveConfigPageHeader`. Adding a group for it here would make
  * `leaveConfigPageHeader` claim a page it does not own and would break
@@ -496,7 +496,7 @@ export async function leaveConfigPageHeader(
  * THE TAB ROW OF THE CURRENT PAGE — the current row's screens, and only those. Directly under the
  * PageHeader. Renders nothing when the row owns a single screen: a tab row of one is furniture.
  *
- * The look is the leave-type tab strip's (app/admin/leave-config/types/leave-type-tabs.tsx `tabBtn`)
+ * The look is the leave-type tab strip's (app/(app)/admin/leave-config/types/leave-type-tabs.tsx `tabBtn`)
  * without the step numbers, because these are places, not steps. SERVER COMPONENT, plain links, one
  * `getTranslations`, and it must stay one (test/server-client-boundary.test.ts).
  */

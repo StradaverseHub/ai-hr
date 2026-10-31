@@ -34,8 +34,8 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const msgs = (loc: string) => JSON.parse(read(`messages/${loc}.json`));
 
-const WIZARD = 'app/admin/personnel/new/wizard.tsx';
-const RECORD = 'app/admin/personnel/[employmentId]/page.tsx';
+const WIZARD = 'app/(app)/admin/personnel/new/wizard.tsx';
+const RECORD = 'app/(app)/admin/personnel/[employmentId]/page.tsx';
 
 // ── §1 the vocabulary ─────────────────────────────────────────────────────────────────────────────
 describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it is entitled to', () => {
@@ -104,7 +104,7 @@ describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it i
   it('the server page READS `tab` off the URL and hands it to the screen', () => {
     // `openingTab` can only be honoured if the parameter reaches it: this is the wiring between the URL
     // and the screen, and it is one line in a server component that no unit test would otherwise see.
-    const page = read('app/admin/personnel/new/page.tsx');
+    const page = read('app/(app)/admin/personnel/new/page.tsx');
     expect(page, 'the draft page must declare the `tab` search param')
       .toMatch(/searchParams: Promise<\{[^}]*tab\?: string/);
     expect(page, 'and pass it to the screen').toContain('initialTab={sp.tab}');

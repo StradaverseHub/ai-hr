@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { BankDownloadDialog } from '../app/payroll/payment-submission/bank-download-dialog';
+import { BankDownloadDialog } from '../app/(app)/payroll/payment-submission/bank-download-dialog';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';

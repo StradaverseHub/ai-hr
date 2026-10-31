@@ -381,7 +381,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.state['tag'],'prod-2026-10-26.1');self.assertEqual(len(self.source.refs),1)
 
     def test_official_source_exclusions_do_not_skip_application_code(self):
-        for name in ['app/login/page.tsx','lib/auth.ts','public/icon.png','db/migrations/0600.sql','deploy/deploy.sh']:
+        for name in ['app/(auth)/login/page.tsx','lib/auth.ts','public/icon.png','db/migrations/0600.sql','deploy/deploy.sh']:
             self.assertTrue(release.staged_source(name))
         for name in ['docs/adr/0100.md','docs/HANDOFF-HISTORY.md','mobile/android/key.jks','.env.production.example','.improve/ssh_config']:
             self.assertFalse(release.staged_source(name))

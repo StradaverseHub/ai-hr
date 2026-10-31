@@ -74,7 +74,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { requestLeave, LeaveYearNotOpenError, entitlementYearOptions } from '../core/leave';
-import { openLeaveYearAction } from '../app/admin/actions';
+import { openLeaveYearAction } from '../app/(app)/admin/actions';
 import { withTenant, type SessionContext } from '../db/client';
 import {
   adminCtx,
@@ -345,7 +345,7 @@ describe('requestLeave — the future leave-year gate survives the reset (4b0e76
   it('the refusal keeps its typed year, so the localiser still renders "{year} isn’t open yet"', async () => {
     const { ctx, employmentId } = await hireEmployeeCtx();
     const ltId = await calendarLeaveType();
-    // LeaveYearNotOpenError, its localiser (app/me/actions.ts) and leave.errors.leaveYearNotOpen all stay —
+    // LeaveYearNotOpenError, its localiser (app/(app)/me/actions.ts) and leave.errors.leaveYearNotOpen all stay —
     // the gate stays, so the string stays. `year` is what the message interpolates.
     await expect(
       requestLeave(ctx, { employmentId, leaveTypeId: ltId, startDate: '2029-03-01', endDate: '2029-03-01', today: TODAY }),

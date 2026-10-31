@@ -147,24 +147,24 @@ describe('slice 4 — which modules the rail may advertise', () => {
 
 describe('slice 4 — the page-entry courtesy redirect', () => {
   const ROOTS: Record<string, string> = {
-    attendance: 'app/attendance/page.tsx',
-    notifications: 'app/admin/settings/notifications/page.tsx',
-    claims: 'app/claims/page.tsx',
-    lifecycle: 'app/lifecycle/page.tsx',
-    payroll: 'app/payroll/page.tsx',
-    performance: 'app/performance/page.tsx',
-    rewards: 'app/rewards/page.tsx',
+    attendance: 'app/(app)/attendance/page.tsx',
+    notifications: 'app/(app)/admin/settings/notifications/page.tsx',
+    claims: 'app/(app)/claims/page.tsx',
+    lifecycle: 'app/(app)/lifecycle/page.tsx',
+    payroll: 'app/(app)/payroll/page.tsx',
+    performance: 'app/(app)/performance/page.tsx',
+    rewards: 'app/(app)/rewards/page.tsx',
     // deec1691 — moved here from the operator plane at r79 and sold as a module (default OFF).
-    system_explorer: 'app/admin/system-explorer/page.tsx',
+    system_explorer: 'app/(app)/admin/system-explorer/page.tsx',
     // 3fb1a611 (r299) — the RULES tab, not the Credits tab the row opens, and deliberately so. The Credits tab
     // must stay reachable without the module while credits are outstanding (the wind-down view: the statutory
     // settlement sweeps are never gated through the UI), so a courtesy redirect there would strand them. The
     // Rules tab has no such obligation and redirects like every other module entry page. Both pages carry
     // their own in-page gate as well (test/r299-leave-credit-screens.test.ts).
-    toil: 'app/admin/leave-config/leave-credit/rules/page.tsx',
+    toil: 'app/(app)/admin/leave-config/leave-credit/rules/page.tsx',
     // e6be5a3b (r330) — the test-case library. Its two child routes (/new, /[id]) carry the same pair of
     // guards; only the ENTRY page is listed here, which is this map's contract.
-    system_testing: 'app/admin/system-testing/page.tsx',
+    system_testing: 'app/(app)/admin/system-testing/page.tsx',
   };
 
   // ADR-0082 — the one entry page that must NOT redirect. With the module off, /assistant still renders
@@ -172,7 +172,7 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
   // survives access removal), and it says why the assistant is unavailable. Its control is
   // mayUseAssistant (core/assistant-grant.ts), pinned here instead of requireModule.
   const REFUSES_IN_PLACE: Record<string, { file: string; marks: string[] }> = {
-    assistant: { file: 'app/assistant/page.tsx', marks: ['if (!access.allowed)', 't(`denied_${access.reason}`)', 'AssistantHistoryPrivacy'] },
+    assistant: { file: 'app/(app)/assistant/page.tsx', marks: ['if (!access.allowed)', 't(`denied_${access.reason}`)', 'AssistantHistoryPrivacy'] },
   };
 
   it('every SELLABLE module with nav guards its entry page', () => {
@@ -199,7 +199,7 @@ describe('slice 4 — the page-entry courtesy redirect', () => {
   it('does NOT guard core module pages — they cannot be unbought', () => {
     // /leave is core. A requireModule there would be dead code at best and, if the catalog ever changed
     // shape, a redirect away from a module every tenant has.
-    const leave = fs.readFileSync(path.resolve(__dirname, '../app/leave/page.tsx'), 'utf8');
+    const leave = fs.readFileSync(path.resolve(__dirname, '../app/(app)/leave/page.tsx'), 'utf8');
     expect(leave).not.toContain("requireModule('leave')");
   });
 });

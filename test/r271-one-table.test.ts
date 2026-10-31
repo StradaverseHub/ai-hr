@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { entitlementGridRows } from '@/app/admin/leave/entitlements/templates/entitlement-tables-block';
+import { entitlementGridRows } from '@/app/(app)/admin/leave/entitlements/templates/entitlement-tables-block';
 
 /**
  * r271 (6d29e11c) — THE ENTITLEMENT TABLES ARE ONE TABLE.
@@ -16,7 +16,7 @@ import { entitlementGridRows } from '@/app/admin/leave/entitlements/templates/en
  * clear them. Most of what follows is about what must NOT disappear.
  */
 
-const BLOCK = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const BLOCK = 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
 const read = (p: string) => readFileSync(p, 'utf8');
 const block = read(BLOCK);
 

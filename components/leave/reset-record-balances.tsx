@@ -8,7 +8,7 @@ import { Card, btnPrimary, inputCls } from '@/components/ui';
  * 7f69bd71 — THE BALANCE RECORD, as the second sub-tab of the Reset records sub-screen
  * (`/admin/leave-config/records?record=balances`).
  *
- * THIS IS THE BODY OF `app/admin/leave-config/records/balances/page.tsx` MOVED, NOT REWRITTEN: the intro
+ * THIS IS THE BODY OF `app/(app)/admin/leave-config/records/balances/page.tsx` MOVED, NOT REWRITTEN: the intro
  * card, the "Record taken" picker with Show and Download as CSV, the two counts stated plainly, and the
  * eight-column listing — exactly what the Leave Adjustments tab showed until this round. The page that
  * owned it is a redirect stub now. The one thing that DID change is the wording of the intro card

@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { useV9Configuration } from '../app/lifecycle/v9/use-v9-configuration';
+import { useV9Configuration } from '../app/(app)/lifecycle/v9/use-v9-configuration';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import type { Config, ConfigSaveReceipt } from '../lib/lifecycle-v9-model';
 afterEach(() => vi.useRealTimers());

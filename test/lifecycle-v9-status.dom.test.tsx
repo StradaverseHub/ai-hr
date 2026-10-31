@@ -1,6 +1,6 @@
 import { beforeAll, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { CaseStatus } from '../app/lifecycle/v9/case-status';
+import { CaseStatus } from '../app/(app)/lifecycle/v9/case-status';
 beforeAll(() => { Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.setAttribute('open', ''); } }); });
 it('requires an explicit reason before sending a missing-item change and retains it after a failure', async () => {
   const change = vi.fn().mockResolvedValueOnce({ ok: false, error: 'This case changed. Refresh before trying again.' }).mockResolvedValueOnce({ ok: true });

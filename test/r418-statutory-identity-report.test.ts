@@ -25,7 +25,7 @@ import { reportPreview } from '../core/reporting';
 import { borangAFrom } from '../lib/borang-a';
 import { borangBbcdFrom } from '../lib/borang-bbcd';
 import { borang8AFrom } from '../lib/borang-8a';
-import { borangAHasContributions } from '../app/payroll/borang-a/query';
+import { borangAHasContributions } from '../app/(app)/payroll/borang-a/query';
 
 let b: Base;
 const PERIOD = '2026-07';

@@ -18,7 +18,7 @@
  * `payItemLinesReconcile` → `payItemLabel`), which is the same call chain the PDF builder uses. The
  * History grid is rendered for real in test/history-table-pay-item.dom.test.tsx.
  *
- * FOUR SURFACES, NOT THREE. Payroll → Individual Payslip (app/payroll/individual-payslip/page.tsx) is the
+ * FOUR SURFACES, NOT THREE. Payroll → Individual Payslip (app/(app)/payroll/individual-payslip/page.tsx) is the
  * admin preview of the same slip, and it reads `deriveHistoryBreakdown` — so its itemisation is pinned
  * here through that derivation, including the reconciliation gate the last describe below is about.
  */
@@ -35,7 +35,7 @@ import {
 } from '../core/payslip-earning-lines';
 import { payslipSkbbkLineShown, payslipSkbbkSubject } from '../core/payslip-skbbk-line';
 import { buildPayslipPdfData } from '../lib/payslip-pdf';
-import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
+import { deriveHistoryBreakdown } from '../app/(app)/payroll/transaction-view/history-breakdown';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
 
 /**
@@ -158,7 +158,7 @@ describe('the same payslip, through all three renderers (rule 17)', () => {
   });
 
   it('ESS payslip — the page’s own derivation yields the same label and the same amount', () => {
-    // Verbatim the chain app/me/payslip/[payslipId]/page.tsx runs.
+    // Verbatim the chain app/(app)/me/payslip/[payslipId]/page.tsx runs.
     const lines = storedComponentLines(stored.statutory);
     const bonusLines = payItemLinesForBuckets(lines, ['bonus']);
     const otLines = payItemLinesForBuckets(lines, ['ot']);
@@ -183,7 +183,7 @@ describe('the same payslip, through all three renderers (rule 17)', () => {
 
   it('Individual Payslip — the admin preview itemises from the SAME gated lists, not the raw buckets', () => {
     const b = deriveHistoryBreakdown(historyRow());
-    // What app/payroll/individual-payslip/page.tsx renders under Bonus and under Overtime.
+    // What app/(app)/payroll/individual-payslip/page.tsx renders under Bonus and under Overtime.
     expect(b.bonusLines.map(payItemLabel)).toEqual(['B0001 · ANGPOW']);
     expect(b.bonusLines[0].amount).toBe(500);
     expect(b.overtimeLines).toEqual([]); // no OT component on this run ⇒ the bare Overtime figure stands
@@ -305,7 +305,7 @@ describe('display box vs kernel bucket — all four surfaces keep the lump (6b13
  * and the answer is a source-shape assertion across both halves.
  *
  * Two of the four are async server components and one is a PDF builder, so none can be rendered here;
- * `app/payroll/transaction-view/history-table.tsx` IS rendered, in test/history-table-pay-item.dom.test.tsx.
+ * `app/(app)/payroll/transaction-view/history-table.tsx` IS rendered, in test/history-table-pay-item.dom.test.tsx.
  * Comments are stripped first — prose describing the rule must never be what satisfies the guard.
  */
 describe('every payroll-result surface asks before it itemises (6b134681)', () => {
@@ -325,7 +325,7 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
   });
 
   it('the ESS payslip gates its two sub-line lists', () => {
-    const ess = code('app/me/payslip/[payslipId]/page.tsx');
+    const ess = code('app/(app)/me/payslip/[payslipId]/page.tsx');
     expect(ess).toContain('payItemLinesReconcile(otLines, disp.overtime)');
     expect(ess).toContain('payItemLinesReconcile(bonusLines, disp.bonus)');
     expect(ess).toContain('{showOtLines && <SubLines lines={otLines} />}');
@@ -333,7 +333,7 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
   });
 
   it('the History grid and Individual Payslip read the RECONCILED lists, never the raw buckets', () => {
-    const breakdown = code('app/payroll/transaction-view/history-breakdown.ts');
+    const breakdown = code('app/(app)/payroll/transaction-view/history-breakdown.ts');
     expect(breakdown).toContain('payItemLinesReconcile(lines, total) ? lines : []');
     // 5a5309d5 — the source falls back to the attendance legs; the gate is the same.
     expect(breakdown).toContain('overtimeLines: reconciled(overtimeSourceLines(componentLines, row.statutory), disp.overtime)');
@@ -341,7 +341,7 @@ describe('every payroll-result surface asks before it itemises (6b134681)', () =
 
     // THE MISS ITSELF: mapping `componentsByBucket.ot` / `.bonus` beside a figure that comes from
     // `payslipDisplayEarnings` prints rows that need not add up to the total above them.
-    for (const rel of ['app/payroll/individual-payslip/page.tsx', 'app/payroll/transaction-view/history-table.tsx']) {
+    for (const rel of ['app/(app)/payroll/individual-payslip/page.tsx', 'app/(app)/payroll/transaction-view/history-table.tsx']) {
       const src = code(rel);
       expect(src, `${rel} still itemises the raw ot bucket`).not.toContain('componentsByBucket.ot');
       expect(src, `${rel} still itemises the raw bonus bucket`).not.toContain('componentsByBucket.bonus');
@@ -413,9 +413,9 @@ describe('a96d320c rev 2 — the empty-line rules, shared rather than copied', (
   it('all FOUR payslip surfaces ask the shared SKBBK predicate, and none still tests the amount', () => {
     const surfaces = [
       'lib/payslip-pdf.ts',
-      'app/me/payslip/[payslipId]/page.tsx',
-      'app/payroll/individual-payslip/page.tsx',
-      'app/payroll/transaction-view/history-table.tsx',
+      'app/(app)/me/payslip/[payslipId]/page.tsx',
+      'app/(app)/payroll/individual-payslip/page.tsx',
+      'app/(app)/payroll/transaction-view/history-table.tsx',
     ];
     for (const rel of surfaces) {
       const src = code(rel);
@@ -433,8 +433,8 @@ describe('a96d320c rev 2 — the empty-line rules, shared rather than copied', (
     expect(pdf).toContain('earningRowShown(d.claim)');
 
     for (const [rel, figures] of [
-      ['app/me/payslip/[payslipId]/page.tsx', ['allowanceNet', 'disp.overtime', 'disp.bonus', 'disp.claim']],
-      ['app/payroll/individual-payslip/page.tsx', ['b.allowanceNet', 'b.overtime', 'b.bonus', 'b.claim']],
+      ['app/(app)/me/payslip/[payslipId]/page.tsx', ['allowanceNet', 'disp.overtime', 'disp.bonus', 'disp.claim']],
+      ['app/(app)/payroll/individual-payslip/page.tsx', ['b.allowanceNet', 'b.overtime', 'b.bonus', 'b.claim']],
     ] as const) {
       const src = code(rel);
       for (const f of figures) {
@@ -448,10 +448,10 @@ describe('a96d320c rev 2 — the empty-line rules, shared rather than copied', (
     // UNDER their figure. `payItemLinesForBuckets` drops a zero contribution but not a pair that cancels
     // out, so a figure can be 0.00 with two real items beneath it — and gating the heading on the figure
     // alone would leave the detail orphaned under nothing. The escape hatch is the list itself.
-    const ess = code('app/me/payslip/[payslipId]/page.tsx');
+    const ess = code('app/(app)/me/payslip/[payslipId]/page.tsx');
     expect(ess).toContain('(earningRowShown(disp.overtime) || showOtLines)');
     expect(ess).toContain('(earningRowShown(disp.bonus) || showBonusLines)');
-    const admin = code('app/payroll/individual-payslip/page.tsx');
+    const admin = code('app/(app)/payroll/individual-payslip/page.tsx');
     expect(admin).toContain('(earningRowShown(b.allowanceNet) || b.allowanceLines.length > 0)');
     expect(admin).toContain('(earningRowShown(b.overtime) || b.overtimeLines.length > 0)');
     expect(admin).toContain('(earningRowShown(b.bonus) || b.bonusLines.length > 0)');
@@ -471,9 +471,9 @@ describe('a96d320c rev 2 — the empty-line rules, shared rather than copied', (
     // employee's panel a different shape from the next AND put the screen out of step with its own
     // download. If that judgement is ever reversed, this guard is what makes it a decision rather than
     // a drift — and the CSV columns have to move with it.
-    const grid = code('app/payroll/transaction-view/history-table.tsx');
+    const grid = code('app/(app)/payroll/transaction-view/history-table.tsx');
     expect(grid, 'History must not have picked up the payslip row rule by accident').not.toContain('earningRowShown(');
-    const csv = code('app/payroll/transaction-view/history-export.ts');
+    const csv = code('app/(app)/payroll/transaction-view/history-export.ts');
     expect(csv, 'the CSV still emits the Allowance column unconditionally').toContain('money(b.allowanceNet)');
   });
 });
@@ -706,7 +706,7 @@ describe('recordLineIdentity — repairing a stale record-line label (417d4937)'
  */
 describe('417d4937 — every record-line surface is actually handed the catalogue', () => {
   it('Transaction View reads the catalogue for the HISTORY tab, not only for the grid', () => {
-    const page = readSrc('app/payroll/transaction-view/page.tsx');
+    const page = readSrc('app/(app)/payroll/transaction-view/page.tsx');
     // The read used to be `tab === 'grid'` alone, which would have left the repair inert on the tab the
     // reporter opens.
     expect(page).toContain("tab === 'grid' || tab === 'history' ? listPayComponents(s, { includeArchived: true })");
@@ -718,10 +718,10 @@ describe('417d4937 — every record-line surface is actually handed the catalogu
 
   it('the History table, the pivot, Individual Payslip and the ESS payslip all call the shared rule', () => {
     for (const rel of [
-      'app/payroll/transaction-view/history-table.tsx',
-      'app/payroll/transaction-view/history-pivot.ts',
-      'app/payroll/individual-payslip/page.tsx',
-      'app/me/payslip/[payslipId]/page.tsx',
+      'app/(app)/payroll/transaction-view/history-table.tsx',
+      'app/(app)/payroll/transaction-view/history-pivot.ts',
+      'app/(app)/payroll/individual-payslip/page.tsx',
+      'app/(app)/me/payslip/[payslipId]/page.tsx',
     ]) {
       expect(readSrc(rel), `${rel} must repair record lines through the shared rule`).toContain('recordLineIdentity(');
     }
@@ -730,7 +730,7 @@ describe('417d4937 — every record-line surface is actually handed the catalogu
   it('the ESS payslip prints the DESCRIPTION, not an internal code, to the employee', () => {
     // The employee's copy has always read as words. "TXN_OVERTIME · Overtime (one-off)" would be a worse
     // answer than the remark it replaces, so that surface takes `name` while the admin screens take `label`.
-    const ess = readSrc('app/me/payslip/[payslipId]/page.tsx');
+    const ess = readSrc('app/(app)/me/payslip/[payslipId]/page.tsx');
     expect(ess).toContain('id.name');
     expect(ess).not.toContain('label={id.label}');
   });

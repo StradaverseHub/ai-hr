@@ -372,13 +372,13 @@ describe('r343 · the employee has ONE Leave Credit surface, and it is the singl
   // ⚠️ r389 (ba039150) — REVERSED, AND THE PROPERTY IT PROTECTED IS KEPT BY OTHER MEANS. This case read
   // "My Absence links to the requests list, so the itemised table is reachable without submitting", and
   // asserted `href="/leave/credit"`, the `leave-credit-requests-link` test id and the
-  // `replacementRequest.viewMyRequests` caption on app/leave/page.tsx. The reporter asked for the link to go.
+  // `replacementRequest.viewMyRequests` caption on app/(app)/leave/page.tsx. The reporter asked for the link to go.
   // What it protected — a route from the summary to the itemised list — survives as a MENU ROW: My Leave ›
   // Leave Credit History at the same /leave/credit (test/leave-pack.test.ts pins the row,
   // test/r299-leave-credit-screens.test.ts its `toil` gate). So the link is asserted ABSENT from the code,
   // and its key RETIRED (not deleted) in all six catalogues.
   it('r389 · the "View my leave credit requests" link is gone, its key retired in six, and the list is a menu row', () => {
-    const code = read('app/leave/page.tsx')
+    const code = read('app/(app)/leave/page.tsx')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
       .replace(/^\s*\/\/.*$/gm, '');
@@ -396,8 +396,8 @@ describe('r343 · the employee has ONE Leave Credit surface, and it is the singl
     expect(leavePack).toContain("{href:'/leave/credit', labelKey:'leaveCreditHistory', icon:CalendarClock, exactHref:true}");
   });
   const DIALOG_TSX = 'components/leave/replacement-leave-request-dialog.tsx';
-  const MY_LEAVE = 'app/leave/page.tsx';
-  const CREDIT_PAGE = 'app/leave/credit/page.tsx';
+  const MY_LEAVE = 'app/(app)/leave/page.tsx';
+  const CREDIT_PAGE = 'app/(app)/leave/credit/page.tsx';
 
   it('the My Absence dialog’s BODY is the single table — r336’s two sections are gone from it', () => {
     const src = read(DIALOG_TSX);
@@ -473,7 +473,7 @@ describe('r343 · the employee has ONE Leave Credit surface, and it is the singl
 // defect's mechanism; the second is a field that had been dead for two rounds and still read as live code.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r360 · the lookup failure is recorded, and the action reads no dead field', () => {
-  const ACTIONS = 'app/leave/credit/actions.ts';
+  const ACTIONS = 'app/(app)/leave/credit/actions.ts';
 
   /**
    * ⚠️ THE REPORTED DEFECT WAS AN ABSENT `.catch()`. The effect read
@@ -552,7 +552,7 @@ describe('r362 · the retired placeholder, the settled record, and the note that
    * nobody looked. So BOTH halves are asserted, and they fail for opposite mistakes.
    */
   it('`table.dayTypeChoose` is rendered by nothing, and still present in all six catalogues', () => {
-    for (const f of ['components/leave/leave-credit-request-table.tsx', 'components/leave/replacement-leave-request-dialog.tsx', 'app/leave/credit/page.tsx'])
+    for (const f of ['components/leave/leave-credit-request-table.tsx', 'components/leave/replacement-leave-request-dialog.tsx', 'app/(app)/leave/credit/page.tsx'])
       expect(stripped(f), `${f} must not render the retired placeholder`).not.toContain("t('table.dayTypeChoose')");
     for (const l of LOCALES6) {
       const v = (JSON.parse(read(`messages/${l}.json`)).replacementRequest as any).table.dayTypeChoose;
@@ -746,12 +746,12 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
    * deletion propagates through a naive locale merge as a resurrection or a MISSING_MESSAGE somewhere
    * nobody looked.
    *
-   * ⚠️ AND THE APPROVER'S OWN WARNINGS ARE A DIFFERENT PAIR AND ARE UNTOUCHED: app/approvals/page.tsx
+   * ⚠️ AND THE APPROVER'S OWN WARNINGS ARE A DIFFERENT PAIR AND ARE UNTOUCHED: app/(app)/approvals/page.tsx
    * renders `approvals.creditWarnNoClockOut` / `creditWarnPastClockOut`, which (2d) pins. Checked before
    * retiring, not assumed.
    */
   it('the bar’s two sentences are rendered by nothing, still present in all six, and the approver’s are untouched', () => {
-    for (const f of ['components/leave/leave-credit-request-table.tsx', 'components/leave/replacement-leave-request-dialog.tsx', 'app/leave/credit/page.tsx'])
+    for (const f of ['components/leave/leave-credit-request-table.tsx', 'components/leave/replacement-leave-request-dialog.tsx', 'app/(app)/leave/credit/page.tsx'])
       for (const k of ['table.clockOutMissing', 'table.clockOutEarlier'])
         expect(stripped(f), `${f} must not render the retired ${k}`).not.toContain(`t('${k}')`);
     for (const l of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
@@ -764,7 +764,7 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
       expect(tbl.dotReasonPastClockOut, l).toContain('{clockOut}');
     }
     // The approver's pair is a SEPARATE namespace and is still rendered — checked, not assumed.
-    expect(read('app/approvals/page.tsx')).toContain("t('creditWarnNoClockOut'");
+    expect(read('app/(app)/approvals/page.tsx')).toContain("t('creditWarnNoClockOut'");
   });
 
   /**
@@ -865,7 +865,7 @@ describe('r365 · the Attendance column, the shared panel, and what was retired 
 // this screen cannot grow by accident, and a key that is translated today fails the day it turns English.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r343 · the translated keys are translated, and the English ones are named and counted', () => {
-  // r389 (ba039150 + bc3e203d) — `app/leave/credit/page.tsx` LEFT THIS SURFACE, and not to hide anything:
+  // r389 (ba039150 + bc3e203d) — `app/(app)/leave/credit/page.tsx` LEFT THIS SURFACE, and not to hide anything:
   // it no longer renders the request form or any `replacementRequest` key (it is Leave Credit History, whose
   // own keys live under `leaveCreditHistory` and are pinned translated-in-six by
   // test/r389-leave-credit-history.test.ts). Left here, its `t('title')` / `t('description')` — read against
@@ -991,7 +991,7 @@ describe('r343 · the translated keys are translated, and the English ones are n
 // source shape, the way (2b) pins the wiring between files.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('r353 · the approvals queue warns, from the SAME computation the employee’s screen used', () => {
-  const APPROVALS = 'app/approvals/page.tsx';
+  const APPROVALS = 'app/(app)/approvals/page.tsx';
   const TABLE = 'components/leave/leave-credit-request-table.tsx';
 
   it('ONE computation: both surfaces call assessExtendedClaim, and neither re-derives the discrepancy', () => {

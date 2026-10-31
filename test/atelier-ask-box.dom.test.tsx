@@ -5,7 +5,7 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 const state=vi.hoisted(()=>({ask:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
+vi.mock('../app/(app)/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
 import {AtelierAskBox} from '../components/atelier-ask-box';
 const props={label:'Your question',placeholder:'Ask about your work',submitLabel:'Ask',suggestions:['My leave balance']};
 const content=()=> <NextIntlClientProvider locale="en" messages={en}><AtelierAskBox {...props}/></NextIntlClientProvider>;

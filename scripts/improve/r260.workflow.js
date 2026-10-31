@@ -107,7 +107,7 @@ to; that is Round 5. NO MIGRATION — if you think you need a column, STOP and s
 
 WHAT TO BUILD, two things:
 
-1. app/admin/leave-config/approval-chains/page.tsx — templates, assignment and escalation as today,
+1. app/(app)/admin/leave-config/approval-chains/page.tsx — templates, assignment and escalation as today,
    MOUNTING the same shared components the old approval screen mounts.
    ⚠️ PLUS THE THING THAT IS SHOWN NOWHERE TODAY: a READ-ONLY list of the approval rules that are NOT
    built from a template, showing their business unit / department / position scope and their effective
@@ -140,9 +140,9 @@ CARRY FORWARD: every sub-form keeps its tri-state marker and hidden name; put <L
 preview note on the new page as Round 3 does; cross-screen links resolve through leaveConfigScreenHref
 (components/leave-config-map.tsx) rather than hard-coded hrefs — a guard walks the module and enforces it.
 
-SCOPE FENCE: app/admin/leave-config/** , lib/permissions.ts (routes only), your tests, six locales.
-Do NOT touch app/admin/leave/**, app/admin/leave-approval/**, components/leave-type-panel.tsx,
-core/leave*, or app/me/** (another agent is there).`,
+SCOPE FENCE: app/(app)/admin/leave-config/** , lib/permissions.ts (routes only), your tests, six locales.
+Do NOT touch app/(app)/admin/leave/**, app/(app)/admin/leave-approval/**, components/leave-type-panel.tsx,
+core/leave*, or app/(app)/me/** (another agent is there).`,
   },
   {
     slug: 'profile-requests',
@@ -150,7 +150,7 @@ core/leave*, or app/me/** (another agent is there).`,
     item: '9583deac',
     brief: `YOU ARE BUILDING STAGE TWO ONLY of ${PLANS}/9583deac.txt. Stage one shipped in r259 — My
 Profile now renders the Personnel record's six tabs as a READ surface, with docs/me-profile-field-
-visibility.md as its written account. READ BOTH before you start, and read app/me/record.ts: it projects
+visibility.md as its written account. READ BOTH before you start, and read app/(app)/me/record.ts: it projects
 exactly what an employee may see and a guard now runs Personnel -> /me so a field cannot appear on one
 and not be accounted for on the other.
 
@@ -191,9 +191,9 @@ SECURITY, same as stage one: every read and write scoped to the caller's own emp
 session, never through a client-supplied id. An employee must not be able to see or decide anybody
 else's request. Test it adversarially.
 
-SCOPE FENCE: app/me/**, core/profile.ts, db/schema.ts + db/migrations (0458 only), the admin approval
-surface for these requests, your tests, docs/, six locales. Do NOT touch app/admin/leave-config/**
-(another agent is there), core/payroll.ts, or app/admin/personnel/[employmentId]/**.`,
+SCOPE FENCE: app/(app)/me/**, core/profile.ts, db/schema.ts + db/migrations (0458 only), the admin approval
+surface for these requests, your tests, docs/, six locales. Do NOT touch app/(app)/admin/leave-config/**
+(another agent is there), core/payroll.ts, or app/(app)/admin/personnel/[employmentId]/**.`,
   },
 ];
 

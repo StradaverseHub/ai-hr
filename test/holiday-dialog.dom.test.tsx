@@ -30,12 +30,12 @@ const { push, refresh, save } = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.f
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, refresh, replace: vi.fn(), back: vi.fn(), forward: vi.fn(), prefetch: vi.fn() }),
 }));
-vi.mock('../app/admin/actions', () => ({ saveHolidayAction: save, deleteHolidayAction: vi.fn() }));
+vi.mock('../app/(app)/admin/actions', () => ({ saveHolidayAction: save, deleteHolidayAction: vi.fn() }));
 
-import { HolidayDialog, type HolidayDialogLabels } from '../app/admin/holidays/holiday-dialog';
+import { HolidayDialog, type HolidayDialogLabels } from '../app/(app)/admin/holidays/holiday-dialog';
 
 const en = messages.admin.holidays;
-/** Built the way app/admin/holidays/page.tsx builds them — same keys, same catalogue. */
+/** Built the way app/(app)/admin/holidays/page.tsx builds them — same keys, same catalogue. */
 const ADD_LABELS: HolidayDialogLabels = {
   title: en.addTitle,
   hint: en.addHint,

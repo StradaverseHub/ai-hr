@@ -9,7 +9,7 @@ vi.mock('../core/read', () => ({ allowedCompanies: async () => [{ id: 'allowed-c
 vi.mock('../packs/attendance/service', () => ({ previewCardImport: calls.preview, commitCardImport: calls.commit }));
 vi.mock('next/cache', () => ({ revalidatePath: calls.revalidate }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => createTranslator({ locale: 'en', messages: { cardImport: en.cardImport }, namespace: 'cardImport' }) }));
-import { POST } from '../app/admin/card-assignment/import/route';
+import { POST } from '../app/(app)/admin/card-assignment/import/route';
 beforeEach(() => { vi.clearAllMocks(); calls.session.mockResolvedValue({ roles: ['hr_admin'] }); calls.preview.mockResolvedValue({ rows: [] }); calls.commit.mockResolvedValue({ total: 1 }); });
 function request(operation = 'preview', extra: Record<string, string> = {}, origin = 'http://localhost') {
   const form = new FormData(); form.set('file', new File(['Fictional workbook bytes'], 'cards.xlsx')); form.set('operation', operation);

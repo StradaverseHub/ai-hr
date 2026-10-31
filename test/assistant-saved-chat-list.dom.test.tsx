@@ -4,7 +4,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({more:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({loadMoreChatsAction:ports.more}));
+vi.mock('../app/(app)/assistant/launcher-actions',()=>({loadMoreChatsAction:ports.more}));
 vi.mock('next/link',()=>({default:({children,scroll,...props}:any)=><a {...props}>{children}</a>}));
 import {SavedChatList} from '../components/assistant/saved-chat-list';
 const copy=en.assistant.workspace.chat;

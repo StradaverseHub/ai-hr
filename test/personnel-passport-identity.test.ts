@@ -30,7 +30,7 @@ import {
 } from '../localization/my/statutory';
 import { isMalaysianNationality } from '../localization/my/ic-dob';
 import { myPack } from '../localization/my';
-import { setPassportAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setPassportAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
@@ -49,7 +49,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 const COMBOBOX = read('components/ui/combobox.tsx');
 const IDENTITY = read('components/personnel-identity.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

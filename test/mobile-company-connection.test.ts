@@ -4,7 +4,7 @@ import { verifyCompanyProfile } from '../mobile/lib/company-profile';
 import { createConnectionState } from '../mobile/lib/connection-state';
 import { verifyCompanyServer } from '../mobile/lib/connection-probe';
 import { connectionEndpoints, type CompanyProfile } from '../lib/mobile-connection';
-import { GET } from '../app/login/mobile-connection/route';
+import { GET } from '../app/(auth)/login/mobile-connection/route';
 import { createAuthState } from '../mobile/lib/auth-state';
 import { SessionChangedError } from '../mobile/lib/errors';
 const now=Math.floor(Date.now()/1000);

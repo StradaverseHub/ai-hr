@@ -30,12 +30,12 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
-import { RemoveForm, type RemoveCandidate } from '../app/payroll/[batchId]/remove/remove-form';
+import { RemoveForm, type RemoveCandidate } from '../app/(app)/payroll/[batchId]/remove/remove-form';
 
 // The server action, stubbed. It is a 'use server' module that reaches Postgres on import; this file is
 // about the screen in front of it, and the action's own behaviour is proved against a real database in
 // test/payroll-remove-employee.test.ts.
-vi.mock('../app/payroll/actions', () => ({ removeEmployeePayrollAction: vi.fn() }));
+vi.mock('../app/(app)/payroll/actions', () => ({ removeEmployeePayrollAction: vi.fn() }));
 
 const wrap = (ui: ReactNode) =>
   render(

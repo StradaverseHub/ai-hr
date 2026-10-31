@@ -1,7 +1,7 @@
 /**
  * 3e3d3fb2 — CAN A COMPANY-SCOPED ADMIN REACH ANOTHER COMPANY'S TP1 DECLARATION?
  *
- * The approved plan calls this a SECURITY GAP: app/payroll/transactions/tp1/page.tsx passes
+ * The approved plan calls this a SECURITY GAP: app/(app)/payroll/transactions/tp1/page.tsx passes
  * `?employmentId=` straight into employmentSubject() with no membership check, where every sibling
  * transaction screen runs `employees.some(...)` against the admin's scoped list first.
  *
@@ -38,7 +38,7 @@ vi.mock('next-intl/server', () => ({
 }));
 vi.mock('next/headers', () => ({ cookies: vi.fn(async () => ({ get: () => undefined })) }));
 
-import Tp1TransactionPage from '../app/payroll/transactions/tp1/page';
+import Tp1TransactionPage from '../app/(app)/payroll/transactions/tp1/page';
 
 let b: Base;
 let otherCompanyId: string;

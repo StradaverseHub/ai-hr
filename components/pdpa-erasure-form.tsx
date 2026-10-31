@@ -8,7 +8,7 @@
 import { useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button, Field, inputCls } from '@/components/ui';
-import { erasePersonPiiAction, type ErasureActionResult } from '@/app/admin/privacy/actions';
+import { erasePersonPiiAction, type ErasureActionResult } from '@/app/(app)/admin/privacy/actions';
 
 const SCOPES = ['contact', 'financial', 'identity', 'statutory-ids', 'all'] as const;
 const SCOPE_KEY: Record<(typeof SCOPES)[number], string> = {

@@ -27,8 +27,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-import { HistoryGrid } from '../app/payroll/transaction-view/history-grid';
-import { pivotHistoryGrid } from '../app/payroll/transaction-view/history-pivot';
+import { HistoryGrid } from '../app/(app)/payroll/transaction-view/history-grid';
+import { pivotHistoryGrid } from '../app/(app)/payroll/transaction-view/history-pivot';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

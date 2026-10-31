@@ -394,10 +394,10 @@ describe('r415 · CP22 and CP22A did not move', () => {
       'lib/cp22a-template.ts',
       'public/forms/cp22-pin-1-2021.pdf',
       'public/forms/cp22a-pin-1-2023.pdf',
-      'app/payroll/cp22/[employmentId]/preview/page.tsx',
-      'app/payroll/cp22/[employmentId]/pdf/route.ts',
-      'app/payroll/cp22a/[employmentId]/preview/page.tsx',
-      'app/payroll/cp22a/[employmentId]/pdf/route.ts',
+      'app/(app)/payroll/cp22/[employmentId]/preview/page.tsx',
+      'app/(app)/payroll/cp22/[employmentId]/pdf/route.ts',
+      'app/(app)/payroll/cp22a/[employmentId]/preview/page.tsx',
+      'app/(app)/payroll/cp22a/[employmentId]/pdf/route.ts',
     ];
     for (const f of files) {
       const now = fs.readFileSync(path.join(ROOT, f), 'latin1');

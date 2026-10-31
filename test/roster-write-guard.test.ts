@@ -76,7 +76,7 @@ import {
   copyRosterAction,
   generateRosterAction,
   rowAssignAction,
-} from '../app/roster/actions';
+} from '../app/(app)/roster/actions';
 
 /** Anything that betrays the driver: the wrapper, the statement, or its bound parameters. */
 const RAW_SQL = /failed query|insert into|update\s+"|delete from|\bparams:/i;

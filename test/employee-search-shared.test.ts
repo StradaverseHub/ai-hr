@@ -16,7 +16,7 @@ import {
   SWITCHER_RESULT_CAP,
   switcherHref,
   matchEmployees as personnelMatchEmployees,
-} from '../app/admin/personnel/employee-search';
+} from '../app/(app)/admin/personnel/employee-search';
 
 const people = [
   { employmentId: 'e1', name: 'Aisha Rahman', employeeCode: 'EMP-0008' },

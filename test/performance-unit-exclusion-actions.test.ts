@@ -14,7 +14,7 @@ vi.mock('next/cache', () => ({ revalidatePath: ports.revalidate }));
 vi.mock('@/lib/session', () => ({ getSession: vi.fn(async () => ports.session) }));
 vi.mock('@/packs/performance/service', () => ({ previewUnitExclusionScreen: ports.preview, saveUnitExclusion: ports.save, endUnitExclusion: ports.end }));
 
-import { endUnitExclusionAction, previewUnitExclusionAction, saveUnitExclusionAction } from '../app/performance/unit-exclusion-actions';
+import { endUnitExclusionAction, previewUnitExclusionAction, saveUnitExclusionAction } from '../app/(app)/performance/unit-exclusion-actions';
 
 const CYCLE = '00000000-0000-4000-8000-000000000001';
 const COMPANY = '00000000-0000-4000-8000-0000000000a1';

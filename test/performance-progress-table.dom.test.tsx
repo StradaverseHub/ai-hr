@@ -2,7 +2,7 @@ import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {afterEach,expect,it} from 'vitest';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
-import {ProgressTable} from '../app/performance/onehr/progress-table';
+import {ProgressTable} from '../app/(app)/performance/onehr/progress-table';
 import type {getAssessmentAssessorProgress,getAssessmentProgress} from '../packs/performance/service';
 afterEach(cleanup);
 it('opens the overview-linked assessor/company filter and can clear it without losing authorized rows',()=>{

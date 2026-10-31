@@ -107,14 +107,14 @@ import { buildPayslipPdfData, renderPayslipPdf } from '../lib/payslip-pdf';
 import { labels } from './fixtures/payslip-pdf-fixture';
 import { payslipAbsenceLines } from '../core/payslip-absence-lines';
 import { payslipCp38Carve, payslipCp38Line } from '../core/payslip-cp38-line';
-import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
-import { buildHistoryExport } from '../app/payroll/transaction-view/history-export';
+import { deriveHistoryBreakdown } from '../app/(app)/payroll/transaction-view/history-breakdown';
+import { buildHistoryExport } from '../app/(app)/payroll/transaction-view/history-export';
 import {
   TRANSACTION_DETAIL_COLUMNS,
   transactionDetailReport,
-} from '../app/payroll/[batchId]/transaction-detail-report';
-import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
-import EssPayslipPage from '../app/me/payslip/[payslipId]/page';
+} from '../app/(app)/payroll/[batchId]/transaction-detail-report';
+import IndividualPayslipPage from '../app/(app)/payroll/individual-payslip/page';
+import EssPayslipPage from '../app/(app)/me/payslip/[payslipId]/page';
 import {
   adminCtx,
   closeAll,

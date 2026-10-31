@@ -34,7 +34,7 @@ that is wrong in a way the system will not tell you about.
 `/attendance/recompute`. **This page has no navigation row**; it is reachable only by typing the URL.
 Nothing recomputes attendance after a shift change, a roster change or an attendance-rule change — there is
 no scheduled recompute anywhere in the codebase (`core/attendance-recompute.ts` is called only from
-`app/attendance/recompute/actions.ts` and `app/attendance/page.tsx`).
+`app/(app)/attendance/recompute/actions.ts` and `app/(app)/attendance/page.tsx`).
 
 **Do this whenever any of these changed during the period:** shift definitions, rosters, schedule groups /
 attendance rules, holiday calendars, or an employee's shift arrangement.
@@ -44,13 +44,13 @@ stale figures into payroll.
 
 ### 3. Prefill overtime from attendance — MANDATORY-MANUAL
 `prefillOvertimeAction` → `prefillOvertimeFromAttendance`. Its **only** caller is that button
-(`app/payroll/actions.ts:179`).
+(`app/(app)/payroll/actions.ts:179`).
 
 **If you skip it:** overtime earned in the period is simply absent from the payslip. No warning, no
 zero-line, nothing — the run completes and looks normal.
 
 ### 4. Transfer attendance allowances — MANDATORY-MANUAL
-`transferAllowancesAction` → `transferAllowancesToBatch`. Only caller: `app/payroll/actions.ts:318`.
+`transferAllowancesAction` → `transferAllowancesToBatch`. Only caller: `app/(app)/payroll/actions.ts:318`.
 
 **If you skip it:** attendance-derived allowances are absent from the payslip, the same silent way.
 

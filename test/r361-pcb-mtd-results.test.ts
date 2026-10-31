@@ -60,9 +60,9 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { createBatch, generatePayslips, setPayrollInput } from '../core/payroll';
 import { currentPcbReliefs, listProcessedPayslipsAcross, payslipForReview } from '../core/payroll-view';
-import { pcbSlipData } from '../app/payroll/pcb-detail/slip-data';
-import { pcbDetailModel } from '../app/payroll/pcb-detail/shared';
-import { pcbPdfText } from '../app/payroll/pcb-detail/slip-pdf';
+import { pcbSlipData } from '../app/(app)/payroll/pcb-detail/slip-data';
+import { pcbDetailModel } from '../app/(app)/payroll/pcb-detail/shared';
+import { pcbPdfText } from '../app/(app)/payroll/pcb-detail/slip-pdf';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -73,10 +73,10 @@ const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|
 const code = (rel: string) => strip(read(rel));
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-const VIEW = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
-const SHARED = 'app/payroll/pcb-detail/shared.ts';
+const VIEW = 'app/(app)/payroll/pcb-detail/pcb-detail-view.tsx';
+const SHARED = 'app/(app)/payroll/pcb-detail/shared.ts';
 const EXPLAIN = 'core/pcb-explain.ts';
-const READS = 'app/payroll/pcb-detail/slip-data.ts';
+const READS = 'app/(app)/payroll/pcb-detail/slip-data.ts';
 
 const CATALOGUE = TP1_ITEMS as readonly PcbSlipCatalogueItem[];
 const REBATES = TP1_REBATES as readonly PcbSlipCatalogueItem[];

@@ -42,16 +42,16 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 /** The two tabs, and the cookie each remembers its own collapse state in. ONE KEY PER SCREEN. */
 const PAGES = {
-  'app/leave/employee-balances/page.tsx': 'leave-balances-panel',
-  'app/leave/employee-records/page.tsx': 'leave-records-panel',
+  'app/(app)/leave/employee-balances/page.tsx': 'leave-balances-panel',
+  'app/(app)/leave/employee-records/page.tsx': 'leave-records-panel',
 } as const;
 type Page = keyof typeof PAGES;
 const REL = Object.keys(PAGES) as Page[];
 
 /** 38b94df7's own `id`s, kept here as the names being retired so their absence is asserted by name. */
 const RETIRED_FIELD_IDS = {
-  'app/leave/employee-balances/page.tsx': 'balances-emp',
-  'app/leave/employee-records/page.tsx': 'records-emp',
+  'app/(app)/leave/employee-balances/page.tsx': 'balances-emp',
+  'app/(app)/leave/employee-records/page.tsx': 'records-emp',
 } as const;
 
 describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL', () => {
@@ -110,13 +110,13 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(src).toContain('<input type="hidden" name="emp" value={selected.employmentId} />');
     }
     // 23e87eef: chips carry the employee and date through their foreign hidden parameters.
-    expect(read('app/leave/employee-balances/page.tsx')).toContain(
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain(
       "const chipAction = '/leave/employee-balances';",
     );
   });
 
   it('23e87eef: BOTH exports use the same explicit All/single authorization and complete filtered query', () => {
-    for (const rel of ['app/leave/employee-balances/export/route.ts', 'app/leave/employee-records/export/route.ts']) {
+    for (const rel of ['app/(app)/leave/employee-balances/export/route.ts', 'app/(app)/leave/employee-records/export/route.ts']) {
       const src = code(read(rel));
       // 934ec5a8c deliberately moved authorization AND every chunk into one read-only snapshot.
       // Pin the stronger contract, including the Tx handed into each canonical row reader.
@@ -185,8 +185,8 @@ describe('9949f91a: both Leave Inquiry tabs pick an employee in the SHARED PANEL
       expect(src.includes('title={tInq}')).toBe(false);
     }
     // The prompt the reporter asked for, one per screen — and they are DIFFERENT sentences.
-    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('allEmployeesHeader'");
-    expect(read('app/leave/employee-records/page.tsx')).toContain("tInq('allEmployeesHeader'");
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain("tInq('allEmployeesHeader'");
+    expect(read('app/(app)/leave/employee-records/page.tsx')).toContain("tInq('allEmployeesHeader'");
   });
 
   it('the new captions exist in all six catalogues, and the retired ones are RETIRED not deleted', () => {

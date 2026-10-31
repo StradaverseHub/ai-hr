@@ -63,7 +63,7 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 describe('§A · 995387c6 — neither link points at a parameter nobody reads any more', () => {
   it('the explain panel opens the rule editor on Leave types, with the anchor that selects the type', () => {
-    const src = read('app/admin/leave/entitlements/templates/eligibility-explain.tsx');
+    const src = read('app/(app)/admin/leave/entitlements/templates/eligibility-explain.tsx');
     // The destination, resolved through the map so this page and the submenu cannot disagree.
     expect(src, 'the editor link must resolve through the leave-config map').toContain(
       "leaveConfigScreenHref('leaveTypes')",
@@ -84,17 +84,17 @@ describe('§A · 995387c6 — neither link points at a parameter nobody reads an
     // CLAUDE.md §8: when a defect lives in the contract between two files, pin it across both. A link
     // naming `editRule` is indistinguishable from a working one until the page that must answer it is
     // read; tsc, `next build` and a 200 all pass either way.
-    const dest = read('app/admin/leave-config/types/page.tsx');
+    const dest = read('app/(app)/admin/leave-config/types/page.tsx');
     expect(dest, 'Leave types must declare editRule in its searchParams').toMatch(/editRule\?: string/);
     expect(dest, 'and hand it to the block that renders the rule editor').toContain('editRule={editRule}');
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block, 'the block resolves the lineage against its RUNNING rules').toContain(
       '.find((x) => x.lineageId === editRule)',
     );
   });
 
   it('Company rules points at Leave types, where the schemes are, and still hosts no editor', () => {
-    const src = read('app/admin/leave-config/company-rules/page.tsx');
+    const src = read('app/(app)/admin/leave-config/company-rules/page.tsx');
     expect(src).toContain("leaveConfigScreenHref('leaveTypes')");
     expect(src, 'the pointer must not name the tab the schemes left').not.toContain(
       "leaveConfigScreenHref('entitlementTables')",
@@ -333,7 +333,7 @@ describe('§C · 65e4073a build 3 — the reason the winner won, reported and ne
   });
 
   it('the panel renders a reason on the WINNING row only, and nothing for a single candidate', () => {
-    const src = read('app/admin/leave/entitlements/templates/eligibility-explain.tsx');
+    const src = read('app/(app)/admin/leave/entitlements/templates/eligibility-explain.tsx');
     expect(src).toContain('sole_candidate: null');
     expect(src).toContain("more_specific: 'explainWhyChosenSpecific'");
     expect(src).toContain("later_start: 'explainWhyChosenLater'");

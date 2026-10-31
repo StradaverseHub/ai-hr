@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {describe,expect,it} from 'vitest';
-const PAGE=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
+const PAGE=fs.readFileSync(path.resolve(__dirname,'../app/(app)/admin/personnel/[employmentId]/page.tsx'),'utf8');
 const TABS=fs.readFileSync(path.resolve(__dirname,'../components/personnel-tabs.tsx'),'utf8');
 const code=PAGE.replace(/\/\*[\s\S]*?\*\//g,'').replace(/^\s*\/\/.*$/gm,'');
 function panel(key:string,next:string){const start=code.indexOf(key+': ('),end=code.indexOf(next,start);expect(start).toBeGreaterThan(-1);expect(end).toBeGreaterThan(start);const value=code.slice(start,end);expect(value.length).toBeGreaterThan(100);return value;}

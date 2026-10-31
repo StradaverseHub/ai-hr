@@ -69,7 +69,7 @@ import {
   selfView,
   type EmployeeBalanceRow,
   type SelfBalanceRow,
-} from '../app/leave/employee-balances/rows';
+} from '../app/(app)/leave/employee-balances/rows';
 import {
   LEAVE_DETAILS_COLUMNS,
   LEAVE_DETAILS_FIGURES,
@@ -77,9 +77,9 @@ import {
   leaveDetailsExportHref,
   leaveDetailsFilename,
   loadLeaveDetails,
-} from '../app/leave/details/data';
-import LeaveDetailsPage from '../app/leave/details/page';
-import { GET as exportGET } from '../app/leave/details/export/route';
+} from '../app/(app)/leave/details/data';
+import LeaveDetailsPage from '../app/(app)/leave/details/page';
+import { GET as exportGET } from '../app/(app)/leave/details/export/route';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -392,9 +392,9 @@ describe('r404 · 2. SCOPE — no parameter reaches anybody else’s row', () =>
   });
 
   it('the source reads no person-naming parameter — the loader reads asOf and q, the route hands the loader the query', () => {
-    const data = codeOnly(read('app/leave/details/data.ts'));
-    const page = codeOnly(read('app/leave/details/page.tsx'));
-    const route = codeOnly(read('app/leave/details/export/route.ts'));
+    const data = codeOnly(read('app/(app)/leave/details/data.ts'));
+    const page = codeOnly(read('app/(app)/leave/details/page.tsx'));
+    const route = codeOnly(read('app/(app)/leave/details/export/route.ts'));
     for (const [name, src] of [['data', data], ['page', page], ['route', route]] as const) {
       expect(src.length, `${name} is non-empty`).toBeGreaterThan(500);
       expect(src, `${name} must never read an employee off the address`).not.toMatch(/\b(sp|input|searchParams|url\.searchParams)\s*(\.|\[)\s*['"]?(emp|employmentId|personId)\b/);
@@ -551,7 +551,7 @@ describe('r404 · the Explain panel speaks to "you", in six languages', () => {
   });
 
   it('the page mounts the panel in the self voice with the Employee Leave View applied', () => {
-    const page = codeOnly(read('app/leave/details/page.tsx'));
+    const page = codeOnly(read('app/(app)/leave/details/page.tsx'));
     const at = page.indexOf('<EntitlementBreakdown');
     expect(at, 'the panel is mounted').toBeGreaterThanOrEqual(0);
     const mount = page.slice(at, page.indexOf('/>', at));

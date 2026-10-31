@@ -1,19 +1,19 @@
-vi.mock('../app/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn(),previewMovementAction:vi.fn(),commitMovementAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/movement-actions',()=>({movementCatalogAction:vi.fn(),previewMovementAction:vi.fn(),commitMovementAction:vi.fn()}));
 import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import messages from '../messages/en.json';
-import {EmployeeImport,type ImportReference} from '../app/admin/personnel/import/employee-import';
-import {SectionImport} from '../app/admin/personnel/import/section-import';
-import {ImportWorkbench} from '../app/admin/personnel/import/import-workbench';
+import {EmployeeImport,type ImportReference} from '../app/(app)/admin/personnel/import/employee-import';
+import {SectionImport} from '../app/(app)/admin/personnel/import/section-import';
+import {ImportWorkbench} from '../app/(app)/admin/personnel/import/import-workbench';
 import type {ImportPreview} from '../lib/import-schema';
 import type {SectionImportPreview} from '../lib/import-sections';
 
 const mocks=vi.hoisted(()=>({read:vi.fn(),validate:vi.fn(),commit:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/import-file',async original=>({...await original<typeof import('../lib/import-file')>(),readImportFile:mocks.read}));
-vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:mocks.validate,commitImportAction:mocks.commit}));
-vi.mock('../app/admin/personnel/import/section-actions',()=>({validateSectionAction:mocks.validate,commitSectionAction:mocks.commit,registerRecordsAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/actions',()=>({validateImportAction:mocks.validate,commitImportAction:mocks.commit}));
+vi.mock('../app/(app)/admin/personnel/import/section-actions',()=>({validateSectionAction:mocks.validate,commitSectionAction:mocks.commit,registerRecordsAction:vi.fn()}));
 const reference:ImportReference={departments:[],positions:[],costCenters:[],states:[],countries:[],nationalities:[],relationships:[],familyRelationships:[]};
 const sectionPreview:SectionImportPreview={section:'qualification',total:1,updateCount:1,skipCount:0,createCount:0,missingColumns:[],fileErrors:[],rows:[{rowNum:1,employeeCode:'FIX-1',employeeName:'Fictional Employee',verdict:'update',ok:true,errors:[],warnings:[],changes:['from_ym','is_highest'],proposed:[{column:'from_ym',value:'2018-02'},{column:'is_highest',value:'true'}]}]};
 const employeePreview:ImportPreview={companyId:'c1',total:1,validCount:1,missingColumns:[],fileErrors:[],rows:[{rowNum:1,fullName:'Fictional Employee',email:'fictional@demo.test',ok:true,errors:[],warnings:[],company:'Fixture'}],dependents:{total:0,validCount:0,missingColumns:[],rows:[]}};

@@ -43,7 +43,7 @@ describe('§A · the options were always live — this round did not change that
   });
 
   it('and the caller hands it ACTIVE grades only', () => {
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).toContain('const activeGrades = grades.filter((g) => g.archivedAt == null)');
     expect(block).toContain('grades: activeGrades');
   });

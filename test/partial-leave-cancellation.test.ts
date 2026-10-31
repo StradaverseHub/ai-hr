@@ -935,7 +935,7 @@ describe('R5 Build #2 — attachment visibility on a non-first surviving segment
 // dates keyed to each leave's OWN employment (no collision across concurrent jobs), and (2) the grid's click
 // gate + the fields it posts (leaveRequestId=l.id, cancelDate[]=candidateCancelDates) agree exactly with what
 // the Leave page (listLeaveRequests) offers — so a date can never look cancellable on the calendar but be
-// rejected on submit, or vice-versa. `today` is passed explicitly (MYT) mirroring app/page.tsx.
+// rejected on submit, or vice-versa. `today` is passed explicitly (MYT) mirroring app/(app)/page.tsx.
 
 /** The client grid's exact per-pill eligibility gate (mirrors components/planned-absences.tsx). A pill is a
  *  cancel affordance when the viewer is the subject, the row is approved + full_day + plain-or-split, no

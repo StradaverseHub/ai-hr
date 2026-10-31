@@ -4,7 +4,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {AccessConfigurationEditor,type AccessEditorProps,type AccessEditorResult} from '../app/admin/users/access-editor';
+import {AccessConfigurationEditor,type AccessEditorProps,type AccessEditorResult} from '../app/(app)/admin/users/access-editor';
 import type {AccessConfigurationPreview} from '../core/access-configuration';
 const routing=vi.hoisted(()=>({refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>routing}));

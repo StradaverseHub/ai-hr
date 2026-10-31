@@ -19,8 +19,8 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) 
 vi.mock('../packs/performance/service', () => ({ changeOnehrEvidenceState: mocks.evidence, keepCompetencyReflection: mocks.keep, lockOnehrCalibration: mocks.lock }));
 vi.mock('../core/performance', () => ({ addPerformanceAttachment: mocks.attach, ALL_STAGE_KINDS: [] }));
 
-import { keepCompetencyReflectionAction, onehrCalibrationAction, onehrReviewAction } from '../app/performance/onehr-actions';
-import { uploadAttachmentAction } from '../app/performance/actions';
+import { keepCompetencyReflectionAction, onehrCalibrationAction, onehrReviewAction } from '../app/(app)/performance/onehr-actions';
+import { uploadAttachmentAction } from '../app/(app)/performance/actions';
 import { WORKSPACE_TAB_PATHS } from '../packs/performance/onehr/tab-route-model';
 
 const reviewId = '0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e';

@@ -3,7 +3,7 @@
  *
  * WHAT WAS BROKEN, MEASURED IN A REAL BROWSER RATHER THAN ARGUED. Reset payroll was a
  * `<form action={resetAction}>` carrying a ConfirmSubmit, rendered INSIDE the Payroll Process row menu
- * (app/payroll/row-actions.tsx). That panel is `position: fixed` and closes itself on ANY scroll captured
+ * (app/(app)/payroll/row-actions.tsx). That panel is `position: fixed` and closes itself on ANY scroll captured
  * at the window. ConfirmSubmit is a Radix AlertDialog: its body is portalled to the document, but its
  * OWNER is the menu subtree — so when the menu closed, the dialog unmounted with it.
  *
@@ -55,9 +55,9 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const LIST = code('app/payroll/page.tsx');
-const SCREEN = code('app/payroll/[batchId]/reset/page.tsx');
-const ISLAND = code('app/payroll/row-actions.tsx');
+const LIST = code('app/(app)/payroll/page.tsx');
+const SCREEN = code('app/(app)/payroll/[batchId]/reset/page.tsx');
+const ISLAND = code('app/(app)/payroll/row-actions.tsx');
 
 /** Everything BETWEEN the row-action island's tags — i.e. exactly what the ⋯ menu is handed. */
 const menuBody = (() => {
@@ -94,7 +94,7 @@ describe('9f8cd608 · A — the row menu is handed links only', () => {
 
   it('the list no longer imports the action at all — the form went with the dialog', () => {
     expect(LIST).toContain("import { deleteDraftBatchAction } from './actions';");
-    expect(LIST, 'app/payroll/page.tsx still imports resetAction').not.toContain('resetAction');
+    expect(LIST, 'app/(app)/payroll/page.tsx still imports resetAction').not.toContain('resetAction');
   });
 
   it('page.tsx is the island’s ONLY caller, so "links only" covers every menu there is', () => {
@@ -111,7 +111,7 @@ describe('9f8cd608 · A — the row menu is handed links only', () => {
       }
     };
     walk(path.join(ROOT, 'app'));
-    expect(callers).toEqual(['app/payroll/page.tsx']);
+    expect(callers).toEqual(['app/(app)/payroll/page.tsx']);
   });
 
   it('the island itself is unchanged in the ways that matter — it still places, and still closes on scroll', () => {
@@ -123,7 +123,7 @@ describe('9f8cd608 · A — the row menu is handed links only', () => {
     expect(ISLAND).toMatch(/getBoundingClientRect\(\)/);
     // And the header no longer documents a hazard that no longer exists (rule: a comment this change
     // makes false is a defect). The raw source is read here — comments are the subject.
-    const RAW_ISLAND = fs.readFileSync(path.join(ROOT, 'app/payroll/row-actions.tsx'), 'utf8');
+    const RAW_ISLAND = fs.readFileSync(path.join(ROOT, 'app/(app)/payroll/row-actions.tsx'), 'utf8');
     expect(RAW_ISLAND, 'the island still describes itself as carrying a reset form').not.toContain('resetAction');
     expect(RAW_ISLAND, 'the island still describes itself as carrying a dialog').not.toContain('ConfirmSubmit');
   });
@@ -268,8 +268,8 @@ describe('9f8cd608 · F — the route is grantable, and the copy resolves', () =
  * was written to close for Remove.
  */
 describe('9f8cd608 · G — a refusal returns to the screen, translated', () => {
-  const ACTIONS = code('app/payroll/actions.ts');
-  const RUN_SCREEN = code('app/payroll/[batchId]/page.tsx');
+  const ACTIONS = code('app/(app)/payroll/actions.ts');
+  const RUN_SCREEN = code('app/(app)/payroll/[batchId]/page.tsx');
   /** The body of one exported function, up to the next top-level `export`. */
   const bodyOf = (src: string, decl: string) => {
     const from = src.indexOf(decl);

@@ -33,7 +33,7 @@ import { countQuoted, nodeBlock } from './helpers/sidebar-source';
 import { navigationPlacement } from '../lib/navigation-workspaces';
 
 const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
-const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/layout.tsx'), 'utf8');
+const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/(app)/layout.tsx'), 'utf8');
 
 /** The ticket's three relocated screens, in its required order. */
 const TICKET_HREFS = [
@@ -180,9 +180,9 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(node!).not.toContain("href: '/admin/ai'");
     expect(SIDEBAR).toContain("['/admin/settings/notifications','notifications'] as const");
     const source = (file: string) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
-    expect(source('app/admin/settings/notifications/page.tsx')).toContain("await scopedAdmin();await requireModule('notifications')");
-    expect(source('app/admin/scheduled-actions/page.tsx')).toContain("if (!isGroupAdmin(s)) redirect('/')");
-    expect(source('app/admin/privacy/page.tsx')).toContain('await requireAdmin()');
+    expect(source('app/(app)/admin/settings/notifications/page.tsx')).toContain("await scopedAdmin();await requireModule('notifications')");
+    expect(source('app/(app)/admin/scheduled-actions/page.tsx')).toContain("if (!isGroupAdmin(s)) redirect('/')");
+    expect(source('app/(app)/admin/privacy/page.tsx')).toContain('await requireAdmin()');
   });
 
   it('4509d2b8: the Holidays row sits between Hiring Defaults and System Analysis', () => {
@@ -253,7 +253,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
 
   // fdc20776 (flyout redesign) removed per-group open/closed persistence entirely: panels are
   // show-on-demand, so there are no cookieKeys in sidebar.tsx and no nav_*_open SSR cookie reads
-  // in app/layout.tsx any more. The former cookieKey↔layout-read invariant is therefore obsolete;
+  // in app/(app)/layout.tsx any more. The former cookieKey↔layout-read invariant is therefore obsolete;
   // this guard keeps the machinery from silently coming back half-wired (a reintroduced cookieKey
   // with no SSR read was the original always-closed bug).
   it('per-group nav cookies stay fully removed (no cookieKey without an SSR read coming back)', () => {
@@ -261,7 +261,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     for (const key of keys) {
       expect(
         LAYOUT.includes(`cookieStore.get('${key}')`),
-        `app/layout.tsx SSR-reads the '${key}' cookie`,
+        `app/(app)/layout.tsx SSR-reads the '${key}' cookie`,
       ).toBe(true);
     }
   });

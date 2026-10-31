@@ -8,7 +8,7 @@
  * tests pin that requirement (no DB, no next-intl runtime — a fake `t` mirrors what next-intl gives us).
  */
 import { describe, expect, it } from 'vitest';
-import { bucketLabel } from '../app/analytics/labels';
+import { bucketLabel } from '../app/(app)/analytics/labels';
 import { UNASSIGNED_BUCKET, UNKNOWN_BUCKET } from '../core/analytics';
 
 /** A minimal next-intl-shaped translator: a known dictionary, t.has() membership, and a t(key)

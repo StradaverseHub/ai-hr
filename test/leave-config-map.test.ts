@@ -107,7 +107,7 @@ describe('a6fe37fc — the leave configuration map', () => {
         'the defect a6fe37fc exists to fix. The Reset records sub-screen is the one named exception.',
     ).toEqual(['/admin/leave-config/settings', '/admin/leave-config/history-import', '/admin/leave-config/bf-import', LEAVE_CONFIG_RECORDS_HREF]);
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
-    expect(readFileSync(new URL('../app/admin/leave-config/adjustments/page.tsx', import.meta.url), 'utf8')).toContain(
+    expect(readFileSync(new URL('../app/(app)/admin/leave-config/adjustments/page.tsx', import.meta.url), 'utf8')).toContain(
       '<Link href={LEAVE_CONFIG_RECORDS_HREF}',
     );
     // Non-vacuity, asserted on the module that is actually live: the whole new module is registered.
@@ -140,7 +140,7 @@ describe('a6fe37fc — the leave configuration map', () => {
     // five groups, so "every group is a row / every row is a group" becomes "the five groups ARE the five
     // CONFIGURATION rows, in order", with the sixth named explicitly below. The sixth row (Employee Leave
     // Inquiry) opens `/leave/employee-balances`, a Leave Inquiry screen with no page under
-    // `app/admin/leave-config/**` and its own `leaveEmployeeBalances` permission column — giving it a group
+    // `app/(app)/admin/leave-config/**` and its own `leaveEmployeeBalances` permission column — giving it a group
     // here would make `leaveConfigPageHeader` claim a page it does not own and break this file's own "every
     // screen here IS a declared route on its screen key" case.
     // r279 (3fbf7a02) — THE RULE IS UNCHANGED AND SO IS THIS FILTER: every fly-out row whose destination

@@ -4,7 +4,7 @@ import {and,asc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {operatorCustomerFeedbackMenu,setOperatorCustomerFeedbackMenu} from '../core/operator-customers';
-import {feedbackBoardOpen} from '../app/feedback/board';
+import {feedbackBoardOpen} from '../app/(app)/feedback/board';
 const FEEDBACK_MENU_SETTING='feedback.menu_enabled';
 import {setTenantSetting} from '../core/tenant-settings';
 import type {EntitledContext} from '../core/entitlements';

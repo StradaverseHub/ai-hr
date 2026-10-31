@@ -77,7 +77,7 @@ import { isModuleEnabled } from '../core/entitlements';
 // 20e759a0 — the page-level company filter: the resolver the page reads `?company=` with, and the save
 // action whose redirects have to carry that selection back.
 import { ALL_COMPANIES, resolveCompanyFilter } from '../lib/company-filter';
-import { setToilPolicyAction } from '../app/admin/actions';
+import { setToilPolicyAction } from '../app/(app)/admin/actions';
 
 let b: Base;
 /**
@@ -718,7 +718,7 @@ describe('Gate (step 9)', () => {
     // The year-end close discharges an EA First Schedule obligation: an eligible employee's unused TOIL
     // converts to pay and may never lapse. The entitlement governs whether a tenant may BANK new days,
     // not whether days already banked ever get paid. Refusing here meant a lapsed trial or a downgrade
-    // froze a debt the employee had already earned — and app/admin/toil/page.tsx hides the button that
+    // froze a debt the employee had already earned — and app/(app)/admin/toil/page.tsx hides the button that
     // calls this, so there was no surface left to settle it through.
     const { employmentId, accrualId } = await accrueRestDay(5000); // banked while entitled
     expect(await replacementBalance(employmentId)).toBe(1);
@@ -768,7 +768,7 @@ describe('Authorization on the two statutory sweeps (ADR-0077 slice 3 review)', 
    * WHY THESE EXIST. Slice 3 deleted `if (!toilEnabled()) throw new ToilDisabledError()` from
    * `runToilExpiry` and `closeReplacementLeaveYear` — correctly, because a lapsed entitlement must not
    * strand a settlement the employer already owes. But that line was ALSO the only check on the path:
-   * `app/admin/actions.ts` exports both as server actions that called plain `getSession()`, and since
+   * `app/(app)/admin/actions.ts` exports both as server actions that called plain `getSession()`, and since
    * TOIL_ENABLED is set in no tracked env file the gate had been refusing everyone on every deployment,
    * so nothing else was ever needed. Ungating it without replacing it left two mutating statutory
    * sweeps behind a bare authenticated session, one of which writes a marker that `domain_event`
@@ -877,7 +877,7 @@ describe('Authorization on the two statutory sweeps (ADR-0077 slice 3 review)', 
     expect(await replacementBalance(eB.employmentId), 'the statutory settlement reaches company B').toBe(0);
 
     // …and a third run is now a true no-op for both — reported AS a no-op, not merely behaving like one.
-    // `alreadyClosed` is the field app/admin/toil/page.tsx branches on ("already closed" vs. "closed 0
+    // `alreadyClosed` is the field app/(app)/admin/toil/page.tsx branches on ("already closed" vs. "closed 0
     // accruals"), and asserting only `processed === 0` is satisfied by a close that swept nothing for a
     // completely different reason. It also caught a real regression: the guard used to require
     // `active.length > 0`, and after a successful close every row has left 'active', so the ordinary
@@ -1141,7 +1141,7 @@ describe('Payroll interaction under a PAYROLL PARTNER’s row-level security (AD
  *
  * The reporter's screen printed all nine of their companies' policy forms one under the other — 20
  * settings and a Save button each. The configuration screen picks ONE via `?company=` — that screen is
- * `app/admin/leave-config/company-rules/page.tsx` since the a6fe37fc Round 5 cutover.
+ * `app/(app)/admin/leave-config/company-rules/page.tsx` since the a6fe37fc Round 5 cutover.
  * Two halves of that are easy to get wrong and are pinned here:
  *
  *   1. THE FALLBACK. Absent, junk, or an id that has since left the admin's scope must all land on a

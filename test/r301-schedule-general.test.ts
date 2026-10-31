@@ -1,7 +1,7 @@
-import CompanyPolicyPage from '../app/admin/attendance/settings/company-policy/page';
-import WorkOvertimePage from '../app/admin/attendance/settings/work-schedule-overtime/page';
-import DevicesPage from '../app/admin/attendance/settings/registered-devices/page';
-import {COMPANY_POLICY,WORK_SCHEDULE_OVERTIME,REGISTERED_DEVICES} from '../app/admin/attendance-policy/schedule-panel';
+import CompanyPolicyPage from '../app/(app)/admin/attendance/settings/company-policy/page';
+import WorkOvertimePage from '../app/(app)/admin/attendance/settings/work-schedule-overtime/page';
+import DevicesPage from '../app/(app)/admin/attendance/settings/registered-devices/page';
+import {COMPANY_POLICY,WORK_SCHEDULE_OVERTIME,REGISTERED_DEVICES} from '../app/(app)/admin/attendance-policy/schedule-panel';
 /**
  * 6d091cc0 (r301) — Attendance › Schedule › General becomes the ONE schedule setup page.
  *
@@ -130,28 +130,28 @@ import {
 import { createShift, listShiftsForTenant } from '../core/roster';
 import { hireEmployee } from '../core/org';
 import { registerDevice } from '../core/attendance-device';
-import { setAttendancePolicyAction } from '../app/admin/actions';
+import { setAttendancePolicyAction } from '../app/(app)/admin/actions';
 import {
   copyAttendanceRuleAction,
   createAttendanceRuleAction,
   deleteAttendanceRuleAction,
   setAttendanceRuleStatusAction,
   updateAttendanceRuleAction,
-} from '../app/admin/attendance-policy/rule-actions';
-import { revokeDeviceAction } from '../app/admin/attendance-policy/device-actions';
-import { setStatutoryComponentAction } from '../app/payroll/configuration/actions';
-import { policyLastUpdated } from '../app/admin/attendance-policy/policy-last-updated';
-import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
-import { ruleShiftChoices } from '../app/admin/attendance-policy/rules/shift-choices';
-import { WorkScheduleForm } from '../app/admin/attendance-policy/schedule/work-schedule-form';
-import SchedulePage from '../app/admin/attendance/schedule/page';
-import ViewGroupPage from '../app/admin/attendance/schedule/[ruleId]/page';
-import EditGroupPage from '../app/admin/attendance/schedule/[ruleId]/edit/page';
-import AddGroupPage from '../app/admin/attendance/schedule/new/page';
-import OldScheduleGroupPage from '../app/admin/attendance-policy/page';
-import OldWorkSchedulePage from '../app/admin/attendance-policy/schedule/page';
-import OldNewRulePage from '../app/admin/attendance-policy/rules/new/page';
-import OldEditRulePage from '../app/admin/attendance-policy/rules/[ruleId]/page';
+} from '../app/(app)/admin/attendance-policy/rule-actions';
+import { revokeDeviceAction } from '../app/(app)/admin/attendance-policy/device-actions';
+import { setStatutoryComponentAction } from '../app/(app)/payroll/configuration/actions';
+import { policyLastUpdated } from '../app/(app)/admin/attendance-policy/policy-last-updated';
+import { RuleForm } from '../app/(app)/admin/attendance-policy/rules/rule-form';
+import { ruleShiftChoices } from '../app/(app)/admin/attendance-policy/rules/shift-choices';
+import { WorkScheduleForm } from '../app/(app)/admin/attendance-policy/schedule/work-schedule-form';
+import SchedulePage from '../app/(app)/admin/attendance/schedule/page';
+import ViewGroupPage from '../app/(app)/admin/attendance/schedule/[ruleId]/page';
+import EditGroupPage from '../app/(app)/admin/attendance/schedule/[ruleId]/edit/page';
+import AddGroupPage from '../app/(app)/admin/attendance/schedule/new/page';
+import OldScheduleGroupPage from '../app/(app)/admin/attendance-policy/page';
+import OldWorkSchedulePage from '../app/(app)/admin/attendance-policy/schedule/page';
+import OldNewRulePage from '../app/(app)/admin/attendance-policy/rules/new/page';
+import OldEditRulePage from '../app/(app)/admin/attendance-policy/rules/[ruleId]/page';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const root = path.resolve(__dirname, '..');
@@ -812,7 +812,7 @@ describe('I. addressing — the per-group pages, and the panel that stayed', () 
     }
     // The panel address is retired, not merely unused: a `?editGroup=` left anywhere would be a second
     // way to open an editor, and the whole item is that there is one.
-    const panelModule = fs.readFileSync(path.join(root, 'app/admin/attendance-policy/schedule-panel.ts'), 'utf8');
+    const panelModule = fs.readFileSync(path.join(root, 'app/(app)/admin/attendance-policy/schedule-panel.ts'), 'utf8');
     expect(panelModule, 'editGroup is retired with the panel it addressed').not.toMatch(/editGroup=/);
     expect(panelModule, 'and so is the NEW_GROUP sentinel it carried').not.toMatch(/export const NEW_GROUP/);
   });

@@ -78,24 +78,24 @@ const ALWAYS_ALLOWED = [
   'core/attendance-rotation.ts',
   'core/clocking-location.ts',
   'core/attendance-clocking-import.ts', // r424 — pack implementation; imports core/attendance directly
-  'app/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal
-  'app/admin/attendance/', // shift-settings screen (shared shift library page under the Attendance nav)
-  'app/admin/attendance-policy/', // policy + rule library + device admin
-  'app/admin/attendance-allowance/',
+  'app/(app)/attendance/', // module routes: records/daily/individual/import/ot-report + R63–R65 clock portal
+  'app/(app)/admin/attendance/', // shift-settings screen (shared shift library page under the Attendance nav)
+  'app/(app)/admin/attendance-policy/', // policy + rule library + device admin
+  'app/(app)/admin/attendance-allowance/',
   // 639bf4a5 (r336) — THE CLOCKING-SITE ADMIN PREFIX LEFT THIS LIST, and this ratchet is tighter for it.
   //
-  // The entry read (repo-relative) app/admin/locations/ and was commented "clocking-site admin
+  // The entry read (repo-relative) app/(app)/admin/locations/ and was commented "clocking-site admin
   // (clocking-location is pack-owned)". It authorised that whole route tree to import
   // core/clocking-location directly, because the register genuinely WAS an attendance screen. It is not
   // any more: the reporter asked for the work-site setup to live under Organization, the tree moved to
-  // app/admin/work-locations/ and the row left ATTENDANCE_NAV (packs/attendance/index.ts). Its one
+  // app/(app)/admin/work-locations/ and the row left ATTENDANCE_NAV (packs/attendance/index.ts). Its one
   // direct import of the boundary went with it — the list reads listClockingLocations through
-  // packs/attendance/service now, exactly like app/admin/actions.ts and the edit page already did.
+  // packs/attendance/service now, exactly like app/(app)/admin/actions.ts and the edit page already did.
   //
   // ⚠️ DO NOT RE-ADD THE MOVED PREFIX. This is a SHRINK, which is the only direction this file moves in;
   // replacing the deleted line with the new directory would re-open the same hole at a new address and
   // undo the ownership half of the item. If a NEW screen genuinely belongs to the attendance pack, add
-  // it — but app/admin/work-locations/ is an ORGANIZATION surface and consumes the pack through its
+  // it — but app/(app)/admin/work-locations/ is an ORGANIZATION surface and consumes the pack through its
   // published facade like every other outside caller. Pinned by
   // test/work-location-organization-relocation.test.ts.
 ];

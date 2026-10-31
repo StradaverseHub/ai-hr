@@ -85,7 +85,7 @@ describe('Atelier reaches the app only through its own scope', () => {
     }
   });
   it('the layout imports it as a module (never an @import a warm build cache can drop); the variant stays in globals', () => {
-    const layout = read('app/layout.tsx');
+    const layout = read('app/(app)/layout.tsx');
     const globals = read('app/globals.css');
     expect(layout).toMatch(/^import '\.\/atelier\.css';$/m);
     expect(layout.indexOf("import './atelier.css';")).toBeGreaterThan(layout.indexOf("import './globals.css';"));
@@ -124,7 +124,7 @@ describe('one navigation source', () => {
 });
 
 describe('Atelier Home', () => {
-  const page = read('app/page.tsx');
+  const page = read('app/(app)/page.tsx');
   const home = read('app/dashboard-atelier.tsx');
   it('offers the ask box only to someone the assistant can answer', () => {
     expect(page).toContain('mayUseAssistant(s)');

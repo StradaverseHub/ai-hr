@@ -28,8 +28,8 @@ import {
   defaultVersion,
   formerIdRedirect,
   parseDestination,
-} from '../app/payroll/statutory-forms/criteria';
-import { viewerQuery } from '../app/payroll/statutory-forms/viewer-params';
+} from '../app/(app)/payroll/statutory-forms/criteria';
+import { viewerQuery } from '../app/(app)/payroll/statutory-forms/viewer-params';
 import { MONO_UNDERLINE_FIELD } from '../components/monolith/classes';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -46,13 +46,13 @@ const code = (p: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const OPEN = code('app/payroll/statutory-forms/open/page.tsx');
-const EA_PAGE = code('app/payroll/statutory-forms/ea/page.tsx');
-const PCB_PAGE = code('app/payroll/statutory-forms/pcb2ii/page.tsx');
-const EA_VIEW = code('app/payroll/statutory-forms/ea/view/page.tsx');
-const PCB_VIEW = code('app/payroll/statutory-forms/pcb2ii/view/page.tsx');
-const PICKER = code('app/payroll/statutory-forms/ea/employee-picker.tsx');
-const SHELF = code('app/payroll/statutory-forms/page.tsx');
+const OPEN = code('app/(app)/payroll/statutory-forms/open/page.tsx');
+const EA_PAGE = code('app/(app)/payroll/statutory-forms/ea/page.tsx');
+const PCB_PAGE = code('app/(app)/payroll/statutory-forms/pcb2ii/page.tsx');
+const EA_VIEW = code('app/(app)/payroll/statutory-forms/ea/view/page.tsx');
+const PCB_VIEW = code('app/(app)/payroll/statutory-forms/pcb2ii/view/page.tsx');
+const PICKER = code('app/(app)/payroll/statutory-forms/ea/employee-picker.tsx');
+const SHELF = code('app/(app)/payroll/statutory-forms/page.tsx');
 
 const LOCALES = { en, ms, ta, th, vi, zh } as const;
 const ns = (d: unknown) => (d as { payroll: { statutoryForms: Record<string, string> } }).payroll.statutoryForms;
@@ -266,13 +266,13 @@ describe('r402 · words in all six locales; old keys retired, never deleted', ()
 
   it('no screen or component renders a retired key', () => {
     const files = [
-      'app/payroll/statutory-forms/page.tsx',
-      'app/payroll/statutory-forms/open/page.tsx',
-      'app/payroll/statutory-forms/[formId]/page.tsx',
-      'app/payroll/statutory-forms/ea/page.tsx',
-      'app/payroll/statutory-forms/pcb2ii/page.tsx',
-      'app/payroll/statutory-forms/ea/view/page.tsx',
-      'app/payroll/statutory-forms/pcb2ii/view/page.tsx',
+      'app/(app)/payroll/statutory-forms/page.tsx',
+      'app/(app)/payroll/statutory-forms/open/page.tsx',
+      'app/(app)/payroll/statutory-forms/[formId]/page.tsx',
+      'app/(app)/payroll/statutory-forms/ea/page.tsx',
+      'app/(app)/payroll/statutory-forms/pcb2ii/page.tsx',
+      'app/(app)/payroll/statutory-forms/ea/view/page.tsx',
+      'app/(app)/payroll/statutory-forms/pcb2ii/view/page.tsx',
     ];
     for (const f of files) {
       const src = code(f);

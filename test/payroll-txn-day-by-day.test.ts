@@ -51,7 +51,7 @@ import {
   duplicateDayLineKeys,
   quantityKey,
   type DayLine,
-} from '../app/payroll/transactions/individual/day-lines';
+} from '../app/(app)/payroll/transactions/individual/day-lines';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════

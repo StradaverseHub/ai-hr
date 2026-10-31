@@ -5,8 +5,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-import { KpiResultsTable } from '../app/performance/onehr/kpi-results-table';
-import { JourneyPanel, JourneyProgressProvider, JourneySteps } from '../app/performance/workspace/journey-panel';
+import { KpiResultsTable } from '../app/(app)/performance/onehr/kpi-results-table';
+import { JourneyPanel, JourneyProgressProvider, JourneySteps } from '../app/(app)/performance/workspace/journey-panel';
 
 const policy=defaultPolicy(framework);
 function kpi(title:string,patch:Partial<KPI>={}):KPI {

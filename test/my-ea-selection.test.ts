@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {resolvePersonalEaSelection} from '../app/me/ea/selection-state';
+import {resolvePersonalEaSelection} from '../app/(app)/me/ea/selection-state';
 const sources=[
  {year:'2024',employmentId:'old-employment',companyId:'old-employer',isCurrent:false},
  {year:'2025',employmentId:'own-employment',companyId:'old-employer',isCurrent:false},

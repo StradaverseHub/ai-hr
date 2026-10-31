@@ -69,9 +69,9 @@ describe('My Team keeps its exact role boundary inside People',()=>{
   });
 
   it('the real server shell passes the same role predicate that guards the page',()=>{
-    const layout=readFileSync(resolve(process.cwd(),'app/layout.tsx'),'utf8');
+    const layout=readFileSync(resolve(process.cwd(),'app/(app)/layout.tsx'),'utf8');
     expect(layout).toContain('canAccessTeam={hasTeamAccess(session)}');
-    const page=readFileSync(resolve(process.cwd(),'app/manage/my-team/page.tsx'),'utf8');
+    const page=readFileSync(resolve(process.cwd(),'app/(app)/manage/my-team/page.tsx'),'utf8');
     expect(page).toContain('await requireTeamAccess(s)');
   });
 });

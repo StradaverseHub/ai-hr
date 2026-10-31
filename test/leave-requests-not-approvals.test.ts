@@ -6,8 +6,8 @@
  *
  *  1. The premise was already true, in a way the reporter could not see. The Requests table on /leave has
  *     never carried an approve or reject control — consultant feedback #8/#10 took inline approve/reject
- *     off that page ("approvals live in the Approvals inbox", header comment of app/leave/page.tsx). What
- *     survived was `decideLeaveAction` in app/leave/actions.ts: a leave decide path with no caller anywhere
+ *     off that page ("approvals live in the Approvals inbox", header comment of app/(app)/leave/page.tsx). What
+ *     survived was `decideLeaveAction` in app/(app)/leave/actions.ts: a leave decide path with no caller anywhere
  *     in the repo, yet still a callable endpoint because every export of a 'use server' module is one.
  *     THAT was the duplicate way in, and r80 removed it. §1 proves it is gone AND that the capability it
  *     offered still exists under Approval Items, for both the single and the bulk decide path.
@@ -29,7 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { readdirSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 
-// app/leave/actions.ts is a server module: give it the Next/next-intl surfaces the harness lacks, exactly
+// app/(app)/leave/actions.ts is a server module: give it the Next/next-intl surfaces the harness lacks, exactly
 // as test/leave-apply-day-breakdown.test.ts does, so it can be imported for the export-surface check.
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => null) }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn(() => undefined), notFound: vi.fn(() => undefined) }));
@@ -39,20 +39,20 @@ vi.mock('next-intl/server', () => ({
   getTranslations: async () => (k: string) => k,
 }));
 
-import * as leaveActions from '../app/leave/actions';
+import * as leaveActions from '../app/(app)/leave/actions';
 import * as coreLeave from '../core/leave';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const leavePage = read('app/leave/page.tsx');
+const leavePage = read('app/(app)/leave/page.tsx');
 const ownHistory = read('components/leave/own-leave-history.tsx');
-const historyPage = read('app/leave/history/page.tsx');
-const balancesPage = read('app/leave/employee-balances/page.tsx');
-const leaveActionsSrc = read('app/leave/actions.ts');
-const approvalsPage = read('app/approvals/page.tsx');
-const approvalsActions = read('app/approvals/actions.ts');
-const recordsPage = read('app/leave/employee-records/page.tsx');
+const historyPage = read('app/(app)/leave/history/page.tsx');
+const balancesPage = read('app/(app)/leave/employee-balances/page.tsx');
+const leaveActionsSrc = read('app/(app)/leave/actions.ts');
+const approvalsPage = read('app/(app)/approvals/page.tsx');
+const approvalsActions = read('app/(app)/approvals/actions.ts');
+const recordsPage = read('app/(app)/leave/employee-records/page.tsx');
 
 /** Every .ts/.tsx under the app's own source roots (node_modules and test/ excluded by construction). */
 const sourceFiles = (): string[] => {
@@ -69,7 +69,7 @@ const sourceFiles = (): string[] => {
 };
 
 describe('§1 r80 removal: the leave decide path exists ONLY under Approval Items', () => {
-  it('app/leave no longer exports a leave decide action', () => {
+  it('app/(app)/leave no longer exports a leave decide action', () => {
     // The load-bearing assertion: the module's PUBLIC surface, not a grep. A 'use server' export is a
     // callable endpoint, so "no caller in the repo" would not have been enough to call it dead.
     expect(Object.keys(leaveActions)).not.toContain('decideLeaveAction');
@@ -153,10 +153,10 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
   });
 
   it('ENUMERATION: the filtered export route is DELETED, not orphaned', () => {
-    // INVERTED. r74 Decision 5 found app/leave/page.tsx was the export route's ONLY link in the whole
+    // INVERTED. r74 Decision 5 found app/(app)/leave/page.tsx was the export route's ONLY link in the whole
     // application, so removing the table would have stranded it. It is deleted in the same change.
     expect(leavePage).not.toContain('/leave/export?');
-    expect(() => read('app/leave/export/route.ts')).toThrow();
+    expect(() => read('app/(app)/leave/export/route.ts')).toThrow();
     expect(sourceFiles().filter((f) => read(f).includes('/leave/export'))).toEqual([]);
     expect(approvalsPage).not.toMatch(/exportHref/);
   });
@@ -226,7 +226,7 @@ describe('§2 r80 hold: the Requests subsection is not a second Approval Items',
     // REPOINTED BY 388e53c2, not weakened: the admin landing view — the employee listing and its
     // left-side nav — moved to the Team Leave Tracker route, so it is asserted there. What this test is
     // actually about is that the ORG-WIDE REQUEST TABLE stayed removed, and that is checked on both.
-    const trackerPage = read('app/leave/tracker/page.tsx');
+    const trackerPage = read('app/(app)/leave/tracker/page.tsx');
     // r378 removes the listing; legacy admin inquiry URLs forward to the selected employee's balances.
     expect(trackerPage).toContain('if (admin && !calendarIntent) {');
     expect(trackerPage).toContain('redirect(`/leave/employee-balances');

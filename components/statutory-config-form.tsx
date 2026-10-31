@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { inputCls, Button, Card } from '@/components/ui';
 import { BandGridEditor, type BandColumn } from '@/components/band-grid-editor';
-import { saveStatutoryAction } from '@/app/payroll/configuration/actions';
+import { saveStatutoryAction } from '@/app/(app)/payroll/configuration/actions';
 // Rung 5b (ADR-0080 D1/D6): band/ruleset types come from the contract, and the built-in EPF Third
 // Schedule fallback tables are THREADED IN by the server pages (pack.payroll.epfThirdSchedule) —
 // this client component never names the MY tables.

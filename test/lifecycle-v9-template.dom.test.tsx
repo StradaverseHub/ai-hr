@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { TemplateVersionEditor } from '../app/lifecycle/v9/template-version-editor';
+import { TemplateVersionEditor } from '../app/(app)/lifecycle/v9/template-version-editor';
 import type { TemplateVersion } from '../lib/lifecycle-v9-model';
 
 function Harness({ disabled = false }: { disabled?: boolean }) {

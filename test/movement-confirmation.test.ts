@@ -384,7 +384,7 @@ describe('3ced1040 — Confirmation behaves like Promotion', () => {
 
   it('SOURCE GUARD: the New Event form renders the grid for Confirmation and explains its date', () => {
     const src = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
+      path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx'),
       'utf8',
     );
     // The client now consumes the pure kind owner instead of maintaining a second comparison list.

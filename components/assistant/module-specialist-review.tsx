@@ -5,7 +5,7 @@ import {getTranslations} from 'next-intl/server';
 import {Card,inputCls,btnPrimary} from '../ui';
 import type {AgentModuleCode} from '../../lib/ai/module-agents';
 import type {specialistReviewWorkspaceTx} from '../../core/module-agent-releases';
-import {createSpecialistCandidateAction,evaluateSpecialistCandidateAction,promoteSpecialistCandidateAction,rollbackSpecialistCandidateAction,runSpecialistJobAction} from '../../app/assistant/specialist-review-actions';
+import {createSpecialistCandidateAction,evaluateSpecialistCandidateAction,promoteSpecialistCandidateAction,rollbackSpecialistCandidateAction,runSpecialistJobAction} from '../../app/(app)/assistant/specialist-review-actions';
 type View=NonNullable<Awaited<ReturnType<typeof specialistReviewWorkspaceTx>>>;
 
 /** Human POST only; opening this chooser cannot consume a promoted candidate's job allowance. */

@@ -34,7 +34,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { leaveBalances } from '../core/read';
 import { todayInKualaLumpur } from '../core/leave';
-import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows } from '../app/(app)/leave/employee-balances/rows';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 let b: Base;
@@ -249,8 +249,8 @@ describe('3ddae357: the four columns the ticket is about now move with the date'
     const exported = await employeeBalanceRows(adminCtx(b), emp, asOf, 'en', { q: undefined, typeIds: [], dir: 'asc' });
     expect(exported).toEqual(screen);
 
-    const route = read('app/leave/employee-balances/export/route.ts');
-    const page = read('app/leave/employee-balances/page.tsx');
+    const route = read('app/(app)/leave/employee-balances/export/route.ts');
+    const page = read('app/(app)/leave/employee-balances/page.tsx');
     // Same validation and same fallback on both sides, so an export link can never resolve to a
     // different date than the page it was clicked from.
     expect(route).toContain("parseInquiryQuery(inquirySearchParams(sp), 'balances')");
@@ -271,7 +271,7 @@ describe('3ddae357: the four columns the ticket is about now move with the date'
 
 describe('3ddae357: the page comment no longer claims something false', () => {
   it('the header records which columns move and why, instead of asserting all of them do', () => {
-    const page = read('app/leave/employee-balances/page.tsx');
+    const page = read('app/(app)/leave/employee-balances/page.tsx');
     // The retired claim, verbatim from before this change.
     expect(
       page.includes('Changing the as-at date re-runs the breakdown, so YTD Entitled / Taken / Pending / Adjustment /'),
@@ -281,7 +281,7 @@ describe('3ddae357: the page comment no longer claims something false', () => {
   });
 
   it('rows.ts passes the SAME asOf to both of its reads', () => {
-    const rows = read('app/leave/employee-balances/rows.ts');
+    const rows = read('app/(app)/leave/employee-balances/rows.ts');
     // ec991c2a: `includeArchived: true` joined `includeHidden: true` here — this is an ADMIN read and an
     // archived leave type must keep showing the balance standing under it. The decision this guard pins is
     // untouched: the SAME asOf reaches both reads.

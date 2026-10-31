@@ -10,7 +10,7 @@ vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [
   { code: 'DAY', name: 'Following day shift', startTime: '09:00', endTime: '17:00', weeklyPattern: [], halfPattern: [], offPattern: [] },
 ] }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) => key }));
-import Page from '../app/attendance/clock/page';
+import Page from '../app/(app)/attendance/clock/page';
 describe('r378 overnight clock page identity', () => {
   it('resolves the shift caption for the authoritative open attendance date rather than the wall date', async () => {
     const wallDate = todayInKualaLumpur();

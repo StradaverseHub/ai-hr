@@ -26,7 +26,7 @@ import {
   TXN_SOURCE_LABELS,
   type StrandedInputRow,
   type TxnPanelInputRow,
-} from '../app/payroll/transactions/individual/existing-context';
+} from '../app/(app)/payroll/transactions/individual/existing-context';
 import { INDIVIDUAL_TXN_STATUS_FILTERS } from '../core/payroll-view';
 import { TXN_SOURCES } from '../core/payroll-individual-txn';
 

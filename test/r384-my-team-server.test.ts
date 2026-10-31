@@ -8,7 +8,7 @@ const mocks=vi.hoisted(()=>({session:vi.fn(),read:vi.fn(),locale:vi.fn()}));
 vi.mock('@/lib/scope',()=>({scopedSession:mocks.session}));
 vi.mock('@/core/my-team',()=>({readMyTeam:mocks.read}));
 vi.mock('next-intl/server',()=>({getLocale:mocks.locale}));
-import {GET} from '../app/manage/my-team/period/route';
+import {GET} from '../app/(app)/manage/my-team/period/route';
 const company='11111111-1111-4111-8111-111111111111';
 const outside='33333333-3333-4333-8333-333333333333';
 const source=(path:string)=>readFileSync(resolve(process.cwd(),path),'utf8');
@@ -47,11 +47,11 @@ describe('My Team server boundary',()=>{
   expect(mocks.read).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({companyIds:[]}));expect(response.status).toBe(403);
  });
  it('keeps an awaited page guard and fresh owner lookup on every data/write destination',()=>{
-  expect(source('app/manage/my-team/layout.tsx')).toContain("moduleLayout('leave')");
-  const page=source('app/manage/my-team/page.tsx');expect(page).toContain('export default async function MyTeamPage');expect(page).toMatch(/await requireTeamAccess\(s\)/);
-  for(const path of ['app/manage/my-team/period/route.ts','app/manage/my-team/export/route.ts']){const body=source(path);expect(body,path).toContain('await scopedSession()');expect(body,path).toContain('hasTeamAccess(s)');expect(body,path).toContain('await readMyTeam(s,');}
+  expect(source('app/(app)/manage/my-team/layout.tsx')).toContain("moduleLayout('leave')");
+  const page=source('app/(app)/manage/my-team/page.tsx');expect(page).toContain('export default async function MyTeamPage');expect(page).toMatch(/await requireTeamAccess\(s\)/);
+  for(const path of ['app/(app)/manage/my-team/period/route.ts','app/(app)/manage/my-team/export/route.ts']){const body=source(path);expect(body,path).toContain('await scopedSession()');expect(body,path).toContain('hasTeamAccess(s)');expect(body,path).toContain('await readMyTeam(s,');}
   // r392 (33930be9): the attention panel's Approve/Reject and Mark reviewed actions were removed with the panel;
   // My Team has no write destination left (leave is decided in Approval Items). See test/r392-my-team-sections-removed.dom.test.tsx.
-  expect(existsSync(resolve(process.cwd(),'app/manage/my-team/actions.ts'))).toBe(false);
+  expect(existsSync(resolve(process.cwd(),'app/(app)/manage/my-team/actions.ts'))).toBe(false);
  });
 });

@@ -963,7 +963,7 @@ export function listLeaveTypes(
         id: leaveType.id,
         code: leaveType.code,
         // 65f466e2 — the role marker travels with every leave-type read, because the callers that decide
-        // "is this Emergency Leave" (app/leave/actions.ts's attachment backstop, the admin panel's
+        // "is this Emergency Leave" (app/(app)/leave/actions.ts's attachment backstop, the admin panel's
         // statutory gates) must ask the role. Production codes its Emergency type `EL`, so a caller left
         // comparing the code answers "no" for the very type it is asking about.
         role: leaveType.role,
@@ -1326,7 +1326,7 @@ export function listEligibleLeaveTypesFor(ctx: SessionContext, employmentId: str
  * was for and the type list had to re-draw for that person rather than staying the manager's own. 5206539f
  * deleted that surface. Applying on somebody else's behalf is now the named permission
  * `leave.apply_on_behalf` (lib/payroll-permissions.ts); a line manager holds nothing by virtue of being one,
- * gets no employee selector at all, and app/leave/page.tsx offers the viewer their OWN eligible types
+ * gets no employee selector at all, and app/(app)/leave/page.tsx offers the viewer their OWN eligible types
  * (`listEligibleLeaveTypesFor`) and builds no union of anything. The function and its tests are kept because
  * the multi-employment question is real and correct, not because anything is waiting on it.
  *
@@ -1422,7 +1422,7 @@ const leaveRequestSelection = {
   durationType: leaveRequest.durationType,
   hours: leaveRequest.hours,
   // Hourly-leave time window (0129): surfaced on the admin/leave history table AND the approvals inbox
-  // (app/approvals/page.tsx) so the approver sees the actual window (09:00–11:00), not a bare days
+  // (app/(app)/approvals/page.tsx) so the approver sees the actual window (09:00–11:00), not a bare days
   // figure. NULL for full_day / half_day rows.
   fromTime: leaveRequest.fromTime,
   toTime: leaveRequest.toTime,
@@ -3421,7 +3421,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
           }))
           // ORDERED, because badges sit side by side and a set that reorders between two requests reads as
           // the figures having changed. The key is the grid's OWN default sort key (`r.code || r.leaveType`,
-          // app/leave/employee-balances/rows.ts), so the badges name the borrowers in the order their rows
+          // app/(app)/leave/employee-balances/rows.ts), so the badges name the borrowers in the order their rows
           // appear below — never the order the query happened to return them in.
           .sort((x, y) =>
             (x.code || x.leaveType).localeCompare(y.code || y.leaveType, locale, { sensitivity: 'base' }),
@@ -3447,7 +3447,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
            * ⚠️ THE INVARIANT IN THE HEADER ABOVE IS ABOUT `balance`, NOT ABOUT THIS COLUMN, and it is untouched.
            * "Across a pool, sum(balance) equals the pool's own ledger balance" still holds for the reason it
            * always did: a borrower's `balance` is set to 0 eight lines below and the source keeps its own ledger
-           * figure. NOTHING sums `share` or `pendingShare` — they are rendered (app/leave/employee-balances/
+           * figure. NOTHING sums `share` or `pendingShare` — they are rendered (app/(app)/leave/employee-balances/
            * page.tsx, components/leave/leave-balance-table.tsx), passed through (rows.ts, leave-balance-row.ts)
            * and exported (export/route.ts), and no consumer performs arithmetic on either. Flipping the DISPLAY
            * sign therefore cannot move a balance, and test/2a57a007-el-shared-pool-display.test.ts pins both
@@ -3576,7 +3576,7 @@ export async function leaveBalancesTx(tx: Tx, ctx: SessionContext, employmentId:
        * DESIGN: a shared GROUP is a combined CEILING on what may be taken (`enforceSharedLeaveGroupLimit`),
        * `balance_source_type_id` is a LEDGER ROUTE. Reconciling them would either put five types on a
        * balance they do not draw or drop five from a ceiling that caps them. A member that keeps its card
-       * says so on the card instead (the group's ceiling line, app/leave/page.tsx).
+       * says so on the card instead (the group's ceiling line, app/(app)/leave/page.tsx).
        * Pinned in test/8d3a7bff-special-leave-one-card.test.ts.
        *
        * ⚠️ r343 (1478c281) — AND THE SECOND CONDITION, IN THIS SAME GATE: A MEMBER THAT HOLDS NOTHING OF ITS
@@ -5657,7 +5657,7 @@ export function dashboardStats(ctx: SessionContext, companyIds?: string[]) {
     // which is two faults sharing one line.
     //
     //   1. With a selection, `scopeIds.length` is how many companies are TICKED IN THE SWITCHER — a
-    //      filter size, not a company count. app/page.tsx points this tile at /admin/organization,
+    //      filter size, not a company count. app/(app)/page.tsx points this tile at /admin/organization,
     //      which lists every company the viewer can administer and ignores the switcher outright
     //      (0f1802bf). One company ticked out of eight rendered "1" on a tile whose own destination
     //      then showed eight, which is what sent an entire round chasing the wrong screen.
@@ -6703,7 +6703,7 @@ export function allowancePreviewForPeriod(
  * The payslips an employee may SEE (ADR-0088): their ACTIVE employments' slips from runs that are closed
  * AND whose release instant has passed. `myPayslips` returns unreleased rows too, flagged `released:false`
  * (the admin publication screens and the tests need them), and until now the "released only" rule lived
- * in app/me/page.tsx alone. A second consumer — the mobile API — must not have to re-derive it, so it is
+ * in app/(app)/me/page.tsx alone. A second consumer — the mobile API — must not have to re-derive it, so it is
  * stated here once. The predicate is the web page's own, verbatim (`status === 'closed' && released`).
  */
 export async function myReleasedPayslips(ctx: SessionContext) {

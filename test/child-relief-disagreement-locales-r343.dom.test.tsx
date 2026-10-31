@@ -22,7 +22,7 @@
  * 'string')` — against a key list typed into the test. That proves nothing about the screen: a key the page
  * asks for and no catalogue has would still have passed, and next-intl was never on the path, which is the
  * only thing that can raise MISSING_MESSAGE or FORMATTING_ERROR. Instead this file READS
- * app/admin/personnel/child-relief/page.tsx and extracts every `t('…')` the page asks for (`PAGE_KEYS`); the
+ * app/(app)/admin/personnel/child-relief/page.tsx and extracts every `t('…')` the page asks for (`PAGE_KEYS`); the
  * per-locale block below renders all of them through `useTranslations('people.childRelief')` in the
  * `PageCaptions` harness, and a separate block asserts the extraction itself found the Card's nine captions,
  * so a regex that silently matched nothing cannot make the rest vacuous. That Card is gated on
@@ -117,7 +117,7 @@ const resolves = (el: Element | null, what: string) => {
 // `fileURLToPath` throws "The URL must be of scheme file". This is how the other DOM tests that read source
 // do it (test/bb2b2e86-uncovered-collapse.dom.test.tsx, test/23e7dac3-cycle-order-selector.dom.test.tsx).
 const PAGE_SOURCE = readFileSync(
-  resolve(process.cwd(), 'app/admin/personnel/child-relief/page.tsx'),
+  resolve(process.cwd(), 'app/(app)/admin/personnel/child-relief/page.tsx'),
   'utf8',
 );
 const PAGE_KEYS = [...new Set([...PAGE_SOURCE.matchAll(/\bt\('([A-Za-z0-9_]+)'\)/g)].map((mm) => mm[1]))];

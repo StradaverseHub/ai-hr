@@ -16,7 +16,7 @@
  *       balance". No table at all gives the other sentence; a covered employee whose days are spent keeps
  *       the old one. Nothing in core/leave.ts's DECISION changes — the read happens after the throw.
  *
- * NON-VACUITY (§C): put `return t('insufficientBalance')` back in app/me/actions.ts's branch and
+ * NON-VACUITY (§C): put `return t('insufficientBalance')` back in app/(app)/me/actions.ts's branch and
  * "no scheme covers this employee ⇒ the scheme sentence" fails on its `toContain`.
  */
 import fs from 'node:fs';
@@ -61,7 +61,7 @@ import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { requestLeave, entitlementCoverageFor, InsufficientLeaveBalanceOnSubmitError } from '../core/leave';
 import { createEntitlementTemplate, createEligibilityRule } from '../core/entitlement-template';
-import { localizeLeaveError } from '../app/me/actions';
+import { localizeLeaveError } from '../app/(app)/me/actions';
 import type { SessionContext } from '../db/client';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, createAppUser, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -185,8 +185,8 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
     // The retained HR inquiry/export and employee table read the SAME key through the shared map, so a
     // second, personal label cannot reappear on one of them without leaving this map.
     for (const rel of [
-      'app/leave/employee-balances/page.tsx',
-      'app/leave/employee-balances/export/route.ts',
+      'app/(app)/leave/employee-balances/page.tsx',
+      'app/(app)/leave/employee-balances/export/route.ts',
       'components/leave/leave-balance-table.tsx',
     ]) {
       const src = read(rel);
@@ -194,7 +194,7 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
       expect(src, `${rel} carries a personal label`).not.toContain('covers you');
     }
     // 39306a9e retires Personnel's duplicate balance panel; its status mapping must leave with it.
-    const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
+    const personnel = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(personnel).not.toContain('ENTITLEMENT_STATUS_LABEL_KEY');
     expect(personnel).not.toContain('<EntitlementBreakdown');
     // m2 — the no-table copy names the Leave types screen, not a path that no longer exists.
@@ -245,8 +245,8 @@ describe('§A · one vocabulary: the renamed strings say "benefit scheme", in si
 
 describe('§B · the mounts: one explainer key on both tables-block mounts, the note in both card states', () => {
   it('tab 3 of the leave type renders the explainer; the Entitlement tables tab deliberately no longer does', () => {
-    const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
-    const page = read('app/admin/leave-config/entitlement-tables/page.tsx');
+    const tabs = read('app/(app)/admin/leave-config/types/leave-type-tabs.tsx');
+    const page = read('app/(app)/admin/leave-config/entitlement-tables/page.tsx');
     expect(tabs).toContain("tTabs('entitlementStep.schemeExplainer')");
     /**
      * r270 (995387c6) — THE PAGE HALF OF THIS GUARD IS REVERSED, NOT DROPPED, and the reversal is the
@@ -272,7 +272,7 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
   });
 
   it('39306a9e r2 removes the Personnel scheme readout while retaining its canonical owner', () => {
-    const src = read('app/admin/personnel/[employmentId]/page.tsx');
+    const src = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(src).not.toContain('section-benefit-scheme');
     expect(src).not.toContain('benefitSchemeView(');
     expect(src).not.toContain('benefitSchemeCard');
@@ -281,7 +281,7 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
   });
 
   it('the schemes list has its own "Scheme name" header and the block carries the intro and the naming tip', () => {
-    const src = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const src = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(src).toContain("t('colSchemeName')");
     expect(src).toContain("t('rulesIntro')");
     expect(src).toContain("t('rulesNamingTip')");
@@ -297,7 +297,7 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
   });
 
   it('the /me localizer consults the engine on the insufficient-balance branch, through the pack facade', () => {
-    const src = read('app/me/actions.ts');
+    const src = read('app/(app)/me/actions.ts');
     const branch = src.slice(src.indexOf('if (e instanceof InsufficientLeaveBalanceOnSubmitError)'));
     const head = branch.slice(0, branch.indexOf("return t('insufficientBalance');"));
     expect(head).toContain('entitlementCoverageFor(');
@@ -307,7 +307,7 @@ describe('§B · the mounts: one explainer key on both tables-block mounts, the 
     // Both /me apply paths hand the localizer the subject of the refusal.
     expect((src.match(/subject: 'self' \}/g) ?? []).length).toBe(2);
     // …and so does the /leave apply path, which is the only one that can refuse on somebody else's behalf.
-    const leaveActions = read('app/leave/actions.ts');
+    const leaveActions = read('app/(app)/leave/actions.ts');
     expect(leaveActions).toContain("subject: refusedOnBehalf ? 'other' : 'self'");
   });
 });

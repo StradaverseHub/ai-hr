@@ -23,7 +23,7 @@ test('actual canonical release filter imports under installed tsx and parses eve
  const result=spawnSync(process.execPath,['--import','tsx','--input-type=module','-e',script],{cwd:process.cwd(),encoding:'utf8',timeout:30000});assert.equal(result.status,0,result.stderr);
  const args=JSON.parse(result.stdout),excluded=canonicalSourceExclusions(args);
  for(const path of ['.env.production','.next','node_modules','nested/node_modules','mobile/android','mobile/secret.pem','docs/adr','scratchpad','.improve'])assert.ok(excluded(path),path);
- for(const path of ['app/layout.tsx','.github/ci/staging-build-install.mjs','mobile/app/index.tsx','docs/current.md'])assert.ok(!excluded(path),path);
+ for(const path of ['app/(app)/layout.tsx','.github/ci/staging-build-install.mjs','mobile/app/index.tsx','docs/current.md'])assert.ok(!excluded(path),path);
 });
 test('real installer CLI/package refuses cleanup-session outside canonical staging before I/O',()=>{
  const result=spawnSync(process.execPath,[join(root,'.github/ci/staging-build-install.mjs'),'cleanup-session','a'.repeat(40),'00000000-0000-4000-8000-000000000001','00000000-0000-4000-8000-000000000002'],{cwd:root,encoding:'utf8',timeout:10000});assert.equal(result.status,1);assert.match(result.stderr,/existing Linux alpha\/staging source/);

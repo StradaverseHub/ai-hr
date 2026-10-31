@@ -47,7 +47,7 @@ vi.mock('next/navigation', () => ({
 
 import { adminCtx, closeAll, owner, resetDb, seedBase, type Base } from './harness';
 import * as schema from '../db/schema';
-import { saveCompanyGeneralTabAction } from '../app/admin/actions';
+import { saveCompanyGeneralTabAction } from '../app/(app)/admin/actions';
 import { COMPANY_GENERAL_TAB_SECTION_ORDER } from '../lib/company-tab-sections';
 // 15e5bd93 rev 2 (r353) — `COMPANY_STATUTORY_TAB_SECTION_ORDER` WAS IMPORTED HERE and the module is
 // retired: the reporter contested r352's consolidated statutory Save along with the in-tab editing it
@@ -185,13 +185,13 @@ describe('§2 the fence on the server', () => {
 
   it('every id in the declared order has a writer, and the order is the reading order', () => {
     expect([...COMPANY_GENERAL_TAB_SECTION_ORDER]).toEqual(['company', 'cycle', 'parent']);
-    const src = read('app/admin/actions.ts');
+    const src = read('app/(app)/admin/actions.ts');
     const map = src.slice(src.indexOf('const writers: Record<string'), src.indexOf('const saved: string[] = [];'));
     for (const id of COMPANY_GENERAL_TAB_SECTION_ORDER) expect(map, id).toMatch(new RegExp(`\\b${id}:`));
   });
 
   it('the per-card action and the one Save reach the SAME writer', () => {
-    const src = read('app/admin/actions.ts');
+    const src = read('app/(app)/admin/actions.ts');
     for (const [action, helper] of [
       ['updateCompanyAction', 'applyCompanyDetailsSection'],
       ['updateCompanyDefaultCycleAction', 'applyDefaultCycleSection'],

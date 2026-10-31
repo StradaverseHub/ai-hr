@@ -9,7 +9,7 @@ import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { employeeDetail, listEmployees } from '../core/read';
-import { matchEmployees } from '../app/admin/personnel/employee-search';
+import { matchEmployees } from '../app/(app)/admin/personnel/employee-search';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 // ───────────────────────────── 1. the refusal (against the database) ─────────────────────────────

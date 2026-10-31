@@ -1,6 +1,6 @@
 import { expect,it,vi } from 'vitest';
 import { fireEvent,render,screen } from '@testing-library/react';
-import { DefinitionDelete,definitionDeleteReason } from '../app/lifecycle/v9/definition-delete';
+import { DefinitionDelete,definitionDeleteReason } from '../app/(app)/lifecycle/v9/definition-delete';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 it('requires saved usage and keeps the deletion confirmation cancellable',()=>{
   const remove=vi.fn(),view=render(<DefinitionDelete kind="email" name="Fictional email" reason="" saved={false} editable remove={remove}/>);

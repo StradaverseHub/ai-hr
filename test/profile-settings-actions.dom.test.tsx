@@ -17,14 +17,14 @@ vi.mock('@/core/tenant-settings',()=>({profileChangeAllowedKeys:()=>[],profileCh
 vi.mock('@/core/profile-routing',()=>({profileApproverCandidates:async()=>[],readProfileRoutingPolicy:()=>({version:1,revision:'fictional-revision',enabled:false,rules:[]})}));
 vi.mock('@/lib/personnel-ess-contract',()=>({essVisibleFields:()=>[],resolveEssEditableIds:()=>new Set(),resolveEssPrimaryEditableIds:()=>new Set()}));
 vi.mock('@/lib/personnel-ess-visibility',()=>({resolveEssVisibleIds:()=>new Set(),linkedEssFieldIds:()=>[]}));
-vi.mock('@/app/admin/settings/profile-requests/actions',()=>({
+vi.mock('@/app/(app)/admin/settings/profile-requests/actions',()=>({
  saveOwnPhotoSettingAction:actions.photo,saveNamedProfileRoutingAction:actions.save,
  previewNamedProfileRoutingAction:actions.preview,saveProfileRequestFieldsAction:actions.fields,
  saveProfileRequestApproverAction:actions.legacy,
 }));
-import Page from '../app/admin/settings/profile-requests/page';
-import {ProfileRoutingForm} from '../app/admin/settings/profile-requests/routing-form';
-import {ProfileRoutingSetup} from '../app/admin/settings/profile-requests/routing-setup';
+import Page from '../app/(app)/admin/settings/profile-requests/page';
+import {ProfileRoutingForm} from '../app/(app)/admin/settings/profile-requests/routing-form';
+import {ProfileRoutingSetup} from '../app/(app)/admin/settings/profile-requests/routing-setup';
 
 type ElementProps={children?:ReactNode;action?:unknown;previewAction?:unknown;[key:string]:unknown};
 function descendants(node:ReactNode):ReactElement<ElementProps>[] {

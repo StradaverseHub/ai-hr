@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({issueLetter:mocks.issue,voidLetter:mocks.void,setLetterRetention:mocks.retention}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {updateRegister} from '../app/letters/register/actions';
+import {updateRegister} from '../app/(app)/letters/register/actions';
 const letterId='00000000-0000-4000-8000-000000000001',revisionId='00000000-0000-4000-8000-000000000002',ctx={tenantId:'fixture',userId:'actual-user'};
 function form(action='issue'){const data=new FormData();for(const [key,value] of Object.entries({action,letterId,expectedRevisionId:revisionId,expectedLockVersion:'7',confirm:'yes',reason:'Recorded reason',retainUntil:'2030-01-01'}))data.set(key,value);return data;}
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);for(const fn of [mocks.issue,mocks.void,mocks.retention])fn.mockResolvedValue({});});

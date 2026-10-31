@@ -98,10 +98,10 @@ import {
 import {
   saveScheduleGroupAttendanceAction,
   saveScheduleGroupWeekAction,
-} from '../app/admin/attendance/schedule/actions';
-import { updateAttendanceRuleAction } from '../app/admin/attendance-policy/rule-actions';
-import ViewGroupPage from '../app/admin/attendance/schedule/[ruleId]/page';
-import EditGroupPage from '../app/admin/attendance/schedule/[ruleId]/edit/page';
+} from '../app/(app)/admin/attendance/schedule/actions';
+import { updateAttendanceRuleAction } from '../app/(app)/admin/attendance-policy/rule-actions';
+import ViewGroupPage from '../app/(app)/admin/attendance/schedule/[ruleId]/page';
+import EditGroupPage from '../app/(app)/admin/attendance/schedule/[ruleId]/edit/page';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const root = pathResolve(__dirname, '..');
@@ -435,13 +435,13 @@ describe('C. the marker — a submission that said nothing must not CLEAR the we
   });
 
   it('the marker is compared as a VALUE, never tested for presence', async () => {
-    const src = readFileSync(pathJoin(root, 'app/admin/attendance/schedule/actions.ts'), 'utf8');
+    const src = readFileSync(pathJoin(root, 'app/(app)/admin/attendance/schedule/actions.ts'), 'utf8');
     expect(src, 'read as a value').toContain("fd.get('weekEditor') !== '1'");
     // A presence test would be true on EVERY submission carrying the field, which is the 7c834696 trap on
     // this very table restated: `fd.get(k) != null` was true for a hidden input that arrived empty.
     expect(src, 'never by presence').not.toMatch(/fd\.get\('weekEditor'\)\s*[!=]=\s*null/);
     // And the page really does emit it, so the contract is pinned across BOTH files (CLAUDE.md §8).
-    const page = readFileSync(pathJoin(root, 'app/admin/attendance/schedule/group-sections.tsx'), 'utf8');
+    const page = readFileSync(pathJoin(root, 'app/(app)/admin/attendance/schedule/group-sections.tsx'), 'utf8');
     expect(page, 'the new editor saves pool and rotation together').toContain('ScheduleRotationEditor');
     expect(page, 'the legacy independent week form is retired').not.toContain('name="weekEditor" value="1"');
   });
@@ -593,7 +593,7 @@ describe('F. the screen — Edit edits it, View shows it, and "no week" is a sen
   });
 
   it('the list column tells two groups apart by their week, and names the "no week" state', async () => {
-    const { default: ListPage } = await import('../app/admin/attendance/schedule/page');
+    const { default: ListPage } = await import('../app/(app)/admin/attendance/schedule/page');
     await captureRedirect(() =>
       saveScheduleGroupWeekAction(weekForm(ruleId, ['full', 'full', 'full', 'full', 'half', 'rest', 'rest'])),
     );

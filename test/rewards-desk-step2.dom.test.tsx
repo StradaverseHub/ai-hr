@@ -12,13 +12,13 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(n
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
 vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardUnitGovernance:async()=>({managed:false}),listRewardUnits:async()=>[{id:'unit',holders:['Fictional CEO']}],defaultPolicy:(await import('../packs/rewards/model')).defaultPolicy,rewardPayrollChoices:async()=>[],rewardSetupChoices:async()=>({companies:[]})}));
-vi.mock('../app/rewards/actions',()=>({importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn()}));
-vi.mock('../app/rewards/[unitId]/unit-governance',()=>({UnitGovernance:()=> <div>Unit budget owner</div>}));
-vi.mock('../app/rewards/[unitId]/lump-sum',()=>({UnitLumpSum:()=> <div>Existing lump-sum owner</div>}));
-vi.mock('../app/rewards/[unitId]/unit-multiplier',()=>({UnitMultiplier:()=> <div>Existing multiplier owner</div>}));
-vi.mock('../app/rewards/[unitId]/pay-window',()=>({PayWindowTag:()=>null,PayWindowExcluded:()=>null}));
-vi.mock('../app/rewards/[unitId]/source-refresh',()=>({SourceRefresh:()=>null}));
-import RewardUnitPage from '../app/rewards/[unitId]/page';
+vi.mock('../app/(app)/rewards/actions',()=>({importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn()}));
+vi.mock('../app/(app)/rewards/[unitId]/unit-governance',()=>({UnitGovernance:()=> <div>Unit budget owner</div>}));
+vi.mock('../app/(app)/rewards/[unitId]/lump-sum',()=>({UnitLumpSum:()=> <div>Existing lump-sum owner</div>}));
+vi.mock('../app/(app)/rewards/[unitId]/unit-multiplier',()=>({UnitMultiplier:()=> <div>Existing multiplier owner</div>}));
+vi.mock('../app/(app)/rewards/[unitId]/pay-window',()=>({PayWindowTag:()=>null,PayWindowExcluded:()=>null}));
+vi.mock('../app/(app)/rewards/[unitId]/source-refresh',()=>({SourceRefresh:()=>null}));
+import RewardUnitPage from '../app/(app)/rewards/[unitId]/page';
 const budget={excludedCount:0,excludedPayrollCents:0,payrollCents:0,pools:[0,0,0],used:[0,0,0],bonusPayrollCents:0,bonusPoolCents:0,bonusUsedCents:0,standardBonusCents:0,increasesCents:0,reductionsCents:0,lumpCents:0,lumpCount:0,balanceCents:0};
 const row=(id:string,name:string,over:Record<string,unknown>={})=>({id,plan:'standard',source:{name,employeeCode:`E-${id}`,grade:'14',basicCents:500000,leftOn:null},facts:{reviewed:true,talent:'STAR',performance:'A',seniorPlan:false},recommendation:{promotionGrade:null},meritBp:500,promotionBp:0,specialBp:250,meritCents:25000,promotionCents:0,specialCents:12500,newBasicCents:537500,bonusBasicCents:500000,bonusMultiplierBp:15000,bonusCents:1200000,lumpCents:0,incrementReason:'',bonusReason:'',...over});
 const view=(over:Record<string,unknown>={})=>({unit:{id:'unit',companyId:'company',revision:4,kind:'annual',status:'draft',snapshotDate:'2026-10-29',policy:defaultPolicy(2026)},cycle:{name:'Fictional 2026 cycle'},name:'Retail',companyName:'Fictional Company',roles:['bu'],route:['bu','bg','gr','ctro','ec'],

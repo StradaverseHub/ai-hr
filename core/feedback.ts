@@ -844,7 +844,7 @@ export type FeedbackRow = {
  * It is exported because it is not an implementation detail any more. Production holds 517 items, so on
  * an unfiltered board this drops 317 of them, and the ordering the reporter now controls decides WHICH
  * 317: flipping to oldest-first does not reverse the list they were looking at, it swaps in a largely
- * disjoint set. `app/feedback/page.tsx` compares this against `feedbackStatusCounts` (which is NOT
+ * disjoint set. `app/(app)/feedback/page.tsx` compares this against `feedbackStatusCounts` (which is NOT
  * capped) and says so on screen rather than letting "All 517" sit above a list of 200.
  *
  * ClientPager's own truncation notice cannot cover this: its ceiling is 2000 and its total is computed

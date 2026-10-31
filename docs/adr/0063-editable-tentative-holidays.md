@@ -35,7 +35,7 @@ landed (and the #15 completeness guard would warn that the state had fewer than 
 3. `createHoliday` gains an optional `tentative?: boolean` (default false) so HR can add a provisional date
    directly, and `listHolidays` returns `tentative` so the UI can render a badge.
 
-4. **UI** (`app/admin/holidays`): each row gets an inline **Edit** form (date + name + a Tentative toggle)
+4. **UI** (`app/(app)/admin/holidays`): each row gets an inline **Edit** form (date + name + a Tentative toggle)
    wired to a new `updateHolidayAction` (actor passed through from the session); the create form gains a
    Tentative checkbox; tentative rows show a muted **Tentative** badge. This composes with the #15
    completeness guard: HR loads tentative state dates early (clearing the warning) and finalises them when the
@@ -67,5 +67,5 @@ screen offered no way to set National / State when adding, and no way to change 
   national ↔ state move is readable from the ledger. A move that collides with an existing row is a
   `DuplicateError` naming the target scope.
 - UI: the inline row forms of Decision 4 are gone. Add and Edit open one dialog over the list
-  (`app/admin/holidays/holiday-dialog.tsx`) with National / State as a dropdown fed from the country pack's
+  (`app/(app)/admin/holidays/holiday-dialog.tsx`) with National / State as a dropdown fed from the country pack's
   state list; `createHolidayAction` / `updateHolidayAction` became the value-returning `saveHolidayAction`.

@@ -37,7 +37,7 @@ const isAllowedImporter = (rel: string) =>
 //   - `localization/my.pack-ui` — the MY pack's OWN admin UI (Statutory Configuration routes + zakat
 //                                 screens + the PCB classification island), kept physically in app/
 //                                 pending migration under localization/my/ui/ (open decision 2). Its
-//                                 mounting is registry-driven (app/payroll/configuration/guard.ts).
+//                                 mounting is registry-driven (app/(app)/payroll/configuration/guard.ts).
 // The guard is enforced on the UNION: any importer outside BOTH sets (and the always-allowed wiring)
 // is a violation, so recategorizing pack-UI does NOT weaken the ratchet — a genuinely NEW leak still
 // fails. Both sets only ever shrink (stale entries fail).
@@ -83,7 +83,7 @@ describe('ADR-0080 D7/D4: localization/my import ratchet', () => {
   // The recategorization is NOT a weakening: prove the ratchet still bites. Drop one pack-UI entry from
   // the allowed union and it must resurface as a violation — exactly what happens to a genuinely new leak.
   it('a file outside BOTH sets is a violation — the guard still fails on new leaks', () => {
-    const sentinel = 'app/payroll/configuration/page.tsx';
+    const sentinel = 'app/(app)/payroll/configuration/page.tsx';
     expect(PACK_UI, 'sentinel must be a known pack-UI importer').toContain(sentinel);
     const withoutSentinel = runImportRatchet({
       root,

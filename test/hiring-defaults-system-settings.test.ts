@@ -35,10 +35,10 @@ const INDEX_ROUTE = '/admin/settings/hiring-defaults';
 const DETAIL_ROUTE = '/admin/settings/hiring-defaults/[companyId]';
 const OLD_ROUTE = '/admin/personnel/settings';
 
-const INDEX_PAGE = 'app/admin/settings/hiring-defaults/page.tsx';
-const DETAIL_PAGE = 'app/admin/settings/hiring-defaults/[companyId]/page.tsx';
-const ACTIONS = 'app/admin/settings/hiring-defaults/actions.ts';
-const OLD_PAGE = 'app/admin/personnel/settings/page.tsx';
+const INDEX_PAGE = 'app/(app)/admin/settings/hiring-defaults/page.tsx';
+const DETAIL_PAGE = 'app/(app)/admin/settings/hiring-defaults/[companyId]/page.tsx';
+const ACTIONS = 'app/(app)/admin/settings/hiring-defaults/actions.ts';
+const OLD_PAGE = 'app/(app)/admin/personnel/settings/page.tsx';
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const msgs = (loc: string) => JSON.parse(read(`messages/${loc}.json`)) as Record<string, any>;
@@ -89,11 +89,11 @@ describe('7b5f18c3 · Hiring Defaults lives in System Settings', () => {
     expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession/);
     expect(REGISTERED_ROUTES.has(OLD_ROUTE), `${OLD_ROUTE} is no longer a registered route`).toBe(false);
     // The action moved with the screen; leaving a second copy behind is how two save paths diverge.
-    expect(exists('app/admin/personnel/settings/actions.ts')).toBe(false);
+    expect(exists('app/(app)/admin/personnel/settings/actions.ts')).toBe(false);
   });
 
   it('the Personnel screen no longer links it (one entry point, not two)', () => {
-    expect(read('app/admin/personnel/page.tsx')).not.toContain(`href="${OLD_ROUTE}"`);
+    expect(read('app/(app)/admin/personnel/page.tsx')).not.toContain(`href="${OLD_ROUTE}"`);
     // The whole app links the CANONICAL route now; the old one survives only as its own stub file.
     const linkers: string[] = [];
     const walk = (dir: string) => {

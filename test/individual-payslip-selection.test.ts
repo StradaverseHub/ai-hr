@@ -53,7 +53,7 @@ import { createAdditionalRun, createBatch, generatePayslips, setPayrollInput } f
 import { listPayrollCycles, seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { createMovementEvent } from '../core/movement';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
-import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
+import IndividualPayslipPage from '../app/(app)/payroll/individual-payslip/page';
 import {
   adminCtx,
   closeAll,

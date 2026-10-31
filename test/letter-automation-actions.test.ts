@@ -5,7 +5,7 @@ vi.mock('../lib/scope',()=>({scopedSession:mocks.scope}));
 vi.mock('../core/letters',()=>({getLetterTemplate:mocks.template,saveLetterAutomationRule:mocks.save,LETTER_AUTOMATION_TRIGGERS:['probation_due','confirmation_applied','promotion_applied']}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
-import {saveAutomationSettings} from '../app/letters/settings/automation/actions';
+import {saveAutomationSettings} from '../app/(app)/letters/settings/automation/actions';
 const companyId='00000000-0000-4000-8000-000000000001',templateId='00000000-0000-4000-8000-000000000002',versionId='00000000-0000-4000-8000-000000000003',ctx={tenantId:'fixture',userId:'actual-user'},field={key:'effectiveDate',label:'Effective date',kind:'date',source:'custom.date',required:true,editable:true,sensitive:false};
 function form(){const data=new FormData();for(const [key,value]of Object.entries({companyId,templateId,versionId,trigger:'probation_due',expectedOrdinal:'4',enabled:'yes',startOn:'2026-11-01','custom:effectiveDate:value':'2026-11-02'}))data.set(key,value);return data;}
 beforeEach(()=>{vi.clearAllMocks();mocks.scope.mockResolvedValue({s:ctx,scopeIds:[companyId]});mocks.template.mockResolvedValue({root:{id:templateId,companyId},fields:[{definition:field}]});mocks.save.mockRejectedValue(new LetterWorkflowError('stale'));});

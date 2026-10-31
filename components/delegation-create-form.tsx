@@ -15,7 +15,7 @@ import {
   hrCreateDelegationAction,
   loadEligibleDelegatesAction,
   type DelegationActionResult,
-} from '@/app/delegations/actions';
+} from '@/app/(app)/delegations/actions';
 
 /**
  * R51 (baf56348) — the delegation CREATE forms, now rank-aware + coverage-aware. One client component, two

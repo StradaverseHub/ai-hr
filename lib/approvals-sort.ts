@@ -3,7 +3,7 @@
  *
  * PURE, non-'use client' helpers so the /approvals SERVER component may import AND call them
  * (the RSC-boundary guard forbids a server page importing+calling values out of a 'use client'
- * module — the interactive dropdown lives separately in app/approvals/sort-control.tsx).
+ * module — the interactive dropdown lives separately in app/(app)/approvals/sort-control.tsx).
  *
  * The four options match the reporter's spec: latest / oldest / name_asc / name_desc. The sort is
  * applied per-type section in the render layer over rows already loaded newest-first — NO loader

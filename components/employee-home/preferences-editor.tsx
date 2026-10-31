@@ -7,7 +7,7 @@ import {Button,inputCls} from '@/components/ui';
 import {localeNames,locales} from '@/i18n/config';
 import {EMPLOYEE_HOME_CARDS,EMPLOYEE_HOME_CARD_DEFAULTS,type EmployeeHomePreferences,type EmployeeHomeCard} from '@/lib/employee-home';
 import type {DashboardCardChoice} from '@/lib/dashboard-layout';
-import {saveHomePreferencesAction,type HomePreferenceSaveState} from '@/app/me/home/actions';
+import {saveHomePreferencesAction,type HomePreferenceSaveState} from '@/app/(app)/me/home/actions';
 
 export function HomePreferencesEditor({initial,cards}:{initial:EmployeeHomePreferences;cards:readonly (DashboardCardChoice&{name?:string})[]}){
  const t=useTranslations('employeeHome.preferences'),names=useTranslations('employeeHome.cardNames'),locale=useLocale();

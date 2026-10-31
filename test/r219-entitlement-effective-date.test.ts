@@ -466,7 +466,7 @@ describe('§E r219 · eligibility rules carry the identical rule, for the identi
 
 describe('§F r219 → r224 · the form says which of the two saves it is about to make', () => {
   const block = readFileSync(
-    resolve(ROOT, 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx'),
+    resolve(ROOT, 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx'),
     'utf8',
   );
   const ruleForm = readFileSync(resolve(ROOT, 'components/leave/eligibility-rule-form.tsx'), 'utf8');

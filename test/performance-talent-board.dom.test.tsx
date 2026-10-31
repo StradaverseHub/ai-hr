@@ -5,11 +5,11 @@ import { NextIntlClientProvider,createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as never})}));
-vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),assessmentInsightAction:vi.fn(),assessmentCalibrationPersonAction:vi.fn(),changeGroupBandAction:vi.fn(),lockGroupPeopleAction:vi.fn()}));
-import { TalentBoard } from '../app/performance/onehr/talent-board';
-import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
-import type { CalibrationRosterRow } from '../app/performance/onehr/calibration-roster';
-import { saveCalibrationBandAction } from '../app/performance/onehr-actions';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({saveCalibrationBandAction:vi.fn(),agreeDepartmentAction:vi.fn(),onehrCalibrationAction:vi.fn(),assessmentInsightAction:vi.fn(),assessmentCalibrationPersonAction:vi.fn(),changeGroupBandAction:vi.fn(),lockGroupPeopleAction:vi.fn()}));
+import { TalentBoard } from '../app/(app)/performance/onehr/talent-board';
+import { AssessmentCalibrationView } from '../app/(app)/performance/onehr/calibration-view';
+import type { CalibrationRosterRow } from '../app/(app)/performance/onehr/calibration-roster';
+import { saveCalibrationBandAction } from '../app/(app)/performance/onehr-actions';
 
 const normal={UA:5,BE:10,ME:70,AE:10,OU:5};
 const row=(i:number,department:string):CalibrationRosterRow=>({id:`p${i}`,name:`Person ${i}`,grade:i%2?'12':'14',companyId:'x',company:'Unit X',department,performance:'ME',potential:'Mid',performanceSource:'manager',potentialSource:'manager',locked:false,journey:[],potentialPct:null});

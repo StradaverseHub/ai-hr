@@ -35,22 +35,22 @@ import {
   requestableFieldsForTab,
 } from '../lib/profile-requestable-fields';
 import { SETTING_CATALOG } from '../packs/catalog';
-import { ME_VISIBLE_FIELD_LABEL_KEYS } from '../app/me/visible-fields';
-import { ME_WITHHELD_COLUMNS } from '../app/me/visible-fields';
+import { ME_VISIBLE_FIELD_LABEL_KEYS } from '../app/(app)/me/visible-fields';
+import { ME_WITHHELD_COLUMNS } from '../app/(app)/me/visible-fields';
 
 const root = path.resolve(__dirname, '..');
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
 
 const CORE_PROFILE = read('core/profile.ts');
-const ME_ACTIONS = read('app/me/actions.ts');
-const REQUEST_CARD = read('app/me/request-change-card.tsx');
-const ME_PAGE = read('app/me/page.tsx');
-const ESS_EDITOR=read('app/me/profile-editor.tsx'),ESS_OWNER=read('core/profile-edit.ts'),POLICY_OWNER=read('core/profile-edit-policy.ts'),PROPOSAL_DISPLAY=read('lib/profile-proposal-display.ts');
+const ME_ACTIONS = read('app/(app)/me/actions.ts');
+const REQUEST_CARD = read('app/(app)/me/request-change-card.tsx');
+const ME_PAGE = read('app/(app)/me/page.tsx');
+const ESS_EDITOR=read('app/(app)/me/profile-editor.tsx'),ESS_OWNER=read('core/profile-edit.ts'),POLICY_OWNER=read('core/profile-edit-policy.ts'),PROPOSAL_DISPLAY=read('lib/profile-proposal-display.ts');
 // The two screens an APPROVER reads a proposed change on. Both are held to the same renderer as /me.
-const PERSONNEL_PAGE = read('app/admin/personnel/profile-changes/page.tsx');
-const PERMISSION_MATRIX = read('app/admin/settings/profile-requests/permission-matrix.tsx');
+const PERSONNEL_PAGE = read('app/(app)/admin/personnel/profile-changes/page.tsx');
+const PERMISSION_MATRIX = read('app/(app)/admin/settings/profile-requests/permission-matrix.tsx');
 const ROUTING_MIGRATION = read('db/migrations/0571_ess_profile_policy_routes.sql');
-const APPROVALS_PAGE = read('app/approvals/page.tsx');
+const APPROVALS_PAGE = read('app/(app)/approvals/page.tsx');
 // The two documents the REPORTER reads. They are prose, so nothing else in the build can notice when a
 // number in them stops being true.
 const DOC_REQUESTS = read('docs/me-profile-change-requests.md');
@@ -343,8 +343,8 @@ describe('r260 — the requestable-field declaration', () => {
     expect(formatProposedValue(requestableField('preferredName')!, '', t, { mask: false })).toBe('— cleared —');
     expect(formatProposedValue(requestableField('preferredName')!, null, t, { mask: false })).toBe('— cleared —');
 
-    for(const [name,src]of [['app/admin/personnel/profile-changes/page.tsx',PERSONNEL_PAGE],['app/me/page.tsx',ME_PAGE]]){
-      expect(src,name).toContain(name==='app/me/page.tsx'?'profileProposalLines(':'profileProposalReviewLines(');expect(src,name).not.toMatch(/options\?\.find\([\s\S]{0,80}?\)\?\.value/);
+    for(const [name,src]of [['app/(app)/admin/personnel/profile-changes/page.tsx',PERSONNEL_PAGE],['app/(app)/me/page.tsx',ME_PAGE]]){
+      expect(src,name).toContain(name==='app/(app)/me/page.tsx'?'profileProposalLines(':'profileProposalReviewLines(');expect(src,name).not.toMatch(/options\?\.find\([\s\S]{0,80}?\)\?\.value/);
     }
     // The general inbox redirects old bookmarks; proposal values render only in the assigned queue.
     expect(APPROVALS_PAGE).toContain("if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes')");
@@ -363,8 +363,8 @@ describe('r260 — the requestable-field declaration', () => {
  * about ONE permission over ONE set of field keys.
  * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
 
-const SETTINGS_PAGE = read('app/admin/settings/profile-requests/page.tsx');
-const SETTINGS_ACTIONS = read('app/admin/settings/profile-requests/actions.ts');
+const SETTINGS_PAGE = read('app/(app)/admin/settings/profile-requests/page.tsx');
+const SETTINGS_ACTIONS = read('app/(app)/admin/settings/profile-requests/actions.ts');
 const CORE_TENANT_SETTINGS = read('core/tenant-settings.ts');
 const DOC_SETTINGS = read('docs/me-profile-request-settings.md');
 

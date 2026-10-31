@@ -13,7 +13,7 @@ import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-sc
 const state=vi.hoisted(()=>({path:'/leave',ask:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>state.path}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromLauncherAction:state.ask}));
+vi.mock('../app/(app)/assistant/launcher-actions',()=>({askFromLauncherAction:state.ask}));
 import {AssistantLauncher} from '../components/assistant/assistant-launcher';
 const copy=en.assistant.launcher;
 const show=(hiddenAreas:string[]=[],position:'bottom-right'|'bottom-left'='bottom-right')=>render(<NextIntlClientProvider locale="en" messages={en}><AssistantLauncher position={position} hiddenAreas={hiddenAreas as never}/></NextIntlClientProvider>);

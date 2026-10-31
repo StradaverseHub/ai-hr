@@ -55,8 +55,8 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 import { describePayload } from '../lib/audit-format';
 import { getCompanyStatutoryMY, setCompanyStatutoryMY } from '../localization/my/company-statutory';
-import { setCompanyStatutoryAction, setCompanyStatutoryAuthorityAction } from '../app/admin/actions';
-import { savePayrollConfigAction } from '../app/admin/payroll-config/actions';
+import { setCompanyStatutoryAction, setCompanyStatutoryAuthorityAction } from '../app/(app)/admin/actions';
+import { savePayrollConfigAction } from '../app/(app)/admin/payroll-config/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -372,7 +372,7 @@ describe('HRDF Contribution Rate — Organization form layout', () => {
   // 6df24751 — the file moved (Pay Schedule is company-first now, and the read-only statutory block sits
   // on the company's own screen), the assertion did not: the same three values, in the same rate order.
   it('the Admin payroll-config surface offers the same three values in the same order', () => {
-    const PAGE = read('app/admin/payroll-config/[companyId]/page.tsx');
+    const PAGE = read('app/(app)/admin/payroll-config/[companyId]/page.tsx');
     expect(PAGE).toContain("const HRDF = ['not_registered', 'mandatory', 'optional'] as const;");
   });
 });

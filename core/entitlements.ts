@@ -825,7 +825,7 @@ export const settingEnabled = (ctx: EntitledContext, key: string): boolean => ge
  * interchangeable, and using the quiet form in a service would convert an incident into a silent
  * refusal that looks like a plan change.
  *
- * The original restriction to `app/layout.tsx` alone left nine other pages calling the throwing form
+ * The original restriction to `app/(app)/layout.tsx` alone left nine other pages calling the throwing form
  * with no `app/error.tsx` anywhere under app/, so the very incident lib/session.ts's degrade path is
  * designed for — a pool blip, a statement timeout, a code-ahead-of-migration deploy — rendered the
  * shell and then 500'd /payroll, /roster, /admin/toil and the transaction pages outright. That is the
@@ -835,7 +835,7 @@ export const settingEnabled = (ctx: EntitledContext, key: string): boolean => ge
  * returns the session carrying `entitlementsError`, on the stated grounds that getSession is the entry
  * point for every page and throwing there "would take down authentication itself"; gates are then
  * supposed to "refuse AT THE POINT OF USE (fail-closed)". That contract silently breaks when the point
- * of use IS the root layout: `app/layout.tsx` gates the notification bell on the billable
+ * of use IS the root layout: `app/(app)/layout.tsx` gates the notification bell on the billable
  * `notifications` module, sits outside the only try/catch there (which converts AuthRequiredError to a
  * redirect), and there is no app/error.tsx — so a pool blip, a statement timeout or a
  * code-ahead-of-migration deploy would 500 EVERY authenticated route rather than degrade one feature.

@@ -24,8 +24,8 @@ import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Ba
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-const PAGE = read('app/control-tower/exceptions/page.tsx');
-const ACTIONS = read('app/payroll/actions.ts');
+const PAGE = read('app/(app)/control-tower/exceptions/page.tsx');
+const ACTIONS = read('app/(app)/payroll/actions.ts');
 
 let b: Base;
 let a: SessionContext;
@@ -162,7 +162,7 @@ describe('one action, and one row shape', () => {
   it('the page posts to the SAME resolve action the per-run queue uses', () => {
     // ⚠️ A second copy of that action would be a second place r238's ledger stamp — which hangs off
     // resolveAnomalyVerdict — could be forgotten. The screens differ only in where they land afterwards.
-    expect(code(PAGE)).toContain("import { resolveAnomalyAction } from '@/app/payroll/actions'");
+    expect(code(PAGE)).toContain("import { resolveAnomalyAction } from '@/app/(app)/payroll/actions'");
     expect(code(PAGE)).toContain('action={resolveAnomalyAction}');
     expect(code(PAGE), 'and says where to come back to').toContain('name="returnTo" value="tower"');
     // ⚠️ SCOPED TO THIS ACTION'S BODY, and the first version of this case was not — it searched the whole

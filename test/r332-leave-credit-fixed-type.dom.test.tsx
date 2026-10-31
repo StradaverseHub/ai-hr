@@ -145,7 +145,7 @@ describe('2a237f5f: the Leave Credit request names one leave type and offers no 
   }
 
   it('POSTS the resolved replacement type id — once, from a hidden field', () => {
-    // The contract this dialog has with app/leave/credit/actions.ts `submitLeaveCreditRequestAction`, which
+    // The contract this dialog has with app/(app)/leave/credit/actions.ts `submitLeaveCreditRequestAction`, which
     // reads `formData.get('leaveTypeId')` (r343; it was `submitReplacementLeaveRequestAction` before). Asserted through FormData rather than by looking for an input,
     // because "a field exists" and "a field is submitted" are different facts and `disabled` is the whole
     // difference here (CLAUDE.md §8: a form field that is always submitted cannot be read by presence).

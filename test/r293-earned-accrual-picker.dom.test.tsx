@@ -43,8 +43,8 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 // Both action modules are server modules; in jsdom they would drag the database in. The PREVIEW records the
 // scope it is handed, so §C can prove what the card would post.
 const previewScopes: { leaveTypeIds: string[] }[] = [];
-vi.mock('@/app/admin/actions', () => ({ runEarnedAccrualAction: async () => ({ granted: 0, forfeits: 0 }) }));
-vi.mock('@/app/admin/leave-config/earned-accrual/actions', () => ({
+vi.mock('@/app/(app)/admin/actions', () => ({ runEarnedAccrualAction: async () => ({ granted: 0, forfeits: 0 }) }));
+vi.mock('@/app/(app)/admin/leave-config/earned-accrual/actions', () => ({
   previewEarnedAccrualWithReasonAction: async (scope: { leaveTypeIds: string[] }) => {
     previewScopes.push(scope);
     return { rows: [], asOf: '2026-09-15', emptyReason: null, archivedHint: [], earnedToDateTotal: 0 };

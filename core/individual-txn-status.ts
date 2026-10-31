@@ -3,7 +3,7 @@
  *
  * PURE, db-free, framework-free, and imports nothing — so the same rule can be applied by the SERVER
  * read (core/payroll-view.ts, which feeds the Transaction View grid, its status filter and its CSV) and
- * by the CLIENT panel derivation (app/payroll/transactions/individual/existing-context.ts) without either
+ * by the CLIENT panel derivation (app/(app)/payroll/transactions/individual/existing-context.ts) without either
  * of them re-implementing it. Two implementations of "has this been recalculated yet" is two answers
  * waiting to disagree on the same row, which is the exact confusion the request is about.
  *

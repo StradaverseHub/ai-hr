@@ -13,7 +13,7 @@
  * Scope, stated rather than implied: app/, components/, core/, i18n/, lib/, localization/, middleware.ts and
  * the other packs. NOT scanned: db/ — db/schema.ts types the reward jsonb columns with type-only
  * `import('../packs/rewards/model')` expressions, the schema's own data contract — and scripts/, whose dev
- * fixtures read the model directly. The pack's own routes (app/rewards/, app/admin/rewards/) are its surface
+ * fixtures read the model directly. The pack's own routes (app/(app)/rewards/, app/(app)/admin/rewards/) are its surface
  * and may read its pure model modules. No allowlist: there is no audited debt to carry.
  */
 import { readdirSync } from 'node:fs';
@@ -29,8 +29,8 @@ const BOUNDARIES = readdirSync(fileURLToPath(new URL('../packs/rewards', import.
 
 const ALWAYS_ALLOWED = [
   'packs/rewards/', // the pack: internals import each other, the facade re-exports them
-  'app/rewards/', // the pack's routes
-  'app/admin/rewards/', // the pack's Module Config routes
+  'app/(app)/rewards/', // the pack's routes
+  'app/(app)/admin/rewards/', // the pack's Module Config routes
 ];
 
 describe('ADR-0080 D9: rewards pack import ratchet', () => {

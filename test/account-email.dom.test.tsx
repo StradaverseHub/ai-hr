@@ -3,7 +3,7 @@ import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import en from '../messages/en.json';
 import type {AccountEmailDeliveryView} from '../lib/account-email-model';
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>((key:string)=>key.split('.').reduce((value:any,part)=>value?.[part],en.accountEmail)??key)}));
-vi.mock('../app/admin/settings/notifications/actions',()=>({retryAccountEmailAction:vi.fn()}));
+vi.mock('../app/(app)/admin/settings/notifications/actions',()=>({retryAccountEmailAction:vi.fn()}));
 import {AccountEmailDeliveries} from '../components/account-email-deliveries';
 const item=(kind:'invitation'|'recovery',canRetry=true):AccountEmailDeliveryView=>({id:kind+'-delivery',kind,email:kind+'@example.test',status:'failed',attempts:1,error:'relayUnavailable',createdAt:new Date('2026-10-15T01:00:00Z'),canRetry});
 beforeEach(()=>{cleanup();vi.stubEnv('AUTH_PROVIDER','internal');});afterEach(()=>vi.unstubAllEnvs());

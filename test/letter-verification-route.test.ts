@@ -3,7 +3,7 @@ import {NextRequest} from 'next/server';
 import {isLetterVerificationRoute,letterVerificationUrl} from '../lib/letter-verification';
 const verify=vi.hoisted(()=>vi.fn());
 vi.mock('../core/letter-verification',()=>({verifyPublicLetter:verify}));
-import {GET} from '../app/letters/verify/[token]/route';
+import {GET} from '../app/(app)/letters/verify/[token]/route';
 const token='A'.repeat(43);
 afterEach(()=>{vi.unstubAllEnvs();vi.resetAllMocks();});
 it('bypasses authentication only for the exact opaque verification route',()=>{

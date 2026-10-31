@@ -92,7 +92,7 @@ const WORK = [
       `happened to pay.\n\n` +
       `  S1 THE COMMENT IS THE GUARD. updateBatchScope's docstring (core/payroll.ts:1449-1450) and the inline ` +
       `at :1478 both still say it applies "the SAME cross-company guard" as createRunAction — this diff made ` +
-      `updateBatchScope dated and left app/payroll/process/actions.ts:137 on the column. Either date that ` +
+      `updateBatchScope dated and left app/(app)/payroll/process/actions.ts:137 on the column. Either date that ` +
       `site too (recording why, as its own decision) or correct both statements.\n\n` +
       `  S2 MIGRATION 0442 DECLARES IN SQL WHAT db/schema.ts DOES NOT. The .sql creates ` +
       `\`payslip_employment_idx\` and the \`payslip_coverage_ordered\` CHECK; db/schema.ts:5206 still declares ` +
@@ -110,7 +110,7 @@ const WORK = [
       `to the number printed beside it. That is precisely the defect this item exists to remove, so a ` +
       `half-fix is worse than nothing.\n\n` +
       `  B1 THE P-SECTION FORMULA OVERSHOOTS ITS OWN ANSWER ON ANY BONUS MONTH. In ` +
-      `app/payroll/pcb-detail/pcb-detail-view.tsx, \`pHeading\`'s substituted string appends ` +
+      `app/(app)/payroll/pcb-detail/pcb-detail-view.tsx, \`pHeading\`'s substituted string appends ` +
       `\`+ ( Yt − Kt )\` whenever trace.Yt > 0, but the result it lands on is P₁ ` +
       `(localization/my/payroll.ts:541), which has NO Yₜ term — that leg belongs to P₂ (:559). The rendered ` +
       `expression is neither: it keeps trace.K2 (K2n, P₁'s estimated EPF) while adding P₂'s Yₜ leg, and P₂'s ` +
@@ -134,9 +134,9 @@ const WORK = [
       `  1. core/benefit-scheme.ts:2 and :12-13 — the module that OWNS listGradeGroups — still says grade ` +
       `groups are "the leave APPROVAL-ROUTING scope" and "no longer select an entitlement. Entitlement ` +
       `targeting is entitlement_eligibility_rule's job."\n` +
-      `  2. app/admin/leave/entitlements/page.tsx:207-209 still says the editor lives at /admin/leave/approval ` +
+      `  2. app/(app)/admin/leave/entitlements/page.tsx:207-209 still says the editor lives at /admin/leave/approval ` +
       `and "a grade group is an approval-routing scope, not an entitlement axis".\n` +
-      `  3. app/admin/actions.ts:2043-2046, INSIDE updateGradeGroupAction which this diff edits three lines ` +
+      `  3. app/(app)/admin/actions.ts:2043-2046, INSIDE updateGradeGroupAction which this diff edits three lines ` +
       `below, still states the old rule. Note its CONCLUSION (no reprojection) may well survive — keep what ` +
       `is still true and correct only what is not, rather than deleting the paragraph.\n\n` +
       `  4. ARCHIVED JOB GRADES LEAK INTO THE PICKER AS RAW UUIDs. ` +
@@ -151,7 +151,7 @@ const WORK = [
     mandate:
       `TWO SHOULD-FIX.\n\n` +
       `  1. THE COMMENT IS THE GUARD, and this one is an argument, not a label. ` +
-      `app/admin/personnel/page.tsx:331-335 (untouched by your branch) explains WHY the cap exists: ` +
+      `app/(app)/admin/personnel/page.tsx:331-335 (untouched by your branch) explains WHY the cap exists: ` +
       `"max-w-[100rem] is not a new number: it is the container this codebase already settled on for wide ` +
       `screens (payroll, the transaction screens, the leave inquiries), chosen there after measuring — ` +
       `capped rather than full-bleed, because an uncapped table on an ultrawide display is unreadable in the ` +

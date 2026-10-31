@@ -6,7 +6,7 @@
  *      → themselves. Pure function, called directly.
  *   B. app/ui-theme-actions.ts accepts ONLY the two names and sets the cookie with the agreed attributes
  *      (1 year, SameSite=Lax, path=/). Called directly with next/headers' cookie jar replaced by a spy.
- *   C. app/layout.tsx writes the cookie's theme onto <html data-ui-theme>. The layout is CALLED (the
+ *   C. app/(app)/layout.tsx writes the cookie's theme onto <html data-ui-theme>. The layout is CALLED (the
  *      auth-route branch, which needs no session) and the returned <html> element's props are read — and
  *      the authenticated branch is pinned by source to carry the same attribute.
  *   D. app/globals.css: every token docs/design/monolith/tokens.css defines appears, with its value, under
@@ -113,10 +113,11 @@ describe('B. setUiTheme — the server action', () => {
   });
 });
 
-describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
+describe('C. the root layouts write the theme onto <html data-ui-theme>', () => {
   type El = { type: unknown; props: Record<string, unknown> };
+  // The login flow's root layout renders without a session, so it exercises the theme read directly.
   const renderLayout = async (): Promise<El> => {
-    const { default: RootLayout } = await import('@/app/layout');
+    const { default: RootLayout } = await import('@/app/(auth)/layout');
     return (await RootLayout({ children: null })) as unknown as El;
   };
 
@@ -152,12 +153,16 @@ describe('C. app/layout.tsx writes the theme onto <html data-ui-theme>', () => {
     expect(fontCalls.Geist_Mono).toMatchObject({ variable: '--font-geist-mono' });
   });
   it('the AUTHENTICATED <html> carries the same attribute (one per <html> in the file)', () => {
-    const src = read('app/layout.tsx');
+    const src = read('app/(app)/layout.tsx');
+    const auth = read('app/(auth)/layout.tsx');
     // The JSX elements, not comment mentions of <html>: each opens with `<html` + newline + `lang={locale}`.
     const htmlTags = src.match(/<html\s+lang=\{locale\}/g) ?? [];
-    // Auth, installation operator and every customer route share the selected AIHR theme.
-    expect(htmlTags.length).toBe(3);
-    expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(3);
+    // Installation operator and every customer route (here) and the login flow (its own root layout) share
+    // the selected AIHR theme.
+    expect(htmlTags.length).toBe(2);
+    expect(src.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(2);
+    expect(auth.match(/<html\s+lang=\{locale\}\s+data-ui-theme=\{uiTheme\}/g) ?? []).toHaveLength(1);
+    expect(auth).toMatch(/const uiTheme = await currentUiTheme\(\);/);
     expect(src).not.toContain('data-ui-theme="classic"');
     expect(src).not.toContain('forcedTheme="light" lifecycleV9');
     // r401 — the cookie is read in ONE place, lib/ui-theme-server.ts, which the layout and the pages that branch
@@ -267,12 +272,12 @@ describe('D. app/globals.css — Monolith scoped, Classic untouched', () => {
 
 describe('browser icon metadata follows system configuration', () => {
   it('uses the default icon when no custom icon is saved', async () => {
-    const { generateMetadata } = await import('../app/layout');
+    const { generateMetadata } = await import('../app/(app)/layout');
     expect((await generateMetadata()).icons).toEqual({ icon: '/login/favicon.svg' });
   });
   it('uses the saved public icon without changing the app title', async () => {
     artwork.iconUrl = 'https://example.test/approved-icon.png';
-    const { generateMetadata } = await import('../app/layout');
+    const { generateMetadata } = await import('../app/(app)/layout');
     expect(await generateMetadata()).toMatchObject({ title: 'AIHR', icons: { icon: artwork.iconUrl } });
   });
 });

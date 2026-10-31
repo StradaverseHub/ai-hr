@@ -4,7 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as s from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { collectInquiryExport, leaveInquirySnapshot, leaveInquiryContext, leaveInquiryBalancePairs, leaveInquiryRecordsPage, leaveInquiryRecordsPageTx } from '../core/leave-inquiry';
-import { inquiryBalancePage } from '../app/leave/employee-balances/inquiry-data';
+import { inquiryBalancePage } from '../app/(app)/leave/employee-balances/inquiry-data';
 import { parseInquiryQuery } from '../lib/leave-inquiry-query';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
@@ -96,10 +96,10 @@ describe('23e87eef: one explicit authorized export snapshot', () => {
 // The concurrency checks exercise the owners; this contract pins the routes that must use them.
 it('both export routes pass the same explicit snapshot through membership and canonical hydration', async () => {
   const { readFile } = await import('node:fs/promises');
-  const balances = await readFile(new URL('../app/leave/employee-balances/export/route.ts', import.meta.url), 'utf8');
-  const records = await readFile(new URL('../app/leave/employee-records/export/route.ts', import.meta.url), 'utf8');
-  const hydration = await readFile(new URL('../app/leave/employee-balances/inquiry-data.ts', import.meta.url), 'utf8');
-  const rows = await readFile(new URL('../app/leave/employee-balances/rows.ts', import.meta.url), 'utf8');
+  const balances = await readFile(new URL('../app/(app)/leave/employee-balances/export/route.ts', import.meta.url), 'utf8');
+  const records = await readFile(new URL('../app/(app)/leave/employee-records/export/route.ts', import.meta.url), 'utf8');
+  const hydration = await readFile(new URL('../app/(app)/leave/employee-balances/inquiry-data.ts', import.meta.url), 'utf8');
+  const rows = await readFile(new URL('../app/(app)/leave/employee-balances/rows.ts', import.meta.url), 'utf8');
   for (const route of [balances, records]) {
     expect(route).toContain('leaveInquirySnapshot(session, scopeIds, query, async (tx, inquiry)');
     expect(route).not.toContain('await leaveInquiryContext(');

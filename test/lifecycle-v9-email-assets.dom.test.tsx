@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { EmailDefinition } from '../app/lifecycle/v9/email-definition';
+import { EmailDefinition } from '../app/(app)/lifecycle/v9/email-definition';
 import type { EmailAsset, EmailTemplate } from '../lib/lifecycle-v9-model';
 const image: EmailAsset = { id: '9ea43e78-c325-4f88-8313-1b6fc3a1a78e', kind: 'image', name: 'Fictional logo.png', mimeType: 'image/png', size: 20, contentHash: 'a'.repeat(64), at: '2026-10-29T00:00:00Z', by: 'Fictional HR' };
 const file: EmailAsset = { ...image, id: '9ea43e78-c325-4f88-8313-1b6fc3a1a78f', kind: 'file', name: 'Fictional handbook.txt', mimeType: 'text/plain' };

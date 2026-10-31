@@ -10,7 +10,7 @@
  *
  * Delete used to live in its own sibling <form> on a second row under Save. It is now a second submit
  * button INSIDE the update form's flex row, posting deleteGradeGroup via formAction (the established
- * pattern at app/admin/holidays/page.tsx and components/tp1-declaration-form.tsx). deleteGradeGroupAction
+ * pattern at app/(app)/admin/holidays/page.tsx and components/tp1-declaration-form.tsx). deleteGradeGroupAction
  * reads only fd.get('id') — the update form's extra name/gradeIds fields are ignored — and the button
  * carries formNoValidate so a cleared required name input cannot block the Delete submit.
  *

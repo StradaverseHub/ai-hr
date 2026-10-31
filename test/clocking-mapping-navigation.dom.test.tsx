@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import type { ClockingMappingInput } from '../packs/attendance/service';
-import type { SaveMappingResult } from '../app/admin/attendance/file-mappings/actions';
+import type { SaveMappingResult } from '../app/(app)/admin/attendance/file-mappings/actions';
 
 const { save, push, refresh, router } = vi.hoisted(() => {
   const save = vi.fn<(id: string | null, input: ClockingMappingInput, nonce?: string) => Promise<SaveMappingResult>>();
@@ -14,8 +14,8 @@ const { save, push, refresh, router } = vi.hoisted(() => {
   return {save, push, refresh, router: {push, refresh}};
 });
 vi.mock('next/navigation', () => ({useRouter: () => router, usePathname: () => '/admin/attendance/file-mappings/mapping/edit'}));
-vi.mock('../app/admin/attendance/file-mappings/actions', () => ({saveClockingMappingAction: save}));
-import { MappingForm } from '../app/admin/attendance/file-mappings/mapping-form';
+vi.mock('../app/(app)/admin/attendance/file-mappings/actions', () => ({saveClockingMappingAction: save}));
+import { MappingForm } from '../app/(app)/admin/attendance/file-mappings/mapping-form';
 import { AttendanceSettingsNavigation } from '../components/attendance-settings-navigation';
 import { __resetUnsavedGuards, hasUnsavedChanges } from '../lib/unsaved-changes';
 

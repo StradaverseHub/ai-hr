@@ -3,7 +3,7 @@
 import React from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 import {ModuleNotificationActionSection} from '../components/assistant/module-notification-action-section';
-import AssistantNotificationPreferencesPage from '../app/assistant/notifications/page';
+import AssistantNotificationPreferencesPage from '../app/(app)/assistant/notifications/page';
 const source=vi.hoisted(()=>({session:vi.fn(),choices:vi.fn(),locale:vi.fn()}));
 vi.mock('server-only',()=>({}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));

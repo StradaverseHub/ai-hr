@@ -13,7 +13,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-import { HistoryTable } from '../app/payroll/transaction-view/history-table';
+import { HistoryTable } from '../app/(app)/payroll/transaction-view/history-table';
 import type { ProcessedPayslipViewRow } from '../core/payroll-view';
 
 vi.mock('next/navigation', () => ({

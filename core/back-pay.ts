@@ -96,7 +96,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // without the Payroll module. `approveAndPostBackPay` WRITES MONEY into a draft batch, and a POST to it
 // passes through no layout.
 //
-// Safe to bind because this file has NO consumer outside `app/payroll/back-pay/**` and the pack facade:
+// Safe to bind because this file has NO consumer outside `app/(app)/payroll/back-pay/**` and the pack facade:
 // an AST sweep of every import, export-from, dynamic import and require in the repo found its exported
 // symbols used nowhere else — no core screen, no kernel service, no sweep script, no report dataset.
 // See core/module-gate.ts.

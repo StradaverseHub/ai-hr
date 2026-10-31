@@ -298,7 +298,7 @@ describe('10fcf6df — Rollback restores the employee, it does not erase the rec
 
   it('SOURCE GUARD: the affordance is Rollback, and every locale has the labels', () => {
     const page = fs.readFileSync(
-      path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
+      path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'),
       'utf8',
     );
     // The Employment History row offers Rollback and no longer offers Delete. Scoped to the `movement.`

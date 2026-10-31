@@ -7,7 +7,7 @@
  *
  * THE DANGEROUS PART IS NOT THE CONTROL, IT IS THE SEAM. Two fields feeding one engine is a contract
  * between `components/leave/generate-form.tsx` (which shows the operator a matched count) and
- * `app/admin/actions.ts` `openLeaveYearAction` (which performs the grant). If those two ever parse the
+ * `app/(app)/admin/actions.ts` `openLeaveYearAction` (which performs the grant). If those two ever parse the
  * pair differently, the screen confirms one population and the sweep writes entitlement for another —
  * and every test of either half goes on passing. CLAUDE.md §8: "when a defect lives in the contract
  * between two files, pin it across both."
@@ -201,7 +201,7 @@ describe('r287 §C · both callers go through the one rule', () => {
    * what is left to pin is that this caller reaches for that rule rather than re-inlining the split — the
    * exact regression that would put the confirmed population and the granted population out of step.
    */
-  const action = read('app/admin/actions.ts');
+  const action = read('app/(app)/admin/actions.ts');
   const form = read('components/leave/generate-form.tsx');
 
   it('the write path merges both fields through mergeEmploymentSelection', () => {
@@ -249,7 +249,7 @@ describe('r287 §C · both callers go through the one rule', () => {
    * MISSING_MESSAGE / IntlError — and this keeps that wiring from being deleted afterwards.
    */
   it('the server page reads the employment list and hands it over as PLAIN DATA', () => {
-    const page = read('app/admin/leave-config/generate/page.tsx');
+    const page = read('app/(app)/admin/leave-config/generate/page.tsx');
     expect(page).toContain('listEmployees');
     expect(page).toContain('employees={employments.map(');
     // No function may cross this boundary (test/server-client-boundary.test.ts pins the class); the three

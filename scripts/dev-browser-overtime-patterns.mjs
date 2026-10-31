@@ -67,7 +67,7 @@ if(!target.heldLockWorker) {
   if(git(['status','--porcelain']))throw new Error('Freeze a clean owned candidate before the browser runner.');
   const candidate=git(['rev-parse','HEAD']);
   const facadeSource=fs.readFileSync(path.join(root,'packs/attendance/service.ts'),'utf8');
-  const actionSource=fs.readFileSync(path.join(root,'app/admin/attendance/settings/overtime-patterns/actions.ts'),'utf8');
+  const actionSource=fs.readFileSync(path.join(root,'app/(app)/admin/attendance/settings/overtime-patterns/actions.ts'),'utf8');
   if(!facadeSource.includes('overtime-records')||!actionSource.includes('transferOvertimePatternToPayroll'))throw new Error('Integrate actual configuration, Records and Payroll action owners before this journey.');
   env.OVERTIME_FIXTURE_COORDINATOR_PID=String(process.pid);env.OVERTIME_FIXTURE_CANDIDATE=candidate;
   let server,activeJob,stopping=false,serverFd,forceStopTimer;

@@ -43,23 +43,23 @@ become i18n source strings (they'll be keyed + translated by the orchestrator).
 `
 
 const MODULES = [
-  { tourId: 'me', files: ['app/me/page.tsx'], routes: '/me',
+  { tourId: 'me', files: ['app/(app)/me/page.tsx'], routes: '/me',
     scope: 'Employee self-service. Walk through: the profile/contact section, the bank & statutory (approval-gated) area, the payslips list, and the leave/attendance summary. Audience: all employees.' },
-  { tourId: 'leave', files: ['app/leave/page.tsx', 'app/admin/leave/page.tsx'], routes: '/leave then /admin/leave',
+  { tourId: 'leave', files: ['app/(app)/leave/page.tsx', 'app/(app)/admin/leave/page.tsx'], routes: '/leave then /admin/leave',
     scope: 'Leave. On /leave (everyone): the leave balance, the request-leave form/button, and the requests table. Then ONE admin step on /admin/leave (roles ["hr_admin","super_admin"]): where leave types/entitlements/holidays are configured. First step centered intro.' },
-  { tourId: 'attendance', files: ['app/attendance/page.tsx'], routes: '/attendance',
+  { tourId: 'attendance', files: ['app/(app)/attendance/page.tsx'], routes: '/attendance',
     scope: 'Attendance. Walk through: check-in/out, the present/late/half-day/absent status, your record, and submitting a correction request. Audience: all.' },
-  { tourId: 'payroll', files: ['app/payroll/page.tsx', 'app/payroll/reports/page.tsx'], routes: '/payroll then /payroll/reports',
+  { tourId: 'payroll', files: ['app/(app)/payroll/page.tsx', 'app/(app)/payroll/reports/page.tsx'], routes: '/payroll then /payroll/reports',
     scope: 'Payroll (admin). On /payroll: create a batch, the batches table, statutory totals. Then a step on /payroll/reports: where EA/Form E/CP39/monthly statutory reports live. All steps roles ["hr_admin","super_admin"]. First step centered intro.' },
-  { tourId: 'people', files: ['app/people/page.tsx', 'app/admin/organization/page.tsx'], routes: '/people then /admin/organization',
+  { tourId: 'people', files: ['app/(app)/people/page.tsx', 'app/(app)/admin/organization/page.tsx'], routes: '/people then /admin/organization',
     scope: 'People & org. On /people (all): search, the people table, the hire form/Import CSV. Then admin steps on /admin/organization (roles ["hr_admin","super_admin"]): companies/departments/positions master data. First step centered intro.' },
-  { tourId: 'performance', files: ['app/performance/page.tsx'], routes: '/performance',
+  { tourId: 'performance', files: ['app/(app)/performance/page.tsx'], routes: '/performance',
     scope: 'Performance (manager/admin). Walk through: review cycles, my reviews / pending reviews, and creating/opening a cycle. All steps roles ["manager","hr_admin","super_admin"].' },
-  { tourId: 'approvals', files: ['app/approvals/page.tsx'], routes: '/approvals',
+  { tourId: 'approvals', files: ['app/(app)/approvals/page.tsx'], routes: '/approvals',
     scope: 'Approvals inbox (manager+). Walk through: the pending requests, approve/reject, and the no-self-approval / scope notes. All steps roles ["manager","hr_admin","super_admin"].' },
-  { tourId: 'org', files: ['app/org/page.tsx'], routes: '/org',
+  { tourId: 'org', files: ['app/(app)/org/page.tsx'], routes: '/org',
     scope: 'Org chart. Walk through: search, collapse/expand & zoom controls, and reading reporting lines. Audience: all.' },
-  { tourId: 'admin', files: ['app/admin/users/page.tsx', 'app/admin/audit/page.tsx'], routes: '/admin/users then /admin/audit',
+  { tourId: 'admin', files: ['app/(app)/admin/users/page.tsx', 'app/(app)/admin/audit/page.tsx'], routes: '/admin/users then /admin/audit',
     scope: 'Admin (roles ["hr_admin","super_admin"]). On /admin/users: roles, assigning/revoking, scoped admins. Then a step on /admin/audit: the audit trail over the event log. First step centered intro.' },
 ]
 

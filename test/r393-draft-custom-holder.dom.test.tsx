@@ -40,13 +40,13 @@ vi.mock('next/navigation', () => ({
 }));
 
 const saveDraftAction = vi.fn(async () => ({ id: 'draft-1' }));
-vi.mock('../app/admin/personnel/new/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/new/actions', () => ({
   saveDraftAction: (...a: unknown[]) => saveDraftAction(...(a as [])),
   discardDraftAction: vi.fn(async () => ({ok:true as const})),
   createEmployeeAction: vi.fn(async () => ({ ok:true as const, employmentId: 'emp-1' })),
 }));
 
-const { EmployeeWizard } = await import('../app/admin/personnel/new/wizard');
+const { EmployeeWizard } = await import('../app/(app)/admin/personnel/new/wizard');
 
 const LOCALES = { en, ms, zh, ta, th, vi: vi_ } as const;
 type Msgs = typeof en;

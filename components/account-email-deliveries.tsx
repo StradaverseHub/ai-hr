@@ -5,7 +5,7 @@ import type {AccountEmailDeliveryView} from '@/lib/account-email-model';
 import {accountEmailPreview} from '@/lib/account-email-content';
 import {internalSelected} from '@/lib/internal-auth/config';
 import {emailDisplayClock,formatEmailTimestamp} from '@/lib/email-display-clock';
-import {retryAccountEmailAction} from '@/app/admin/settings/notifications/actions';
+import {retryAccountEmailAction} from '@/app/(app)/admin/settings/notifications/actions';
 
 type History={fromDate?:string;toDate?:string;hasMore:boolean;nextCursor?:string;before?:string};
 export async function AccountEmailDeliveries({items,returnTo,history}:{items:AccountEmailDeliveryView[];returnTo:'/admin/settings/notifications'|'/admin/settings/email';history?:History}){

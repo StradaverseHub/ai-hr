@@ -14,7 +14,7 @@ vi.mock('../lib/session',()=>({getSession:async()=>CALLER}));
 vi.mock('../app/i18n-actions',()=>({setLocale:locale}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('confirmed-redirect:'+path);},unstable_rethrow:()=>{}}));
-const {saveHomePreferencesAction}=await import('../app/me/home/actions');
+const {saveHomePreferencesAction}=await import('../app/(app)/me/home/actions');
 async function login(){
  const [p]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional Home preference owner',primaryEmail:randomUUID()+'@example.invalid'}).returning();
  const userId=await createAppUser(b.tenantId,p.id,'employee');

@@ -44,7 +44,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const BOUNDARIES = [
   'core/payroll',
   // 2ef69d1e — Back Pay (Arrears). A payroll implementation file like its neighbours: it is declared by
-  // the pack (satelliteTables back_pay_run / back_pay_line), routed under app/payroll/, and re-exported
+  // the pack (satelliteTables back_pay_run / back_pay_line), routed under app/(app)/payroll/, and re-exported
   // by the facade. Listed BOTH here and in ALWAYS_ALLOWED so the guard treats it exactly as it treats
   // core/payroll-individual-txn.ts — outsiders may not import it, insiders may.
   'core/back-pay',
@@ -114,16 +114,16 @@ const ALWAYS_ALLOWED = [
   'core/loans.ts',
   'core/loans-compute.ts',
   'core/statutory-authority.ts',
-  'app/payroll/', // the payroll workbench: batch, process, transactions, reports, config, history-import, guide
-  'app/admin/pay-components/', // pay-component catalog admin
-  'app/admin/payroll-config/', // per-company payroll config admin
-  'app/admin/payroll-cycle/', // pay-cycle calendar admin
-  'app/admin/payroll-policy/', // payroll policy admin
-  'app/admin/payroll-permissions/', // payroll permission grants admin
-  'app/admin/loans/', // staff-loans admin
+  'app/(app)/payroll/', // the payroll workbench: batch, process, transactions, reports, config, history-import, guide
+  'app/(app)/admin/pay-components/', // pay-component catalog admin
+  'app/(app)/admin/payroll-config/', // per-company payroll config admin
+  'app/(app)/admin/payroll-cycle/', // pay-cycle calendar admin
+  'app/(app)/admin/payroll-policy/', // payroll policy admin
+  'app/(app)/admin/payroll-permissions/', // payroll permission grants admin
+  'app/(app)/admin/loans/', // staff-loans admin
   'app/api/payroll/', // reprocess job runner route
-  'app/me/payslip/', // employee payslip view + PDF (ESS payroll screen, like app/me/leave)
-  'app/me/tax-relief/', // employee TP1 tax-relief declaration (ESS payroll screen)
+  'app/(app)/me/payslip/', // employee payslip view + PDF (ESS payroll screen, like app/(app)/me/leave)
+  'app/(app)/me/tax-relief/', // employee TP1 tax-relief declaration (ESS payroll screen)
 ];
 const isPackImporter=(rel:string)=>ALWAYS_ALLOWED.some(a=>a.endsWith('/')?rel.startsWith(a):rel===a);
 

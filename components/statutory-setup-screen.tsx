@@ -119,7 +119,7 @@ import type {
  *
  * An EXPLICIT hidden input rather than a client-injected marker, so it does not depend on hydration, and
  * a fixed literal compared against a literal on the server, never a path echoed into a redirect.
- * `app/admin/actions.ts` `fromStatutorySetupScreen` is the other half; the two strings are pinned
+ * `app/(app)/admin/actions.ts` `fromStatutorySetupScreen` is the other half; the two strings are pinned
  * against each other by test/organization-stay-on-save.test.ts.
  */
 const RETURN_TO_SETUP = 'statutory-setup';
@@ -159,7 +159,7 @@ type Action = (fd: FormData) => void | Promise<void>;
 export type StatutorySetupActions = {
   /**
    * THE ONE SAVE. A `'use server'` action passed by reference from the RSC page (the r123 hazard is a
-   * closure built in the page, not a reference handed down). `app/admin/organization/statutory-tab-actions.ts`.
+   * closure built in the page, not a reference handed down). `app/(app)/admin/organization/statutory-tab-actions.ts`.
    */
   saveStatutoryScreen: (fd: FormData) => Promise<TabSaveResult>;
   /**

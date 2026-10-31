@@ -4,7 +4,7 @@
  *
  * TEST-ONLY. Nothing under app/, core/, lib/ or packs/ may import this file.
  *
- * `loadMyLeaveBefore` is app/leave/page.tsx lines 239–589 at b6b2abb8 (main@e135f3b4 + docs), the
+ * `loadMyLeaveBefore` is app/(app)/leave/page.tsx lines 239–589 at b6b2abb8 (main@e135f3b4 + docs), the
  * self-service path past the short-page return, with the JSX and the pure presentation derivations
  * removed: every `await` is the page's own, in the page's own order, sequential, with the page's own
  * arguments. It returns every value those awaits produced.

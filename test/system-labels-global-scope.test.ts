@@ -189,7 +189,7 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
   const src = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 
   it('the common maintenance page consumes database-scoped reads without a company-switcher filter',()=>{
-    const page=src('app/admin/settings/system-labels/page.tsx'),admin=src('core/admin.ts'),tools=src('components/system-label-import-tools.tsx');
+    const page=src('app/(app)/admin/settings/system-labels/page.tsx'),admin=src('core/admin.ts'),tools=src('components/system-label-import-tools.tsx');
     expect(tools).toContain('await requireAdmin()');expect(tools).toContain('<SystemLabelImport/>');expect(tools).not.toMatch(/scopedAdmin|scopeIds/);
     expect(page).toContain('labelMaintenanceCompanies(s)');expect(page).not.toMatch(/scopedIdSet|globalUsable|sharedSystemLabels|labelsInCompanyScope/);
     for(const [fn,table,kind]of [['listDepartmentsForLabels','department','department'],['listPositionsForLabels','position','position'],['listCostCentersForLabels','costCenter','cost_center'],['listBusinessUnitsForLabels','businessUnit','business_unit']]){
@@ -199,7 +199,7 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
 
   it('the swept pickers narrow through the same rule', () => {
     // Payroll → Process, step 2 filter catalogs (all four kinds).
-    const wizard = src('app/payroll/process/wizard.tsx');
+    const wizard = src('app/(app)/payroll/process/wizard.tsx');
     expect(wizard).toContain('labelsInCompanyScope(departments, companySet)');
     expect(wizard).toContain('labelsInCompanyScope(businessUnits, companySet)');
     expect(wizard).toContain('labelsInCompanyScope(positions, companySet)');
@@ -208,7 +208,7 @@ describe('f1bbc572 — every surface that narrows a label catalogue to a company
     expect(wizard).not.toContain('departments.filter((d) => companySet.has(d.companyId))');
 
     // Attendance → Recompute, the department filter for the chosen company.
-    const recompute = src('app/attendance/recompute/recompute-client.tsx');
+    const recompute = src('app/(app)/attendance/recompute/recompute-client.tsx');
     expect(recompute).toContain('labelsInCompanyScope(departments, new Set([companyId]))');
     expect(recompute).not.toContain('departments.filter((d) => d.companyId === companyId)');
 

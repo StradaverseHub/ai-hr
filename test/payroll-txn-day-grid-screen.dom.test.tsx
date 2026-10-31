@@ -29,8 +29,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
-import { TxnWorkspace, type TxnBatch, type TxnCompany, type TxnEmployee, type TxnPayItem } from '../app/payroll/transactions/individual/txn-workspace';
-import type { TxnPanel } from '../app/payroll/transactions/individual/existing-context';
+import { TxnWorkspace, type TxnBatch, type TxnCompany, type TxnEmployee, type TxnPayItem } from '../app/(app)/payroll/transactions/individual/txn-workspace';
+import type { TxnPanel } from '../app/(app)/payroll/transactions/individual/existing-context';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
@@ -49,7 +49,7 @@ const dayGridMock = vi.fn();
 const createMock = vi.fn();
 const detailMock = vi.fn();
 
-vi.mock('../app/payroll/transactions/individual/actions', () => ({
+vi.mock('../app/(app)/payroll/transactions/individual/actions', () => ({
   fetchEmployeeTxnPanelAction: (...a: unknown[]) => panelMock(...a),
   fetchBatchImpactAction: () => Promise.resolve(null),
   fetchTxnDetailAction: (...a: unknown[]) => detailMock(...a),

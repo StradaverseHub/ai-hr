@@ -85,14 +85,14 @@ const code = (p: string) =>
     .replace(/^[ \t]*\/\/.*$/gm, '');
 
 const PDF_SRC = read('lib/cp39-form-pdf.ts');
-const PREVIEW = read('app/payroll/cp39/preview/page.tsx');
+const PREVIEW = read('app/(app)/payroll/cp39/preview/page.tsx');
 const LIB_CODE = code('lib/cp39-form.ts');
 const PDF_CODE = code('lib/cp39-form-pdf.ts');
 const READ_CODE = code('localization/my/cp39-form.ts');
-const SHARED_CODE = code('app/payroll/cp39/shared.ts');
-const PREVIEW_CODE = code('app/payroll/cp39/preview/page.tsx');
-const PDF_ROUTE_CODE = code('app/payroll/cp39/pdf/route.ts');
-const TEXT_ROUTE_CODE = code('app/payroll/cp39/text/route.ts');
+const SHARED_CODE = code('app/(app)/payroll/cp39/shared.ts');
+const PREVIEW_CODE = code('app/(app)/payroll/cp39/preview/page.tsx');
+const PDF_ROUTE_CODE = code('app/(app)/payroll/cp39/pdf/route.ts');
+const TEXT_ROUTE_CODE = code('app/(app)/payroll/cp39/text/route.ts');
 const REPORTS_CODE = code('localization/my/reports.ts');
 
 /**

@@ -30,11 +30,11 @@ import { directSuperiorHistoryFor, reportingLinesFor } from '../core/read';
 import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
 
 const PAGE = fs.readFileSync(
-  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
 const ACTIONS = fs.readFileSync(
-  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/actions.ts'),
+  path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/actions.ts'),
   'utf8',
 );
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

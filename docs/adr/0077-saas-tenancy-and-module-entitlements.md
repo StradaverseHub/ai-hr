@@ -53,7 +53,7 @@ This is a real multi-tenant foundation. Nothing below requires reworking it.
    Stradaverse admin page cannot simply be another page in the app.
 5. **No metering.** No seat counts, no usage records, no subscription entity.
 6. **Navigation is hardcoded** in `components/sidebar.tsx`, filtered only by role booleans passed from
-   `app/layout.tsx`.
+   `app/(app)/layout.tsx`.
 
 ## 3. Decisions
 
@@ -194,7 +194,7 @@ refuse an entitlement whose dependency is not active, or the customer buys somet
 | 1 | `module` + `tenant_module` schema, registry seed, RLS | No behaviour change yet |
 | 2 | `isModuleEnabled()` + `ModuleNotEnabledError` + per-request cache | The enforcement primitive |
 | 3 | Migrate the 9 env gates to entitlements | Default every existing tenant to *all on* — zero behaviour change on the demo |
-| 4 | Nav + page gating from entitlements | `app/layout.tsx` passes the entitlement set |
+| 4 | Nav + page gating from entitlements | `app/(app)/layout.tsx` passes the entitlement set |
 | 5 | `ai_hr_platform` role + `/platform` route group, deny-by-default | Privilege boundary before any UI |
 | 6 | Platform: tenant list, detail, module toggles | The Odoo-Apps-equivalent screen, Stradaverse-side |
 | 7 | `provisionTenant()` + reference-data seeding | Onboarding becomes an operation, not a script |

@@ -31,7 +31,7 @@ import {
 } from '../localization/my/statutory';
 import { BNM_BANKS } from '../localization/my/bank-files/bnm-codes';
 import { myClientPack } from '../localization/my/client';
-import { setBankAction, setStatutoryAction } from '../app/admin/personnel/[employmentId]/actions';
+import { setBankAction, setStatutoryAction } from '../app/(app)/admin/personnel/[employmentId]/actions';
 import { adminCtx, closeAll, latestEventPayload, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 import { personnelInput } from '../lib/personnel-form-contract';
 import { hasPersonnelPostedBinding } from './helpers/personnel-posted-binding';
@@ -51,7 +51,7 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
-const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
 const CARD = read('components/bank-info-card.tsx');
 // 35b7af0a group 5 — the two employee bank fields the wizard now shares with this card.
 const FIELDS = read('components/bank-account-fields.tsx');

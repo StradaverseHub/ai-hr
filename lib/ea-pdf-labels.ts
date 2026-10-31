@@ -2,7 +2,7 @@
  * r220 (item 61c2e30f) — every localized caption the C.P.8A needs, resolved ONCE.
  *
  * WHY THIS MODULE EXISTS. Two routes now print this form: the employee's own filled statement
- * (`app/me/ea/[employmentId]/pdf`) and the blank copy the reporter asked for (`app/payroll/ea/blank`).
+ * (`app/(app)/me/ea/[employmentId]/pdf`) and the blank copy the reporter asked for (`app/(app)/payroll/ea/blank`).
  * `EaPdfLabels` is fifty-odd required properties, so each route would otherwise assemble its own fifty-line
  * object by hand — and two hand-maintained copies of one statutory form's captions is how one of them
  * quietly keeps a caption the other reworded, on a document whose whole purpose is that the blank and the

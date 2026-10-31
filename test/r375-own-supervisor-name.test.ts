@@ -218,7 +218,7 @@ describe('an employee reads their own administrative supervisor', () => {
     const view = await myRosterWindow(emp.ctx, WINDOW());
     expect(view, 'the employee has an employment, so the screen renders').not.toBeNull();
     expect(view!.employmentId).toBe(emp.employmentId);
-    // app/attendance/my-roster/page.tsx prints t('myRoster.supervisorNamed') and t('myRoster.readOnlyNamed')
+    // app/(app)/attendance/my-roster/page.tsx prints t('myRoster.supervisorNamed') and t('myRoster.readOnlyNamed')
     // when this is non-null, and the name-free t('myRoster.readOnly') when it is null.
     expect(view!.managerName, 'THE DEFECT: null here is "speak to your supervisor" instead of the name').toBe(
       'Farid Hassan',
@@ -537,11 +537,11 @@ describe('migration 0498 — the object, not its behaviour', () => {
 
 describe('the five "Goes to" places — pinned across both files', () => {
   const GOES_TO_FILES = [
-    'app/attendance/request-status/page.tsx',
-    'app/attendance/request-status/export/route.ts',
-    'app/attendance/requests/page.tsx',
-    'app/attendance/plan-ot/page.tsx',
-    'app/attendance/plan-ot/apply/page.tsx',
+    'app/(app)/attendance/request-status/page.tsx',
+    'app/(app)/attendance/request-status/export/route.ts',
+    'app/(app)/attendance/requests/page.tsx',
+    'app/(app)/attendance/plan-ot/page.tsx',
+    'app/(app)/attendance/plan-ot/apply/page.tsx',
   ];
 
   it('all five still resolve the name through reportingLinesFor, with the fallback behind it', () => {

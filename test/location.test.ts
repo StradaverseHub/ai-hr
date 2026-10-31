@@ -172,7 +172,7 @@ describe('location master data (ADR-0054)', () => {
     // The other half of the contract above. `updateLocation` treating absent as "keep" is only protective
     // if the action stops sending a value — and the action reading a field the form no longer renders is
     // exactly how this returns.
-    const src = readFileSync(resolvePath(__dirname, '..', 'app/admin/actions.ts'), 'utf8')
+    const src = readFileSync(resolvePath(__dirname, '..', 'app/(app)/admin/actions.ts'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
     const update = src.slice(src.indexOf('export async function updateLocationAction'));
@@ -182,14 +182,14 @@ describe('location master data (ADR-0054)', () => {
     /**
      * 639bf4a5 rev 2 (r338) — READ THROUGH THE SHARED CONTRACT NOW, NOT FIELD BY FIELD. The four
      * `fd.get('<field>')` calls this loop used to look for are one `for (const field of LOCATION_FIELDS)`
-     * in app/admin/work-locations/location-fields.ts: the form, the action and the refusal echo all read
+     * in app/(app)/admin/work-locations/location-fields.ts: the form, the action and the refusal echo all read
      * ONE list, so the page cannot post a field the action never reads. The property is unchanged and is
      * still asserted in both halves — the contract names exactly the four fields ADR-0086 left editable,
      * and the action really does hand each of them to the service — so this still cannot pass on an
      * action that stopped posting anything.
      */
     const fields = readFileSync(
-      resolvePath(__dirname, '..', 'app/admin/work-locations/location-fields.ts'),
+      resolvePath(__dirname, '..', 'app/(app)/admin/work-locations/location-fields.ts'),
       'utf8',
     );
     expect(fields, 'the contract names the four fields, and no state').toContain(

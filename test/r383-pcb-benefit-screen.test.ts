@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {describe,it,expect,vi} from 'vitest';
-import {PcbDetailView} from '../app/payroll/pcb-detail/pcb-detail-view';
+import {PcbDetailView} from '../app/(app)/payroll/pcb-detail/pcb-detail-view';
 import {explainPcb,pcbSlipSections,pcbClosingSections,pcbWorksheet} from '../core/pcb-explain';
 import {statutory} from '../localization/my/payroll';
 import type {PcbNonCashSnapshot} from '../localization/noncash-benefits';

@@ -391,12 +391,12 @@ describe('d272834b · Mobile App Preview inherits the employee eligibility owner
   // Owner explicitly replaced sample data with authorized live data. Integration and no-leak proof:
   // test/mobile-preview-live.test.ts. The preview must never read the unrestricted catalogue itself.
   it('loads the existing masked, eligible dashboard through the authenticated web page', () => {
-    const loader = readFileSync(new URL('../app/mobile-preview/data.ts', import.meta.url), 'utf8');
+    const loader = readFileSync(new URL('../app/(app)/mobile-preview/data.ts', import.meta.url), 'utf8');
     expect(loader.length).toBeGreaterThan(1000);
     expect(loader).toContain('myLeaveDashboard(s, me!.employmentId, { today, locale })');
     expect(loader).not.toContain('includeIneligible: true');
     expect(loader).not.toMatch(/listLeaveTypes\(/);
-    const page = readFileSync(new URL('../app/mobile-preview/page.tsx', import.meta.url), 'utf8');
+    const page = readFileSync(new URL('../app/(app)/mobile-preview/page.tsx', import.meta.url), 'utf8');
     expect(page).toContain('await scopedSession()');
   });
 });

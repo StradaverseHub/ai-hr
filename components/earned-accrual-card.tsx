@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils';
 import { toCsv } from '@/lib/csv';
 import { Button, Field, inputCls } from './ui';
 import { MultiSelectPopover } from './ui/multi-select-popover';
-import { runEarnedAccrualAction } from '@/app/admin/actions';
+import { runEarnedAccrualAction } from '@/app/(app)/admin/actions';
 // feedback cf9dcb98 — the preview comes from the screen's own action, which forwards the engine's named
-// reason; the COMMIT is unchanged and still posts through app/admin/actions.ts. See that file's header.
-import { previewEarnedAccrualWithReasonAction } from '@/app/admin/leave-config/earned-accrual/actions';
+// reason; the COMMIT is unchanged and still posts through app/(app)/admin/actions.ts. See that file's header.
+import { previewEarnedAccrualWithReasonAction } from '@/app/(app)/admin/leave-config/earned-accrual/actions';
 import type { ArchivedLeaveTypeHint, EarnedAccrualEmptyReason, EarnedAccrualGroup } from '@/core/leave';
 
 export type EarnedScopeOption = { id: string; name: string };
@@ -22,7 +22,7 @@ export type EarnedScopeOption = { id: string; name: string };
  * call site.
  *
  * r299 (3de1453a) — `swept` now means "this type is Annual Leave", decided on the SERVER by the engine's
- * own `isEarnedAccrualType` (app/admin/leave-config/earned-accrual/page.tsx) and crossing as a plain
+ * own `isEarnedAccrualType` (app/(app)/admin/leave-config/earned-accrual/page.tsx) and crossing as a plain
  * boolean. This card may not import `core/leave` — it is a client island and that module opens the
  * database connection — so it neither knows nor re-derives what Annual Leave is; it disables and tags on
  * what it is handed.

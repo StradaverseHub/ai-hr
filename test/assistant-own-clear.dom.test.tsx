@@ -22,10 +22,10 @@ vi.mock('../core/module-agent-releases',()=>({eraseOwnModulePlanProposals:owner.
  GOVERNED_JOB_FEEDBACK_OUTCOMES:['helpful','needs_correction','incorrect'],proposeOwnModuleReadPlan:vi.fn(),evaluateHumanQuestionPlannerCandidate:vi.fn(),recordOwnGovernedJobFeedback:vi.fn(),
  createPromptAgentCandidate:vi.fn(),evaluatePromptAgentCandidate:vi.fn(),promotePromptAgentCandidate:vi.fn(),rollbackAssistantPromotion:vi.fn(),runPromptPlannedSyntheticJob:vi.fn(),
  createConversationAgentCandidate:vi.fn(),evaluateConversationAgentCandidate:vi.fn(),promoteConversationAgentCandidate:vi.fn()}));
-import {eraseModuleProposalsAction} from '../app/assistant/module-plan-actions';
-import {eraseGovernedJobFeedbackAction} from '../app/assistant/job-feedback-actions';
-import {eraseAgentFeedbackAction} from '../app/assistant/feedback-actions';
-import {eraseConversationMetadataAction} from '../app/assistant/agent-review-actions';
+import {eraseModuleProposalsAction} from '../app/(app)/assistant/module-plan-actions';
+import {eraseGovernedJobFeedbackAction} from '../app/(app)/assistant/job-feedback-actions';
+import {eraseAgentFeedbackAction} from '../app/(app)/assistant/feedback-actions';
+import {eraseConversationMetadataAction} from '../app/(app)/assistant/agent-review-actions';
 import {OwnClearForm,OwnClearStatus} from '../components/assistant/own-clear';
 const locales=['en','ms','zh','ta','th','vi'] as const;
 const clear=(locale:string)=>(copies[locale] as typeof en).assistant.workspace.ownClear;

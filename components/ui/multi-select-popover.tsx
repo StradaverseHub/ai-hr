@@ -25,7 +25,7 @@
  * one hidden <input name={name} value={id}> per selected id, rendered OUTSIDE the `open` conditional,
  * so the posted ids survive the panel actually closing. The visible checkboxes are presentation only.
  * Do NOT change this without checking every server action that consumes the field
- * (festive grant → formData.getAll('companyIds') in app/admin/actions.ts).
+ * (festive grant → formData.getAll('companyIds') in app/(app)/admin/actions.ts).
  *
  * Presentation-only: all copy arrives already translated via props, so t() lookups stay static at the
  * call sites and the i18n coverage test keeps working. No translation hook belongs in this file.

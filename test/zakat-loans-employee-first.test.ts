@@ -60,12 +60,12 @@ import { exportZakatTxnsCsv } from '../core/payroll-view';
 import { AppliedInPayrollList } from '../components/applied-in-payroll-list';
 import { LoanList } from '../components/loan-list';
 import { LoanNewForm } from '../components/loan-new-form';
-import { ZakatElectionsList } from '../app/payroll/transactions/zakat/elections-list';
-import ZakatTransactionPage from '../app/payroll/transactions/zakat/page';
-import ZakatElectionPage from '../app/payroll/transactions/zakat/election/page';
-import LoansPage from '../app/admin/loans/page';
-import NewLoanPage from '../app/admin/loans/new/page';
-import LoanDetailPage from '../app/admin/loans/[id]/page';
+import { ZakatElectionsList } from '../app/(app)/payroll/transactions/zakat/elections-list';
+import ZakatTransactionPage from '../app/(app)/payroll/transactions/zakat/page';
+import ZakatElectionPage from '../app/(app)/payroll/transactions/zakat/election/page';
+import LoansPage from '../app/(app)/admin/loans/page';
+import NewLoanPage from '../app/(app)/admin/loans/new/page';
+import LoanDetailPage from '../app/(app)/admin/loans/[id]/page';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -385,8 +385,8 @@ describe('the Zakat screen’s static keys resolve, though the coverage check ca
   const at = (dotted: string): unknown =>
     dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as any)[k] : undefined), en);
 
-  it('every literal t() / tList() key on app/payroll/transactions/zakat/page.tsx exists in en.json', () => {
-    const src = readFileSync(new URL('../app/payroll/transactions/zakat/page.tsx', import.meta.url), 'utf8');
+  it('every literal t() / tList() key on app/(app)/payroll/transactions/zakat/page.tsx exists in en.json', () => {
+    const src = readFileSync(new URL('../app/(app)/payroll/transactions/zakat/page.tsx', import.meta.url), 'utf8');
     const missing: string[] = [];
     for (const m of src.matchAll(/\bt\(\s*'([a-zA-Z0-9_.]+)'/g)) {
       if (at(`payroll.transactions.${m[1]}`) === undefined) missing.push(`payroll.transactions.${m[1]}`);
@@ -398,7 +398,7 @@ describe('the Zakat screen’s static keys resolve, though the coverage check ca
   });
 
   it('the applied-in-payroll table can label every cycle and every batch status it can be handed', () => {
-    // `loans` keeps its OWN copies so app/admin/loans/page.tsx stays single-namespace (which is what buys
+    // `loans` keeps its OWN copies so app/(app)/admin/loans/page.tsx stays single-namespace (which is what buys
     // it check-C coverage); the copies must not drift from the catalogs they were taken from.
     expect(Object.keys(at('loans.cycle') as object).sort()).toEqual(
       Object.keys(at('payroll.transactions.individual.cycle') as object).sort(),

@@ -963,7 +963,7 @@ describe('slice 0 — invitation seam cannot mint a grant the inviter could not 
 
   it('re-inviting an ACTIVATED user under their OWN subject is not a takeover — it just adds the grant', async () => {
     // The false positive guard B must not have. This is reachable straight from the shipped UI:
-    // app/admin/users/page.tsx:87-93 builds the person dropdown from every employee with a personId,
+    // app/(app)/admin/users/page.tsx:87-93 builds the person dropdown from every employee with a personId,
     // with no filter for people who already hold a login, and inviteUserAction requires a personId. The
     // "rebind" here is `SET workos_user_id = <the value it already holds>` — a literal no-op, so there
     // is no identity to steal — and it worked before this migration. Refusing it would have reached the

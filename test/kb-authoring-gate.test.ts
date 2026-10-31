@@ -2,7 +2,7 @@
  * CUSTOMER-DEPLOYMENT-READINESS Part 4, "Knowledge base authoring" — CAN AN EMPLOYEE STILL PUBLISH TO THE
  * COMPANY LIBRARY BY POSTING TO THE ACTION?
  *
- * `createArticleAction` and `uploadFileAction` took a bare `getSession()`, and `app/knowledge-base/page.tsx`
+ * `createArticleAction` and `uploadFileAction` took a bare `getSession()`, and `app/(app)/knowledge-base/page.tsx`
  * mounted the composer unconditionally. So any authenticated employee was OFFERED the composer and could
  * file an article at any audience up to `hr_admin` — the shelf HR reads as official guidance.
  *
@@ -86,8 +86,8 @@ import {
   restoreDocumentAction,
   updateDocumentAction,
   uploadFileAction,
-} from '../app/knowledge-base/actions';
-import KnowledgeBasePage from '../app/knowledge-base/page';
+} from '../app/(app)/knowledge-base/actions';
+import KnowledgeBasePage from '../app/(app)/knowledge-base/page';
 import { KbComposer } from '../components/kb-composer';
 
 /** Anything that betrays the driver: the wrapper, the statement, or its bound parameters. */

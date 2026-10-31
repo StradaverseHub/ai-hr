@@ -593,7 +593,7 @@ describe('99b2d6c0 · i18n across all six locales', () => {
     // 04b88724 (r339) — `people.list.childReliefReview` IS DELIBERATELY ORPHANED, and this assertion is
     // deliberately kept. It labelled the link on the Personnel Management main page, which that item
     // removed at the reporter's request; the ROUTE was kept (see the comment at its old site in
-    // app/admin/personnel/page.tsx). Nothing renders this key today. It stays, with its six translations,
+    // app/(app)/admin/personnel/page.tsx). Nothing renders this key today. It stays, with its six translations,
     // because the screen it named still exists and restoring the entry point must not mean re-translating
     // a string in six locales. test/i18n-coverage.test.ts checks code→messages only, so an unrendered key
     // is not a guard failure — which is exactly why it needs this note instead of silently rotting.

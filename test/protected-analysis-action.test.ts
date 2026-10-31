@@ -5,7 +5,7 @@ vi.mock('../core/read',()=>({allowedCompanies:h.allowed}));vi.mock('../core/ai-w
 vi.mock('../core/ai-payroll-comparison-analysis',()=>({generatePrivatePayrollComparisonAnalysis:h.payroll}));vi.mock('../core/report-payroll-comparison',()=>({payrollComparisonSpec:h.spec}));
 vi.mock('../core/ai-domain-analysis',()=>({generateDomainAnalysis:h.domain}));vi.mock('../lib/ai/provider-privacy-request',()=>({AiPrivacyGateError:h.Gate}));
 vi.mock('../lib/hr-date',()=>({todayInKualaLumpur:()=> '2026-10-30'}));
-import {readProtectedAnalysisAction} from '../app/analytics/ai-actions';
+import {readProtectedAnalysisAction} from '../app/(app)/analytics/ai-actions';
 const session={tenantId:'tenant',userId:'user'},spec={datasetId:'owned-canonical-payroll-report'};
 beforeEach(()=>{vi.clearAllMocks();h.session.mockResolvedValue(session);h.allowed.mockResolvedValue([{id:'company-b'},{id:'company-a'}]);h.scope.mockResolvedValue(['company-b','company-a']);h.workforce.mockResolvedValue('Source explanation');h.payroll.mockResolvedValue('Source explanation');h.domain.mockResolvedValue('Source explanation');h.spec.mockReturnValue(spec);});
 describe('read-only protected analysis action',()=>{

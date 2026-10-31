@@ -191,10 +191,10 @@ describe('57d48735 · (g) the red flag r339 left is retired everywhere it was ra
   });
 
   it('the PCB configuration screen no longer tells an admin the shown figure is wrong', () => {
-    expect(read('app/payroll/configuration/pcb/page.tsx')).not.toContain('is, on the evidence of printed page 28 item f, WRONG');
+    expect(read('app/(app)/payroll/configuration/pcb/page.tsx')).not.toContain('is, on the evidence of printed page 28 item f, WRONG');
   });
 
   it('the rows still show pending sign-off — a transcription is not an accountant’s signature', () => {
-    expect(read('app/payroll/configuration/pcb/page.tsx')).toContain('reliefsPendingSignOff');
+    expect(read('app/(app)/payroll/configuration/pcb/page.tsx')).toContain('reliefsPendingSignOff');
   });
 });

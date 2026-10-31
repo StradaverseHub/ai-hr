@@ -54,7 +54,7 @@ import { attendanceCorrectionStatusEnum } from '../db/schema';
 // "Three places on one screen agree" is a relation between three resolved strings; no source check can
 // see it, and a source check that pinned the English word would pass on a screen where they had drifted
 // apart and somebody had edited the catalogue instead.
-import { requestStatusFilterLabel, statusLabel } from '../app/attendance/request-ui';
+import { requestStatusFilterLabel, statusLabel } from '../app/(app)/attendance/request-ui';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -75,23 +75,23 @@ const capsPage = (cls: string) => /\bmx-auto\b/.test(cls) && /\bmax-w-\d*xl\b/.t
 // list deliberately: dropping it because the row changed parents would retire live coverage of a screen
 // that still renders exactly the same table.
 const WIDE_LIST_SCREENS = [
-  'app/admin/attendance/page.tsx',
-  // 6d091cc0 (r301) — 'app/admin/attendance-policy/page.tsx' STOOD HERE. It is a redirect stub now and renders
+  'app/(app)/admin/attendance/page.tsx',
+  // 6d091cc0 (r301) — 'app/(app)/admin/attendance-policy/page.tsx' STOOD HERE. It is a redirect stub now and renders
   // no width at all; the list it held is the Schedule Group card on the Schedule screen below (which IS in this
   // list), and the card itself is pinned cap-free in WIDE_SCREEN_CARDS.
-  'app/admin/holidays/page.tsx',
-  'app/admin/attendance-allowance/page.tsx',
-  // r428 (83c0d3c8 contest) — 'app/admin/work-locations/page.tsx' STOOD HERE. It is a requireAdmin()
+  'app/(app)/admin/holidays/page.tsx',
+  'app/(app)/admin/attendance-allowance/page.tsx',
+  // r428 (83c0d3c8 contest) — 'app/(app)/admin/work-locations/page.tsx' STOOD HERE. It is a requireAdmin()
   // redirect stub now and renders no width at all; the company-first screen it used to render is
-  // app/admin/work-locations/clocking/page.tsx below, both of its steps full-width list screens by shape.
-  'app/admin/work-locations/clocking/page.tsx',
+  // app/(app)/admin/work-locations/clocking/page.tsx below, both of its steps full-width list screens by shape.
+  'app/(app)/admin/work-locations/clocking/page.tsx',
   // 1c5602cc (r263) — the Schedule configuration screen. A list screen by shape (two wide tables of
   // shifts and per-company working weeks, seven and six columns), so it takes the same full-width
   // property its siblings do, pinned in the same place rather than left uncovered.
-  'app/admin/attendance/schedule/page.tsx',
+  'app/(app)/admin/attendance/schedule/page.tsx',
   // r227 — Attendance Irregularity, the EMPLOYEE's own list. Not an admin screen and deliberately in the
   // same list anyway: it is a list screen that was capped, and the reporter raised it as the same fault.
-  'app/attendance/requests/page.tsx',
+  'app/(app)/attendance/requests/page.tsx',
   /**
    * f3e6c36e (r287) — the employee's own attendance screen, added on the SAME reasoning r227 gave: the
    * full-width property belongs to the SCREEN, not to who may open it. Listed from the start rather than
@@ -109,7 +109,7 @@ const WIDE_LIST_SCREENS = [
    * reason is live again in its new shape — a ten-column table, not seventeen — and the entry now also
    * guards the one legitimate inner cap on the page: the `mx-auto max-w-md` notice for a login with no
    * active employment, which `capsPage` deliberately does not count (`max-w-md` is not `max-w-…xl`), the
-   * same arrangement app/attendance/requests/page.tsx uses one entry above for the same sentence.
+   * same arrangement app/(app)/attendance/requests/page.tsx uses one entry above for the same sentence.
    */
   // 54f33b59 r2: legacy records route redirects; the canonical my-roster page below owns width.
   /**
@@ -123,7 +123,7 @@ const WIDE_LIST_SCREENS = [
    * with no active employment, which `capsPage` deliberately does not count (`max-w-md` is not
    * `max-w-…xl`) — the same arrangement the two entries above use for the same sentence.
    */
-  'app/attendance/my-roster/page.tsx',
+  'app/(app)/attendance/my-roster/page.tsx',
   /**
    * dde08629 (r319) — EMPLOYEE ATTENDANCE and its two sibling tabs, added on the same reasoning every
    * entry above carries and on the identical complaint: at `mx-auto max-w-6xl` a sixteen-column table sat
@@ -135,9 +135,9 @@ const WIDE_LIST_SCREENS = [
    * af7a8eb4's header warns about: a screen can gain the layout without gaining the guard, and then lose
    * it again silently.
    */
-  'app/attendance/page.tsx',
-  'app/attendance/daily/page.tsx',
-  'app/attendance/individual/page.tsx',
+  'app/(app)/attendance/page.tsx',
+  'app/(app)/attendance/daily/page.tsx',
+  'app/(app)/attendance/individual/page.tsx',
   /**
    * a57f0584 (r322) — Roster. It has BEEN pageWideCls all along and was never listed, which is exactly the
    * hole af7a8eb4's header names: a screen can hold the property without the guard and lose it again with
@@ -145,14 +145,14 @@ const WIDE_LIST_SCREENS = [
    * once, rather than whichever sorted first), because a month grid spanning twelve companies is the last
    * screen that could afford to acquire a reading-width cap.
    */
-  'app/roster/page.tsx',
+  'app/(app)/roster/page.tsx',
   /**
    * dae7a10f (r322) — the per-day detail screen. 570fd56e moved the eight calculation columns onto it and
    * left it at `mx-auto max-w-5xl`, so the screen carrying the WIDEST content on this tab was the one
    * narrow screen in the set. It opens from a full-width list and now matches it — and is listed here so
    * it cannot drift back, the same reasoning r319 used for the three screens above.
    */
-  'app/attendance/individual/[date]/page.tsx',
+  'app/(app)/attendance/individual/[date]/page.tsx',
   /**
    * f618065d (r362) — SELF OVERTIME, the employee's own overtime list. The reporter raised it as the
    * identical complaint r227 and r319 already cost two rounds each: `mx-auto max-w-6xl`, so roughly a
@@ -162,10 +162,10 @@ const WIDE_LIST_SCREENS = [
    *
    * ⚠️ THE NOT-LINKED BRANCH IS WHY THIS ENTRY NEEDS A NOTE. That branch was `mx-auto max-w-2xl`, which
    * the second case below reads as a page-level cap. It is `mx-auto max-w-md` now — the same choice
-   * app/attendance/requests/page.tsx made and for the same stated reason — so the one-sentence notice
+   * app/(app)/attendance/requests/page.tsx made and for the same stated reason — so the one-sentence notice
    * stays centred and narrow while the SCREEN is full width.
    */
-  'app/attendance/plan-ot/page.tsx',
+  'app/(app)/attendance/plan-ot/page.tsx',
   /**
    * 7709ffd1 (r369) — MY REQUEST (the row that read "My Attendance Request Status" until this round). The
    * TWELFTH list screen in this menu to take the property, listed in the round that grants it rather than
@@ -178,15 +178,15 @@ const WIDE_LIST_SCREENS = [
    * `mx-auto max-w-md` now, so the one-sentence notice stays centred and narrow while the SCREEN is full
    * width. `capsPage` deliberately does not count `max-w-md` (it is not `max-w-…xl`).
    */
-  'app/attendance/request-status/page.tsx',
+  'app/(app)/attendance/request-status/page.tsx',
 ];
 
 // 7500c083 explicitly replaces the earlier reading-column decision for create/view/edit Schedule.
 // Keep a positive screen cohort so a renamed marker or empty list cannot silently remove coverage.
 const SCHEDULE_CONFIGURATION_SCREENS = [
-  'app/admin/attendance/schedule/new/page.tsx',
-  'app/admin/attendance/schedule/[ruleId]/page.tsx',
-  'app/admin/attendance/schedule/[ruleId]/edit/page.tsx',
+  'app/(app)/admin/attendance/schedule/new/page.tsx',
+  'app/(app)/admin/attendance/schedule/[ruleId]/page.tsx',
+  'app/(app)/admin/attendance/schedule/[ruleId]/edit/page.tsx',
 ];
 
 /**
@@ -195,15 +195,15 @@ const SCHEDULE_CONFIGURATION_SCREENS = [
  * would re-create, one card at a time, the empty-margin complaint af7a8eb4 fixed).
  */
 const WIDE_SCREEN_CARDS = [
-  'app/admin/attendance-policy/schedule-group-card.tsx',
-  'app/admin/attendance-policy/company-policy-card.tsx',
-  'app/admin/attendance-policy/work-schedule-overtime-card.tsx',
+  'app/(app)/admin/attendance-policy/schedule-group-card.tsx',
+  'app/(app)/admin/attendance-policy/company-policy-card.tsx',
+  'app/(app)/admin/attendance-policy/work-schedule-overtime-card.tsx',
 ];
 
 /** The two retired pages: guarded redirect stubs, each to the General-tab card holding its content. */
 const REDIRECT_STUBS: [string, string][] = [
-  ['app/admin/attendance-policy/page.tsx', 'SCHEDULE_GROUPS_ANCHOR'],
-  ['app/admin/attendance-policy/schedule/page.tsx', 'WORK_SCHEDULE_OVERTIME_ANCHOR'],
+  ['app/(app)/admin/attendance-policy/page.tsx', 'SCHEDULE_GROUPS_ANCHOR'],
+  ['app/(app)/admin/attendance-policy/schedule/page.tsx', 'WORK_SCHEDULE_OVERTIME_ANCHOR'],
 ];
 
 // 6340aecb — the form pages that are full width ON PURPOSE (see B above). They get the SAME pair of
@@ -211,7 +211,7 @@ const REDIRECT_STUBS: [string, string][] = [
 // putting `mx-auto max-w-3xl` back on the shift form must fail here, exactly as taking it off
 // rule-form.tsx would fail the case below.
 //
-// ⚠️ c7c69a18 (r369) ADDED THE SECOND ENTRY, and the const was `['app/admin/attendance/shift-form.tsx']`
+// ⚠️ c7c69a18 (r369) ADDED THE SECOND ENTRY, and the const was `['app/(app)/admin/attendance/shift-form.tsx']`
 // — "the ONE form page that is full width on purpose" — until then. Apply OT Plan is the second, on the
 // same reasoning and from the same kind of request, so the sentence is now plural. The reason moved onto
 // each entry rather than into the case title, because the title used to cite 6340aecb's request point 3
@@ -222,12 +222,12 @@ const REDIRECT_STUBS: [string, string][] = [
 // decision about a FORM rather than smuggled in as a list. Its pair of assertions is identical either way.
 const WIDE_FORM_SCREENS: [string, string][] = [
   [
-    'app/admin/attendance/shift-form.tsx',
+    'app/(app)/admin/attendance/shift-form.tsx',
     'The reporter asked for this screen edge to edge (6340aecb, request point 3) and its sections are ' +
       '4-up grids: Working Times alone puts four times on one line.',
   ],
   [
-    'app/attendance/plan-ot/apply/page.tsx',
+    'app/(app)/attendance/plan-ot/apply/page.tsx',
     'c7c69a18 asked for this screen edge to edge in as many words — "Remove the max-width/centred ' +
       'container so the page uses the full width of the content area" — and it is a month calendar ' +
       'beside a form, not one column of boxes. It was in NEITHER list before, so the width was ' +
@@ -286,7 +286,7 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     // Full width alone would not have fixed it: the page ALSO split its own column to make room for the
     // inline Fix panel. The request opens in a pop-up now, so there is nothing to make room for — and a
     // future "put the form back beside the list" is the exact regression the reporter asked us to undo.
-    const src = read('app/attendance/requests/page.tsx');
+    const src = read('app/(app)/attendance/requests/page.tsx');
     expect(src, 'the list/panel two-column split must not come back').not.toContain('lg:grid-cols-[minmax(0,1fr)_22rem]');
     // …and Request opens the shared pop-up rather than a second column. (The `?fix=` branch is KEPT for
     // links written before r227 — see test/me-tabs.test.ts, which pins that half.)
@@ -297,13 +297,13 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   // The page is a redirect stub to Leave Config › Leave Credit now and renders nothing, so there is no width to
   // leave alone; its summary and sweeps are cards on that screen, which follows the Leave Config layout.
   it('/admin/toil renders nothing of its own any more — it redirects to Leave Credit', () => {
-    const src = read('app/admin/toil/page.tsx');
+    const src = read('app/(app)/admin/toil/page.tsx');
     expect(src).toContain("redirect(`/admin/leave-config/leave-credit");
     expect(classNameLiterals(src)).toEqual([]);
   });
 
   it('the shift list no longer renders the create/edit form', () => {
-    const src = read('app/admin/attendance/page.tsx');
+    const src = read('app/(app)/admin/attendance/page.tsx');
     expect(src).not.toContain('id="shift-form"');
     expect(src).not.toContain('createShiftAction');
     expect(src).not.toContain('updateShiftAction');
@@ -312,23 +312,23 @@ describe('af7a8eb4 — Attendance screen layout', () => {
   });
 
   it('the shift form lives on its own routes, reached from the list header', () => {
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/attendance/new/page.tsx'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/admin/attendance/[shiftId]/page.tsx'))).toBe(true);
-    const list = read('app/admin/attendance/page.tsx');
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/attendance/new/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/admin/attendance/[shiftId]/page.tsx'))).toBe(true);
+    const list = read('app/(app)/admin/attendance/page.tsx');
     expect(list).toContain('/admin/attendance/new');
     // Both new routes are guarded IN THE FILE — test/function-access.test.ts detects the guard by regex
     // over each page.tsx source, so the call has to be literally there.
-    expect(read('app/admin/attendance/new/page.tsx')).toContain('requireAdmin()');
-    expect(read('app/admin/attendance/[shiftId]/page.tsx')).toContain('requireAdmin()');
+    expect(read('app/(app)/admin/attendance/new/page.tsx')).toContain('requireAdmin()');
+    expect(read('app/(app)/admin/attendance/[shiftId]/page.tsx')).toContain('requireAdmin()');
   });
 
   /** The page owns the single header and responsive width; the rule form owns only its fields. */
   it('the rule form draws no page chrome of its own — the page it is mounted on does (665de026)', () => {
-    const form = read('app/admin/attendance-policy/rules/rule-form.tsx');
+    const form = read('app/(app)/admin/attendance-policy/rules/rule-form.tsx');
     expect(form, 'no second <h1> inside a page that already has one').not.toContain('<PageHeader');
     expect(classNameLiterals(form).filter(capsPage), 'and no page-level cap of its own — it lives on the pages now').toEqual([]);
     // Positively retain both mounts; the full-width Schedule cohort above guards their page layout.
-    for (const mount of ['app/admin/attendance/schedule/new/page.tsx', 'app/admin/attendance/schedule/group-sections.tsx']) {
+    for (const mount of ['app/(app)/admin/attendance/schedule/new/page.tsx', 'app/(app)/admin/attendance/schedule/group-sections.tsx']) {
       expect(read(mount), `${mount} mounts the rule form`).toContain('<RuleForm');
     }
   });
@@ -337,34 +337,34 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     // 6d091cc0 (r301) — the list is the Schedule Group CARD now (its old page is a redirect stub, pinned above).
     // The separation af7a8eb4 made is kept at the new home: the list card does not render the company work
     // schedule, the overtime rates or the devices — those are their own cards beside it.
-    const src = read('app/admin/attendance-policy/schedule-group-card.tsx');
+    const src = read('app/(app)/admin/attendance-policy/schedule-group-card.tsx');
     expect(src).not.toContain('setAttendancePolicyAction');
     expect(src).not.toContain('WorkScheduleForm');
     expect(src).not.toContain('StatutoryComponentForm');
     expect(src).not.toContain('revokeDeviceAction');
-    const page=read('app/admin/attendance/schedule/page.tsx');
+    const page=read('app/(app)/admin/attendance/schedule/page.tsx');
     expect(page).toContain('<ScheduleGroupCard');
     expect(page).not.toContain('<CompanyPolicyCard');expect(page).not.toContain('<WorkScheduleOvertimeCard');
   });
 
   it('each relocated block is mounted at its own guarded destination',()=>{
     for(const [destination,components] of [['company-policy',['CompanyPolicyCard','CompanyPolicyEditPanel','CompanyPolicyViewPanel']],['work-schedule-overtime',['WorkScheduleOvertimeCard','ShiftPaySettings']],['registered-devices',['RegisteredDevicesCard']]] as const){
-      const page=read(`app/admin/attendance/settings/${destination}/page.tsx`);expect(page).toContain('scopedAdmin()');
+      const page=read(`app/(app)/admin/attendance/settings/${destination}/page.tsx`);expect(page).toContain('scopedAdmin()');
       for(const component of components)expect(page).toContain(`<${component}`);
     }
-    const card=read('app/admin/attendance-policy/work-schedule-overtime-card.tsx');
+    const card=read('app/(app)/admin/attendance-policy/work-schedule-overtime-card.tsx');
     expect(card).toContain('StatutoryComponentForm');expect(card).toContain('employmentsWithoutBackupShift');
     expect(card).not.toContain('<RegisteredDevicesCard');
-    expect(read('app/admin/attendance-policy/registered-devices-card.tsx')).toContain('revokeDeviceAction');
-    expect(read('app/admin/attendance-policy/company-policy-card.tsx')).toContain('<WorkScheduleForm');
-    const form=read('app/admin/attendance-policy/schedule/work-schedule-form.tsx');
+    expect(read('app/(app)/admin/attendance-policy/registered-devices-card.tsx')).toContain('revokeDeviceAction');
+    expect(read('app/(app)/admin/attendance-policy/company-policy-card.tsx')).toContain('<WorkScheduleForm');
+    const form=read('app/(app)/admin/attendance-policy/schedule/work-schedule-form.tsx');
     expect(form).toContain('setAttendancePolicyAction');expect(form).toContain('dayType_');
   });
 
   it('the write paths return to the screen the operator was on', () => {
     // A validation error on the shift form must land back on the form, not on a list that has forgotten
     // every box they filled in.
-    const actions = read('app/admin/attendance/shift-actions.ts');
+    const actions = read('app/(app)/admin/attendance/shift-actions.ts');
     expect(actions).toContain('${BASE}/new');
     expect(actions).toContain('${BASE}/${shiftId}');
     // Copy lands on the copy's own edit page.
@@ -375,15 +375,15 @@ describe('af7a8eb4 — Attendance screen layout', () => {
     // tab is the default tab, so the plain path is where the card is. (The `?tab=general` this used to carry
     // for the policy save is the defect r301 fixed — it swallowed every refusal.) Behaviour, not just source:
     // test/r301-schedule-general.test.ts runs each of these actions and reads where it redirected.
-    expect(read('app/admin/attendance-policy/schedule-panel.ts')).toContain(
+    expect(read('app/(app)/admin/attendance-policy/schedule-panel.ts')).toContain(
       "export const SCHEDULE = '/admin/attendance/schedule';",
     );
-    const admin = read('app/admin/actions.ts');
+    const admin = read('app/(app)/admin/actions.ts');
     expect(admin).toContain("const SCHEDULE_TAB = '/admin/attendance/settings/company-policy';");
     expect(admin).toContain('const backTo = SCHEDULE_TAB;');
     expect(admin, 'no query string on the policy return path').not.toContain('SCHEDULE_TAB}?tab=');
-    expect(read('app/admin/attendance-policy/device-actions.ts')).toContain('const LIST = REGISTERED_DEVICES;');
-    expect(read('app/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={WORK_SCHEDULE_OVERTIME}');
+    expect(read('app/(app)/admin/attendance-policy/device-actions.ts')).toContain('const LIST = REGISTERED_DEVICES;');
+    expect(read('app/(app)/admin/attendance-policy/work-schedule-overtime-card.tsx')).toContain('returnTo={WORK_SCHEDULE_OVERTIME}');
   });
 });
 
@@ -423,12 +423,12 @@ describe('af7a8eb4 — Attendance screen layout', () => {
 describe('r239 — My Request: table on a wide screen, blocks on a narrow one', () => {
   // The switch is `lg`, not `md`: the nav rail appears at `sm` and takes 232px, so a 768px viewport gives
   // this list a ~500px content column — narrower than the block face gets at 639px. See page.tsx.
-  const PAGE = read('app/attendance/request-status/page.tsx');
-  const UI = read('app/attendance/request-ui.tsx');
+  const PAGE = read('app/(app)/attendance/request-status/page.tsx');
+  const UI = read('app/(app)/attendance/request-ui.tsx');
   // 7709ffd1 (r369) — the pure module the ceiling and the `?status=` whitelist moved into, and the export
   // route that reads both. Case C asserts across all three so the file and the tab cannot narrow differently.
-  const ROWS = read('app/attendance/request-status/rows.ts');
-  const EXPORT = read('app/attendance/request-status/export/route.ts');
+  const ROWS = read('app/(app)/attendance/request-status/rows.ts');
+  const EXPORT = read('app/(app)/attendance/request-status/export/route.ts');
 
   /** Source with comments removed. These guards read code, and a comment that spells out the very token
    *  being forbidden reads to a plain `includes()` as the thing itself (AGENTS 27). */
@@ -556,10 +556,10 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     /**
      * ⚠️ 7709ffd1 (r369) — THE WHITELIST MOVED UP A FILE, AND THE CLAIM IT REPLACES IS QUOTED. This read
      *   expect(PAGE, 'the URL whitelist is the same list, not a copy').toContain('REQUEST_STATUSES.includes(');
-     * and the derivation lived in the page. The round added app/attendance/request-status/export/route.ts,
+     * and the derivation lived in the page. The round added app/(app)/attendance/request-status/export/route.ts,
      * which has to narrow by exactly what the pressed pill narrows by — a second copy of the derivation in
      * the route is how a file comes to hold "every request" while the tab said "Rejected". So it lives in
-     * app/attendance/request-status/rows.ts and BOTH consumers import it. The property is unchanged and the
+     * app/(app)/attendance/request-status/rows.ts and BOTH consumers import it. The property is unchanged and the
      * assertion is stronger: it is still derived from the tuple, the page no longer restates it, and the
      * route is required to use the shared one.
      */
@@ -691,8 +691,8 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     }
 
     // …and me.leaveStatus.cancelled is NOT touched. It lost its literal call site here, but two computed
-    // call sites outside attendance still reach it (app/admin/personnel/[employmentId]/page.tsx and
-    // app/me/request-change-card.tsx build `leaveStatus.${status}` as a template), and "Cancelled" is the
+    // call sites outside attendance still reach it (app/(app)/admin/personnel/[employmentId]/page.tsx and
+    // app/(app)/me/request-change-card.tsx build `leaveStatus.${status}` as a template), and "Cancelled" is the
     // right word there. Deleting or rewording it is the regression this line exists to catch.
     for (const locale of LOCALES) {
       const v = msg(locale, 'leaveStatus.cancelled');
@@ -711,7 +711,7 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     expect(labels, 'both faces of the list draw the control').toHaveLength(2);
     expect(new Set(labels).size, 'and both faces resolve one key, not two').toBe(1);
 
-    const OT = code(read('app/attendance/plan-ot/page.tsx'));
+    const OT = code(read('app/(app)/attendance/plan-ot/page.tsx'));
     const at = OT.indexOf('{canWithdraw ?');
     expect(at, 'Self Overtime still draws a withdraw control').toBeGreaterThan(-1);
     const control = OT.slice(at, OT.indexOf(') : null}', at));
@@ -736,7 +736,7 @@ describe('r239 — My Request: table on a wide screen, blocks on a narrow one', 
     }
 
     // me.maCancel is a DIFFERENT key — the "never mind, close this" button beside a confirm in the
-    // correction dialog on app/attendance/requests/page.tsx. It is not a take-back and is deliberately
+    // correction dialog on app/(app)/attendance/requests/page.tsx. It is not a take-back and is deliberately
     // left saying Cancel; a sweep that took it with this change would be the regression.
     expect(msg('en', 'maCancel'), 'the dialog dismiss button is untouched').toBe('Cancel');
   });

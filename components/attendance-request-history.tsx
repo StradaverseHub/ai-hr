@@ -1,6 +1,6 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { attendanceApplicationType } from '@/lib/attendance-workflow';
-import { statusLabel } from '@/app/attendance/request-ui';
+import { statusLabel } from '@/app/(app)/attendance/request-ui';
 import { Card } from '@/components/ui';
 import { AttendanceWorkflowProgress } from '@/components/attendance-workflow-progress';
 import type { MyAttendanceRequestRow } from '@/packs/attendance/service';

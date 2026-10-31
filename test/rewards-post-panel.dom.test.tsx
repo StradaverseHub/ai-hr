@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-import { RewardPostPanel } from '../app/rewards/post-panel';
+import { RewardPostPanel } from '../app/(app)/rewards/post-panel';
 
 const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>;
 const action = async () => {};

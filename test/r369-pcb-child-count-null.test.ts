@@ -9,9 +9,9 @@
  * asks whether the TRACE exists, not whether the FIELD does. The two symptoms differed, which is why
  * neither was noticed:
  *
- *   · the PDF (app/payroll/pcb-detail/shared.ts) did `String(trace.childCount)` and printed the literal
+ *   · the PDF (app/(app)/payroll/pcb-detail/shared.ts) did `String(trace.childCount)` and printed the literal
  *     four characters "null" into a downloaded statutory document;
- *   · the screen (app/payroll/pcb-detail/pcb-detail-view.tsx, two rows) passed the null straight to
+ *   · the screen (app/(app)/payroll/pcb-detail/pcb-detail-view.tsx, two rows) passed the null straight to
  *     React, which renders null as NOTHING — a silently empty cell where a figure belongs.
  *
  * WHY THIS IS A SOURCE GUARD AND NOT A RENDERED ASSERTION, STATED PLAINLY. The PDF rows are assembled
@@ -36,8 +36,8 @@ function codeOnly(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
 }
 
-const PDF = 'app/payroll/pcb-detail/shared.ts';
-const SCREEN = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
+const PDF = 'app/(app)/payroll/pcb-detail/shared.ts';
+const SCREEN = 'app/(app)/payroll/pcb-detail/pcb-detail-view.tsx';
 
 describe('PCB detail — a missing child count renders "Not recorded", never "null" and never blank', () => {
   it('the comment stripper actually strips, so this suite cannot pass on its own prose', () => {

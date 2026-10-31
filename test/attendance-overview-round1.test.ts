@@ -16,7 +16,7 @@
  * case fails, nothing after it is evidence.
  *
  * ── WHAT IS PINNED ──────────────────────────────────────────────────────────────────────────────────
- *  A. The resolver (app/attendance/my-records/range.ts) — pure, no DB: the defaults, that an explicitly
+ *  A. The resolver (app/(app)/attendance/my-records/range.ts) — pure, no DB: the defaults, that an explicitly
  *     asked-for range is HONOURED, the ceiling boundary, and the inverted range.
  *  B. The fixture, asserted as counts per status and per flag, through the SAME statusOf / flagOf the
  *     screen renders through.
@@ -37,7 +37,7 @@ import { createHoliday } from '../core/admin';
 import { ATTENDANCE_RANGE_MAX_DAYS, attendanceForEmploymentRange } from '../core/attendance';
 import { checkIn, checkOut } from '../core/attendance';
 import { flagOf, statusOf, type AttendanceFlag, type AttendanceStatus } from '../core/attendance-derive';
-import { dayCountInclusive, firstOfMonth, resolveMyAttendanceRange } from '../app/attendance/my-records/range';
+import { dayCountInclusive, firstOfMonth, resolveMyAttendanceRange } from '../app/(app)/attendance/my-records/range';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 const MS_DAY = 86_400_000;

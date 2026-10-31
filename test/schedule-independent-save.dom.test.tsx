@@ -13,17 +13,17 @@ vi.mock('../core/attendance-rule', () => ({ countEmploymentsInRule: async () => 
 vi.mock('../core/schedule-group-controls', () => ({scheduleGroupControls:async()=>({label:null,dutyRosterControl:false,revisions:[]})}));
 vi.mock('../core/roster', () => ({ listShiftsForTenant: async () => [] }));
 vi.mock('../packs/attendance/service', () => ({ getScheduleRotation: async () => ({ versions: [],memberships:[], revision: 'r1' }) }));
-vi.mock('../app/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
+vi.mock('../app/(app)/admin/attendance-policy/rule-actions', () => ({createAttendanceRuleAction:vi.fn(),updateAttendanceRuleAction:vi.fn(),saveScheduleGroupGeneralAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor', () => ({ ScheduleRotationEditor: () => null }));
-vi.mock('../app/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn() }));
+vi.mock('../app/(app)/admin/attendance/schedule/actions', () => ({ saveScheduleGroupAttendanceAction: vi.fn(), saveScheduleGroupOvertimeAction: vi.fn(),saveScheduleGroupControlAction:vi.fn() }));
 
-import { RuleForm } from '../app/admin/attendance-policy/rules/rule-form';
-import { saveScheduleGroupGeneralAction } from '../app/admin/attendance-policy/rule-actions';
-import { ScheduleGroupSections } from '../app/admin/attendance/schedule/group-sections';
+import { RuleForm } from '../app/(app)/admin/attendance-policy/rules/rule-form';
+import { saveScheduleGroupGeneralAction } from '../app/(app)/admin/attendance-policy/rule-actions';
+import { ScheduleGroupSections } from '../app/(app)/admin/attendance/schedule/group-sections';
 import {ScheduleGroupTabs} from '../components/schedule-group-tabs';
 import { AttendanceSettingsNavigation } from '../components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '../components/attendance-settings-action-form';
-import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from '../app/admin/attendance/schedule/actions';
+import { saveScheduleGroupAttendanceAction, saveScheduleGroupOvertimeAction } from '../app/(app)/admin/attendance/schedule/actions';
 import { __resetUnsavedGuards, hasUnsavedChanges } from '../lib/unsaved-changes';
 afterEach(() => { cleanup(); __resetUnsavedGuards(); vi.restoreAllMocks(); router.push.mockReset(); vi.mocked(saveScheduleGroupAttendanceAction).mockReset();vi.mocked(saveScheduleGroupOvertimeAction).mockReset();vi.mocked(saveScheduleGroupGeneralAction).mockReset(); });
 

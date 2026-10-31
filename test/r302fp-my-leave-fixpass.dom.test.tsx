@@ -371,7 +371,7 @@ describe('D7 · a per-date rejection lists each date in the viewer’s locale wi
 
 // ── The page hands the islands the fixed data (the RSC is not rendered in a test) ───────────────────────────
 
-describe('app/leave/page.tsx wires the fix pass into the history it builds', () => {
+describe('app/(app)/leave/page.tsx wires the fix pass into the history it builds', () => {
   const page = readFileSync(path.resolve(__dirname, '../components/leave/own-leave-history.tsx'), 'utf8');
   it('D4: "Partially approved" and the date breakdown come from the application; D3: Applied is the application’s; D7: dates, not the audit string', () => {
     expect(page, 'the status badge reads the application outcome').toContain('isPartiallyApproved(r, approvalTrails.get(r.id))');

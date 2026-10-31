@@ -19,8 +19,8 @@ import {extendedHoursDayForEmployment,leaveCreditGrantDayFacts,ToilNotEligibleEr
 
 const session=vi.hoisted(()=>({get:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:session.get}));
-import {leaveCreditDayFactsAction} from '../app/leave/credit/actions';
-import {leaveCreditGrantDayFactsAction} from '../app/admin/leave-config/leave-credit/actions';
+import {leaveCreditDayFactsAction} from '../app/(app)/leave/credit/actions';
+import {leaveCreditGrantDayFactsAction} from '../app/(app)/admin/leave-config/leave-credit/actions';
 
 let b:Base;
 beforeAll(migrateTestDb);

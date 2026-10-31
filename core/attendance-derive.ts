@@ -3,7 +3,7 @@ import type {FormulaOvertimeRecord} from '../lib/overtime-records';
  * Attendance Records Table Enhancement (feedback bbada39c) — READ-TIME derivations.
  *
  * Pure, side-effect-free helpers shared by the read loaders (core/attendance.ts) and the two Records
- * tables (app/attendance/daily + individual). No DB, no 'use client' — so a Server Component may import +
+ * tables (app/(app)/attendance/daily + individual). No DB, no 'use client' — so a Server Component may import +
  * CALL them directly (RSC boundary rule) and unit tests can exercise them with zero fixtures.
  *
  * Three derivations the request asks for, all computed from what the attendance row already carries plus

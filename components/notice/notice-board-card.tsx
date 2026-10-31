@@ -9,7 +9,7 @@ export type NoticeCardItem = { id: string; title: string; unread: boolean };
  * 6e122302 — the dashboard's Notice Board card.
  *
  * A plain SERVER component taking already-resolved, already-translated data: it is mounted into
- * `app/page.tsx`'s `cardNodes` map, which the client `DashboardCustomizer` renders, so anything
+ * `app/(app)/page.tsx`'s `cardNodes` map, which the client `DashboardCustomizer` renders, so anything
  * non-serialisable here would cross the boundary r124 broke production on.
  *
  * The card shows the newest few notices and the unread count the reporter asked for ("Notice Board

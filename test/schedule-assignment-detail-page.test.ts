@@ -13,7 +13,7 @@
  *      shape the reporter rejected.
  *   2. r263 LINKS KEEP WORKING. `?assign=<uuid>` on the list REDIRECTS to the new page. Drop that branch
  *      and every bookmark and chat link written between r263 and r265 opens a list with no panel.
- *   3. THE PAGE IS THE SHIFT LIBRARY'S EDIT-PAGE SHAPE (app/admin/attendance/[shiftId] + shift-form.tsx):
+ *   3. THE PAGE IS THE SHIFT LIBRARY'S EDIT-PAGE SHAPE (app/(app)/admin/attendance/[shiftId] + shift-form.tsx):
  *      a header with a back link, Save beside a Cancel LINK (never a second form), the hidden returnTo,
  *      and the three blocks in the reporter's order.
  *   4. REGISTERED IN THE SAME COMMIT. test/function-access.test.ts fails generically in both directions;
@@ -34,9 +34,9 @@ import { REGISTERED_ROUTES } from '../lib/permissions';
 const root = path.resolve(__dirname, '..');
 const read = (rel: string) => readFileSync(path.join(root, rel), 'utf8');
 
-const LIST = 'app/admin/attendance/schedule-assignment/page.tsx';
-const DETAIL = 'app/admin/attendance/schedule-assignment/[employmentId]/page.tsx';
-const ACTIONS = 'app/admin/attendance/schedule-assignment/actions.ts';
+const LIST = 'app/(app)/admin/attendance/schedule-assignment/page.tsx';
+const DETAIL = 'app/(app)/admin/attendance/schedule-assignment/[employmentId]/page.tsx';
+const ACTIONS = 'app/(app)/admin/attendance/schedule-assignment/actions.ts';
 const ROUTE = '/admin/attendance/schedule-assignment/[employmentId]';
 const LIST_ROUTE = '/admin/attendance/schedule-assignment';
 

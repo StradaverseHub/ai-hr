@@ -31,8 +31,8 @@ import {
   TRANSACTION_DETAIL_COLUMNS,
   rowsForRun,
   transactionDetailReport,
-} from '../app/payroll/[batchId]/transaction-detail-report';
-import { payrollResultHref } from '../app/payroll/payroll-result-href';
+} from '../app/(app)/payroll/[batchId]/transaction-detail-report';
+import { payrollResultHref } from '../app/(app)/payroll/payroll-result-href';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -43,7 +43,7 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const BATCH_PAGE = code('app/payroll/[batchId]/page.tsx');
+const BATCH_PAGE = code('app/(app)/payroll/[batchId]/page.tsx');
 
 describe('e440991b point 1 — the Payroll Process wizard has a way back', () => {
   /**
@@ -62,7 +62,7 @@ describe('e440991b point 1 — the Payroll Process wizard has a way back', () =>
    * the selection when one is carried, the bare `/payroll` when none is.
    */
   it('renders a back link, and it points at the run listing', () => {
-    const src = code('app/payroll/process/page.tsx');
+    const src = code('app/(app)/payroll/process/page.tsx');
     expect(src, 'PageHeader still has no `back` prop').toMatch(/back=\{back\}/);
     // r253 — THE HREF COMES FROM THE SHARED HELPER; THE LABEL STAYS THIS SCREEN'S OWN. Taking the
     // helper's whole return value renamed this Back from "Back" to "Payroll" (`payroll.list.title`),
@@ -105,7 +105,7 @@ describe('e440991b point 5 — the payslip rows open the employee’s full resul
     // reads treat as "no employee filter" within an already company-fenced scope — never as "that
     // employee". Deleting this line would turn a convenience link into a way to read another company's
     // payroll by editing the address bar, and nothing else in the tree would notice.
-    const view = code('app/payroll/transaction-view/page.tsx');
+    const view = code('app/(app)/payroll/transaction-view/page.tsx');
     expect(view).toMatch(
       /const employmentId\s*=\s*\n?\s*sp\.employmentId && employees\.some\(\(e\) => e\.employmentId === sp\.employmentId\) \? sp\.employmentId : undefined;/,
     );
@@ -128,7 +128,7 @@ describe('efe1d230 fallout — /payroll/<not-a-uuid> must 404, not 500', () => {
   });
 
   it('and so does the export route, which would otherwise throw the same query error', () => {
-    const route = code('app/payroll/[batchId]/export/route.ts');
+    const route = code('app/(app)/payroll/[batchId]/export/route.ts');
     expect(route).toMatch(/if \(!UUID_RE\.test\(batchId\)\) return new Response\('Not found', \{ status: 404 \}\);/);
   });
 });
@@ -166,7 +166,7 @@ describe('e440991b point 4 — History came off the run screen, the live control
     // here, alone, is satisfied by having deleted it, which is the outcome the finding forbids.
     expect(BATCH_PAGE, 'the disclosure card is still on the run screen').not.toContain("t('disclosureTitle')");
     expect(BATCH_PAGE, 'the run screen still reads the disclosure').not.toContain('listRecomputeDisclosure');
-    const reprocessPage = code('app/payroll/[batchId]/reprocess/page.tsx');
+    const reprocessPage = code('app/(app)/payroll/[batchId]/reprocess/page.tsx');
     expect(reprocessPage, 'the disclosure lost its last reader').toContain('listRecomputeDisclosure');
     expect(reprocessPage).toContain("t('disclosureTitle')");
   });
@@ -301,7 +301,7 @@ describe('e440991b point 6 — the Transaction Detail Report reports what the pa
     expect(BATCH_PAGE).toContain("t('transactionDetail')");
     expect(BATCH_PAGE).toMatch(/\/export\?format=xlsx/);
     // Draft-gated: a draft has no payslips, so an empty workbook would read as "this run pays nobody".
-    const route = code('app/payroll/[batchId]/export/route.ts');
+    const route = code('app/(app)/payroll/[batchId]/export/route.ts');
     expect(route).toContain("batch.status === 'draft'");
     // Fails closed twice — RLS through batchDetail, then the caller's own company scope.
     expect(route).toContain('scopedAdmin');

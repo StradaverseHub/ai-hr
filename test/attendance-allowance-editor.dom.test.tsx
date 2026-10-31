@@ -13,7 +13,7 @@ import th from '../messages/th.json';
 import vi from '../messages/vi.json';
 import zh from '../messages/zh.json';
 const { router, search } = vitest.hoisted(() => ({router: {push: vitest.fn(), refresh: vitest.fn()},search:vitest.fn()}));
-vitest.mock('../app/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:search}));
+vitest.mock('../app/(app)/admin/attendance-allowance/actions',()=>({searchAllowanceEmployees:search}));
 vitest.mock('next/navigation', () => ({useRouter: () => router, usePathname: () => '/admin/attendance-allowance/create'}));
 const catalogs = {en,ms,ta,th,vi,zh};
 const companyId = '11111111-1111-4111-8111-111111111111';

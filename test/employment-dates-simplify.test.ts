@@ -147,10 +147,10 @@ describe('movement-driven probation extension — status + history regression', 
 
 // ── Drift guards on the slimmed card + wiring ──
 const REPO = path.resolve(__dirname, '..');
-const pageSrc = fs.readFileSync(path.join(REPO, 'app/admin/personnel/[employmentId]/page.tsx'), 'utf8');
-const actionsSrc = fs.readFileSync(path.join(REPO, 'app/admin/personnel/[employmentId]/actions.ts'), 'utf8');
+const pageSrc = fs.readFileSync(path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/page.tsx'), 'utf8');
+const actionsSrc = fs.readFileSync(path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/actions.ts'), 'utf8');
 const pickerSrc = fs.readFileSync(
-  path.join(REPO, 'app/admin/personnel/[employmentId]/movement-new-event.tsx'),
+  path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx'),
   'utf8',
 );
 

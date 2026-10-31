@@ -67,7 +67,7 @@ export type PendingTaskItem = {
  * the pack — so this read model has to know, and the two honest ways to find out have OPPOSITE failure
  * behaviour. `isModuleEnabled` is loud on an infrastructure fault, which is right for a service; the
  * quiet `isModuleEnabledOrFalse` degrades, which is right for a page. This function is reached from
- * `app/layout.tsx` — the ROOT layout, on every authenticated render — where a throw 500s every route in
+ * `app/(app)/layout.tsx` — the ROOT layout, on every authenticated render — where a throw 500s every route in
  * the application, and that file already says so about the notifications gate two lines above its call.
  *
  * So the decision is NOT taken here. `test/module-catalog-drift.test.ts` ratchets the quiet readers to

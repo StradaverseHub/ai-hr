@@ -6,7 +6,7 @@
  * .impeccable/surfaces/app-layout-tsx.md and its stylesheet app/atelier.css). The theme is ONE axis; light/dark (next-themes, the `.dark`
  * class) is the other, and the two are independent: every theme has a light and a dark palette.
  *
- * The choice is per browser, in the `ui_theme` cookie. app/layout.tsx reads it on the SERVER and writes
+ * The choice is per browser, in the `ui_theme` cookie. app/(app)/layout.tsx reads it on the SERVER and writes
  * it as `<html data-ui-theme="…">`, so the very first paint is already in the right theme (no flash);
  * app/globals.css scopes Monolith's tokens under `:root[data-ui-theme="monolith"]`. An absent, empty or
  * unknown cookie value resolves to the default — a hand-edited cookie can never produce an unsupported state.

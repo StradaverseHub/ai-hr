@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { publicErrorMessage, databaseErrorKind, DATABASE_ERROR_TEXT_EN } from '../lib/public-error';
 import { isDatabaseError, pgSqlState } from '../lib/db-error';
 import { DATABASE_ERROR_KINDS, formatDatabaseErrorRef, parseDatabaseErrorRef } from '../lib/database-error-token';
-import { fail, failCompany } from '../app/admin/_redirects';
+import { fail, failCompany } from '../app/(app)/admin/_redirects';
 
 const PERSON = 'Siti Aminah binti Ahmad';
 const ID = '3f9a2c1d-7b4e-4c2a-9d1f-0a1b2c3d4e5f';
@@ -159,9 +159,9 @@ describe('source sweep: server code reaches users only through publicErrorMessag
   const RAW = /\((e|err|error)\s+as\s+Error\)\.message|\b(e|err)\s+instanceof\s+Error\s*\?\s*(e|err)\.message/;
   // The only server-side reads of the raw text left, each because it TESTS the text rather than shows it.
   const LOGIC = [
-    ['app/admin/actions.ts', "const raw = e instanceof Error ? e.message : String(e);"], // routes 'Failed query:' to saveDatabaseError
-    ['app/admin/settings/actions.ts', "const msg = (e as Error).message ?? '';"], // fieldOfGradeError matches domain wording
-    ['app/roster/actions.ts', "const message = e instanceof Error ? e.message : '';"], // readableError already redacts driver text
+    ['app/(app)/admin/actions.ts', "const raw = e instanceof Error ? e.message : String(e);"], // routes 'Failed query:' to saveDatabaseError
+    ['app/(app)/admin/settings/actions.ts', "const msg = (e as Error).message ?? '';"], // fieldOfGradeError matches domain wording
+    ['app/(app)/roster/actions.ts', "const message = e instanceof Error ? e.message : '';"], // readableError already redacts driver text
   ];
 
   it('scans a real tree (non-vacuity)', () => {

@@ -7,8 +7,8 @@ vi.mock('../core/letters',()=>({createMyLetterAccess:mocks.access,acknowledgeMyL
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error('REDIRECT:'+url);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>'Localised '+key)}));
-import {openMyLetter,confirmMyLetter} from '../app/me/letters/actions';
-import {GET} from '../app/me/letters/[letterId]/document/route';
+import {openMyLetter,confirmMyLetter} from '../app/(app)/me/letters/actions';
+import {GET} from '../app/(app)/me/letters/[letterId]/document/route';
 const id='00000000-0000-4000-8000-000000000001',hash='a'.repeat(64),token='B'.repeat(43),ctx={tenantId:'fixture',userId:'verified-user'};
 function form(){const data=new FormData();data.set('letterId',id);data.set('artifactHash',hash);data.set('action','acknowledge');data.set('confirm','yes');return data;}
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);});

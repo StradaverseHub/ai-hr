@@ -22,7 +22,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { Avatar } from '../components/ui';
-import { EmployeeRow, type EmployeeRowProps } from '../app/admin/personnel/employee-row';
+import { EmployeeRow, type EmployeeRowProps } from '../app/(app)/admin/personnel/employee-row';
 import type { EmployeeColumnKey } from '../lib/employee-columns';
 
 const COLUMNS: EmployeeColumnKey[] = ['code', 'name', 'status'];

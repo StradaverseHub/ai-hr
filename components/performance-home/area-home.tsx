@@ -8,7 +8,7 @@ import { Status, type StatusTone } from '@/components/monolith';
 import { MONO_LABEL } from '@/components/monolith/classes';
 import { cn } from '@/lib/utils';
 import { PerformanceTabStrip } from '@/components/performance-tabs';
-import { RecordInsight } from '@/app/performance/onehr/record-insight';
+import { RecordInsight } from '@/app/(app)/performance/onehr/record-insight';
 import { PERFORMANCE_STRIP_LABEL_KEYS } from '@/packs/performance/onehr/tab-model';
 import { performanceHomeLayout, type HomeRow, type PerformanceHomeCardId, type PerformanceHomeView } from '@/packs/performance/onehr/performance-home-model';
 import type { HomeStepState } from '@/packs/performance/onehr/home-cards';

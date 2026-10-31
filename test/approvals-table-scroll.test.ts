@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(new URL('../app/approvals/page.tsx', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../app/(app)/approvals/page.tsx', import.meta.url), 'utf8');
 const file = ts.createSourceFile('page.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
 describe('approval tables remain reachable inside their cards', () => {

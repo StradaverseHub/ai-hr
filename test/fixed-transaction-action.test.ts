@@ -18,7 +18,7 @@
  *   `listEmployees` (the scope re-validation) → `setEmploymentPayComponent` contain no
  *   `isModuleEnabled` check; the typed-components gate lives on the payroll KERNEL (core/payroll.ts
  *   earningsOf / pre-processing) and on the Fixed Transaction PAGE's read model
- *   (app/payroll/transactions/fixed/page.tsx), neither of which this file exercises. The env writes were
+ *   (app/(app)/payroll/transactions/fixed/page.tsx), neither of which this file exercises. The env writes were
  *   therefore inert hygiene even before slice 3, and both assertions below (the out-of-scope refusal and
  *   the in-scope write) are decided purely by the scope guard.
  *
@@ -46,7 +46,7 @@ import { hireEmployee } from '../core/org';
 import { listPayComponents, seedPayComponentCatalog } from '../core/pay-components';
 import { seedPayrollCycleCatalog } from '../core/payroll-cycle';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
-import { createFixedTransactionAction } from '../app/payroll/transactions/fixed/actions';
+import { createFixedTransactionAction } from '../app/(app)/payroll/transactions/fixed/actions';
 
 const fd = (o: Record<string, string>) => {
   const f = new FormData();

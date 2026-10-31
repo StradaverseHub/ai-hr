@@ -200,11 +200,11 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
    * to import attendance, or the row should go, is the reporter's call and is raised separately.
    */
   it('r314: the two paired screens guard themselves, and Import is admin-only despite its manager row', () => {
-    const roster = read('app/roster/page.tsx');
+    const roster = read('app/(app)/roster/page.tsx');
     expect(roster, 'Roster resolves the session and its scope server-side').toContain('await scopedSession()');
     expect(roster, 'deliberately NOT admin-guarded — managers use it').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
 
-    const imp = read('app/attendance/import/page.tsx');
+    const imp = read('app/(app)/attendance/import/page.tsx');
     expect(imp, 'Import refuses a non-administrator in its own page body').toMatch(/requireAdmin\(|scopedAdmin\(/);
     // r317 (1661123d) — AND THE CONTRADICTION IS RESOLVED. This assertion used to record that the Manage
     // row still claimed managerUp while the page refused managers. The reporter chose to remove the row,
@@ -229,7 +229,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
      * asserted. The `adminOnly` flag on the ROW is about not OFFERING an administrative entry point to a
      * non-administrator; it was never what protects the data.
      */
-    const src = read('app/attendance/page.tsx');
+    const src = read('app/(app)/attendance/page.tsx');
     expect(src, 'it resolves the session and its scope server-side').toContain('await scopedSession()');
     expect(src, 'and the reads are narrowed to that scope').toMatch(/companyIds:\s*scopeIds/);
     expect(src, 'deliberately NOT admin-guarded — see above').not.toMatch(/requireAdmin\(|scopedAdmin\(/);
@@ -487,12 +487,12 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       expect(src).toContain("resolveAttendanceCalendarState({...query,tab:'list'},todayInKualaLumpur())");
       expect(src).toContain('redirect(attendanceCalendarHref(');
       expect(src).toContain("await requireModule('attendance')");
-      const calendar = read('app/attendance/my-roster/page.tsx');
+      const calendar = read('app/(app)/attendance/my-roster/page.tsx');
       expect(calendar).toContain('myAttendanceCalendarWindow(s, { from: w.from, to: w.to,...(state.employmentId?{employmentId:state.employmentId}:{}) })');
       expect(calendar).toContain('<AttendanceRecordList s={s} state={state} query={sp}/>');
-      const list = read('app/attendance/my-roster/record-list.tsx');
+      const list = read('app/(app)/attendance/my-roster/record-list.tsx');
       expect(list).toContain('ownAttendanceRecordSubject(s,state.employmentId)');
-      const subject=read('app/attendance/my-records/subject.ts');
+      const subject=read('app/(app)/attendance/my-records/subject.ts');
       expect(subject).toContain('myOwnEmploymentSubjects(ctx,{profileEdit:true})');
       expect(subject).toContain('row.employmentId===selector');
       expect(subject).toContain('if(selector===undefined)');
@@ -527,7 +527,7 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
     // The inverse of the it.each above, and deliberate. requireAdmin/scopedAdmin on this page would lock
     // every employee out of filing their own request; the page resolves the session and the caller's own
     // employment exactly as /me and the clock portal do.
-    const src = read('app/attendance/requests/page.tsx');
+    const src = read('app/(app)/attendance/requests/page.tsx');
     expect(src).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
     expect(src, 'resolves the caller’s own employment').toContain('myEmployment(s)');
   });

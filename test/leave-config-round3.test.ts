@@ -28,7 +28,7 @@
  *      to omit and therefore no marker to protect them — a field dropped from one of these forms does not
  *      fail to save, it saves the DEFAULT over whatever the company had. Round 2 learned that one level
  *      down and this file starts there: for each action, every field its branch READS, checked against the
- *      FORM THAT CARRIES IT, and every entry checked back against app/admin/actions.ts so the table cannot
+ *      FORM THAT CARRIES IT, and every entry checked back against app/(app)/admin/actions.ts so the table cannot
  *      go stale under the assertion.
  *
  *   4. **The permission column and the page land together, and the MENU does not move.** A guarded
@@ -53,27 +53,27 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 /** The seven pages this round adds: key → { file, route, the map id it renders as `current` }. */
 const SCREENS_BUILT = {
   companyRules: {
-    file: 'app/admin/leave-config/company-rules/page.tsx',
+    file: 'app/(app)/admin/leave-config/company-rules/page.tsx',
     route: '/admin/leave-config/company-rules',
     mapId: 'companyRules',
   },
   entitlementTables: {
-    file: 'app/admin/leave-config/entitlement-tables/page.tsx',
+    file: 'app/(app)/admin/leave-config/entitlement-tables/page.tsx',
     route: '/admin/leave-config/entitlement-tables',
     mapId: 'entitlementTables',
   },
   generate: {
-    file: 'app/admin/leave-config/generate/page.tsx',
+    file: 'app/(app)/admin/leave-config/generate/page.tsx',
     route: '/admin/leave-config/generate',
     mapId: 'generateEntitlement',
   },
   adjustments: {
-    file: 'app/admin/leave-config/adjustments/page.tsx',
+    file: 'app/(app)/admin/leave-config/adjustments/page.tsx',
     route: '/admin/leave-config/adjustments',
     mapId: 'adjustments',
   },
   import: {
-    file: 'app/admin/leave-config/import/page.tsx',
+    file: 'app/(app)/admin/leave-config/import/page.tsx',
     route: '/admin/leave-config/import',
     mapId: 'importLeaveData',
   },
@@ -96,7 +96,7 @@ const SCREENS_BUILT = {
   // cutover table below already applies). Registering it here also holds it to this file's own
   // per-screen rules: a declared route, a map mount with its own id, and no server action of its own.
   specialSetting: {
-    file: 'app/admin/leave-config/special-setting/page.tsx',
+    file: 'app/(app)/admin/leave-config/special-setting/page.tsx',
     route: '/admin/leave-config/special-setting',
     mapId: 'specialSetting',
   },
@@ -104,7 +104,7 @@ const SCREENS_BUILT = {
   // leave groups this file guards moved onto it (at PAGE level, above the per-type workspace — see the
   // comment at the mount for why that distinction is the whole item), so the assertions follow the editor.
   leaveTypesScreen: {
-    file: 'app/admin/leave-config/types/page.tsx',
+    file: 'app/(app)/admin/leave-config/types/page.tsx',
     route: '/admin/leave-config/types',
     mapId: 'leaveTypes',
   },
@@ -115,24 +115,24 @@ const SCREENS_BUILT = {
   // map mount with its own id, no server action declared in the page. The form itself is the colocated
   // `rules-tab.tsx` (RULES_TAB below), which the Rules page mounts.
   leaveCredit: {
-    file: 'app/admin/leave-config/leave-credit/page.tsx',
+    file: 'app/(app)/admin/leave-config/leave-credit/page.tsx',
     route: '/admin/leave-config/leave-credit',
     mapId: 'leaveCredit',
   },
   leaveCreditRules: {
-    file: 'app/admin/leave-config/leave-credit/rules/page.tsx',
+    file: 'app/(app)/admin/leave-config/leave-credit/rules/page.tsx',
     route: '/admin/leave-config/leave-credit/rules',
     mapId: 'leaveCreditRules',
   },
 } as const;
 /** 3fb1a611 (r299) — the Rules tab of Leave Credit: where setToilPolicyAction's form lives now. */
-const RULES_TAB = 'app/admin/leave-config/leave-credit/rules-tab.tsx';
+const RULES_TAB = 'app/(app)/admin/leave-config/leave-credit/rules-tab.tsx';
 
 type ScreenKey = keyof typeof SCREENS_BUILT;
 const KEYS = Object.keys(SCREENS_BUILT) as ScreenKey[];
 const src = Object.fromEntries(KEYS.map((k) => [k, read(SCREENS_BUILT[k].file)])) as Record<ScreenKey, string>;
 /** 7f69bd71 — the sub-screen page that guards and mounts the two record components. */
-const RECORDS_PAGE = 'app/admin/leave-config/records/page.tsx';
+const RECORDS_PAGE = 'app/(app)/admin/leave-config/records/page.tsx';
 const RECORD_KEYS = ['recordsEntitlement', 'recordsBalances'] as const;
 const isRecord = (k: ScreenKey): k is (typeof RECORD_KEYS)[number] => (RECORD_KEYS as readonly string[]).includes(k);
 
@@ -188,18 +188,18 @@ const OLD_ROUTE: Record<string, string> = {
 
 /** The old screens. Read, never written. */
 const OLD = {
-  leaveTypes: read('app/admin/leave/entitlements/page.tsx'),
-  templates: read('app/admin/leave/entitlements/templates/page.tsx'),
-  payroll: read('app/admin/leave/payroll/page.tsx'),
-  replacement: read('app/admin/leave/replacement/page.tsx'),
-  generate: read('app/admin/leave/generate/page.tsx'),
-  adjustments: read('app/admin/leave/adjustments/page.tsx'),
-  import: read('app/admin/leave/import/page.tsx'),
-  archive: read('app/admin/leave/entitlements/archive/page.tsx'),
-  ledgerArchive: read('app/admin/leave/entitlements/ledger-archive/page.tsx'),
+  leaveTypes: read('app/(app)/admin/leave/entitlements/page.tsx'),
+  templates: read('app/(app)/admin/leave/entitlements/templates/page.tsx'),
+  payroll: read('app/(app)/admin/leave/payroll/page.tsx'),
+  replacement: read('app/(app)/admin/leave/replacement/page.tsx'),
+  generate: read('app/(app)/admin/leave/generate/page.tsx'),
+  adjustments: read('app/(app)/admin/leave/adjustments/page.tsx'),
+  import: read('app/(app)/admin/leave/import/page.tsx'),
+  archive: read('app/(app)/admin/leave/entitlements/archive/page.tsx'),
+  ledgerArchive: read('app/(app)/admin/leave/entitlements/ledger-archive/page.tsx'),
 };
 
-const actionsSrc = read('app/admin/actions.ts');
+const actionsSrc = read('app/(app)/admin/actions.ts');
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────────
 // 4. The permission column, and the menu that does not move yet
@@ -356,13 +356,13 @@ const MOUNTS: [string, ScreenKey, string][] = [
  * that has stopped being true.
  */
 const POSTED_FROM: Record<string, string> = {
-  setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
-  setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+  setLeaveHalfDayFullDeductionCompaniesAction: 'app/(app)/admin/leave-config/special-setting/page.tsx',
+  setLeaveEncashmentPolicyAction: 'app/(app)/admin/leave-config/company-rules/page.tsx',
   // 3fb1a611 (r299) — off Company rules, onto Leave Credit's Rules tab.
   setToilPolicyAction: RULES_TAB,
-  createLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
-  updateLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
-  deleteLeaveSharedGroupAction: 'app/admin/leave-config/types/page.tsx',
+  createLeaveSharedGroupAction: 'app/(app)/admin/leave-config/types/page.tsx',
+  updateLeaveSharedGroupAction: 'app/(app)/admin/leave-config/types/page.tsx',
+  deleteLeaveSharedGroupAction: 'app/(app)/admin/leave-config/types/page.tsx',
 };
 
 describe('a6fe37fc R3 · a flow that is not changing is MOUNTED, not re-implemented (IA §2.3)', () => {
@@ -594,14 +594,14 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     }
   });
 
-  it('every field in the table is one app/admin/actions.ts actually reads', () => {
+  it('every field in the table is one app/(app)/admin/actions.ts actually reads', () => {
     // Kept honest in both directions: a stale row here makes the case above assert a field nothing
     // consumes, which is a guard that has quietly stopped guarding.
     for (const [action, spec] of Object.entries(ACTION_FIELDS)) {
       for (const field of spec.fields) {
         expect(
           field.inAction.test(actionsSrc),
-          `${action} · ${field.label} is not read by app/admin/actions.ts — the table has gone stale`,
+          `${action} · ${field.label} is not read by app/(app)/admin/actions.ts — the table has gone stale`,
         ).toBe(true);
       }
     }
@@ -627,19 +627,19 @@ describe('a6fe37fc R3 · Company rules — every form still posts every field it
     // from every other Leave Config page, which is the half that catches a move leaving a copy behind.
     const OWNER: Record<string, string> = {
       // F4/F26, from every leave type → Company rules → Special Setting (r281, a73d1e14)
-      setLeaveHalfDayFullDeductionCompaniesAction: 'app/admin/leave-config/special-setting/page.tsx',
+      setLeaveHalfDayFullDeductionCompaniesAction: 'app/(app)/admin/leave-config/special-setting/page.tsx',
       // F40, from Payroll impact. Stays on Company rules.
-      setLeaveEncashmentPolicyAction: 'app/admin/leave-config/company-rules/page.tsx',
+      setLeaveEncashmentPolicyAction: 'app/(app)/admin/leave-config/company-rules/page.tsx',
       // F3, from Leave types → Company rules → back to Leave types at PAGE level (r281, cdd7500b). The
       // reporter asked for it under leave types; the reason it left that screen was that it sat INSIDE
       // the per-type workspace, so the mount POINT — not the screen — is what changed on the way back.
-      'listLeaveSharedGroups(': 'app/admin/leave-config/types/page.tsx',
+      'listLeaveSharedGroups(': 'app/(app)/admin/leave-config/types/page.tsx',
       // F38, from Replacement leave → Company rules → Leave Config › Leave Credit's Rules tab (3fb1a611, r299).
       setToilPolicyAction: RULES_TAB,
     };
-    const modulePages = readdirSync(resolve(here, '..', 'app/admin/leave-config'), { withFileTypes: true })
+    const modulePages = readdirSync(resolve(here, '..', 'app/(app)/admin/leave-config'), { withFileTypes: true })
       .filter((e) => e.isDirectory())
-      .map((e) => `app/admin/leave-config/${e.name}/page.tsx`)
+      .map((e) => `app/(app)/admin/leave-config/${e.name}/page.tsx`)
       .filter((f) => existsSync(resolve(here, '..', f)));
     for (const [needle, owner] of Object.entries(OWNER)) {
       expect(read(owner), `${needle} is not on ${owner}`).toContain(needle);
@@ -793,7 +793,7 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
   // two cannot drift. It is the direction that survives the cutover untouched — Round 5 empties each old
   // page into a redirect stub aimed at the new module, so a link resolved through the map reaches the NEW
   // screen the moment the old one goes, and the cutover moves `LEAVE_CONFIG_MAP` alone.
-  const MODULE = 'app/admin/leave-config';
+  const MODULE = 'app/(app)/admin/leave-config';
 
   /** Every page/component file in the module, walked — so a page added later cannot skip this. */
   function walk(rel: string, out: string[] = []): string[] {
@@ -883,21 +883,21 @@ describe('a6fe37fc R5 · a function is live on exactly ONE screen, and the cutov
    * means both.
    */
   const DESTINATION: Record<string, string> = {
-    'the half-day card': 'app/admin/leave-config/special-setting/page.tsx',
-    'shared leave groups': 'app/admin/leave-config/types/page.tsx',
+    'the half-day card': 'app/(app)/admin/leave-config/special-setting/page.tsx',
+    'shared leave groups': 'app/(app)/admin/leave-config/types/page.tsx',
   };
 
   const NEW_FILE: Record<string, string> = {
     // Half-day and shared groups leave the leave TYPE page for Company rules, so `leaveTypes` names the
     // file those needles must ARRIVE in, which is Company rules — not the new leave type screen.
-    leaveTypes: 'app/admin/leave-config/company-rules/page.tsx',
-    templates: 'app/admin/leave-config/entitlement-tables/page.tsx',
-    payroll: 'app/admin/leave-config/company-rules/page.tsx',
+    leaveTypes: 'app/(app)/admin/leave-config/company-rules/page.tsx',
+    templates: 'app/(app)/admin/leave-config/entitlement-tables/page.tsx',
+    payroll: 'app/(app)/admin/leave-config/company-rules/page.tsx',
     // 3fb1a611 (r299) — the replacement policy arrived at Leave Credit's Rules tab.
     replacement: RULES_TAB,
-    generate: 'app/admin/leave-config/generate/page.tsx',
-    adjustments: 'app/admin/leave-config/adjustments/page.tsx',
-    import: 'app/admin/leave-config/import/page.tsx',
+    generate: 'app/(app)/admin/leave-config/generate/page.tsx',
+    adjustments: 'app/(app)/admin/leave-config/adjustments/page.tsx',
+    import: 'app/(app)/admin/leave-config/import/page.tsx',
     // 7f69bd71 — the two records live in the components the Reset records sub-screen mounts.
     archive: 'components/leave/reset-record-configuration.tsx',
     ledgerArchive: 'components/leave/reset-record-balances.tsx',
@@ -1036,7 +1036,7 @@ describe('a6fe37fc R3 · every new label ships in all six locales with real tran
       expect(src[k], `${k} still renders the preview note`).not.toContain('<LeaveConfigPreviewNote');
     }
     expect(
-      existsSync(resolve(here, '..', 'app/admin/leave-config/preview-note.tsx')),
+      existsSync(resolve(here, '..', 'app/(app)/admin/leave-config/preview-note.tsx')),
       'preview-note.tsx outlived its last mount',
     ).toBe(false);
   });

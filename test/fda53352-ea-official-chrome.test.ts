@@ -264,7 +264,7 @@ describe('fda53352 · (e) nothing of ours is printed below the officer box', () 
   });
 
   it('EIS and the disclaimer survive on the HTML statement, so their keys stay live', () => {
-    const page = src('app/payroll/reports/ea/[employmentId]/page.tsx');
+    const page = src('app/(app)/payroll/reports/ea/[employmentId]/page.tsx');
     expect(page).toContain("t('eisSip')");
     expect(page).toContain("t('disclaimer'");
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {

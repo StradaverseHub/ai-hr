@@ -17,8 +17,8 @@ import {
   borang8ADocumentQuery,
   borang8AHasContributions,
   borang8AQuery,
-} from '../app/payroll/borang-8a/query';
-import { reportDestination } from '../app/payroll/statutory-forms/criteria';
+} from '../app/(app)/payroll/borang-8a/query';
+import { reportDestination } from '../app/(app)/payroll/statutory-forms/criteria';
 import { parseRunSelection } from '../lib/payroll-run-selection';
 import { MY_REPORTS } from '../localization/my/reports';
 import { borang8AStatusFor } from '../localization/my/borang-8a';
@@ -34,10 +34,10 @@ const code = (p: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
 
-const PREVIEW = read('app/payroll/borang-8a/preview/page.tsx');
-const PREVIEW_CODE = code('app/payroll/borang-8a/preview/page.tsx');
-const SHARED_CODE = code('app/payroll/borang-8a/shared.ts');
-const PDF_ROUTE_CODE = code('app/payroll/borang-8a/pdf/route.ts');
+const PREVIEW = read('app/(app)/payroll/borang-8a/preview/page.tsx');
+const PREVIEW_CODE = code('app/(app)/payroll/borang-8a/preview/page.tsx');
+const SHARED_CODE = code('app/(app)/payroll/borang-8a/shared.ts');
+const PDF_ROUTE_CODE = code('app/(app)/payroll/borang-8a/pdf/route.ts');
 
 /**
  * A slice of source between two markers, REFUSING to be vacuous: both markers must be found (`>= 0`, never
@@ -127,7 +127,7 @@ describe('the Continue gate', () => {
     expect(before).not.toContain('<StatutoryPdfViewer');
     // …decided in the LOADER, so the form's downloads refuse the same selection (the ASSIST file does not).
     for (const r of ['pdf', 'text']) {
-      expect(code(`app/payroll/borang-8a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
+      expect(code(`app/(app)/payroll/borang-8a/${r}/route.ts`)).toContain("loaded.reason === 'no-contributions'");
     }
     expect(SHARED_CODE).toContain("if (loaded.reason === 'no-contributions') return { ok: false, status: 422, message: NO_CONTRIBUTIONS };");
   });
@@ -140,7 +140,7 @@ describe('the Continue gate', () => {
   it('asks "anything to file?" only when nobody is named, and before the readiness gate', () => {
     const NO_DATA = "if (p.refuseEmpty !== false && missing.length === 0 && !borang8AHasContributions(result.rows)) return { ok: false, reason: 'no-contributions' };";
     // The ASSIST upload file keeps building a no-SOCSO month (the form's refusal, not the filing's — as r407).
-    expect(code('app/payroll/borang-8a/shared.ts')).toContain('const loaded = await loadBorang8A({ ...p, refuseEmpty: false });');
+    expect(code('app/(app)/payroll/borang-8a/shared.ts')).toContain('const loaded = await loadBorang8A({ ...p, refuseEmpty: false });');
     const READY = 'if ((missing.length > 0 || headerMissing.length > 0) && !p.includeIncomplete)';
     expect(SHARED_CODE.indexOf(NO_DATA)).toBeGreaterThan(0);
     expect(SHARED_CODE.indexOf(READY)).toBeGreaterThan(SHARED_CODE.indexOf(NO_DATA));

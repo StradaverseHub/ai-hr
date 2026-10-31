@@ -157,7 +157,7 @@ async function submitAndApprove(leaveTypeId = marriageTypeId, startDate = '2026-
     startDate,
     endDate,
   });
-  // `deciderEmploymentId` is passed because app/approvals/actions.ts passes it: the fixture must approve
+  // `deciderEmploymentId` is passed because app/(app)/approvals/actions.ts passes it: the fixture must approve
   // the way the screen does, or the audit assertion below would be asserting the fixture's omission.
   await decideLeave(mgrCtx, {
     leaveRequestId: res.leaveRequestId,

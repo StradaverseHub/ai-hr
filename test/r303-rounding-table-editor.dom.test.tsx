@@ -35,7 +35,7 @@ import {
   EarningMethodForm,
   type EarnedSweepFacts,
   type LeaveTypeRules,
-} from '../app/admin/leave-config/types/leave-type-sub-forms';
+} from '../app/(app)/admin/leave-config/types/leave-type-sub-forms';
 
 const LOCALES = [
   ['en', en],

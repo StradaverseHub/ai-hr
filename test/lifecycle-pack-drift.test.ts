@@ -24,8 +24,8 @@ const BOUNDARIES = readdirSync(fileURLToPath(new URL('../core', import.meta.url)
 const ALWAYS_ALLOWED = [
   'packs/lifecycle/', // the pack: wiring (index.ts) + the service facade
   'core/lifecycle-', // implementation files import each other freely
-  'app/lifecycle/', // employee + staff routes
-  'app/admin/lifecycle/', // Module Config
+  'app/(app)/lifecycle/', // employee + staff routes
+  'app/(app)/admin/lifecycle/', // Module Config
 ];
 
 describe('ADR-0080 D9: lifecycle pack import ratchet', () => {

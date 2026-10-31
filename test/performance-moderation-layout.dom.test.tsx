@@ -5,8 +5,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import { defaultPolicy,type KPI } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
-vi.mock('../app/performance/onehr/performance-insight',()=>({PerformanceInsight:({onResult}:{onResult?:(data:unknown)=>void})=><button type="button" onClick={()=>onResult?.({kpis:[{kpi:'Service delivery',justified:'yes',justified_why:'The file supports the delivery.'}]})}>Read cached insight</button>}));
-import { KpiModerationTable } from '../app/performance/onehr/kpi-moderation-table';
+vi.mock('../app/(app)/performance/onehr/performance-insight',()=>({PerformanceInsight:({onResult}:{onResult?:(data:unknown)=>void})=><button type="button" onClick={()=>onResult?.({kpis:[{kpi:'Service delivery',justified:'yes',justified_why:'The file supports the delivery.'}]})}>Read cached insight</button>}));
+import { KpiModerationTable } from '../app/(app)/performance/onehr/kpi-moderation-table';
 const policy=defaultPolicy(framework);
 function kpi(title:string,patch:Partial<KPI>={}):KPI{return {id:crypto.randomUUID(),title,description:'Delivery measure',weightBp:5000,unit:'units',moderatorEmploymentId:null,setting:'approved',settingRemark:'',actual:100,note:'Submitted explanation',approvedActual:null,moderationRemark:'',locked:false,scoring:{mechanism:'A',method:'more',rates:[0,50,100,150,200]},...patch};}
 const show=(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>);

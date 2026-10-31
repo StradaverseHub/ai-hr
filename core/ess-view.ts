@@ -10,7 +10,7 @@
 //
 // This is the single source of truth shared by: the validation allow-list in core/admin.ts updateLeaveType,
 // the resolver threaded into core/read.ts (leaveBalances / leaveEntitlementBreakdown), the admin checklist in
-// components/leave-type-panel.tsx, and the ESS gating in app/me + components/leave/EntitlementBreakdown.
+// components/leave-type-panel.tsx, and the ESS gating in app/(app)/me + components/leave/EntitlementBreakdown.
 
 /**
  * The configurable component keys. Every key here gates a row the employee panel can actually render, and

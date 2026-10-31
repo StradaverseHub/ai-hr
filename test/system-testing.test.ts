@@ -71,9 +71,9 @@ import {
 import { withTenant, type SessionContext } from '../db/client';
 
 const ROOT = path.resolve(__dirname, '..');
-const LIST_PAGE = 'app/admin/system-testing/page.tsx';
-const NEW_PAGE = 'app/admin/system-testing/new/page.tsx';
-const DETAIL_PAGE = 'app/admin/system-testing/[id]/page.tsx';
+const LIST_PAGE = 'app/(app)/admin/system-testing/page.tsx';
+const NEW_PAGE = 'app/(app)/admin/system-testing/new/page.tsx';
+const DETAIL_PAGE = 'app/(app)/admin/system-testing/[id]/page.tsx';
 const PAGES = [LIST_PAGE, NEW_PAGE, DETAIL_PAGE] as const;
 const HREF = '/admin/system-testing';
 const readRepo = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -563,7 +563,7 @@ describe('e6be5a3b — the defect link is a RAISE, not a typed ID', () => {
     expect(src).not.toMatch(/insert\s*\(\s*feedbackRequest/);
     expect(src).not.toMatch(/INSERT\s+INTO\s+feedback_request/i);
     // …and no other surface of this feature writes the board either.
-    for (const f of [...PAGES, 'app/admin/system-testing/actions.ts']) {
+    for (const f of [...PAGES, 'app/(app)/admin/system-testing/actions.ts']) {
       expect(strip(readRepo(f)), `${f} must not write feedback_request`).not.toMatch(/insert\s*\(\s*feedbackRequest/);
     }
   });
@@ -651,7 +651,7 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
   it('only reviewed typed client forms import explicitly marked server actions', () => {
     // Next documents imports from explicit use-server modules in client forms. Pin the exact reviewed
     // client callers and keep route components/server endpoints separate; runtime proof remains required.
-    for (const f of [...PAGES, 'app/admin/system-testing/actions.ts']) {
+    for (const f of [...PAGES, 'app/(app)/admin/system-testing/actions.ts']) {
       const src = readRepo(f);
       if (f.endsWith('actions.ts')) expect(src.trimStart().startsWith("'use server'")).toBe(true);
       else expect(src, `${f} must stay a server component`).not.toMatch(/^\s*'use client'/m);
@@ -671,7 +671,7 @@ describe('e6be5a3b — the module, the placement, and the wiring', () => {
     };
     for (const d of ['app', 'components']) walk(path.join(ROOT, d));
     expect(offenders.sort()).toEqual(['components/system-testing/instruction-editor.tsx','components/system-testing/observation-form.tsx']);
-    expect(readRepo('app/admin/system-testing/workspace-actions.ts').trimStart().startsWith("'use server'")).toBe(true);
+    expect(readRepo('app/(app)/admin/system-testing/workspace-actions.ts').trimStart().startsWith("'use server'")).toBe(true);
   });
 
   it('recorded HR instants use the shared date-and-time formatter on every timestamp surface', () => {

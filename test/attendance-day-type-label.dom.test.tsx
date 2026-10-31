@@ -22,7 +22,7 @@ describe('read-only Day Type uses the authorized day classification independentl
   expect(screen.getByText('Recorded leave')).toBeVisible();rerender(<AttendanceDayTypeField label="Day Type" dayType={null} format={()=>{throw Error('Must not invent classification');}}/>);expect(screen.getByText('—')).toBeVisible();
  });
  it('wires manager classification directly from the existing range row without enabling admin reads',()=>{
-  const page=readFileSync(resolve(process.cwd(),'app/attendance/individual/[date]/page.tsx'),'utf8');
+  const page=readFileSync(resolve(process.cwd(),'app/(app)/attendance/individual/[date]/page.tsx'),'utf8');
   expect(page).toContain("<AttendanceDayTypeField label={t('dayEdit.dayType')} dayType={row.dayType}");
   expect(page).toContain('admin?attendanceDayEditor');expect(page).not.toMatch(/dayEdit\.dayType[^\n]*:statusText\[status\]/);
  });

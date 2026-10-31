@@ -23,7 +23,7 @@ import {updateQualification as directlyMaintainQualification} from '../core/work
 
 const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.ctx)throw new Error('No fixture identity');return routeSession.ctx;}}));
-import {GET} from '../app/me/photo-proposal/[requestId]/route';
+import {GET} from '../app/(app)/me/photo-proposal/[requestId]/route';
 let b:Base;
 const admin=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});
 const old=Buffer.from([137,80,78,71,13,10,26,10,1]),next=Buffer.from([137,80,78,71,13,10,26,10,2]);

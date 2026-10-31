@@ -9,9 +9,9 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations
  if(typeof value!=='string')throw Error('Missing test translation '+namespace+'.'+key);
  return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??'{'+field+'}'));
 }}));
-vi.mock('../app/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
-vi.mock('../app/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
-vi.mock('../app/assistant/actions',()=>({askAssistantAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/job-feedback-actions',()=>({saveGovernedJobFeedbackAction:vi.fn(),eraseGovernedJobFeedbackAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/governed-job-actions',()=>({runGovernedPlanAction:vi.fn()}));
+vi.mock('../app/(app)/assistant/actions',()=>({askAssistantAction:vi.fn()}));
 // The findings panel is an async server component (own coverage: module-specialist-review.dom). A client
 // render cannot resolve a nested async component, so the whole card suspended and rendered nothing.
 vi.mock('../components/assistant/module-specialist-findings',()=>({ModuleSpecialistFindings:()=>null}));

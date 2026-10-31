@@ -11,7 +11,7 @@ import { personnelMarkupContract } from './helpers/personnel-markup';
  *   §3 the controls write the draft's keys, and Bank Transfer with no bank holds Activate back by name;
  *   §4 FORM-MODE PARITY: the shared field groups, rendered the way the Personnel record renders them,
  *      produce the record's markup from BEFORE the extraction, byte for byte. The "before" JSX is copied
- *      verbatim below from app/admin/personnel/[employmentId]/page.tsx at main@0b4df304, so a change to the
+ *      verbatim below from app/(app)/admin/personnel/[employmentId]/page.tsx at main@0b4df304, so a change to the
  *      record's control made through the shared component fails here instead of drifting silently.
  *
  * jsdom applies no CSS and computes no layout: rendering and interaction logic only.
@@ -42,13 +42,13 @@ vi.mock('next/navigation', () => ({
 }));
 
 const saveDraftAction = vi.fn(async () => ({ id: 'draft-1' }));
-vi.mock('../app/admin/personnel/new/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/new/actions', () => ({
   saveDraftAction: (...a: unknown[]) => saveDraftAction(...(a as [])),
   discardDraftAction: vi.fn(async () => ({ok:true as const})),
   createEmployeeAction: vi.fn(async () => ({ ok:true as const, employmentId: 'emp-1' })),
 }));
 
-const { EmployeeWizard } = await import('../app/admin/personnel/new/wizard');
+const { EmployeeWizard } = await import('../app/(app)/admin/personnel/new/wizard');
 
 // jsdom's import.meta.url is not a file: URL, so the repo root is the working directory vitest runs in.
 const root = `${process.cwd()}/`;
@@ -305,7 +305,7 @@ describe('§4 the Personnel record retains the form contract through the shared 
   }
 
   it('the record\'s page renders the shared groups in form mode, with the arguments it used to inline', () => {
-    const page = readFileSync(root + 'app/admin/personnel/[employmentId]/page.tsx', 'utf8');
+    const page = readFileSync(root + 'app/(app)/admin/personnel/[employmentId]/page.tsx', 'utf8');
     expect(page).toContain('<PaymentMethodField mode="form" defaultValue={emp.paymentMethod} disabled={!!emp.terminatedOn} />');
     expect(page).toContain('<PayrollPolicyField mode="form" defaultValue={emp.payrollPolicyId} policies={assignablePolicies} />');
     // …and no second copy of either select survives beside them.

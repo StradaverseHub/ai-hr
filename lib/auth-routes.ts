@@ -2,14 +2,12 @@
  * The routes that make up the login flow (ADR-0072): they render WITHOUT the authenticated app shell,
  * WITHOUT the getSession gate, and WITHOUT the SHARE_PASSWORD demo gate.
  *
- * Single source of truth on purpose. This list previously existed twice — once as AUTH_ROUTE_PREFIXES
- * in app/layout.tsx (to skip the shell) and once inside the middleware matcher regex (to skip Basic
- * auth) — and the two mechanisms silently cancelled each other out: excluding these paths from the
- * matcher meant middleware never ran for them, so the `x-pathname` header it sets was absent exactly
- * where the layout needed it to detect an auth route. The layout then rendered the full shell and ran
- * the session gate on /login itself, which is the redirect loop the bypass exists to prevent.
- *
- * Keep them derived from one constant so the two can never drift apart again.
+ * The shell is no longer chosen from this list: the login-flow pages live in the app/(auth) route group with
+ * their own root layout, and everything else in app/(app). Separate root layouts make Next.js do a full page
+ * load between them, so a session-expiry redirect to /login cannot render inside the old shell (which the
+ * previous single layout, switching on `x-pathname`, allowed on client navigations). Middleware still uses
+ * this list to let these routes through signed out and past the demo gate; a page added under app/(auth)
+ * must be added here too.
  */
 export const AUTH_ROUTE_PREFIXES = ['/login', '/callback', '/invite', '/reset-password'] as const;
 

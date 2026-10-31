@@ -20,7 +20,7 @@
  *   • The entitlement WRITES (tables + eligibility) moved to their own screen and return to
  *     ENTITLEMENT_TEMPLATES via `okToast`. Steps 1 and 2 are one screen and an operator writing a table
  *     then assigning it must not be bounced into the Leave Type workspace between them — see
- *     app/admin/_redirects.ts, which says so at the constant. These carry a toast and NO fragment.
+ *     app/(app)/admin/_redirects.ts, which says so at the constant. These carry a toast and NO fragment.
  *
  *   • The #type-<id> ANCHOR CONTRACT IS STILL LIVE and still needs a guard, so it is repointed rather
  *     than dropped: `okEntitlements` now has exactly ONE caller left, setLeaveTypeRulesAction, which is
@@ -55,13 +55,13 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 
 import { randomUUID } from 'node:crypto';
 import { listEntitlementTemplates } from '../core/entitlement-template';
-import { setLeaveTypeRulesAction } from '../app/admin/actions';
+import { setLeaveTypeRulesAction } from '../app/(app)/admin/actions';
 import {
   createEligibilityRuleAction,
   createEntitlementTemplateAction,
   retireEntitlementTemplateAction,
   updateEntitlementTemplateAction,
-} from '../app/admin/leave/entitlements/templates/actions';
+} from '../app/(app)/admin/leave/entitlements/templates/actions';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 /**
@@ -79,7 +79,7 @@ const ENTITLEMENTS = '/admin/leave-config/types';
  * screen moved: Entitlement Tables is `/admin/leave-config/entitlement-tables` now and the old address
  * is a redirect stub. Leaving the old literal here would have kept the file GREEN while asserting the
  * saves land on a page that renders nothing — the failure this test exists to catch, one address later.
- * `ENTITLEMENT_TEMPLATES` in app/admin/_redirects.ts moved in the same commit; this follows it.
+ * `ENTITLEMENT_TEMPLATES` in app/(app)/admin/_redirects.ts moved in the same commit; this follows it.
  */
 const TEMPLATES = '/admin/leave-config/entitlement-tables';
 
@@ -223,7 +223,7 @@ describe('9b0503ac — entitlement saves stay on the screen they were made on', 
 });
 
 describe('9b0503ac — the #type anchor contract, on its one surviving caller', () => {
-  // okEntitlements is down to a single call site (app/admin/actions.ts, setLeaveTypeRulesAction). It is
+  // okEntitlements is down to a single call site (app/(app)/admin/actions.ts, setLeaveTypeRulesAction). It is
   // still an entitlement-area save inside the leave-type workspace — the reporter's exact flow — so the
   // anchor half of the contract keeps a guard here rather than disappearing with the four dead actions.
   it('setLeaveTypeRulesAction returns to the panel with the toast AND the #type selection anchor', async () => {

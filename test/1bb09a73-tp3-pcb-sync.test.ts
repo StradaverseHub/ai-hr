@@ -197,7 +197,7 @@ describe('1bb09a73 · the Section-C → payroll-column mapping', () => {
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/^[ \t]*\/\/.*$/gm, '');
     // A guard that can be satisfied by a comment is not a guard, so all three are read comment-stripped.
-    expect(strip('app/payroll/transactions/tp3/page.tsx')).toMatch(/deriveAccumulatorSeed\(/);
+    expect(strip('app/(app)/payroll/transactions/tp3/page.tsx')).toMatch(/deriveAccumulatorSeed\(/);
     expect(strip('core/payroll.ts')).toMatch(/deriveAccumulatorSeed\(/);
     expect(strip('core/tp3.ts')).toMatch(/deriveAccumulatorSeed\(payload\)/);
     // And no second transcription of the arithmetic anywhere else.
@@ -579,7 +579,7 @@ describe('1bb09a73 · the screens say what is now true, in all six locales', () 
       readFileSync(join(ROOT, p), 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '')
         .replace(/^[ \t]*\/\/.*$/gm, '');
-    for (const p of ['app/payroll/[batchId]/page.tsx', 'app/payroll/process/steps/step-validation.tsx']) {
+    for (const p of ['app/(app)/payroll/[batchId]/page.tsx', 'app/(app)/payroll/process/steps/step-validation.tsx']) {
       expect(strip(p), p).toMatch(/\['tp3YearMismatch',[\s\S]{0,60}?, true\]/);
     }
     // The wizard merges every optional list; a group declared and not merged cannot reach the screen.

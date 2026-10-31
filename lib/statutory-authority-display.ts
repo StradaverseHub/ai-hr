@@ -4,7 +4,7 @@
  * ── WHY THIS IS ITS OWN MODULE (15e5bd93 rev 2, r353) ────────────────────────────────────────────
  * All three of these lived in components/company-panel.tsx while the panel was the only screen that drew
  * a statutory body. The reporter's approved rev-2 redesign gives the bodies a DEDICATED screen
- * (app/admin/organization/[companyId]/statutory), so there are now two client components that must agree
+ * (app/(app)/admin/organization/[companyId]/statutory), so there are now two client components that must agree
  * about a body's mark and about which of the three filing numbers is its own. Importing one 'use client'
  * screen from the other to share three constants would have pulled the whole company panel into the new
  * route's bundle and made the dependency point the wrong way; a second copy would be two lists that can

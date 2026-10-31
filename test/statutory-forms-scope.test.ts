@@ -103,7 +103,7 @@ describe('6babf4f6 — the per-form screen takes companyId from the URL with no 
     // whose render needs a session mock. What matters is that BOTH the option list and the honoured
     // companyId go through scopeIds — the export route has always done that.
     const src = readFileSync(
-      new URL('../app/payroll/statutory-forms/[formId]/page.tsx', import.meta.url), 'utf8',
+      new URL('../app/(app)/payroll/statutory-forms/[formId]/page.tsx', import.meta.url), 'utf8',
     );
     expect(src, 'must not use the unscoped session helper').not.toMatch(/await requireAdmin\(\)/);
     expect(src, 'options filtered to the admin scope').toMatch(/scopeIds\.includes\(c\.id\)/);

@@ -13,7 +13,7 @@
  * made such a row visible to them in the first place.
  *
  * So a recognised refusal travels as one of these TOKENS instead of a sentence, and the grid resolves it
- * against `admin.systemLabels.<token>` — the same shape app/payroll/transactions/individual/page.tsx
+ * against `admin.systemLabels.<token>` — the same shape app/(app)/payroll/transactions/individual/page.tsx
  * uses for its `errorKeys`. A token is not a message: `messageOrToken` below is what turns it into one,
  * and anything that is NOT a token is an application error's own deliberate, already-readable sentence
  * (LabelInUseError, DuplicateError, CrossCompanyError), which passes through untouched.

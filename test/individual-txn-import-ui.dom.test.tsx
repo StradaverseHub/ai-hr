@@ -3,11 +3,11 @@ import {describe,it,expect,vi,beforeEach} from 'vitest';
 import {render,screen,fireEvent,waitFor,cleanup} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
-import {IndividualImportRevert} from '../app/payroll/transactions/individual/imports/[attemptId]/revert-control';
+import {IndividualImportRevert} from '../app/(app)/payroll/transactions/individual/imports/[attemptId]/revert-control';
 const mocks=vi.hoisted(()=>({refresh:vi.fn(),revert:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
 vi.mock('../components/ui',()=>({Button:({children,...props}:ButtonHTMLAttributes<HTMLButtonElement>)=><button {...props}>{children}</button>}));
-vi.mock('../app/payroll/transactions/import-excel/individual-actions',()=>({revertIndividualImportAction:mocks.revert}));
+vi.mock('../app/(app)/payroll/transactions/import-excel/individual-actions',()=>({revertIndividualImportAction:mocks.revert}));
 function surface(){return render(<NextIntlClientProvider locale="en" messages={messages}><IndividualImportRevert id="00000000-0000-4000-8000-000000000001" file="monthly.xlsx" count={2}/></NextIntlClientProvider>);}
 beforeEach(()=>{cleanup();vi.clearAllMocks();});
 describe('import batch reversal confirmation',()=>{

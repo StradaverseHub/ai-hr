@@ -592,7 +592,7 @@ describe('§3 what each body’s card actually submits', () => {
       const hidden = (n: string) => form.querySelector<HTMLInputElement>(`input[name="${n}"]`)!.value;
       expect(hidden('companyId'), a).toBe('c1');
       expect(hidden('authority'), `${a} names the body this card writes`).toBe(a);
-      // app/admin/actions.ts `fromStatutorySetupScreen` compares against this exact literal.
+      // app/(app)/admin/actions.ts `fromStatutorySetupScreen` compares against this exact literal.
       expect(hidden('returnTo'), a).toBe('statutory-setup');
     }
   });

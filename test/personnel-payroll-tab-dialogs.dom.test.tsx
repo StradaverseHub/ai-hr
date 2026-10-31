@@ -37,7 +37,7 @@ import { SalaryHistoryTable, type SalaryRowView } from '../components/salary-his
 // The compensation server actions, stubbed — a 'use server' module that reaches Postgres on import. Their
 // behaviour (effective-dated CLOSE+INSERT, the closed-period refusals, the soft delete) is proved against
 // a real database in test/basic-salary-history.test.ts.
-vi.mock('../app/admin/personnel/[employmentId]/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/[employmentId]/actions', () => ({
   editCompensationAction: vi.fn(),
   supersedeCompensationAction: vi.fn(),
 }));

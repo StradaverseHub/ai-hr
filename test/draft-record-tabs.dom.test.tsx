@@ -46,13 +46,13 @@ vi.mock('next/navigation', () => ({
 const saveDraftAction = vi.fn(async () => ({ id: 'draft-1' }));
 const discardDraftAction = vi.fn(async () => ({ok:true as const}));
 const createEmployeeAction = vi.fn(async () => ({ ok:true as const, employmentId: 'emp-1' }));
-vi.mock('../app/admin/personnel/new/actions', () => ({
+vi.mock('../app/(app)/admin/personnel/new/actions', () => ({
   saveDraftAction: (...a: unknown[]) => saveDraftAction(...(a as [])),
   discardDraftAction: (...a: unknown[]) => discardDraftAction(...(a as [])),
   createEmployeeAction: (...a: unknown[]) => createEmployeeAction(...(a as [])),
 }));
 
-const { EmployeeWizard } = await import('../app/admin/personnel/new/wizard');
+const { EmployeeWizard } = await import('../app/(app)/admin/personnel/new/wizard');
 
 const OPTIONS = {
   companies: [{ id: 'co-1', label: 'Acme Sdn Bhd' }],

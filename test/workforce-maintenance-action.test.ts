@@ -5,7 +5,7 @@ import {maintainWorkforceRecord,WorkforceMaintenanceValidationError,WorkforceMai
 import {WorkforceAccessError} from '../core/workforce-access';
 import {WorkforceRecordChangedError} from '../core/workforce-code';
 import {workforceMaintenanceFields} from '../lib/workforce-maintenance-fields';
-import {saveWorkforceRecordAction} from '../app/admin/personnel/[employmentId]/workforce-record-actions';
+import {saveWorkforceRecordAction} from '../app/(app)/admin/personnel/[employmentId]/workforce-record-actions';
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw new Error(`redirect:${url}`);}}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('../lib/workforce-authz',()=>({requireWorkforceAccess:vi.fn()}));

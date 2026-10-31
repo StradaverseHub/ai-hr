@@ -49,7 +49,7 @@ const webPath = z.string().max(400).regex(/^\/(?!\/)[^\s\\]*$/);
 const subject = z.object({ name: name.nullable(), code: z.string().max(64).nullable() });
 
 /**
- * What the web approvals page prints on this row for this caller (app/approvals/page.tsx, the same readers under the
+ * What the web approvals page prints on this row for this caller (app/(app)/approvals/page.tsx, the same readers under the
  * same session): leave — type, start → end, days; leave cancellation — type, the original leave's start → end, the
  * days given back; attendance — the date; claim — type, amount, the date incurred. Read by `kind`; a fact the
  * web's row does not carry is null. One flat shape (no per-kind union) so a later fact is an additive key.

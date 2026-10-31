@@ -30,7 +30,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, '..', p), 'utf8');
 /**
  * 93249794 REPOINTED THIS FROM THE PAGE TO THE SHARED BUILDER, and it is the same assertion about the same
- * names. The four criteria sections moved verbatim out of `app/admin/leave/adjustments/page.tsx` into
+ * names. The four criteria sections moved verbatim out of `app/(app)/admin/leave/adjustments/page.tsx` into
  * `core/org-criteria-form.ts` so the Generate Entitlement screen consumes ONE list rather than a copy of
  * it — the duplicate-maintenance defect 6e9a126e exists to remove, reproduced one layer above the
  * resolver. Following the source is the point: this file guards that every criteria control posts a name
@@ -38,7 +38,7 @@ const read = (p: string) => readFileSync(resolve(here, '..', p), 'utf8');
  */
 const pageSrc = read('core/org-criteria-form.ts');
 const formSrc = read('components/leave/adjustment-form.tsx');
-const actionsSrc = read('app/admin/leave/adjustments/actions.ts');
+const actionsSrc = read('app/(app)/admin/leave/adjustments/actions.ts');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 /** Every criteria field name the page emits: the literal `name: '…'` entries plus the `org('…')` helper. */

@@ -17,17 +17,17 @@ vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRE
 vi.mock('next-intl/server',()=>({getLocale:async()=>m.locale,getTranslations:async(namespace:any)=>createTranslator({locale:m.locale,messages:copies[m.locale],namespace})}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>m.guard(),isGroupAdmin:()=>m.access.provision}));
 vi.mock('../lib/security-center-authz',()=>({requireSecurityCenter:async()=>({session:{},access:m.access}),requireGroupAdministration:async()=>m.guard()}));
-vi.mock('../app/admin/users/data',()=>({loadUsersData:m.load,ROLES:['employee','hr_admin','super_admin']}));
+vi.mock('../app/(app)/admin/users/data',()=>({loadUsersData:m.load,ROLES:['employee','hr_admin','super_admin']}));
 vi.mock('../lib/internal-auth/config',()=>({internalSelected:()=>m.enabled}));
 vi.mock('../lib/identity/config',()=>({keycloakSelected:()=>false}));
-vi.mock('../app/admin/actions',()=>({inviteUserAction:vi.fn(),archiveUserAction:vi.fn(),assignRoleAction:vi.fn(),revokeRoleAction:vi.fn(),revokeInvitationAction:vi.fn(),setAssistantGrantAction:vi.fn()}));
-vi.mock('../app/admin/users/manual-actions',()=>({createManualAccountAction:vi.fn(),resumeManualAccountAction:vi.fn(),cancelManualAccountAction:vi.fn()}));
-import Hub from '../app/admin/security-center/page';
-import Directory from '../app/admin/users/page';
-import Create from '../app/admin/users/create/page';
-import Invite from '../app/admin/users/invite/page';
-import Functions from '../app/admin/users/function-access/page';
-import {LegacySecurityNavigation} from '../app/admin/users/legacy-navigation';
+vi.mock('../app/(app)/admin/actions',()=>({inviteUserAction:vi.fn(),archiveUserAction:vi.fn(),assignRoleAction:vi.fn(),revokeRoleAction:vi.fn(),revokeInvitationAction:vi.fn(),setAssistantGrantAction:vi.fn()}));
+vi.mock('../app/(app)/admin/users/manual-actions',()=>({createManualAccountAction:vi.fn(),resumeManualAccountAction:vi.fn(),cancelManualAccountAction:vi.fn()}));
+import Hub from '../app/(app)/admin/security-center/page';
+import Directory from '../app/(app)/admin/users/page';
+import Create from '../app/(app)/admin/users/create/page';
+import Invite from '../app/(app)/admin/users/invite/page';
+import Functions from '../app/(app)/admin/users/function-access/page';
+import {LegacySecurityNavigation} from '../app/(app)/admin/users/legacy-navigation';
 const person={id:'11111111-2222-3333-4444-555555555555',name:'Fictional Person',email:'person@example.test',code:'F-001'};
 /** Resolve only async server components; React renders client components and their hooks normally. */
 async function serverTree(node:ReactNode):Promise<ReactNode>{

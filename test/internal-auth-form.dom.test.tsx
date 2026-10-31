@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
-import { InternalAuthForm } from '../app/login/internal-form';
+import { InternalAuthForm } from '../app/(auth)/login/internal-form';
 import en from '../messages/en.json';
 vi.mock('next/image', () => ({ default: (props: Record<string, unknown>) => <img {...props}/> }));
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));

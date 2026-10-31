@@ -44,14 +44,14 @@
  * reports doc comments that quote a specifier as real edges, and it misses the edge that actually
  * decides this — core/admin.ts reaches core/payroll-cycle.ts through the pack facade, not by name.
  *
- *     core/pay-components.ts  LEFT — app/admin/personnel/[employmentId] (PERSONNEL, a core screen)
+ *     core/pay-components.ts  LEFT — app/(app)/admin/personnel/[employmentId] (PERSONNEL, a core screen)
  *                                    calls listEmploymentPayComponents + listPayComponents
  *                                    unconditionally for any admin, and core/attendance-allowance.ts
  *                                    — the ATTENDANCE pack — writes through setPayrollBatchComponent.
  *                                    Binding it refuses a tenant that bought Attendance and not Payroll.
  *     core/cp38.ts            LEFT — the same Personnel page calls listCp38 unconditionally.
- *     core/loans.ts           LEFT — app/me/page.tsx (ESS, core) calls listLoansForEmployment.
- *     core/payroll-cycle.ts   LEFT — app/admin/organization/[companyId] (core) calls listPayrollCycles,
+ *     core/loans.ts           LEFT — app/(app)/me/page.tsx (ESS, core) calls listLoansForEmployment.
+ *     core/payroll-cycle.ts   LEFT — app/(app)/admin/organization/[companyId] (core) calls listPayrollCycles,
  *                                    and core/admin.ts seeds the cycle catalogue when a company is
  *                                    created. The seeder passes its own `tx`, so the rebinding would
  *                                    not catch THAT call — but the Organization read has no handle and
@@ -68,9 +68,9 @@
  * gone; the files stay unbound because binding is a separate change, and two things still stand in its way:
  *   - core/admin.ts's cycle seeder (above) — unaffected, it passes a `tx`;
  *   - for core/pay-components.ts, the ATTENDANCE pack. Measured at r298, the edge that actually bites is the
- *     READ in app/admin/attendance-allowance/page.tsx (`listSupportedBatchComponents`, no handle). The write
+ *     READ in app/(app)/admin/attendance-allowance/page.tsx (`listSupportedBatchComponents`, no handle). The write
  *     named above does not: core/attendance-allowance.ts passes its own `tx` to setPayrollBatchComponent,
- *     so a file rebinding would not reach it, and its only caller is app/payroll/actions.ts.
+ *     so a file rebinding would not reach it, and its only caller is app/(app)/payroll/actions.ts.
  *
  * NOT core/read.ts, and that is the whole reason this file reasons about placement rather than
  * spraying calls. `read.ts` is the SHARED kernel read module: `dashboardStats` reads `payroll_batch`

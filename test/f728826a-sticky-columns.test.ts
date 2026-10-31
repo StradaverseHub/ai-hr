@@ -1,7 +1,7 @@
 /**
  * f728826a — the frozen columns overlapped, and the table squeezed its own cells.
  *
- * TWO SEPARATE FAULTS, both on app/attendance/breakdown/page.tsx, and it matters that they are separate
+ * TWO SEPARATE FAULTS, both on app/(app)/attendance/breakdown/page.tsx, and it matters that they are separate
  * because fixing either alone still leaves the reporter looking at overlapping text.
  *
  *   1. THE SQUEEZE. `<table className="w-full">` inside an overflow-x-auto box, with twenty-nine
@@ -31,7 +31,7 @@ const src = (p: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
 
-const SCREENS = ['app/attendance/breakdown/page.tsx', 'app/attendance/daily/page.tsx'] as const;
+const SCREENS = ['app/(app)/attendance/breakdown/page.tsx', 'app/(app)/attendance/daily/page.tsx'] as const;
 
 describe('f728826a · the offset is derived, never typed', () => {
   it('places each column at the running total of the widths before it', () => {
@@ -117,13 +117,13 @@ describe('f728826a · neither screen may re-acquire a typed offset', () => {
   }
 
   it('the long name is clipped in its own cell, with the full value on hover', () => {
-    const s = src('app/attendance/breakdown/page.tsx');
+    const s = src('app/(app)/attendance/breakdown/page.tsx');
     expect(s, 'clip rather than overrun').toContain('text-ellipsis');
     expect(s, 'and the full name must stay reachable').toContain('title={r.name}');
   });
 
   /** The numeric columns must KEEP nowrap — clipping is for the name, not for a figure. */
   it('keeps the numeric columns unwrapped', () => {
-    expect(src('app/attendance/breakdown/page.tsx')).toMatch(/tdNum|tabular-nums/);
+    expect(src('app/(app)/attendance/breakdown/page.tsx')).toMatch(/tdNum|tabular-nums/);
   });
 });

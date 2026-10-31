@@ -5,7 +5,7 @@ vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
 vi.mock('../core/module-agent-feedback',()=>({recordOwnAgentFeedback:owner.record,eraseOwnAgentFeedback:owner.erase,AGENT_FEEDBACK_OUTCOMES:['helpful','needs_correction','incorrect']}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next/navigation',()=>({redirect:(location:string)=>{throw Object.assign(Error('fixture navigation'),{location});}}));
-import {saveAgentFeedbackAction,eraseAgentFeedbackAction} from '../app/assistant/feedback-actions';
+import {saveAgentFeedbackAction,eraseAgentFeedbackAction} from '../app/(app)/assistant/feedback-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user'};
 beforeEach(()=>{for(const mock of Object.values(owner))mock.mockReset();owner.session.mockResolvedValue(ctx);});
 function packet(){const form=new FormData();form.set('exchangeId','original-exchange');form.set('outcome','helpful');form.set('consented','yes');return form;}

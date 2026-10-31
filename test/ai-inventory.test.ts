@@ -246,7 +246,7 @@ describe('static wiring', () => {
   });
   it('lists the inventory page in the permission registry and first in the AI management menu', () => {
     expect(read('lib/permissions.ts')).toContain("'/control-tower/agents/inventory'");
-    expect(read('app/control-tower/agents/inventory/page.tsx')).toContain('requireAdmin');
+    expect(read('app/(app)/control-tower/agents/inventory/page.tsx')).toContain('requireAdmin');
     const sidebar = read('components/sidebar.tsx'), node = sidebar.slice(sidebar.indexOf('const AI_MANAGEMENT_NODE'));
     expect(node.indexOf('/control-tower/agents/inventory')).toBeLessThan(node.indexOf("'/control-tower/agents', labelKey"));
   });

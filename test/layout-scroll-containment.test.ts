@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/layout.tsx'), 'utf8');
+const LAYOUT = fs.readFileSync(path.resolve(__dirname, '../app/(app)/layout.tsx'), 'utf8');
 const SIDEBAR = fs.readFileSync(path.resolve(__dirname, '../components/sidebar.tsx'), 'utf8');
 
 describe('app shell — scroll containers contain absolute descendants', () => {

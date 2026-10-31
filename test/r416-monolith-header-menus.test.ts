@@ -19,7 +19,7 @@ const read = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8
 
 describe('r416 · the Monolith header menus are painted above the page', () => {
   it('the header raises its own stacking context above <main> in Monolith', () => {
-    const layout = read('app/layout.tsx');
+    const layout = read('app/(app)/layout.tsx');
     const start = layout.indexOf('<header className="grid h-16');
     const end = layout.indexOf('">', start);
     expect(start, 'the shell header was found').toBeGreaterThanOrEqual(0);

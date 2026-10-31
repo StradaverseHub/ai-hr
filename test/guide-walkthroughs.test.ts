@@ -48,7 +48,7 @@ describe('knowledge-base walkthrough coverage', () => {
       const anchor = step.target.match(/^\[data-tour="([a-z-]+)"\]$/)?.[1];
       expect(anchor, step.target).toBeTruthy();
       let source = readFileSync(page, 'utf8');
-      if (step.route === '/rewards') source += readFileSync('app/rewards/review-list.tsx', 'utf8');
+      if (step.route === '/rewards') source += readFileSync('app/(app)/rewards/review-list.tsx', 'utf8');
       if (step.route === '/mobile-preview') source += readFileSync('components/mobile-preview/mobile-builder.tsx', 'utf8');
       if (anchor!.startsWith('operator-guide-')) {
         expect(source).toContain('data-tour={`operator-guide-${guide.slug}`}');

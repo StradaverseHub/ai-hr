@@ -35,8 +35,8 @@ import * as schema from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 import { hireEmployee } from '../core/org';
 import { MY_ATTENDANCE_REQUEST_ROW_CEILING, myAttendanceCorrections } from '../core/attendance';
-import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from '../app/attendance/request-status/rows';
-import { REQUEST_STATUSES } from '../app/attendance/request-ui';
+import { parseRequestStatus, requestRowsProbeLimit, resolveRequestRows } from '../app/(app)/attendance/request-status/rows';
+import { REQUEST_STATUSES } from '../app/(app)/attendance/request-ui';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
 import en from '../messages/en.json';
@@ -55,9 +55,9 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 /** Source with comments removed: a guard that greps for a token must not be satisfied by a comment. */
 const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
 
-const PAGE = read('app/attendance/request-status/page.tsx');
-const ROWS = read('app/attendance/request-status/rows.ts');
-const EXPORT = read('app/attendance/request-status/export/route.ts');
+const PAGE = read('app/(app)/attendance/request-status/page.tsx');
+const ROWS = read('app/(app)/attendance/request-status/rows.ts');
+const EXPORT = read('app/(app)/attendance/request-status/export/route.ts');
 const PACK = read('packs/attendance/index.ts');
 
 // ── 1 · THE CEILING, AND THE REFUSAL ────────────────────────────────────────────────────────────────

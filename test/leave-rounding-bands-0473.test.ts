@@ -508,7 +508,7 @@ describe('ยง4 the "every input is already 2dp" premise is false for one caller โ
     // r335 (6af80f5d) โ€” the DISPLAY caller, pinned by its own parameter name so this list stays exhaustive
     // over core/leave.ts rather than merely exhaustive over the three engine call sites it started with.
     ['core/leave.ts', /applyRounding\(exactEarned, /g, 1],
-    ['app/admin/leave-config/types/leave-type-sub-forms.tsx', /applyRounding\(ROUNDING_EXAMPLE_RAW, /g, 1],
+    ['app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx', /applyRounding\(ROUNDING_EXAMPLE_RAW, /g, 1],
   ];
 
   it('the callers are the ones listed above, and no other file calls the engine', () => {
@@ -528,7 +528,7 @@ describe('ยง4 the "every input is already 2dp" premise is false for one caller โ
     for (const d of ['app', 'components', 'core', 'lib', 'packs', 'scripts']) walk(d);
     expect(callers.sort()).toEqual(
       [
-        'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+        'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
         'core/leave-compute.ts',
         'core/leave.ts',
         'core/org.ts',

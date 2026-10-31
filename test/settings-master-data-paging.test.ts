@@ -32,13 +32,13 @@ const GRIDS = [
 /** The sweep: every other admin master-data list that was rendering every row with no pager. All seven are
  *  server-rendered, so all seven take the SERVER pager and the same ?page=&size= contract. */
 const SWEPT_PAGES = [
-  'app/admin/settings/movement/page.tsx',
-  'app/admin/settings/hiring-defaults/page.tsx',
-  'app/admin/settings/dashboard/page.tsx',
-  'app/admin/settings/employee-id/page.tsx',
-  'app/admin/pay-components/page.tsx',
-  'app/admin/holidays/page.tsx',
-  'app/admin/holidays/groups/page.tsx',
+  'app/(app)/admin/settings/movement/page.tsx',
+  'app/(app)/admin/settings/hiring-defaults/page.tsx',
+  'app/(app)/admin/settings/dashboard/page.tsx',
+  'app/(app)/admin/settings/employee-id/page.tsx',
+  'app/(app)/admin/pay-components/page.tsx',
+  'app/(app)/admin/holidays/page.tsx',
+  'app/(app)/admin/holidays/groups/page.tsx',
 ] as const;
 
 describe('the master-data grids page in the browser', () => {
@@ -113,7 +113,7 @@ describe('the sweep — every other admin master-data list', () => {
   // Movement Settings shipped with "NO PAGINATION, deliberately" written into its header. That decision is
   // reversed here, and the file must SAY so rather than silently disagreeing with its own documentation.
   it('Movement Settings records that its no-pagination decision was reversed, not forgotten', () => {
-    const src = read('app/admin/settings/movement/page.tsx');
+    const src = read('app/(app)/admin/settings/movement/page.tsx');
     expect(src).toContain('PAGED SINCE 9da61c86');
     expect(src, 'the old reasoning is quoted, not deleted').toContain('NO PAGINATION, deliberately');
   });
@@ -146,7 +146,7 @@ describe('the sweep — every other admin master-data list', () => {
  */
 describe('editing a holiday returns to the page you were on', () => {
   it('the page posts the page and size with every row action', () => {
-    const src = code(read('app/admin/holidays/page.tsx'));
+    const src = code(read('app/(app)/admin/holidays/page.tsx'));
     expect(src).toContain('name="filterPage"');
     expect(src).toContain('name="filterSize"');
     // …and they are the values actually in use, not a hard-coded first page.
@@ -161,7 +161,7 @@ describe('editing a holiday returns to the page you were on', () => {
   });
 
   it('the action reads them back and rebuilds the address', () => {
-    const src = code(read('app/admin/actions.ts'));
+    const src = code(read('app/(app)/admin/actions.ts'));
     expect(src).toContain("formData.get('filterPage')");
     expect(src).toContain("formData.get('filterSize')");
     expect(src).toMatch(/sp\.set\('page', page\)/);
@@ -172,7 +172,7 @@ describe('editing a holiday returns to the page you were on', () => {
   // the address says anything, so an unconditional hidden field turned a bare /admin/holidays into
   // ?size=25 on the first Save — an address claiming a choice nobody made.
   it('the page posts a size only when the address carries one', () => {
-    const src = code(read('app/admin/holidays/page.tsx'));
+    const src = code(read('app/(app)/admin/holidays/page.tsx'));
     expect(src).toMatch(/\{sp\.size && <input type="hidden" name="filterSize"/);
   });
 });
@@ -187,9 +187,9 @@ describe('editing a holiday returns to the page you were on', () => {
  */
 describe('a filter or status switch keeps the rows-per-page', () => {
   it.each([
-    ['app/admin/pay-components/page.tsx', /sp\.size \? `&size=\$\{pq\.size\}` : ''/],
-    ['app/admin/settings/movement/page.tsx', /if \(sp\.size\) usp\.set\('size', String\(pq\.size\)\)/],
-    ['app/admin/settings/hiring-defaults/page.tsx', /if \(sp\.size\) usp\.set\('size', String\(pq\.size\)\)/],
+    ['app/(app)/admin/pay-components/page.tsx', /sp\.size \? `&size=\$\{pq\.size\}` : ''/],
+    ['app/(app)/admin/settings/movement/page.tsx', /if \(sp\.size\) usp\.set\('size', String\(pq\.size\)\)/],
+    ['app/(app)/admin/settings/hiring-defaults/page.tsx', /if \(sp\.size\) usp\.set\('size', String\(pq\.size\)\)/],
   ] as const)('%s carries the size through its own link helper', (file, shape) => {
     expect(code(read(file))).toMatch(shape);
   });
@@ -212,8 +212,8 @@ describe('editing a record returns you to the list you were on', () => {
   it.each([
     // The Edit link's exact shape, per screen: the row id ALONE is the defect — it opens the editor on a
     // list that has forgotten which page (and on the Dashboard, which filters) the row was found under.
-    ['app/admin/settings/employee-id', /href=\{keepingPlace\(`\$\{PAGE\}\?edit=\$\{c\.id\}`\)\}/],
-    ['app/admin/settings/dashboard', /href=\{`\$\{PAGE\}\?\$\{listQs\}&edit=\$\{c\.id\}`\}/],
+    ['app/(app)/admin/settings/employee-id', /href=\{keepingPlace\(`\$\{PAGE\}\?edit=\$\{c\.id\}`\)\}/],
+    ['app/(app)/admin/settings/dashboard', /href=\{`\$\{PAGE\}\?\$\{listQs\}&edit=\$\{c\.id\}`\}/],
   ] as const)('%s carries the view into the form and back out of the action', (dir, editLink) => {
     const page = code(read(`${dir}/page.tsx`));
     // The list's own address, minted once and hung on the links AND on a hidden field in every row form.
@@ -233,7 +233,7 @@ describe('editing a record returns you to the list you were on', () => {
   // Only the keys the screen owns survive the round trip, so a hand-edited returnTo cannot put anything
   // else into the redirect.
   it('the Card Library carries its filters as well as its page', () => {
-    const actions = code(read('app/admin/settings/dashboard/actions.ts'));
+    const actions = code(read('app/(app)/admin/settings/dashboard/actions.ts'));
     expect(actions).toContain("const RETURN_KEYS = ['section', 'q', 'type', 'status', 'page', 'size']");
   });
 });

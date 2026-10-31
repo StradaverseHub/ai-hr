@@ -17,7 +17,7 @@ vi.mock('@/core/read',()=>({
  recentHires:state.aggregate,upcomingHolidays:state.aggregate,awayTodayCount:state.aggregate,leaveBalances:state.aggregate,listApprovalHistory:state.aggregate,
 }));
 vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:state.assistant}));
-import DashboardPage from '../app/page';
+import DashboardPage from '../app/(app)/page';
 import {HomeAccessError} from '../core/employee-home';
 beforeEach(()=>{
  vi.clearAllMocks();state.session.roles=['employee'];state.session.entitlements.enabledModules=[];state.reports=[];

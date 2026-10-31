@@ -255,7 +255,7 @@ export function LeaveDetailsPanel({
    * 2a57a007 (r340) — THIS PANEL IS THE THIRD SURFACE, AND IT WAS THE ONE STILL DISAGREEING.
    *
    * The grid row for a pooled BORROWER now reads Entitlement 0.00 / Earned to Date 0.00 and names no
-   * entitlement table (app/leave/employee-balances/rows.ts). One click away, this panel was handed the POOL's
+   * entitlement table (app/(app)/leave/employee-balances/rows.ts). One click away, this panel was handed the POOL's
    * breakdown — deliberately, because the pool's ledger is the true story of those days — and printed the
    * pool's Entitlement, the pool's Earned to Date and, inside the status notice, the pool's table name, with
    * nothing but an HR-only sentence under one line to say whose they were. That is the reporter's original

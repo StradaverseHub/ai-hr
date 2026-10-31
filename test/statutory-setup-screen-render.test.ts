@@ -538,7 +538,7 @@ describe('15e5bd93 rev 4 render check — the setup SCREEN in all six locales, r
  */
 describe('15e5bd93 rev 4 — the source decisions the measurements traced back to', () => {
   const SCREEN = read('components/statutory-setup-screen.tsx');
-  const PAGE = read('app/admin/organization/[companyId]/statutory/page.tsx');
+  const PAGE = read('app/(app)/admin/organization/[companyId]/statutory/page.tsx');
   /**
    * COMMENTS ARE STRIPPED FIRST (the r331 aec53564 lesson: a guard that reads its own explanation finds
    * the very thing it is banning). Every removal below is recorded in a source comment that NAMES the

@@ -6,7 +6,7 @@ import { inputCls } from '@/components/ui';
 
 /**
  * Overtime report export control (Overtime Rate Config, #e410da83). A format picker (CSV / XLSX / PDF) +
- * download link to the admin-gated route app/attendance/ot-report/export. Rendered only for admins on the
+ * download link to the admin-gated route app/(app)/attendance/ot-report/export. Rendered only for admins on the
  * attendance month-summary block; the route re-checks admin + company scope, so this is UI convenience only.
  */
 export function OtReportExport({

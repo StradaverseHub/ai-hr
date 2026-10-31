@@ -1,0 +1,4920 @@
+import {HireCorrectionModes} from '../information-correction-form';
+import { getEmploymentCostAllocations } from '@/core/employment-cost-allocations';
+import { CostCenterAllocations } from '@/components/personnel/cost-center-allocations';
+import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
+import {workforceEmploymentAccess} from '@/core/workforce-access';
+import Link from 'next/link';
+import {HolidayCalendarAssignments} from './holiday-calendar-assignments';
+import {employmentHolidayCalendarHistory,holidayCalendarInclusiveEnd} from '@/core/holiday-calendar-assignment';
+import { notFound, redirect } from 'next/navigation';
+import { RETIRED_PERSONNEL_TABS } from '@/lib/personnel-tab-sections';
+import { getTranslations } from 'next-intl/server';
+import { isAdmin } from '@/lib/authz';
+import { isModuleEnabledOrFalse } from '@/core/entitlements';
+// Workforce scope is purpose-bound. New view-only grants enter the bounded read composition;
+// legacy HR detail and specialized private owners retain their existing role/scope floors.
+import {requireWorkforceAccess} from '@/lib/workforce-authz';
+import {WorkforceScopedRecord} from './workforce-record';
+import {
+  adminCompanies,
+  assignmentHistory,
+  delegationsFor,
+  directSuperiorHistoryFor,
+  employeeDetail,
+  employmentCompanyEditable,
+  listDepartments,
+  listWorkforcePickOptions,
+  listJobGrades,
+  reportingLinesFor,
+} from '@/core/read';
+import { PersonnelField } from '@/components/personnel-field';
+import { personnelControl, personnelInput, personnelFormName, personnelFormLabel, personnelFormChoices, personnelDisplay, personnelCarry, personnelPresence, personnelRadio, personnelWorkflowCarry } from '@/lib/personnel-form-contract';
+import { Avatar, Badge, Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, StatusBadge, btnGhost, btnPrimary, inputCls } from '@/components/ui';
+import { LocationAssignment } from '@/components/attendance/location-assignment';
+import { hasPersonPhoto } from '@/core/person-photo';
+import { PhotoLightbox } from './photo-lightbox';
+import { ConfirmSubmit } from '@/components/ui/confirm-submit';
+import { DateField } from '@/components/ui/date-field';
+import { formatDmy, formatDmyTime } from '@/lib/date-display';
+import { IdentityFields, IdentityProvider, NationalityField } from '@/components/personnel-identity';
+// 35b7af0a group 1 — the Gender + Marital Status field group, shared with the Create New Employee wizard.
+import { PersonDetailsFields } from '@/components/person-details-fields';
+// 35b7af0a group 3 — the Date of Birth + read-only Age field group, shared with the same wizard.
+import { BirthDateFields } from '@/components/birth-date-fields';
+// 35b7af0a group 4 — the EPF Number + EPF Citizenship field group, shared with the same wizard.
+import { EpfRegistrationFields } from '@/components/epf-registration-fields';
+// Direct Superior (dce55aff): the searchable employee picker reuses the shared Combobox — its label
+// carries "EMP-0008 – John Tan" so type-ahead matches Employee ID and name alike.
+import { Combobox } from '@/components/ui/combobox';
+import { EpfElection } from '@/components/epf-election';
+import { BankInfoCard } from '@/components/bank-info-card';
+import { IdentityTaxCard } from '@/components/identity-tax-card';
+import { SocsoEisFields } from '@/components/socso-eis-fields';
+// a72610af — the field groups this screen now SHARES with the Create New Employee draft, so a draft and
+// the record it becomes ask the same questions in the same words. Each has a `mode`; this screen is 'form'.
+import { PersonNameFields, PersonContactExtraFields } from '@/components/person-name-fields';
+import { ConfirmationDateField, EmploymentPeriodField } from '@/components/employment-period-fields';
+import { EmployerBearsSwitch } from '@/components/employer-bears-fields';
+import { HrdfSubjectField } from '@/components/tax-relief-fields';
+import { SameAsPermanentAddress } from '@/components/same-as-permanent-address';
+// da7463b4 — the seven-field address block, shared with the Create New Employee draft.
+import { AddressBlockFields } from '@/components/address-fields';
+import {
+  addDelegationAction,
+  endDelegationAction,
+  setCompensationAction,
+  setDirectSuperiorAction,
+  setComplianceFieldsAction,
+  setContactAddressAction,
+  changeEmploymentCompanyAction,
+  setPaymentMethodAction,
+  setEmploymentComponentAction,
+  setEmploymentInfoAction,
+  setEmploymentScheduleGroupAction,
+  setPersonAction,
+  setPersonPhotoAction,
+  // 420ebab5 part two — the Profile tab's consolidated Save. Calls the SAME per-section services, in order.
+  saveProfileTabAction,
+  saveBankStatutoryTabAction,
+  saveAttendanceTabAction,
+  saveCardIdFieldAction,
+  saveJobTabAction,
+  savePayrollTabAction,
+  removePersonPhotoAction,
+  setStatutoryAction,
+  setTp3Action,
+  setBankAction,
+  setIcAction,
+  setPassportAction,
+  setTaxAction,
+  setOthersStatutoryAction,
+  // 66a63bd6 — Employment History Delete (Rollback); Edit posts from the movement form island itself.
+  reverseMovementEventAction,
+} from './actions';
+// Movement tab redesign (78853b97): Employment History projection + New Event dispatcher.
+import {
+  movementHistory,
+  movementDetail,
+  movementAttachments,
+  movementPendingEditInput,
+  resignationInformation,
+  movementCurrentState,
+  INTERCHANGEABLE_COMPARISON_KINDS,
+  isComparisonKind,
+  MOVEMENT_FLAT_FIELDS,
+} from '@/core/movement';
+// 95d17761 — the DEFAULT Employment History view drops the correction artefacts. A pure view filter, so
+// it lives beside the screen and never touches the ledger projection above.
+import { partitionMovementRows } from '@/lib/movement-visibility';
+// e6a144d4 — the Employment History event-type caption, shared with the Download Excel route so the file
+// and the screen cannot print different names for the same event.
+import { movementKindLabel as movementKindLabelOf } from '@/lib/movement-kind-label';
+// ae9350f2 — the built-in exit-reason catalogue behind the Termination movement.
+import { terminationReasonCatalogue } from '@/core/termination-reason-catalog';
+// 476f23ed — the tenant's configurable movement event-type catalogue.
+import { listMovementEventTypes } from '@/core/movement-type';
+// 1d58019a Step 2 — each type's offered reasons and Field Controls, for the New Event / Edit form.
+import { movementTypeControls, type MovementTypeControls } from '@/core/movement-type-controls';
+import { MovementNewEvent } from './movement-new-event';
+// c063eea9 — "Correct hire details" on the Hired row: the read behind the form, and its client island.
+import { HireCorrectionError, hireCorrectionView, type HireCorrectionField } from '@/core/hire-correction';
+import { HireCorrectionForm, type HireCorrectionFormField } from './hire-correction-form';
+import { serviceYearsMonthsDaysAt } from '@/core/leave';
+// 9d13221c — the Age figure beside Date of Birth no longer needs an import here at all: 35b7af0a group 3
+// moved both the derivation and the two Fields into components/birth-date-fields.tsx, which reads the same
+// counter from the client-safe lib/completed-years.ts so the wizard can render it too.
+import { deriveEmploymentStatus } from '@/core/employment-status';
+import {
+  closedPayrollPeriodsFor,
+  compensationHistoryDetailed,
+  overlapsClosedPeriod,
+  type CompensationHistoryRow,
+} from '@/core/comp';
+import { SalaryRevisionConfirm } from '@/components/salary-revision-confirm';
+import { SalaryHistoryTable, type SalaryRowView } from '@/components/salary-history-table';
+import { PayStructureFields, type PayModeOption } from '@/components/pay-structure-fields';
+import { PERSONNEL_PAY_MODES, PERSONNEL_PAYMENT_TERMS } from '@/lib/personnel-choice-vocabulary';
+// 297ae65a — searchable ISO 4217 Currency select for the Basic Salary form + the company default it preselects.
+import { CurrencySelect } from '@/components/currency-select';
+import { getCompanyCurrency } from '@/core/read';
+import { listCp38 } from '@/core/cp38';
+import { addCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
+import { listDependents, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
+import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
+// Feedback a949184a — Qualification tab: per-employment academic/professional qualification register.
+import { listQualifications, type QualificationRow } from '@/core/qualifications';
+import { addQualificationAction, editQualificationAction, archiveQualificationAction } from './qualification-actions';
+// Feedback 23ad620e — Emergency Contact register: a person may have several contacts, not one.
+import { EMERGENCY_CONTACT_PRIORITIES, listEmergencyContacts, type EmergencyContactRow } from '@/core/emergency-contacts';
+import { addEmergencyContactAction, editEmergencyContactAction, deleteEmergencyContactAction } from './emergency-contact-actions';
+import { FamilyFormDialog } from '@/components/family-form-dialog';
+import { FamilyRelationshipFields } from '@/components/family-relationship-fields';
+import { listAssignablePolicies } from '@/core/payroll-policy';
+// r393 (685d2380 step 2) — Payment Method and Payroll Policy are shared field groups now, rendered here in
+// form mode and on the draft employee's Payroll tab in controlled mode.
+import { PaymentMethodField } from '@/components/payment-method-field';
+import { PayrollPolicyField } from '@/components/payroll-policy-field';
+import { assignPolicyAction } from '@/app/(app)/admin/payroll-policy/actions';
+import { employmentScheduleGroupId, listShiftsForTenant } from '@/core/roster';
+// 18504ca6 — the dated Shift arrangement ladder behind the card's new Effective date + Shift history list.
+import { EmployeeShiftFields } from '@/components/employee-shift-fields';
+import { listHolidayGroups, listPositions, listBusinessUnits, listCostCenters } from '@/core/admin';
+import { listLocations } from '@/core/location';
+// f513ec02 adds listAttendanceRules — the Schedule Group picker's options. The tenant's attendance_rule
+// library IS the Schedule Group library (870b79e2); there is no second table behind the name. Taken from
+// the PACK FACADE, not core/attendance-rule: the ADR-0080 D9 ratchet (test/attendance-pack-drift.test.ts)
+// refuses a new direct importer of the attendance implementation, and the allowlist only ever shrinks.
+import { getScheduleRotation,listAttendanceRules, listClockingLocations, listEmployeeClockingLocations } from '@/packs/attendance/service';
+import { setClockingControlAction } from './actions';
+import { DocumentsSection } from './documents-section';
+import { PersonnelTabs, type PersonnelTabKey } from '@/components/personnel-tabs';
+// 420ebab5 part two — the Profile tab's one Save/Discard, and the consolidated action behind it.
+import { TabSaveScope } from '@/components/tab-save-scope';
+// c002b3c3 — the Personnel module's Search Employee switcher (shared with the listing).
+import { EmployeeSwitcher } from '../employee-switcher';
+// Rung 5c (ADR-0080 D1) — statutory profile reads, the SOCSO/EIS default and the state pick-list all
+// resolve through the pack registry; this generic personnel screen no longer imports localization/my.
+// (Feedback 0df0c635 — the Others Statutory card also reads the company HRDF band via the pack.)
+import { countryPacks, packFor } from '@/localization/registry';
+import { listAllProfileOptions } from '@/core/profile-options';
+import { ProfileOptionSelect } from '@/components/profile-option-select';
+import { PhotoEditMenu } from '@/components/photo-edit-menu';
+import { listEmploymentPayComponents, listPayComponents } from '@/core/pay-components';
+import { encashmentSnapshotForEmployment } from '@/core/leave-encashment';
+import { unfreezeEncashmentAction, adjustEncashmentAction } from './encashment-actions';
+
+import { todayInKualaLumpur } from '@/lib/hr-date';
+
+/** 1d58019a Step 2 — a movement document's field, as the existing `people.detail.movement.field.*` keys name it. */
+const MOVEMENT_DOCUMENT_FIELD_KEYS: Record<string, string> = {
+  companyId: 'company', businessUnitId: 'businessUnit', departmentId: 'department', positionId: 'position',
+  gradeId: 'grade', employmentType: 'employmentType', locationId: 'location', managerEmploymentId: 'manager',
+  basicSalary: 'basicSalary', currency: 'currency', payMode: 'payMode', paymentTerm: 'paymentTerm',
+  orgDivision: 'orgDivision', employmentCategory: 'employmentCategory', orgRegion: 'orgRegion', orgBranch: 'orgBranch',
+  orgTeam: 'orgTeam', orgSection: 'orgSection', orgLine: 'orgLine', orgBase: 'orgBase',
+};
+
+export default async function EmployeePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ employmentId: string }>;
+  searchParams: Promise<{
+    error?: string;
+    from?: string;
+    cp38Error?: string;
+    asOf?: string;
+    encashmentError?: string;
+    tab?: string;
+    // Movement tab redesign (78853b97): `movement=<domainEventId|hired>` opens the detail view;
+    // `newEvent=1` opens the New Event form. Both render inside the careerMovement panel.
+    movement?: string;
+    newEvent?: string;
+    // 66a63bd6: `editMovement=<domainEventId>` reopens that movement for correction (same comparison form).
+    editMovement?: string;
+    // c063eea9: `correctHire=1` opens the Correct hire details form for the Hired row.
+    correctHire?: string;
+    // 95d17761: `showCorrected=1` puts the correction artefacts (reversed / corrected / cancelled /
+    // superseded rows) back on the Employment History list. Absent — the default — they are hidden
+    // behind a one-line count. A VIEW filter only: movementHistory still returns every row and the
+    // detail view (?movement=<id>) still resolves a hidden one by id.
+    showCorrected?: string;
+    // R46 47146ea3 — Children (PCB Relief) auto-sync feedback. `childReliefSynced` = the count moved
+    // quietly (to this value); `childReliefAlert` = it moved while a payroll batch for that 'YYYY-MM'
+    // period was still open, which is the case HR must actually see (rail (d): alert, never block).
+    childReliefSynced?: string;
+    childReliefAlert?: string;
+    childReliefTo?: string;
+    // Company change before any transaction (9464bd56): `companyChange=<companyId>` is phase 1's PENDING
+    // destination — it re-scopes the Organisation Assignment dropdowns to that company and shows a banner.
+    // Nothing is committed until phase 2's Save (changeEmploymentCompanyAction).
+    companyChange?: string;
+    incentiveError?: string;
+    workforceCode?:string;
+    workforceEdit?:string;
+  }>;
+}) {
+  const {s,scopeIds}=await requireWorkforceAccess();
+  const { employmentId } = await params;
+  // Both the finite non-HR projection and the HR detail lane cast this pointer to uuid.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(employmentId)) notFound();
+  if(!isAdmin(s))return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={(await searchParams).workforceCode} editFeedback={(await searchParams).workforceEdit}/>;
+  const t = await getTranslations('people.detail');
+  const tPersonnel=await getTranslations();
+  const personnelLabel=(id:string)=>personnelFormLabel(id,(key,fallback)=>tPersonnel.has(key)?tPersonnel(key):fallback);
+  // 2f889bae — the Pay items row link reuses Fixed Transactions' OWN labels rather than minting
+  // `people.detail` copies, so the two surfaces can never drift into calling the same destination two
+  // different things. Both keys already exist and are translated in all six catalogues.
+  const tFixed = await getTranslations('payroll.transactions.fixed');
+  const tp = await getTranslations('payrollPolicy');
+  const tc = await getTranslations('people.detail.clocking');
+  // 44bc1c33 — the Card ID field reuses the Attendance namespace's strings rather than minting a second
+  // wording for one field that appears on two screens.
+  const ta = await getTranslations('attendance');
+  const tStatus = await getTranslations('people.employeeStatus');
+  // 31e39d74 — the leave-balance card captions a not-yet-generated entitlement with the SAME words the two
+  // balance grids use, rather than a third phrasing of the same fact.
+  const admin = isAdmin(s);
+  /**
+   * r298 (board ceb1c560) — DOES THIS TENANT HOLD PAYROLL? Asked ONCE, here, and every Payroll-owned
+   * section below is gated on it at its READ, not only at its render: Pay Items (core/pay-components.ts),
+   * CP38 (core/cp38.ts) and the Payroll Policy picker (core/payroll-policy.ts). Personnel is a CORE screen;
+   * those three are the Payroll pack's (packs/payroll/index.ts), and the unconditional reads were what
+   * core/module-gate.ts names as stopping pay-components and cp38 from being bound at the service.
+   *
+   * Tenant-wide, with no companyId, for the reason core/module-gate.ts's COMPANY SCOPE paragraph gives —
+   * the rail, the route guard and the service gate all ask tenant-wide. The QUIET form, because what to
+   * draw is a display decision (core/entitlements.ts, isModuleEnabledOrFalse).
+   *
+   * Everything else on the Payroll tab stays: Basic Salary and Payment Method are core/comp.ts (spine),
+   * TP3 and the zakat summary read the country statutory profile, and leave encashment is Leave's.
+   */
+  const payrollOn = isModuleEnabledOrFalse(s, 'payroll');
+  // 95d17761 — kept whole (not just destructured) so the Show / Hide link under Employment History can
+  // rebuild the CURRENT query string and preserve every param it does not own, rather than dropping the
+  // reader back onto a bare tab.
+  const rawSearchParams = await searchParams;
+  const retiredDestination = rawSearchParams.tab === 'others' ? RETIRED_PERSONNEL_TABS.others : undefined;
+  if (retiredDestination) {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(rawSearchParams)) if (value != null) query.set(key, value);
+    query.set('tab', retiredDestination);
+    redirect(`/admin/personnel/${encodeURIComponent(employmentId)}?${query}`);
+  }
+  const {
+    error,
+    from,
+    cp38Error,
+    encashmentError,
+    tab,
+    movement: spMovement,
+    newEvent: spNewEvent,
+    editMovement: spEditMovement,
+    correctHire: spCorrectHire,
+    childReliefSynced,
+    childReliefAlert,
+    childReliefTo,
+    companyChange,
+    incentiveError,
+    showCorrected: spShowCorrected,
+  } = rawSearchParams;
+  // Context-aware back link: came from the org chart (?from=org) → return there; otherwise the admin
+  // list. Keeps the `from` param flowing through so nested navigation stays consistent.
+  // 4ea70bb7 — `backToPersonnelAdmin`, NOT `backToPeople`. people.detail is a SHARED namespace: the
+  // employee-facing profile (app/(app)/personnel/[employmentId]/page.tsx) renders backToPeople for its own link
+  // to /personnel, the directory that is still called Personnel. Renaming that key in place would have
+  // renamed a screen this item never mentioned — the same trap as people.list.title. This link lands on
+  // /admin/personnel, so it has to carry that module's name: a back link labelled "People" arriving at a
+  // page headed "Personnel Management" is the inconsistency the item exists to remove.
+  const back =
+    from === 'org'
+      ? { href: '/org', label: t('backToOrg') }
+      : { href: '/admin/personnel', label: t('backToPersonnelAdmin') };
+
+  // c002b3c3 — reproduced while asserting the scope guard, and PRE-EXISTING (unchanged from main): a
+  // route segment that is not a uuid reached the query verbatim, so `/admin/personnel/not-a-uuid` came
+  // back as a Postgres `invalid input syntax for type uuid` and a 500 error screen, where every other
+  // unreachable id gives a 404. The shape check is not the access control — `employeeDetail` still is,
+  // and it is what refuses a well-formed id belonging to a company outside the session's scope. This
+  // only stops a malformed id from becoming a crash instead of the "no such employee" it means. Worth
+  // fixing here because this item puts a control on the page whose whole job is to hand this route ids.
+  const emp = await employeeDetail(s,employmentId,'workforce');
+  if(!emp)return <WorkforceScopedRecord session={s} employmentId={employmentId} scopeIds={scopeIds} feedback={rawSearchParams.workforceCode} editFeedback={rawSearchParams.workforceEdit}/>;
+  const canMaintainWorkforce=await workforceEmploymentAccess(s,employmentId,'maintain');
+  const tAccess=await getTranslations('accessConfiguration');
+  const today = todayInKualaLumpur();
+  // Employee Status redesign (R43 c26c3ce5): Employee Status is SYSTEM-DERIVED read-time from the employment
+  // lifecycle dates (+ the manual Blacklist override) — never a stored manual field. Computed once here and
+  // rendered as a read-only badge everywhere the current status is shown.
+  const derivedStatus = deriveEmploymentStatus(emp, today);
+  const derivedStatusLabel = tStatus(derivedStatus);
+  // b4682879 — does this employee have a profile photo the viewer may see? (existence only; never the blob).
+  const photoExists = await hasPersonPhoto(s, emp.personId);
+
+  // Company change before any transaction (9464bd56) — admin-only inline correction of a mis-picked Company
+  // while the employee has NO operational activity. `companyEditable` is the pre-transaction gate; when it is
+  // false the Company field stays locked and points HR to Movement / Transfer. Phase 1 lets HR pick a
+  // destination (companyChange param) which re-scopes the org dropdowns + shows a banner (nothing committed);
+  // phase 2 Saves via changeEmploymentCompanyAction.
+  const companyEditable = admin ? await employmentCompanyEditable(s, employmentId) : false;
+  // Destinations HR may pick = companies they administer (the writer requires is_admin_for(destination), so
+  // offering only these keeps offered == acceptable). Only fetched when the field is actually editable.
+  const managedCompanies = companyEditable ? await adminCompanies(s) : [];
+  // The PENDING destination: editable, admin-managed, and different from the current company. Null otherwise.
+  const pendingCompany =
+    companyEditable && companyChange && companyChange !== emp.companyId
+      ? (managedCompanies.find((c) => c.id === companyChange) ?? null)
+      : null;
+  // The org-assignment dropdowns scope to the PENDING company when one is chosen, else the current company.
+  const orgScopeCompanyId = pendingCompany?.id ?? emp.companyId;
+
+  const [history, departments, reporting, employees, grades, delegations] = await Promise.all([
+    assignmentHistory(s, employmentId),
+    // 570e3311 — departments scoped to THIS employee's company (origin ∪ shared-in ∪ global via the
+    // System Labels resolver), matching the Position/BU/Location pickers. Feeds exactly two places:
+    // the Organisation Assignment department select and the MovementNewEvent departments prop.
+    listDepartments(s, { companyIds: [emp.companyId] }),
+    reportingLinesFor(s, employmentId),
+    listWorkforcePickOptions(s),
+    listJobGrades(s),
+    delegationsFor(s, employmentId),
+  ]);
+  // Pay + statutory (salary, IC, bank, tax) are HR-admin-only on this directory page — never load or
+  // render them for a manager viewing a direct report (consultant feedback #5). Compensation reads are
+  // also tightened to admin-or-self at the RLS layer (migration 0060); this avoids fetching them at all.
+  const salaryHistory = admin ? await compensationHistoryDetailed(s, employmentId) : [];
+  // 7c7c2f80 — periods of CLOSED payroll runs that paid this employee: drives the per-row "deletable"
+  // flag on the salary history (records a closed run relied on are payroll evidence and cannot go).
+  const closedPayrollPeriods = admin ? await closedPayrollPeriodsFor(s, employmentId) : [];
+  // Rung 5c — the acting company's country pack; statutory reads + the SOCSO/EIS default resolve through it.
+  const countryPack = packFor('MY');
+  // This scoped service verifies the owning company is MY; a person-level tax flag is not approval.
+  const taxSelection = admin && payrollOn
+    ? await countryPack?.statutory.getTaxSelection?.(s, emp.employmentId) ?? null : null;
+  // Rung 5c — the holiday-calendar state pick-list comes from the country packs via the registry
+  // (union-read, the rung-5a `countryPacks()` precedent). MY-only ⇒ byte-identical to the old MY_STATES.
+  const stateOptions = countryPacks().flatMap((p) => p.states);
+  const statutory = admin ? ((await countryPack?.statutory.get(s, emp.personId)) ?? null) : null;
+  // 04b88724 — the QUALIFYING-CHILDREN figure and its working. `num_children` (the head count Form E, CP8D
+  // and the EA statement read) and C (what the projection of P counts in) are two different numbers, and the
+  // card used to show one of them under a caption that implied both. This resolves the ruleset and returns
+  // the pack's own prices plus the Family register's child rows; the card multiplies those prices by the
+  // counts on screen so the figure stays true while the admin types. null ⇒ no pack / no PCB reliefs, and
+  // the card then names no figure rather than inventing a rate. 'MY' matches this page's own packFor('MY').
+  const qualifyingChildRelief = admin
+    ? await qualifyingChildReliefFor(s, { personId: emp.personId, country: 'MY', asOf: today })
+    : null;
+  // r351 — THE ONE INSTANT THE FAMILY TAB'S AGE AND RELIEF COLUMNS ARE TAKEN AT, and it is the same date the
+  // figure above was priced at. `childAgeYears` parses a DOB as `${dob}T00:00:00Z`, so the other endpoint is
+  // built the same way (the reasoning core/dependents.ts and core/child-relief-review.ts both record): an
+  // eight-hour offset would otherwise flip a child's whole-year age on their birthday — the one day the
+  // eligibility rule turns on — and make the Family tab disagree with the Bank & Statutory tab for eight
+  // hours out of every twenty-four.
+  const familyAsOf = new Date(`${today}T00:00:00Z`);
+  // 7ee14bbc — the duplicate income-tax-reference warning AT THE POINT OF ENTRY. The CP39 preview warns
+  // at filing time; the approved plan asks for the same warning on the screen where the number is typed,
+  // because five of the reporter's numbers are each filed against two or three different people and they
+  // only found out when the statement was produced. ADVISORY: it never gates the save (LHDN decides
+  // whose number is right, and HR must still be able to record what an employee's EA form says).
+  // OTHER PEOPLE only — the pack read excludes this person, so a second concurrent employment of the
+  // same person, which shares one tax record by construction, is not reported as a duplicate.
+  const taxNumberSharedWith =
+    admin && statutory?.taxNumber
+      ? ((await countryPack?.statutory.taxNumberSharedWith(s, {
+          personId: emp.personId,
+          companyId: emp.companyId,
+          taxNumber: statutory.taxNumber,
+        })) ?? [])
+      : [];
+  // Feedback 57840a6e — the company's HRDF registration band never again feeds the Others Statutory
+  // control's defaultValue. Pre-ticking its checkbox from that band is exactly how an untouched card pinned
+  // an employee to an explicit No while the company was not_registered. The control is a tri-state select
+  // whose "" option persists null (follow the company default, resolved at payroll time), so the page needs
+  // no company-side default at all.
+  // Feedback efece4ce — the band IS read again, for DISPLAY ONLY: an explicit "Subject to HRDF = Yes" on a
+  // company with no HRDF Contribution Rate is accepted by the save and then silently discarded at payroll
+  // time (pack.payroll.hrdfSubject honours the flag, but hrdfLevy rates not_registered to 0). HR set
+  // something and nothing happened, with nothing on any screen saying why. Must NOT touch defaultValue.
+  const companyHrdf = admin ? ((await countryPack?.companyStatutory.get(s, emp.companyId)) ?? null) : null;
+  const companyHrdfUnregistered = (companyHrdf?.hrdfStatus ?? 'not_registered') === 'not_registered';
+  // HR-defined multi-state holiday groups — the second option-group of the unified Holiday calendar field.
+  const holidayGroups = admin ? await listHolidayGroups(s) : [];
+  const holidayCalendarRows=admin?await employmentHolidayCalendarHistory(s,employmentId):[];
+  /**
+   * f513ec02 — THE SCHEDULE GROUP PICKER'S OPTIONS AND ITS CURRENT VALUE.
+   *
+   * The options are the tenant's ACTIVE attendance_rule rows, matching the shift editor's own convention
+   * ("inactive rules stay assigned but are hidden from the picker", db/schema.ts attendance_rule.status).
+   *
+   * ⚠️ THE ASSIGNED RULE IS ADDED BACK EVEN WHEN IT IS INACTIVE, and that is not cosmetic. A select whose
+   * stored value is absent from its options renders the FIRST option instead — here, the blank one — so
+   * an employee whose group was later deactivated would show "no group" and the next save of this tab
+   * would write that lie into the column. It is the same defect as feedback 57840a6e (a control rendering
+   * something other than what is stored, then persisting it), reached by a different route. The extra
+   * option is marked inactive so the reader is told why it is there.
+   */
+  const scheduleGroupCurrentId = admin ? await employmentScheduleGroupId(s, employmentId) : null;
+  const attendanceRules = admin ? await listAttendanceRules(s) : [];
+  const scheduleGroupOptions = attendanceRules.filter(
+    (r) => r.status === 'active' || r.id === scheduleGroupCurrentId,
+  );
+  // Employment tab org-info edit (594323a6): position catalog for the editable Position dropdown. Scoped to
+  // THIS employee's company (the assignment's position must belong to the same company). Admin-only.
+  const positions = admin ? await listPositions(s, { companyIds: [emp.companyId] }) : [];
+  // 1001ff61 — Business Units for THIS employee's company (admin-only) — the Organisation Assignment BU picker
+  // options. Sourced company-scoped (origin ∪ shared ∪ global), mirroring the Position/Location pickers.
+  const businessUnits = admin ? await listBusinessUnits(s, { companyIds: [emp.companyId] }) : [];
+  // ADR-0054: locations for THIS employee's company (admin-only) — the "Set location" picker options.
+  const locations = admin ? await listLocations(s, [emp.companyId]) : [];
+  // Company change (9464bd56) — the Organisation Assignment selects re-scope to the PENDING company during a
+  // company change; everything else (MovementNewEvent, the Set-location picker) keeps the current-company
+  // lists. When no company is pending these ARE the current-company lists (byte-identical to before).
+  const orgDepartments = pendingCompany ? await listDepartments(s, { companyIds: [orgScopeCompanyId] }) : departments;
+  const orgPositions = pendingCompany ? await listPositions(s, { companyIds: [orgScopeCompanyId] }) : positions;
+  const orgBusinessUnits = pendingCompany ? await listBusinessUnits(s, { companyIds: [orgScopeCompanyId] }) : businessUnits;
+  const orgLocations = pendingCompany ? await listLocations(s, [orgScopeCompanyId]) : locations;
+  // Typed pay components (Wave 3 #9) — recurring components for this employee + the catalog to add from.
+  // r298 — Payroll-owned: not read at all for a tenant without Payroll (see `payrollOn`).
+  const payComps = admin && payrollOn ? await listEmploymentPayComponents(s, employmentId) : [];
+  const componentCatalog = admin && payrollOn ? await listPayComponents(s, { readyOnly: true }) : [];
+  // 1.2.3 CP38 — per-employee LHDN instalment records (admin-only master data). r298 — Payroll-owned.
+  const cp38Records = admin && payrollOn ? await listCp38(s, { employmentId }) : [];
+  // ADR-0069 — leave encashment snapshot, admin-only card. Null when no resignation has been frozen
+  // (policy off, or the employment was terminated directly bypassing the resignation flow).
+  const encashmentSnapshot = admin ? await encashmentSnapshotForEmployment(s, employmentId) : null;
+  // Personnel — Family / Dependents (phase 1): per-person benefits/insurance register (admin-only). Keyed
+  // on person_id (already loaded on emp), NOT employment_id. Does NOT feed the tax num_children figure.
+  const dependents = admin ? await listDependents(s, { personId: emp.personId }) : [];
+  // Feedback a949184a — Qualification tab: this employment's academic/professional qualification records
+  // (admin-only surface; employment-keyed, unlike the person-keyed Family register). Sorted by the service:
+  // most recent graduation first, in-progress (blank graduation date) last.
+  const qualifications = admin ? await listQualifications(s, { employmentId }) : [];
+  // Feedback 23ad620e — Emergency Contact register: every person to call for this employee, in resolution
+  // order (Primary → Secondary → Other). PERSON-keyed like the Family register, so it survives termination
+  // and is visible to a second company's admin.
+  const emergencyContacts = admin ? await listEmergencyContacts(s, { personId: emp.personId }) : [];
+  // 2.1 Payroll Policy — active policies in THIS employee's company, for the assignment picker (admin-only).
+  // r298 — Payroll-owned (core/payroll-policy.ts): not read for a tenant without Payroll.
+  const assignablePolicies = admin && payrollOn ? await listAssignablePolicies(s, emp.companyId) : [];
+  // 297ae65a — the company's currency: the Basic Salary form preselects it for a brand-new first record.
+  // r79a (4fb8b75a step 3): read from `company.currency` (owned by Organization → General) instead of the
+  // duplicate company_payroll_config.default_currency the pair collapsed into it (migration 0324).
+  const defaultSalaryCurrency = admin ? await getCompanyCurrency(s, emp.companyId) : 'MYR';
+  // ADR-0070 — Clocking Location & Geofencing: the picker's options + this employee's current assignment
+  // (admin-only). r423 (83c0d3c8) REVERSES f9afd1ce's "every active site in the tenant": the picker offers
+  // only the ACTIVE locations OPEN TO THIS EMPLOYEE'S COMPANY (clocking_location_company). The service
+  // (setClockingControl) refuses anything else, so this filter is the courtesy and the service the rule.
+  const clockingLocations = admin ? await listClockingLocations(s, { companyId: emp.companyId }) : [];
+  const assignedClockingLocations = admin ? await listEmployeeClockingLocations(s, employmentId) : [];
+  const assignedClockingLocationIds = new Set(assignedClockingLocations.map((l) => l.id));
+  /**
+   * r272 (0e8cf366) — THE PRE-TICK IS GONE, AND ITS REMOVAL IS THE POINT OF THE ITEM.
+   *
+   * 1fff489c step 10 seeded this control from the sites linked to the employee's confirmed (or
+   * branch-suggested) work location whenever nothing was assigned. It seeded the CONTROL only — the save
+   * has always been a full-set replace of what is ticked, and `components/tab-save-scope.tsx` never posts
+   * a section the user did not touch, so it could not write on its own.
+   *
+   * It still had to go. The reporter filed a redesign asking us to "remove the dependency on Company,
+   * State, Holiday Calendar and Branch" for clocking locations — a dependency that has never existed in
+   * the engine (`resolveGeofence`, core/attendance.ts:194, joins the assignment table and nothing else).
+   * This pre-fill is what made them believe in it: open an employee with nothing assigned and the system
+   * appears to have chosen their sites from their branch. An empty assignment now renders empty and says
+   * what that means.
+   */
+  const clockingDefaultIds = [...assignedClockingLocationIds];
+  // 1fff489c — how many points sit under the employee's RESOLVED location (confirmed, else suggested).
+  // null when no location resolves at all: that is a DIFFERENT empty state, and it is answered on the Work
+  // Location card above (branch unmapped / no branch recorded), not by a sentence about clocking points.
+  //
+  // This is what empty state 3 keys off. It used to key off `clockingLocations.length === 0` — the whole
+  // COMPANY having no points — while saying "This location has no clocking points yet", so a company that
+  // had points but none under this employee's location (the case the wording describes) showed nothing at
+  // all. Mirrors the admin screen's per-location groupNoPoints, which was already right.
+  /** r272 — the point count that explained the pre-tick goes with it. "N clocking points are linked to
+   *  this employee's work location" is a sentence ABOUT the branch coupling, on the card whose whole
+   *  complaint is that the coupling appears to exist. The assignment now speaks for itself. */
+  /** r272 — `locationsWithNoPoints` went with the multi-select. It rendered DISABLED options for company
+   *  locations holding no clocking point, so a configured location did not look absent. The picker lists
+   *  clocking sites only, and a location with no site is not a thing an employee can be assigned to; the
+   *  admin screen's own per-location empty state is where that gap belongs. */
+  const thisMonthStart = `${today.slice(0, 7)}-01`;
+  const current = history.find((h) => !h.validTo) ?? history[0];
+  const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
+  // c002b3c3 — Search Employee. NO NEW READ: this is the `listWorkforcePickOptions(s)` set already loaded above for
+  // the Direct Superior picker, narrowed to the active company context. Two consequences worth stating.
+  // (1) The search cannot be broader than what this page may already see, because it is literally the
+  // same rows — there is no second, looser query to drift. (2) Picking a result only changes the URL;
+  // the next request re-runs `employeeDetail(s,employmentId,'workforce')` at the top of this file, which returns
+  // null for anything out of scope and 404s. So the list is a convenience and the route is the guard,
+  // and an id typed straight into the address bar is refused exactly as it was before this box existed.
+  // Terminated employments stay IN: HR looks up leavers on this screen constantly (final pay, letters).
+  const switcherEmployees = employees
+    .filter((e) => scopeIds.includes(e.companyId))
+    .map((e) => ({
+      employmentId: e.employmentId,
+      name: e.name,
+      employeeCode: e.employeeCode,
+      company: e.company,
+      department: e.department,
+    }));
+  // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
+  // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
+  // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
+  const currentSuperior = reporting.managers.find((m) => m.lineType === 'administrative') ?? null;
+  const superiorHistory = admin ? await directSuperiorHistoryFor(s, employmentId) : [];
+  // "EMP-0008 – John Tan" labels: the Combobox filters on the label, so one picker searches Employee ID
+  // and name alike. Active employees only (`others` already excludes self + terminated); the current
+  // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
+  const superiorLabel = (code: string | null, name: string) => (code ? `${code} – ${name}` : name);
+  const superiorOptions = others.map((o) => ({ value: o.employmentId, label: superiorLabel(o.employeeCode, o.name) }));
+  if (currentSuperior && !superiorOptions.some((o) => o.value === currentSuperior.employmentId)) {
+    superiorOptions.unshift({
+      value: currentSuperior.employmentId,
+      label: superiorLabel(currentSuperior.employeeCode, currentSuperior.name),
+    });
+  }
+  // Movement tab redesign (78853b97): Employment History is a read-model projection over the
+  // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
+  // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
+  const movements = admin ? await movementHistory(s, employmentId) : [];
+  // 95d17761 — the DEFAULT view drops the correction artefacts (rolled back / corrected / cancelled /
+  // superseded) so the tab reads as a career rather than a list of mistakes. Nothing is deleted and the
+  // projection above is untouched: `movements` stays the complete history and is what the Edit lookup,
+  // the pending-movement banner and the detail view keep reading. Only the TABLE draws `visibleMovements`.
+  const showCorrectedMovements = spShowCorrected === '1';
+  const { visible: visibleMovements, hiddenCount: correctedMovementCount } = partitionMovementRows(
+    movements,
+    showCorrectedMovements,
+  );
+  // The Show / Hide link keeps the reader exactly where they are: same tab, same open detail view, same
+  // every other param. Only `showCorrected` is rewritten.
+  const movementVisibilityHref = (show: boolean): string => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(rawSearchParams)) {
+      if (k === 'showCorrected' || v === undefined) continue;
+      qs.set(k, v);
+    }
+    qs.set('tab', 'careerMovement');
+    if (show) qs.set('showCorrected', '1');
+    return `/admin/personnel/${employmentId}?${qs.toString()}`;
+  };
+  // 476f23ed — the tenant's movement event-type catalogue. Read UNFILTERED, because Employment History has
+  // to label a movement recorded under a type that has since been switched off; the New Event form filters
+  // to the active ones below. A tenant that has configured nothing gets the built-in list unchanged.
+  const movementTypes = admin ? await listMovementEventTypes(s) : [];
+  const movementTypeByCode = new Map(movementTypes.map((r) => [r.code, r]));
+  // 1d58019a Step 2 (ADR-0166) — the controls the form applies on screen; the writer enforces them again.
+  const movementControls = admin ? await movementTypeControls(s, movementTypes) : new Map<string, MovementTypeControls>();
+  const typeControls = (code: string) => {
+    const c = movementControls.get(code);
+    return { reasonCodes: c?.reasonCodes ?? null, ...(c?.configured ? { rules: c.rules } : {}) };
+  };
+  // 1d58019a — the tenant's exit reasons (built-ins with its renames, plus its own), switched-off ones
+  // included and flagged: the New Event form offers the active ones and keeps a switched-off reason that a
+  // termination being corrected already carries.
+  const terminationReasonRows = admin ? await terminationReasonCatalogue(s) : [];
+  const movementDetailData = admin && spMovement ? await movementDetail(s, employmentId, spMovement) : null;
+  // 1d58019a Step 2 — the movement's supporting documents; the service applies history visibility and the
+  // table's pay rule, so a document this admin may not see is simply not listed.
+  const movementDocuments = movementDetailData && spMovement ? await movementAttachments(s, employmentId, spMovement) : [];
+  const resignationInfo = admin ? await resignationInformation(s, employmentId) : null;
+  const costAllocationView = admin && emp.companyId ? await getEmploymentCostAllocations(s, employmentId) : null;
+  /**
+   * c063eea9 — the Correct hire details form (?correctHire=1). Read ONLY while it is open, and only where
+   * Movement may write at all (the same `admin && !terminatedOn` gate `canCreateMovement` applies below).
+   *
+   * The option lists are scoped to the company the employee was HIRED INTO — the hire version's company —
+   * which after an Entity Transfer is not today's company. A hire label must be one THAT company may use,
+   * the service refuses anything else (and checks every later version it carries the value into against
+   * that version's own company), so offering today's company's labels would offer values it then refuses.
+   */
+  const hireCorrection =
+    admin && !emp.terminatedOn && spCorrectHire === '1'
+      ? // An employment with no assignment at all (legacy data) has nothing to correct: no form, rather
+        // than an error page. Any other failure is a real one and still surfaces.
+        await hireCorrectionView(s, employmentId).catch((e) => {
+          if (e instanceof HireCorrectionError) return null;
+          throw e;
+        })
+      : null;
+  const hireCorrectionOptions = hireCorrection
+    ? await (async () => {
+        const scope = [hireCorrection.companyId];
+        const [deps, poss, bus, ccs, locs] = await Promise.all([
+          listDepartments(s, { companyIds: scope }),
+          listPositions(s, { companyIds: scope }),
+          listBusinessUnits(s, { companyIds: scope }),
+          listCostCenters(s, { companyIds: scope }),
+          listLocations(s, scope),
+        ]);
+        const byField: Record<HireCorrectionField, { id: string; name: string }[]> = {
+          departmentId: organisationChoiceLabels(deps).map((d) => ({ id: d.id, name: d.displayLabel })),
+          positionId: organisationChoiceLabels(poss).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
+          businessUnitId: organisationChoiceLabels(bus).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
+          costCenterId: organisationChoiceLabels(ccs).map((cc) => ({ id: cc.id, name: cc.displayLabel })),
+          locationId: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
+          // Reporting lines may cross companies by design (hireEmployee allows a cross-company manager), so
+          // the manager list is the same one the Direct Superior field offers.
+          managerEmploymentId: others.map((o) => ({ id: o.employmentId, name: o.name })),
+        };
+        return byField;
+      })()
+    : null;
+  // 08913328 — the Current column of the New Event comparison screen. Only read when that screen is open.
+  // 66a63bd6 — the Edit screen is the same form, so it reads the same Current column: a correction is
+  // only offered on the LATEST movement, where "current" and "what this movement set" are the same values.
+  const movementCurrent =
+    admin && (spNewEvent || spEditMovement) ? await movementCurrentState(s, employmentId) : null;
+  /**
+   * b7b22514 — Entity Transfer's destination list, and the org option lists of every destination.
+   *
+   * WHY THE LISTS AND NOT JUST THE COMPANIES. The comparison grid's Department / Position / Business Unit /
+   * Location pickers are scoped to the employee's CURRENT company. The moment HR picks a destination those
+   * options are the wrong company's, and a form that lets someone keep a Johor department while moving to a
+   * KL company is a form that produces the exact cross-company incoherence the service then has to refuse.
+   * Shipping each destination's lists lets the grid re-scope in the browser, so the incoherent combination
+   * is never offered rather than offered and rejected.
+   *
+   * Read ONLY while the New Event / Edit screen is open, and only for companies the actor ADMINISTERS —
+   * which is also exactly the set the writer will accept (it requires is_admin_for(destination)), so what
+   * the form offers and what the service permits cannot drift apart. Each list is resolved per company
+   * rather than filtered from one query on purpose: a System Label may be SHARED into a company it does not
+   * originate in, so "usable by company X" is a question only the resolver can answer.
+   */
+  const movementCompanies =
+    // Gated on movementCurrent, which is itself gated on New Event OR Edit: a correction of an Entity
+    // Transfer renders this same form and needs the same destination list, or its Company select would
+    // have one option and silently re-affirm the move it is meant to be able to fix.
+    movementCurrent
+      ? await (async () => {
+          const managed = await adminCompanies(s);
+          // The current company leads and is always present, even for an actor who does not administer it:
+          // it is the select's initial value, and a control whose value matches no option is a broken one.
+          return [
+            { id: emp.companyId, name: movementCurrent.companyName ?? '' },
+            ...managed.filter((c) => c.id !== emp.companyId),
+          ];
+        })()
+      : [];
+  const movementOrgByCompany = Object.fromEntries(
+    await Promise.all(
+      movementCompanies.map(async (c) => {
+        const [deps, poss, bus, locs] = await Promise.all([
+          listDepartments(s, { companyIds: [c.id] }),
+          listPositions(s, { companyIds: [c.id] }),
+          listBusinessUnits(s, { companyIds: [c.id] }),
+          listLocations(s, [c.id]),
+        ]);
+        return [
+          c.id,
+          {
+            departments: organisationChoiceLabels(deps).map((d) => ({ id: d.id, name: d.displayLabel })),
+            positions: organisationChoiceLabels(poss).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
+            businessUnits: organisationChoiceLabels(bus).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
+            locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
+          },
+        ] as const;
+      }),
+    ),
+  );
+  // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
+  // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
+  // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
+  const profileOptions = admin
+    ? await listAllProfileOptions(s, { activeOnly: true })
+    : ({
+        religion: [],
+        race: [],
+        nationality: [],
+        state: [],
+        country: [],
+        relationship: [],
+        // 8c284478 — Salutation catalog (Personal Details, before Full Name).
+        salutation: [],
+        // 1001ff61 — org/job catalog categories (non-admin viewers never render these forms).
+        division: [],
+        branch: [],
+        region: [],
+        line: [],
+        section: [],
+        team: [],
+        base: [],
+        category: [],
+        // ea36b7fa — Family tab Relationship catalog (admin-only surface; empty ⇒ built-in fallback).
+        dependentRelationship: [],
+        // a949184a — Qualification tab level catalog (non-admin viewers never render the form).
+        qualificationLevel: [],
+      } as Awaited<ReturnType<typeof listAllProfileOptions>>);
+
+  // Family/Dependents (phase 1): render relationship/gender as STATIC literal i18n keys (a switch, not a
+  // dynamic template) so test/i18n-coverage.test.ts (check C) catches a missing Tamil/Thai label instead of
+  // silently shipping a raw key. An unknown stored value falls back to the raw string.
+  const relationshipLabel = (r: string) => {
+    switch (r) {
+      case 'spouse': return t('family.rel.spouse');
+      case 'child': return t('family.rel.child');
+      case 'parent': return t('family.rel.parent');
+      case 'sibling': return t('family.rel.sibling');
+      case 'other': return t('family.rel.other');
+      default: return r;
+    }
+  };
+  const genderLabel = (g: string | null) => {
+    switch (g) {
+      case 'male': return t('family.gender.male');
+      case 'female': return t('family.gender.female');
+      case 'undisclosed': return t('family.gender.undisclosed');
+      default: return '—';
+    }
+  };
+  // 4535b733 — marriage-status label as a static switch (same i18n-coverage guarantee as above).
+  const marriageStatusLabel = (m: string | null) => {
+    switch (m) {
+      case 'married': return t('family.marriageStatus.married');
+      case 'divorced': return t('family.marriageStatus.divorced');
+      case 'widowed': return t('family.marriageStatus.widowed');
+      case 'separated': return t('family.marriageStatus.separated');
+      default: return '—';
+    }
+  };
+
+  // Tab labels (people.detail.tabs.*). Six tabs regrouping the existing sections below; the page still
+  // loads all data once, so switching tabs is instant and keeps the viewer on the same employee.
+  const tabs: { key: 'profile' | 'family' | 'job' | 'careerMovement' | 'attendance' | 'bankStatutory' | 'payroll' | 'leave' | 'documents' | 'qualification'; label: string }[] = [
+    { key: 'profile', label: t('tabs.profile') },
+    { key: 'family', label: t('tabs.family') },
+    { key: 'job', label: t('tabs.job') },
+    // Movement (5296d984, redesigned by 78853b97): the Employment History timeline — a Hired-first
+    // projection over the domain_event ledger — plus a single New Event entry point that folds in the
+    // former Transfer / Terminate / Blacklist boxes (their audited services are reused via
+    // core/movement.ts). The Employment tab keeps the "how they work" master data (reporting lines,
+    // delegations); the "events that change employment over time" live here, right after Employment.
+    { key: 'careerMovement', label: t('tabs.careerMovement') },
+    // Attendance Information (feedback 1fbe9891): consolidates the attendance-related master data that
+    // was previously split across Employment (Work Location + Shift Arrangement) and Others (Clocking
+    // Locations & Geofencing) into one dedicated tab. Same cards, same server actions — only regrouped.
+    // Positioned right after Employment so the operational attendance setup sits next to the role/posting.
+    { key: 'attendance', label: t('tabs.attendance') },
+    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — which already co-locates the
+    // salary-payment bank fields alongside EPF/SOCSO/EIS/PCB — is relocated here out of the Payroll tab,
+    // giving all pay-related master data its own clearly-named home. Positioned before Payroll.
+    { key: 'bankStatutory', label: t('tabs.bankStatutory') },
+    { key: 'payroll', label: t('tabs.payroll') },
+    { key: 'leave', label: t('tabs.leave') },
+    { key: 'documents', label: t('tabs.documents') },
+    // Qualification (feedback a949184a): the employee's academic / professional qualification history —
+    // a list-and-dialog register mirroring the Family tab's table + dialogForm pattern. Placed after
+    // Documents per the request's tab-order example.
+    { key: 'qualification', label: t('tabs.qualification') },
+  ];
+
+  // 9d13221c — Age beside Date of Birth: completed whole years from the stored DOB to today, recomputed on
+  // every render so each profile open shows that day's exact age (it increments the day the birthday
+  // arrives — a 29-Feb birthday increments on 1 Mar in common years). Read-only + display-only: the age is
+  // never stored, never an input, and never audited (DOB edits keep their existing audit trail).
+  // 35b7af0a group 3 — the derivation and the two Fields moved INTO components/birth-date-fields.tsx, which
+  // both this card and the Create New Employee wizard render; only `today` is passed down (this page still
+  // owns "what date is it", through the tenant timezone).
+
+  // ── PROFILE ────────────────────────────────────────────────────────────────
+  // b4682879 — modular redesign: three organised cards (Personal Details, Contact & Address, Emergency
+  // Contact) plus the existing gender/marital/DOB compliance card. Each card stays its OWN <form> (panels
+  // stay mounted in the tab shell) and routes through the single writer for its trust class (updatePerson
+  // for instant fields, setPersonComplianceFields for the audited compliance fields). The core identity
+  // (fullName / primaryEmail / phone) that updatePerson always writes is passed through as hidden fields on
+  // the cards that don't visibly own it, so saving one section never wipes another's data.
+  // Feedback 23ad620e — Emergency Contact is a REGISTER, not a single form: an employee may need a spouse
+  // AND a parent AND a guardian on file, and HR needs to know who to try first. Same list-and-dialog shape
+  // as the Family and Qualification tabs (one summary table + one Add/Edit/View dialog + a delete inside
+  // the tab shell), so the three registers on this profile behave identically.
+  //
+  // Priority carries the request's own vocabulary (Primary / Secondary / Other) and only ONE contact can be
+  // Primary: choosing it demotes the previous holder to Secondary (core/emergency-contacts.ts, backstopped
+  // by a partial unique index). The screens that still show ONE contact (/me, the profile card) resolve to
+  // the Primary automatically, so nothing had to be told about the change.
+  const emergencyTaCls = `${inputCls.replace('h-9', 'min-h-16')} py-2`;
+  // Static literal keys, not a dynamic template — test/i18n-coverage.test.ts can then catch a missing
+  // Tamil/Thai label instead of shipping a raw key (the family.rel.* precedent above).
+  const emergencyPriorityLabel = (p: string) => {
+    switch (p) {
+      case 'primary': return t('emergency.priorityPrimary');
+      case 'secondary': return t('emergency.prioritySecondary');
+      case 'other': return t('emergency.priorityOther');
+      default: return p;
+    }
+  };
+  const emergencyFields = (c: EmergencyContactRow | null) => (
+    <>
+      <PersonnelField fieldId="profile.emergency_contact.fullname" mode="record">
+        <input {...personnelInput('profile.emergency_contact.fullname','record')} defaultValue={c?.fullName ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.relationship" mode="edit">
+        <ProfileOptionSelect name={personnelFormName('profile.emergency_contact.relationship')} personnelFieldId="profile.emergency_contact.relationship" {...personnelControl('profile.emergency_contact.relationship','edit')}
+
+          value={c?.relationship}
+          options={profileOptions.relationship}
+          placeholder={t('optionNotSet')}
+          legacySuffix={t('optionLegacySuffix')}
+        />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.mobilephone" mode="edit">
+        <input {...personnelInput('profile.emergency_contact.mobilephone','edit')} defaultValue={c?.mobilePhone ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.homephone" mode="edit">
+        <input {...personnelInput('profile.emergency_contact.homephone','edit')} defaultValue={c?.homePhone ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="profile.emergency_contact.priority" mode="edit">
+        <select {...personnelControl('profile.emergency_contact.priority','edit')} defaultValue={c?.priority ?? 'other'} className={inputCls}>
+          {personnelFormChoices('profile.emergency_contact.priority').map(({value,labelKey}) => (
+            <option key={value} value={value}>{tPersonnel(labelKey)}</option>
+          ))}
+        </select>
+      </PersonnelField>
+      <div className="sm:col-span-2">
+        <PersonnelField fieldId="profile.emergency_contact.address" mode="edit">
+          {/* 7d309da7 — address = multi-line long-text (line breaks preserved) instead of a single input. */}
+          <textarea {...personnelControl('profile.emergency_contact.address','edit')} rows={3} defaultValue={c?.address ?? ''} className={emergencyTaCls} />
+        </PersonnelField>
+      </div>
+      <div className="sm:col-span-2">
+        <PersonnelField fieldId="profile.emergency_contact.remarks" mode="edit">
+          <textarea {...personnelControl('profile.emergency_contact.remarks','edit')} rows={2} defaultValue={c?.remarks ?? ''} className={emergencyTaCls} />
+        </PersonnelField>
+      </div>
+      <p className="text-xs text-muted-foreground sm:col-span-2">{t('emergency.primaryHint')}</p>
+    </>
+  );
+  // One dialog form for Add (c null) and Edit. The STATIC hidden `tab` input keeps the post-save redirect on
+  // this tab (Dialog.Portal reparents the form outside the tab shell, so the shell's submit listener never
+  // sees it — the Family tab note).
+  const emergencyDialogForm = (c: EmergencyContactRow | null) => (
+    <form
+      action={c ? editEmergencyContactAction : addEmergencyContactAction}
+      className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2"
+    >
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <input type="hidden" name="personId" value={emp.personId} />
+      {c && <input type="hidden" name="id" value={c.id} />}
+      <input type="hidden" name="tab" value="profile" data-tab-tracker="" />
+      {emergencyFields(c)}
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{c ? t('emergency.save') : t('emergency.add')}</button>
+      </div>
+    </form>
+  );
+  // View: the SAME server-rendered fields, disabled inside a fieldset with no <form> — the read-only view
+  // can never drift from the Edit layout, and can never post.
+  const emergencyViewBody = (c: EmergencyContactRow) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{emergencyFields(c)}</div>
+    </fieldset>
+  );
+  const emergencyContactPanel = (
+    <Card id="section-emergency-contact" className="overflow-hidden">
+      <SectionHeader title={t('emergencyTitle')} count={emergencyContacts.length} />
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('emergency.add')} title={t('emergency.addTitle')}>
+            {emergencyDialogForm(null)}
+          </FamilyFormDialog> : null}
+        </div>
+        {emergencyContacts.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('emergency.none')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('emergency.name')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.relationship')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.mobilePhone')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.homePhone')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('emergency.priority')}</th>
+                  <th className="py-2 text-right font-medium">{t('emergency.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {emergencyContacts.map((c) => (
+                  <tr key={c.id} className="border-b border-border/60 align-top">
+                    <td className="py-2 pr-3 font-medium">{c.fullName}</td>
+                    <td className="py-2 pr-3">{c.relationship ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{c.mobilePhone ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{c.homePhone ?? '—'}</td>
+                    <td className="py-2 pr-3">
+                      {c.priority === 'primary' ? (
+                        <Badge variant="success">{t('emergency.priorityPrimary')}</Badge>
+                      ) : (
+                        emergencyPriorityLabel(c.priority)
+                      )}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <FamilyFormDialog
+                          triggerLabel={t('emergency.view')}
+                          triggerVariant="outline"
+                          title={t('emergency.viewTitle')}
+                        >
+                          {emergencyViewBody(c)}
+                        </FamilyFormDialog>
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
+                          triggerLabel={t('emergency.edit')}
+                          triggerVariant="outline"
+                          title={t('emergency.editTitle')}
+                        >
+                          {emergencyDialogForm(c)}
+                        </FamilyFormDialog>
+                        {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
+                            bubbling submit the shell's capture listener sees (tab retention for free). */}
+                        <form action={deleteEmergencyContactAction}>
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={c.id} />
+                          <ConfirmSubmit
+                            size="sm"
+                            variant="destructive"
+                            title={t('emergency.deleteConfirmTitle')}
+                            description={t('emergency.deleteConfirmBody')}
+                            confirmLabel={t('emergency.delete')}
+                          >
+                            {t('emergency.delete')}
+                          </ConfirmSubmit>
+                        </form>
+</> : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </Card>
+  );
+
+  // 420ebab5 part two (r255) — WHAT EACH TAB'S ONE SAVE ACTUALLY OWNS, printed on the bar itself.
+  //
+  // A tab Save can only enclose a CONTIGUOUS run of cards, and on three of the four tabs that run cannot
+  // be the whole tab: Profile keeps the emergency-contact register below it, Attendance keeps Work
+  // Location and Shift Arrangement, Employment keeps the Direct Superior line and the delegations. So the
+  // sticky Save/Discard bar renders ABOVE cards it does not cover, and a bar that said only "Save Changes"
+  // there would be a control that appears to do something it does not — press it after changing the Direct
+  // Superior and it answers "No unsaved changes". TabSaveScope requires this prop, so a new consolidated
+  // tab cannot be added without answering the question.
+  //
+  // Declared HERE rather than inline in the panels because several source-shape guards slice a tab panel
+  // from its key to the first `),` (test/statutory-my-layout.test.ts, test/personnel-bank-statutory-tab.ts,
+  // test/bank-custom-holder.test.ts) — an inline `covers={[t('x'), t('y')]}` puts a `),` inside the panel
+  // and truncates every one of those slices.
+  /**
+   * r256 — A BAR MUST NOT NAME A CARD THE READER CANNOT SEE, and two of the cards named below are not
+   * always on the screen. `clockingCard` and `payrollPolicyCard` are both gated `admin && !emp.terminatedOn`,
+   * so on a TERMINATED employment they render as nothing at all — while the bar went on printing
+   * "Clocking locations & geofencing" and "Payroll policy". That is the same control-that-lies fault
+   * `covers` was added to prevent, pointing the other way: instead of a bar that quietly owns less than
+   * the tab, a bar that claims MORE than it owns, naming a card that is nowhere on the page.
+   *
+   * Found by rendering the screen rather than by a test — the shipped Attendance bar had the defect too
+   * (r255), which is why this drops the name for BOTH tabs and not only for the one r256 adds. Payment
+   * Method keeps its name on a terminated employment: that card IS rendered, with its select disabled, so
+   * naming it describes something the reader can actually see.
+   */
+  const whenLive = (...names: string[]): string[] => (emp.terminatedOn ? [] : names);
+  // r298 (ceb1c560) — the same rule on the second axis a card can be absent on. `payrollPolicyCard` is not
+  // drawn for a tenant without Payroll, so the Payroll bar must not name it for that tenant either.
+  const whenPayroll = (...names: string[]): string[] => (payrollOn ? names : []);
+  const tabSaveCovers = {
+    profile: [t('personalDetails'), t('contactAddressTitle')],
+    bankStatutory: [t('bankCardTitle'), t('statutoryMalaysia'), t('othersStatutoryTitle')],
+    // r423 — the clocking card's heading is "Location assignment" (one merged section), so the bar names
+    // it by that heading; `cardTitle` ("Clocking locations & geofencing") named the old two-form card.
+    attendance: [t('scheduleGroupCardTitle'), ...whenLive(tc('assignmentTitle')), ...whenLive(tc('webClockingTitle'))],
+    job: [t('employmentInfo.title')],
+    // r256 — Payroll. The FIRST entry names a SUB-SECTION of a card rather than the card: Payment
+    // Method is rendered inside Basic Salary, whose own headline control records an effective-dated
+    // salary revision. Naming the card would be the exact control-that-lies the classification exists
+    // to prevent; `payMethodGroup` is the heading the reader actually sees above the control.
+    payroll: [t('payMethodGroup'), ...whenPayroll(...whenLive(tp('assignTitle'))), t('tp3SectionTitle')],
+  };
+
+  const canEditPassport=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const profilePanel = admin ? (
+    <>
+      {/* 420ebab5 part two — ONE "Save Changes" for the Profile tab. TabSaveScope wraps the bucket (a) cards
+          only (Personal Details, the compliance fields, Identity/Passport, Contact & Address): plain field
+          edits that overwrite a value on the person record, which is what a single Save — and therefore a
+          single Discard — can honestly cover. The Emergency Contact register is bucket (b) and is rendered
+          BELOW, OUTSIDE the scope, so the tab's Discard cannot reach it; see
+          docs/audits/420ebab5-personnel-save-classification.md. Each card keeps its own <form>, its own
+          hidden carry-through inputs and its own action — NOT as a no-JS fallback, which is what this note
+          used to claim: with the per-card buttons gone, only a form left with exactly ONE implicit-submit
+          blocker can still be posted without the bundle, and of these five that is the compliance card
+          alone. The action stays because it is still where each writer is wired to its card and because a
+          <form> with no action would POST to the current URL. What each card loses is its own Save button,
+          and it gains data-save-section so the scope can pack it. */}
+      <fieldset disabled={!canMaintainWorkforce} className="min-w-0"><TabSaveScope
+        tabKey="profile"
+        identity={{ employmentId: emp.employmentId }}
+        saveAction={saveProfileTabAction}
+        covers={tabSaveCovers.profile}
+      >
+      {/* Item e3ce0d4d — IdentityProvider lifts the live Nationality selection so the identity block below can
+          switch between IC (Malaysian) and Passport (non-Malaysian) fields instantly. The Card shell + all the
+          server-action forms stay Server Components; only the nationality picker + identity block are client. */}
+      <IdentityProvider initialNationality={emp.nationality}>
+      <Card id="section-personal-details">
+        <SectionHeader title={t('personalDetails')} />
+        <form action={setPersonAction} data-save-section="person" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* primaryEmail / phone are owned by the Contact card; carried through so this save keeps them. */}
+          <input {...personnelCarry('profile.contact_and_permanent_address.primaryemail')} value={emp.email} />
+          <input {...personnelCarry('profile.contact_and_permanent_address.phone')} value={emp.phone ?? ''} />
+          <PersonnelField fieldId="profile.personal_details.employeecode" mode="record">
+            <input {...personnelInput('profile.personal_details.employeecode','record')}
+
+
+              maxLength={30}
+              defaultValue={emp.employeeCode ?? ''}
+              placeholder={t('employeeIdPlaceholder')}
+              className={inputCls}
+            />
+          </PersonnelField>
+          {/* a72610af — Salutation, the three name fields and the two demographics are now the SHARED
+              group the Create New Employee draft renders too (components/person-name-fields.tsx). The
+              markup, the catalog wiring, the legacy-value tolerance and the order (8c284478 — Salutation
+              BEFORE the names, the natural data-entry order) are carried over unchanged; this card still
+              posts the same six names with the same values. Full Name stays HERE, between them, because it
+              is required and the draft asks for it at Create rather than in this group. */}
+          <PersonNameFields
+            mode="form"
+            value={emp}
+            catalogs={{
+              salutation: profileOptions.salutation,
+              religion: profileOptions.religion,
+              race: profileOptions.race,
+            }}
+            afterSalutation={
+              <PersonnelField fieldId="profile.personal_details.fullname" mode="record">
+                <input {...personnelInput('profile.personal_details.fullname','record')} defaultValue={emp.name} className={inputCls} />
+              </PersonnelField>
+            }
+          />
+          {/* 59047802 — searchable combobox over the full ISO 3166-1 nationality set; emits the same
+              single `nationality` value (via a hidden input) so setPersonAction is unchanged. e3ce0d4d —
+              wrapped as NationalityField so a change also pushes the live value into IdentityProvider,
+              driving the IC ⇄ Passport switch in the identity block below without a page reload.
+              35b7af0a group 8 — the label and the four picker captions now live inside the shared group
+              (components/identity-fields.tsx), which the Create New Employee wizard renders too, so this
+              page passes only what a server component can: the value and the tenant's catalog. */}
+          <NationalityField
+            name="nationality"
+            value={emp.nationality}
+            options={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
+          />
+          {/* Item 52a30630 — Holiday Calendar RELOCATED to the Attendance tab (holidayCalendarCard →
+              setEmploymentHolidayCalendarAction) and Grade RELOCATED to the Leave tab (gradeCard →
+              setEmploymentGradeAction). HTML forms can't span tab panels, so both selects physically moved
+              into their own forms in the target panels; setPersonAction no longer writes either column. */}
+        </form>
+
+        {/* Wave 2A-1 / #24 + b4682879: gender + marital status (leave eligibility) and date of birth
+            (age-band statutory). Kept on their OWN submit → setPersonComplianceFields (the audited path),
+            separate from the instant-write core fields above. */}
+        <form
+          action={setComplianceFieldsAction}
+          data-save-section="compliance"
+          className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+        >
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          {/* 35b7af0a group 3 — Date of Birth and the read-only Age (9d13221c) are now ONE shared field
+              group (components/birth-date-fields.tsx), rendered identically here and on the Create New
+              Employee wizard, which previously had a bare DOB box and no Age at all. `mode="form"` keeps
+              these inputs exactly what they were: an uncontrolled `name`/`defaultValue` date input inside
+              this server-action form, with NO function prop crossing the server→client boundary (the r123
+              fault). `inputId` is not cosmetic — components/ic-dob-autofill.tsx finds this field by that id
+              and writes the DOB derived from a MyKad number straight onto the DOM node. */}
+          <BirthDateFields mode="form" inputId="profile-dob-input" dateOfBirth={emp.dateOfBirth} today={today} dmyDisplay />
+          {/* 35b7af0a group 1 — Gender and Marital Status are now ONE shared field group
+              (components/person-details-fields.tsx), rendered identically here and on the Create New
+              Employee wizard. The option lists come from lib/person-vocabulary.ts, the same master lists
+              core/profile.ts validates saves against, so a value HR can pick is by construction a value
+              the server will accept. `mode="form"` keeps these inputs exactly what they were: uncontrolled
+              `name`/`defaultValue` selects inside this server-action form, and NO function prop crosses
+              the server→client boundary (the r123 fault). */}
+          <PersonDetailsFields mode="form" gender={emp.gender} maritalStatus={emp.marital} />
+          <p className="text-xs text-muted-foreground sm:col-span-4">{t('maritalPcbNote')}</p>
+        </form>
+
+        {/* Item e3ce0d4d / 55865c32 — Identity Information. IdentityFields (client) renders BOTH sections for
+            every employee: Identity No (NRIC) (IcDobAutofill, DOB autofill preserved — item 354a500d/8b5334db)
+            AND Passport Information (number/issue/expiry/issuing country/remark). The live nationality from
+            IdentityProvider only toggles which document is REQUIRED (Malaysian → NRIC; non-Malaysian → passport
+            trio) — the server re-derives this from the person record on save. Both server actions are passed in
+            as props (RSC→client pattern). countryOptions reuses the Nationality picker's catalog source for the
+            passport's Issuing Country dropdown. */}
+        <IdentityFields
+          employmentId={emp.employmentId}
+          personId={emp.personId}
+          icDefault={statutory?.icNumber ?? ''}
+          passportNumber={statutory?.passportNumber ?? ''}
+          passportIssueDate={statutory?.passportIssueDate ?? ''}
+          passportExpiryDate={statutory?.passportExpiryDate ?? ''}
+          oldIcNumber={statutory?.oldIcNumber ?? ''}
+          passportIssuingCountry={statutory?.passportIssuingCountry ?? ''}
+          passportIssuingCountryCode={statutory?.passportIssuingCountryCode ?? ''}
+          passportRemark={statutory?.passportRemark ?? ''}
+          countryOptions={profileOptions.nationality.map((o) => ({ value: o.value, label: o.label }))}
+          setIcAction={setIcAction}
+          setPassportAction={setPassportAction}
+          passportDisabled={!canEditPassport}
+          passportReadOnlyMessage={tAccess('workforceReadOnly')}
+        />
+      </Card>
+      </IdentityProvider>
+
+      <Card id="section-contact-address">
+        <SectionHeader title={t('contactAddressTitle')} />
+        <form action={setContactAddressAction} data-save-section="contact" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input type="hidden" name="personId" value={emp.personId} />
+          {/* fullName is owned by the Personal Details card; carried through so this save keeps it. */}
+          <input {...personnelCarry('profile.personal_details.fullname')} value={emp.name} />
+          <PersonnelField fieldId="profile.contact_and_permanent_address.primaryemail" mode="record">
+            <input {...personnelInput('profile.contact_and_permanent_address.primaryemail','record')} defaultValue={emp.email} className={inputCls} />
+          </PersonnelField>
+          {/* bf953339 — Phone renamed to Mobile Phone Number (label-only; the stored person.phone value is
+              untouched) with an optional Home Phone Number beside it. The Correspondence block below keeps
+              its OWN independent pair; the perm-/corr- prefixed ids let the "Same as Permanent Address"
+              island copy the pair alongside the seven address fields. */}
+          <PersonnelField fieldId="profile.contact_and_permanent_address.phone" mode="edit">
+            <input {...personnelInput('profile.contact_and_permanent_address.phone','edit')} id="perm-mobile-phone"  defaultValue={emp.phone ?? ''} placeholder="+60…" className={inputCls} />
+          </PersonnelField>
+          {/* a72610af — the SHARED pair the Create New Employee draft renders too. `homePhoneId` keeps the
+              `perm-home-phone` id this input has carried since 3a25f5ee: the "Same as Permanent Address"
+              island copies the pair by id, so the id is a contract, not decoration. Mobile Phone above
+              stays here — it is the pre-existing `phone` column and is on both screens already. */}
+          <PersonContactExtraFields mode="form" value={emp} homePhoneId="perm-home-phone" />
+
+          {/* 3a25f5ee — Contact & Address split into two independent address blocks. Permanent = where the
+              employee lives (today's single address backfilled here in migration 0213); Correspondence =
+              official mailing / IC-registered address. Each is the same 7 fields; state/country validate
+              against the shared profile_option catalog. Field ids (perm- and corr- prefixed) let the "Same
+              as Permanent Address" client island copy Permanent to Correspondence (fields stay editable). */}
+          <div className="sm:col-span-4 mt-1 grid grid-cols-1 gap-3 sm:grid-cols-4 rounded-lg border border-border/60 p-3">
+            <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('permanentAddressTitle')}</p>
+            {/* da7463b4 — the seven fields are now the SHARED group components/address-fields.tsx, because
+                the Create New Employee draft has to render exactly these and a second copy over there is
+                the drift this item was raised about. Same names, same ids, same catalogs, same labels:
+                `mode="form"` renders precisely the markup this card carried before, ids included, because
+                the "Same as Permanent Address" island resolves them and they are a contract. NO function
+                props, so this server component may still render it. */}
+            <AddressBlockFields
+              mode="form"
+              side="perm"
+              value={{
+                addressLine1: emp.permanentAddressLine1,
+                addressLine2: emp.permanentAddressLine2,
+                addressLine3: emp.permanentAddressLine3,
+                postcode: emp.permanentPostcode,
+                city: emp.permanentCity,
+                state: emp.permanentState,
+                country: emp.permanentCountry,
+              }}
+              stateOptions={profileOptions.state}
+              countryOptions={profileOptions.country}
+              lineClassName={`${inputCls} sm:col-span-4`}
+            />
+          </div>
+
+          <div className="sm:col-span-4">
+            <SameAsPermanentAddress label={t('sameAsPermanent')} viaInputName="addressCopyVia" />
+          </div>
+
+          <div className="sm:col-span-4 grid grid-cols-1 gap-3 sm:grid-cols-4 rounded-lg border border-border/60 p-3">
+            <p className="sm:col-span-4 text-sm font-medium text-foreground">{t('correspondenceAddressTitle')}</p>
+            {/* da7463b4 — the same shared group, the `corr-` side. See the Permanent block above. */}
+            <AddressBlockFields
+              mode="form"
+              side="corr"
+              value={{
+                addressLine1: emp.correspondenceAddressLine1,
+                addressLine2: emp.correspondenceAddressLine2,
+                addressLine3: emp.correspondenceAddressLine3,
+                postcode: emp.correspondencePostcode,
+                city: emp.correspondenceCity,
+                state: emp.correspondenceState,
+                country: emp.correspondenceCountry,
+              }}
+              stateOptions={profileOptions.state}
+              countryOptions={profileOptions.country}
+              lineClassName={`${inputCls} sm:col-span-4`}
+            />
+            {/* bf953339 — the Correspondence block's OWN Mobile/Home pair, independent of the main pair
+                above so the correspondence contact can differ. Copied by the "Same as Permanent Address"
+                island together with the address fields (perm-/corr- id pairs). */}
+            <PersonnelField fieldId="profile.correspondence_address.correspondencemobilephone" mode="edit">
+              <input {...personnelInput('profile.correspondence_address.correspondencemobilephone','edit')} id="corr-mobile-phone"  defaultValue={emp.correspondenceMobilePhone ?? ''} className={inputCls} />
+            </PersonnelField>
+            <PersonnelField fieldId="profile.correspondence_address.correspondencehomephone" mode="edit">
+              <input {...personnelInput('profile.correspondence_address.correspondencehomephone','edit')} id="corr-home-phone"  defaultValue={emp.correspondenceHomePhone ?? ''} className={inputCls} />
+            </PersonnelField>
+          </div>
+        </form>
+      </Card>
+      </TabSaveScope></fieldset>
+
+      {/* Bucket (b): adding, editing or deleting an emergency contact is a record in a register — choosing a
+          new Primary demotes the previous holder — so it keeps its own buttons and its own confirmations,
+          and sits OUTSIDE the save scope where a tab-wide Discard cannot appear to cover it. */}
+      {emergencyContactPanel}
+    </>
+  ) : null;
+
+  // ── PAYROLL ────────────────────────────────────────────────────────────────
+  // Pay components, CP38, leave encashment, payroll policy assignment, leave balance, compensation,
+  // and the Malaysia statutory profile (salary / bank / tax). All admin-only.
+  //
+  // Item 18719ded — the three sections a reader thinks of as "the Payroll tab" (Basic Salary, Pay Items,
+  // CP38) grew at different times and presented themselves three different ways: one Add form pinned
+  // under the table, one Add form under a table with an inline single-field editor, one permanently-open
+  // form. They now all wear the QUALIFICATION shape (`qualificationPanel` below, the reference the
+  // reporter asked us to match): Card + SectionHeader(title, count) → a header strip whose only control
+  // is the Add dialog → a plain full-width table → the hint. Presentation only: every server action,
+  // every guard and every figure is the one that was there before.
+  //
+  // ONE money formatter for the whole tab, declared here because the first card that needs it is this
+  // one. It used to sit beside the Basic Salary card 1000 lines down; a `const` arrow is in the temporal
+  // dead zone until then, and these JSX consts evaluate eagerly, so reading it from up here would throw
+  // at render. Pay Items and CP38 previously each rolled their own `Number(x).toFixed(2)` — which is why
+  // "RM 12000.00" read differently from the same figure in Basic Salary ("12,000.00").
+  const fmtMoney = (n: number) =>
+    n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Add Pay Item — the SAME <form action={setEmploymentComponentAction}> and the same control names as
+  // before, moved from the bottom of the card into the dialog. The STATIC hidden `tab` input is
+  // load-bearing: Dialog.Portal reparents the form outside the PersonnelTabs shell, so the shell's
+  // capture-phase submit listener never sees it and cannot inject the tab (see the Family tab note).
+  const payComponentDialogForm = (
+    <form action={setEmploymentComponentAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      <PersonnelField fieldId="payroll.pay_items.componentname" mode="record">
+        <select {...personnelControl('payroll.pay_items.componentname','record')} className={inputCls}>
+          {componentCatalog.map((c) => (
+            <option key={c.id} value={c.id}>{c.code} — {c.name}</option>
+          ))}
+        </select>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.amount" mode="record">
+        <input {...personnelInput('payroll.pay_items.amount','record')} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.currency" mode="edit">
+        <select {...personnelControl('payroll.pay_items.currency','edit')} defaultValue="MYR" className={inputCls}>
+          <option value="MYR">MYR</option>
+        </select>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.prorate" mode="edit">
+        <select {...personnelControl('payroll.pay_items.prorate','edit')} defaultValue="inherit" className={inputCls}>
+          <option value="inherit">{t('prorateInherit')}</option>
+          <option value="yes">{t('prorateYes')}</option>
+          <option value="no">{t('prorateNo')}</option>
+        </select>
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.validfrom" mode="record">
+        <DateField {...personnelControl('payroll.pay_items.validfrom','record')} defaultValue={emp.hiredOn} className={inputCls} label={personnelLabel('payroll.pay_items.validfrom')} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.pay_items.validto" mode="edit">
+        <DateField {...personnelControl('payroll.pay_items.validto','edit')} className={inputCls} label={personnelLabel('payroll.pay_items.validto')} />
+      </PersonnelField>
+      <div className="sm:col-span-2">
+        <PersonnelField fieldId="payroll.pay_items.remarks" mode="edit">
+          <input {...personnelInput('payroll.pay_items.remarks','edit')} placeholder={t('payComponentRemarksPlaceholder')} className={inputCls} />
+        </PersonnelField>
+      </div>
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{t('payComponentSave')}</button>
+      </div>
+    </form>
+  );
+
+  // r298 — `payrollOn` is stated here as well as at the read: an empty catalogue already hides the card, but
+  // that would make the gate an accident of the data rather than a decision a reader can see.
+  const payComponentsCard = admin && payrollOn && componentCatalog.length > 0 ? (
+    <Card id="section-pay-components" className="overflow-hidden">
+      <SectionHeader title={t('payComponentsTitle')} count={payComps.length} />
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('payComponentAdd')} title={t('payComponentAddTitle')}>
+            {payComponentDialogForm}
+          </FamilyFormDialog>
+        </div>
+        {payComps.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('payComponentNone')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('payComponent')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colCurrency')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('payComponentAmount')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colStart')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colEnd')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colProrate')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('colRemarks')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('status')}</th>
+                  <th className="py-2 text-right font-medium">{tFixed('actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payComps.map((pc) => {
+                  // An item is ENDED once its inclusive end-date is in the past; otherwise it is ACTIVE.
+                  const ended = pc.validTo != null && pc.validTo < today;
+                  // Resolved prorate = per-employee override (if set) else the catalog flag.
+                  const prorate = pc.prorateOverride ?? pc.prorates;
+                  return (
+                    <tr key={pc.id} className="border-b border-border/60 align-top">
+                      <td className="py-2 pr-3">
+                        <span className="font-mono text-xs">{pc.code}</span> <span className="text-muted-foreground">{pc.name}</span>
+                      </td>
+                      <td className="py-2 pr-3 font-mono text-xs">{pc.currency}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(pc.amount))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(pc.validFrom)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(pc.validTo)}</td>
+                      <td className="py-2 pr-3">{prorate ? t('prorateYes') : t('prorateNo')}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{pc.remarks ?? '—'}</td>
+                      <td className="py-2 pr-3">
+                        <Badge variant={ended ? 'default' : 'success'}>{ended ? t('statusEnded') : t('statusActive')}</Badge>
+                      </td>
+                      <td className="py-2 text-right">
+                        {/* 2f889bae — the shortcut the reporter asked for. Edit, Stop and Remove already
+                            live on the item's own page; this tab was read-only and gave no way through to
+                            it. Same href shape and classes as fixed-list.tsx, so the two entry points stay
+                            one destination rather than drifting apart. Every row gets a link, BASIC
+                            included — that is what Fixed Transactions itself does, and inventing a filter
+                            this item did not ask for would be the surprise. Note Basic Salary also has its
+                            own card with its own View/Edit on this tab, so BASIC has two routes to one
+                            figure; deliberate, and recorded rather than silently filtered. */}
+                        <Link
+                          href={`/payroll/transactions/fixed/${pc.id}?employmentId=${encodeURIComponent(employmentId)}`}
+                          className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        >
+                          {tFixed('viewEdit')}
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      {/* 2f889bae — THE ROW LINK IS NEW, AND THE REASON THIS TABLE USED TO HAVE NONE IS GONE. Do not
+          revert it on the strength of the old comment that stood here.
+          That comment said a per-row Edit was omitted because `setEmploymentPayComponent` closed the open
+          row AT `effectiveFrom`, leaving BOTH rows inside the period's window so the kernel paid the item
+          twice. Two shipped changes retired that reason: r180's `34cc8137` now closes the prior row the
+          day BEFORE the new start, and r185's `2aed39d4` added `employment_pay_component_no_overlap`, an
+          EXCLUDE constraint that makes two live rows covering one day impossible at the database. The
+          one-click duplicate it feared is separately closed — `updateEmploymentPayComponent` passes the
+          row's own id as `replacesId`, so re-saving the open form VERSIONS the row instead of cloning it.
+          Its recommended alternative was never the safer route either: "Add a dated revision here" posts
+          through this page's own actions into the very same writer.
+          WHAT IS STILL TRUE, AND IS SOMEONE ELSE'S ITEM: restating an item MID-MONTH still pays both
+          lines in full, because two adjacent windows both overlap the month and the kernel pays each
+          returned row its full amount. That is pinned as an `it.fails` in test/fixed-transaction.test.ts
+          and raised with the reporter as `a3d485f6` — it is a design decision (prorate, latest-row-wins,
+          or refuse a mid-period restatement), not something a default value on this link could fix. */}
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('payComponentsHint')}</p>
+    </Card>
+  ) : null;
+
+  // One dialog form for Add (r null) and Edit — the Qualification tab's dialogForm pattern. Both post to
+  // the actions that were already here (addCp38Action / editCp38Action), so the processed-period refusal
+  // is untouched: updateCp38 guards BOTH the stored window and the proposed one with
+  // assertNoProcessedPeriod, and a Cp38PeriodProcessedError still comes back as `?cp38Error=processed`
+  // and paints the banner above the table. Edit now offers the whole record rather than the amount alone
+  // — that is not a widening: updateCp38 has always accepted every one of these fields, the old inline
+  // editor simply omitted them, so a wrong reference or end date meant deleting the row and re-keying it.
+  // Derived from the loader rather than imported, so this restyle adds no new core/* import to the page
+  // (ADR-0080 drift ratchet — the allowlist only ever shrinks).
+  type Cp38Record = (typeof cp38Records)[number];
+  const cp38DialogForm = (r: Cp38Record | null) => (
+    <form action={r ? editCp38Action : addCp38Action} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {r && <input type="hidden" name="id" value={r.id} />}
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      <PersonnelField fieldId="payroll.cp38_deduction.reference" mode="record">
+        <input {...personnelInput('payroll.cp38_deduction.reference','record')} defaultValue={r?.cp38Ref ?? ''} placeholder={t('cp38RefPlaceholder')} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.cp38_deduction.monthlyamount" mode="record">
+        <input {...personnelInput('payroll.cp38_deduction.monthlyamount','record')}
+
+
+
+
+
+          defaultValue={r ? Number(r.amount).toFixed(2) : ''}
+          className={inputCls}
+        />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.cp38_deduction.validfrom" mode="record">
+        <DateField {...personnelControl('payroll.cp38_deduction.validfrom','record')} defaultValue={r?.validFrom ?? thisMonthStart} className={inputCls} label={personnelLabel('payroll.cp38_deduction.validfrom')} />
+      </PersonnelField>
+      <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
+        <DateField {...personnelControl('payroll.cp38_deduction.validto','edit')} defaultValue={r?.validTo ?? ''} className={inputCls} label={personnelLabel('payroll.cp38_deduction.validto')} />
+      </PersonnelField>
+      <div className="sm:col-span-2">
+        <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
+          <input {...personnelInput('payroll.cp38_deduction.remarks','edit')} defaultValue={r?.remarks ?? ''} placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
+        </PersonnelField>
+      </div>
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</button>
+      </div>
+    </form>
+  );
+
+  // View: the SAME fields, disabled inside a fieldset with no <form> — the Qualification tab's
+  // viewDialogBody pattern (a read-only view that can never drift from Edit, and can never post). This is
+  // how a CLOSED row is readable at all: its Edit and Terminate are hidden, and before this the only way
+  // to see its reference, dates and remarks was to read them off the table.
+  const cp38ViewBody = (r: Cp38Record) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+        <PersonnelField fieldId="payroll.cp38_deduction.reference" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.reference")} defaultValue={r.cp38Ref} className={inputCls} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.cp38_deduction.monthlyamount" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.monthlyamount")} defaultValue={fmtMoney(Number(r.amount))} className={inputCls} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.cp38_deduction.validfrom" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.validfrom")} defaultValue={r.validFrom} className={inputCls} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.cp38_deduction.validto" mode="edit">
+          <input {...personnelDisplay("payroll.cp38_deduction.validto")} defaultValue={r.validTo ?? t('cp38Open')} className={inputCls} />
+        </PersonnelField>
+        <div className="sm:col-span-2">
+          <PersonnelField fieldId="payroll.cp38_deduction.remarks" mode="edit">
+            <input {...personnelDisplay("payroll.cp38_deduction.remarks")} defaultValue={r.remarks ?? ''} className={inputCls} />
+          </PersonnelField>
+        </div>
+      </div>
+    </fieldset>
+  );
+
+  const cp38Card = admin && payrollOn ? (
+    <Card id="section-cp38" className="overflow-hidden">
+      <SectionHeader title={t('cp38Title')} count={cp38Records.length} />
+      {/* The processed-period refusal. Kept ABOVE the table and outside the restyle on purpose:
+          cp38Error === 'processed' is a real refusal from the service, not a validation hint. */}
+      {cp38Error === 'processed' && (
+        <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+          {t('cp38ProcessedError')}
+        </p>
+      )}
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          <FamilyFormDialog triggerLabel={t('cp38Add')} title={t('cp38AddTitle')}>
+            {cp38DialogForm(null)}
+          </FamilyFormDialog>
+        </div>
+        {cp38Records.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('cp38None')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('cp38Ref')}</th>
+                  <th className="py-2 pr-3 text-right font-medium">{t('cp38Amount')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38From')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38To')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38Remarks')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('cp38Status')}</th>
+                  <th className="py-2 text-right font-medium">{t('cp38Actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cp38Records.map((r) => {
+                  // CLOSED once superseded, or once its inclusive end-date is before this month. Otherwise ACTIVE.
+                  const closed =
+                    r.supersededAt != null || (r.validTo != null && r.validTo < thisMonthStart);
+                  // A closed/superseded row's period is historical → its edit/terminate is hidden (the
+                  // service guard would also block any processed period).
+                  return (
+                    <tr key={r.id} className="border-b border-border/60 align-top">
+                      <td className="py-2 pr-3 font-mono text-xs">{r.cp38Ref}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 text-right font-medium tabular-nums">{fmtMoney(Number(r.amount))}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{formatDmy(r.validFrom)}</td>
+                      <td className="whitespace-nowrap py-2 pr-3 tabular-nums">{r.validTo ? formatDmy(r.validTo) : t('cp38Open')}</td>
+                      <td className="py-2 pr-3 text-muted-foreground">{r.remarks ?? '—'}</td>
+                      <td className="py-2 pr-3">
+                        <Badge variant={closed ? 'default' : 'success'}>
+                          {closed ? t('cp38StatusClosed') : t('cp38StatusActive')}
+                        </Badge>
+                      </td>
+                      <td className="py-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <FamilyFormDialog
+                            triggerLabel={t('cp38View')}
+                            triggerVariant="outline"
+                            title={t('cp38ViewTitle')}
+                          >
+                            {cp38ViewBody(r)}
+                          </FamilyFormDialog>
+                          {!closed && (
+                            <>
+                              <FamilyFormDialog
+                                triggerLabel={t('cp38Edit')}
+                                triggerVariant="outline"
+                                title={t('cp38EditTitle')}
+                              >
+                                {cp38DialogForm(r)}
+                              </FamilyFormDialog>
+                              {/* Terminate stays a plain submit inside the tab shell (the shell's capture
+                                  listener injects the tab). It is NOT wrapped in a confirmation: adding
+                                  one would be a behaviour change, and this restyle changes nothing that
+                                  writes. */}
+                              <form action={terminateCp38Action}>
+                                <input type="hidden" name="employmentId" value={emp.employmentId} />
+                                <input type="hidden" name="id" value={r.id} />
+                                <Button variant="destructive" size="sm">{t('cp38Terminate')}</Button>
+                              </form>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('cp38Hint')}</p>
+    </Card>
+  ) : null;
+
+  // ADR-0069 — Leave Encashment: admin-only card, shown once a resignation-approval freeze has
+  // happened for this employment. Raw balance, auto figure, effective (override) figure, status,
+  // calculated-as-of, and the post-LWD hint; Unfreeze/Adjust actions (mandatory reason, re-locks).
+  const encashmentCard = admin && encashmentSnapshot ? (
+    <Card id="section-encashment" className="overflow-hidden">
+      <SectionHeader title={t('encashmentTitle')} />
+          {encashmentError && (
+            <p className="mx-4 mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+              {encashmentError}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-4 p-4 text-sm sm:grid-cols-4">
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentBalance')}</div>
+              <div className="font-medium tabular-nums">{encashmentSnapshot.balanceDays}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentAuto')}</div>
+              <div className="font-medium tabular-nums">{encashmentSnapshot.encashableDays}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentEffective')}</div>
+              <div className="font-medium tabular-nums">{encashmentSnapshot.days}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">{t('encashmentAsOf')}</div>
+              <div className="font-medium">{encashmentSnapshot.calculatedAsOf}</div>
+            </div>
+          </div>
+          <div className="px-4 pb-2">
+            <Badge variant={encashmentSnapshot.status === 'frozen' ? 'success' : 'default'}>
+              {encashmentSnapshot.status === 'frozen' ? t('encashmentStatusFrozen') : t('encashmentStatusUnfrozen')}
+            </Badge>
+            {encashmentSnapshot.overrideDays != null && (
+              <span className="ml-2 text-xs text-muted-foreground">{t('encashmentOverridden')}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-end gap-4 border-t border-border p-4">
+            <form action={unfreezeEncashmentAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="employmentId" value={employmentId} />
+              <input type="hidden" name="snapshotId" value={encashmentSnapshot.id} />
+              <PersonnelField fieldId="payroll.leave_encashment.reason" mode="record">
+                <input {...personnelInput('payroll.leave_encashment.reason','record')} placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
+              </PersonnelField>
+              <ConfirmSubmit
+                size="sm"
+                variant="secondary"
+                title={t('encashmentUnfreezeConfirmTitle')}
+                description={t('encashmentUnfreezeConfirmDescription')}
+                confirmLabel={t('encashmentUnfreezeConfirmLabel')}
+              >
+                {t('encashmentUnfreeze')}
+              </ConfirmSubmit>
+            </form>
+            <form action={adjustEncashmentAction} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="employmentId" value={employmentId} />
+              <input type="hidden" name="snapshotId" value={encashmentSnapshot.id} />
+              <PersonnelField fieldId="payroll.leave_encashment.adjusteddays" mode="record">
+                <input {...personnelInput('payroll.leave_encashment.adjusteddays','record')}
+
+
+
+
+
+                  defaultValue={encashmentSnapshot.days}
+                  className={`${inputCls} w-24`}
+                />
+              </PersonnelField>
+              <PersonnelField fieldId="payroll.leave_encashment.reason" mode="record">
+                <input {...personnelInput('payroll.leave_encashment.reason','record')} placeholder={t('encashmentReasonPlaceholder')} className={inputCls} />
+              </PersonnelField>
+              <button className={btnPrimary}>{t('encashmentAdjust')}</button>
+            </form>
+          </div>
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{t('encashmentHint')}</p>
+    </Card>
+  ) : null;
+
+  // ── FAMILY ─────────────────────────────────────────────────────────────────
+  // Personnel — Family & Dependents Information. ea36b7fa: the three per-relationship sections (Spouse /
+  // Children / Other Dependants, from 4535b733 → 5988053a → 33a5ce41) are CONSOLIDATED into ONE card: a
+  // single table of every family member plus a single Add Family Member dialog where the Relationship is
+  // picked FIRST and the form adapts to it (FamilyRelationshipFields island swapping server-rendered field
+  // panels). Admin-maintained (RLS is_admin write) and distinct from the emergency contact. Since R46
+  // 47146ea3, child rows DO feed employee_statutory_my.num_children when child_relief_mode === 'auto'
+  // (syncChildReliefFromFamily); 'manual' persons keep full human control. Spouse-only (marriage / spouse
+  // employment) and child-only (education / relief) fields render only in their own panel; custom catalog
+  // relationship types get the standard panel (the server NULLs the gated columns for them anyway).
+  // Sort: spouse first, then children / parents / siblings, then other + custom types, then by
+  // relationship and name — one scannable list, stable across edits.
+  const relationshipRank = (r: string) =>
+    r === 'spouse' ? 0 : r === 'child' ? 1 : r === 'parent' ? 2 : r === 'sibling' ? 3 : 4;
+  const familyMembers = [...dependents].sort(
+    (x, y) =>
+      relationshipRank(x.relationship) - relationshipRank(y.relationship) ||
+      x.relationship.localeCompare(y.relationship) ||
+      x.fullName.localeCompare(y.fullName),
+  );
+  // Multi-line inputs (residential / employer address) — same look as inputCls but taller, auto-height.
+  const taCls = `${inputCls.replace('h-9', 'min-h-16')} py-2`;
+  type FamilySection = 'spouse' | 'child' | 'other';
+  // Which field panel a relationship gets — mirrors core/dependents.ts extraColumnsForAdd: spouse and child
+  // have their own panels, EVERYTHING else (built-in or custom catalog type) gets the standard one.
+  const panelOf = (r: string): FamilySection => (r === 'spouse' ? 'spouse' : r === 'child' ? 'child' : 'other');
+  // ea36b7fa — the Relationship dropdown is catalog-backed (System Labels > Profile Options, category
+  // dependentRelationship). Built-in values keep their static i18n labels (6-locale coverage); custom
+  // values are data-labelled from the catalog. An unseeded/empty catalog falls back to the five built-ins,
+  // so the dropdown never goes blank. Deactivating an option hides it from NEW picks only — an edited row
+  // whose stored value is no longer active still renders (and re-saves) via the merge below.
+  const dependentRelationshipLabels = new Map(profileOptions.dependentRelationship.map((o) => [o.value, o.label]));
+  const familyRelationshipLabel = (r: string) =>
+    (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(r)
+      ? relationshipLabel(r)
+      : (dependentRelationshipLabels.get(r) ?? r);
+  const activeRelationshipOptions =
+    profileOptions.dependentRelationship.length > 0
+      ? profileOptions.dependentRelationship.map((o) => ({
+          value: o.value,
+          label: (DEPENDENT_RELATIONSHIPS as readonly string[]).includes(o.value) ? relationshipLabel(o.value) : o.label,
+        }))
+      : DEPENDENT_RELATIONSHIPS.map((r) => ({ value: r, label: relationshipLabel(r) }));
+  const relationshipOptionsFor = (d: DependentRow | null) =>
+    d && !activeRelationshipOptions.some((o) => o.value === d.relationship)
+      ? [...activeRelationshipOptions, { value: d.relationship, label: familyRelationshipLabel(d.relationship) }]
+      : activeRelationshipOptions;
+
+  // A tri-state checkbox: a hidden `${name}__present` marker lets the server tell "unticked" (posts
+  // nothing) apart from "field absent on this section's form".
+  const familyBooleanFields={isBeneficiary:'family.family_and_dependents.isbeneficiary',isDeceased:'family.family_and_dependents.isdeceased',isStudent:'family.family_and_dependents.isstudent',childTaxRelief:'family.family_and_dependents.childtaxrelief',spouseWorking:'family.family_and_dependents.spouseworking'} as const;
+  const familyCheckbox = (name: keyof typeof familyBooleanFields, checked: boolean, _label: string) => {
+    const fieldId=familyBooleanFields[name];
+    return <label className="flex items-center gap-2 text-sm text-muted-foreground">
+      <input {...personnelPresence(fieldId)} value="1" />
+      <input {...personnelInput(fieldId)} defaultChecked={checked} />
+      {personnelLabel(fieldId)}
+    </label>;
+  };
+
+  // Item 5988053a — whole-year age comes from the ONE shared rule in core/dependents.ts (childAgeYears),
+  // also used by the isChildReliefEligible predicate, so the form, the table and payroll can never disagree
+  // on a child's age. (Formerly a private dobAgeYears copy here.)
+
+  // Dialog fieldset chrome (child Add/Edit dialog only).
+  const fieldsetCls = 'rounded-lg border border-border p-3';
+  const legendCls = 'px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground';
+
+  // Shared field inputs for one dependent form PANEL. `section` selects which grouped fields appear; `d`
+  // is the existing row (null on the Add form). Every control is named exactly as its server-side field —
+  // the names (and the `__present` tri-state markers) are load-bearing for dependent-actions.ts.
+  // ea36b7fa — the relationship control itself no longer lives here: the unified dialog's
+  // FamilyRelationshipFields island renders the single `name="relationship"` select FIRST and swaps these
+  // panels beneath it (inactive panels are disabled, so their duplicate field names never post).
+  // Item 5988053a — the CHILD section is regrouped into three labelled fieldsets (Personal / Education /
+  // Tax Relief); the spouse and other sections keep the original flat two-column grid untouched.
+  const dependentFields = (section: FamilySection, d: DependentRow | null) => {
+    const nameField = (
+      <PersonnelField fieldId="family.family_and_dependents.fullname" mode="record">
+        <input {...personnelInput('family.family_and_dependents.fullname','record')} defaultValue={d?.fullName ?? ''} placeholder={t('family.namePlaceholder')} className={inputCls} />
+      </PersonnelField>
+    );
+    const genderField = (
+      <PersonnelField fieldId="family.family_and_dependents.gender" mode="edit">
+        <select {...personnelControl('family.family_and_dependents.gender','edit')} defaultValue={d?.gender ?? ''} className={inputCls}>
+          <option value="">{t('family.genderUnset')}</option>
+          {DEPENDENT_GENDERS.map((g) => (<option key={g} value={g}>{genderLabel(g)}</option>))}
+        </select>
+      </PersonnelField>
+    );
+    const dobField = (
+      <PersonnelField fieldId="family.family_and_dependents.dateofbirth" mode="edit">
+        <DateField {...personnelControl('family.family_and_dependents.dateofbirth','edit')} defaultValue={d?.dateOfBirth ?? ''} className={inputCls} label={personnelLabel('family.family_and_dependents.dateofbirth')} />
+      </PersonnelField>
+    );
+    const phoneField = (
+      <PersonnelField fieldId="family.family_and_dependents.phone" mode="edit">
+        <input {...personnelInput('family.family_and_dependents.phone','edit')} defaultValue={d?.phone ?? ''} className={inputCls} />
+      </PersonnelField>
+    );
+    const icField = (
+      <PersonnelField fieldId={section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport'}>
+        <input {...personnelInput(section==='child' ? 'family.family_and_dependents.icorpassport_8' : 'family.family_and_dependents.icorpassport')} defaultValue={d?.icOrPassport ?? ''} className={inputCls} />
+      </PersonnelField>
+    );
+    const remarksField = (
+      <PersonnelField fieldId="family.family_and_dependents.remarks" mode="edit">
+        <input {...personnelInput('family.family_and_dependents.remarks','edit')} defaultValue={d?.remarks ?? ''} placeholder={t('family.remarksPlaceholder')} className={inputCls} />
+      </PersonnelField>
+    );
+
+    if (section === 'child') {
+      return (
+        <>
+          <fieldset className={fieldsetCls}>
+            <legend className={legendCls}>{t('family.sectionPersonal')}</legend>
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+              {nameField}
+              {genderField}
+              {dobField}
+              {phoneField}
+              {icField}
+              {remarksField}
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+                {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
+                {familyCheckbox('isDeceased', d?.isDeceased ?? false, t('family.deceasedStatus'))}
+              </div>
+            </div>
+          </fieldset>
+          <fieldset className={fieldsetCls}>
+            <legend className={legendCls}>{t('family.sectionEducation')}</legend>
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+              <PersonnelField fieldId="family.family_and_dependents.schoolname" mode="edit">
+                <input {...personnelInput('family.family_and_dependents.schoolname','edit')} defaultValue={d?.schoolName ?? ''} className={inputCls} />
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.studylevel" mode="edit">
+                <input {...personnelInput('family.family_and_dependents.studylevel','edit')} defaultValue={d?.studyLevel ?? ''} className={inputCls} />
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.studycountry" mode="edit">
+                <ProfileOptionSelect name={personnelFormName('family.family_and_dependents.studycountry')} personnelFieldId="family.family_and_dependents.studycountry" {...personnelControl('family.family_and_dependents.studycountry','edit')}
+
+                  value={d?.studyCountry}
+                  options={profileOptions.country}
+                  placeholder={t('family.genderUnset')}
+                  legacySuffix={t('optionLegacySuffix')}
+                />
+              </PersonnelField>
+              <div className="flex items-end pb-1">
+                {familyCheckbox('isStudent', d?.isStudent ?? false, t('family.studentStatus'))}
+              </div>
+            </div>
+          </fieldset>
+          {/* Item 6c635212 → R46 47146ea3 — Malaysia Income Tax Child Relief (PCB / TP1). Per-child relief
+              category, claim flag and 100|50 share. Age is derived read-only from DOB to guide the category
+              choice (the FamilyFormDialog island refreshes it live while a DOB is typed; the note is static
+              guidance and the category is NEVER auto-filled from an age-based guess). Since R46 removed the
+              "Use {count}" approval button, when employee_statutory_my.child_relief_mode === 'auto' the
+              derived eligible-child head count DOES flow straight into num_children on save (see
+              syncChildReliefFromFamily in core/dependents.ts and its four rails); on 'manual' the tax figure
+              stays fully human-controlled. */}
+          <fieldset className={fieldsetCls}>
+            <legend className={legendCls}>
+              <span className="inline-flex items-center gap-1.5">
+                {t('family.sectionTaxRelief')}
+                <span
+                  className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+                  title={t('family.childReliefGuidance')}
+                  aria-label={t('family.childReliefGuidance')}
+                >
+                  i
+                </span>
+              </span>
+            </legend>
+            <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+              <PersonnelField fieldId="family.family_and_dependents.childreliefcategory" mode="edit">
+                <select {...personnelControl('family.family_and_dependents.childreliefcategory','edit')} defaultValue={d?.childReliefCategory ?? ''} className={inputCls}>
+                  <option value="">{t('family.childReliefCategoryUnset')}</option>
+                  {CHILD_RELIEF_CATEGORIES.map((c) => (
+                    <option key={c} value={c}>{t(`family.childReliefCat_${c}`)}</option>
+                  ))}
+                </select>
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.childreliefpercentage" mode="edit">
+                <select {...personnelControl('family.family_and_dependents.childreliefpercentage','edit')}
+
+                  defaultValue={d?.childReliefPercentage != null ? String(d.childReliefPercentage) : ''}
+                  className={inputCls}
+                >
+                  <option value="">{t('family.childReliefCategoryUnset')}</option>
+                  <option value="100">{t('family.childReliefPct_100')}</option>
+                  <option value="50">{t('family.childReliefPct_50')}</option>
+                </select>
+              </PersonnelField>
+              <PersonnelField fieldId="family.family_and_dependents.age" mode="edit">
+                <input {...personnelDisplay("family.family_and_dependents.age")}
+                  readOnly
+                  disabled
+                  data-child-age=""
+                  value={childAgeYears(d?.dateOfBirth) ?? '—'}
+                  className={`${inputCls} bg-muted/50`}
+                />
+              </PersonnelField>
+              <div className="flex items-end pb-1">
+                {familyCheckbox('childTaxRelief', d?.childTaxRelief ?? false, t('family.childTaxRelief'))}
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{t('family.ageHint')}</p>
+          </fieldset>
+        </>
+      );
+    }
+
+    // Spouse / Other — the original flat two-column grid, unchanged.
+    return (
+      <>
+        {nameField}
+        {genderField}
+        {dobField}
+        {phoneField}
+        {icField}
+        <PersonnelField fieldId="family.family_and_dependents.passportnumber" mode="edit">
+          <input {...personnelInput('family.family_and_dependents.passportnumber','edit')} defaultValue={d?.passportNumber ?? ''} className={inputCls} />
+        </PersonnelField>
+        <div className="sm:col-span-2">
+          <PersonnelField fieldId="family.family_and_dependents.residentialaddress" mode="edit">
+            <textarea {...personnelControl('family.family_and_dependents.residentialaddress','edit')} rows={2} defaultValue={d?.residentialAddress ?? ''} className={taCls} />
+          </PersonnelField>
+        </div>
+        {section === 'spouse' && (
+          <>
+            <PersonnelField fieldId="family.family_and_dependents.marriagedate" mode="edit">
+              <DateField {...personnelControl('family.family_and_dependents.marriagedate','edit')} defaultValue={d?.marriageDate ?? ''} className={inputCls} label={personnelLabel('family.family_and_dependents.marriagedate')} />
+            </PersonnelField>
+            <PersonnelField fieldId="family.family_and_dependents.marriagestatus" mode="edit">
+              <select {...personnelControl('family.family_and_dependents.marriagestatus','edit')} defaultValue={d?.marriageStatus ?? ''} className={inputCls}>
+                <option value="">{t('family.genderUnset')}</option>
+                {DEPENDENT_MARRIAGE_STATUSES.map((m) => (<option key={m} value={m}>{marriageStatusLabel(m)}</option>))}
+              </select>
+            </PersonnelField>
+            <PersonnelField fieldId="family.family_and_dependents.occupation" mode="edit">
+              <input {...personnelInput('family.family_and_dependents.occupation','edit')} defaultValue={d?.occupation ?? ''} className={inputCls} />
+            </PersonnelField>
+            <PersonnelField fieldId="family.family_and_dependents.companyname" mode="edit">
+              <input {...personnelInput('family.family_and_dependents.companyname','edit')} defaultValue={d?.companyName ?? ''} className={inputCls} />
+            </PersonnelField>
+            <div className="sm:col-span-2">
+              <PersonnelField fieldId="family.family_and_dependents.employeraddress" mode="edit">
+                <textarea {...personnelControl('family.family_and_dependents.employeraddress','edit')} rows={2} defaultValue={d?.employerAddress ?? ''} className={taCls} />
+              </PersonnelField>
+            </div>
+          </>
+        )}
+        {section === 'other' && (
+          <PersonnelField fieldId="family.family_and_dependents.occupation" mode="edit">
+            <input {...personnelInput('family.family_and_dependents.occupation','edit')} defaultValue={d?.occupation ?? ''} className={inputCls} />
+          </PersonnelField>
+        )}
+        {remarksField}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+          {familyCheckbox('isBeneficiary', d?.isBeneficiary ?? false, t('family.beneficiary'))}
+          {section === 'spouse' && familyCheckbox('spouseWorking', d?.spouseWorking ?? false, t('family.currentlyWorking'))}
+          {familyCheckbox('isDeceased', d?.isDeceased ?? false, t('family.deceasedStatus'))}
+        </div>
+      </>
+    );
+  };
+
+  // ea36b7fa — ONE dialog form for every family member (Add when d is null, Edit otherwise), posting to
+  // the SAME server actions as before. The FamilyRelationshipFields island renders the Relationship select
+  // FIRST, then swaps the three server-rendered field panels beneath it (spouse grid / child fieldsets /
+  // standard grid); inactive panels are disabled+hidden so their duplicate field names and `__present`
+  // markers never reach the post. On Add nothing shows until a relationship is chosen.
+  // TAB RETENTION (feedback bd2f0bb2): Dialog.Portal reparents this form to document.body — OUTSIDE the
+  // PersonnelTabs shell — so the shell's capture-phase submit listener never sees it (shell.contains(form)
+  // is false) and would never inject the hidden `tab` field; without the STATIC hidden input below, every
+  // dialog save would redirect back to the Profile tab. Giving it data-tab-tracker means that if this form
+  // ever does sit inside the shell, the listener finds and reuses this input instead of appending a
+  // duplicate `tab` field.
+  const dialogForm = (d: DependentRow | null) => (
+    <form action={d ? editDependentAction : addDependentAction} className="space-y-4">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {d ? (
+        <input type="hidden" name="id" value={d.id} />
+      ) : (
+        <input type="hidden" name="personId" value={emp.personId} />
+      )}
+      <input type="hidden" name="tab" value="family" data-tab-tracker="" />
+      <FamilyRelationshipFields
+        label={t('family.relationship')}
+        placeholder={t('family.relationshipPlaceholder')}
+        options={relationshipOptionsFor(d)}
+        initialValue={d?.relationship ?? ''}
+        spousePanel={<div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{dependentFields('spouse', d)}</div>}
+        childPanel={<div className="space-y-4">{dependentFields('child', d)}</div>}
+        otherPanel={<div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{dependentFields('other', d)}</div>}
+      />
+      <div className="flex justify-end">
+        <button className={btnPrimary}>{d ? t('family.save') : t('family.add')}</button>
+      </div>
+    </form>
+  );
+
+  // Item 33a5ce41 — View: the SAME server-rendered fields, disabled inside a fieldset, with NO <form>
+  // element and no submit button. Rendering exactly the Edit layout means the read-only view can never
+  // drift from the form — and with no form it can never post. (The fieldset only carries `disabled`; the
+  // layout container is the inner div, since fieldset flex/grid support is historically unreliable.)
+  // ea36b7fa — the stored relationship renders as a read-only input (catalog/i18n label), and only the
+  // matching panel is rendered, so no island is needed for a static view.
+  const viewDialogBody = (d: DependentRow) => {
+    const section = panelOf(d.relationship);
+    return (
+      <fieldset disabled>
+        <div className={section === 'child' ? 'space-y-4' : 'grid grid-cols-1 items-end gap-3 sm:grid-cols-2'}>
+          <PersonnelField fieldId="family.family_and_dependents.relationship" mode="edit">
+            <input {...personnelDisplay("family.family_and_dependents.relationship")} readOnly value={familyRelationshipLabel(d.relationship)} className={inputCls} />
+          </PersonnelField>
+          {dependentFields(section, d)}
+        </div>
+      </fieldset>
+    );
+  };
+
+  // ea36b7fa — the ONE consolidated Family & Dependents Information table (replaces the three
+  // per-relationship sections). Columns per the request (Name / Relationship / Date of birth / Age /
+  // Contact / tax-relief flag / actions); rows are pre-sorted spouse-first (familyMembers above). The
+  // tax-relief column uses the SAME per-row predicate the payroll head count uses (core/dependents.ts
+  // isChildReliefEligible), so the display can never diverge from what drives tax; non-child rows show a
+  // dash. Age is SERVER-derived (childAgeYears): a client derivation would run Date.now() once at SSR and
+  // again at hydration, which can differ across midnight or a timezone offset. Per-relationship detail
+  // (occupation, education, IC, relief category, …) lives in the View dialog — the row itself stays
+  // scannable.
+  const familyMembersSection = (
+    <section className="border-t border-border">
+      <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+        {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('family.add')} title={t('family.addFamilyTitle')}>
+          {dialogForm(null)}
+        </FamilyFormDialog> : null}
+      </div>
+      {familyMembers.length === 0 ? (
+        <p className="px-4 pb-4 text-sm text-muted-foreground">{t('family.none')}</p>
+      ) : (
+        <div className="overflow-x-auto px-4 pb-4">
+          <table className="w-full min-w-[52rem] text-left text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="py-2 pr-3 font-medium">{t('family.name')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.relationship')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.dateOfBirth')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.childAge')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.contactNumber')}</th>
+                <th className="py-2 pr-3 font-medium">{t('family.countsTowardRelief')}</th>
+                <th className="py-2 text-right font-medium">{t('family.actions')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {familyMembers.map((d) => (
+                <tr key={d.id} className="border-b border-border/60 align-top">
+                  <td className="py-2 pr-3 font-medium">
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      {d.fullName}
+                      {d.isBeneficiary && <Badge variant="success">{t('family.beneficiary')}</Badge>}
+                      {d.isDeceased && <Badge variant="default">{t('family.deceased')}</Badge>}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-3">{familyRelationshipLabel(d.relationship)}</td>
+                  <td className="whitespace-nowrap py-2 pr-3">{formatDmy(d.dateOfBirth)}</td>
+                  {/* r351 — BOTH TAKEN AT THE PAGE'S OWN KUALA LUMPUR DATE, not at real UTC now.
+                      `childAgeYears` and `isChildReliefEligible` both default `asOf` to `new Date()`, and
+                      this page resolves `todayInKualaLumpur()` for everything else it prints — including the
+                      qualifying-children figure on the Bank & Statutory tab, computed a few hundred lines
+                      above from the SAME predicate. Between 00:00 and 08:00 Kuala Lumpur the two are
+                      different calendar dates, so on a child's 18th birthday the two tabs contradicted each
+                      other about that child for eight hours every day. CLAUDE.md §8: a date from an instant
+                      goes through todayInKualaLumpur(). One date, one answer, both tabs. */}
+                  <td className="py-2 pr-3">{childAgeYears(d.dateOfBirth, familyAsOf) ?? '—'}</td>
+                  <td className="py-2 pr-3">{d.phone ?? '—'}</td>
+                  <td className="py-2 pr-3">
+                    {d.relationship === 'child'
+                      ? isChildReliefEligible(d, familyAsOf)
+                        ? t('family.yes')
+                        : t('family.no')
+                      : '—'}
+                  </td>
+                  <td className="py-2">
+                    <div className="flex items-center justify-end gap-2">
+                      <FamilyFormDialog
+                        triggerLabel={t('family.view')}
+                        triggerVariant="outline"
+                        title={t('family.viewFamilyTitle')}
+                      >
+                        {viewDialogBody(d)}
+                      </FamilyFormDialog>
+                      {canMaintainWorkforce ? <>
+<FamilyFormDialog
+                        triggerLabel={t('family.edit')}
+                        triggerVariant="outline"
+                        title={t('family.editFamilyTitle')}
+                      >
+                        {dialogForm(d)}
+                      </FamilyFormDialog>
+                      {/* Delete keeps tab retention with no extra work: this form lives INSIDE the tab
+                          shell, and ConfirmSubmit's confirm calls requestSubmit() on it, firing a bubbling
+                          submit event the shell's capture listener does see. */}
+                      <form action={archiveDependentAction}>
+                        <input type="hidden" name="employmentId" value={emp.employmentId} />
+                        <input type="hidden" name="id" value={d.id} />
+                        <ConfirmSubmit
+                          size="sm"
+                          variant="destructive"
+                          title={t('family.deleteFamilyConfirmTitle')}
+                          description={t('family.deleteFamilyConfirmBody')}
+                          confirmLabel={t('family.delete')}
+                        >
+                          {t('family.delete')}
+                        </ConfirmSubmit>
+                      </form>
+</> : null}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+
+  const familyPanel = admin ? (
+    <Card id="section-family" className="overflow-hidden">
+      <SectionHeader title={t('family.title')} count={dependents.length} />
+      <p className="mx-4 mt-3 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        {t('family.note')}
+      </p>
+      <div className="mt-3">
+        {familyMembersSection}
+      </div>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('family.hint')}</p>
+    </Card>
+  ) : null;
+
+  // ── QUALIFICATION ──────────────────────────────────────────────────────────
+  // Feedback a949184a — the employee's academic / professional qualification history, mirroring the Family
+  // tab's list-and-dialog pattern: one summary table (Qualification / Institute / Major / Graduation Date /
+  // Highest) + a single Add Qualification dialog posting to the event-logged core service. The Qualification
+  // dropdown is catalog-backed (System Labels > Profile Options, category qualificationLevel) with the
+  // standard legacy-value merge: a stored value whose option was deactivated/renamed still renders (and
+  // re-saves) pre-selected. Exactly ONE record can be the Highest Qualification — ticking it on save
+  // transfers the flag from the previous holder (core/qualifications.ts, backstopped by a partial unique
+  // index). Rows arrive pre-sorted from the service: most recent graduation first, in-progress last.
+  const qualificationLevelLabels = new Map(profileOptions.qualificationLevel.map((o) => [o.value, o.label]));
+  const qualificationLabelOf = (v: string) => qualificationLevelLabels.get(v) ?? v;
+  const qualificationOptions = profileOptions.qualificationLevel.map((o) => ({ value: o.value, label: o.label }));
+  const qualificationOptionsFor = (q: QualificationRow | null) =>
+    q && !qualificationOptions.some((o) => o.value === q.qualification)
+      ? [
+          ...qualificationOptions,
+          { value: q.qualification, label: `${q.qualification} ${t('optionLegacySuffix')}` },
+        ]
+      : qualificationOptions;
+
+  // Shared field inputs for one qualification form (Add when q is null, Edit otherwise). Control names are
+  // load-bearing for qualification-actions.ts. HTML `required` on the level select + max-length guards are
+  // the client-side floor; the service re-validates (active catalog, YYYY-MM periods, From ≤ To,
+  // Graduation ≥ From) on save.
+  const qualificationFields = (q: QualificationRow | null) => (
+    <>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.level" mode="record">
+        <select {...personnelControl('qualification.academic_and_professional_qualifications.level','record')} defaultValue={q?.qualification ?? ''} className={inputCls}>
+          <option value="">{t('qualification.levelPlaceholder')}</option>
+          {qualificationOptionsFor(q).map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.institute" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.institute','edit')} defaultValue={q?.institute ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.fromym" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.fromym','edit')} defaultValue={q?.fromYm ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.toym" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.toym','edit')} defaultValue={q?.toYm ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.graduationdate" mode="edit">
+        <DateField {...personnelControl('qualification.academic_and_professional_qualifications.graduationdate','edit')} defaultValue={q?.graduationDate ?? ''} className={inputCls} label={personnelLabel('qualification.academic_and_professional_qualifications.graduationdate')} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.major" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.major','edit')} defaultValue={q?.major ?? ''} className={inputCls} />
+      </PersonnelField>
+      <PersonnelField fieldId="qualification.academic_and_professional_qualifications.result" mode="edit">
+        <input {...personnelInput('qualification.academic_and_professional_qualifications.result','edit')} defaultValue={q?.result ?? ''} placeholder={t('qualification.resultPlaceholder')} className={inputCls} />
+      </PersonnelField>
+      <div className="sm:col-span-2">
+        <PersonnelField fieldId="qualification.academic_and_professional_qualifications.description" mode="edit">
+          <textarea {...personnelControl('qualification.academic_and_professional_qualifications.description','edit')} rows={2} defaultValue={q?.description ?? ''} className={taCls} />
+        </PersonnelField>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 self-end pb-1 sm:col-span-2">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input {...personnelInput('qualification.academic_and_professional_qualifications.highest')} defaultChecked={q?.isHighest ?? false} />
+          {personnelLabel('qualification.academic_and_professional_qualifications.highest')}
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground sm:col-span-2">{t('qualification.highestHint')}</p>
+    </>
+  );
+
+  // One dialog form for Add (q null) and Edit — the Family tab's dialogForm pattern. The STATIC hidden
+  // `tab` input keeps the post-save redirect on this tab (Dialog.Portal reparents the form outside the
+  // PersonnelTabs shell, so the shell's submit listener never sees it — see the Family tab note).
+  const qualificationDialogForm = (q: QualificationRow | null) => (
+    <form action={q ? editQualificationAction : addQualificationAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      {q && <input type="hidden" name="id" value={q.id} />}
+      <input type="hidden" name="tab" value="qualification" data-tab-tracker="" />
+      {qualificationFields(q)}
+      <div className="flex justify-end sm:col-span-2">
+        <button className={btnPrimary}>{q ? t('qualification.save') : t('qualification.add')}</button>
+      </div>
+    </form>
+  );
+
+  // View: the SAME server-rendered fields, disabled inside a fieldset with no <form> — the Family tab's
+  // viewDialogBody pattern (the read-only view can never drift from the Edit layout, and can never post).
+  const qualificationViewBody = (q: QualificationRow) => (
+    <fieldset disabled>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">{qualificationFields(q)}</div>
+    </fieldset>
+  );
+
+  const qualificationPanel = admin ? (
+    <Card id="section-qualification" className="overflow-hidden">
+      <SectionHeader title={t('qualification.title')} count={qualifications.length} />
+      <section className="border-t border-border">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+          {canMaintainWorkforce ? <FamilyFormDialog triggerLabel={t('qualification.add')} title={t('qualification.addTitle')}>
+            {qualificationDialogForm(null)}
+          </FamilyFormDialog> : null}
+        </div>
+        {qualifications.length === 0 ? (
+          <p className="px-4 pb-4 text-sm text-muted-foreground">{t('qualification.none')}</p>
+        ) : (
+          <div className="overflow-x-auto px-4 pb-4">
+            <table className="w-full min-w-[52rem] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">{t('qualification.level')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.institute')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.major')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.graduationDate')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('qualification.highestColumn')}</th>
+                  <th className="py-2 text-right font-medium">{t('qualification.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {qualifications.map((q) => (
+                  <tr key={q.id} className="border-b border-border/60 align-top">
+                    <td className="py-2 pr-3 font-medium">{qualificationLabelOf(q.qualification)}</td>
+                    <td className="py-2 pr-3">{q.institute ?? '—'}</td>
+                    <td className="py-2 pr-3">{q.major ?? '—'}</td>
+                    <td className="whitespace-nowrap py-2 pr-3">{formatDmy(q.graduationDate)}</td>
+                    <td className="py-2 pr-3">
+                      {q.isHighest ? <Badge variant="success">{t('qualification.highestBadge')}</Badge> : '—'}
+                    </td>
+                    <td className="py-2">
+                      <div className="flex items-center justify-end gap-2">
+                        <FamilyFormDialog
+                          triggerLabel={t('qualification.view')}
+                          triggerVariant="outline"
+                          title={t('qualification.viewTitle')}
+                        >
+                          {qualificationViewBody(q)}
+                        </FamilyFormDialog>
+                        {canMaintainWorkforce ? <>
+<FamilyFormDialog
+                          triggerLabel={t('qualification.edit')}
+                          triggerVariant="outline"
+                          title={t('qualification.editTitle')}
+                        >
+                          {qualificationDialogForm(q)}
+                        </FamilyFormDialog>
+                        {/* Delete lives INSIDE the tab shell, so ConfirmSubmit's requestSubmit() fires a
+                            bubbling submit the shell's capture listener sees (tab retention for free). */}
+                        <form action={archiveQualificationAction}>
+                          <input type="hidden" name="employmentId" value={emp.employmentId} />
+                          <input type="hidden" name="id" value={q.id} />
+                          <ConfirmSubmit
+                            size="sm"
+                            variant="destructive"
+                            title={t('qualification.deleteConfirmTitle')}
+                            description={t('qualification.deleteConfirmBody')}
+                            confirmLabel={t('qualification.delete')}
+                          >
+                            {t('qualification.delete')}
+                          </ConfirmSubmit>
+                        </form>
+</> : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+      <p className="px-4 pb-4 pt-2 text-xs text-muted-foreground">{t('qualification.hint')}</p>
+    </Card>
+  ) : null;
+
+  // 2.1 Payroll Policy — assign the named pay-processing template applied to this employee. Admin-only;
+  // payroll uses it automatically on the next run. Null = monthly default.
+  // r298 — Payroll-owned: absent for a tenant without Payroll, and `whenPayroll` drops its name from the bar.
+  const payrollPolicyCard = admin && payrollOn && !emp.terminatedOn ? (
+    <Card id="section-payroll-policy">
+      <SectionHeader title={tp('assignTitle')} />
+          <form action={assignPolicyAction} data-save-section="policy" className="flex flex-wrap items-end gap-3 p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            {/* r393 (685d2380 step 2) — the SHARED select the draft's Payroll tab renders too, in form mode
+                (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
+            <PayrollPolicyField mode="form" defaultValue={emp.payrollPolicyId} policies={assignablePolicies} />
+          </form>
+          {emp.payrollPolicyId && emp.payrollPolicyStatus !== 'active' && (
+            <p className="px-4 pb-3 text-xs text-amber-600 dark:text-amber-400">{tp('assignInactiveNote')}</p>
+          )}
+          <p className="px-4 pb-4 text-xs text-muted-foreground">{tp('assignHint')}</p>
+    </Card>
+  ) : null;
+
+  // ── OTHERS ─────────────────────────────────────────────────────────────────
+  // ADR-0070 — Clocking Location & Geofencing. Admin-only.
+  // r423 (83c0d3c8) — ONE switch, "Use Geofencing for Clocking", and the locations it needs, as ONE section
+  // with ONE writer (setClockingControlAction → setClockingControl). It replaced two sections: the site
+  // list and the "Enforce geofencing" tick box + "Radius override" box (retired: each location's own radius
+  // is the only radius). The rows the table can show are the OFFERED locations (active, open to this
+  // employee's company) plus any location ASSIGNED earlier that is no longer usable, flagged with why.
+  const clockingOffered = clockingLocations.map((cl) => ({
+    id: cl.id,
+    name: cl.name,
+    code: cl.locationCode ?? null,
+    address: cl.address ?? null,
+    radiusM: cl.radiusM ?? null,
+    radiusText: cl.radiusM != null ? tc('withinRadius', { radius: cl.radiusM }) : null,
+    archived: false,
+    unusableReason: null as string | null,
+  }));
+  const clockingOfferedIds = new Set(clockingOffered.map((l) => l.id));
+  const clockingUnusable = assignedClockingLocations
+    .filter((cl) => !clockingOfferedIds.has(cl.id))
+    .map((cl) => ({
+      id: cl.id,
+      name: cl.name,
+      code: null,
+      address: cl.address ?? null,
+      radiusM: cl.radiusM ?? null,
+      radiusText: cl.radiusM != null ? tc('withinRadius', { radius: cl.radiusM }) : null,
+      archived: cl.archivedAt != null,
+      // An assignment listed here but not offered is unusable by definition: either deactivated, or not
+      // open to the employee's current company (core/attendance.ts resolveGeofence never matches it).
+      unusableReason:
+        cl.archivedAt != null ? tc('unusableInactive') : tc('unusableNotOpen', { company: emp.company ?? '' }),
+    }));
+  const clockingCard = admin && !emp.terminatedOn ? (
+    <Card id="section-clocking-location">
+      <SectionHeader title={tc('assignmentTitle')} />
+          <form action={setClockingControlAction} data-save-section="clocking" className="space-y-3 p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <LocationAssignment
+              name="clockingLocationIds"
+              switchName="geofencingEnabled"
+              defaultEnabled={emp.geofencingEnabled}
+              locations={[...clockingOffered, ...clockingUnusable]}
+              defaultSelected={clockingDefaultIds}
+              labels={{
+                switchTitle: tc('switchTitle'),
+                switchDescription: tc('switchDescription'),
+                switchOn: tc('switchOn'),
+                switchOff: tc('switchOff'),
+                offNote: tc('offNote'),
+                fieldLabel: tc('fieldLabel'),
+                requiredMark: tc('requiredMark'),
+                pickerHint: tc('pickerHint', { company: emp.company ?? '' }),
+                requiredNote: tc('requiredNote'),
+                cannotClockWarning: tc('cannotClockWarning'),
+                colLocation: tc('colLocation'),
+                colAddress: tc('colAddress'),
+                colRadius: tc('colRadius'),
+                colStatus: tc('colStatus'),
+                remove: tc('remove'),
+                addLocation: tc('addLocation'),
+                all: tc('allLabel'),
+                search: tc('searchPlaceholder'),
+                selectAll: tc('selectAll'),
+                clearAll: tc('clearAll'),
+                selectedCountTemplate: tc('selectedCount', { count: '{count}' }),
+                active: tc('statusActive'),
+                noRadius: tc('noRadius'),
+                noneOffered: tc('noneOffered', { company: emp.company ?? '' }),
+              }}
+            />
+          </form>
+          {/* 44bc1c33 — CARD / CLOCKING ID, the SECOND interface onto `employment.card_id`. The Attendance ›
+              Card Assignment screen edits the same column, so the two cannot drift: the reporter's
+              requirement that they be "two interfaces for managing the same Card ID data, not separate
+              data fields" is satisfied by there being one field, not by keeping two in step.
+              Emptying it CLEARS the card, which returns this employee to being matched by their Employee
+              ID — which is how device files have always matched and is the normal state. */}
+          <form action={saveCardIdFieldAction} data-save-section="card" className="flex flex-wrap items-end gap-3 border-t border-border p-4">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <PersonnelField fieldId="attendance.clocking_and_attendance_photo.cardid">
+              <input
+                {...personnelInput('attendance.clocking_and_attendance_photo.cardid')}
+                defaultValue={emp.cardId ?? ''}
+                // TEXT, never type="number": a card number carries leading zeros and '007' is not '7'.
+                inputMode="text"
+                autoComplete="off"
+                className={`${inputCls} w-44`}
+              />
+            </PersonnelField>
+            <p className="pb-2 text-xs text-muted-foreground">{ta('cardNoneNote')}</p>
+          </form>
+    </Card>
+  ) : null;
+
+  /**
+   * r430 (board item b8ca6efe) — Web Clocking's per-employee Attendance Photo setting: Required (a photo
+   * must be taken or the clocking is refused), Optional (the employee may take one or skip it), or Not
+   * Required (no camera step at all). Every employee starts Not Required. A plain `<fieldset>`, not a
+   * `<form>`: this card has no standalone per-card action (unlike clockingCard above it), so there is no
+   * implicit-submission risk to guard against, and `runTabSave`'s own `sectionFormData` always forces the
+   * trusted top-level employmentId regardless of what a section posts — a per-section hidden copy would be
+   * one more chance for a crafted payload to point a write at a different record, not less.
+   * Native radio inputs (not the client `Segmented` primitive) so this stays a plain server-rendered
+   * control the Attendance tab's existing DOM-diffing Save (lib/tab-save-dom.ts) can read without any
+   * client-side state of its own — the same shape app/(app)/admin/work-locations/clocking/clocking-form.tsx uses
+   * for its Status radios, styled as a row of pill buttons with `has-[:checked]:`.
+   */
+  const webClockingPhotoCard = admin && !emp.terminatedOn ? (
+    <Card id="section-web-clocking">
+      <SectionHeader title={tc('webClockingTitle')} />
+      <fieldset data-save-section="photo" className="p-4">
+        <legend className="mb-2 text-sm font-medium">{personnelLabel('attendance.clocking_and_attendance_photo.attendancephotosetting')}</legend>
+        <div role="radiogroup" aria-label={personnelLabel('attendance.clocking_and_attendance_photo.attendancephotosetting')} className="flex flex-wrap gap-1.5">
+          {personnelFormChoices('attendance.clocking_and_attendance_photo.attendancephotosetting').map(({value:v,labelKey}) => (
+            <label
+              key={v}
+              className="min-h-9 cursor-pointer rounded-md border border-input bg-background px-3 py-1.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground monolith:rounded-none monolith:border-ink monolith:bg-transparent monolith:text-ink has-[:checked]:monolith:bg-ink has-[:checked]:monolith:text-bone"
+            >
+              <input
+                {...personnelRadio('attendance.clocking_and_attendance_photo.attendancephotosetting')}
+                value={v}
+                defaultChecked={emp.attendancePhotoSetting === v}
+                className="sr-only"
+              />
+              {tPersonnel(labelKey)}
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">{tc('attendancePhotoHint')}</p>
+      </fieldset>
+    </Card>
+  ) : null;
+
+  // Item 52a30630 — Grade RELOCATED here from Profile > Personal Details onto the Leave tab (grade drives
+  // grade-scoped leave entitlement), so the number reads next to the entitlement it decides.
+  //
+  // r78c — the card is now VIEW-ONLY and its server action (setEmploymentGradeAction) is deleted. It was the
+  // last direct writer of employment.grade_id outside Movement, and it wrote `employment.grade.changed` — a
+  // MOVEMENT_EVENT_TYPE — with no movement tag, so a grade edit made here opened its OWN "Grade Change" row
+  // on the Employment History beside the Promotion that had already recorded the same change as a tagged
+  // leg. That is the duplicate row the reporter raised. 8ebabbf2 made the Employment tab view-only for the
+  // same reason and left this card noted as out of scope; this closes it.
+  //
+  // The grade still SHOWS here — it is the input to grade-scoped leave entitlement and hiding it would make
+  // an unexplained entitlement — with a pointer to the screen that changes it. Movement's Promotion /
+  // Demotion / Organisation Assignment Change kinds all carry Job Grade, and createMovementEventAction
+  // recomputes entitlement afterwards exactly as this action did (R45 7527ea5f parity).
+  const gradeCard = admin ? (
+    <Card id="section-grade">
+      <SectionHeader title={t('gradeCardTitle')} />
+      <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
+        <PersonnelField fieldId="leave.grade_and_benefit_scheme.gradename" mode="edit">
+          <input {...personnelDisplay("leave.grade_and_benefit_scheme.gradename")}
+            value={(emp.gradeId ? (grades.find((g) => g.id === emp.gradeId)?.name ?? null) : null) ?? t('gradeNone')}
+            disabled
+            readOnly
+            aria-readonly="true"
+            className={inputCls}
+          />
+        </PersonnelField>
+        <div className="sm:col-span-3">
+          <p className="text-xs text-muted-foreground">
+            {t('gradeMovementOnlyNote')}{' '}
+            <Link
+              href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`}
+              className="text-primary hover:underline"
+            >
+              {t('movement.newEvent')}
+            </Link>
+          </p>
+        </div>
+      </div>
+    </Card>
+  ) : null;
+
+  // Basic Salary card (feedback 87c82b18 — "Compensation" renamed & rebuilt as salary history; audit
+  // columns removed + edit/delete widened under 7c7c2f80). The salary engine (effective-dated
+  // CLOSE+INSERT) lives in core/comp.ts. NOTE on payroll: generatePayslips resolves the CURRENT OPEN
+  // row (validTo IS NULL), NOT the row in force during the period being paid — only the opt-in
+  // salary-increment proration block is period-aware (core/payroll.ts). That is why removing or
+  // re-dating records is blocked against closed payroll periods. Kept in its old Payroll slot;
+  // `section-compensation` anchor stays for fragment-URL safety. Stays a server-rendered
+  // <Card>/<form> (f2904eeb) — interactivity lives in the SalaryRevisionConfirm / history-table islands.
+  // (`fmtMoney` used to be declared here; 18719ded hoisted it to the top of the Payroll section so Pay
+  // Items and CP38 read their amounts through the same formatter this card always used.)
+  // salaryHistory is newest-first. previous = the next-older row's basic; status is derived from the dates.
+  const salaryRows = salaryHistory.map((row: CompensationHistoryRow, i: number) => {
+    const basic = Number(row.basicSalary);
+    const prevRow = salaryHistory[i + 1];
+    const previous = prevRow ? Number(prevRow.basicSalary) : null;
+    const incrementAmount = previous != null ? basic - previous : null;
+    const incrementPct =
+      incrementAmount != null && previous != null && previous > 0 ? (incrementAmount / previous) * 100 : null;
+    const isFuture = row.validFrom > today;
+    const isActive = !isFuture && (row.validTo == null || row.validTo > today);
+    const status: 'active' | 'future' | 'historical' = isFuture ? 'future' : isActive ? 'active' : 'historical';
+    // Only the OPEN row (validTo null; already non-superseded from the query) is editable — the latest
+    // active OR a future-effective record. Historical (closed) rows stay immutable (Edit flow #4).
+    const editable = !emp.terminatedOn && row.validTo == null;
+    // Deletable (7c7c2f80): soft delete is offered only for records whose window no CLOSED payroll run
+    // relied on — same rule the service + 0277 trigger enforce, pre-derived so the button can hide.
+    const deletable =
+      !emp.terminatedOn && !overlapsClosedPeriod(closedPayrollPeriods, row.validFrom, row.validTo);
+    return { row, basic, previous, incrementAmount, incrementPct, status, editable, deletable };
+  });
+  // Serialized rows for the client history table (search / filter / sort / export / edit / delete).
+  // Salary math is derived here on the server; the island only presents + filters (f2904eeb-safe, no
+  // client fetch). Audit detail (created/updated by/on) is no longer serialized — it belongs to the
+  // Audit Trail, not this screen (7c7c2f80).
+  const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
+    id: r.row.id,
+    employmentId: emp.employmentId,
+    effectiveDate: r.row.validFrom,
+    currency: r.row.currency,
+    basic: r.basic,
+    previous: r.previous,
+    incrementAmount: r.incrementAmount,
+    incrementPct: r.incrementPct,
+    status: r.status,
+    // ADR-0078 — per-revision salary structure, shown as table columns and editable on the open row.
+    payMode: r.row.payMode,
+    paymentTerm: r.row.paymentTerm,
+    rateAmount: r.row.rateAmount,
+    remarks: r.row.remarks,
+    editable: r.editable,
+    deletable: r.deletable,
+  }));
+  // The summary shows the row in effect TODAY (active) — NOT the open row, which may be a future revision.
+  const activeDerived = salaryRows.find((r) => r.status === 'active') ?? null;
+  const hasFuture = salaryRows.some((r) => r.status === 'future');
+  // ADR-0078 — the OPEN row (validTo null) is what payroll reads; its pay structure prefills the
+  // add-revision form so an untouched save carries the structure forward visibly.
+  const openSalaryRow = salaryHistory.find((r: CompensationHistoryRow) => r.validTo == null) ?? null;
+  // Add salary revision — the SAME <form action={setCompensationAction}>, the same control names and the
+  // same SalaryRevisionConfirm guard as before, moved out from under the table into the section's Add
+  // dialog (18719ded). The initial record still defaults its effective date to the join date. Allowance is
+  // not maintained here (it moved to Pay Items); the action carries it forward.
+  // The STATIC hidden `tab` input is load-bearing — Dialog.Portal reparents the form outside the
+  // PersonnelTabs shell, so the shell's submit listener cannot inject the tab (see the Family tab note).
+  const salaryAddDialogForm = (
+    <form action={setCompensationAction} className="space-y-3">
+      <input type="hidden" name="employmentId" value={emp.employmentId} />
+      <input type="hidden" name="tab" value="payroll" data-tab-tracker="" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.validfrom" mode="record">
+          <DateField {...personnelControl("payroll.basic_salary_and_salary_history.validfrom", 'record')}
+
+
+            defaultValue={salaryRows.length ? today : emp.hiredOn}
+            className={inputCls}
+            label={personnelLabel("payroll.basic_salary_and_salary_history.validfrom")}
+          />
+          {salaryRows.length === 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">{t('salaryInitialEffectiveHint')}</p>
+          )}
+        </PersonnelField>
+        {/* r374 (item 7dbaf677) — `required` DROPPED, `min="0"` KEPT. A Director paid Director Fees
+            quarterly has no monthly basic; `required` meant HR could type a zero but not leave the box
+            empty, and an empty box is the honest answer. A blank POST is read as an explicit zero by
+            `setCompensationAction` (`Number(null)` and `Number('')` are both 0), and `setCompensation`
+            then makes Remarks compulsory — the hint below says so BEFORE the save rather than after it.
+            `min="0"` stays because the service refuses a negative amount. */}
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.basicsalary" mode="edit">
+          <input {...personnelInput('payroll.basic_salary_and_salary_history.basicsalary','edit')} className={inputCls} />
+        </PersonnelField>
+        {/* 297ae65a — the record's salary currency, grouped WITH the amount (searchable ISO 4217 list).
+            Preselects the open row's currency (carry-forward made visible) or the company default for
+            a brand-new first record; the service validates + carries forward server-side. */}
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.currency" mode="edit">
+          <CurrencySelect name={personnelFormName("payroll.basic_salary_and_salary_history.currency")} value={openSalaryRow?.currency ?? defaultSalaryCurrency} />
+        </PersonnelField>
+        <PersonnelField fieldId="payroll.basic_salary_and_salary_history.remarks" mode="edit">
+          <input {...personnelInput('payroll.basic_salary_and_salary_history.remarks','edit')}
+
+
+            placeholder={t('salaryRemarksPlaceholder')}
+            className={inputCls}
+          />
+        </PersonnelField>
+        {/* ADR-0078 (642ecc55) — Pay Mode, Payment Term and the conditional Rate box are saved WITH the
+            revision (effective-dated, historical rows keep their own settings). Defaults come from the
+            open row so an untouched save carries the structure forward. The service enforces the
+            period-boundary rule for pay-mode changes and requires a rate for daily/hourly. */}
+        <PayStructureFields
+          defaultPayMode={(openSalaryRow?.payMode ?? 'monthly') as PayModeOption}
+          defaultPaymentTerm={openSalaryRow?.paymentTerm ?? 'monthly'}
+          defaultRateAmount={openSalaryRow?.rateAmount ?? null}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground">{t('salaryAllowanceMovedHint')}</p>
+      {/* r374 — the rule behind the now-optional amount, said on the form rather than discovered through
+          a refused save. STATIC, not conditional: this is a server-rendered <form> with no client state
+          to watch the box with, and the sentence is true whether or not the box is empty. */}
+      <p className="text-xs text-muted-foreground">{t('salaryNoBasicHint')}</p>
+      <p className="text-xs text-muted-foreground">{t('payModeBoundaryHint')}</p>
+      {/* Confirm-before-save survives the move. It is a ConfirmSubmit (an AlertDialog) inside this
+          FamilyFormDialog — a modal over a modal — and it keeps working for a specific reason: the
+          trigger Button stays INSIDE this <form>, so its `closest('form').requestSubmit()` still finds
+          the form even though Dialog.Portal has reparented the whole thing to document.body. That
+          composition is pinned by test/personnel-payroll-tab-dialogs.dom.test.tsx precisely because it
+          is the kind of thing that passes tsc, the suite and `next build` and is broken on screen. */}
+      <SalaryRevisionConfirm
+        currentBasic={activeDerived ? activeDerived.basic : null}
+        currency={activeDerived ? activeDerived.row.currency : 'MYR'}
+      />
+    </form>
+  );
+
+  const compensationCard = admin ? (
+    <Card id="section-compensation" className="overflow-hidden">
+      <SectionHeader title={t('compensation')} count={salaryRowViews.length} />
+      {/* Summary strip — current active basic, effective-since, latest increment, future chip. */}
+      <div className="border-b border-border p-4">
+        {activeDerived ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums">
+                {activeDerived.row.currency} {fmtMoney(activeDerived.basic)}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {t('compMeta', { validFrom: formatDmy(activeDerived.row.validFrom) })}
+              </span>
+            </div>
+            {activeDerived.incrementAmount != null && activeDerived.incrementAmount !== 0 && (
+              <span
+                className={`text-xs font-medium ${
+                  activeDerived.incrementAmount > 0
+                    ? 'text-emerald-700 dark:text-emerald-400'
+                    : 'text-red-700 dark:text-red-400'
+                }`}
+              >
+                {t('salaryLatestIncrement', {
+                  amount: `${activeDerived.row.currency} ${fmtMoney(activeDerived.incrementAmount)}`,
+                  pct: activeDerived.incrementPct != null ? activeDerived.incrementPct.toFixed(2) : '—',
+                })}
+              </span>
+            )}
+            {hasFuture && <Badge variant="warning">{t('salaryFutureChip')}</Badge>}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('noCompensation')}</p>
+        )}
+      </div>
+
+      {/* Same shape as Pay Items and CP38 (and as the Qualification tab): the section's only Add control
+          sits in a header strip above the list, not in a form pinned under it. The strip is skipped
+          entirely for a terminated employment — there is no Add for it, and an empty strip would just be
+          unexplained whitespace. */}
+      <section>
+        {!emp.terminatedOn && (
+          <div className="flex flex-wrap items-center justify-end gap-2 px-4 py-3">
+            <FamilyFormDialog triggerLabel={t('salaryAdd')} title={t('salaryAddTitle')}>
+              {salaryAddDialogForm}
+            </FamilyFormDialog>
+          </div>
+        )}
+        {/* History table — every revision, with search / status filter / column sort / CSV export, plus an
+            edit affordance on the latest (open) record. Interactive client island (f2904eeb-safe). The
+            in-force revision carries its own Active badge and row tint rather than being identified by
+            position: this table sorts and filters, so row order is the reader's choice, not the record's
+            status. (The summary strip above states the same figure once more, in words.) */}
+        {salaryRowViews.length > 0 && <SalaryHistoryTable rows={salaryRowViews} />}
+      </section>
+
+      {/* ── R46 79eb7151, SUPERSEDED by ADR-0078 (642ecc55) — How this employee is paid ─────────────────────
+          The R46 decision ("surface, do NOT duplicate": Pay Mode ≡ payroll_policy.policy_type and Payment
+          Term ≡ PayrollPolicyConfig.frequency, rendered read-only here with a link to the policy) is
+          REVERSED: the salary structure now lives on the employee's own effective-dated compensation row
+          (pay_mode / payment_term / rate_amount, NOT NULL, no policy fallback), edited via the Basic Salary
+          form above and shown per-revision in the history table. The read-only pair this block used to
+          render is gone; there is still exactly ONE source of truth per period, so the R46 objection (two
+          disagreeing sources + a precedence rule) does not recur. Payment Method was per-employee all along
+          and stays exactly where it was, with its own column, event and save. */}
+      <div className="space-y-3 border-t border-border p-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('payMethodGroup')}
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Payment Method — a genuinely per-employee setting with a real control and its own Save.
+              Bank Transfer is validated server-side against the employee's bank name + account number
+              (setEmploymentPaymentMethod); a missing destination is rejected with an explanatory toast
+              rather than saved as an unpayable row. */}
+          <form action={setPaymentMethodAction} data-save-section="payment" className="flex flex-col gap-1.5">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            {/* r393 (685d2380 step 2) — the SHARED field group the draft's Payroll tab renders too, in
+                form mode (markup unchanged — pinned by test/r393-draft-payroll-tab.dom.test.tsx). */}
+            <PaymentMethodField mode="form" defaultValue={emp.paymentMethod} disabled={!!emp.terminatedOn} />
+          </form>
+        </div>
+        <p className="text-xs text-muted-foreground">{t('paymentMethodBankHint')}</p>
+      </div>
+    </Card>
+  ) : null;
+
+  // Statutory (Malaysia) card — now the sole card of the dedicated Bank & Statutory tab (feedback
+  // 40ef71a0; originally pinned to the top of the Payroll tab under 7524eda1). Full-width card whose
+  // layout is regrouped into clearly-labelled sections (identity/tax, EPF, SOCSO/EIS, salary-payment
+  // bank, TP3) for readability. IMPORTANT: this remains a SINGLE <form action={setStatutoryAction}> — that
+  // action is a full-row overwrite, so every named input MUST stay mounted at all times (no accordions /
+  // conditional unmounting) or an absent field silently wipes stored data. No server logic changed.
+  const statutoryCard = admin ? (
+    <Card>
+      <SectionHeader title={t('statutoryMalaysia')} />
+      {/* 420ebab5 part two (r255) — the card's own Save button is gone; the Bank & Statutory tab's one
+          "Save Changes" covers it. This form goes FIRST in a consolidated request
+          (BANK_STATUTORY_TAB_SECTION_ORDER): it is a FULL-ROW overwrite whose pass-throughs read the
+          stored row at the moment it runs, so running it first lets the partial writers (tax, bank,
+          others) land their own values on top of it. It carries NO residency control and no longer
+          writes one either — `applyStatutorySection` derives `isResident` from the stored
+          `tax_residency` the Income Tax (PCB) section owns, because reading a control that is not here
+          wrote `is_resident = false` on every save and charged flat-rate PCB. */}
+      <form action={setStatutoryAction} data-save-section="statutory" className="flex flex-col gap-6 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+
+        {/* Item 8b5334db — Group 1 (Identification & tax) was split out of this full-row statutory form: the IC
+            moved to its own form on the Profile tab (setIcAction), and the tax fields (Tax Number, Tax Category,
+            Income Tax Resident, Children/PCB relief, Employer-bears-tax) moved to the dedicated Identification &
+            Tax card above (setTaxAction). This form no longer carries any of those inputs; setStatutoryAction
+            reads the stored IC + tax values and passes them through so its full-row overwrite can't wipe them. */}
+
+        {/* Group 2 — EPF. Presented as its own visually-distinct information card (rounded border +
+            heading + subtle surface) so the EPF election stands apart from the flat identity/SOCSO/bank
+            sections — feedback 127dffba. Still inside the single setStatutoryAction form; presentation only.
+            Kept at sm:grid-cols-2 because <EpfElection> renders an internal sm:col-span-2 rate row;
+            leaving that island's grid assumptions untouched is the safe play. */}
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+            {t('epfContribTitle')}
+          </legend>
+          <p className="text-xs text-muted-foreground">{t('epfElectionHint')}</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {/* 35b7af0a group 4 — EPF Number and EPF Citizenship are now ONE shared field group
+                (components/epf-registration-fields.tsx), rendered identically here and on the Create New
+                Employee wizard. The wizard's private copy said "Citizen / Permanent resident /
+                Non-citizen" against this card's "Malaysian citizen / Permanent resident (PR) /
+                Non-citizen (foreign worker)", and offered a fourth "— Not set —" option that
+                `epf_citizenship NOT NULL DEFAULT 'citizen'` has never been able to store. `mode="form"`
+                keeps these inputs exactly what they were: uncontrolled name/defaultValue inputs inside
+                this full-row setStatutoryAction form, with no function prop crossing the RSC boundary. */}
+            <EpfRegistrationFields
+              mode="form"
+              epfNumber={statutory?.epfNumber}
+              epfCitizenship={statutory?.epfCitizenship}
+            />
+            {/* EPF election (1C): rate fields appear only for voluntary_excess, and the ringgit fields only
+                for the three fixed-amount categories (item 70b14723) — client island. The amounts are
+                RINGGIT and pass through UNSCALED, unlike the rates, which are stored as decimals and are
+                ×100'd here into the percent the box shows. */}
+            <EpfElection
+              mode={statutory?.epfMode ?? null}
+              employeeRate={countryPack?.client.payroll.epfRateToPercent?.(statutory?.epfEmployeeRate) ?? null}
+              employerRate={countryPack?.client.payroll.epfRateToPercent?.(statutory?.epfEmployerRate) ?? null}
+              employeeAmount={statutory?.epfEmployeeAmount != null ? Number(statutory.epfEmployeeAmount) : null}
+              employerAmount={statutory?.epfEmployerAmount != null ? Number(statutory.epfEmployerAmount) : null}
+              manualReason={statutory?.epfManualReason ?? null}
+            />
+          </div>
+          {/* Item 0d9bb2da — "Employer bears EPF Contribution". Mirrors the employer-bears SOCSO/EIS/tax
+              controls: when ticked, the EPF employee + employer legs are still computed + reported in full,
+              but the employee's EPF share is funded from employer cost instead of being deducted from net. */}
+          {/* a72610af — the four employer-bears switches are now ONE shared control
+              (components/employer-bears-fields.tsx), rendered here and on the Create New Employee draft.
+              It stays INSIDE the EPF fieldset, beside the scheme it belongs to: the component is one
+              switch rather than a block of four precisely so neither screen's grouping has to move. */}
+          <EmployerBearsSwitch
+            mode="form"
+            field="employerBearsEpf"
+            defaultChecked={statutory ? statutory.employerBearsEpf : false}
+          />
+        </fieldset>
+
+        {/* Group 3 — dedicated SOCSO & EIS information card (item 5a461b99): the shared SOCSO & EIS
+            registration number, the three "Subject to" eligibility flags, and the three "Employer bears"
+            payroll controls. Its own bordered surface so the statutory-control decisions stand apart from the
+            flat identity/bank sections. Still inside the single setStatutoryAction form (full-row overwrite),
+            so every checkbox stays mounted. `nationality` is a hidden mirror of the profile value so the server
+            action can default the number from IC for Malaysians. */}
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <legend className="-ml-1 rounded-md bg-card px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-foreground">
+            {t('socsoEisCardTitle')}
+          </legend>
+          <input {...personnelCarry('profile.personal_details.nationality')} value={emp.nationality ?? ''} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {/* 35b7af0a group 7 — the SAME group the Create Employee wizard now renders
+                (components/socso-eis-fields.tsx). Names, options and the IC-derived number default are
+                carried over verbatim; this card still posts socsoNumber / socsoCategory / eisCategory
+                exactly as before. The wizard was a whole consolidation behind: it offered the legacy
+                "EIS eligible" yes/no that item a7271737 replaced, and no SOCSO category at all. */}
+            <SocsoEisFields
+              mode="form"
+              defaults={{
+                socsoNumber: statutory?.socsoNumber,
+                socsoCategory: statutory?.socsoCategory,
+                eisCategory: statutory?.eisCategory,
+              }}
+              icNumber={statutory?.icNumber}
+              nationality={emp.nationality}
+              // This page already resolves its pack as packFor('MY') at the top; passing the same
+              // literal keeps behaviour byte-identical. Widening the page to the company's own country
+              // is a real change and belongs to whoever does it, not to a field-sharing commit.
+              country="MY"
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('subjectToLegend')}</p>
+              <label className="flex items-center gap-2 text-sm" title={t('subjectToSkbbkHint')}>
+                <input {...personnelInput('bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk')} defaultChecked={statutory ? statutory.subjectToSkbbk : false} className="size-4 rounded" />
+                {personnelLabel('bank_statutory.socso_eis_and_others_statutory.subjecttoskbbk')}
+              </label>
+            </div>
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground" title={t('employerBearsHint')}>
+                {t('employerBearsLegend')}
+              </p>
+              <EmployerBearsSwitch mode="form" field="employerBearsSocso" defaultChecked={statutory ? statutory.employerBearsSocso : false} />
+              <EmployerBearsSwitch mode="form" field="employerBearsEis" defaultChecked={statutory ? statutory.employerBearsEis : false} />
+              <EmployerBearsSwitch mode="form" field="employerBearsSkbbk" defaultChecked={statutory ? statutory.employerBearsSkbbk : false} />
+            </div>
+          </div>
+        </fieldset>
+
+        {/* Item ef720d3a — the salary-payment bank fields (formerly Group 4) have moved to their OWN dedicated
+            Bank Information card (bankCard, rendered above on this tab) with a partial save (setBankAction).
+            The bank name is now a pick-from-catalog select and the card adds a custom-payment-holder function.
+            Because this statutory form is a full-row overwrite, the bank columns could not simply move into it —
+            setStatutoryAction now reads the stored bankName/bankAccountNo and passes them through unchanged so
+            relocating the UI can never wipe them (the four custom-holder columns are outside its write set). */}
+
+        {/* Item a6a47698 — the TP3 / opening-balances fieldset (formerly Group 5) and the Zakat pointer
+            have moved to the Payroll tab (tp3Card + zakatSummaryCard). They are payroll matters, not
+            banking/statutory-registration matters. TP3 now saves through its own setTp3Action (partial
+            update of only the four TP3 columns); this statutory form no longer carries them, and its
+            full-row overwrite setStatutoryAction passes the stored TP3 + zakat values through unchanged
+            so relocating the UI can never wipe them. */}
+      </form>
+
+      {/* Item df09f22a — Income Tax (PCB) is a Malaysia statutory payroll item, so the Identification & Tax
+          island is nested INSIDE this Statutory (Malaysia) card as an "Income Tax (PCB)" section (visual merge).
+          It keeps its OWN <form action={setTaxAction}> rather than folding into the full-row
+          setStatutoryAction form — the two-action design is preserved so one save can't overwrite the
+          other. Rendered as a sibling of the statutory form inside the same Card (no nested forms).
+          420ebab5 part two (r255) — what it no longer keeps is a Save BUTTON: the tab's one "Save Changes"
+          writes both forms, statutory first and tax second, for the residency reason on that form above. */}
+      {/* 7ee14bbc — `taxNumberSharedWith` (computed above) is the names of the OTHER people in this
+          company already filed under this employee's income tax reference number. Shown beside the
+          field itself so a duplicate is caught where it is typed rather than on the CP39 at filing
+          time. Advisory only: the save is never gated on it. */}
+      {/* 04b88724 (r340 fix pass) — THE WHOLE FIGURE REACHES THE CARD, not a slice of it. The first build
+          passed only the per-category prices and let the card work the relief out from a second
+          eligible-child count of its own; in 'auto' mode that printed a ringgit figure the payroll kernel
+          contradicted, because the kernel multiplies the STORED head count and the card was multiplying the
+          live one. What travels now is the pack's prices (for the grid the admin types into) AND the pack's
+          own answer for the saved record (the figure the payslip deducts), so the card has nothing left to
+          derive. `derivedChildCount` went with it: it was that second count, taken by a second
+          `eligibleChildReliefCount` call at real UTC now while this figure is taken at Kuala Lumpur
+          "today" — two instants, and on a child's 18th birthday two different answers. */}
+      <IdentityTaxCard key={`${emp.employmentId}:${taxSelection?.version??0}:${statutory?.taxCircumstance??'legacy'}`}
+        embedded
+        dmyDates
+        action={setTaxAction}
+        employmentId={emp.employmentId}
+        personId={emp.personId}
+        taxSelection={taxSelection ? {companyId:taxSelection.companyId,companyName:taxSelection.companyName,version:taxSelection.version,confirmationRequired:taxSelection.transitionState==='confirmation_required'} : undefined}
+        childRelief={qualifyingChildRelief}
+        taxNumberSharedWith={taxNumberSharedWith}
+        defaults={{
+          taxNumber: statutory?.taxNumber ?? null,
+          taxCategory: statutory?.taxCategory ?? 1,
+          taxCircumstance:statutory?.taxCircumstance??null,
+          taxApplicabilityEpoch:statutory?.taxApplicabilityEpoch??0,
+          taxResidency: taxSelection?.transitionState === 'resolved' ? taxSelection.scheme ?? '' : '',
+          numChildren: statutory?.numChildren ?? 0,
+          childReliefMode: statutory?.childReliefMode ?? 'manual',
+          employerBearsTax: statutory?.employerBearsTax ?? false,
+          // Item d64d0df4 — No unless explicitly claimed, matching the column default and today's PCB.
+          disabledIndividual: statutory?.disabledIndividual ?? false,
+          disabledSpouse: statutory?.disabledSpouse ?? false,
+          // Item d64d0df4 — the 'auto_table' grid. A plain serialisable object (or null) crosses the
+          // server/client boundary; the card renders it read-write only in that mode and posts it back
+          // as flat scalar fields in every mode.
+          childReliefTable:
+            (statutory?.childReliefTable as Record<string, { full: number; half: number }> | null) ?? null,
+        }}
+      />
+    </Card>
+  ) : null;
+
+  // ── BANK INFORMATION (Bank & Statutory tab) ─────────────────────────────────
+  // Item ef720d3a — the salary-payment bank fields were split out of the full-row statutory form into their
+  // OWN dedicated card with a partial save (setBankAction, only the bank + custom-holder columns). The bank
+  // name is now a pick-from-catalog select and the card adds the custom-payment-holder function (pay salary
+  // to a third party's account). It's a client island (interactive reveal/require) rendered as JSX only, so
+  // the RSC server/client boundary is respected.
+  const canEditBank=admin&&canMaintainWorkforce&&!!await countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId});
+  const bankCard = admin ? (
+    <>
+    {!canEditBank&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
+    <fieldset disabled={!canEditBank} className="min-w-0">
+    <BankInfoCard
+      action={setBankAction}
+      employmentId={emp.employmentId}
+      personId={emp.personId}
+      defaults={{
+        bankName: statutory?.bankName ?? null,
+        bankAccountNo: statutory?.bankAccountNo ?? null,
+        enableCustomHolderName: statutory?.enableCustomHolderName ?? false,
+        customHolderName: statutory?.customHolderName ?? null,
+        enableCustomHolderId: statutory?.enableCustomHolderId ?? false,
+        customHolderId: statutory?.customHolderId ?? null,
+      }}
+    />
+    </fieldset>
+    </>
+  ) : null;
+
+  // Item df09f22a — the standalone Identification & Tax card (item 8b5334db) was merged into the Statutory
+  // (Malaysia) card as a nested "Income Tax (PCB)" section (see statutoryCard above). Income tax is a Malaysia
+  // statutory payroll item, so all statutory fields now live in one box. The IdentityTaxCard island still owns
+  // its own setTaxAction partial save — only its render location + chrome (embedded mode) changed.
+
+  // ── OTHERS STATUTORY (Bank & Statutory tab) ─────────────────────────────────
+  // Feedback 0df0c635 — the home for statutory settings that don't belong under EPF, SOCSO, EIS or Tax
+  // Information (extensible for future controls without a redesign), starting with the per-employee
+  // "Subject to HRDF" control. Its own card with its OWN partial save (setOthersStatutoryAction → the
+  // pack's setOthersStatutory), like the Bank/TP3/Tax split-out precedents, so saving it can never touch
+  // the full-row statutory form and vice versa. Tri-state per the house convention: the stored value is
+  // null until HR picks an explicit Yes/No, and null means "follow the company's HRDF registration
+  // default". Feedback 57840a6e — this was a CHECKBOX, which structurally cannot carry three states: an
+  // untouched card rendered from the company default (unchecked while the company was not_registered) and
+  // saved for any other reason silently PINNED the employee to an explicit No, permanently excluding them
+  // from the levy even after the company later set a 0.5%/1.0% rate. It is now a three-option select
+  // (gender/maritalStatus precedent on this page): "" ⇒ null (follow the company default), yes ⇒ true,
+  // no ⇒ false. Payroll excludes an explicit-false employee from the HRD Corp levy entirely.
+  const othersStatutoryCard = admin ? (
+    <Card>
+      <SectionHeader title={t('othersStatutoryTitle')} />
+      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the tab's one
+          "Save Changes" writes it last, after statutory / tax / bank. Nothing else about the tri-state
+          changes: the select still posts ''/yes/no and `applyOthersStatutorySection` still maps all three
+          (a collapse back to a checkbox was feedback 57840a6e's defect). */}
+      <form action={setOthersStatutoryAction} data-save-section="others" className="flex flex-col gap-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+        <p className="text-xs text-muted-foreground">{t('othersStatutoryHint')}</p>
+        {/* a72610af — the same tri-state the Create New Employee draft now offers
+            (components/tax-relief-fields.tsx). The three options and their meanings are unchanged;
+            feedback 57840a6e is why the blank "follow the company default" option must stay distinct
+            from an explicit No, and one definition is how it stays that way on both screens. */}
+        <HrdfSubjectField mode="form" value={statutory?.subjectToHrdf} />
+        <p className="text-xs text-muted-foreground">{t('subjectToHrdfHint')}</p>
+        {/* Feedback efece4ce — the contradiction the reporter hit: an explicit Yes on a company with no HRDF
+            Contribution Rate. The save is honest (the flag IS stored, and starts levying the moment the
+            company registers), so this is a warning, not a blocker — refusing the save would strand HR who
+            are setting employees up ahead of the company registration. What it must never do again is stay
+            silent. Rendered from the STORED value, so it survives the post-save redirect and every later
+            visit; a null/No employee sees nothing. */}
+        {statutory?.subjectToHrdf === true && companyHrdfUnregistered && (
+          <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+            {t('subjectToHrdfCompanyNotRegistered')}
+          </p>
+        )}
+        {/* r79 — the amber warning above only fires on the STORED Yes, i.e. after the operator has already
+            chosen it. Where the company is unregistered, say so BEFORE the choice is made too, so picking
+            Yes is an informed decision rather than one corrected afterwards. Deliberately muted, not amber:
+            nothing is wrong yet, and six of eight live companies are unregistered — an alarm on every one of
+            their employees would train the operator to ignore the amber one that does mean something. */}
+        {statutory?.subjectToHrdf !== true && companyHrdfUnregistered && (
+          <p className="text-xs text-muted-foreground">{t('subjectToHrdfCompanyUnregisteredNote')}</p>
+        )}
+      </form>
+    </Card>
+  ) : null;
+
+  // ── TP3 / OPENING BALANCES (Payroll tab) ────────────────────────────────────
+  // Item a6a47698 — relocated off the Bank & Statutory card onto the Payroll tab. It is a payroll matter
+  // (it seeds the PCB accumulators), not a banking/statutory-registration matter. Because the statutory
+  // card is a single full-row-overwrite form, TP3 could not simply move into it — it gets its OWN small
+  // form + setTp3Action, a partial update of only the four TP3 columns. All fields + saved data preserved.
+  const tp3Card = admin ? (
+    <Card id="section-tp3">
+      <SectionHeader title={t('tp3SectionTitle')} />
+      <form action={setTp3Action} data-save-section="tp3" className="flex flex-col gap-3 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <input type="hidden" name="personId" value={emp.personId} />
+        <p className="text-xs text-muted-foreground">{t('tp3SectionDescription')}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.year" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.year','edit')} defaultValue={statutory?.tp3Year ?? ''} placeholder="2026" className={inputCls} />
+          </PersonnelField>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.netremuneration" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.netremuneration','edit')} defaultValue={statutory?.tp3NetRemuneration ?? ''} className={inputCls} />
+          </PersonnelField>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.epfclaimed" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.epfclaimed','edit')} defaultValue={statutory?.tp3EpfClaimed ?? ''} className={inputCls} />
+          </PersonnelField>
+          <PersonnelField fieldId="payroll.previous_employment_this_year_tp3_opening_balances.pcbpaid" mode="edit">
+            <input {...personnelInput('payroll.previous_employment_this_year_tp3_opening_balances.pcbpaid','edit')} defaultValue={statutory?.tp3PcbPaid ?? ''} className={inputCls} />
+          </PersonnelField>
+        </div>
+      </form>
+      {/* df35d60d — THE DOOR TO THE FULL FORM, AND THE SENTENCE THAT SAYS WHY THERE ARE TWO PLACES.
+          These four columns are what `core/payroll.ts` seeds the PCB accumulators from, and stage 1
+          deliberately leaves them exactly that. What they cannot do is fill the paper TP3: the second
+          of them is (C1 - sum of C2) - C3 already combined, and the form asks for those as seven
+          separate boxes. The full record — Sections A to E, including the seventeen reliefs — lives on
+          its own screen, which also prints the form. The note is not decoration: an operator looking at
+          four boxes needs to know the other thirteen exist and where they are. */}
+      <div className="border-t border-border px-4 py-3">
+        <p className="text-xs text-muted-foreground">{t('tp3FormNote')}</p>
+        <Link
+          href={`/payroll/transactions/tp3?employmentId=${encodeURIComponent(emp.employmentId)}${
+            statutory?.tp3Year ? `&year=${statutory.tp3Year}` : ''
+          }`}
+          className="mt-2 inline-block text-sm font-medium text-primary hover:underline"
+        >
+          {t('tp3OpenForm')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
+
+  // ── ZAKAT SUMMARY (Payroll tab, read-only) ──────────────────────────────────
+  // Item a6a47698 — the zakat pointer paragraph moved off Bank & Statutory onto the Payroll tab as a
+  // read-only summary of the current election (owned by Payroll → Transaction Entry → Zakat, the
+  // /payroll/transactions route, since 58755260 — the row was labelled "Transactions" until 8041aa84).
+  // Editing stays SOLELY at that route — single source of truth, no second write path here.
+  const zakatSummaryCard = admin ? (
+    <Card id="section-zakat-summary">
+      <SectionHeader title={t('zakatSummaryTitle')} />
+      <div className="flex flex-col gap-4 p-4">
+        <p className="text-xs text-muted-foreground">{t('zakatSummaryDescription')}</p>
+        {statutory?.zakatActive ? (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryStatus')}</dt>
+              <dd><Badge variant="success">{t('zakatSummaryActive')}</Badge></dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryState')}</dt>
+              <dd className="font-medium text-foreground">{statutory.zakatState ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryMethod')}</dt>
+              <dd className="font-medium text-foreground">
+                {statutory.zakatMethod === 'fixed' ? t('zakatSummaryMethodFixed') : t('zakatSummaryMethodPercent')}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('zakatSummaryRate')}</dt>
+              <dd className="font-medium tabular-nums text-foreground">
+                {statutory.zakatMethod === 'fixed'
+                  ? `RM ${Number(statutory.zakatFixed ?? 0).toFixed(2)}`
+                  : `${(Number(statutory.zakatPercent ?? 0) * 100).toFixed(2)}%`}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t('zakatSummaryInactive')}</p>
+        )}
+        <div>
+          <Link
+            href="/payroll/transactions/zakat"
+            className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {t('zakatSummaryManageLink')}
+          </Link>
+        </div>
+      </div>
+    </Card>
+  ) : null;
+
+  // ── DOCUMENTS ──────────────────────────────────────────────────────────────
+  // f018ce8d — redesigned into a real employee document store (upload / categorize / view / download /
+  // edit / replace / delete, searchable grid + full audit). The old read-only statutory summary is gone;
+  // those identifiers stay editable on the Bank & Statutory tab (unchanged source of truth). The section
+  // component RLS-loads its own data + owns its server actions (see documents-section.tsx).
+  const documentsPanel = admin ? <DocumentsSection s={s} employmentId={employmentId} canMaintain={canMaintainWorkforce} /> : null;
+
+  // ── JOB / CAREER MOVEMENT ───────────────────────────────────────────────────
+  // Cards defined here feed two tabs: reporting lines + approval delegations stay on the Employment
+  // ("job") tab. Movement tab redesign (78853b97): the old Assignment history table is replaced by
+  // employmentHistoryCard — a Hired-first Employment History timeline projected from the domain_event
+  // ledger, with per-row View detail and a single New Event entry point that folds in the former
+  // Transfer / Terminate / Blacklist boxes. The anchor id stays byte-identical for deep links.
+
+  // Event-type labels via a STATIC key map (never a dynamic t() template) with a humanized fallback for
+  // unknown/extensible kinds — nothing can render a raw i18n key in any locale.
+  //
+  // e6a144d4 — the switch itself now lives in lib/movement-kind-label.ts. The Download Excel route needs
+  // the identical caption (476f23ed tenant override included), and two copies of a twenty-case map is how
+  // a file and the screen it reproduces start calling the same event different things. This closure is all
+  // that stays here: it binds the tenant catalogue and the page's translator.
+  const movementKindLabel = (kind: string): string =>
+    movementKindLabelOf(kind, movementTypeByCode.get(kind)?.label, t);
+  const movementEmpTypeLabel = (v: string | null): string | null =>
+    v ? t(`employmentInfo.employmentType_${v}` as 'employmentInfo.employmentType_full_time') : null;
+
+  // New Event is hidden once terminated (the same gate that hid the old Transfer form); the history
+  // itself stays viewable. Rehire is a future, separate piece.
+  const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;
+  /** c063eea9 — the caption of a hire-correction field, shared by the history row and the detail view. */
+  const hireFieldIds = {
+  "businessUnitId": "employment.organisation_assignment.businessunitname",
+  "departmentId": "employment.organisation_assignment.departmentname",
+  "positionId": "employment.organisation_assignment.positionname",
+  "costCenterId": "employment_history.original_hire_details_and_corrections.costcenterid",
+  "locationId": "attendance.work_location_and_shift_arrangement.locationid",
+  "managerEmploymentId": "employment.direct_superior_and_history.superioremploymentid"
+} as const;
+  const hireFieldLabel = (f:HireCorrectionField):string => personnelLabel(hireFieldIds[f]);
+
+  const employmentHistoryCard = (
+    <Card id="section-assignment-history" className="overflow-hidden">
+      <SectionHeader title={t('movement.title')} />
+      {/* e6a144d4 — the action bar is OUTSIDE the canCreateMovement gate; only New Event is inside it.
+          The bar used to disappear wholesale once `emp.terminatedOn` was set, and a terminated employee's
+          employment history is exactly the record HR needs for exit paperwork, group HR and auditors. So a
+          terminated employment now keeps the download and loses only the button that would write. */}
+      <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border px-4 py-2">
+        {/* A plain link straight at the export route — no client component, no form, no approval step:
+            one click and the file downloads. It carries no query string: the file is the COMPLETE
+            history and never the filtered view, so there is no view state to hand over.
+
+            A BARE <a>, NOT next/link, AND THAT IS THE POINT. Next 16 prefetches a <Link> when it enters
+            the viewport in production, so merely OPENING this tab would fire a background GET at the
+            export route — replaying the whole ledger and serialising an entire workbook for a file
+            nobody asked for, on every visit. A route handler returning a spreadsheet is not an RSC
+            payload, so the prefetch buys nothing and the click still does a hard navigation. The
+            payroll grid-export anchor next door is a bare <a> for the same reason; the Leave
+            employee-records link is a <Link> and pays this cost today. */}
+        {/* 420ebab5 part two — INVISIBLE to the unsaved-changes guard, deliberately. That guard intercepts
+            same-origin anchor clicks while a tab holds unsaved edits, because an in-app <Link> is a
+            client-side navigation beforeunload never sees. This anchor is not a link to a page: the click
+            downloads a workbook and leaves the reader exactly where they were, so intercepting it would
+            raise an "Unsaved changes" dialog for an action that loses nothing and then router.push at a
+            route handler that has no page to render. See UNSAVED_GUARD_ATTR in lib/unsaved-changes.ts. */}
+        <a
+          href={`/admin/personnel/${employmentId}/movement-export`}
+          data-unsaved-guard="ignore"
+          className="inline-flex shrink-0 items-center rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          {t('movement.exportExcel')}
+        </a>
+        {canCreateMovement && (
+          <Link
+            href={`/admin/personnel/${employmentId}?tab=careerMovement&newEvent=1`}
+            className={btnPrimary}
+          >
+            {t('movement.newEvent')}
+          </Link>
+        )}
+      </div>
+      {/* r78c — eight columns no longer fit a narrow viewport, so the table scrolls inside its own
+          container rather than squeezing every cell (the Card is overflow-hidden). Same pattern as the
+          recalculation-history table above. */}
+      <div className="overflow-x-auto">
+      <table className="w-full min-w-[860px] text-sm">
+        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          {/* r78c — the reporter's requested column set: Event Type, Effective Date, Company, Division,
+              Department, Job Title, Basic. End Date and Remarks moved OFF the list (they are not in the
+              requested set and seven data columns is already the width of the panel); both still render on
+              the row's detail view, one click away via Action, so nothing became unreachable. Action stays:
+              it is the affordance, not data, and View / Edit / Roll Back hang off it. */}
+          <tr>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.eventType')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.effectiveDate')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.company')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.division')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.department')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.jobTitle')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.basic')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.columns.action')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {/* 95d17761 — an employment whose whole history is correction artefacts must say so, not draw a
+              bare table head. The hidden-count line below still renders, so the rows are one click away. */}
+          {visibleMovements.length === 0 && (
+            <tr>
+              <td colSpan={8} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                {t('movement.empty')}
+              </td>
+            </tr>
+          )}
+          {visibleMovements.map((m) => (
+            // 66a63bd6 — a rolled-back movement KEEPS its line, visibly marked, and loses its actions. It is
+            // never removed: the history is the evidence payroll and statutory reporting lean on.
+            <tr
+              key={m.id}
+              className={m.reversed || m.status === 'superseded' ? 'text-muted-foreground' : undefined}
+            >
+              <td className="px-4 py-2.5 font-medium text-foreground">
+                <span className={m.reversed || m.status === 'superseded' ? 'line-through' : undefined}>
+                  {movementKindLabel(m.kind)}
+                </span>
+                {m.reversed && (
+                  <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {m.reversed.corrected
+                      ? t('movement.correctedBadge')
+                      : // bd89ccd8 — a movement undone while still pending never applied, so the badge
+                        // says Cancelled and matches the word on the button that undid it.
+                        m.reversed.cancelled
+                        ? t('movement.cancelledBadge')
+                        : t('movement.reversedBadge')}
+                  </span>
+                )}
+                {/* 941c9dac — a movement that has not taken effect says so on its own line. Pending is the
+                    only one drawn in an ACTIVE colour: it is the one that still has a future, and the one
+                    HR may want to correct before it lands. Superseded is muted like a reversal — it is a
+                    dead record kept visible on purpose, never silently dropped. */}
+                {!m.reversed && m.status === 'pending' && (
+                  <span className="ml-2 rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-primary">
+                    {t('movement.status.pending')}
+                  </span>
+                )}
+                {!m.reversed && m.status === 'superseded' && (
+                  <span className="ml-2 rounded border border-border px-1.5 py-0.5 align-middle text-[10px] uppercase tracking-wide text-muted-foreground">
+                    {t('movement.status.superseded')}
+                  </span>
+                )}
+                {/* c063eea9 — the Hired row after its details were corrected. NOT the Corrected badge above
+                    (that one marks a rolled-back row): this row stays live, keeps its place and is never
+                    struck through. It says who corrected it and when, and what was originally recorded. */}
+                {m.hireCorrection && (
+                  <div className="mt-1.5 space-y-1 text-xs font-normal">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        {t('movement.hireCorrection.badge')}
+                      </span>
+                      <span className="text-muted-foreground">
+                        {m.hireCorrection.by ? `${t('movement.hireCorrection.by', { name: m.hireCorrection.by })} · ` : ''}
+                        {formatDmy(m.hireCorrection.at)}
+                      </span>
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-primary">{t('movement.hireCorrection.details')}</summary>
+                      <table className="mt-1 text-left">
+                        <thead className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="pr-3 font-medium">{t('movement.hireCorrection.colField')}</th>
+                            <th className="pr-3 font-medium">{t('movement.hireCorrection.originalHeading')}</th>
+                            <th className="font-medium">{t('movement.hireCorrection.correctedHeading')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {m.hireCorrection.fields.map((f) => (
+                            <tr key={f.field}>
+                              <td className="pr-3 text-muted-foreground">{hireFieldLabel(f.field)}</td>
+                              <td className="pr-3 text-foreground">{f.original ?? t('movement.hireCorrection.noneValue')}</td>
+                              <td className="font-medium text-foreground">{f.corrected ?? t('movement.hireCorrection.noneValue')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {m.hireCorrection.reason && (
+                        <p className="mt-1 text-muted-foreground">
+                          {t('movement.hireCorrection.reason')}: {m.hireCorrection.reason}
+                        </p>
+                      )}
+                    </details>
+                  </div>
+                )}
+              </td>
+              <td className="px-4 py-2.5 font-mono text-xs">{formatDmy(m.effectiveDate)}</td>
+              {/* Reconstructed AS OF the row's effective date in core/movement.ts — never a live read of the
+                  employee's current placement, which would print today's values on a row from years ago. */}
+              <td className="px-4 py-2.5 text-muted-foreground">{m.company ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.division ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.department ?? '—'}</td>
+              <td className="px-4 py-2.5 text-muted-foreground">{m.jobTitle ?? '—'}</td>
+              <td className="px-4 py-2.5 font-mono text-xs tabular-nums">{m.basic ?? '—'}</td>
+              <td className="px-4 py-2.5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    href={`/admin/personnel/${employmentId}?tab=careerMovement&movement=${m.id}`}
+                    className="text-primary hover:underline"
+                  >
+                    {t('movement.view')}
+                  </Link>
+                  {canCreateMovement && m.canEdit && (
+                    <Link
+                      href={`/admin/personnel/${employmentId}?tab=careerMovement&editMovement=${m.id}`}
+                      className="text-primary hover:underline"
+                    >
+                      {t('movement.edit')}
+                    </Link>
+                  )}
+                  {/* c063eea9 — the Hired row's own correction. It stays offered after a correction: correcting
+                      again is how a correction is undone (a hire correction has no Roll Back). */}
+                  {canCreateMovement && m.kind === 'hired' && (
+                    <Link
+                      href={`/admin/personnel/${employmentId}?tab=careerMovement&correctHire=1`}
+                      className="text-primary hover:underline"
+                    >
+                      {t('movement.hireCorrection.action')}
+                    </Link>
+                  )}
+                  {canCreateMovement && m.canReverse && (
+                    <form action={reverseMovementEventAction} className="inline-flex">
+                      <input type="hidden" name="employmentId" value={employmentId} />
+                      <input type="hidden" name="movementId" value={m.id} />
+                      {/* 10fcf6df — the affordance is ROLLBACK, not Delete. The service behind it has
+                          reversed rather than erased since 66a63bd6 (reverseMovementEventAction →
+                          reverseMovementEvent), and the confirmation has said so all along; the word on
+                          the row was the last thing still promising a deletion that never happened. It is
+                          no longer drawn in the destructive colour either — undoing a movement restores
+                          the employee's previous values, it does not remove a record.
+
+                          bd89ccd8 — a PENDING row says CANCEL instead, and this is a relabel of the ONE
+                          reversal path, never a second writer. A future-dated movement has written
+                          nothing; reversing it is the reversal event alone and the sweep then skips it,
+                          so "cancel" is the honest word for what happens and "roll back" is not. Wearing
+                          the applied wording is what made HR read a wrongly keyed future event as
+                          impossible to get rid of, which is the whole of the reported fault. */}
+                      <ConfirmSubmit
+                        title={
+                          m.status === 'pending'
+                            ? t('movement.cancelConfirmTitle')
+                            : t('movement.rollbackConfirmTitle')
+                        }
+                        subtitle={`${movementKindLabel(m.kind)} · ${formatDmy(m.effectiveDate)}`}
+                        description={
+                          m.status === 'pending'
+                            ? t('movement.cancelConfirmDescription')
+                            : m.payrollWarning
+                              ? t('movement.rollbackConfirmPayroll')
+                              : t('movement.rollbackConfirmDescription')
+                        }
+                        confirmLabel={m.status === 'pending' ? t('movement.cancelEvent') : t('movement.rollback')}
+                        cancelLabel={m.status === 'pending' ? t('movement.keepEvent') : undefined}
+                        // The reason is MANDATORY (bd89ccd8): Confirm stays disabled until it is typed,
+                        // and reverseMovementEvent refuses a blank one regardless — the dialog is not the
+                        // only caller, so the control lives in the service and the form only mirrors it.
+                        reasonField={{ name: 'reason', label: t('movement.correctionReasonLabel'), required: true }}
+                        // 646355e5 — a closed run no longer blocks the rollback; HR confirms it stays as issued.
+                        acknowledgement={
+                          m.payrollLocked
+                            ? {
+                                name: 'acknowledgeClosedPayroll',
+                                warning: `${t('movement.form.closedPayrollTitle', { periods: m.payrollClosedPeriods.join(', ') })} ${t('movement.form.closedPayrollBody')}`,
+                                label: t('movement.form.closedPayrollAcknowledge'),
+                              }
+                            : undefined
+                        }
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto p-0 text-sm font-normal text-primary hover:bg-transparent hover:underline"
+                      >
+                        {m.status === 'pending' ? t('movement.cancel') : t('movement.rollback')}
+                      </ConfirmSubmit>
+                    </form>
+                  )}
+                  {m.payrollLocked && (
+                    <span className="text-xs text-muted-foreground">
+                      {t('movement.payrollClosedBadge', { periods: m.payrollClosedPeriods.join(', ') })}
+                    </span>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      </div>
+      {/* 95d17761 — one quiet line under the table. Rolled back, corrected, cancelled and superseded
+          entries are OFF the profile by default (nothing is deleted — the ledger and every payroll/EA
+          figure built from it are untouched), and Show puts them back exactly as they used to render.
+          correctedHidden carries a count placeholder — an ICU contract, so it is called WITH the
+          argument; calling it bare throws at render while the route still returns 200. */}
+      {correctedMovementCount > 0 && (
+        <div className="border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
+          {t('movement.correctedHidden', { count: correctedMovementCount })}{' '}
+          <Link href={movementVisibilityHref(true)} className="text-primary hover:underline">
+            {t('movement.showCorrected')}
+          </Link>
+        </div>
+      )}
+      {showCorrectedMovements && (
+        <div className="border-t border-border px-4 py-2.5 text-sm text-muted-foreground">
+          <Link href={movementVisibilityHref(false)} className="text-primary hover:underline">
+            {t('movement.hideCorrected')}
+          </Link>
+        </div>
+      )}
+    </Card>
+  );
+
+  // Detail view (?movement=<id>): event information + a side-by-side Before/After comparison built by
+  // as-of reconstruction at the effective date (ids resolved to labels at read time). Salary is shown —
+  // this page is admin-only (scopedAdmin, which calls requireAdmin), so no widening of pay visibility.
+  const movementComparisonRows = movementDetailData
+    ? [
+        { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
+        { key: 'businessUnit', label: t('movement.field.businessUnit'), before: movementDetailData.before?.businessUnit, after: movementDetailData.after.businessUnit },
+        { key: 'department', label: t('movement.field.department'), before: movementDetailData.before?.department, after: movementDetailData.after.department },
+        { key: 'position', label: t('movement.field.position'), before: movementDetailData.before?.position, after: movementDetailData.after.position },
+        { key: 'grade', label: t('movement.field.grade'), before: movementDetailData.before?.grade, after: movementDetailData.after.grade },
+        { key: 'employmentType', label: t('movement.field.employmentType'), before: movementEmpTypeLabel(movementDetailData.before?.employmentType ?? null), after: movementEmpTypeLabel(movementDetailData.after.employmentType) },
+        { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
+        { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
+        // 08913328 — the flat, non-dated columns THIS movement moved (Division … Category). They cannot be
+        // reconstructed as-of, so they appear only when the movement's own event recorded a before/after —
+        // never as today's value pretending to be part of a years-old change.
+        ...MOVEMENT_FLAT_FIELDS.flatMap((f) => {
+          const c = movementDetailData.flatChanges.find((x) => x.field === f);
+          return c ? [{ key: f, label: t(`movement.field.${f}` as 'movement.field.orgDivision'), before: c.before, after: c.after }] : [];
+        }),
+      ]
+    : [];
+  const movementDetailCard = movementDetailData ? (
+    <Card id="section-movement-detail" className="overflow-hidden">
+      <SectionHeader title={t('movement.detail.eventInformation')} />
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.eventType')}</dt>
+          <dd className="font-medium text-foreground">{movementKindLabel(movementDetailData.row.kind)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.effectiveDate')}</dt>
+          <dd className="font-medium text-foreground">{formatDmy(movementDetailData.row.effectiveDate)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.endDate')}</dt>
+          <dd className="font-medium text-foreground">{formatDmy(movementDetailData.row.endDate)}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.detail.recordedBy')}</dt>
+          <dd className="font-medium text-foreground">
+            {movementDetailData.actorName ?? t('movement.detail.system')}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.detail.recordedAt')}</dt>
+          <dd className="font-medium text-foreground">
+            {movementDetailData.occurredAt
+              ? formatDmyTime(movementDetailData.occurredAt)
+              : '—'}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">{t('movement.columns.remarks')}</dt>
+          <dd className="font-medium text-foreground">{movementDetailData.row.remarks ?? '—'}</dd>
+        </div>
+      </dl>
+      {movementDetailData.recordedResignation && <dl className="grid gap-4 border-t border-border p-4 text-sm sm:grid-cols-3">
+        {(['tenderResignationDate','resignationDate','lastWorkingDate'] as const).map(field=>{const recorded=movementDetailData.recordedResignation![field];return <div key={field}><dt className="text-xs text-muted-foreground">{t(`employmentInfo.${field}`)}</dt><dd className="mt-1 font-medium">{recorded.known ? recorded.value ? formatDmy(recorded.value) : t('optionNotSet') : t('resignationInformation.unknownSource')}</dd></div>;})}
+      </dl>}
+      {movementDetailData.row.reversed && (
+        // 66a63bd6 — the correction's own trace. The Before/After grid below still shows what the movement
+        // DID: it is the record of an event that happened, and the rollback is a second fact about it.
+        <div className="border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">
+            {movementDetailData.row.reversed.corrected
+              ? t('movement.correctedBadge')
+              : t('movement.reversedBadge')}
+          </span>{' '}
+          · {formatDmyTime(movementDetailData.row.reversed.at)}
+          {/* 10fcf6df — WHO rolled it back, beside WHEN. Resolved in the projection from the reversal
+              event's own actor, so this cannot disagree with the audit trail. */}
+          {movementDetailData.row.reversed.by
+            ? ` · ${t('movement.reversedBy')} ${movementDetailData.row.reversed.by}`
+            : ''}
+          {movementDetailData.row.reversed.reason ? ` · ${movementDetailData.row.reversed.reason}` : ''}
+        </div>
+      )}
+      {movementDetailData.hireCorrection && (
+        // c063eea9 — the Hired row's correction trace. The After column below already shows the CORRECTED
+        // values (it is an as-of read of the live rows); this block is what keeps the original visible.
+        <div className="border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{t('movement.hireCorrection.badge')}</span>
+          {' · '}
+          {formatDmy(movementDetailData.hireCorrection.at)}
+          {movementDetailData.hireCorrection.by
+            ? ` · ${t('movement.hireCorrection.by', { name: movementDetailData.hireCorrection.by })}`
+            : ''}
+          {movementDetailData.hireCorrection.reason ? ` · ${movementDetailData.hireCorrection.reason}` : ''}
+          <ul className="mt-1 space-y-0.5">
+            {movementDetailData.hireCorrection.fields.map((f) => (
+              <li key={f.field}>
+                {hireFieldLabel(f.field)}: {t('movement.hireCorrection.originalHeading')}{' '}
+                <span className="text-foreground">{f.original ?? t('movement.hireCorrection.noneValue')}</span>
+                {' → '}
+                <span className="font-medium text-foreground">{f.corrected ?? t('movement.hireCorrection.noneValue')}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {movementDocuments.length > 0 && (
+        // 1d58019a Step 2 — the supporting documents recorded with this movement.
+        <section className="border-t border-border px-4 py-3 text-sm" aria-label={t('movement.detail.documents')}>
+          <h3 className="font-medium">{t('movement.detail.documents')}</h3>
+          <ul className="mt-2 space-y-1">
+            {movementDocuments.map((doc) => (
+              <li key={doc.id} className="flex flex-wrap items-baseline gap-2">
+                <span className="text-xs text-muted-foreground">{t(`movement.field.${MOVEMENT_DOCUMENT_FIELD_KEYS[doc.field] ?? 'salary'}` as 'movement.field.salary')}</span>
+                <a
+                  href={`/admin/personnel/${employmentId}/movement-documents/${doc.id}`}
+                  className="font-medium text-primary hover:underline"
+                >
+                  {doc.fileName}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {movementDetailData.pendingIntent ? (
+        <section className="border-t border-border" aria-label={t('movement.detail.scheduledValues')}>
+          <h3 className="px-4 pt-4 font-medium">{t('movement.detail.scheduledValues')}</h3>
+          <p className="px-4 py-2 text-sm text-muted-foreground">{t('movement.detail.scheduledValuesNote')}</p>
+          <dl className="divide-y divide-border">
+            {movementDetailData.pendingIntent.values.map(({field, value}) => {
+              const display = field === 'employmentType' ? movementEmpTypeLabel(value)
+                : field === 'payMode' && value !== null && PERSONNEL_PAY_MODES.some(option => option === value)
+                  ? t(`payMode_${value}` as 'payMode_monthly')
+                : field === 'paymentTerm' && value !== null && PERSONNEL_PAYMENT_TERMS.some(option => option === value)
+                  ? t(`paymentTerm_${value}` as 'paymentTerm_monthly') : value;
+              return <div key={field} className="grid grid-cols-2 gap-4 px-4 py-2.5 text-sm">
+                <dt className="text-muted-foreground">{t(`movement.field.${field}`)}</dt>
+                <dd className="font-medium text-foreground">{display ?? '—'}</dd>
+              </div>;
+            })}
+          </dl>
+        </section>
+      ) : (
+      <table className="w-full border-t border-border text-sm">
+        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
+          <tr>
+            <th className="px-4 py-2 font-medium">{t('movement.detail.field')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.detail.beforeChanges')}</th>
+            <th className="px-4 py-2 font-medium">{t('movement.detail.afterChanges')}</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {movementComparisonRows.map((r) => {
+            // 08913328 — tint the fields this movement actually moved, so "what changed" is readable at a
+            // glance instead of being a diff the reader has to perform themselves.
+            const changed = !!movementDetailData.before && (r.before ?? null) !== (r.after ?? null);
+            return (
+              <tr key={r.key} className={changed ? 'bg-primary/5' : undefined}>
+                <td className="px-4 py-2.5 text-muted-foreground">{r.label}</td>
+                <td className="px-4 py-2.5 text-foreground">
+                  {movementDetailData.before ? (r.before ?? '—') : t('movement.detail.firstRecord')}
+                </td>
+                <td className={`px-4 py-2.5 font-medium ${changed ? 'text-primary' : 'text-foreground'}`}>
+                  {r.after ?? '—'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      )}
+      <div className="p-4">
+        <Link href={`/admin/personnel/${employmentId}?tab=careerMovement`} className={btnGhost}>
+          {t('movement.detail.backToHistory')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
+
+  // New Event (?newEvent=1): one entry point for every movement, replacing the separate Transfer /
+  // Terminate / Blacklist boxes. Option lists reuse the data this page already loads; employment-type
+  // and termination-type labels are pre-translated here (parent namespace) and passed down.
+  // ae9350f2 — the EXISTING termination-type labels, keyed by enum value. Reused rather than re-worded so
+  // the classification a reason derives reads identically to the one turnover analytics already shows.
+  const TERMINATION_TYPE_LABEL: Record<string, string> = {
+    voluntary: t('terminationVoluntary'),
+    involuntary: t('terminationInvoluntary'),
+    retired: t('terminationRetired'),
+    contract_end: t('terminationContractEnd'),
+    death: t('terminationDeath'),
+    other: t('terminationOther'),
+  };
+
+  const movementFormProps = movementCurrent
+    ? {
+        employmentId: emp.employmentId,
+        today,
+        isBlacklisted: !!emp.blacklistedAt,
+        // 08913328 — the read-only left column AND the pre-fill of the editable right column. One read,
+        // so the two sides cannot disagree about what "current" means.
+        current: movementCurrent,
+        departments: organisationChoiceLabels(departments).map((d) => ({ id: d.id, name: d.displayLabel })),
+        positions: organisationChoiceLabels(positions).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
+        businessUnits: organisationChoiceLabels(businessUnits).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
+        grades: organisationChoiceLabels(grades).map((g) => ({ id: g.id, name: g.displayLabel })),
+        locations: locations.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
+        // b7b22514 — `companyId` rides along so the grid can narrow the Direct Superior list to the
+        // DESTINATION company on an Entity Transfer. No extra read: listEmployees already returns it.
+        // The service refuses a manager outside the destination, so offering one would be an affordance
+        // that lies.
+        managers: others.map((o) => ({ id: o.employmentId, name: o.name, companyId: o.companyId })),
+        // b7b22514 — the destinations, and each destination's org lists (see the read above).
+        companies: movementCompanies,
+        orgByCompany: movementOrgByCompany,
+        profileOptions,
+        employmentTypes: personnelFormChoices('employment.organisation_assignment.employmenttype').map(choice=>({value:choice.value,label:t(choice.labelKey.slice(14))})),
+        // ae9350f2 — the exit-reason catalogue, pre-translated here (the island holds no server imports).
+        // `typeLabel` reuses the EXISTING termination-type labels, so the classification the reason derives
+        // reads the same everywhere it already appears (turnover analytics included). 1d58019a — now the
+        // TENANT's catalogue: its own name wins, a built-in it never renamed keeps the shipped label.
+        terminationReasons: terminationReasonRows.map((r) => ({
+          code: r.code,
+          category: r.category,
+          categoryLabel: t(`movement.terminationReasonCategory.${r.category}` as 'movement.terminationReasonCategory.voluntary'),
+          label:
+            r.label ??
+            (r.builtIn ? t(`movement.terminationReason.${r.code}` as 'movement.terminationReason.resignation') : r.code),
+          typeLabel: TERMINATION_TYPE_LABEL[r.terminationType],
+          active: r.active,
+        })),
+        // 476f23ed — the event types this organisation offers, already filtered to the active ones and
+        // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
+        // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
+        types: movementTypes
+          .filter((r) => r.active)
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
+        cancelHref: `/admin/personnel/${employmentId}?tab=careerMovement`,
+      }
+    : null;
+
+  const newEventCard = canCreateMovement && spNewEvent && movementFormProps ? (
+    <Card id="section-movement-new-event" className="overflow-hidden">
+      <SectionHeader title={t('movement.newEvent')} />
+      <MovementNewEvent {...movementFormProps} />
+    </Card>
+  ) : null;
+
+  // 66a63bd6 — Edit (?editMovement=<id>): the SAME comparison form, pre-filled from the movement being
+  // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
+  // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
+  const movementEditRow = spEditMovement ? movements.find((m) => m.id === spEditMovement && m.canEdit) : undefined;
+  // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
+  const movementEditInput = movementEditRow && (movementEditRow.status === 'pending' || movementEditRow.kind === 'resignation' || movementTypeByCode.get(movementEditRow.kind)?.behaviourKind === 'termination')
+    ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
+  const editEventCard = canCreateMovement && movementEditRow && movementFormProps ? (
+    <Card id="section-movement-edit-event" className="overflow-hidden">
+      <SectionHeader title={t('movement.editTitle')} />
+      <MovementNewEvent
+        key={movementEditRow.id}
+        {...movementFormProps}
+        types={movementTypes
+          .filter((r) => r.active || r.code === movementEditRow.kind)
+          .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, ...typeControls(r.code) }))}
+        edit={{
+          movementId: movementEditRow.id,
+          kind: movementEditRow.kind,
+          effectiveDate: movementEditRow.effectiveDate,
+          endDate: movementEditRow.endDate,
+          remarks: movementEditRow.remarks,
+          pendingInput: movementEditInput?.values,
+          pendingUnavailable: movementEditInput?.unavailable,
+          // A correction may re-classify the movement within its own family (a Transfer that should have
+          // been a Promotion), never across it — the service replays the same set of writers either way.
+          // 476f23ed — the family is decided by the BEHAVIOUR, not by the code, so a correction of one of
+          // the organisation's own types offers the same alternatives its behaviour allows. The list is
+          // then expressed back in catalogue codes, so a re-classification cannot pick a type that no
+          // longer exists here.
+          allowedKinds: (() => {
+            const behaviour =
+              movementTypeByCode.get(movementEditRow.kind)?.behaviourKind ?? movementEditRow.kind;
+            // 3ced1040 — Confirmation renders the comparison grid but is its own family of one: it
+            // completes probation, so a correction must not be able to turn it into a Transfer or a
+            // Transfer into it. The service refuses the same crossing (crossesConfirmation), so the
+            // affordance and the rule cannot drift apart.
+            // b7b22514 — Entity Transfer is its own family of one, exactly as Confirmation is, and for a
+            // consequence that is larger: it moved a legal entity. The service refuses the crossing in
+            // BOTH directions (crossesEntityTransfer), so offering any other type here would render a
+            // dropdown whose every other option fails on save. Same shape, same reason, one line down.
+            const family =
+              behaviour === 'confirmation'
+                ? ['confirmation']
+                : behaviour === 'entityTransfer'
+                  ? ['entityTransfer']
+                  : isComparisonKind(behaviour)
+                    ? [...INTERCHANGEABLE_COMPARISON_KINDS]
+                    : // 646355e5 — exits are families of one; the service refuses any crossing.
+                      behaviour === 'termination' || behaviour === 'resignation'
+                      ? [behaviour]
+                      : [behaviour, 'secondment', 'actingPosition'];
+            const codes = movementTypes
+              .filter((r) => r.active && family.includes(r.behaviourKind))
+              .map((r) => r.code);
+            // The movement's own type always stays selectable, even if it has since been switched off —
+            // otherwise correcting it would silently re-classify it.
+            return Array.from(new Set([movementEditRow.kind, ...codes]));
+          })(),
+          payrollWarning: movementEditRow.payrollWarning,
+          payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
+        }}
+      />
+    </Card>
+  ) : null;
+
+  /**
+   * c063eea9 — Correct hire details (?correctHire=1). Everything the island shows is resolved here: the
+   * field values and their originally-recorded labels (core/hire-correction.ts hireCorrectionView), the
+   * option lists scoped to the hire's own company (read above), and the later records each field would
+   * carry into, labelled with the SAME resolver the history uses so a record reads identically in both.
+   * The read-only rows point at the screens that own those fields instead of offering them.
+   */
+  const hireCorrectionCard =
+    canCreateMovement && hireCorrection && hireCorrectionOptions
+      ? (() => {
+          const recordLabel = (r: { kind: string | null; effectiveDate: string }) =>
+            `${r.kind ? movementKindLabel(r.kind) : t('movement.hireCorrection.untaggedRecord')} ${formatDmy(r.effectiveDate)}`;
+          const FIELD_LABEL: Record<HireCorrectionField, string> = {
+            departmentId: t('movement.field.department'),
+            positionId: t('movement.field.position'),
+            businessUnitId: t('movement.field.businessUnit'),
+            costCenterId: t('movement.hireCorrection.fieldCostCenter'),
+            locationId: t('movement.hireCorrection.fieldLocation'),
+            managerEmploymentId: t('movement.hireCorrection.fieldManager'),
+          };
+          const fields: HireCorrectionFormField[] = hireCorrection.fields.map((f) => ({
+            field: f.field,
+            label: FIELD_LABEL[f.field],
+            required: f.field === 'departmentId',
+            currentId: f.currentId,
+            currentLabel: f.currentLabel,
+            originalLabel: f.originalId ? f.originalLabel : t('movement.hireCorrection.noneValue'),
+            options: hireCorrectionOptions[f.field],
+            carriesInto: f.carriesInto.map(recordLabel),
+            stoppedBy: f.stoppedBy ? recordLabel(f.stoppedBy) : null,
+            reachesCurrent: f.reachesCurrent,
+          }));
+          const readOnly = [
+            {
+              key: 'company',
+              label: t('movement.field.company'),
+              value: hireCorrection.companyName ?? '—',
+              // The pointer that APPLIES, not both: the inline Company correction is open only while the
+              // pre-transaction gate (employmentCompanyBlockedTx) says nothing has been recorded yet.
+              pointer: companyEditable
+                ? t('movement.hireCorrection.companyEditableNow', { tab: t('tabs.job') })
+                : t('movement.hireCorrection.companyLocked', { type: movementKindLabel('entityTransfer') }),
+            },
+            {
+              key: 'groupJoinDate',
+              label: t('employmentInfo.groupJoinDate'),
+              value: formatDmy(hireCorrection.groupJoinDate),
+              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('groupJoinDateCorrection') }),
+              note: t('movement.hireCorrection.payslipRefusal'),
+            },
+            {
+              key: 'joinDate',
+              label: t('employmentInfo.joinDate'),
+              value: formatDmy(hireCorrection.joinDate),
+              pointer: t('movement.hireCorrection.usePointer', { type: movementKindLabel('joinDateChange') }),
+              note: t('movement.hireCorrection.payslipRefusal'),
+            },
+            {
+              key: 'grade',
+              label: t('movement.field.grade'),
+              value: hireCorrection.gradeName ?? '—',
+              pointer: t('movement.hireCorrection.notYet'),
+            },
+            {
+              key: 'employmentType',
+              label: t('movement.field.employmentType'),
+              value: movementEmpTypeLabel(hireCorrection.employmentType) ?? '—',
+              pointer: t('movement.hireCorrection.notYet'),
+            },
+          ];
+          return (
+            <Card id="section-hire-correction" className="overflow-hidden">
+              <SectionHeader title={t('movement.hireCorrection.title')} />
+              <HireCorrectionModes employmentId={employmentId}><HireCorrectionForm
+                employmentId={employmentId}
+                heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
+                fields={fields}
+                readOnly={readOnly}
+                cancelHref={`/admin/personnel/${employmentId}?tab=careerMovement`}
+              /></HireCorrectionModes>
+            </Card>
+          );
+        })()
+      : null;
+
+  const dataPrivacyCard = admin ? (
+    <Card id="section-data-privacy" className="border-rose-200 dark:border-rose-500/30">
+      <SectionHeader title={t('dataPrivacyTitle')} />
+      <div className="space-y-2 p-4">
+        <p className="text-sm text-muted-foreground">{t('dataPrivacyNote')}</p>
+        <Link href={`/admin/privacy?subject=${emp.employmentId}`} className={btnPrimary}>
+          {t('dataPrivacyLink')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
+
+  // Employment Information enhancement (2323f671) — the Employment tab's primary master-data card. Groups
+  // Employment Dates / Organisation / Job / Reporting into ONE admin-gated <form> → setEmploymentInfoAction.
+  // NEW fields (probation/notice periods, confirmation & resignation dates, org dimensions, category, +
+  // editable Hire Date) are captured here.
+  //
+  // 594323a6 made the organisation fields editable from this tab, and c5ac75fa consolidated them into ONE
+  // form with ONE Save (fanning out to setEmploymentAssignment + setEmploymentGrade + setEmploymentInfo in
+  // one transaction).
+  //
+  // 8ebabbf2 REVERSES that direction: the Organisation Assignment section is now VIEW-ONLY and its Save is
+  // gone. The reason is not that the consolidated form was wrong, but that it was a SECOND writer — the
+  // Movement module records the same facts as dated events, and two writers for one truth is how a record and
+  // its own history come to disagree. The consolidation's own mitigation shows the strain: the Save had to
+  // carry helper text explaining that its effective date governed only four of the fields beside it. On a
+  // movement event there is one effective date and it governs the whole event.
+  //
+  // 89ea527b removes the last two writers of the service dates from the card below it: Group Join Date and
+  // Join Date are view-only too. What REMAINS editable on this tab is the rest of the Employment Dates group
+  // — probation and general notice terms. Actual resignation dates are view-only Movement projections.
+  //
+  // Employment Dates keeps its OWN sibling <form> (it shared the old organisation form). It is a separate
+  // concern with a separate Save, and its action no longer touches the eight org columns.
+  const EMPLOYMENT_TYPE_OPTIONS: readonly string[] = ['full_time', 'part_time', 'contract', 'intern'];
+  // 955c7de4's PERIOD_UNIT_OPTIONS is gone from here: a72610af moved the unit list into the shared
+  // period control (components/employment-period-fields.tsx, reading DRAFT_PERIOD_UNITS), which both this
+  // card and the Create New Employee draft render. One list, pinned equal to core/org.ts's own by
+  // test/draft-activation-field-survival.test.ts.
+  // ONE day-precise length-of-service formatter for every service figure this page shows (4ea70bb7).
+  //
+  // cc681bd5 — the smart format: zero LEADING units drop ("8 Months 15 Days" under a year, "25 Days" for a
+  // new joiner) while inner zeros stay ("10 Years 0 Months 5 Days"); days ALWAYS render, so a same-day hire
+  // reads "0 Days" rather than blank. Each unit is its own ICU-plural key, which is what gets the singular
+  // right ("1 Year 1 Month 1 Day") in every locale.
+  //
+  // It reuses core/leave's serviceYearsMonthsDaysAt (UTC calendar math, month borrowing, month-end clamp,
+  // clamps to zero for a future date) rather than a second piece of date arithmetic. That is the point: the
+  // leave service bands read the sibling serviceYearsAt, which this function's .years is contracted to equal,
+  // and two calculations meant to agree eventually stop agreeing. Read-only and display-only — nothing here
+  // is stored and no entitlement reads it.
+  //
+  // 4ea70bb7 replaced the whole-years-and-months `employmentInfo.serviceLength` the Employment tab used to
+  // render through: it showed a July joiner "0 Years 0 Months" — which reads as no service at all — and said
+  // "1 Years 11 Months". That key is DELETED from all six catalogues, so there is no second format left here
+  // to drift from this one.
+  const fmtServiceYmd = (from: string | null | undefined): string | null => {
+    if (!from) return null;
+    const s = serviceYearsMonthsDaysAt(from, today);
+    const parts: string[] = [];
+    if (s.years > 0) parts.push(t('employmentInfo.yearsUnit', { count: s.years }));
+    if (s.years > 0 || s.months > 0) parts.push(t('employmentInfo.monthsUnit', { count: s.months }));
+    parts.push(t('employmentInfo.daysUnit', { count: s.days }));
+    return parts.join(' ');
+  };
+  // Length-of-service reference figures (feedback 24c4d02e). Group service reads the Group Join Date
+  // (hiredOn); current-company service reads the Join Date, falling back to the group date until a transfer
+  // sets it — 22 of 40 rows carry no join_date and must not read as empty. The two are computed
+  // INDEPENDENTLY from their own dates: neither replaces the other, and on the one employment where the
+  // dates differ they are meant to show different figures.
+  const groupServiceLabel = fmtServiceYmd(emp.hiredOn);
+  const currentServiceLabel = fmtServiceYmd(emp.joinDate ?? emp.hiredOn);
+  // cc681bd5 — Year of Service: the same figure as Group Service, from the Group Join Date (hiredOn — fixed
+  // through internal transfers; joinDate is deliberately ignored), recomputed on every render so each profile
+  // open shows that day's exact figure with no manual refresh. It goes through the SAME formatter as the two
+  // above, which is why the summary card and the Employment tab cannot disagree.
+  // b75b2a23 — the figure renders on the TOP summary card (after the Group Join Date), not on the Employment
+  // Information card; the computation stays here beside the other service figures it shares inputs with.
+  const yearOfServiceLabel = fmtServiceYmd(emp.hiredOn);
+  const yearOfServiceTooltip = emp.hiredOn
+    ? t('employmentInfo.yearOfServiceTooltip', { groupJoinDate: formatDmy(emp.hiredOn), asOf: formatDmy(today) })
+    : null;
+  // 8ebabbf2 / 89ea527b — the view-only renderer for every field that left the Employment tab's forms. A
+  // DISABLED <input> rather than plain text on purpose: it keeps the card's existing look and the field's
+  // shape (an empty value still reads as a field, not as missing markup), and it carries no `name`, so the
+  // value is never submitted by any sibling form. Matches the Company field, which has been read-only here
+  // since 9464bd56. aria-readonly (not just `disabled`) keeps it announced to screen readers.
+  // A lowercase helper, not a component: defining a component inside render creates a new component type on
+  // every render (react-hooks/static-components), and this needs the request-scoped `t` anyway. Same shape as
+  // the `row` helper in movement-new-event.tsx.
+  const readOnlyValue = (fieldId:string, value: string | null | undefined, title?: string) => (
+    <input {...personnelDisplay(fieldId)}
+      value={value ?? t('optionNotSet')}
+      disabled
+      readOnly
+      aria-readonly="true"
+      title={title}
+      className={inputCls}
+    />
+  );
+  // Movement → New Event, pre-opened. Every "change this through Movement" pointer on the tab links here so
+  // the administrator lands on the form that actually performs the change rather than on a tab they must
+  // then navigate. Tab-qualified so the panel is already selected.
+  const newMovementHref = `/admin/personnel/${emp.employmentId}?tab=careerMovement&newEvent=1`;
+  const currentGrade=emp.gradeId?grades.find(g=>g.id===emp.gradeId):undefined;
+  const gradeName=currentGrade?.name?.trim() || currentGrade?.code || null;
+  const employmentTypeLabel =
+    current?.employmentType && EMPLOYMENT_TYPE_OPTIONS.includes(current.employmentType)
+      ? t(`employmentInfo.employmentType_${current.employmentType}` as 'employmentInfo.employmentType_full_time')
+      : (current?.employmentType ?? null);
+  /**
+   * 941c9dac — the movements that have been recorded but have NOT taken effect yet. The values below are
+   * today's, and they stay today's until the effective date arrives; without this note the tab would be
+   * correct but misleading, because HR would have keyed a promotion and see no trace of it anywhere on the
+   * screen that shows what the promotion changes. Earliest first — the next thing to happen leads.
+   */
+  const pendingMovements = movements
+    .filter((m) => m.status === 'pending')
+    .sort((a, b) => (a.effectiveDate < b.effectiveDate ? -1 : a.effectiveDate > b.effectiveDate ? 1 : 0));
+  const employmentInfoCard = admin ? (
+    <Card id="section-employment-info">
+      <SectionHeader title={t('employmentInfo.title')} />
+      {pendingMovements.length > 0 && (
+        <div className="border-b border-border px-4 py-3">
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            <p className="font-medium">{t('employmentInfo.pendingMovementTitle')}</p>
+            <ul className="mt-1 space-y-0.5 text-muted-foreground">
+              {pendingMovements.map((m) => (
+                <li key={m.id}>
+                  {t('employmentInfo.pendingMovementItem', {
+                    kind: movementKindLabel(m.kind),
+                    date: formatDmy(m.effectiveDate),
+                  })}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {t('employmentInfo.pendingMovementNote')}
+            </p>
+          </div>
+        </div>
+      )}
+      {/* 9464bd56 — Company change before any transaction. A SELF-CONTAINED block ABOVE the consolidated
+          assignment form (which stays untouched — one form, one Save). Phase 1 (GET) picks a destination the
+          admin manages → ?companyChange=; phase 2 (POST) commits the move via changeEmploymentCompanyAction
+          with the destination-scoped Department. When neither applies it is a short note: editable → hint;
+          locked → the read-only Company field below carries the Movement / Transfer guidance. */}
+      {pendingCompany ? (
+        <form action={changeEmploymentCompanyAction} className="space-y-3 border-b border-border p-4">
+          <input type="hidden" name="employmentId" value={emp.employmentId} />
+          <input {...personnelWorkflowCarry('employment.organisation_assignment.companyname','companyCorrection')} value={pendingCompany.id} />
+          <input type="hidden" name="tab" value={tab ?? ''} />
+          <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            {t('employmentInfo.companyPendingBanner', { company: pendingCompany.name })}
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="record">
+              <select {...personnelControl('employment.organisation_assignment.departmentname','record')} defaultValue=""  className={inputCls}>
+                <option value="">{t('employmentInfo.positionNone')}</option>
+                {organisationChoiceLabels(orgDepartments).map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.displayLabel}
+                  </option>
+                ))}
+              </select>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
+              <select {...personnelControl('employment.organisation_assignment.businessunitname','edit')} defaultValue="" className={inputCls}>
+                <option value="">{t('employmentInfo.positionNone')}</option>
+                {organisationChoiceLabels(orgBusinessUnits).map((bu) => (
+                  <option key={bu.id} value={bu.id}>
+                    {bu.displayLabel}
+                  </option>
+                ))}
+              </select>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
+              <select {...personnelControl('employment.organisation_assignment.positionname','edit')} defaultValue="" className={inputCls}>
+                <option value="">{t('employmentInfo.positionNone')}</option>
+                {organisationChoiceLabels(orgPositions).map((pos) => (
+                  <option key={pos.id} value={pos.id}>
+                    {pos.displayLabel}
+                  </option>
+                ))}
+              </select>
+            </PersonnelField>
+            <PersonnelField fieldId="attendance.work_location_and_shift_arrangement.locationid" mode="record">
+              <select {...personnelControl("attendance.work_location_and_shift_arrangement.locationid", 'record')}  defaultValue="" className={inputCls}>
+                <option value="">{t('locationNone')}</option>
+                {orgLocations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.name} ({l.code})
+                  </option>
+                ))}
+              </select>
+            </PersonnelField>
+          </div>
+          <div className="flex items-center gap-3">
+            <button className={btnPrimary}>{t('employmentInfo.companyChangeSave')}</button>
+            <Link
+              href={`/admin/personnel/${emp.employmentId}${tab ? `?tab=${encodeURIComponent(tab)}` : ''}`}
+              className="text-xs text-primary underline"
+            >
+              {t('employmentInfo.companyChangeCancel')}
+            </Link>
+          </div>
+        </form>
+      ) : companyEditable ? (
+        <form method="get" className="space-y-2 border-b border-border p-4">
+          <input type="hidden" name="tab" value={tab ?? ''} />
+          <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="record">
+            <select {...personnelControl("employment.organisation_assignment.companyname", 'record')}  defaultValue={emp.companyId} className={inputCls}>
+              {managedCompanies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </PersonnelField>
+          <div className="flex items-center gap-3">
+            <button className={btnGhost}>{t('employmentInfo.companyChangeContinue')}</button>
+          </div>
+          <p className="text-xs text-muted-foreground">{t('employmentInfo.companyChangeableHint')}</p>
+        </form>
+      ) : null}
+      {/* 8ebabbf2 — the Organisation Assignment section is VIEW-ONLY. It was a full editing form (its server
+          action is deleted; see the note in actions.ts where it stood) that wrote the same facts the Movement
+          module records as dated events: two writers for one truth, so the employment history and the employee
+          record could disagree and neither said which was right. Every dimension below now changes ONLY through
+          Movement → New Event, which attaches an effective date, a reason and a history row to the change.
+
+          The Assignment Effective Date input is GONE with the form: the effective date now exists once, on
+          the movement event, instead of on a screen that could date a change nobody recorded.
+
+          What Movement covers, so nothing below lost its writer: Business Unit / Department / Position /
+          Work Location / Employment Type (setEmploymentAssignment), Job Grade (setEmploymentGrade), and
+          Division / Branch / Region / Line / Section / Team / Base / Category (setEmploymentInfo's flat
+          columns) — all reachable from the Transfer / Promotion / Demotion / Organisation Assignment Change /
+          Employment Type Change kinds, which submit them as ONE grouped movement (one history row).
+          Company is the one exception and keeps its own pre-transaction correction block ABOVE — see the
+          note there. */}
+      <div className="space-y-3 border-b border-border p-4">
+        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('employmentInfo.assignmentGroup')}</div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <PersonnelField fieldId="employment.organisation_assignment.companyname" mode="record">
+            {/* 9464bd56 — read-only here; the correction (pre-transaction only) lives in the block above. When
+                the employee has activity the field is locked and points HR to Movement / Transfer. */}
+            <input {...personnelDisplay("employment.organisation_assignment.companyname")}
+              value={emp.company}
+              disabled
+              className={inputCls}
+              aria-readonly="true"
+              title={!companyEditable ? t('employmentInfo.companyLockedTooltip') : undefined}
+            />
+            {!companyEditable && (
+              <p className="text-xs text-muted-foreground">{t('employmentInfo.companyLockedNote')}</p>
+            )}
+          </PersonnelField>
+          {/* 8ebabbf2 — Business Unit / Department / Position / Job Grade / Employment Type are shown as
+              STORED, resolved through the same `current` assignment projection the editable selects used, so
+              a value that is no longer in its company-scoped option list still displays (the 570e3311
+              pinned-current problem disappears entirely once nothing is a <select>). */}
+          <PersonnelField fieldId="employment.organisation_assignment.businessunitname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.businessunitname", current?.businessUnit)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.departmentname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.departmentname", current?.department)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.positionname" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.positionname", current?.position)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.gradename" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.gradename", gradeName)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.organisation_assignment.employmenttype" mode="edit">
+            {readOnlyValue("employment.organisation_assignment.employmenttype", employmentTypeLabel)}
+          </PersonnelField>
+          {/* R46 b272ab6b — the duplicate read-only Employee Status badge that used to sit here was removed.
+              The same derived value already renders TWICE above the fold: on the PageHeader actions slot and
+              on the employee summary Card. A third copy inside the form added noise without adding
+              information. Blacklisting (the one manual override) now has its own Card on the Movement tab. */}
+          {/* 8ebabbf2 — the Assignment Effective Date field was REMOVED here (expected behaviour #1). It only
+              ever governed the four effective-dated fields above and had to explain that in helper text; the
+              effective date now lives once, on the movement event that makes the change. */}
+        </div>
+
+        {/* 8ebabbf2 — the eight flat organisation columns, likewise view-only. They were catalog-backed
+            ProfileOptionSelect dropdowns (1001ff61); the current owner label is displayed with the canonical code as fallback,
+            including legacy free-text values that have no matching catalogue row. Movement's
+            comparison form owns them now (core/movement.ts MOVEMENT_FLAT_FIELDS) and keeps the same
+            catalog validation, because it writes through the same setEmploymentInfo. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgdivision" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgdivision", profileOptions.division.find(option=>option.value===emp.orgDivision)?.label?.trim() || emp.orgDivision)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgbranch" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgbranch", profileOptions.branch.find(option=>option.value===emp.orgBranch)?.label?.trim() || emp.orgBranch)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgregion" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgregion", profileOptions.region.find(option=>option.value===emp.orgRegion)?.label?.trim() || emp.orgRegion)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgline" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgline", profileOptions.line.find(option=>option.value===emp.orgLine)?.label?.trim() || emp.orgLine)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgsection" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgsection", profileOptions.section.find(option=>option.value===emp.orgSection)?.label?.trim() || emp.orgSection)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgteam" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgteam", profileOptions.team.find(option=>option.value===emp.orgTeam)?.label?.trim() || emp.orgTeam)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.orgbase" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.orgbase", profileOptions.base.find(option=>option.value===emp.orgBase)?.label?.trim() || emp.orgBase)}
+          </PersonnelField>
+          <PersonnelField fieldId="employment.additional_organisation_labels.employmentcategory" mode="edit">
+            {readOnlyValue("employment.additional_organisation_labels.employmentcategory", profileOptions.category.find(option=>option.value===emp.employmentCategory)?.label?.trim() || emp.employmentCategory)}
+          </PersonnelField>
+        </div>
+
+        {/* The pointer that replaces the Save button: where a field used to be editable, the tab says which
+            screen changes it now. Without this the section reads as broken rather than as deliberate. */}
+        <p className="text-xs text-muted-foreground">
+          {t('employmentInfo.assignmentViewOnlyNote')}{' '}
+          <Link href={newMovementHref} className="text-primary underline">
+            {t('employmentInfo.assignmentViewOnlyLink')}
+          </Link>
+        </p>
+      </div>
+
+      {/* c5ac75fa — Employment Dates is now its own sibling form. It previously shared a form with the
+          Organisation fieldset above; that fieldset moved into the assignment form, leaving the dates as the
+          sole remaining concern here. setEmploymentInfoAction no longer submits the eight org fields, and its
+          helper maps an absent field to `undefined` (untouched) rather than null (clear), so saving dates
+          cannot disturb the organisation values. */}
+      {/* 420ebab5 part two (r255) — Save button gone, `data-save-section` added; the Employment tab's one
+          "Save Changes" covers it. ABSENT IS NOT BLANK here more sharply than anywhere else on the screen:
+          `setEmploymentInfo` reads a field this form does not carry as "leave as-is". The consolidated
+          payload is namespaced per section, so this form is unpacked back into exactly the fields it
+          posted and the eight flat org columns / two service dates it deliberately dropped stay dropped.
+          The two company-change forms ABOVE, inside this same card, are bucket (b) and (c): they keep
+          their own controls, and submitting either while the tab is dirty raises the Save / Discard /
+          Cancel prompt rather than throwing the pending edits away in a redirect. */}
+      <form action={setEmploymentInfoAction} data-save-section="employment" className="space-y-6 p-4">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+
+        {/* ── Employment Dates (redesigned 955c7de4) ── explicit period UNITS + full lifecycle dates, grouped
+            into Joining / Probation / Notice / Resignation sub-sections. Each period is a value + unit dropdown
+            (Month/Week/Day); the bare unlabelled month+day pairs are gone. Legacy month values are shown as a
+            fallback default so existing data stays visible and migrates to value+unit on the next save. */}
+        <fieldset className="space-y-5">
+          <legend className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t('employmentInfo.datesGroup')}
+          </legend>
+
+          {/* Joining (24c4d02e): Group Join Date (hiredOn, relabelled) + current-company Join Date, each with
+              a read-only Length of Service figure.
+
+              89ea527b — BOTH are now VIEW-ONLY. They are set together at hire (hireEmployee seeds
+              joinDate = hiredOn, the one-time synchronisation) and afterwards move only through a movement
+              event: Join Date Change for a transfer/rehire/restructure, Group Join Date Correction for an
+              authorized historical-data fix. The Group Join Date is the one that matters most: it is the
+              master service date every leave service band, minimum-service gate and years-of-service figure
+              reads (core/leave.ts serviceYearsAt / servedFor), so a free edit here silently re-priced
+              somebody's leave entitlement with nothing in the record to say it had happened. Neither input
+              carries a `name` any more, and setEmploymentInfo ignores both fields without the matching
+              movement tag, so a forged submit cannot set them either. */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <PersonnelField fieldId="employment.employment_dates_and_service.hiredon" mode="edit">
+              {readOnlyValue("employment.employment_dates_and_service.hiredon", emp.hiredOn ? formatDmy(emp.hiredOn) : null)}
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.groupService')}: {groupServiceLabel ?? '—'}
+              </p>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.employment_dates_and_service.joindate" mode="edit">
+              {readOnlyValue("employment.employment_dates_and_service.joindate", emp.joinDate ? formatDmy(emp.joinDate) : null)}
+              <p className="text-xs text-muted-foreground">
+                {t('employmentInfo.currentCompanyService')}: {currentServiceLabel ?? '—'}
+              </p>
+            </PersonnelField>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t('employmentInfo.joinDatesViewOnlyNote')}{' '}
+            <Link href={newMovementHref} className="text-primary underline">
+              {t('employmentInfo.assignmentViewOnlyLink')}
+            </Link>
+          </p>
+
+          {/* b75b2a23 — the cc681bd5 Year of Service ROW moved from here onto the top summary card so the
+              figure is visible the moment a profile opens. The label + tooltip are still computed above
+              (beside the other service figures) — only the render moved.
+
+              4ea70bb7 — b75b2a23 also said the figure "lives in exactly one place". That stopped being
+              true HERE, on this very card: the Group Service caption in the Joining pair at the top of
+              this fieldset now prints the SAME string — fmtServiceYmd(emp.hiredOn), character for
+              character what the summary card shows as Year of Service. Deliberate, and the same reading as the twin note on the summary
+              card: one figure, two captions, ONE calculation. What must stay unique is the calculation,
+              not the display — if this page ever needs another service figure, call fmtServiceYmd; never
+              add a second piece of date arithmetic. */}
+
+          {/* Probation Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.probationGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {/* a72610af — the four value+unit periods on this card are now ONE shared component
+                  (components/employment-period-fields.tsx), which the Create New Employee draft renders
+                  too. `probationMonths` stays as the legacy fallback: 955c7de4 replaced the bare month
+                  count with value+unit and a row written before that still has only the old column. */}
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="probationPeriod"
+                valueName="probationValue"
+                unitName="probationUnit"
+                value={emp.probationValue ?? emp.probationMonths}
+                unit={emp.probationUnit}
+              />
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="extendedProbationPeriod"
+                valueName="extendedProbationValue"
+                unitName="extendedProbationUnit"
+                value={emp.extendedProbationValue}
+                unit={emp.extendedProbationUnit}
+              />
+            </div>
+            {/* d27961e3 — Extended Confirmation Date and Final Confirmation Date were REMOVED from this card.
+                Probation extensions are managed exclusively through the Movement tab (New Event → Probation
+                Extension), which records the effective date + remarks in the movement history and remains the
+                single mutator of the underlying extended/final columns (kept — they still drive the derived
+                probation status). Only the standard Confirmation Date stays editable here. */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <ConfirmationDateField mode="form" value={emp.confirmationDate} dmyDisplay />
+            </div>
+          </div>
+
+          {/* Contract Information (8590615a) — rendered ONLY for a contract employee, hidden for every other
+              type, exactly as the reporter asked. The gate reads the CURRENT open assignment (`current`,
+              resolved from the assignment history at the top of this render) because employment_type lives on
+              `assignment`, NOT on `employment` — the Employee Type shown read-only above comes from the same
+              place. When an employee's type later moves away from Contract the block simply disappears and the
+              stored dates and remark are left alone, never erased.
+
+              THE END DATE IS THE PRE-EXISTING employment-review column, not a new one. It was already
+              editable, but only as a bare "End Date" row inside Employment Review on the Others tab, which is
+              why the reporter could not find it. Both places now write `employment.contract_end_date`, so
+              contract-expiry review keeps working on whatever HR types here.
+
+              Contract Start Date pre-fills with the Group Join Date when nothing is recorded yet — a DISPLAY
+              default only; nothing is written until HR saves. The end date falls back to provisional_end_on so
+              a contract employee hired before this shipped still shows the expiry date the wizard captured. */}
+          {current?.employmentType === 'contract' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractstartdate" mode="record">
+                  <DateField {...personnelControl('employment.employment_dates_and_service.contractstartdate','record')}
+
+
+                    defaultValue={emp.contractStartDate ?? emp.hiredOn}
+                    className={inputCls}
+                    label={personnelLabel('employment.employment_dates_and_service.contractstartdate')}
+                  />
+                </PersonnelField>
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractenddate" mode="record">
+                  <DateField {...personnelControl('employment.employment_dates_and_service.contractenddate','record')}
+
+
+                    defaultValue={emp.contractEndDate ?? emp.provisionalEndOn ?? ''}
+                    className={inputCls}
+                    label={personnelLabel('employment.employment_dates_and_service.contractenddate')}
+                  />
+                </PersonnelField>
+              </div>
+              <PersonnelField fieldId="employment.employment_dates_and_service.contractremark" mode="edit">
+                {/* taCls, not inputCls — inputCls fixes h-9, which collapses a multi-line box to one row.
+                    Same constant every other textarea on this page uses. */}
+                <textarea {...personnelControl('employment.employment_dates_and_service.contractremark','edit')}
+
+                  rows={3}
+                  defaultValue={emp.contractRemark ?? ''}
+                  className={taCls}
+                  placeholder={t('employmentInfo.contractRemarkPlaceholder')}
+                />
+              </PersonnelField>
+              <p className="text-xs text-muted-foreground">{t('employmentInfo.contractNote')}</p>
+            </div>
+          )}
+
+          {/* Notice Period Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.noticeGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="noticeBeforeConfirmation"
+                valueName="noticeBeforeConfirmationValue"
+                unitName="noticeBeforeConfirmationUnit"
+                value={emp.noticeBeforeConfirmationValue ?? emp.resignationNoticeMonths}
+                unit={emp.noticeBeforeConfirmationUnit}
+              />
+              <EmploymentPeriodField
+                mode="form"
+                labelKey="noticeAfterConfirmation"
+                valueName="noticeAfterConfirmationValue"
+                unitName="noticeAfterConfirmationUnit"
+                value={emp.noticeAfterConfirmationValue ?? emp.shortNoticeMonths}
+                unit={emp.noticeAfterConfirmationUnit}
+              />
+            </div>
+          </div>
+
+          {/* Resignation Information */}
+          <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.resignationGroup')}</h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <PersonnelField fieldId="employment.employment_dates_and_service.tenderresignationdate" mode="record">
+                {readOnlyValue("employment.employment_dates_and_service.tenderresignationdate", resignationInfo?.tenderResignationDate.value ? formatDmy(resignationInfo.tenderResignationDate.value) : null)}
+                {resignationInfo?.tenderResignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.tenderResignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.tenderResignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.tenderResignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+              </PersonnelField>
+              <PersonnelField fieldId="employment.employment_dates_and_service.resignationdate" mode="record">
+                {readOnlyValue("employment.employment_dates_and_service.resignationdate", resignationInfo?.resignationDate.value ? formatDmy(resignationInfo.resignationDate.value) : null)}
+                {resignationInfo?.resignationDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.resignationDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.resignationDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.resignationDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+              </PersonnelField>
+              <PersonnelField fieldId="employment.employment_dates_and_service.lastworkingdate" mode="record">
+                {readOnlyValue("employment.employment_dates_and_service.lastworkingdate", resignationInfo?.lastWorkingDate.value ? formatDmy(resignationInfo.lastWorkingDate.value) : null)}
+                {resignationInfo?.lastWorkingDate.source.kind === 'movement' ? <Link className="text-xs text-primary underline" href={`/admin/personnel/${emp.employmentId}?tab=careerMovement&movement=${resignationInfo.lastWorkingDate.source.movementId}`}>{t('resignationInformation.movementSource')} · {formatDmy(resignationInfo.lastWorkingDate.source.effectiveDate)}</Link> : <p className="text-xs text-muted-foreground">{t(resignationInfo?.lastWorkingDate.source.kind === 'legacy' ? 'resignationInformation.legacySource' : 'resignationInformation.emptySource')}</p>}
+              </PersonnelField>
+            </div>
+            <p className="text-xs text-muted-foreground">{t('employmentInfo.resignationMovementNote')}</p>
+            <Link href={newMovementHref} className="text-sm font-medium text-primary underline">{t('employmentInfo.resignationMovementLink')}</Link>
+          </div>
+        </fieldset>
+
+        <p className="text-xs text-muted-foreground">{t('employmentInfo.superiorNote')}</p>
+      </form>
+    </Card>
+  ) : null;
+
+  /* Movement tab redesign (78853b97): the former standalone Blacklist card (R46 b272ab6b) is folded
+     into the New Event form — kind "Blacklist" routes to the same audited setEmploymentBlacklist
+     service (set AND clear), so nothing about the columns or events changed. */
+
+  /* Direct Superior (dce55aff) — replaces the Reporting Lines card. ONE searchable field (Employee ID
+     or name) answers the one question the system actually asks: who does this person report to. Saving
+     writes the administrative reporting line via setDirectSuperiorAction → setReportingLine (CLOSE +
+     INSERT supersede, validFrom = today, cycle + self-assignment refusal, DomainEvents) — the same
+     engine every approval/visibility consumer already follows, so the change takes effect everywhere
+     immediately. Manager / Line Type / Effective From / multi-line management are gone from the UI;
+     existing functional/project/dotted rows remain in the data (org chart still renders them — their
+     retirement is a follow-up decision, not decided here). Prior superiors stay visible read-only in
+     the compact history disclosure below the field. */
+  const directSuperiorCard = (
+    <Card id="section-direct-superior">
+      <SectionHeader title={t('directSuperiorTitle')} />
+      <div className="space-y-4 p-4">
+        <div className="text-sm">
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('directSuperiorCurrent')}</div>
+          {currentSuperior ? (
+            <Link href={`/admin/personnel/${currentSuperior.employmentId}`} className="font-medium text-foreground hover:text-primary">
+              {superiorLabel(currentSuperior.employeeCode, currentSuperior.name)}
+            </Link>
+          ) : (
+            <span className="text-muted-foreground">{t('directSuperiorNone')}</span>
+          )}
+        </div>
+        {!emp.terminatedOn && others.length > 0 && (
+          <form action={setDirectSuperiorAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            {/* The no-change guard + the "clear → end current line" path both need the current state. */}
+            <input type="hidden" name="currentSuperiorEmploymentId" value={currentSuperior?.employmentId ?? ''} />
+            <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
+            <div className="sm:col-span-2">
+              <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
+                <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
+
+                  value={currentSuperior?.employmentId ?? ''}
+                  options={superiorOptions}
+                  placeholder={t('directSuperiorNone')}
+                  searchPlaceholder={t('directSuperiorSearch')}
+                  noResultsLabel={t('directSuperiorNoResults')}
+                  legacySuffix=""
+                />
+              </PersonnelField>
+            </div>
+            <div>
+              <button className={btnPrimary}>{t('directSuperiorSave')}</button>
+            </div>
+          </form>
+        )}
+        {superiorHistory.length > 0 && (
+          <details className="text-sm">
+            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t('directSuperiorHistory')}
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {superiorHistory.map((h) => (
+                <li key={h.id} className="flex items-center justify-between gap-3">
+                  <Link href={`/admin/personnel/${h.managerEmploymentId}`} className="text-foreground hover:text-primary">
+                    {superiorLabel(h.employeeCode, h.name)}
+                  </Link>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {formatDmy(h.validFrom)} → {formatDmy(h.validTo)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <p className="text-xs text-muted-foreground">{t('directSuperiorHint')}</p>
+      </div>
+    </Card>
+  );
+
+  // Hierarchy Management (ADR-0052): approval delegations. When this employee (a reporting-line
+  // holder) is away, they assign a stand-in who can approve on their behalf for a window. This is
+  // approver-routing only — the delegate gains NO visibility of the delegator's reports.
+  const delegationsCard = (
+    <Card id="section-delegations">
+      <SectionHeader title={t('delegationsTitle')} />
+        <div className="p-4">
+          {delegations.length === 0 ? (
+            <div className="text-sm text-muted-foreground">{t('delegationsEmpty')}</div>
+          ) : (
+            <ul className="space-y-2">
+              {delegations.map((d) => (
+                <li key={d.id} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2">
+                    <Link href={`/admin/personnel/${d.delegateEmploymentId}`} className="text-foreground hover:text-primary">
+                      {d.delegateName}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDmy(d.validFrom)} → {formatDmy(d.validTo)}
+                    </span>
+                  </span>
+                  <form action={endDelegationAction}>
+                    <input type="hidden" name="employmentId" value={emp.employmentId} />
+                    <input type="hidden" name="reportingLineId" value={d.id} />
+                    <input {...personnelWorkflowCarry('employment.approval_delegations.validto','delegationEnd')} value={today} />
+                    <button type="submit" title={t('delegationEnd')} className="text-muted-foreground transition-colors hover:text-red-500">
+                      ×
+                    </button>
+                  </form>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        {!emp.terminatedOn && others.length > 0 && (
+          <form
+            action={addDelegationAction}
+            className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
+          >
+            <input type="hidden" name="employmentId" value={emp.employmentId} />
+            <PersonnelField fieldId="employment.approval_delegations.delegateemploymentid" mode="record">
+              <select {...personnelControl("employment.approval_delegations.delegateemploymentid", 'record')}   className={inputCls}>
+                {others.map((o) => (
+                  <option key={o.employmentId} value={o.employmentId}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </PersonnelField>
+            <PersonnelField fieldId="employment.approval_delegations.validfrom" mode="record">
+              <DateField {...personnelControl('employment.approval_delegations.validfrom','record')} defaultValue={today} className={inputCls} label={personnelLabel('employment.approval_delegations.validfrom')} />
+            </PersonnelField>
+            <PersonnelField fieldId="employment.approval_delegations.validto" mode="edit">
+              <DateField {...personnelControl('employment.approval_delegations.validto','edit')} className={inputCls} label={personnelLabel('employment.approval_delegations.validto')} />
+            </PersonnelField>
+            <div>
+              <button className={btnPrimary}>{t('delegationAdd')}</button>
+            </div>
+          </form>
+        )}
+    </Card>
+  );
+
+  // Dated assignments own immutable period history. The existing undated choice is displayed as the
+  // fallback for uncovered dates; adding an assignment starts at Join Date for HR to confirm.
+  const holidayCalendarCard = admin ? <HolidayCalendarAssignments employmentId={emp.employmentId} joinDate={emp.joinDate ?? emp.hiredOn} employmentStartDate={emp.hiredOn} fallbackLabel={emp.holidayGroupId?holidayGroups.find(group=>group.id===emp.holidayGroupId)?.name??t('holidayCalendarDefault'):emp.workState??t('holidayCalendarDefault')} groups={holidayGroups.map(group=>({id:group.id,name:group.name,active:group.active}))} states={stateOptions} rows={holidayCalendarRows.map(row=>({id:row.id,startDate:row.validFrom,endDate:holidayCalendarInclusiveEnd(row.validTo),choice:row.kind==='group'?`group:${row.holidayGroupId}`:row.kind==='state'?`state:${row.workState}`:'',superseded:!!row.supersededAt}))}/> : null;
+
+  /**
+   * f513ec02 (r281) — THE BOX THAT PUTS A PERSON IN A SCHEDULE GROUP.
+   *
+   * r277 shipped the column (employment.attendance_rule_id, migration 0464), the additive rule resolution
+   * that reads it and the refusal that stops a grouped employee being put on a shift the group forbids —
+   * but nothing that ASSIGNS the group. The chain the reporter drew (Employee → Schedule Group → Shift)
+   * was reachable from both ends and from neither middle. This card is the middle.
+   *
+   * IT SITS DIRECTLY UNDER HOLIDAY CALENDAR, which is the control it is modelled on: the same one-select
+   * card, the same "blank means fall back" semantics, the same tab. The approved plan's own words are
+   * "put a person in a group the same way you set their Holiday Group today", and Holiday Group is on THIS
+   * tab (item 52a30630 relocated it here and pinned it first) — not on the Employment tab. A Schedule
+   * Group is attendance configuration: it decides lateness, early-out and overtime rules. Its writer
+   * validates the canonical roster and dated shift assignments already recorded for this employee.
+   *
+   * ⚠️ BLANK IS A REAL OPTION AND IT MEANS SOMETHING. "No Schedule Group" ⇒ the column stays NULL ⇒ rules
+   * resolve from the shift exactly as they do today. It is NOT an unset, NOT a placeholder, and the save
+   * must never read it as "leave whatever was there". Feedback 57840a6e is what a collapsed tri-state cost
+   * on this very file: a checkbox that could not carry three states rendered the company default, and an
+   * untouched card saved for an unrelated reason pinned employees to an explicit "No" they never chose.
+   * A select with a meaning-bearing blank option is the shape that cannot do that, and the writer
+   * (core/roster.ts setEmploymentScheduleGroup) maps '' to null once, in one place.
+   */
+  const scheduleGroupCard = admin ? (
+    <Card id="section-schedule-group">
+      <SectionHeader title={t('scheduleGroupCardTitle')} />
+      {/* No Save button and `data-save-section` present, like every other card inside this scope: the
+          Attendance tab's one "Save Changes" writes it first in ATTENDANCE_TAB_SECTION_ORDER. The per-card action stays wired because it is where the writer is attached and
+          because a <form> with no action would POST to the current URL. */}
+      <form action={setEmploymentScheduleGroupAction} data-save-section="schedule" className="grid grid-cols-1 items-end gap-3 p-4 sm:grid-cols-3">
+        <input type="hidden" name="employmentId" value={emp.employmentId} />
+        <PersonnelField fieldId="attendance.holiday_calendar_and_schedule.schedulegroupname" mode="edit">
+          <select {...personnelControl('attendance.holiday_calendar_and_schedule.schedulegroupname','edit')} defaultValue={scheduleGroupCurrentId ?? ''} className={inputCls}>
+            {/* FIRST and always present. Its value is the empty string, which the writer maps to NULL. */}
+            <option value="">{t('scheduleGroupNone')}</option>
+            {scheduleGroupOptions.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.status === 'active' ? r.name : t('scheduleGroupInactiveOption', { name: r.name })}
+              </option>
+            ))}
+          </select>
+        </PersonnelField>
+        <p className="text-xs text-muted-foreground sm:col-span-3">{t('scheduleGroupHint')}</p>
+        {/* EMPTY STATE. Found by rendering the screen: the seeded tenant has NO attendance_rule rows, so
+            the select offers the blank option and nothing else — a control that looks broken rather than
+            one whose library is empty. Naming the reason (and the screen that fixes it) is what makes it
+            actionable; the same shape the Work Location card uses for its four empty states. */}
+        {scheduleGroupOptions.length === 0 && (
+          <p className="text-xs text-muted-foreground sm:col-span-3">{t('scheduleGroupEmpty')}</p>
+        )}
+      </form>
+      {/* The General-tab precedent the plan quotes back to the reporter: show the setting, and send them to
+          the screen that OWNS it rather than growing a second editor for it here. 6d091cc0 (r301): the Schedule
+          Groups are a card on Attendance › Schedule › General now, so the link goes straight to that card
+          rather than through the /admin/attendance-policy redirect. */}
+      <div className="border-t border-border px-4 py-3 text-xs">
+        <Link href="/admin/attendance/schedule#schedule-groups" className="text-primary hover:underline">
+          {t('scheduleGroupManage')}
+        </Link>
+      </div>
+    </Card>
+  ) : null;
+
+  /* Movement tab redesign (78853b97): the former Transfer + Terminate cards are folded into the New
+     Event form — kinds "Transfer" (via setEmploymentAssignment since 08913328, so location, cost centre
+     AND business unit all carry) and "Termination" (via terminateEmployment, confirmation-gated in the
+     island) reuse the same audited services and DomainEvents; only the entry point changed. */
+
+  // Probation / Contract / Internship review (0110). Admin/manager-managed; hidden once terminated.
+
+  // Distribute the pre-built section cards into the six tab panels (mapping per approved plan). Each
+  // panel is a fragment of the existing <Card> blocks — nothing about the forms or server actions changed,
+  // only where they render. Falsy entries (admin-gated / state-gated nulls) collapse to nothing.
+  const panels = {
+    // Single-card tabs pass the node directly so a null (defensive; scopedAdmin guarantees non-null
+    // here) falls through to the shell's empty-state rather than rendering a blank fragment.
+    profile: <>{!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}{profilePanel}{dataPrivacyCard}</>,
+    family: familyPanel,
+    // 420ebab5 part two (r255) — the Employment Information card is the tab's ONE bucket (a) form
+    // (Employment Dates: probation / notice periods and lifecycle dates, overwritten in place), so it sits
+    // inside the tab's save scope. The Direct Superior card and the Delegations card stay OUTSIDE it: a
+    // reporting line is bitemporal and TAGGED AS A MOVEMENT (it opens a Reporting Line Change row on the
+    // Employment History), and a delegation is a windowed record that is started and ended. Neither is a
+    // value a Discard could put back, so both keep their own buttons — see
+    // docs/audits/420ebab5-personnel-save-classification.md.
+    //
+    // THE SAVE BAR IS THEREFORE NOT AT THE FOOT OF THIS TAB, and it says so. It renders at the end of the
+    // scope, above two cards it does not cover, because a tab Save can only enclose a CONTIGUOUS run and
+    // Employment Information is the card that has to lead this tab. `covers` prints the card names on the
+    // bar so it cannot read as "Save everything below me" — press it after changing the Direct Superior
+    // and the bar answers "No unsaved changes", which is exactly the control-that-lies the classification
+    // exists to prevent unless the bar has already said what it owns.
+    job: (
+      <>
+        {admin && (
+          <fieldset disabled={!canMaintainWorkforce} className="min-w-0">
+          {!canMaintainWorkforce&&<p role="status" className="text-sm text-muted-foreground">{tAccess('workforceReadOnly')}</p>}
+          <TabSaveScope
+            tabKey="job"
+            identity={{ employmentId: emp.employmentId }}
+            saveAction={saveJobTabAction}
+            covers={tabSaveCovers.job}
+          >
+            {employmentInfoCard}
+          </TabSaveScope></fieldset>
+        )}
+        <fieldset disabled={!canMaintainWorkforce} className="min-w-0">{directSuperiorCard}</fieldset>
+        {delegationsCard}
+        {costAllocationView && <CostCenterAllocations key={employmentId} value={costAllocationView}/>}
+      </>
+    ),
+    // Movement tab redesign (78853b97): ONE clean screen — the Employment History timeline (a
+    // Hired-first projection over the domain_event ledger) with a single New Event button that folds in
+    // the former Transfer / Terminate / Blacklist boxes (their audited services are reused, not
+    // rewritten). The detail view (?movement=<id>) and the New Event form (?newEvent=1) render ABOVE
+    // the history so opening either never loses the timeline context.
+    careerMovement: (
+      <>
+        {movementDetailCard}
+        {newEventCard}
+        {editEventCard}
+        {hireCorrectionCard}
+        {employmentHistoryCard}
+      </>
+    ),
+    // Dated Calendar stays first and owns its versioned Save. Schedule Group and the modern clocking /
+    // Location Assignment controls share the field-edit Save below it; obsolete editors are removed.
+    attendance: (
+      <>
+        {holidayCalendarCard}
+        {admin && (
+          <TabSaveScope
+            tabKey="attendance"
+            identity={{ employmentId: emp.employmentId }}
+            saveAction={saveAttendanceTabAction}
+            covers={tabSaveCovers.attendance}
+          >
+            {/* f513ec02 — the Schedule Group assignment, directly under the Holiday Group it is modelled
+                on, and above Clocking so the two "which rules judge this person" cards read together. */}
+            {scheduleGroupCard}
+            {clockingCard}
+            {/* r430 — Web Clocking's Attendance Photo setting, directly after Clocking & Geofencing: both
+                are "what does this employee's own self-capture clocking require" cards. */}
+            {webClockingPhotoCard}
+          </TabSaveScope>
+        )}
+      </>
+    ),
+    // Bank & Statutory (feedback 40ef71a0): the Statutory (Malaysia) card — the single
+    // <form action={setStatutoryAction}> that already co-locates the salary-payment bank fields
+    // (Group 4) alongside EPF/SOCSO/EIS/PCB — relocated WHOLE out of Payroll into its own tab. The
+    // const definition (statutoryCard) is unchanged; only its render location moved, so the
+    // full-row-overwrite form and every mounted input stay byte-identical and no server logic changed.
+    // Item ef720d3a — the dedicated Bank Information card (bankCard) is pinned FIRST on this tab, above the
+    // statutory registration/EPF/SOCSO card. Bank details are the most-referenced payment attribute, and the
+    // card is visually separated with its own save (setBankAction), per the redesign request.
+    // 420ebab5 part two (r255) — this is the ONLY tab with no bucket (b) form on it at all, so its one
+    // "Save Changes" covers the whole tab with nothing left over and the reading order is untouched. All
+    // four cards are plain field edits; the ORDER THEY ARE WRITTEN IN is not this JSX order but the
+    // declared one in lib/personnel-tab-sections.ts (statutory → tax → bank → others), because the
+    // statutory form is a FULL-ROW overwrite whose pass-throughs read the stored row at the moment it
+    // runs, so it goes first and the partial writers land their own values on top of it.
+    bankStatutory: (
+      <>
+        {admin && (
+          <TabSaveScope
+            tabKey="bankStatutory"
+            identity={{ employmentId: emp.employmentId }}
+            saveAction={saveBankStatutoryTabAction}
+            covers={tabSaveCovers.bankStatutory}
+          >
+            {bankCard}
+            {/* Item df09f22a — the Identification & Tax card was merged into statutoryCard as a nested "Income Tax
+                (PCB)" section (Income tax is a Malaysia statutory item). One box now holds every statutory field. */}
+            {statutoryCard}
+            {/* Feedback 0df0c635 — Others Statutory pinned BELOW the existing statutory cards (reporter-specified
+                order: Statutory (Malaysia) → Tax Information → Others Statutory). */}
+            {othersStatutoryCard}
+          </TabSaveScope>
+        )}
+
+      </>
+    ),
+    // Payroll tab keeps pay components, CP38, encashment, policy assignment and compensation. The
+    // statutory/bank card previously pinned to the top (feedback 7524eda1) now lives on Bank & Statutory.
+    // compensationCard (Basic Salary / salary history) is pinned FIRST (feedback 326f0b5e): Basic Salary
+    // is the most-referenced payroll attribute, so it opens at the top with no scrolling. Pure JSX order
+    // change — every card's definition and behaviour is unchanged.
+    // Item a6a47698 — TP3 / opening balances and the Zakat summary relocated here from Bank & Statutory so
+    // all payroll-related employee information is centralized on this tab. tp3Card has its own partial save
+    // (setTp3Action); zakatSummaryCard is read-only and links to Payroll → Transaction Entry → Zakat to edit.
+    // R46 79eb7151 — payrollPolicyCard moved from LAST to SECOND, directly under compensationCard. It was
+    // the layout root cause: Pay Mode and Payment Term both live on the payroll policy, but the card holding
+    // it sat below pay components, CP38, encashment, TP3 and zakat, so from the Salary section at the top of
+    // the tab they looked absent. Basic Salary and the policy that decides how it is paid now read together.
+    // compensationCard stays FIRST (feedback 326f0b5e) — Basic Salary must still open at the top.
+    //
+    // 420ebab5 part two (r256) — THE LAST TAB TO GET ONE SAVE, and the order moved to make it possible.
+    // The audit (docs/audits/420ebab5-personnel-save-classification.md, finding 3) held this tab back
+    // twice on two grounds. The first is answered: `covers` names the cards the bar owns, and the fence
+    // is the MARKER not the subtree, so Payment Method living INSIDE compensationCard puts nothing else
+    // in that card under the tab's Save — setCompensationAction's revision dialog carries no marker and
+    // is never read, packed or reset. The second is not answered but ACCEPTED and is the visible change:
+    // a tab Save can only enclose a CONTIGUOUS run, so the three field-edit cards lead the tab and TP3
+    // moves up from sixth to third, past Pay Items, CP38 and Leave Encashment.
+    //
+    // NOTHING PINNED IS REVERSED. compensationCard stays FIRST (feedback 326f0b5e — Basic Salary must
+    // open at the top with no scrolling) and payrollPolicyCard stays SECOND (R46 79eb7151 — Pay Mode and
+    // Payment Term read together with the salary they govern). TP3's sixth slot was never a decision:
+    // item a6a47698 appended it when it relocated here from Bank & Statutory, and no guard held it.
+    // test/personnel-payroll-tab-order.test.ts now pins the new run so this cannot drift back silently.
+    //
+    // The four cards BELOW the scope keep their own buttons and their own confirmations, and every one of
+    // them is bucket (b) or read-only: pay items (a dated fixed transaction), CP38 (a court-ordered
+    // deduction, added and terminated), leave encashment (adjust / unfreeze — money out), and the zakat
+    // summary, which is read-only and edited solely at /payroll/transactions/zakat.
+    payroll: (
+      <>
+        {admin && (
+          <TabSaveScope
+            tabKey="payroll"
+            identity={{ employmentId: emp.employmentId }}
+            saveAction={savePayrollTabAction}
+            covers={tabSaveCovers.payroll}
+          >
+            {compensationCard}
+            {payrollPolicyCard}
+            {tp3Card}
+          </TabSaveScope>
+        )}
+        {payComponentsCard}
+        {cp38Card}
+        {encashmentCard}
+        {zakatSummaryCard}
+      </>
+    ),
+    leave: (
+      <>
+        {gradeCard}
+      </>
+    ),
+    documents: documentsPanel,
+    // Qualification (feedback a949184a): the academic/professional qualification register — a single card
+    // mirroring the Family tab's list-and-dialog pattern (see qualificationPanel above).
+    qualification: qualificationPanel,
+
+  };
+
+  return (
+    // c002b3c3 — the profile was the NARROWEST page in the module (max-w-4xl) while carrying the most on
+    // it, which is backwards; it now uses the SAME container as the listing and as the wide screens this
+    // codebase already settled on. One value, applied identically in both places on purpose — the whole
+    // module widening to two slightly different caps is the report this is meant to prevent. Nothing
+    // inside is re-laid-out: every card and tab already flows to its container.
+    <div className="mx-auto max-w-[100rem] space-y-6">
+      <PageHeader
+        back={back}
+        title={emp.name}
+        description={t('headerDescription', {
+          code: emp.employeeCode ?? '—',
+          email: emp.email,
+          company: emp.company,
+          hiredOn: formatDmy(emp.hiredOn),
+        })}
+        actions={
+          <>
+            {/* c002b3c3 — Search Employee, in the SAME top-right position it holds on the listing, so the
+                control does not move as you navigate. `tab` rides along so jumping to the next person
+                keeps the tab you were reading instead of resetting to Profile. */}
+            <EmployeeSwitcher
+              employees={switcherEmployees}
+              currentEmploymentId={emp.employmentId}
+              tab={tab ?? null}
+            />
+            {admin && <Link href={`/admin/audit?employment=${emp.employmentId}`} className={btnGhost}>{t('employeeAuditLink')}</Link>}
+            <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
+          </>
+        }
+      />
+
+      {/* b4682879 — modern profile header: photo (or initials fallback) + key employment info. Admin-only
+          upload / replace / remove controls sit under the photo. The photo renders wherever can_see_person
+          allows (RLS on the serve route). */}
+      <Card className="p-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="flex flex-col items-center gap-3">
+            {photoExists ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={`/personnel/photo/${emp.personId}`}
+                alt={emp.name}
+                className="size-24 shrink-0 rounded-full object-cover ring-1 ring-border"
+              />
+            ) : (
+              <Avatar name={emp.name} className="size-24 text-2xl" />
+            )}
+            {/* 597c810a point 3 — VIEW. Only when there IS a photo: a View control over an initials
+                placeholder is a button that can only disappoint. It sits with the Edit trigger under the
+                avatar, and it is available to EVERY reader of this record, not only an admin — inspecting
+                a photo is a read, and the read rule is can_see_person, which this reader has already
+                passed to be on this page at all. The island holds no t(): every caption is resolved here
+                (see components/photo-edit-menu.tsx for why that matters to the i18n guard). */}
+            {photoExists && (
+              <PhotoLightbox
+                src={`/personnel/photo/${emp.personId}`}
+                viewLabel={t('photoView')}
+                closeLabel={t('photoViewClose')}
+                dialogLabel={t('photoViewTitle', { name: emp.name })}
+                alt={emp.name}
+              />
+            )}
+            {admin && canMaintainWorkforce && (
+              // dc23d3b6 — photo controls are now hidden behind a pencil/Edit trigger (PhotoEditMenu, a
+              // 'use client' island). The page still BUILDS both forms here (server actions bound as
+              // before) and passes them in as children; the island only toggles their visibility, so the
+              // RSC boundary is respected. Replacing an EXISTING photo now prompts via ConfirmSubmit;
+              // first-time Upload (no photo) submits directly. Removing already confirmed — unchanged.
+              <PhotoEditMenu label={t('photoEdit')} hint={t('photoHint')}>
+                <form action={setPersonPhotoAction} className="flex w-full flex-col items-stretch gap-1.5">
+                  <input type="hidden" name="employmentId" value={emp.employmentId} />
+                  <input type="hidden" name="personId" value={emp.personId} />
+                  <input
+
+                    {...personnelInput('profile.personal_details.photo')}
+                    accept="image/png,image/jpeg"
+                    className="w-full text-xs text-muted-foreground file:mr-2 file:rounded-md file:border-0 file:bg-accent file:px-2 file:py-1 file:text-xs file:text-foreground"
+                  />
+                  {photoExists ? (
+                    <ConfirmSubmit
+                      title={t('photoReplace')}
+                      description={t('photoReplaceConfirm')}
+                      confirmLabel={t('photoReplace')}
+                      variant="default"
+                      size="sm"
+                      className="w-full"
+                    >
+                      {t('photoReplace')}
+                    </ConfirmSubmit>
+                  ) : (
+                    <button className={`${btnPrimary} h-7 px-2 text-xs`}>{t('photoUpload')}</button>
+                  )}
+                </form>
+                {photoExists && (
+                  <form action={removePersonPhotoAction} className="w-full">
+                    <input type="hidden" name="employmentId" value={emp.employmentId} />
+                    <input type="hidden" name="personId" value={emp.personId} />
+                    <ConfirmSubmit
+                      title={t('photoRemove')}
+                      description={t('photoRemoveConfirm')}
+                      confirmLabel={t('photoRemove')}
+                      size="sm"
+                      className="w-full"
+                    >
+                      {t('photoRemove')}
+                    </ConfirmSubmit>
+                  </form>
+                )}
+              </PhotoEditMenu>
+            )}
+          </div>
+          <dl className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('employeeIdLabel')}</dt>
+              <dd className="font-medium text-foreground">{emp.employeeCode ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerStatus')}</dt>
+              <dd>
+                <StatusBadge status={derivedStatus} label={derivedStatusLabel} />
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerDepartment')}</dt>
+              <dd className="font-medium text-foreground">{current?.department ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerPosition')}</dt>
+              <dd className="font-medium text-foreground">{current?.position ?? '—'}</dd>
+            </div>
+            {/* Item 7a504619 — Direct Superior read straight from the active administrative reporting line
+                (already loaded via reportingLinesFor). Read-only mirror of the Employment tab; a change there
+                shows here automatically. Dash when no manager is assigned. dce55aff: shows the superior's
+                Employee ID alongside the full name ("EMP-0008 – John Tan"). */}
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerSuperior')}</dt>
+              <dd className="font-medium text-foreground">
+                {currentSuperior ? superiorLabel(currentSuperior.employeeCode, currentSuperior.name) : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('headerCompany')}</dt>
+              <dd className="font-medium text-foreground">{emp.company}</dd>
+            </div>
+            <div>
+              {/* 4ea70bb7 — this pair has always rendered emp.hiredOn, which is the GROUP join date; the
+                  label said "Join date", the name the Employment tab gives the OTHER column (emp.joinDate).
+                  Labelled Group Join Date so the summary card and the Employment tab name the same date the
+                  same way. The value is unchanged and neither date moved. */}
+              <dt className="text-xs text-muted-foreground">{t('headerGroupJoinDate')}</dt>
+              <dd className="font-medium text-foreground">{formatDmy(emp.hiredOn)}</dd>
+            </div>
+            {/* b75b2a23 — Year of Service, moved here from the Employment tab so service length is visible
+                the moment a profile opens. Same read-only Y/M/D figure from the Group Join Date (computed
+                above with the other service figures), same i-badge tooltip carrying the underlying dates,
+                same "Not Available" fallback. Placed after the Group Join Date — the two read together —
+                and as the 8th pair it keeps the 2-column grid even. This is the row's ONLY display; the
+                Employment Information card row was removed.
+                4ea70bb7 — the Employment tab's Group Service caption now prints the SAME string from the
+                SAME formatter (fmtServiceYmd on the same emp.hiredOn). That is deliberate: one figure, two
+                captions, one calculation — it is a second caption, not a second answer. */}
+            <div>
+              <dt className="text-xs text-muted-foreground">{t('employmentInfo.yearOfService')}</dt>
+              <dd className="font-medium text-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <span>{yearOfServiceLabel ?? t('employmentInfo.notAvailable')}</span>
+                  {yearOfServiceTooltip && (
+                    <span
+                      className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] font-semibold text-muted-foreground"
+                      title={yearOfServiceTooltip}
+                      aria-label={yearOfServiceTooltip}
+                    >
+                      i
+                    </span>
+                  )}
+                </span>
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </Card>
+
+      <ErrorBanner message={error} />
+
+      {/* R46 47146ea3 — Children (PCB Relief) auto-sync feedback. The manual "Use {count}" confirmation is
+          gone: a Family-record change now moves the PCB child count by itself whenever Child Relief Mode is
+          'Auto'. Because that silently changes a TAX input, the person who made the edit is told what moved.
+
+          The AMBER case is rail (d): the count changed while a payroll batch for that period was still open
+          (draft/processed). We deliberately allow the edit — blocking would leave HR unable to correct a
+          family record for as long as payroll stays open — but a regenerate would now produce a different
+          PCB, so the payroll team has to know. Closed batches are unaffected: their payslips are frozen
+          snapshots and closed-batch immutability is enforced by DB triggers.
+
+          The NEUTRAL case is the quiet confirmation that the count moved with no payroll run in flight.
+          Both are transient; the permanent record is the `employee.tax.updated` event, stamped auto: true. */}
+      {childReliefAlert ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-200">
+          {t('childReliefAutoSyncedPayrollAlert', {
+            count: Number(childReliefTo ?? 0),
+            period: childReliefAlert,
+          })}
+        </div>
+      ) : childReliefSynced ? (
+        <div className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+          {t('childReliefAutoSynced', { count: Number(childReliefSynced) })}
+        </div>
+      ) : null}
+
+      <PersonnelTabs
+        tabs={tabs}
+        panels={panels}
+        emptyLabel={t('tabs.empty')}
+        defaultTab={tab as PersonnelTabKey | undefined}
+      />
+    </div>
+  );
+}

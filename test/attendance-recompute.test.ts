@@ -536,7 +536,7 @@ describe('access', () => {
    *  request session, which has no meaning inside this suite — and the guard being PRESENT on both
    *  exports is the property that matters (test/function-access.test.ts pins the route's column). */
   it('both server actions are guarded by requireAdmin', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, '../app/attendance/recompute/actions.ts'), 'utf8');
+    const src = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/recompute/actions.ts'), 'utf8');
     const bodies = src.split('export async function ').slice(1);
     expect(bodies).toHaveLength(2);
     for (const body of bodies) {

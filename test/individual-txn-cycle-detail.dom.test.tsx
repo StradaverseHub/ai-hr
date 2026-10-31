@@ -6,12 +6,12 @@ import {render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
-import {TxnWorkspace,type TxnEmployee} from '../app/payroll/transactions/individual/txn-workspace';
-import {buildTxnPanel,type TxnPanelInputRow} from '../app/payroll/transactions/individual/existing-context';
+import {TxnWorkspace,type TxnEmployee} from '../app/(app)/payroll/transactions/individual/txn-workspace';
+import {buildTxnPanel,type TxnPanelInputRow} from '../app/(app)/payroll/transactions/individual/existing-context';
 const panelMock=vi.fn();
 vi.mock('next/navigation',()=>({useRouter:()=>({push:vi.fn(),replace:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams('')}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
-vi.mock('../app/payroll/transactions/individual/actions',()=>({
+vi.mock('../app/(app)/payroll/transactions/individual/actions',()=>({
  fetchEmployeeTxnPanelAction:(...args:unknown[])=>panelMock(...args),fetchBatchImpactAction:()=>Promise.resolve(null),fetchTxnDetailAction:()=>Promise.resolve(null),
  previewTxnAmountAction:()=>Promise.resolve({ok:true,derived:false}),previewTxnAmountsAction:()=>Promise.resolve({ok:true,derived:false}),
  createIndividualTxnAction:()=>Promise.resolve({ok:true,id:'created'}),createIndividualTxnDayGridAction:()=>Promise.resolve({ok:true,id:'created',count:1}),

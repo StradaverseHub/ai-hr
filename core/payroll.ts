@@ -990,7 +990,7 @@ export async function listRecalcChangeCategories(
  * Item's statutory configuration did NOT — which is exactly why the reporter's January figures sat
  * there looking settled after they unticked EPF. The run said nothing, and Close would have accepted
  * it. Now the run says "needs reprocessing", names the employees, and refuses to close (the refusal
- * already exists at closeBatch; app/payroll/[batchId]/page.tsx already renders `needsRecalc`).
+ * already exists at closeBatch; app/(app)/payroll/[batchId]/page.tsx already renders `needsRecalc`).
  *
  * WHO IS AFFECTED — three signals, unioned, because no single one is complete:
  *   1. the payslip itemises the code in `statutory.componentLines` (the r-862ed0ad provenance). This is
@@ -2307,7 +2307,7 @@ export async function updateBatchScope(
     // reintroduced through a different door. The scope is a chosen list, and it must be able to name
     // everybody the run can pay.
     //
-    // ⚠️ AND createRunAction (app/payroll/process/actions.ts) STAYS ON THE COLUMN, deliberately, so the
+    // ⚠️ AND createRunAction (app/(app)/payroll/process/actions.ts) STAYS ON THE COLUMN, deliberately, so the
     // two are no longer "the same intersection" and this file should not claim they are. Its filter
     // validates against `listEmployees`, and the Step-2 list it validates is `listEmployeesForPayrollRun`
     // — column-scoped (`employment.company_id in (…)`). Creation therefore never OFFERS a transferred-out
@@ -5828,7 +5828,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // in core/pay-components.ts now reject the same at entry/import", and that was WRONG about the pay
         // item master save, which is the screen an operator actually uses. `isUnsupportedTaxableComponent`
         // (core/pay-components.ts) is now run by the batch picker, `setPayrollBatchComponent`, the CSV
-        // importer AND the master save (app/admin/pay-components/actions.ts, f35f758a note 8). It is still
+        // importer AND the master save (app/(app)/admin/pay-components/actions.ts, f35f758a note 8). It is still
         // NOT run by `setEmploymentPayComponent`, so a bad row that already exists can still be ASSIGNED to
         // an employee and reach this throw. This guard stays the last line of defence, not a formality.
         // PRECEDENCE: the flag check runs on the resolved value — a rule does not let an unsupported
@@ -9913,7 +9913,7 @@ export class RemoveNoEmployeesError extends Error {
  *
  * THE SETTING IS RESOLVED BY THE CALLER, AND THAT IS THE WHOLE REASON `enabled` IS A PARAMETER.
  * Degrading an entitlements-resolution failure to the catalog default is right for a page that must still
- * render, and it is the app/ idiom — app/payroll/[batchId]/page.tsx does exactly that for the sibling
+ * render, and it is the app/ idiom — app/(app)/payroll/[batchId]/page.tsx does exactly that for the sibling
  * gates. But the degrade-to-default form inside core/ is refused by test/module-catalog-drift.test.ts,
  * and
  * its reasoning is sound: in a service that form swallows an infrastructure failure and answers "off",
@@ -10526,7 +10526,7 @@ export function listBatches(
         // 'adjustment' on purpose (regular-uniqueness index, live-run guard), but it is labelled
         // '<cycle> - By Import', so it must filter under the run type of the cycle it was imported for
         // (Monthly -> regular). Every other run filters on its stored run type. Display and gating still
-        // read `runType`; this field is consumed only by app/payroll/dashboard-logic.ts applyFilters.
+        // read `runType`; this field is consumed only by app/(app)/payroll/dashboard-logic.ts applyFilters.
         filterRunType: sql<string>`case when ${payrollBatch.historyImportAttemptId} is not null and ${payrollCycle.runType} is not null then ${payrollCycle.runType}::text else ${payrollBatch.runType}::text end`,
       })
       .from(payrollHistoryEffectiveBatch)

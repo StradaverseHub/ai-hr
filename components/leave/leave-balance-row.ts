@@ -5,7 +5,7 @@
  * deriveBalanceRow() at render time. Importing a function out of a 'use client' module and calling it
  * from the server throws "Attempted to call X from the server but X is on the client" — which took the
  * whole My Profile page down (feedback b7d84266). Keeping the pure column-mapping + sort here, with no
- * client directive, lets both the Server Component (app/me/page.tsx) and the client table import it.
+ * client directive, lets both the Server Component (app/(app)/me/page.tsx) and the client table import it.
  *
  * Substrate: pure presentation math, no DomainEvent. // substrate: read-only, no event
  */

@@ -28,7 +28,7 @@ export function isGroupAdmin(s: SessionContext): boolean {
  *
  * NOTE what this deliberately does NOT do: it does not imply isAdmin() or isGroupAdmin(). An operator
  * reaches the provisioning console and nothing else — no customer admin screen, no customer data. That
- * separation is the point of a separate tier, and app/operator/page.tsx is its only consumer.
+ * separation is the point of a separate tier, and app/(app)/operator/page.tsx is its only consumer.
  */
 export function isOperator(s: SessionContext): boolean {
   return !!s.grants?.some((g) => g.role === 'operator');

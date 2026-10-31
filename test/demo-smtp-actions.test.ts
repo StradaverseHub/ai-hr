@@ -8,7 +8,7 @@ vi.mock('../lib/demo-smtp-probe',()=>({probeDemoSmtp:m.probe}));
 vi.mock('../lib/demo-smtp-budget',()=>({demoSmtpBudget:{acquire:m.acquire}}));
 vi.mock('../db/client',()=>({withTenant:async(_s:unknown,fn:(tx:unknown)=>unknown)=>fn({})}));
 vi.mock('../db/events',()=>({appendEvent:m.audit,actorOf:(s:{userId:string})=>({type:'user',id:s.userId})}));
-import {testDemoSmtpConnection} from '../app/admin/settings/email/demo-actions';
+import {testDemoSmtpConnection} from '../app/(app)/admin/settings/email/demo-actions';
 const session={tenantId:'11111111-1111-1111-1111-111111111111',userId:'22222222-2222-2222-2222-222222222222',roles:['hr_admin']};
 function form(){const f=new FormData();for(const [k,v]of Object.entries({host:'smtp.example.com',port:'465',security:'tls',auth:'true',user:'synthetic-user',password:'synthetic-secret',from:'ignored@example.test',actor:'forged'}))f.set(k,v);return f;}
 beforeEach(()=>{vi.clearAllMocks();m.demo.mockReturnValue(true);m.headers.mockResolvedValue(new Headers({'x-pathname':'/admin/settings/email'}));m.session.mockResolvedValue(session);m.probe.mockResolvedValue({status:'success',authenticated:true});m.acquire.mockReturnValue(m.release);m.audit.mockResolvedValue(undefined);});

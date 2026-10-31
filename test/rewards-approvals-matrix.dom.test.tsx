@@ -12,8 +12,8 @@ import type { RewardBoardRow } from '../packs/rewards/service';
 import { rewardNextSeat, rewardRouteProgress } from '../packs/rewards/calendar';
 import type { RewardRole, RewardStage } from '../packs/rewards/model';
 
-vi.mock('../app/rewards/approvals/actions', () => ({ boardDecideAction: vi.fn(), sendReadyAction: vi.fn() }));
-const { RewardBoardMatrix, boardActionLabels, boardStepPhrase } = await import('../app/rewards/approvals/board-parts');
+vi.mock('../app/(app)/rewards/approvals/actions', () => ({ boardDecideAction: vi.fn(), sendReadyAction: vi.fn() }));
+const { RewardBoardMatrix, boardActionLabels, boardStepPhrase } = await import('../app/(app)/rewards/approvals/board-parts');
 
 const wrap = (node: ReactNode) => <NextIntlClientProvider locale="en" messages={en} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>;
 afterEach(cleanup);

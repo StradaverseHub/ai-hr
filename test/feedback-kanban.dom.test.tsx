@@ -17,10 +17,10 @@ vi.mock('../components/intent-link', () => ({ default: ({ children, scroll, ...p
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: any) => createTranslator({ locale: state.locale, messages: copies[state.locale], namespace }) }));
 vi.mock('next/navigation', () => ({ notFound: () => { throw Error('not found'); }, usePathname: () => '/feedback', useSearchParams: () => new URLSearchParams(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), prefetch: vi.fn() }) }));
 vi.mock('../lib/session', () => ({ getSession: async () => ({}) }));
-vi.mock('../app/feedback/board', () => ({ feedbackBoardOpen: () => true }));
-vi.mock('../app/feedback/actions', () => ({ submitFeedbackAction: vi.fn(), bulkReviewAction: vi.fn() }));
+vi.mock('../app/(app)/feedback/board', () => ({ feedbackBoardOpen: () => true }));
+vi.mock('../app/(app)/feedback/actions', () => ({ submitFeedbackAction: vi.fn(), bulkReviewAction: vi.fn() }));
 vi.mock('../core/feedback', () => ({ FEEDBACK_LIST_LIMIT: 200, feedbackBoardCounts: async () => state.counts ?? Object.entries(state.rows.reduce((acc, row) => { const key = feedbackBoardStatus(row); acc[key] = (acc[key] ?? 0) + 1; return acc; }, {} as Record<string, number>)).map(([status, count]) => ({ status, count })), listFeedback: (...args: any[]) => { state.query(...args); return Promise.resolve(state.rows); } }));
-import FeedbackPage from '../app/feedback/page';
+import FeedbackPage from '../app/(app)/feedback/page';
 import { feedbackBoardStatus } from '../lib/feedback-release';
 function fixtures(): FeedbackRow[] {
   return ['staging', 'production_ready', 'production', 'deployed', 'blocked', 'building'].map((st, i) => ({

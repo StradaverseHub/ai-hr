@@ -32,7 +32,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const src = (p: string) => readFileSync(new URL(p, `file://${root}`), 'utf8');
 const REVIEW = 'core/child-relief-review.ts';
 const TABLE = 'components/child-relief-review-table.tsx';
-const PAGE = 'app/admin/personnel/child-relief/page.tsx';
+const PAGE = 'app/(app)/admin/personnel/child-relief/page.tsx';
 
 /** `people`-shaped rows, only the fields the subset filter reads. */
 const person = (mode: string, eligible: number, categorised: number) => ({

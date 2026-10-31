@@ -53,34 +53,34 @@ vi.mock('../packs/performance/service', async () => {
     getOnehrCalibration: mock.calibration, getAssessmentFinalBands: mock.finalBands,
   };
 });
-vi.mock('../app/performance/workspace/workspace-screen', () => ({
+vi.mock('../app/(app)/performance/workspace/workspace-screen', () => ({
   PerformanceWorkspaceScreen: ({ query, scope }: { query: unknown; scope?: { tabId: string; view: string; module: string; stages?: string[]; kind?: string; path: string } }) =>
     <div data-testid="workspace" data-tab={scope?.tabId ?? ''} data-scope={scope ? JSON.stringify({ view: scope.view, module: scope.module, stages: scope.stages ?? null, kind: scope.kind ?? null, path: scope.path }) : ''} data-query={JSON.stringify(query)} />,
 }));
-vi.mock('../app/performance/workspace/personal-record', () => ({
+vi.mock('../app/(app)/performance/workspace/personal-record', () => ({
   PersonalRecord: ({ tab, baseHref }: { tab?: string; baseHref: string }) => <div data-testid="personal-record" data-tab={tab} data-href={baseHref} />,
 }));
-vi.mock('../app/performance/onehr/review-view', () => ({
+vi.mock('../app/(app)/performance/onehr/review-view', () => ({
   OnehrReviewView: ({ returnTo }: { returnTo?: string }) => <div data-testid="review" data-return={returnTo} />,
 }));
-vi.mock('../app/performance/onehr/calibration-view', () => ({ AssessmentCalibrationView: () => <div data-testid="calibration-session" /> }));
-vi.mock('../app/performance/onehr/final-bands-view', () => ({ FinalBandsView: () => <div data-testid="final-bands" /> }));
+vi.mock('../app/(app)/performance/onehr/calibration-view', () => ({ AssessmentCalibrationView: () => <div data-testid="calibration-session" /> }));
+vi.mock('../app/(app)/performance/onehr/final-bands-view', () => ({ FinalBandsView: () => <div data-testid="final-bands" /> }));
 
-import SetMyKpisPage from '../app/performance/my/kpis/page';
-import MyPmPage from '../app/performance/my/page';
-import ApproveKpisPage from '../app/performance/team/kpis/page';
-import TeamPmPage from '../app/performance/team/page';
-import TeamReviewPage from '../app/performance/team/[reviewId]/page';
-import MyAssessmentsPage from '../app/performance/assessments/page';
-import FeedbackReportPage from '../app/performance/feedback/page';
-import MyCompetencyPage from '../app/performance/competency/page';
-import TeamCompetencyPage from '../app/performance/competency/team/page';
-import MyPlanPage from '../app/performance/plan/page';
-import CareerProfilePage from '../app/performance/plan/profile/page';
-import TeamPlanPage from '../app/performance/plan/team/page';
-import PerformanceCalibrationPage from '../app/performance/calibration/page';
-import AssessmentCalibrationPage from '../app/performance/assessment/calibration/[sessionId]/page';
-import PerformanceWorkspacePage from '../app/performance/workspace/page';
+import SetMyKpisPage from '../app/(app)/performance/my/kpis/page';
+import MyPmPage from '../app/(app)/performance/my/page';
+import ApproveKpisPage from '../app/(app)/performance/team/kpis/page';
+import TeamPmPage from '../app/(app)/performance/team/page';
+import TeamReviewPage from '../app/(app)/performance/team/[reviewId]/page';
+import MyAssessmentsPage from '../app/(app)/performance/assessments/page';
+import FeedbackReportPage from '../app/(app)/performance/feedback/page';
+import MyCompetencyPage from '../app/(app)/performance/competency/page';
+import TeamCompetencyPage from '../app/(app)/performance/competency/team/page';
+import MyPlanPage from '../app/(app)/performance/plan/page';
+import CareerProfilePage from '../app/(app)/performance/plan/profile/page';
+import TeamPlanPage from '../app/(app)/performance/plan/team/page';
+import PerformanceCalibrationPage from '../app/(app)/performance/calibration/page';
+import AssessmentCalibrationPage from '../app/(app)/performance/assessment/calibration/[sessionId]/page';
+import PerformanceWorkspacePage from '../app/(app)/performance/workspace/page';
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); state.path = '/'; state.search = ''; state.boards = []; });
 

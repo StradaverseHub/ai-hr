@@ -101,7 +101,7 @@ describe('a1d82340 step 3 — the menu is ordered by the sequence, not by hand',
     // wizard, which declares a phase per step. Every phase a wizard step claims must be a real phase
     // AND the run row the wizard leads to must be ranked on the menu — a wizard step in a phase the
     // menu cannot reach is the drift this pair of files exists to catch.
-    const wizard = code('app/payroll/process/wizard.tsx');
+    const wizard = code('app/(app)/payroll/process/wizard.tsx');
     const declared = [...wizard.matchAll(/phase:\s*'([a-zA-Z]+)'/g)].map((m) => m[1]!);
     expect(declared.length, 'wizard declares no phase — the regex stopped matching').toBeGreaterThan(0);
     for (const key of declared) {
@@ -118,7 +118,7 @@ describe('a1d82340 step 3 — the wizard reads the one declaration', () => {
   // namespace with it. That is the trap this comment exists to name.
 
   it('the wizard rail is the six phases, not a five-stage rail of its own', () => {
-    const src = code('app/payroll/process/wizard.tsx');
+    const src = code('app/(app)/payroll/process/wizard.tsx');
     expect(src).toContain('PAYROLL_PHASES');
     // The retired rail's own vocabulary must not come back. These are the exact i18n keys it used;
     // they were deleted from all six catalogs, so a re-introduction would render raw keys.
@@ -139,7 +139,7 @@ describe('a1d82340 step 3 — the wizard reads the one declaration', () => {
   });
 
   it('every wizard step declares a phase that exists', () => {
-    const src = code('app/payroll/process/wizard.tsx');
+    const src = code('app/(app)/payroll/process/wizard.tsx');
     const declared = [...src.matchAll(/phase:\s*'([a-zA-Z]+)'/g)].map((m) => m[1]!);
     expect(declared.length, 'no wizard step declares a phase').toBeGreaterThan(0);
     for (const key of declared) {

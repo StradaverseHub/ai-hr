@@ -39,13 +39,13 @@ const exists = (rel: string) => fs.existsSync(path.join(ROOT, rel));
 
 describe('the company-first route exists, on disk and on the access grid', () => {
   const ROUTES: { route: string; file: string }[] = [
-    { route: '/admin/payroll-cycle', file: 'app/admin/payroll-cycle/page.tsx' },
-    { route: '/admin/payroll-cycle/[companyId]', file: 'app/admin/payroll-cycle/[companyId]/page.tsx' },
-    { route: '/admin/payroll-cycle/[companyId]/new', file: 'app/admin/payroll-cycle/[companyId]/new/page.tsx' },
-    { route: '/admin/payroll-cycle/[companyId]/[cycleId]', file: 'app/admin/payroll-cycle/[companyId]/[cycleId]/page.tsx' },
-    { route: '/admin/payroll-config', file: 'app/admin/payroll-config/page.tsx' },
-    { route: '/admin/payroll-config/[companyId]', file: 'app/admin/payroll-config/[companyId]/page.tsx' },
-    { route: '/admin/payroll-config/[companyId]/edit', file: 'app/admin/payroll-config/[companyId]/edit/page.tsx' },
+    { route: '/admin/payroll-cycle', file: 'app/(app)/admin/payroll-cycle/page.tsx' },
+    { route: '/admin/payroll-cycle/[companyId]', file: 'app/(app)/admin/payroll-cycle/[companyId]/page.tsx' },
+    { route: '/admin/payroll-cycle/[companyId]/new', file: 'app/(app)/admin/payroll-cycle/[companyId]/new/page.tsx' },
+    { route: '/admin/payroll-cycle/[companyId]/[cycleId]', file: 'app/(app)/admin/payroll-cycle/[companyId]/[cycleId]/page.tsx' },
+    { route: '/admin/payroll-config', file: 'app/(app)/admin/payroll-config/page.tsx' },
+    { route: '/admin/payroll-config/[companyId]', file: 'app/(app)/admin/payroll-config/[companyId]/page.tsx' },
+    { route: '/admin/payroll-config/[companyId]/edit', file: 'app/(app)/admin/payroll-config/[companyId]/edit/page.tsx' },
   ];
 
   for (const { route, file } of ROUTES) {
@@ -58,17 +58,17 @@ describe('the company-first route exists, on disk and on the access grid', () =>
   // Same screen keys as before, so the same roles reach the same data. A redesign that quietly widened
   // access would be a far worse outcome than the layout it fixed.
   it('the guards are unchanged — no new screen key was minted for either screen', () => {
-    expect(read('app/admin/payroll-cycle/[companyId]/page.tsx')).toContain('scopedAdmin');
-    expect(read('app/admin/payroll-cycle/[companyId]/new/page.tsx')).toContain('scopedAdmin');
-    expect(read('app/admin/payroll-cycle/[companyId]/[cycleId]/page.tsx')).toContain('scopedAdmin');
-    expect(read('app/admin/payroll-config/[companyId]/page.tsx')).toContain('scopedSession');
-    expect(read('app/admin/payroll-config/[companyId]/edit/page.tsx')).toContain('scopedSession');
+    expect(read('app/(app)/admin/payroll-cycle/[companyId]/page.tsx')).toContain('scopedAdmin');
+    expect(read('app/(app)/admin/payroll-cycle/[companyId]/new/page.tsx')).toContain('scopedAdmin');
+    expect(read('app/(app)/admin/payroll-cycle/[companyId]/[cycleId]/page.tsx')).toContain('scopedAdmin');
+    expect(read('app/(app)/admin/payroll-config/[companyId]/page.tsx')).toContain('scopedSession');
+    expect(read('app/(app)/admin/payroll-config/[companyId]/edit/page.tsx')).toContain('scopedSession');
   });
 });
 
 describe('no listing page opens an editing form underneath itself', () => {
   it('the Payroll Cycles company listing renders no upsert form', () => {
-    const src = readSource('app/admin/payroll-cycle/page.tsx');
+    const src = readSource('app/(app)/admin/payroll-cycle/page.tsx');
     expect(src).not.toContain('upsertCycleAction');
     // Nor any of the other write actions: the listing is a way IN, not a place to change things.
     expect(src).not.toContain('deleteCycleAction');
@@ -77,16 +77,16 @@ describe('no listing page opens an editing form underneath itself', () => {
   });
 
   it('the Pay Schedule company listing renders no save form', () => {
-    const src = readSource('app/admin/payroll-config/page.tsx');
+    const src = readSource('app/(app)/admin/payroll-config/page.tsx');
     expect(src).not.toContain('savePayrollConfigAction');
   });
 
   // The other half of the same rule: the form did not vanish, it moved to screens of its own.
   it('the maintenance form lives on its own routes, shared by Add and Edit', () => {
-    expect(read('app/admin/payroll-cycle/cycle-form.tsx')).toContain('upsertCycleAction');
-    expect(read('app/admin/payroll-cycle/[companyId]/new/page.tsx')).toContain('CycleForm');
-    expect(read('app/admin/payroll-cycle/[companyId]/[cycleId]/page.tsx')).toContain('CycleForm');
-    expect(read('app/admin/payroll-config/[companyId]/edit/page.tsx')).toContain('savePayrollConfigAction');
+    expect(read('app/(app)/admin/payroll-cycle/cycle-form.tsx')).toContain('upsertCycleAction');
+    expect(read('app/(app)/admin/payroll-cycle/[companyId]/new/page.tsx')).toContain('CycleForm');
+    expect(read('app/(app)/admin/payroll-cycle/[companyId]/[cycleId]/page.tsx')).toContain('CycleForm');
+    expect(read('app/(app)/admin/payroll-config/[companyId]/edit/page.tsx')).toContain('savePayrollConfigAction');
   });
 });
 
@@ -105,9 +105,9 @@ const enJson = JSON.parse(read('messages/en.json')) as Record<string, Ns>;
 
 describe('what a redirect puts in the URL is TEXT the admin reads', () => {
   it('the Pay Schedule save action pushes no hardcoded English into ?toast= / ?error=', () => {
-    const src = readSource('app/admin/payroll-config/actions.ts');
-    // ToastFromQuery (app/layout.tsx) and ErrorBanner render the query string RAW, so a literal here is
-    // English for the ms/ta/th/vi/zh reader too. The rule is written at app/admin/_redirects.ts.
+    const src = readSource('app/(app)/admin/payroll-config/actions.ts');
+    // ToastFromQuery (app/(app)/layout.tsx) and ErrorBanner render the query string RAW, so a literal here is
+    // English for the ms/ta/th/vi/zh reader too. The rule is written at app/(app)/admin/_redirects.ts.
     expect(src).toContain("await toastMsg('saved')");
     expect(src).toContain('await localise(e)');
     expect(src, 'a literal was passed as the toast/error value').not.toMatch(/'(?:toast|error)',\s*'[^']*'/);
@@ -122,7 +122,7 @@ describe('what a redirect puts in the URL is TEXT the admin reads', () => {
 describe('the empty row says WHICH nothing it is', () => {
   // One string for both states tells an admin whose search matched nothing that their scope is empty and
   // points them at the company switcher — advice for a problem they do not have. The fix is the box above.
-  for (const file of ['app/admin/payroll-config/page.tsx', 'app/admin/payroll-cycle/page.tsx']) {
+  for (const file of ['app/(app)/admin/payroll-config/page.tsx', 'app/(app)/admin/payroll-cycle/page.tsx']) {
     it(`${file} tells an empty scope apart from a search that matched nothing`, () => {
       expect(readSource(file)).toContain("q ? t('emptyCompanies') : t('emptyScope')");
     });

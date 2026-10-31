@@ -29,7 +29,7 @@ import {
   ReprocessOutcomeRemarks,
   ReprocessOutcomeStatus,
   reprocessStoppedMessageKey,
-} from '../app/payroll/[batchId]/reprocess/outcomes';
+} from '../app/(app)/payroll/[batchId]/reprocess/outcomes';
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'];
 const msgs = (locale: string) =>

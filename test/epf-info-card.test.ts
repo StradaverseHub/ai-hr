@@ -104,7 +104,7 @@ describe('EPF Info Card (127dffba)', () => {
     // Blank when empty, never a baked-in sample.
     expect(src).toContain("const epfNumber = props.epfNumber ?? '';");
     // …and the Personnel screen still feeds it the stored value.
-    const page = read('app/admin/personnel/[employmentId]/page.tsx');
+    const page = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(page).toContain('epfNumber={statutory?.epfNumber}');
   });
 

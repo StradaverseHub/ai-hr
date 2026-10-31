@@ -6,7 +6,7 @@ const source=vi.hoisted(()=>({session:vi.fn(),locale:vi.fn(),availability:vi.fn(
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-server',()=>({readPayComponentModuleActionChoices:source.availability}));vi.mock('../components/assistant/module-pay-component-action-panel',()=>({ModulePayComponentActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModulePayComponentActionSection} from '../components/assistant/module-pay-component-action-section';
 import {ModulePayComponentActionPanel} from '../components/assistant/module-pay-component-action-panel';
-import AssistantPayComponentPage from '../app/assistant/pay-codes/page';
+import AssistantPayComponentPage from '../app/(app)/assistant/pay-codes/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000002',review='10000000-0000-4000-8000-000000000003';
 const choices={kind:'choices' as const,references:[{code:'FIXED',name:'Human fixed allowance'}],roundingMethods:['none' as const],displayCategories:['allowance' as const],eaLines:[]};
 const session=()=>({tenantId:tenant,userId:user,personId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});

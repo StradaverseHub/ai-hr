@@ -20,11 +20,11 @@ function fixture(context: 'official' | 'dev_only') {
   const scratch = join(repo, 'scratchpad'); mkdirSync(scratch, { recursive: true });
   const root = mkdtempSync(join(scratch, 'testing-config-')); roots.push(root); storage.home = root;
   const git = (...args: string[]) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  mkdirSync(join(root, 'lib/system-testing'), { recursive: true }); mkdirSync(join(root, 'app'));
+  mkdirSync(join(root, 'lib/system-testing'), { recursive: true }); mkdirSync(join(root, 'app/(app)'), { recursive: true });
   writeFileSync(join(root, '.gitignore'), '.aihr-*/\n');
-  writeFileSync(join(root, 'app/page.tsx'), 'export default function Page(){ return "fictional config fixture"; }\n');
+  writeFileSync(join(root, 'app/(app)/page.tsx'), 'export default function Page(){ return "fictional config fixture"; }\n');
   const entry = structuredClone(JSON.parse(readFileSync(join(repo, 'lib/system-testing/catalogue.json'), 'utf8')).entries[0]);
-  entry.sources = ['app/page.tsx']; entry.reviewedSourceHash = 'b'.repeat(64);
+  entry.sources = ['app/(app)/page.tsx']; entry.reviewedSourceHash = 'b'.repeat(64);
   writeFileSync(join(root, 'lib/system-testing/catalogue.json'), JSON.stringify({ format: 1, revision: 'fictional.config', entries: [entry] }));
   git('init', '-q'); git('config', 'user.email', 'fictional@example.invalid'); git('config', 'user.name', 'Fictional Config');
   git('add', '-A'); git('commit', '-qm', 'fictional config source');
@@ -38,7 +38,7 @@ function fixture(context: 'official' | 'dev_only') {
 describe('Next configuration provenance boundary', () => {
   it('ignores self-consistent inherited five values without a selector, even when the owner bytes have changed', () => {
     const f = fixture('official');
-    writeFileSync(join(f.root, 'app/page.tsx'), 'changed source after preparation');
+    writeFileSync(join(f.root, 'app/(app)/page.tsx'), 'changed source after preparation');
     for (const phase of [PHASE_PRODUCTION_BUILD, PHASE_DEVELOPMENT_SERVER]) {
       expect(systemTestingNextCompileEnvironment({ phase, worktree: f.root, environment: systemTestingCompileEnvironment(f.record) })).toEqual(emptySystemTestingCompileEnvironment());
     }
@@ -64,7 +64,7 @@ describe('Next configuration provenance boundary', () => {
       if (mode === 'missing') delete environment.AIHR_SYSTEM_TESTING_SOURCE_REF;
       if (mode === 'private') chmodSync(f.directory, 0o755);
       if (mode === 'used') writeFileSync(join(dirname(f.file), 'successful-build.json'), '{}\n');
-      if (mode === 'source') writeFileSync(join(f.root, 'app/page.tsx'), 'changed source after preparation');
+      if (mode === 'source') writeFileSync(join(f.root, 'app/(app)/page.tsx'), 'changed source after preparation');
       expect(() => systemTestingNextCompileEnvironment({ phase: PHASE_PRODUCTION_BUILD, worktree: f.root, environment }), mode).toThrow();
     }
   });

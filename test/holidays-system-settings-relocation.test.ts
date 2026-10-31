@@ -129,7 +129,7 @@ describe('4509d2b8 — access is UNCHANGED: administrators only, same guard, sam
    * hide its link — is exactly why a menu move must not cost the screen its guard coverage.
    */
   it('the page calls a server-side admin guard in its own body', () => {
-    const src = read('app/admin/holidays/page.tsx');
+    const src = read('app/(app)/admin/holidays/page.tsx');
     expect(src, '/admin/holidays must call requireAdmin() or scopedAdmin()').toMatch(
       /requireAdmin\(|scopedAdmin\(/,
     );
@@ -151,12 +151,12 @@ describe('4509d2b8 — access is UNCHANGED: administrators only, same guard, sam
       '/admin/holidays/groups/new',
       '/admin/holidays/groups/[id]',
     ]);
-    expect(read('app/admin/holidays/replacements/page.tsx')).toContain('await scopedAdmin()');
+    expect(read('app/(app)/admin/holidays/replacements/page.tsx')).toContain('await scopedAdmin()');
   });
 
   it('the URL is preserved — every registered route still resolves to a page on disk', () => {
     // The plan promised existing bookmarks and shortcuts keep working. Re-addressing the screen to
-    // /admin/settings/holidays would have meant redirect stubs plus edits to app/admin/actions.ts,
+    // /admin/settings/holidays would have meant redirect stubs plus edits to app/(app)/admin/actions.ts,
     // components/holiday-tabs.tsx and components/holiday-group-form.tsx — cost with no user-visible
     // benefit, since the ticket asked for a navigation path, not an address.
     const screen = SCREENS.find((s) => s.screenKey === 'holidays')!;

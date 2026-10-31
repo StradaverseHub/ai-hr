@@ -88,7 +88,7 @@ import { leaveTypeConfigHealth, type HealthLeaveType } from '../lib/leave-config
 import {
   deleteEntitlementTemplateAction,
   deleteEligibilityRuleAction,
-} from '../app/admin/leave/entitlements/templates/actions';
+} from '../app/(app)/admin/leave/entitlements/templates/actions';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -749,8 +749,8 @@ describe('§C r210 · a deleted table is not still reported as a table without a
 
 // ── §D the screen and the two actions ───────────────────────────────────────────────────────────────
 
-const BLOCK = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
-const ACTIONS = 'app/admin/leave/entitlements/templates/actions.ts';
+const BLOCK = 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const ACTIONS = 'app/(app)/admin/leave/entitlements/templates/actions.ts';
 
 describe('§D r210 · Stop and Delete are ROW actions, on both blocks, and every caption exists', () => {
   const blockSrc = read(BLOCK);

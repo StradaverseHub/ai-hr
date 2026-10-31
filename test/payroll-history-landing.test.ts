@@ -27,10 +27,10 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const PAGE = code('app/payroll/transaction-view/page.tsx');
-const TABLE = code('app/payroll/transaction-view/history-table.tsx');
+const PAGE = code('app/(app)/payroll/transaction-view/page.tsx');
+const TABLE = code('app/(app)/payroll/transaction-view/history-table.tsx');
 /** 417d4937 — the derivation behind the table: which buckets make up the Allowances itemisation. */
-const BREAKDOWN = code('app/payroll/transaction-view/history-breakdown.ts');
+const BREAKDOWN = code('app/(app)/payroll/transaction-view/history-breakdown.ts');
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 describe('862ed0ad — History is the tab that opens', () => {
@@ -166,7 +166,7 @@ describe('862ed0ad — the itemised section no longer claims "no cash impact"', 
     // Same defective wording, different screen and different audience. It is reported, not fixed in
     // passing — an ESS copy change is not what this item approved, and quietly editing what an employee
     // reads about their own pay is not a side effect worth taking.
-    expect(code('app/me/payslip/[payslipId]/page.tsx')).toContain("recordLinesHeading");
+    expect(code('app/(app)/me/payslip/[payslipId]/page.tsx')).toContain("recordLinesHeading");
     for (const loc of LOCALES) {
       const payslip = JSON.parse(read(`messages/${loc}.json`)).me.payslip as Record<string, string>;
       expect(payslip.recordLinesHeading, `me.payslip.recordLinesHeading removed from ${loc}.json`).toBeTruthy();

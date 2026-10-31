@@ -98,7 +98,7 @@ describe('c4339f4c · self-service Leave History is not filtered by leave type',
       created.push({ id: typeId, name, startDate: day });
     }
 
-    // Exactly what app/leave/page.tsx does on the self-service branch: the unfiltered read, narrowed to the
+    // Exactly what app/(app)/leave/page.tsx does on the self-service branch: the unfiltered read, narrowed to the
     // viewer's own rows, newest first by start date.
     const rows = (await listLeaveRequests(ctx, [b.companyId])).filter((r) => r.personId === personId);
     const mine = [...rows].sort((a, c) => c.startDate.localeCompare(a.startDate));

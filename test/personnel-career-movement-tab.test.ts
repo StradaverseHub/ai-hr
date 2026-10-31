@@ -16,18 +16,18 @@ import { COMPARISON_KINDS,isComparisonKind } from '../core/movement-kinds';
 import { movementFormFields } from '../lib/movement-form-contract';
 
 const PAGE = fs.readFileSync(
-  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'),
   'utf8',
 );
 const TABS = fs.readFileSync(path.resolve(__dirname, '../components/personnel-tabs.tsx'), 'utf8');
 const NEW_EVENT = fs.readFileSync(
-  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-new-event.tsx'),
+  path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx'),
   'utf8',
 );
 // e6a144d4 — the event-type map, extracted out of the page so the Download Excel route shares it.
 const KIND_LABEL = fs.readFileSync(path.resolve(__dirname, '../lib/movement-kind-label.ts'), 'utf8');
 const EXPORT_ROUTE = fs.readFileSync(
-  path.resolve(__dirname, '../app/admin/personnel/[employmentId]/movement-export/route.ts'),
+  path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/movement-export/route.ts'),
   'utf8',
 );
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

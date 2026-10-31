@@ -54,7 +54,7 @@ const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
 const loadLocale = (loc: string) =>
   JSON.parse(fs.readFileSync(path.join(root, 'messages', `${loc}.json`), 'utf8'));
 
-// Copied from app/page.tsx — the anchor validation the month picker's writes must satisfy.
+// Copied from app/(app)/page.tsx — the anchor validation the month picker's writes must satisfy.
 const PAGE_ANCHOR_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 describe('8a. resolveCalendarRange / parseCalendarView (pure)', () => {
@@ -280,10 +280,10 @@ describe('8i. instant Week/Month toggle + unified header — source drift guards
     // a00c4f64 — the page that resolves the calendar's fetch window is the Team Leave Tracker now. The
     // guard is REPAIRED here rather than dropped, and it still holds all three facts: the tracker resolves
     // the window, it renders the calendar it resolved it for, and the dashboard no longer resolves one.
-    const page = read('app/leave/tracker/page.tsx');
+    const page = read('app/(app)/leave/tracker/page.tsx');
     expect(page).toContain('resolveCalendarFetchWindow');
     expect(page).toContain('<PlannedAbsences');
-    expect(read('app/page.tsx')).not.toContain('resolveCalendarFetchWindow');
+    expect(read('app/(app)/page.tsx')).not.toContain('resolveCalendarFetchWindow');
   });
 
   it('both switches share the ONE segmented family, sized to the TimelineNav h-7 metric', () => {

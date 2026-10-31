@@ -3,7 +3,7 @@ const fixture=vi.hoisted(()=>({session:{tenantId:'current-tenant',userId:'curren
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>fixture.session}));
 vi.mock('../core/agent-build-list',()=>({agentBuildList:fixture.build,AgentBuildListAccessError:class AgentBuildListAccessError extends Error{}}));
 import { AgentBuildListAccessError } from '../core/agent-build-list';
-import { GET } from '../app/control-tower/opportunities/backlog/route';
+import { GET } from '../app/(app)/control-tower/opportunities/backlog/route';
 
 describe('ranked build-list download',()=>{
  beforeEach(()=>{fixture.build.mockReset();});

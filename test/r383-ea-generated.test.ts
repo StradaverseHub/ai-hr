@@ -10,12 +10,12 @@ import {createBatch,createAdditionalRun,generatePayslips,upsertPayComponent,setE
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 import * as schema from '../db/schema';
 import {renderToStaticMarkup} from 'react-dom/server';
-import EaStatementPage from '../app/payroll/reports/ea/[employmentId]/page';
+import EaStatementPage from '../app/(app)/payroll/reports/ea/[employmentId]/page';
 const sessionState=vi.hoisted(()=>({ctx:null as any}));
 vi.mock('../lib/session',()=>({getSession:async()=>sessionState.ctx}));
 vi.mock('next-intl/server',async()=>{const {createTranslator}=await import('next-intl');const fs=await import('node:fs');return {getTranslations:async(arg:any)=>createTranslator({locale:'en',messages:JSON.parse(fs.readFileSync('messages/en.json','utf8')),namespace:typeof arg==='string'?arg:arg.namespace})};});
 // Client controls are outside this static RSC proof; data retrieval and printed EA rows remain real.
-vi.mock('../app/payroll/reports/ea/[employmentId]/ea-amend-panel',()=>({EaAmendPanel:()=>null}));
+vi.mock('../app/(app)/payroll/reports/ea/[employmentId]/ea-amend-panel',()=>({EaAmendPanel:()=>null}));
 vi.mock('../components/print-button',()=>({PrintButton:()=>null}));
 vi.mock('../components/ui/toast-trigger',()=>({ToastFromQuery:()=>null}));
 const pack=requirePackFor('MY');

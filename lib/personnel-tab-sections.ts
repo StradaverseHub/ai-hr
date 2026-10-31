@@ -44,7 +44,7 @@ export type ProfileTabSection = (typeof PROFILE_TAB_SECTION_ORDER)[number];
 
 /**
  * r255 — there is no per-tab `isXSection` guard any more, and the absence is deliberate. One shared
- * `runTabSave` (app/admin/personnel/[employmentId]/actions.ts) validates every request against THE TAB'S
+ * `runTabSave` (app/(app)/admin/personnel/[employmentId]/actions.ts) validates every request against THE TAB'S
  * OWN order list, so the vocabulary and the write order are the same declaration and cannot drift apart.
  * A hand-written guard per tab was four chances for one to be forgotten on a new tab, which would let a
  * section name the tab does not own reach a writer.

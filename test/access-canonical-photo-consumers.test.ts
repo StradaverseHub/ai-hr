@@ -16,7 +16,7 @@ import {essVisibleFields} from '../lib/personnel-ess-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const session=vi.hoisted(()=>({ctx:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!session.ctx)throw Error('Actual fixture principal missing');return session.ctx;}}));
-import {GET} from '../app/personnel/photo/[personId]/route';
+import {GET} from '../app/(app)/personnel/photo/[personId]/route';
 
 let b:Base;
 const bytes=Buffer.from([137,80,78,71,13,10,26,10,1,2,3,4]);

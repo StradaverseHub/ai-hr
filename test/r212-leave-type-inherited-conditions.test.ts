@@ -34,7 +34,7 @@ import {
   criteriaAxisLabeller,
   criteriaValueLabeller,
   inheritedConditions,
-} from '../app/admin/leave/entitlements/templates/leave-type-conditions';
+} from '../app/(app)/admin/leave/entitlements/templates/leave-type-conditions';
 import { ELIGIBILITY_AXIS_LABEL_KEY } from '../lib/entitlement-status';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -154,13 +154,13 @@ describe('r212 — the leave type\'s own conditions, worded from the shared crit
 
 describe('r212 — the one-click "everyone" rule really does post no criteria', () => {
   const block = readFileSync(
-    join(ROOT, 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx'),
+    join(ROOT, 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx'),
     'utf8',
   );
 
   /** The one-click form's own source — its own file since the reach count made it a client island. */
   const everyoneForm = readFileSync(
-    join(ROOT, 'app/admin/leave/entitlements/templates/everyone-rule-form.tsx'),
+    join(ROOT, 'app/(app)/admin/leave/entitlements/templates/everyone-rule-form.tsx'),
     'utf8',
   );
 
@@ -260,12 +260,12 @@ describe('r212 — every key these server components ask for resolves, in all si
   }
 
   for (const file of [
-    'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx',
-    'app/admin/leave/entitlements/templates/eligibility-explain.tsx',
+    'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx',
+    'app/(app)/admin/leave/entitlements/templates/eligibility-explain.tsx',
     // a6fe37fc Round 5 — the standalone screen moved to /admin/leave-config/entitlement-tables and the
     // old address is a redirect stub (which reads no i18n at all). The two mounted components above did
     // NOT move; only the page around them did.
-    'app/admin/leave-config/entitlement-tables/page.tsx',
+    'app/(app)/admin/leave-config/entitlement-tables/page.tsx',
   ]) {
     it(`${file}`, () => {
       const src = readFileSync(join(ROOT, file), 'utf8');
@@ -372,7 +372,7 @@ describe('r212 — the explain panel\'s five rule-state keys resolve, in all six
 
   it('every key in STATE_KEY exists in every catalogue', () => {
     const src = readFileSync(
-      join(ROOT, 'app/admin/leave/entitlements/templates/eligibility-explain.tsx'),
+      join(ROOT, 'app/(app)/admin/leave/entitlements/templates/eligibility-explain.tsx'),
       'utf8',
     );
     const start = src.indexOf('const STATE_KEY');
@@ -408,7 +408,7 @@ describe('r212 — the explain panel\'s five rule-state keys resolve, in all six
  */
 describe('r212 — one verdict, read by both screens', () => {
   const renderers = {
-    'app/admin/leave/entitlements/templates/eligibility-explain.tsx': 'notice.verdict',
+    'app/(app)/admin/leave/entitlements/templates/eligibility-explain.tsx': 'notice.verdict',
     'components/leave/LeaveDetailsPanel.tsx': 'eligibility.verdict',
   } as const;
 

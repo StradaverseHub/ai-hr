@@ -6,7 +6,7 @@ import {CostCenterAllocations} from '../components/personnel/cost-center-allocat
 import type {EmploymentCostAllocationView} from '../core/employment-cost-allocations';
 const ports=vi.hoisted(()=>({preview:vi.fn(),save:vi.fn(),read:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:ports.refresh})}));
-vi.mock('../app/admin/personnel/[employmentId]/cost-allocation-actions',()=>({readCostAllocationsAction:ports.read,previewCostAllocationsAction:ports.preview,saveCostAllocationsAction:ports.save}));
+vi.mock('../app/(app)/admin/personnel/[employmentId]/cost-allocation-actions',()=>({readCostAllocationsAction:ports.read,previewCostAllocationsAction:ports.preview,saveCostAllocationsAction:ports.save}));
 const value:EmploymentCostAllocationView={employmentId:'employment',companyId:'company',effectiveDate:'2026-01-01',revision:3,current:null,rows:[],choices:[{id:'a',code:'A',label:'Operations',displayLabel:'Operations'},{id:'b',code:'B',label:'Finance',displayLabel:'Finance'}],total:0,canEdit:true,history:[],needsReplacement:false};
 const show=()=>render(<NextIntlClientProvider locale="en" messages={en}><CostCenterAllocations value={value}/></NextIntlClientProvider>);
 async function confirmPreview(){

@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { accrueToilAction } from '@/app/roster/actions';
+import { accrueToilAction } from '@/app/(app)/roster/actions';
 
 /** "Bank in lieu" on a rest-worked variance row (ADR-0033). Calls accrueToil and reports the credit (with a
  *  compliance note for First-Schedule employees) or the refusal reason inline. */

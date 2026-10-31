@@ -12,7 +12,7 @@ const catalogues={en,ms,ta,th,vi:viMessages,zh};
 import type {OvertimeEvaluation,OvertimePattern} from '../lib/overtime-pattern-model';
 import {todayInKualaLumpur} from '../lib/hr-date';
 const mocks=vi.hoisted(()=>({employee:vi.fn(),sample:vi.fn(),review:vi.fn(),calculate:vi.fn(),transfer:vi.fn(),choices:vi.fn()}));
-vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({previewOvertimeEmployeeAction:mocks.employee,previewOvertimeSampleAction:mocks.sample,readOvertimeTransferAction:mocks.review,calculateOvertimeDayAction:mocks.calculate,transferOvertimePayrollAction:mocks.transfer,overtimeChoicesAction:mocks.choices}));
+vi.mock('../app/(app)/admin/attendance/settings/overtime-patterns/actions',()=>({previewOvertimeEmployeeAction:mocks.employee,previewOvertimeSampleAction:mocks.sample,readOvertimeTransferAction:mocks.review,calculateOvertimeDayAction:mocks.calculate,transferOvertimePayrollAction:mocks.transfer,overtimeChoicesAction:mocks.choices}));
 import {OvertimePreviewPanel} from '../components/overtime-patterns/preview-panel';
 const words=en.overtimePatterns;
 const id='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002',batchId='00000000-0000-4000-8000-000000000003';

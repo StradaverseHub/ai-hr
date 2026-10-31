@@ -10,8 +10,8 @@ import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 const actions = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: actions.refresh }) }));
-vi.mock('../app/rewards/actions', () => ({ previewRewardMultiplierAction: actions.preview, saveRewardMultiplierAction: actions.save }));
-import { UnitMultiplier, type UnitMultiplierValue } from '../app/rewards/[unitId]/unit-multiplier';
+vi.mock('../app/(app)/rewards/actions', () => ({ previewRewardMultiplierAction: actions.preview, saveRewardMultiplierAction: actions.save }));
+import { UnitMultiplier, type UnitMultiplierValue } from '../app/(app)/rewards/[unitId]/unit-multiplier';
 
 const catalogues = { en, ms, zh, ta, th, vi: viMessages };
 const u = en.rewards.unitBonus;

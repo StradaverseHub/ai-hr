@@ -4,7 +4,7 @@ vi.mock('../lib/session',()=>({getSession:async()=>state.session}));
 vi.mock('../core/read',()=>({myEmployment:state.legacy,myOwnEmploymentSubjects:state.own}));
 vi.mock('../packs/claims/service',()=>({submitClaimWithAttachment:state.submit,saveClaimDraft:state.save,submitDraftClaims:state.bulk,deleteClaimDraft:state.remove,cancelClaim:state.cancel}));
 vi.mock('next/navigation',()=>({redirect:(url:string)=>{throw Error('redirect:'+url);}}));vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
-import {submitClaimAction,submitDraftsAction,deleteDraftAction,cancelClaimAction} from '../app/claims/actions';
+import {submitClaimAction,submitDraftsAction,deleteDraftAction,cancelClaimAction} from '../app/(app)/claims/actions';
 const own='5b9c9f7f-bd09-4d8d-a34d-201b1abf79e2';
 function form(){const value=new FormData();for(const [key,val] of Object.entries({employmentId:own,claimTypeId:'type',amount:'10',incurredOn:'2025-01-01',description:'Fictional claim'}))value.set(key,val);return value;}
 beforeEach(()=>{vi.clearAllMocks();state.own.mockResolvedValue([{employmentId:own,personName:'Fictional owner',company:'Second employer',employeeCode:'B'}]);state.legacy.mockResolvedValue({employmentId:'legacy-first'});state.bulk.mockResolvedValue({submitted:1});});

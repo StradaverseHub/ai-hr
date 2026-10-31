@@ -53,7 +53,7 @@ const LIVE_ACTIONS: readonly string[] = [
 
 describe('the per-rule approval writers retired WITH their screens (4e9a4d59 → e4238594 → 706d34e8)', () => {
   it('none of the retired actions is exported', async () => {
-    const mod = await import('../app/admin/leave-approval/actions');
+    const mod = await import('../app/(app)/admin/leave-approval/actions');
     const exported = new Set(Object.keys(mod));
     for (const [name, why] of RETIRED_ACTIONS) {
       expect(exported.has(name), `${name} must stay retired (${why})`).toBe(false);
@@ -63,7 +63,7 @@ describe('the per-rule approval writers retired WITH their screens (4e9a4d59 →
   it('the actions the surviving sections post are all still exported', async () => {
     // Asserted positively so a cleanup that overshoots — taking the template or assignment writers with
     // the rule writers — fails here instead of silently making the screen read-only.
-    const mod = await import('../app/admin/leave-approval/actions');
+    const mod = await import('../app/(app)/admin/leave-approval/actions');
     const exported = new Set(Object.keys(mod));
     for (const name of LIVE_ACTIONS) {
       expect(exported.has(name), `${name} must survive`).toBe(true);

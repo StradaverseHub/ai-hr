@@ -29,7 +29,7 @@ function one(url: URL, key: string): string | null {
 
 /**
  * The caller's OWN claim-eligible employment: no `?employmentId=` ⇒ the first; a named one must be among them, else
- * null. The set is the claims kernel's own subject rule (app/claims/subject.ts ownClaimSubject, core/claims.ts
+ * null. The set is the claims kernel's own subject rule (app/(app)/claims/subject.ts ownClaimSubject, core/claims.ts
  * ownClaimFormAvailable): myOwnEmploymentSubjects({profileEdit:true}) — the login's own person, started, not past its
  * last working day, not blacklisted, and the login not blocked. An offboarded or blocked caller therefore has none
  * (`no_employment` / an empty list), and an id that is not theirs never reaches a claim read. A malformed id is a 400.
@@ -60,7 +60,7 @@ export function attachmentOf(req: Request): string {
 }
 
 /**
- * The receipt's type FROM ITS BYTES (app/claims/actions.ts sniffMime's rule, fail closed), never the part's declared
+ * The receipt's type FROM ITS BYTES (app/(app)/claims/actions.ts sniffMime's rule, fail closed), never the part's declared
  * type. The signatures are lib/mobile-api/binary-types.ts's — the ones the receipt routes check before SENDING a file
  * — so every receipt accepted here can be sent back to the phone (a stricter read of the web's 4-byte PDF/PNG check).
  */

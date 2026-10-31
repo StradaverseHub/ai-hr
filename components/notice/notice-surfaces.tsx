@@ -3,7 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import type { SessionContext } from '@/db/client';
 import { viewerEmployment } from '@/lib/viewer';
 import { noticesForEmployment, popupNoticeFor, unreadNoticeCount } from '@/core/notice';
-import { dismissNoticePopupAction } from '@/app/notices/actions';
+import { dismissNoticePopupAction } from '@/app/(app)/notices/actions';
 import { NoticeBoardCard } from './notice-board-card';
 import { NoticePopup } from './notice-popup';
 
@@ -11,10 +11,10 @@ import { NoticePopup } from './notice-popup';
  * 6e122302 — the two places a notice appears WITHOUT being asked for: the dashboard card and the
  * after-login popup.
  *
- * ── WHY THEY LIVE IN ONE SMALL FILE INSTEAD OF INSIDE app/page.tsx AND app/layout.tsx ──────────────────
+ * ── WHY THEY LIVE IN ONE SMALL FILE INSTEAD OF INSIDE app/(app)/page.tsx AND app/(app)/layout.tsx ──────────────────
  * i18n coverage. `test/i18n-coverage.test.ts` check C only verifies files that open exactly ONE
- * translation namespace, and both of those hosts already open more than one (app/page.tsx) or none at all
- * (app/layout.tsx). Dropping `getTranslations('notices')` into either would leave every string on these
+ * translation namespace, and both of those hosts already open more than one (app/(app)/page.tsx) or none at all
+ * (app/(app)/layout.tsx). Dropping `getTranslations('notices')` into either would leave every string on these
  * two surfaces unverified — which is exactly how r127 shipped twelve labels that rendered as
  * MISSING_MESSAGE behind a green suite, a green build and a 200 response.
  *

@@ -4,7 +4,7 @@
  *
  * No DB imports. The column contract, the header spellings, the key canonicaliser, the import mode and
  * the per-row result shapes live here so the server service (`core/leave-bf-import`), the client screen
- * (`app/admin/leave-config/bf-import`) and the downloadable template all read ONE list — the desync lock
+ * (`app/(app)/admin/leave-config/bf-import`) and the downloadable template all read ONE list — the desync lock
  * lib/import-schema.ts, lib/payroll-history-import-schema.ts and lib/leave-history-import-schema.ts
  * already apply.
  *

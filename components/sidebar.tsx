@@ -538,7 +538,7 @@ const GROUPS: Group[] = [
        * tenant HAS attendance, so nothing changes for them today; a future Leave-only customer would have
        * no route to the work-site register or its branch mapping. The plan said so and offered to keep it
        * un-gated; the reporter did not answer, so their structure is built as they described it and the
-       * un-gating stays a one-line change. See app/admin/work-locations/page.tsx.
+       * un-gating stays a one-line change. See app/(app)/admin/work-locations/page.tsx.
        *
        * MapPin left this file with the row — no sibling here used it, and the pack's own node is where it
        * is drawn now.
@@ -653,7 +653,7 @@ export function Sidebar({
   canAdministerOnehr?: boolean;
   /**
    * D-P1-32 PT-X5 — where Performance admin opens: the admin area's first tab for the latest cycle the viewer
-   * administers (app/layout.tsx). Absent means the pack's own address, /performance (no cycle yet).
+   * administers (app/(app)/layout.tsx). Absent means the pack's own address, /performance (no cycle yet).
    */
   performanceAdminHref?: string;
   /**
@@ -665,13 +665,13 @@ export function Sidebar({
    */
   enabledModules?: string[] | null;
   /** 28 Oct 2026 (owner): the Assistant row is offered only to a login that may use the Assistant (module,
-   * grant). app/layout.tsx computes it and passes false on any failure. Own-data controls stay reachable from
+   * grant). app/(app)/layout.tsx computes it and passes false on any failure. Own-data controls stay reachable from
    * My workspace, and /assistant itself still refuses and explains on its own. */
   assistantAccess?: boolean;
   /** 0696 — false when an operator has hidden the Feedback menu for this customer. /feedback refuses on its own. */
   feedbackAccess?: boolean;
   /** Pending items awaiting THIS viewer's decision (feedback 836118c4) — badge on the
-   *  "Approval Items" row. Computed once in app/layout.tsx as listPendingTasks(...).length; the rail
+   *  "Approval Items" row. Computed once in app/(app)/layout.tsx as listPendingTasks(...).length; the rail
    *  never queries. 0 (or a viewer without the row) renders no badge. */
   approvalCount?: number;
   taskCount?: number;
@@ -1330,7 +1330,7 @@ export function Sidebar({
           )}
         </Link>
 
-        {/* `relative` for the same reason as <main> in app/layout.tsx: absolute descendants
+        {/* `relative` for the same reason as <main> in app/(app)/layout.tsx: absolute descendants
             (sr-only labels) must not escape this scroll container and create viewport overflow. */}
         <nav
           data-tour="nav"

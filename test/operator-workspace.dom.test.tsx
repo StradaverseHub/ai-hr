@@ -3,13 +3,13 @@ import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {OperatorShell} from '../components/operator-shell';
-import {CustomerCreateForm,CustomerModuleForm,CustomerNameForm} from '../app/operator/customer-forms';
+import {CustomerCreateForm,CustomerModuleForm,CustomerNameForm} from '../app/(app)/operator/customer-forms';
 import type {ReactNode} from 'react';
 vi.mock('next/navigation',()=>({usePathname:()=>'/operator'}));
 vi.mock('../components/language-switcher',()=>({LanguageSwitcher:()=>null}));
 vi.mock('../components/theme-toggle',()=>({ThemeToggle:()=>null}));
 vi.mock('../components/logout-button',()=>({LogoutButton:()=> <button>Log out</button>}));
-vi.mock('../app/operator/actions',()=>({submitCustomerAction:vi.fn(),renameCustomerAction:vi.fn(),changeCustomerModuleAction:vi.fn()}));
+vi.mock('../app/(app)/operator/actions',()=>({submitCustomerAction:vi.fn(),renameCustomerAction:vi.fn(),changeCustomerModuleAction:vi.fn()}));
 afterEach(cleanup);
 const show=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} onError={e=>{throw e;}}>{node}</NextIntlClientProvider>);
 const modules=[{code:'payroll',name:'Payroll',description:'Payroll processing.',dependsOn:['employees'],billable:true},

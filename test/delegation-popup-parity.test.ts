@@ -3,7 +3,7 @@
  * /delegations page must render the SAME building block (DelegationManager), so fields, validation and
  * capabilities can never drift apart. Source-static guards (precedent: test/personnel-attendance-tab.test.ts):
  *   (a) both surfaces render DelegationManager;
- *   (b) app/delegations/actions.ts no longer imports redirect from next/navigation — the uniform
+ *   (b) app/(app)/delegations/actions.ts no longer imports redirect from next/navigation — the uniform
  *       { ok } / { ok: false, error } returns cannot silently regress to a NEXT_REDIRECT that hard-navigates
  *       the popup away;
  *   (c) loadDelegationContextAction derives admin from the session (isAdmin) and accepts NO admin flag in
@@ -21,8 +21,8 @@ import { describe, expect, it } from 'vitest';
 
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8');
 
-const PAGE = read('../app/delegations/page.tsx');
-const ACTIONS = read('../app/delegations/actions.ts');
+const PAGE = read('../app/(app)/delegations/page.tsx');
+const ACTIONS = read('../app/(app)/delegations/actions.ts');
 const COMMAND_BAR = read('../components/command-bar.tsx');
 const MANAGER = read('../components/delegation-manager.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

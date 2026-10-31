@@ -44,7 +44,7 @@ import {
   type SaveTemplateResult,
   type TemplateManagerLabels,
   type TemplateRow,
-} from '../app/admin/leave-approval/template-manager';
+} from '../app/(app)/admin/leave-approval/template-manager';
 import { DRAWER_EXIT_ANIMATION } from '../components/ui/drawer';
 
 const CATALOGUES = { en, ms, ta, th, vi: vi_, zh } as const;
@@ -61,7 +61,7 @@ beforeEach(() => {
 const commonSave = (loc: Locale) => (CATALOGUES[loc] as unknown as { common: { save: string } }).common.save;
 const la = (loc: Locale) => (CATALOGUES[loc] as unknown as { leaveApproval: Record<string, string> }).leaveApproval;
 
-/** The label bag exactly as app/admin/leave-config/approval-chains/page.tsx builds it, read from a catalogue. */
+/** The label bag exactly as app/(app)/admin/leave-config/approval-chains/page.tsx builds it, read from a catalogue. */
 function labelsFor(loc: Locale): TemplateManagerLabels {
   const m = la(loc);
   const same = [
@@ -884,7 +884,7 @@ describe('r304 · the drawer slides out rather than vanishing', () => {
 
 describe('r304 · the drawer says "Save", not "Save chain"', () => {
   it('the page hands the template manager common.save; the escalation editor keeps leaveApproval.save', () => {
-    const page = readFileSync(join(__dirname, '../app/admin/leave-config/approval-chains/page.tsx'), 'utf8');
+    const page = readFileSync(join(__dirname, '../app/(app)/admin/leave-config/approval-chains/page.tsx'), 'utf8');
     expect(page).toContain("const tc = await getTranslations('common');");
     const templateLabels = page.slice(page.indexOf('const templateLabels: TemplateManagerLabels = {'));
     const templateBlock = templateLabels.slice(0, templateLabels.indexOf('\n  };'));

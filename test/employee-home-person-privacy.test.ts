@@ -11,7 +11,7 @@ vi.mock('../lib/session',()=>({getSession:async()=>caller}));
 const cache=vi.hoisted(()=>vi.fn());
 vi.mock('next/cache',()=>({revalidatePath:cache}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw Error('confirmed-redirect:'+path);},unstable_rethrow:()=>{}}));
-const {saveHomePersonPrivacyAction}=await import('../app/me/home/privacy-actions');
+const {saveHomePersonPrivacyAction}=await import('../app/(app)/me/home/privacy-actions');
 async function login(personId?:string):Promise<SessionContext>{
  if(!personId){const [row]=await owner.db.insert(person).values({tenantId:b.tenantId,fullName:'Fictional privacy owner',primaryEmail:randomUUID()+'@example.invalid'}).returning({id:person.id});personId=row.id;}
  const userId=await createAppUser(b.tenantId,personId,'employee');

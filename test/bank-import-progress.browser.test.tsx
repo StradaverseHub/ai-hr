@@ -4,7 +4,7 @@ import {cleanup,render,screen,fireEvent,waitFor} from '@testing-library/react';
 import {page} from 'vitest/browser';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {BankImportProgress} from '../app/admin/personnel/import/bank-import-progress';
+import {BankImportProgress} from '../app/(app)/admin/personnel/import/bank-import-progress';
 import type {BankImportProgress as Progress} from '../lib/bank-import-job';
 import '../app/globals.css';
 const base:Progress={id:'11111111-1111-4111-8111-111111111111',sourceName:'bank-statutory-100001.csv',state:'importing',total:100001,validated:100001,valid:100001,invalid:0,unchanged:0,processed:50001,saved:50001,failed:0,uploadedBytes:2000000,sourceBytes:2000000,attemptId:null,error:null,updatedAt:new Date().toISOString(),createdAt:new Date().toISOString()};

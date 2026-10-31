@@ -2,7 +2,7 @@
  * THE "find an employee by partial ID or partial name" RULE — one implementation, shared.
  *
  * It was written for the Personnel "Search Employee" switcher (c002b3c3) and lived inside
- * `app/admin/personnel/employee-search.ts`. Two payroll screens now ask for the same affordance at the top
+ * `app/(app)/admin/personnel/employee-search.ts`. Two payroll screens now ask for the same affordance at the top
  * of their own filter row (98e69987 Transaction Detail, f35f758a Individual Payslip), so the rule moves
  * here and the personnel module re-exports it. Nothing about the behaviour changed in the move — the
  * ranking, the folding and the cap are the same code, and test/employee-search-shared.test.ts pins them

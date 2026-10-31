@@ -4,7 +4,7 @@
  * Pure, DB-free date arithmetic for the dashboard Leave Calendar's Week View / Month View switch:
  *  - the ?cal= param / `leave_calendar_view` session-cookie precedence,
  *  - the resolved [from, to] window for either view off a single ?abs=YYYY-MM-DD anchor,
- *  - whole-month stepping (lifted from app/attendance/page.tsx's proven shiftMonth arithmetic, so
+ *  - whole-month stepping (lifted from app/(app)/attendance/page.tsx's proven shiftMonth arithmetic, so
  *    31 Jan + 1 month is 1 Feb and never drifts),
  *  - the view-switch re-anchor rule that keeps month → week → month landing where it started.
  *

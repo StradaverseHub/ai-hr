@@ -499,9 +499,9 @@ describe('readiness', () => {
  *
  *   • `/payroll/reports` — the period box is FREE TEXT and its placeholder flips between '2026' and
  *     '2026-07' with the report dropdown, so viewing an annual report and then switching to CP39 submits
- *     '2026' verbatim (app/payroll/reports/page.tsx: `const periodKey = sp.periodKey || ''`).
+ *     '2026' verbatim (app/(app)/payroll/reports/page.tsx: `const periodKey = sp.periodKey || ''`).
  *   • `/payroll/statutory-forms/my.cp39` — its own fallback accepts `?periodKey=2026-13`, month and all
- *     (app/payroll/statutory-forms/[formId]/page.tsx, /^\d{4}-\d{2}$/).
+ *     (app/(app)/payroll/statutory-forms/[formId]/page.tsx, /^\d{4}-\d{2}$/).
  *
  * `my.cp39` has been TOTAL since slice 0: both screens rendered the "No payroll run" card. A throw on this
  * path 500s the whole page instead, and neither the pure test file nor `loadCp39Form`'s own tests can see

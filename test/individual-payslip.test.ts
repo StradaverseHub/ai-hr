@@ -30,7 +30,7 @@ import { explainPcb, type PcbReliefBreakdown } from '../core/pcb-explain';
 import { isUnsupportedTaxableComponent } from '../core/pay-components';
 // 6b4ca488 — the derivation behind the Total Deductions line on all three payslip surfaces. Imported so
 // the sign of the VALUE and the absence of a sign in the MARKUP are pinned against each other.
-import { deriveHistoryBreakdown } from '../app/payroll/transaction-view/history-breakdown';
+import { deriveHistoryBreakdown } from '../app/(app)/payroll/transaction-view/history-breakdown';
 // r360 — the ONE rule that decides whether a payslip's cycle reads "Monthly" or "Regular". Imported as a
 // function rather than grepped for, so the fallback is pinned as behaviour and not as a source shape.
 import { payslipCycleLabel } from '../core/payslip-cycle-label';
@@ -55,20 +55,20 @@ const CURRENT: PcbReliefBreakdown = {
 
 /** Board2 shares the own-only assembly between HTML preview and PDF, without moving its guards. */
 const ownDocumentSource = () => {
-  const route = read('app/me/payslip/[payslipId]/pdf/route.ts');
+  const route = read('app/(app)/me/payslip/[payslipId]/pdf/route.ts');
   expect(route).toContain("import { myPayslipDocument } from '../../document'");
   expect(route).toContain('myPayslipDocument(await getSession(),payslipId)');
-  // M09 — the render and file name moved to app/me/payslip/pdf-file.ts, shared with the mobile v2 route; the
+  // M09 — the render and file name moved to app/(app)/me/payslip/pdf-file.ts, shared with the mobile v2 route; the
   // assertion followed it rather than being dropped. The route hands that module the own-only document.
   expect(route).toContain("import { myPayslipPdfFile } from '../../pdf-file'");
   expect(route).toContain('myPayslipPdfFile(document)');
-  expect(read('app/me/payslip/pdf-file.ts')).toContain('renderPayslipPdf(data, strings.labels)');
-  const model = read('app/me/payslip/document.ts');
+  expect(read('app/(app)/me/payslip/pdf-file.ts')).toContain('renderPayslipPdf(data, strings.labels)');
+  const model = read('app/(app)/me/payslip/document.ts');
   expect(model).toContain("import 'server-only'");
   expect(model).toContain('await myPayslipDetail(s, payslipId)');
   return model;
 };
-const pdfAssemblySource = (file: string) => file === 'app/me/payslip/[payslipId]/pdf/route.ts' ? ownDocumentSource() : read(file);
+const pdfAssemblySource = (file: string) => file === 'app/(app)/me/payslip/[payslipId]/pdf/route.ts' ? ownDocumentSource() : read(file);
 describe('169e3c24 — explaining the PCB figure from what the payslip recorded', () => {
   it('says so plainly when no working was recorded (imported / pre-stamp run)', () => {
     // 45df860a fix pass — every shape now also carries `pcbSystem` (what the working explains) and
@@ -179,7 +179,7 @@ describe('5c198931 — the year-to-date column is summed in ONE place', () => {
 
 describe('169e3c24 — the ESS release gate is not weakened, and no logo is invented', () => {
   it('the new PDF route does NOT read through payslipDetail', () => {
-    const route = read('app/payroll/individual-payslip/[payslipId]/pdf/route.ts');
+    const route = read('app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts');
     // The IMPORTS, not the prose — the file's header explains at length why it must not call payslipDetail,
     // and a naive substring check would fail on its own explanation.
     const imports = route.split('\n').filter((l) => l.trimStart().startsWith('import '));
@@ -208,7 +208,7 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
     // da4af51f is that approval. So the guard is UPDATED to the new truth rather than deleted — deleting
     // it would drop the half that never expired, which is that this screen must not grow a logo upload,
     // a second copy of the bytes, or storage of its own. It reads what Organization already owns.
-    const page = read('app/payroll/individual-payslip/page.tsx');
+    const page = read('app/(app)/payroll/individual-payslip/page.tsx');
     const codeOnly = page.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 
     // (a) STILL no upload, no writer, no second store. The header explains the history at length, so this
@@ -231,10 +231,10 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
   });
 
   it('the pack-drift allowlist did not GROW (a ratchet may only shrink)', () => {
-    // app/payroll/ is in ALWAYS_ALLOWED, so the new route imports core/payroll-view directly, exactly as
+    // app/(app)/payroll/ is in ALWAYS_ALLOWED, so the new route imports core/payroll-view directly, exactly as
     // transaction-view already does, and needs no entry.
     const drift = read('test/payroll-pack-drift.test.ts');
-    expect(drift).toContain("'app/payroll/', //");
+    expect(drift).toContain("'app/(app)/payroll/', //");
     expect(drift).not.toContain('individual-payslip');
   });
 
@@ -270,8 +270,8 @@ describe('169e3c24 — the ESS release gate is not weakened, and no logo is inve
 });
 
 describe('5c198931 — one document, printed by both routes', () => {
-  const ESS = 'app/me/payslip/[payslipId]/pdf/route.ts';
-  const ADMIN = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
+  const ESS = 'app/(app)/me/payslip/[payslipId]/pdf/route.ts';
+  const ADMIN = 'app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts';
 
   it('both PDF routes resolve their labels from the SAME module', () => {
     // The two routes each hand-assembled a label object. The redesign takes that object past forty
@@ -282,7 +282,7 @@ describe('5c198931 — one document, printed by both routes', () => {
       expect(route, `${f} must resolve labels through the shared module`).toContain('payslipPdfStrings');
       expect(route).toContain('buildPayslipPdfData');
       // M09 — the employee's copy renders through the shared file module (pdf-file.ts), which the route calls.
-      expect(read(f === ESS ? 'app/me/payslip/pdf-file.ts' : f)).toContain('renderPayslipPdf');
+      expect(read(f === ESS ? 'app/(app)/me/payslip/pdf-file.ts' : f)).toContain('renderPayslipPdf');
     }
   });
 
@@ -321,9 +321,9 @@ describe('5c198931 — one document, printed by both routes', () => {
 });
 
 describe('f35f758a rev 2 — the screen: the panel is back, and Review opens the REAL file in its own tab', () => {
-  const PAGE = 'app/payroll/individual-payslip/page.tsx';
-  const ROUTE = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
-  const ESS_PAGE = 'app/me/payslip/[payslipId]/page.tsx';
+  const PAGE = 'app/(app)/payroll/individual-payslip/page.tsx';
+  const ROUTE = 'app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts';
+  const ESS_PAGE = 'app/(app)/me/payslip/[payslipId]/page.tsx';
   /** Comments stripped, for the same reason the logo guard strips them: this file's own prose explains
    *  what was REMOVED, and a naive substring check would fail on the explanation. */
   const code = (rel: string) => read(rel).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
@@ -446,7 +446,7 @@ describe('f35f758a rev 2 — the screen: the panel is back, and Review opens the
 
   it('the itemised list on the EMPLOYEE\u2019s own payslip stops claiming "no cash impact"', () => {
     // f35f758a. `me.payslip.recordLinesHeading` read "Recorded items (no cash impact)", and
-    // app/me/payslip/[payslipId]/page.tsx prints it. That has been WRONG since f1564110 phase 3 merged
+    // app/(app)/me/payslip/[payslipId]/page.tsx prints it. That has been WRONG since f1564110 phase 3 merged
     // named provenance for PAID one-off transactions into the same array: on production payslip 945d16e9
     // it headed COMMISSION 300 and HANDPHONE ALLOWANCE 400, both of which reached the employee. It now
     // carries the admin screen's wording, which is accurate for a mixed list.
@@ -502,7 +502,7 @@ describe('f35f758a note 8 — the pay item master save refuses the combination t
   });
 
   it('both master-save actions run it, and refuse BEFORE the service is called', () => {
-    const src = read('app/admin/pay-components/actions.ts');
+    const src = read('app/(app)/admin/pay-components/actions.ts');
     expect(src).toContain('isUnsupportedTaxableComponent');
     const source = ts.createSourceFile('actions.ts', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const calls = (root: ts.Node, name: string): ts.CallExpression[] => {
@@ -579,10 +579,10 @@ describe('f35f758a note 8 — the pay item master save refuses the combination t
  * They are pinned by name here, in the document test, and in the screen render test.
  */
 describe('r360 — the cycle name and the registration label are decided in ONE place', () => {
-  const PAGE = 'app/payroll/individual-payslip/page.tsx';
+  const PAGE = 'app/(app)/payroll/individual-payslip/page.tsx';
   const STRINGS = 'lib/payslip-pdf-strings.ts';
-  const ESS_PDF = 'app/me/payslip/[payslipId]/pdf/route.ts';
-  const ADMIN_PDF = 'app/payroll/individual-payslip/[payslipId]/pdf/route.ts';
+  const ESS_PDF = 'app/(app)/me/payslip/[payslipId]/pdf/route.ts';
+  const ADMIN_PDF = 'app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts';
 
   it('the configured cycle NAME wins, and a batch with no cycle keeps the run-type word', () => {
     expect(payslipCycleLabel({ cycleName: 'Monthly', runTypeLabel: 'Regular' })).toBe('Monthly');
@@ -777,12 +777,12 @@ describe('169e3c24 — the admin review read', () => {
   it('the authorized individual screen and PDF display the full account, while the read retains its separate mask', () => {
     // The explicitly authorized exposure is confined to the existing individual company-scoped read.
     // Its separate masked field remains available to consumers which retain masking.
-    const page = read('app/payroll/individual-payslip/page.tsx');
+    const page = read('app/(app)/payroll/individual-payslip/page.tsx');
     expect(page, 'the individual review follows the explicit full-account display requirement').toContain('bankAccountFull');
     expect(page, 'the individual review does not substitute the masked consumer field').not.toContain('bankAccountMasked');
     for (const route of [
-      'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
-      'app/me/payslip/[payslipId]/pdf/route.ts',
+      'app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts',
+      'app/(app)/me/payslip/[payslipId]/pdf/route.ts',
     ]) {
       // Both routes, the employee's own copy included: it is one document and their own account number.
       expect(pdfAssemblySource(route), `${route} must print the whole account number`).toContain('bankAccountFull');
@@ -1035,9 +1035,9 @@ describe('6b4ca488 — Total Deductions is a positive magnitude and is printed w
     // formatter — the four ways this has any chance of coming back.
     const SIGNED_PREFIX = /[-−–—]\s*\{\s*rm\(/;
     for (const rel of [
-      'app/payroll/individual-payslip/page.tsx',
-      'app/payroll/transaction-view/history-table.tsx',
-      'app/me/payslip/[payslipId]/page.tsx',
+      'app/(app)/payroll/individual-payslip/page.tsx',
+      'app/(app)/payroll/transaction-view/history-table.tsx',
+      'app/(app)/me/payslip/[payslipId]/page.tsx',
     ]) {
       const src = codeOf(rel);
       expect(src, `${rel} must still render the Total Deductions line`).toContain('totalDeductions');

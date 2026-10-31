@@ -6,7 +6,7 @@
  * Changing a PAY ITEM did not — which is exactly why the reporter's January figures sat there looking
  * settled after they unticked EPF. The run said nothing, and Close would have accepted it.
  *
- * The mark drives machinery that already exists: app/payroll/[batchId]/page.tsx renders `needsRecalc`,
+ * The mark drives machinery that already exists: app/(app)/payroll/[batchId]/page.tsx renders `needsRecalc`,
  * and closeBatch refuses while it is set. So the whole of this item's step 5 is one call at the right
  * moment, plus the predicate that keeps a RENAME from making every open run in the tenant look stale.
  */
@@ -174,7 +174,7 @@ describe('017d9c25 — the mark lands on the processed run, naming the employees
 });
 
 describe('017d9c25 — the master-save action is the caller', () => {
-  const ACTIONS = fs.readFileSync(path.join(process.cwd(), 'app/admin/pay-components/actions.ts'), 'utf8');
+  const ACTIONS = fs.readFileSync(path.join(process.cwd(), 'app/(app)/admin/pay-components/actions.ts'), 'utf8');
 
   it('updateComponentAction gates the mark on isStatutoryRelevantChange', () => {
     expect(ACTIONS).toContain('isStatutoryRelevantChange(changed)');

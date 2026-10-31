@@ -2,7 +2,7 @@
 import {useContext,useState} from 'react';
 import {useFormStatus} from 'react-dom';
 import {AssistantChatSubmitContext} from './chat-submit-context';
-import {askAssistantAction} from '../../app/assistant/actions';
+import {askAssistantAction} from '../../app/(app)/assistant/actions';
 /** The native owned clarification path is retained; active chats provide only an in-place transport. */
 export function ConversationClarification({exchangeId,replyLabel,continueLabel,choices}:{exchangeId:string;replyLabel:string;continueLabel:string;choices?:readonly {label:string;prompt:string}[]}){
  const chat=useContext(AssistantChatSubmitContext);

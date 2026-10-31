@@ -7,8 +7,8 @@
  * 6 locales — is already enforced by i18n-coverage check A.)
  *
  * r220 — THE BUNDLE MOVED, AND THAT IS WHY THIS FILE NOW READS `lib/`. It used to be built inline in
- * app/me/ea/[employmentId]/pdf/route.ts. A second route prints the same form (the blank C.P.8A at
- * app/payroll/ea/blank), and two hand-maintained copies of one statutory form's fifty-odd captions is how
+ * app/(app)/me/ea/[employmentId]/pdf/route.ts. A second route prints the same form (the blank C.P.8A at
+ * app/(app)/payroll/ea/blank), and two hand-maintained copies of one statutory form's fifty-odd captions is how
  * the blank and the filled version stop being the same page — so both routes now call
  * `eaPdfLabels()` in lib/ea-pdf-labels.ts, and BOTH are pinned below. `lib/` is outside i18n-coverage's
  * scan roots entirely, which makes this file the only guard on those keys.
@@ -18,11 +18,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const LABELS = path.resolve(__dirname, '../lib/ea-pdf-labels.ts');
-// M09 — the own-form route's label bundle call moved, with its render, to app/me/ea/document.ts (shared by the
+// M09 — the own-form route's label bundle call moved, with its render, to app/(app)/me/ea/document.ts (shared by the
 // web route and the mobile v2 route). The pin followed it; the route file itself now builds no labels at all.
 const ROUTES = [
-  '../app/me/ea/document.ts',
-  '../app/payroll/ea/blank/route.ts',
+  '../app/(app)/me/ea/document.ts',
+  '../app/(app)/payroll/ea/blank/route.ts',
 ].map((r) => path.resolve(__dirname, r));
 const en = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../messages/en.json'), 'utf8')) as Record<string, unknown>;
 

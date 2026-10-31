@@ -18,7 +18,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
 
-// app/me/actions.ts's framework edges, faked the way test/r266-benefit-scheme-vocabulary.test.ts fakes them, so the
+// app/(app)/me/actions.ts's framework edges, faked the way test/r266-benefit-scheme-vocabulary.test.ts fakes them, so the
 // refusal can be read as the SENTENCE the employee sees (a real translator over the English catalogue).
 vi.mock('../lib/session', () => ({ getSession: vi.fn(async () => null) }));
 vi.mock('next/navigation', () => ({
@@ -60,7 +60,7 @@ import {
   requestLeaveCancellation,
 } from '../core/leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { localizeLeaveError } from '../app/me/actions';
+import { localizeLeaveError } from '../app/(app)/me/actions';
 import { ReplacementCreditCancellationBlockedError } from '../core/leave';
 import { grantLeaveCredit, setToilPolicy } from '../core/toil';
 

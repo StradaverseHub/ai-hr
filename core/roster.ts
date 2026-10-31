@@ -2796,7 +2796,7 @@ export async function rosterWindowView(
     q?: string;
     /**
      * a57f0584 rev 2 — narrow to specific employments. The per-employee Edit screen
-     * (app/roster/edit/[employmentId]) is a WINDOW on this same view, not a read of its own: it must
+     * (app/(app)/roster/edit/[employmentId]) is a WINDOW on this same view, not a read of its own: it must
      * resolve every cell through the same precedence the grid behind it used, or a date shows one code
      * on the roster and another in the editor that is about to overwrite it.
      *
@@ -2915,7 +2915,7 @@ export async function rosterWindowView(
  * It is NOT a second read and must never become one: it turns `YYYY-MM` into the window and calls
  * straight through, so a month view and a custom range covering the same month return byte-identical
  * cells. Kept because two callers genuinely mean a MONTH rather than a window — the Excel round trip
- * (app/roster/import), whose contract is "only dates inside {month} are saved", and every test that was
+ * (app/(app)/roster/import), whose contract is "only dates inside {month} are saved", and every test that was
  * written against a month — and because a month is the one window this screen can name in one word.
  */
 export function rosterMonthView(
@@ -2944,7 +2944,7 @@ export function rosterMonthView(
  * WHAT IT REFUSES WITH was the hole: drizzle wraps 42501 as
  * `Failed query: insert into "roster_assignment" … params: <tenant uuid>,<employment uuid>,…`, and the
  * roster actions copy `(e as Error).message` verbatim into a toast (the three cell actions) or into
- * `?error=`, which app/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
+ * `?error=`, which app/(app)/roster/page.tsx renders in ErrorBanner (Generate / Copy). The database's own
  * refusal — SQL text and internal identifiers — was being printed to whoever asked for it.
  *
  * HIDING THE BUTTONS IS NOT A GUARD, and cannot be. components/roster-grid.tsx renders a supervisor a
@@ -3341,7 +3341,7 @@ export type MyRosterView = {
  * This function TAKES NO EMPLOYMENT ID. The employment is resolved from the session by `myEmployment`,
  * which keys on `ctx.personId`, so there is no argument a caller could pass — and no query string a page
  * could forward — that would make it return somebody else's roster. It is the r287 fence
- * (app/attendance/my-records/page.tsx) applied to the roster, and it is deliberately not "validate the
+ * (app/(app)/attendance/my-records/page.tsx) applied to the roster, and it is deliberately not "validate the
  * id you were given": a comparison is a thing to get wrong, an absent parameter is not.
  *
  * ⚠️ RLS WOULD NOT STOP A MANAGER HERE, which is exactly why the fence is in the service.

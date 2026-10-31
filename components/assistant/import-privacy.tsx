@@ -1,5 +1,5 @@
 import {getTranslations} from 'next-intl/server';
-import {eraseImportPreparationHistoryAction} from '../../app/assistant/import-privacy-actions';
+import {eraseImportPreparationHistoryAction} from '../../app/(app)/assistant/import-privacy-actions';
 import {OwnClearForm} from './own-clear';
 
 /** No private history, grant or employee metadata is needed to render this self-erasure control. It asks

@@ -4,8 +4,8 @@ import React from 'react';
 import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 const actions=vi.hoisted(()=>({search:vi.fn(async()=>[]),preview:vi.fn(),draft:vi.fn()}));
-vi.mock('../app/admin/pay-components/actions',()=>({searchPreviewEmployeesAction:actions.search,previewPayRuleAction:actions.preview,draftPayRuleAction:actions.draft}));vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>key)}));
-import {PayRuleEditor} from '../app/admin/pay-components/pay-rule-editor';
+vi.mock('../app/(app)/admin/pay-components/actions',()=>({searchPreviewEmployeesAction:actions.search,previewPayRuleAction:actions.preview,draftPayRuleAction:actions.draft}));vi.mock('next-intl',()=>({useTranslations:()=>((key:string)=>key)}));
+import {PayRuleEditor} from '../app/(app)/admin/pay-components/pay-rule-editor';
 beforeEach(()=>{vi.clearAllMocks();vi.useFakeTimers();});afterEach(()=>{cleanup();vi.useRealTimers();});
 const props={code:'HUMAN',kind:'allowance',prorates:true,rule:null,aiEnabled:true,payItems:[{code:'OTHER',name:'Human other allowance'}],previewEmployees:[{employmentId:'10000000-0000-4000-8000-000000000001',name:'Private employee',employeeCode:'PRIVATE'}]};
 describe('native PayRuleEditor catalogueOnly boundary',()=>{

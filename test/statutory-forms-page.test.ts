@@ -33,7 +33,7 @@ import { PAYROLL_NAV_PHASE } from '../packs/payroll/phases';
 import { yearOptions } from '../lib/hr-date';
 // r256 — the ONE rule that decides what a form's criteria step asks for, read here so this file's TP1
 // case can state the answer rather than grep for the substitution that used to produce it.
-import { parseDestination } from '../app/payroll/statutory-forms/criteria';
+import { parseDestination } from '../app/(app)/payroll/statutory-forms/criteria';
 import en from '../messages/en.json';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -53,10 +53,10 @@ const code = (p: string) =>
   read(p)
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const PAGE = code('app/payroll/statutory-forms/page.tsx');
-const FORM_PAGE = code('app/payroll/statutory-forms/[formId]/page.tsx');
-const EXPORT_ROUTE = code('app/payroll/statutory-forms/[formId]/export/route.ts');
-const REPORTS_PAGE = code('app/payroll/reports/page.tsx');
+const PAGE = code('app/(app)/payroll/statutory-forms/page.tsx');
+const FORM_PAGE = code('app/(app)/payroll/statutory-forms/[formId]/page.tsx');
+const EXPORT_ROUTE = code('app/(app)/payroll/statutory-forms/[formId]/export/route.ts');
+const REPORTS_PAGE = code('app/(app)/payroll/reports/page.tsx');
 const byId = new Map(MY_REPORTS.map((r) => [r.id, r]));
 
 describe('the pack declares where each form is filed, and by when', () => {
@@ -369,7 +369,7 @@ describe('the landing page is a directory, not a second generator', () => {
      * to `[formId]` with nothing chosen would just bounce back to the step it skipped.
      */
     expect(PAGE).toContain('criteriaHref(r.id)');
-    expect(read('app/payroll/statutory-forms/criteria.ts')).toContain(
+    expect(read('app/(app)/payroll/statutory-forms/criteria.ts')).toContain(
       '/payroll/statutory-forms/${encodeURIComponent(reportId)}',
     );
     // The bounce the 6babf4f6 redesign removed: "Open form" used to land on Reports beside a dropdown of
@@ -610,7 +610,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22');
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22a')?.href).toBe('/payroll/statutory-forms/event?form=my.cp22a');
     // The list behind those cards IS the worklist, and it stays: the event screen reads it.
-    expect(code('app/payroll/statutory-forms/event/page.tsx')).toContain('complianceWorklist(s, {');
+    expect(code('app/(app)/payroll/statutory-forms/event/page.tsx')).toContain('complianceWorklist(s, {');
     // The panels' keys are RETIRED, never deleted, in every locale.
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const m = JSON.parse(read(`messages/${loc}.json`));
@@ -641,7 +641,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   // test/r415-cp21.test.ts: "CP22 did not move"), so its back link keeps its href, which now simply opens
   // Statutory Forms at the top. What changes is what the link SAYS: it no longer promises a worklist.
   it('the CP22 review screen\'s back link opens Statutory Forms and says so, in every locale', () => {
-    const cp22Review = code('app/payroll/cp22/[employmentId]/preview/page.tsx');
+    const cp22Review = code('app/(app)/payroll/cp22/[employmentId]/preview/page.tsx');
     expect(cp22Review).toContain("back={{ href: '/payroll/statutory-forms#worklist', label: t('previewBack') }}");
     expect(en.payroll.cp22.previewBack).toBe('Back to Statutory Forms');
     for (const loc of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
@@ -724,7 +724,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(cp22.secondaryLabelKey).toBe('link_cp22_blank');
     expect(en.payroll.statutoryForms.link_cp22_blank).toBe('Download blank CP22');
     expect(PAGE).toContain('l.secondaryHref');
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/blank/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/cp22/blank/route.ts'))).toBe(true);
     // The CP22 row's tooltip stays in `payroll.cp22`, beside the form it describes, and the row declares
     // no title key of its own — so r220's `secondaryTitleKey` left this row byte-identical.
     expect(cp22.secondaryTitleKey).toBeUndefined();
@@ -820,8 +820,8 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(PAGE).not.toContain('/payroll/ea/blank');
     expect(PAGE).not.toContain('/payroll/ea/field-register');
     // The underlying data stays: both routes and the register module still exist.
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/ea/blank/route.ts'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/ea/field-register/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/ea/blank/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/ea/field-register/route.ts'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'lib/ea-field-register.ts'))).toBe(true);
     // The keys are RETIRED, never deleted.
     for (const k of ['link_ea_more', 'link_ea_blank_en', 'link_ea_blank_ms', 'link_ea_blank_title', 'link_ea_register', 'link_ea_register_title'] as const) {
@@ -868,7 +868,7 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
   // built, so a leaver row now opens the CP22A viewer — its OWN form, never the joiner's — instead of the
   // dash; `cp22aNotYet` is retired. The joiner half is unchanged.
   // ⚠️ r418 (item 57ef8cf9) — THE ROWS LEFT THIS PAGE WITH THE WORKLIST. The same two destinations are now
-  // reached from the event screen's list (app/payroll/statutory-forms/event/continue): a joiner opens the CP22
+  // reached from the event screen's list (app/(app)/payroll/statutory-forms/event/continue): a joiner opens the CP22
   // review screen, a leaver the CP22A viewer. The PAGE assertions are reversed; the routes stay pinned.
   it('opens the CP22 review screen for a joiner and the CP22A viewer for a leaver — from the event screen now', () => {
     expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/preview');
@@ -876,32 +876,32 @@ describe('CP22 / CP22A live with the statutory forms now', () => {
     expect(PAGE).not.toContain("tCp22('cp22aNotYet')");
     expect(PAGE).not.toContain('/payroll/cp22a/${w.employmentId}/preview');
     // The destination is the CATALOG's (`event.previewPath`), which the event screen's Continue redirects to.
-    expect(read('app/payroll/statutory-forms/event/continue/route.ts')).toContain('eventPreviewHref(link.event.previewPath');
+    expect(read('app/(app)/payroll/statutory-forms/event/continue/route.ts')).toContain('eventPreviewHref(link.event.previewPath');
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22')?.event?.previewPath).toBe('/payroll/cp22/{employmentId}/preview');
     expect(MY_STATUTORY_LINKS.find((l) => l.id === 'my.cp22a')?.event?.previewPath).toBe('/payroll/cp22a/{employmentId}/preview');
     expect(en.payroll.cp22.cp22aNotYet).toMatch(/^\[retired r413/);
     // The row must NOT go straight to the document any more — that is the behaviour this round removed.
     expect(PAGE).not.toContain('/payroll/cp22/${w.employmentId}/pdf');
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/preview/page.tsx'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/pdf/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/cp22/[employmentId]/preview/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/cp22/[employmentId]/pdf/route.ts'))).toBe(true);
     // …and the third output the reporter asked for: the same content as plain text, grouped A-F.
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/cp22/[employmentId]/text/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/cp22/[employmentId]/text/route.ts'))).toBe(true);
   });
 
   /**
-   * The route is NOT under app/payroll/statutory-forms/, which already carries [formId]: a static `cp22`
+   * The route is NOT under app/(app)/payroll/statutory-forms/, which already carries [formId]: a static `cp22`
    * sibling there would shadow a form id of 'cp22'. Harmless today (ids are 'my.cp8d' shaped) and still not
    * a trap worth planting.
    */
   it('keeps the CP22 routes out of the [formId] segment they would shadow', () => {
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/statutory-forms/cp22'))).toBe(false);
-    const route = read('app/payroll/cp22/[employmentId]/pdf/route.ts');
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/statutory-forms/cp22'))).toBe(false);
+    const route = read('app/(app)/payroll/cp22/[employmentId]/pdf/route.ts');
     // Same guards as the export route beside it: Node runtime, admin + company scope, and a UUID gate.
     expect(route).toContain("export const runtime = 'nodejs'");
     expect(route).toContain('scopedAdmin');
     expect(route).toContain('scopeIds.includes');
     // A read-only render appends NO domain event — the same deliberate skip the EA and payslip routes make.
-    expect(code('app/payroll/cp22/[employmentId]/pdf/route.ts')).not.toContain('appendEvent');
+    expect(code('app/(app)/payroll/cp22/[employmentId]/pdf/route.ts')).not.toContain('appendEvent');
   });
 
   // A tour step whose target left the route it names points at nothing, silently.
@@ -1246,11 +1246,11 @@ describe('what the shelves say about the forms that are not built', () => {
     expect(tp1.body).toBe('lhdn');
     expect(tp1.href).toBe('/payroll/transactions/tp1?year={year}');
     // The screen it opens, and the two things behind it that make the promotion true.
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/transactions/tp1/page.tsx'))).toBe(true);
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/transactions/tp1/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/transactions/tp1/[year]/[month]/pdf/route.ts'))).toBe(true);
     expect(fs.existsSync(path.join(ROOT, 'lib/tp1-pdf.ts'))).toBe(true);
     // …and the reason the href stops at the list: the month page refuses an employment it cannot resolve.
-    expect(read('app/payroll/transactions/tp1/[year]/[month]/page.tsx')).toContain('if (!emp) notFound()');
+    expect(read('app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx')).toContain('if (!emp) notFound()');
     /**
      * r256 MOVED WHO FILLS THE PLACEHOLDER IN, AND KEPT WHAT THE PLACEHOLDER MEANS. The landing page used
      * to substitute `{companyId}` and `{year}` out of its own filter bar; it has no filter bar now, so a
@@ -1314,16 +1314,16 @@ describe('what the shelves say about the forms that are not built', () => {
     // viewer. `getTranslations('payroll.ea')` — the bare string form — is the bug this replaced.
     //
     // r220 — THE BUNDLE MOVED AND THE ASSERTION FOLLOWED IT. It used to be built inline in the /me route;
-    // a second route now prints the same form (the blank C.P.8A at app/payroll/ea/blank), and two
+    // a second route now prints the same form (the blank C.P.8A at app/(app)/payroll/ea/blank), and two
     // hand-maintained copies of one statutory form's captions is how the blank and the filled version stop
     // being the same page. Both routes call `eaPdfLabels()`, which is where the namespace is resolved.
     const EA_LABELS = read('lib/ea-pdf-labels.ts');
     expect(EA_LABELS).toContain("getTranslations({ locale, namespace: 'payroll.ea' })");
     expect(EA_LABELS).not.toContain("getTranslations('payroll.ea')");
-    const EA_ROUTE = read('app/me/ea/[employmentId]/pdf/route.ts');
+    const EA_ROUTE = read('app/(app)/me/ea/[employmentId]/pdf/route.ts');
     expect(EA_ROUTE).toContain("EA_LANGS = ['en', 'ms']");
     // …and the blank copy allowlists the SAME two languages, off the same one renderer.
-    expect(read('app/payroll/ea/blank/route.ts')).toContain("EA_LANGS = ['en', 'ms']");
+    expect(read('app/(app)/payroll/ea/blank/route.ts')).toContain("EA_LANGS = ['en', 'ms']");
 
     /**
      * The half that has NOT changed, and is what this case is for: exactly ONE file draws an EA. r220
@@ -1342,7 +1342,7 @@ describe('what the shelves say about the forms that are not built', () => {
     expect(eaPdfFiles.filter((f) => read(`lib/${f}`).includes('export async function renderEaPdf'))).toEqual([
       'ea-pdf.ts',
     ]);
-    for (const route of ['app/me/ea/[employmentId]/pdf/route.ts', 'app/payroll/ea/blank/route.ts']) {
+    for (const route of ['app/(app)/me/ea/[employmentId]/pdf/route.ts', 'app/(app)/payroll/ea/blank/route.ts']) {
       expect(read(route), `${route} resolves its captions off disk instead of through next-intl`).not.toContain(
         'ea-pdf-labels-file',
       );

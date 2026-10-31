@@ -39,8 +39,8 @@ import th from '../messages/th.json';
 import vi_ from '../messages/vi.json';
 import zh from '../messages/zh.json';
 
-import { DownloadDialog } from '../app/payroll/payment-submission/download-dialog';
-import type { SubmissionFormat } from '../app/payroll/payment-submission/registry';
+import { DownloadDialog } from '../app/(app)/payroll/payment-submission/download-dialog';
+import type { SubmissionFormat } from '../app/(app)/payroll/payment-submission/registry';
 
 const COMPANY = '11111111-2222-3333-4444-555555555555';
 const DOWNLOAD_ROUTE = '/payroll/payment-submission/download';

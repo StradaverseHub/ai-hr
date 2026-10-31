@@ -21,7 +21,7 @@
  *      locale's name is the opening of the Excel-import title the same screen shows.
  *
  *   C. THE READINESS-CHECK KEY FRAGMENTS GET "RENAMED" TOO. `transactions: 'Transactions'` in
- *      app/payroll/[batchId]/page.tsx (CHECK_CAP) and app/payroll/setup/page.tsx is NOT a label: line
+ *      app/(app)/payroll/[batchId]/page.tsx (CHECK_CAP) and app/(app)/payroll/setup/page.tsx is NOT a label: line
  *      661 composes tg(`check${CHECK_CAP[c.key]}Title`). Rename that value and the lookup misses,
  *      rendering MISSING_MESSAGE on the run screen — a failure that passes tsc, the suite AND
  *      `next build` (AGENTS 6) and only ever appears on screen. Both halves of that contract are
@@ -132,7 +132,7 @@ describe('8041aa84 — Payroll Transactions renamed to Transaction Entry', () =>
 
   it('C. the readiness-check KEY FRAGMENT is untouched, and the key it composes still resolves', () => {
     // Not labels: `check${CHECK_CAP[c.key]}Title` is built from these values.
-    for (const rel of ['app/payroll/[batchId]/page.tsx', 'app/payroll/setup/page.tsx']) {
+    for (const rel of ['app/(app)/payroll/[batchId]/page.tsx', 'app/(app)/payroll/setup/page.tsx']) {
       expect(read(rel), `${rel}: the CHECK_CAP entry was renamed — the composed message key would miss`).toContain(
         "transactions: 'Transactions',",
       );
@@ -151,7 +151,7 @@ describe('8041aa84 — Payroll Transactions renamed to Transaction Entry', () =>
     expect(row!.labelKey, 'labelKey is the registry identifier, asserted in test/payroll-flyout-nav.test.ts').toBe(
       'payrollTransactions',
     );
-    expect(fs.existsSync(path.join(ROOT, 'app/payroll/transactions/page.tsx'))).toBe(true);
+    expect(fs.existsSync(path.join(ROOT, 'app/(app)/payroll/transactions/page.tsx'))).toBe(true);
   });
 
   it('"transactions" as a COMMON NOUN, and the other Transaction screens, are left alone', () => {

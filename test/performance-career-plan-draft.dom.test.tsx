@@ -5,8 +5,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const mocks=vi.hoisted(()=>({generate:vi.fn(),apply:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
-vi.mock('../app/performance/onehr-actions',()=>({careerPlanDraftAction:mocks.generate,applyCareerPlanDraftAction:mocks.apply}));
-import { CareerPlanDraft } from '../app/performance/onehr/career-plan-draft';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({careerPlanDraftAction:mocks.generate,applyCareerPlanDraftAction:mocks.apply}));
+import { CareerPlanDraft } from '../app/(app)/performance/onehr/career-plan-draft';
 const result={goals:[{area:'Delivery',itemIds:['gap:Delivery'],onJob:'Lead a retrospective',fromOthers:'Ask a mentor',formalLearning:'Study practice'}],aspirationLong:'',pool:[{id:'gap:Delivery',area:'Delivery',detail:'The chosen role needs level 3.',kind:'stretch',note:'level 3'}],sourceDigest:'source-digest',empty:false,remaining:4,limit:5,resetSeconds:0,used:1};
 beforeEach(()=>{vi.clearAllMocks();mocks.generate.mockResolvedValue(result);mocks.apply.mockResolvedValue({ok:true});});afterEach(cleanup);
 function show(existingLong=''){

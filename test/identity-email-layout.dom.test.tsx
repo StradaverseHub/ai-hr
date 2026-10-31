@@ -30,7 +30,7 @@ vi.mock('../components/notice/notice-surfaces',()=>({NoticePopupSlot:()=>null}))
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
 vi.mock('../components/dev-identity-switcher',()=>({DevIdentitySwitcher:()=>null}));
 vi.mock('../components/company-switcher',()=>({CompanySwitcher:()=>null}));
-import Layout from '../app/layout';
+import Layout from '../app/(app)/layout';
 import {NotificationCenter} from '../components/notification-center';
 import {Sidebar} from '../components/sidebar';
 import {OnboardingTour} from '../components/onboarding-tour';

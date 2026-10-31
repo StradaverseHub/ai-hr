@@ -51,7 +51,7 @@ export function ClientTabs<K extends string>({
   ariaLabel?: string;
   /**
    * 759dfc7d — OPT-IN imperative handle: the shell writes its own `selectTab` here, so an ancestor can
-   * move the shell without owning its state. The draft record (app/admin/personnel/new/wizard.tsx) needs
+   * move the shell without owning its state. The draft record (app/(app)/admin/personnel/new/wizard.tsx) needs
    * it for the "Activate still needs — Employment: Join date" list, whose whole value is that the name of
    * the missing thing is the way to reach it.
    *
@@ -227,7 +227,7 @@ export function ClientTabs<K extends string>({
         // a server-rendered panel — this page's per-section forms, and their server-action targets —
         // survives a tab switch, and so returning to a tab costs no re-render. Note what this does NOT
         // mean: a caller that holds its own state ABOVE this shell and renders controlled inputs from it
-        // (the draft record, app/admin/personnel/new/wizard.tsx) does not depend on staying mounted at
+        // (the draft record, app/(app)/admin/personnel/new/wizard.tsx) does not depend on staying mounted at
         // all — its values would survive an unmount. Do not credit this line for that.
         const hasContent = panel != null && (!Array.isArray(panel) || panel.length > 0);
         return (

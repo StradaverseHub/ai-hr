@@ -28,7 +28,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
 import { AppliedInPayrollList, type AppliedInPayrollRow } from '../components/applied-in-payroll-list';
-import { ZakatElectionsList, type ZakatElectionListRow } from '../app/payroll/transactions/zakat/elections-list';
+import { ZakatElectionsList, type ZakatElectionListRow } from '../app/(app)/payroll/transactions/zakat/elections-list';
 
 // The address bar, stubbed. Paging rides in the query string exactly as it does on the server-paged
 // screens, so replace() is RECORDED rather than performed.

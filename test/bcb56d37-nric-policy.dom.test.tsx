@@ -1,11 +1,11 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json';
-import PeopleGeneralPage from '../app/admin/settings/people-general/page';
+import PeopleGeneralPage from '../app/(app)/admin/settings/people-general/page';
 const mocks=vi.hoisted(()=>({policy:{allowDuplicatedNric:false,allowDuplicatedEmail:false,revision:null as string|null},allowed:true}));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture'})}));
 vi.mock('../core/people-general',()=>({canConfigurePeopleGeneral:async()=>mocks.allowed,getPeopleGeneral:async()=>mocks.policy}));
-vi.mock('../app/admin/settings/people-general/actions',()=>({savePeopleGeneralAction:async()=>{}}));
+vi.mock('../app/(app)/admin/settings/people-general/actions',()=>({savePeopleGeneralAction:async()=>{}}));
 vi.mock('next/navigation',()=>({redirect:(to:string)=>{throw new Error(`redirect:${to}`);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=> (key:string,values?:Record<string,string>)=>{
  let text=key.split('.').reduce<unknown>((node,key)=>(node as Record<string,unknown>)[key],en.peopleGeneral) as string;

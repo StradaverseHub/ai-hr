@@ -18,8 +18,8 @@
  * ours; the reported defect is the repetition, so only the repetition is removed.
  *
  * This module is pure and import-free on purpose: it is consumed by a Server Component
- * (app/admin/leave/approval/page.tsx) and by two Client Components (components/benefit-scheme-config.tsx,
- * app/admin/leave-approval/template-manager.tsx). It holds no `core/` import, so it sits outside the
+ * (app/(app)/admin/leave/approval/page.tsx) and by two Client Components (components/benefit-scheme-config.tsx,
+ * app/(app)/admin/leave-approval/template-manager.tsx). It holds no `core/` import, so it sits outside the
  * ADR-0080 leave pack boundary and cannot become a drift-guard entry.
  */
 

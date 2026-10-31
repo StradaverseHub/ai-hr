@@ -4,7 +4,7 @@ import {LetterWorkflowError} from '../lib/letter-workflow';
 const mocks=vi.hoisted(()=>({session:vi.fn(),download:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:mocks.session}));
 vi.mock('../core/letters',()=>({downloadStaffLetter:mocks.download}));
-import {GET} from '../app/letters/register/[letterId]/document/route';
+import {GET} from '../app/(app)/letters/register/[letterId]/document/route';
 const letterId='00000000-0000-4000-8000-000000000001',ctx={tenantId:'fixture',userId:'current-user'},params=()=>({params:Promise.resolve({letterId})}),request=(inline=false)=>new Request('https://fixture.test/letters/register/'+letterId+'/document'+(inline?'?inline=1':''));
 beforeEach(()=>{vi.clearAllMocks();mocks.session.mockResolvedValue(ctx);});
 it('serves the authorized sealed bytes with private headers for review and download',async()=>{

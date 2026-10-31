@@ -9,7 +9,7 @@ vi.mock('next-intl/server', () => ({
   getLocale: async () => state.locale,
   getTranslations: async (namespace: string) => createTranslator({ locale: state.locale, namespace, messages: JSON.parse(readFileSync(new URL(`../messages/${state.locale}.json`, import.meta.url), 'utf8')), onError: error => { throw error; } }),
 }));
-vi.mock('../app/admin/system-testing/workspace-actions', () => ({ confirmTestingCatalogueAction: vi.fn() }));
+vi.mock('../app/(app)/admin/system-testing/workspace-actions', () => ({ confirmTestingCatalogueAction: vi.fn() }));
 vi.mock('../components/system-testing/action-form', () => ({ TestingActionForm: ({children,label}:{children:ReactNode;label:string}) => createElement('section', null, label, children) }));
 vi.mock('../components/system-testing/legacy-mapping-form', () => ({ TestingLegacyMappingForm: () => null }));
 import { TestingGuide } from '../components/system-testing/guide';

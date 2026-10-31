@@ -38,10 +38,10 @@ const stripComments = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '');
  * their concatenation — the property it pins is about the leave TYPE screen, not about one filename, and
  * pinning it to a file that no longer exists would have taken the guard out rather than moved it.
  */
-const PANEL_FILES = ['app/admin/leave-config/types/page.tsx', 'app/admin/leave-config/types/leave-type-tabs.tsx', 'app/admin/leave-config/types/leave-type-sub-forms.tsx'];
+const PANEL_FILES = ['app/(app)/admin/leave-config/types/page.tsx', 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx', 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx'];
 const CHIP = 'components/ui/chip-multi-select.tsx';
-const ACTIONS = 'app/admin/actions.ts';
-const PERF = 'app/performance/new-cycle-form.tsx';
+const ACTIONS = 'app/(app)/admin/actions.ts';
+const PERF = 'app/(app)/performance/new-cycle-form.tsx';
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const BULK_PROPS = ['selectAllLabel', 'clearAllLabel', 'allSelectedLabel', 'countLabelFor'] as const;
 // 0af0729d removed these from admin.leave in ALL locales (their only consumers were the leave pickers).

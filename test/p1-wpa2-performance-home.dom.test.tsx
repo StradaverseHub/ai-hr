@@ -1,7 +1,7 @@
 /**
  * WP-A2 — the Performance block's markup, per theme. The three themes differ by CSS alone (Card, Status and
  * Button carry `monolith:`/`atelier:` utilities under <html data-ui-theme>), so each theme must render the
- * SAME words in the SAME order; every Home branch must mount the block (pinned against app/page.tsx).
+ * SAME words in the SAME order; every Home branch must mount the block (pinned against app/(app)/page.tsx).
  * Real ICU messages from messages/en.json through next-intl's own translator.
  */
 import fs from 'node:fs';
@@ -112,7 +112,7 @@ describe('the slot', () => {
   });
 
   it('every Home branch mounts the block: personal landing, Atelier, Monolith, Classic', () => {
-    const page = fs.readFileSync(path.resolve(__dirname, '../app/page.tsx'), 'utf8');
+    const page = fs.readFileSync(path.resolve(__dirname, '../app/(app)/page.tsx'), 'utf8');
     expect(page).toContain('const performanceBlock = <PerformanceHomeSlot session={s} scopeIds={scopeIds} />;');
     expect(page.match(/lead=\{performanceBlock\}/g)).toHaveLength(1);
     expect(page.match(/performance=\{performanceBlock\}/g)).toHaveLength(1);

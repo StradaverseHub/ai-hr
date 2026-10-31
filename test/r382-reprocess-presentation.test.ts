@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createTranslator } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReprocessEmployeeOutcome } from '../packs/payroll/service';
-import { reprocessResultHrefs } from '../app/payroll/[batchId]/reprocess/result-links';
+import { reprocessResultHrefs } from '../app/(app)/payroll/[batchId]/reprocess/result-links';
 const state = vi.hoisted(() => ({locale:'en'}));
 vi.mock('next-intl/server', () => ({
   getLocale: async () => state.locale,
@@ -13,7 +13,7 @@ vi.mock('next-intl/server', () => ({
     messages:JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${state.locale}.json`),'utf8'))}),
 }));
 import { payrollNonCashErrorMessage } from '../lib/payroll-noncash-error';
-import { ReprocessOutcomePanel, ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from '../app/payroll/[batchId]/reprocess/outcomes';
+import { ReprocessOutcomePanel, ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from '../app/(app)/payroll/[batchId]/reprocess/outcomes';
 
 const run={companyId:'22222222-2222-4222-8222-222222222222',payPeriod:'2026-07',runType:'regular'};
 const id='33333333-3333-4333-8333-333333333333';
@@ -84,7 +84,7 @@ describe('r382 recorded processing outcome presentation',()=>{
     state.locale='en';
     const output=await html([base],true);
     expect(output).toContain('Processing stopped before');expect(output).toContain('Previous payroll result retained');
-    const src=fs.readFileSync(path.resolve(__dirname,'../app/payroll/[batchId]/reprocess/page.tsx'),'utf8');
+    const src=fs.readFileSync(path.resolve(__dirname,'../app/(app)/payroll/[batchId]/reprocess/page.tsx'),'utf8');
     expect(src).not.toContain('thisJob.error');
     expect(src).not.toMatch(/r\.at\s*>=\s*thisJob\.createdAt/);
     expect(src).toContain("key={thisJob?.id ?? 'selection'}");

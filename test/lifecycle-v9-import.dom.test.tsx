@@ -2,7 +2,7 @@ import { beforeAll, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import JSZip from 'jszip';
 import { buildV9Import, parseV9ImportHtml, parseV9ImportText, readV9ImportFile } from '../lib/lifecycle-v9-import';
-import { TemplateImportDialog } from '../app/lifecycle/v9/template-import-dialog';
+import { TemplateImportDialog } from '../app/(app)/lifecycle/v9/template-import-dialog';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 beforeAll(() => { HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); }; });

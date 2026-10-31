@@ -23,11 +23,11 @@ vi.mock('../packs/performance/service',()=>({getOnehrCalibration:ports.calibrati
  const items=await ports.workspace() as PerformanceWorkspaceItem[];
  return {items,facts:{performanceOn:true,ownFeedbackReport:'none',items:items.map(({kind,cycleId,view,module,stage,axis,locked})=>({kind,cycleId,view,module,stage,axis,locked}))}};
 }}));
-vi.mock('../app/performance/onehr-actions',()=>({saveCalibrationBandAction:ports.move,onehrCalibrationAction:vi.fn(),agreeDepartmentAction:vi.fn(),assessmentInsightAction:vi.fn(),assessmentCalibrationPersonAction:vi.fn(),assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),changeGroupBandAction:vi.fn(),lockGroupPeopleAction:vi.fn(),previewCalibrationFitAction:vi.fn(),applyCalibrationFitAction:vi.fn()}));
-import TalentBoxPage from '../app/performance/calibration/talent-box/page';
-import { TalentAxisList } from '../app/performance/calibration/talent-box/axis-list';
-import { AssessmentCalibrationView } from '../app/performance/onehr/calibration-view';
-import { talentCategoryColours } from '../app/performance/onehr/talent-board';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({saveCalibrationBandAction:ports.move,onehrCalibrationAction:vi.fn(),agreeDepartmentAction:vi.fn(),assessmentInsightAction:vi.fn(),assessmentCalibrationPersonAction:vi.fn(),assessmentTalentPersonAction:vi.fn().mockResolvedValue({error:'No person frame in this fixture.'}),assessmentTalentInsightAction:vi.fn().mockResolvedValue({pending:true,source:null,data:null}),changeGroupBandAction:vi.fn(),lockGroupPeopleAction:vi.fn(),previewCalibrationFitAction:vi.fn(),applyCalibrationFitAction:vi.fn()}));
+import TalentBoxPage from '../app/(app)/performance/calibration/talent-box/page';
+import { TalentAxisList } from '../app/(app)/performance/calibration/talent-box/axis-list';
+import { AssessmentCalibrationView } from '../app/(app)/performance/onehr/calibration-view';
+import { talentCategoryColours } from '../app/(app)/performance/onehr/talent-board';
 import type { PerformanceWorkspaceItem } from '../packs/performance/service';
 
 type Part={id:string;view:string;stage:string;kind?:string;module?:string;title?:string};

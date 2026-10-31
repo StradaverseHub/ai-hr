@@ -227,7 +227,7 @@ describe('570e3311 — setEmploymentAssignment changed-only department / positio
  */
 describe('570e3311 — employee detail page wiring pins', () => {
   const PAGE = fs.readFileSync(
-    path.resolve(__dirname, '../app/admin/personnel/[employmentId]/page.tsx'),
+    path.resolve(__dirname, '../app/(app)/admin/personnel/[employmentId]/page.tsx'),
     'utf8',
   );
 
@@ -316,7 +316,7 @@ describe('d61f0ff2 — zero-visible-options empty state (now on the Create New E
   // options gets an explanation instead of a bare placeholder — but it is now computed in React from
   // `hireOptionVisible` rather than stamped by an inline script, so there is no hydration parity to
   // pin any more (the markup is produced once, by the same code, on both sides).
-  const WIZARD = fs.readFileSync(path.resolve(__dirname, '../app/admin/personnel/new/wizard.tsx'), 'utf8');
+  const WIZARD = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/personnel/new/wizard.tsx'), 'utf8');
 
   it('each narrowed select renders the i18n message from the shared rule', () => {
     expect(WIZARD).toContain('const orgEmpty = (opts: Option[])');

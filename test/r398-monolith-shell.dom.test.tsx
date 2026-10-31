@@ -31,7 +31,7 @@ vi.mock('next/navigation', () => ({
 }));
 // Server actions and the delegation panel: server-only imports that cannot load in jsdom; nothing here
 // submits them.
-vi.mock('../app/delegations/actions', () => ({ loadDelegationContextAction: vi.fn() }));
+vi.mock('../app/(app)/delegations/actions', () => ({ loadDelegationContextAction: vi.fn() }));
 vi.mock('../components/delegation-manager', () => ({ DelegationManager: () => null }));
 vi.mock('../app/notification-actions', () => ({
   markAllNotificationsReadAction: vi.fn(),

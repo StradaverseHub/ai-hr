@@ -8,7 +8,7 @@ import type { PendingTaskItem } from '@/core/approvals-inbox';
 
 /**
  * Atelier round 1 — THE ASSISTANT-FIRST HOME (brief: .impeccable/surfaces/app-layout-tsx.md; mock:
- * .impeccable/mocks/shell/home.html). Rendering only: app/page.tsx does every read and hands the results
+ * .impeccable/mocks/shell/home.html). Rendering only: app/(app)/page.tsx does every read and hands the results
  * here, after the same reads the other themes use, so the dashboard cards below are the viewer's own
  * saved layout, unchanged.
  *

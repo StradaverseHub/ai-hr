@@ -4,7 +4,7 @@ vi.mock('../lib/identity/manual-admin',()=>({requireManualIdentityAdmin:m.guard}
 vi.mock('../core/manual-identity',()=>({createManualAccount:m.create,resumeManualAccount:m.resume,cancelManualAccount:m.cancel}));
 vi.mock('next/cache',()=>({revalidatePath:m.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
-import {createManualAccountAction,resumeManualAccountAction,cancelManualAccountAction} from '../app/admin/users/manual-actions';
+import {createManualAccountAction,resumeManualAccountAction,cancelManualAccountAction} from '../app/(app)/admin/users/manual-actions';
 const ctx={tenantId:'server-tenant',userId:'server-user'};
 beforeEach(()=>{vi.clearAllMocks();m.guard.mockResolvedValue(ctx);m.create.mockResolvedValue('new-user');m.resume.mockResolvedValue('user');m.cancel.mockResolvedValue(undefined);});
 describe('manual identity server-action authority and secret handling',()=>{

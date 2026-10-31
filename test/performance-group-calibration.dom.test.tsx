@@ -5,8 +5,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({change:vi.fn(),lock:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:ports.refresh})}));
-vi.mock('../app/performance/onehr-actions',()=>({changeGroupBandAction:ports.change,lockGroupPeopleAction:ports.lock}));
-import { GroupCalibration,type GroupCalibrationPerson } from '../app/performance/onehr/group-calibration';
+vi.mock('../app/(app)/performance/onehr-actions',()=>({changeGroupBandAction:ports.change,lockGroupPeopleAction:ports.lock}));
+import { GroupCalibration,type GroupCalibrationPerson } from '../app/(app)/performance/onehr/group-calibration';
 const rows:GroupCalibrationPerson[]=[
  {id:'alice',name:'Alice Tan',grade:'12',companyId:'a',company:'Unit A',department:'Sales',businessGroupId:'g1',businessGroup:'Group One',manager:'ME',bg:'AE',mine:'ME',locked:false,canWrite:true},
  {id:'bob',name:'Bob Lim',grade:'12',companyId:'a',company:'Unit A',department:'Operations',businessGroupId:'g1',businessGroup:'Group One',manager:'ME',bg:'ME',mine:'AE',locked:false,canWrite:true},

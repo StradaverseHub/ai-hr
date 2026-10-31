@@ -353,7 +353,7 @@ describe('70b14723 — the submission file and the screen', () => {
     const text = buildBorangAFile({
       employer: { epfRefNo: form.employerRef, code: 'DSK', periodMonth: 8, periodYear: 2026 },
       // THROUGH `borangAFileEmployeesFrom`, which is the ONE copy of which share goes into which nine-wide
-      // digit field and is what app/payroll/borang-a/shared.ts calls. Spelling the mapping out again here
+      // digit field and is what app/(app)/payroll/borang-a/shared.ts calls. Spelling the mapping out again here
       // would have made this test assert against a restatement of the production path rather than the path
       // — and it did, until a defect that zeroed the employee box left this case green.
       employees: borangAFileEmployeesFrom(rows),

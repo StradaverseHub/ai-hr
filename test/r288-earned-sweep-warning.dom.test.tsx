@@ -39,7 +39,7 @@ import {
   EarningMethodForm,
   type EarnedSweepFacts,
   type LeaveTypeRules,
-} from '../app/admin/leave-config/types/leave-type-sub-forms';
+} from '../app/(app)/admin/leave-config/types/leave-type-sub-forms';
 
 /**
  * ⚠️ THE ENGINE'S EARNED FAMILY, WRITTEN OUT RATHER THAN IMPORTED — core/leave.ts opens the database at

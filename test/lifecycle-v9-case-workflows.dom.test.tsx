@@ -1,16 +1,16 @@
 import {beforeAll,expect,it,vi} from 'vitest';
 import {fireEvent,render,screen,within} from '@testing-library/react';
-import {CaseWorkflows} from '../app/lifecycle/v9/case-workflows';
+import {CaseWorkflows} from '../app/(app)/lifecycle/v9/case-workflows';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {NextIntlClientProvider} from 'next-intl';
 import {readFileSync} from 'node:fs';
-import {V9Workspace} from '../app/lifecycle/v9/workspace';
-import {readV9Email} from '../app/lifecycle/v9/actions';
+import {V9Workspace} from '../app/(app)/lifecycle/v9/workspace';
+import {readV9Email} from '../app/(app)/lifecycle/v9/actions';
 import type {EmailPreview,Case,Workflow} from '../lib/lifecycle-v9-model';
 
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Fictional calculation unavailable'}),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
+vi.mock('../app/(app)/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Fictional calculation unavailable'}),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 const messages=JSON.parse(readFileSync('messages/en.json','utf8'));
 function fixture(){

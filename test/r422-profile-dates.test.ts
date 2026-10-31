@@ -1,7 +1,7 @@
 /**
  * r422 (board 7e784380) — "every date in the Personnel Management employee profile displays as DD-MMM-YYYY".
  *
- * THE SWEEP, RENDERED. The profile page (app/admin/personnel/[employmentId]/page.tsx) is called as the async
+ * THE SWEEP, RENDERED. The profile page (app/(app)/admin/personnel/[employmentId]/page.tsx) is called as the async
  * server component it is, against a real employee carrying a date in every register the profile draws
  * (employment dates, salary history, family, qualifications, CP38, pay items, movements, delegations,
  * documents, the probation review), and the element tree it returns is rendered to HTML by React's own
@@ -102,7 +102,7 @@ import { requestLeave } from '../core/leave';
 import { seedPayComponentCatalog, listPayComponents, setEmploymentPayComponent } from '../core/pay-components';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { formatDmy } from '../lib/date-display';
-import EmployeePage from '../app/admin/personnel/[employmentId]/page';
+import EmployeePage from '../app/(app)/admin/personnel/[employmentId]/page';
 import { closeAll, entitledCtx, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ISO = /\b\d{4}-\d{2}-\d{2}\b/;

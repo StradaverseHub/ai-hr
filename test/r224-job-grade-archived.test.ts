@@ -58,13 +58,13 @@ import {
   removeJobGradeGridAction,
   restoreJobGradeGridAction,
   saveJobGradesGridAction,
-} from '../app/admin/settings/actions';
+} from '../app/(app)/admin/settings/actions';
 import { adminCtx, closeAll, eventTypesFor, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (p: string) => readFileSync(resolve(here, p), 'utf8');
 const gradeGridSrc = read('../components/grade-labels-grid.tsx');
-const labelsPageSrc = read('../app/admin/settings/system-labels/page.tsx');
+const labelsPageSrc = read('../app/(app)/admin/settings/system-labels/page.tsx');
 const adminSrc = read('../core/admin.ts');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;

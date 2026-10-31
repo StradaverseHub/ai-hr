@@ -5,7 +5,7 @@ const m=vi.hoisted(()=>({session:vi.fn(),add:vi.fn(),module:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:m.session}));
 vi.mock('../core/system-testing',()=>({addTestingScreenshot:m.add}));
 vi.mock('../core/entitlements',()=>({assertModuleEnabled:m.module,ModuleNotEnabledError:class ModuleNotEnabledError extends Error{}}));
-import { POST } from '../app/system-testing/executions/[id]/attachments/route';
+import { POST } from '../app/(app)/system-testing/executions/[id]/attachments/route';
 const id='47335504-b4ad-401b-8d10-59499482ee22',runId='0a576e11-b48e-4b89-94f3-b8430ccf426b',ctx={tenantId:id,userId:runId,roles:['employee']};
 const png=new Uint8Array([137,80,78,71,13,10,26,10]);
 const url=`http://localhost:3214/system-testing/executions/${id}/attachments?runId=${runId}`;

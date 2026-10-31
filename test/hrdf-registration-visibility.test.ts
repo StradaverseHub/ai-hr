@@ -51,7 +51,7 @@ describe('HRDF silent contradiction (efece4ce) — the calculators are right, th
 });
 
 describe('(a) employee Bank & Statutory — the contradiction is stated, not swallowed', () => {
-  const PAGE = read('app/admin/personnel/[employmentId]/page.tsx');
+  const PAGE = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
   const card = PAGE.slice(PAGE.indexOf('const othersStatutoryCard'), PAGE.indexOf('const tp3Card'));
 
   it('warns only when the stored value is an explicit Yes AND the company is unregistered', () => {
@@ -99,7 +99,7 @@ describe('(a) employee Bank & Statutory — the contradiction is stated, not swa
   it('warns rather than blocks — the save path is untouched', () => {
     // Refusing the save would strand HR who set employees up before the company registration lands, and
     // the stored flag is honest: it starts levying the moment the rate is set. Only the render changed.
-    const ACTIONS = read('app/admin/personnel/[employmentId]/actions.ts');
+    const ACTIONS = read('app/(app)/admin/personnel/[employmentId]/actions.ts');
     // r423 — the next export after the statutory action is the merged clocking writer (it was
     // setEmployeeClockingLocationsAction). Both markers must be FOUND, or the slice is '' and this passes on
     // nothing (CLAUDE.md §8).
@@ -116,7 +116,7 @@ describe('(a) employee Bank & Statutory — the contradiction is stated, not swa
 
 describe('(b) payroll surfaces — "not registered" is said, not implied by a blank', () => {
   it('the batch summary always carries an HRDF tile, worded when the company is unregistered', () => {
-    const PAGE = read('app/payroll/[batchId]/page.tsx');
+    const PAGE = read('app/(app)/payroll/[batchId]/page.tsx');
     // The old gate — tile only when the total was > 0 — is exactly what made an unregistered company
     // indistinguishable from a failed calculation.
     expect(PAGE).not.toContain("if (Number(totals.hrdfEmployer) > 0) tiles.push(['totalHrdf'");
@@ -125,13 +125,13 @@ describe('(b) payroll surfaces — "not registered" is said, not implied by a bl
   });
 
   it('the Transaction History breakdown always draws its HRDF line', () => {
-    const TABLE = read('app/payroll/transaction-view/history-table.tsx');
+    const TABLE = read('app/(app)/payroll/transaction-view/history-table.tsx');
     expect(TABLE).not.toContain('{Number(b.employerContributions.hrdf) > 0 && (');
     expect(TABLE).toContain("t('view.history.hrdfNotRegistered')");
     expect(TABLE).toContain('hrdfRegistered.has(r.companyId)');
     // The registration set is resolved server-side and passed in — the client table must not fetch.
     expect(TABLE).toContain('hrdfRegisteredCompanyIds: string[]');
-    const VIEW = read('app/payroll/transaction-view/page.tsx');
+    const VIEW = read('app/(app)/payroll/transaction-view/page.tsx');
     expect(VIEW).toContain("r.hrdfStatus !== 'not_registered'");
     // What matters is that the resolved registration set REACHES the table. Matched on the prop rather
     // than on the whole element, so 862ed0ad renaming the rows variable (History became the landing tab
@@ -147,7 +147,7 @@ describe('(b) payroll surfaces — "not registered" is said, not implied by a bl
 });
 
 describe('(c) Organization — the companies with no statutory record are listed', () => {
-  const PAGE = read('app/admin/organization/page.tsx');
+  const PAGE = read('app/(app)/admin/organization/page.tsx');
 
   it('lists active Malaysian companies missing a statutory row, from the data already fetched', () => {
     expect(PAGE).toContain('const missingStatutory = companies.filter(');

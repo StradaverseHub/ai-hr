@@ -22,9 +22,9 @@ const read = (rel: string) => readFileSync(root + rel, 'utf8');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 const msgs = (loc: string) => JSON.parse(read(`messages/${loc}.json`)) as Record<string, never>;
 
-const leavePage = read('app/leave/page.tsx');
-const balancesPage = read('app/leave/employee-balances/page.tsx');
-const recordsPage = read('app/leave/employee-records/page.tsx');
+const leavePage = read('app/(app)/leave/page.tsx');
+const balancesPage = read('app/(app)/leave/employee-balances/page.tsx');
+const recordsPage = read('app/(app)/leave/employee-records/page.tsx');
 const panel = read('components/filter-panel.tsx');
 /** Keep the empty state aligned with every literal or sortable header; reject missing slice anchors. */
 const assertInquiryColumns = (page: string, expected: number) => {
@@ -40,7 +40,7 @@ const assertInquiryColumns = (page: string, expected: number) => {
 // 388e53c2 — Employee Details moved to the Team Leave Tracker route. The listing is the same code; only
 // the file holding it and its forms' base path changed, so the assertions below moved with it rather than
 // being dropped. Sliced to the ADMIN branch, because that page also renders the leave calendar.
-const trackerPage = read('app/leave/tracker/page.tsx');
+const trackerPage = read('app/(app)/leave/tracker/page.tsx');
 const trackerAdminBranch = trackerPage.slice(0, trackerPage.indexOf('  // ── The Leave Calendar'));
 
 describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
@@ -55,13 +55,13 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // UPDATED BY r302 (6c9802c9): the balance reads are ONE per-year dashboard read now (core/my-leave.ts), and
     // it is behind the same gate. The flat `leaveRequestsFor` read that sat beside it fed nothing and is gone.
     //
-    // UPDATED BY r397: the reads moved, unchanged, into ONE loader (app/leave/my-leave-data.ts) that the page calls
+    // UPDATED BY r397: the reads moved, unchanged, into ONE loader (app/(app)/leave/my-leave-data.ts) that the page calls
     // only AFTER its short-page early return — which every admin takes — so an admin still pays nothing for
     // them. The gate is now that ordering, pinned here, plus the loader holding both reads.
     const shortPageAt = leavePage.indexOf('if (me == null || admin) {');
     expect(shortPageAt).toBeGreaterThan(-1);
     expect(leavePage.indexOf('await loadMyLeave(')).toBeGreaterThan(shortPageAt);
-    const loader = read('app/leave/my-leave-data.ts');
+    const loader = read('app/(app)/leave/my-leave-data.ts');
     expect(loader).toContain('myLeaveDashboard(session, me.employmentId,');
     expect(loader).toContain('sharedLeaveGroupBalances(session, me.employmentId,');
     expect(leavePage).not.toContain('leaveRequestsFor(');
@@ -94,7 +94,7 @@ describe('8ec63139: the HR-admin leave page drops the ESS blocks', () => {
     // someone else's leave lives on Employee Leave Record and on the dashboard calendar. Asserted at both
     // surviving homes rather than merely dropped, so a later edit cannot quietly leave it homeless.
     expect(leavePage.includes('<AdminCancelLeaveDialog')).toBe(false);
-    expect(read('app/leave/employee-records/page.tsx')).toContain('<AdminCancelLeaveDialog');
+    expect(read('app/(app)/leave/employee-records/page.tsx')).toContain('<AdminCancelLeaveDialog');
     expect(read('components/planned-absences-grid.tsx')).toContain('<AdminCancelLeaveDialog');
   });
 
@@ -166,7 +166,7 @@ describe('20c699f8 / 953be4b0: which employee an inquiry screen shows', () => {
 });
 
 describe('20c699f8: Employee Balances', () => {
-  const rowsHelper = read('app/leave/employee-balances/rows.ts');
+  const rowsHelper = read('app/(app)/leave/employee-balances/rows.ts');
 
   it('derives from the SAME reads and the SAME helper the employee sees on their own page', () => {
     // 994a5287 added the ADMIN opt-in: a leave type HR has hidden from employee self-service must still be
@@ -289,7 +289,7 @@ describe('20c699f8: Employee Balances', () => {
     expect(mount.length).toBeGreaterThan(100);
     expect(mount, 'HR must not be ESS-gated').not.toContain('applyEssConfig');
     // 39306a9e retires the duplicate Personnel panel, retaining the Leave inquiry owner.
-    expect(read('app/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
+    expect(read('app/(app)/admin/personnel/[employmentId]/page.tsx')).not.toContain('<EntitlementBreakdown');
   });
 
   /**
@@ -314,7 +314,7 @@ describe('20c699f8: Employee Balances', () => {
       'const fromPool = borrower ? (row.sharedBalance?.sourceLeaveTypeName ?? null) : null;',
     );
     expect((rowsHelper.match(/leaveEntitlementBreakdown\(/g) ?? []).length, 'still exactly one breakdown read').toBe(1);
-    const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
+    const personnel = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     // 39306a9e: the Personnel duplicate is retired; Leave Inquiry remains the HR explanation owner.
     expect(personnel).not.toContain('personnelLeaveBreakdowns');
     expect(personnel).not.toContain('<EntitlementBreakdown');
@@ -324,7 +324,7 @@ describe('20c699f8: Employee Balances', () => {
   it('re-runs BOTH reads when the as-at date changes (nothing is cached against another date)', () => {
     expect(balancesPage).toContain('name="asOf"');
     expect(balancesPage).toContain('inquiryBalancePage(session, inquiry, query, locale)');
-    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('employeeBalanceRows(ctx, employmentId, query.asOf, locale');
+    expect(read('app/(app)/leave/employee-balances/inquiry-data.ts')).toContain('employeeBalanceRows(ctx, employmentId, query.asOf, locale');
     // 3ddae357 — the title of this case was true of the BREAKDOWN and false of the balances, which is how
     // the defect passed review for four releases. The claim is only worth making if both reads take the
     // date, so the second half is pinned here too. Point-in-time behaviour itself is proven against real
@@ -410,7 +410,7 @@ describe('953be4b0: Employee Leave Record', () => {
   });
 
   it('both export routes are admin-gated and event-free', () => {
-    for (const rel of ['app/leave/employee-balances/export/route.ts', 'app/leave/employee-records/export/route.ts']) {
+    for (const rel of ['app/(app)/leave/employee-balances/export/route.ts', 'app/(app)/leave/employee-records/export/route.ts']) {
       const src = read(rel);
       expect(src.includes('isAdmin(session)'), rel).toBe(true);
       expect(src.includes('403'), rel).toBe(true);
@@ -454,7 +454,7 @@ describe('r378 · the old employee listing is gone, while scoped inquiry selecti
   });
   it('both remaining views read the fenced list and validate selection against it', () => {
     for(const name of ['employee-balances','employee-records']) {
-      const source=read(`app/leave/${name}/page.tsx`);
+      const source=read(`app/(app)/leave/${name}/page.tsx`);
       expect(source).toContain('await scopedAdmin()');
       expect(source).toContain('await leaveInquiryContext(session, scopeIds, query)');
       expect(source).toContain('const selected = inquiry.selected;');

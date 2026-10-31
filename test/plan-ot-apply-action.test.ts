@@ -55,7 +55,7 @@ vi.mock('next/navigation', () => ({
  *
  * ⚠️ `onError` THROWS, deliberately: next-intl swallows MISSING_MESSAGE and FORMATTING_ERROR and hands
  * back the key, so a silently-broken message would read as a pass. (Same reasoning as
- * test/r292-anomaly-threshold-disclosure.ts.) `getLocale` is mocked too because app/me/actions.ts imports
+ * test/r292-anomaly-threshold-disclosure.ts.) `getLocale` is mocked too because app/(app)/me/actions.ts imports
  * it — an un-mocked named export of a mocked module is an error, not a fallback.
  */
 vi.mock('next-intl/server', async () => {
@@ -77,7 +77,7 @@ vi.mock('next-intl/server', async () => {
   };
 });
 
-import { myRequestOvertime } from '../app/me/actions';
+import { myRequestOvertime } from '../app/(app)/me/actions';
 
 let b: Base;
 let employmentId: string;

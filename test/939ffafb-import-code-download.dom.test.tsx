@@ -2,17 +2,17 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider, createTranslator } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import en from '../messages/en.json'; import ms from '../messages/ms.json'; import zh from '../messages/zh.json'; import ta from '../messages/ta.json'; import th from '../messages/th.json'; import viMessages from '../messages/vi.json';
-import { EmployeeImport, type ImportReference } from '../app/admin/personnel/import/employee-import';
-import { SectionImport } from '../app/admin/personnel/import/section-import';
+import { EmployeeImport, type ImportReference } from '../app/(app)/admin/personnel/import/employee-import';
+import { SectionImport } from '../app/(app)/admin/personnel/import/section-import';
 import { EMPLOYEE_XLSX_COLUMNS } from '../lib/import-template-xlsx';
 import { sectionTemplateColumns } from '../lib/import-sections';
 import type { BuildXlsxOptions } from '../lib/spreadsheet';
 const mocks=vi.hoisted(()=>({build:vi.fn(),allocations:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../lib/spreadsheet',()=>({buildXlsx:mocks.build}));
-vi.mock('../app/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
-vi.mock('../app/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:mocks.allocations}));
-vi.mock('../app/admin/personnel/import/section-actions',()=>({validateSectionAction:vi.fn(),commitSectionAction:vi.fn(),registerRecordsAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/actions',()=>({validateImportAction:vi.fn(),commitImportAction:vi.fn()}));
+vi.mock('../app/(app)/admin/personnel/import/cost-allocation-actions',()=>({allocationWorkbookReferencesAction:mocks.allocations}));
+vi.mock('../app/(app)/admin/personnel/import/section-actions',()=>({validateSectionAction:vi.fn(),commitSectionAction:vi.fn(),registerRecordsAction:vi.fn()}));
 const locales={en,ms,zh,ta,th,vi:viMessages};
 const reference:ImportReference={departments:['D001'],positions:['P001'],costCenters:['C001'],states:[],countries:[],nationalities:[],relationships:[],familyRelationships:['child'],
  organisationByCompany:{company:{department:['D001'],position:['P001'],cost_center:['C001'],business_unit:['B001'],job_grade:['G001']}},

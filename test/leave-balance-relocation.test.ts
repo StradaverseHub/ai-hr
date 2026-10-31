@@ -35,7 +35,7 @@ describe('R37 e5a158d3 → r302: /leave hosts the viewer’s own balances, now a
     expect(leavePage).not.toMatch(/<LeaveBalanceTable/);
     expect(leavePage).not.toMatch(/deriveBalanceRow\(/);
     expect(leavePage).toMatch(/<MyLeaveDashboard\s/);
-    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/(app)/leave/my-leave-data.ts).
     expect(read('/app/leave/my-leave-data.ts')).toContain('myLeaveDashboard(session, me.employmentId, { today, year: sp.leaveYear, locale })');
     expect(leavePage).toContain('await loadMyLeave({ session, scopeIds, me, sp, locale, today })');
   });

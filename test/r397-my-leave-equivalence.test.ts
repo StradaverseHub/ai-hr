@@ -1,8 +1,8 @@
 /**
- * r397 — MY LEAVE (app/leave/page.tsx) RENDERS FASTER, AND NOT ONE FIGURE MOVED.
+ * r397 — MY LEAVE (app/(app)/leave/page.tsx) RENDERS FASTER, AND NOT ONE FIGURE MOVED.
  *
  * The page's reads were a sequential chain of ~200 statements. r397 runs the independent ones concurrently
- * (app/leave/my-leave-data.ts) and removes per-leave-type re-reads inside the dashboard. Leave balances are
+ * (app/(app)/leave/my-leave-data.ts) and removes per-leave-type re-reads inside the dashboard. Leave balances are
  * money-adjacent, so the proof is equivalence, not a spot check:
  *
  *   (1) For every employee and configuration below, `loadMyLeave` (the page's loader, new) returns a
@@ -52,7 +52,7 @@ import { createEntitlementTemplate } from '../core/entitlement-template';
 import { leaveEntitlementBreakdown, leaveEntitlementBreakdowns } from '../core/read';
 import { leaveTypeApplySummary, leaveTypeApplySummaries } from '../core/leave';
 import { loadMyLeaveBefore } from './fixtures/r397-leave-before';
-import { loadMyLeave } from '../app/leave/my-leave-data';
+import { loadMyLeave } from '../app/(app)/leave/my-leave-data';
 import {
   adminCtx,
   closeAll,

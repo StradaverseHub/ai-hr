@@ -34,9 +34,9 @@ import { leavePack, LEAVE_ADMIN_DESTINATIONS } from '../packs/leave';
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
 
-const TABS = 'app/admin/leave-config/types/leave-type-tabs.tsx';
-const FORMS = 'app/admin/leave-config/types/leave-type-sub-forms.tsx';
-const PAGE = 'app/admin/leave-config/types/page.tsx';
+const TABS = 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx';
+const FORMS = 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx';
+const PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
 
 const tabsSrc = read(TABS);
 const formsSrc = read(FORMS);
@@ -55,7 +55,7 @@ const newScreen = `${tabsSrc}\n${formsSrc}`;
  * worth failing on.
  */
 const OLD_PANEL_DELETED = true;
-const payrollPageSrc = read('app/admin/leave/payroll/page.tsx');
+const payrollPageSrc = read('app/(app)/admin/leave/payroll/page.tsx');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
@@ -127,7 +127,7 @@ describe('a6fe37fc R2 · hydration — a stale browser is remapped, never snappe
 });
 
 /**
- * Rule 1. Every marker `app/admin/actions.ts` reads for a leave type, and the sub-form that owns it.
+ * Rule 1. Every marker `app/(app)/admin/actions.ts` reads for a leave type, and the sub-form that owns it.
  * IA §1.2 counts 26 markers across the old panel's 23 forms plus one on the Payroll impact screen; all
  * 27 are re-rendered here, none merged and none split.
  */
@@ -229,11 +229,11 @@ describe('a6fe37fc R2 · rule 1 — every sub-form keeps its tri-state marker an
  * rather than against the two files as a whole — a field that drifts into a neighbouring form is posted
  * on the wrong save and is exactly as lost.
  *
- * The table is kept honest in BOTH directions: every entry must also be a field `app/admin/actions.ts`
+ * The table is kept honest in BOTH directions: every entry must also be a field `app/(app)/admin/actions.ts`
  * really reads (second case), and every marker on the screen must appear in the table (third case), so
  * neither a stale row nor a new marker with no row can sit here unnoticed.
  */
-const actionsSrc = read('app/admin/actions.ts');
+const actionsSrc = read('app/(app)/admin/actions.ts');
 
 /** A field one marker's branch reads: how it appears in the form, and how the action reads it. */
 type PostedField = { label: string; inForm: RegExp; inAction: RegExp };
@@ -272,7 +272,7 @@ const ORG_PICKERS: PostedField = {
   inAction: /getAll\(c\.key\)/,
 };
 
-/** Marker → every field its branch reads. Derived from app/admin/actions.ts, branch by branch. */
+/** Marker → every field its branch reads. Derived from app/(app)/admin/actions.ts, branch by branch. */
 const MARKER_FIELDS: Record<(typeof MARKERS)[number], PostedField[]> = {
   // updateLeaveTypeAction — `identityFields` also carries the audit `reason`, which the action reads on
   // EVERY save but only this form renders.
@@ -395,12 +395,12 @@ describe('a6fe37fc R2 · rule 1 one level down — the marker’s form still pos
     }
   });
 
-  it('every field in the table is one app/admin/actions.ts actually reads', () => {
+  it('every field in the table is one app/(app)/admin/actions.ts actually reads', () => {
     for (const [marker, fields] of Object.entries(MARKER_FIELDS)) {
       for (const field of fields) {
         expect(
           field.inAction.test(actionsSrc),
-          `${marker} · ${field.label} is not read by app/admin/actions.ts — the table has gone stale, which ` +
+          `${marker} · ${field.label} is not read by app/(app)/admin/actions.ts — the table has gone stale, which ` +
             `makes the case above assert a field nothing consumes`,
         ).toBe(true);
       }
@@ -583,8 +583,8 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(tabsSrc).not.toContain('{accrualSection}');
     // THE SCREEN IT MOVED TO — asserted here so this case can never go green on a tab that simply lost
     // its pointer's destination.
-    expect(read('app/admin/leave-config/earned-accrual/page.tsx')).toContain('<EarnedAccrualDialog');
-    expect(read('app/admin/leave-config/generate/page.tsx')).not.toContain('<EarnedAccrualDialog');
+    expect(read('app/(app)/admin/leave-config/earned-accrual/page.tsx')).toContain('<EarnedAccrualDialog');
+    expect(read('app/(app)/admin/leave-config/generate/page.tsx')).not.toContain('<EarnedAccrualDialog');
   });
 
   it('F2 the health derivation is read, not recomputed — and the full LISTING is on its own screen now', () => {
@@ -604,7 +604,7 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     );
     // THE SCREEN IT MOVED TO — asserted here so this case can never go green on a page that simply lost
     // its card with nothing put in its place.
-    const moved = read('app/admin/leave-config/balance-health/page.tsx');
+    const moved = read('app/(app)/admin/leave-config/balance-health/page.tsx');
     expect(moved).toContain('<LeaveConfigHealthCard');
     expect(LEAVE_ADMIN_DESTINATIONS.children.map((c) => c.href)).toContain(
       '/admin/leave-config/balance-health',
@@ -634,7 +634,7 @@ describe('a6fe37fc R2 · nothing on the leave type screen was dropped in the mov
     expect(ROW.ownedSubpaths).toEqual(['/leave/employee-records']);
     expect(pageSrc).not.toContain('href="/leave/employee-balances"');
     expect(pageSrc).not.toContain("t('employeeBalancesAction')");
-    expect(read('app/admin/leave-config/types/page.tsx')).not.toContain('href="/leave/employee-balances"');
+    expect(read('app/(app)/admin/leave-config/types/page.tsx')).not.toContain('href="/leave/employee-balances"');
   });
 
   it('F48 the negative-balance-needs-a-limit list (r126) survived, predicate and all', () => {

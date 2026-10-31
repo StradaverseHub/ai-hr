@@ -3,11 +3,11 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
-import { OnboardingSettings } from '../app/admin/lifecycle/onboarding/settings';
+import { OnboardingSettings } from '../app/(app)/admin/lifecycle/onboarding/settings';
 import { defaultConfig } from '../lib/onboarding-model';
 const mocks = vi.hoisted(() => ({ save: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
-vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ saveOnboardingConfig: mocks.save, saveOnboardingChecklistTasks: vi.fn() }));
+vi.mock('../app/(app)/lifecycle/onboarding/v31-actions', () => ({ saveOnboardingConfig: mocks.save, saveOnboardingChecklistTasks: vi.fn() }));
 const messages = JSON.parse(readFileSync('messages/en.json','utf8'));
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 function context(revision = 7) { return { config: defaultConfig('owner'), revision, actor: {id:'owner',module:true,master:true}, directory:[{id:'owner',name:'Owner'}], checklistCounts:{},loads:{},availability:{},matchCounts:{},totalJoiners:0 } as Parameters<typeof OnboardingSettings>[0]['context']; }

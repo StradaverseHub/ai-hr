@@ -673,7 +673,7 @@ describe('module catalog — the pack correspondence, both directions', () => {
      * `legacyEnabledModulesIn(env)` / `legacyEnabledSettingsIn(env)` resolve a MIGRATED gate by name —
      * `env[LEGACY_MODULE_ENV_GATES[code]] === 'true'` — but they index a PARAMETER, so `computedKeyRe`
      * (which needs the literal `process.env[`) never sees them, and the caller passes `process.env`
-     * without ever naming a gate, so `envReadRe` never sees it either. `app/operator/page.tsx` did
+     * without ever naming a gate, so `envReadRe` never sees it either. `app/(app)/operator/page.tsx` did
      * exactly that: `defaultProvisionModuleCodesIn(process.env)` was a live read of
      * NOTIFICATIONS_ENABLED / MULTI_CYCLE_PAYROLL_ENABLED / TYPED_PAY_COMPONENTS_ENABLED, in a page, on
      * every request, invisible to the whole ratchet — and retiring those vars (the point of this slice)
@@ -700,7 +700,7 @@ describe('module catalog — the pack correspondence, both directions', () => {
         parityHelperRe.test(stripComments(f.src)),
         `${f.rel} calls legacyEnabledModulesIn/legacyEnabledSettingsIn. Those resolve MIGRATED gate ` +
           'names out of an env-shaped bag, which every gate-name check in this file is structurally ' +
-          'blind to — that is exactly how app/operator/page.tsx read three migrated gates from ' +
+          'blind to — that is exactly how app/(app)/operator/page.tsx read three migrated gates from ' +
           'process.env while this suite stayed green. Read the entitlement (isModuleEnabled / ' +
           'settingEnabled) or a tracked constant, or add this file to PARITY_ENV_HELPER_OWNERS with a ' +
           'reason.',
@@ -837,15 +837,15 @@ describe('module catalog — the pack correspondence, both directions', () => {
 
     // …and the form has to USE it. Read-the-file, the same ratchet this suite applies to the migration:
     // a constant nothing imports is a comment.
-    const page = repoFile('app/operator/page.tsx');
+    const page = repoFile('app/(app)/operator/page.tsx');
     expect(page, 'the operator form must receive the catalog defaults').toContain('defaults={DEFAULT_PROVISION_MODULE_CODES}');
-    const form = repoFile('app/operator/customer-forms.tsx');
+    const form = repoFile('app/(app)/operator/customer-forms.tsx');
     expect(form, 'the rendered form must tick the supplied catalog defaults').toContain('defaultChecked={defaults.includes(m.code)}');
     // THE NEGATIVE, which is the whole point of the change: the page must not consult the environment
     // for this at all — not directly, and not by handing `process.env` to a helper that indexes it.
     expect(
       stripComments(page),
-      'app/operator/page.tsx must not read process.env: the three module gates it used to resolve there ' +
+      'app/(app)/operator/page.tsx must not read process.env: the three module gates it used to resolve there ' +
         'are migrated gates, and no gate-name check in this file can see them through a helper parameter',
     ).not.toContain('process.env');
   });

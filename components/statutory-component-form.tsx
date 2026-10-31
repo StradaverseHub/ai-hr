@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Button, Field, inputCls } from '@/components/ui';
-import { setStatutoryComponentAction } from '@/app/payroll/configuration/actions';
+import { setStatutoryComponentAction } from '@/app/(app)/payroll/configuration/actions';
 
 type ScalarBody = 'epf' | 'ot' | 'hrdf';
 

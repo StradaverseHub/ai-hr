@@ -9,14 +9,14 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PayRule } from '../core/pay-rule';
 
-vi.mock('../app/admin/pay-components/actions', () => ({
+vi.mock('../app/(app)/admin/pay-components/actions', () => ({
   searchPreviewEmployeesAction: vi.fn(async () => []),
   previewPayRuleAction: vi.fn(),
   draftPayRuleAction: vi.fn(),
 }));
 vi.mock('next-intl', () => ({ useTranslations: () => (key: string) => key }));
 
-import { PayRuleEditor } from '../app/admin/pay-components/pay-rule-editor';
+import { PayRuleEditor } from '../app/(app)/admin/pay-components/pay-rule-editor';
 
 afterEach(() => cleanup());
 

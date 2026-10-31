@@ -41,8 +41,8 @@ describe('safe Draft action presentation',()=>{
     for(const unsafe of ['SQL relation error','DRAFT-<script>','DRAFT-A1B2C3D4\nSELECT secret',null])expect(draftFailureReference(unsafe)).toBeNull();
   });
   it('keys the mounted wizard to its actual Draft and has no raw error-message renderer',()=>{
-    expect(read('app/admin/personnel/new/page.tsx')).toContain('key={draft.id}');
-    const source=ts.createSourceFile('wizard.tsx',read('app/admin/personnel/new/wizard.tsx'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+    expect(read('app/(app)/admin/personnel/new/page.tsx')).toContain('key={draft.id}');
+    const source=ts.createSourceFile('wizard.tsx',read('app/(app)/admin/personnel/new/wizard.tsx'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
     const raw:ts.Node[]=[];const visit=(node:ts.Node)=>{if(ts.isPropertyAccessExpression(node)&&node.name.text==='message')raw.push(node);node.forEachChild(visit);};visit(source);expect(raw).toEqual([]);
   });
 });

@@ -35,7 +35,7 @@ import { Card, EmployeeName, Field, inputCls } from '@/components/ui';
  * So the fallback BUYS coverage on the consumer page rather than spending it.
  */
 // 7c834696-adjacent, found in r168 verification: EVERY toggle here is `print:hidden`.
-// app/payroll/individual-payslip/page.tsx wraps the PAYSLIP in this shell, and a payslip is the one
+// app/(app)/payroll/individual-payslip/page.tsx wraps the PAYSLIP in this shell, and a payslip is the one
 // thing on any of these screens that is actually printed. Every other chrome element on that page is
 // already print:hidden and the global sheet (app/globals.css) hides only <aside>/<header>, so without
 // this a Save-as-PDF emitted a stray "Hide employee list" line above the letterhead.

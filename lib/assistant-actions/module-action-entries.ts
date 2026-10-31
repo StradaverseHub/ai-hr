@@ -22,7 +22,7 @@ export const MODULE_ACTION_ENTRY_OF:Readonly<Partial<Record<AgentModuleCode,Modu
 /** Pure role floors, or null where only a fresh source read can answer. */
 export function moduleActionEntryRoleFloor(ctx:SessionContext,entry:ModuleActionEntry):boolean|null{
  switch(entry){
-  // app/admin/personnel/import/page.tsx → requireAdmin() → isAdmin.
+  // app/(app)/admin/personnel/import/page.tsx → requireAdmin() → isAdmin.
   case 'employee_import':return isAdmin(ctx);
   // assertKnowledgeArticleActorTx → assertKbAuthor → canAuthor (core/knowledge-base.ts) = isAdmin.
   case 'knowledge':return isAdmin(ctx);

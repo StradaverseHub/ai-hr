@@ -8,7 +8,7 @@ import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import '../app/globals.css';
 import '../app/atelier.css';
 import '../app/onboarding-workspace.css';
-import '../app/lifecycle/v9/workspace.css';
+import '../app/(app)/lifecycle/v9/workspace.css';
 vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9',useSearchParams:()=>new URLSearchParams('view=templates'),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
 vi.mock('../components/intent-link',async()=>{
  const React=await import('react');
@@ -17,12 +17,12 @@ vi.mock('../components/intent-link',async()=>{
 });
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch,...props}:any)=>React.createElement('a',props,props.children)};});
 vi.mock('../components/user-menu',()=>({UserMenu:()=>null}));
-vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
-vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),saveOnboardingConfig:vi.fn(),saveOnboardingChecklistTasks:vi.fn(),writeOnboardingNote:vi.fn(),setupOnboarding:vi.fn(),loadOnboardingTask:vi.fn(),markOnboardingSeen:vi.fn()}));
-const {RequestRecords}=await import('../app/lifecycle/v9/request-records');
+vi.mock('../app/(app)/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
+vi.mock('../app/(app)/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn(),saveOnboardingConfig:vi.fn(),saveOnboardingChecklistTasks:vi.fn(),writeOnboardingNote:vi.fn(),setupOnboarding:vi.fn(),loadOnboardingTask:vi.fn(),markOnboardingSeen:vi.fn()}));
+const {RequestRecords}=await import('../app/(app)/lifecycle/v9/request-records');
 const {useState}=await import('react');
 const {Sidebar}=await import('../components/sidebar');
-const {V9Workspace,ChecklistEditor}=await import('../app/lifecycle/v9/workspace');
+const {V9Workspace,ChecklistEditor}=await import('../app/(app)/lifecycle/v9/workspace');
 afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');await page.viewport(1280,720);});
 it.each(['classic','monolith','atelier'] as const)('keeps AIHR %s chrome and the same V9 hierarchy/content sections in a real browser',async theme=>{
  await page.viewport(1440,1000);document.documentElement.setAttribute('data-ui-theme',theme);

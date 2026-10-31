@@ -22,7 +22,7 @@ import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
-import { DraftFamilyStep } from '../app/admin/personnel/new/family-step';
+import { DraftFamilyStep } from '../app/(app)/admin/personnel/new/family-step';
 import type { EmployeeDraftFamilyMember } from '../lib/employee-draft-schema';
 
 const wrap = (ui: ReactNode) =>

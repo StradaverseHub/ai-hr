@@ -126,7 +126,7 @@ describe('activation transaction composition boundary', () => {
 
 describe('one action owns its exact saved Draft input',()=>{
  it('delegates once and retains the Draft lock across save and the activation savepoint',()=>{
-  const action=readFileSync(new URL('../app/admin/personnel/new/actions.ts',import.meta.url),'utf8');
+  const action=readFileSync(new URL('../app/(app)/admin/personnel/new/actions.ts',import.meta.url),'utf8');
   const start=action.indexOf('export async function createEmployeeAction(');expect(start).toBeGreaterThanOrEqual(0);const body=action.slice(start);expect(body.length).toBeGreaterThan(300);
   expect(body).toContain('await saveAndCompleteEmployeeDraft(session,');expect(body).not.toContain('await saveEmployeeDraft(');expect(body).not.toContain('await completeEmployeeDraft(');
   const source=readFileSync(new URL('../core/employee-draft.ts',import.meta.url),'utf8');const combined=source.indexOf('export async function saveAndCompleteEmployeeDraft('),next=source.indexOf('export async function completeEmployeeDraft(',combined);expect(combined).toBeGreaterThanOrEqual(0);expect(next).toBeGreaterThan(combined);const owner=source.slice(combined,next);expect(owner.length).toBeGreaterThan(800);

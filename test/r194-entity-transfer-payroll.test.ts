@@ -677,13 +677,13 @@ describe('the payslip segment reader and its message keys', () => {
     // back to the r194 stamp, and then to the whole period. The rule this case exists for is unchanged and
     // is now stricter: the three render paths AND the completeness control read one fact.
     for (const f of [
-      'app/payroll/individual-payslip/page.tsx',
-      'app/payroll/individual-payslip/[payslipId]/pdf/route.ts',
-      'app/me/payslip/[payslipId]/pdf/route.ts',
+      'app/(app)/payroll/individual-payslip/page.tsx',
+      'app/(app)/payroll/individual-payslip/[payslipId]/pdf/route.ts',
+      'app/(app)/me/payslip/[payslipId]/pdf/route.ts',
     ]) {
       const src = fs.readFileSync(path.join(process.cwd(), f), 'utf8');
-      const assembly = f === 'app/me/payslip/[payslipId]/pdf/route.ts' ? fs.readFileSync(path.join(process.cwd(), 'app/me/payslip/document.ts'), 'utf8') : src;
-      if (f === 'app/me/payslip/[payslipId]/pdf/route.ts') expect(src).toContain('myPayslipDocument(await getSession(),payslipId)');
+      const assembly = f === 'app/(app)/me/payslip/[payslipId]/pdf/route.ts' ? fs.readFileSync(path.join(process.cwd(), 'app/(app)/me/payslip/document.ts'), 'utf8') : src;
+      if (f === 'app/(app)/me/payslip/[payslipId]/pdf/route.ts') expect(src).toContain('myPayslipDocument(await getSession(),payslipId)');
       expect(assembly, f).toContain('payslipSegmentOf');
       // …and nothing re-derives it from the raw stamp beside the shared reader.
       expect(assembly.includes('payslipSegment('), `${f}: must not read the raw stamp directly`).toBe(false);

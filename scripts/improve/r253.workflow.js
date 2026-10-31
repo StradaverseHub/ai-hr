@@ -120,7 +120,7 @@ SCOPE FENCES — crossing any of these breaks something:
 - Do NOT rename the KEYS. labelKey 'payrollTransactions' is asserted in test/payroll-flyout-nav.test.ts
   line 55 and is the nav registry's identifier.
 - Do NOT touch the two PascalCase map entries \`transactions: 'Transactions'\` in
-  app/payroll/[batchId]/page.tsx line 159 and app/payroll/setup/page.tsx line 80. They are readiness-check
+  app/(app)/payroll/[batchId]/page.tsx line 159 and app/(app)/payroll/setup/page.tsx line 80. They are readiness-check
   KEY FRAGMENTS — line 661 composes tg(\`check\${CHECK_CAP[c.key]}Title\`). Renaming the value looks up a
   message key that does not exist and renders MISSING_MESSAGE, which passes tsc, the suite AND next build
   and only appears on screen.
@@ -146,7 +146,7 @@ entries are untouched.`,
     brief: `Read the approved plan: ${PLANS}/b372e923.txt. After a payroll reprocess, give every employee
 in the result table a link to their payroll result.
 
-MEASURED BY THE PARENT: app/payroll/[batchId]/reprocess/page.tsx imports next/link ZERO times — the
+MEASURED BY THE PARENT: app/(app)/payroll/[batchId]/reprocess/page.tsx imports next/link ZERO times — the
 result table has no links at all. The data you need is already in scope, so this is a rendering change,
 not a read change:
   - each row of \`jobRows\` carries r.employmentId (used at ~line 219 to filter against
@@ -156,7 +156,7 @@ not a read change:
 
 TARGET HREF — reuse the existing shape, do not invent one:
   /payroll/individual-payslip?employmentId=<id>&payslipId=<id>
-built the same way as app/payroll/pcb-detail/page.tsx line 72 and app/payroll/statutory-detail/page.tsx
+built the same way as app/(app)/payroll/pcb-detail/page.tsx line 72 and app/(app)/payroll/statutory-detail/page.tsx
 line 57.
 
 REQUIREMENTS:
@@ -164,7 +164,7 @@ REQUIREMENTS:
 2. An ADD (r.action === 'add') has a payslip too — it was created by this reprocess — so it links like
    the rest. A row with NO resolvable payslip renders plain text, never a dead link.
 3. Carry the run's existing \`from\` through, so Back from the payslip returns the Payroll Process list as
-   the operator left it (app/payroll/back.ts payrollProcessBack is already wired into individual-payslip).
+   the operator left it (app/(app)/payroll/back.ts payrollProcessBack is already wired into individual-payslip).
 4. New message key for the link label in all six locales.
 
 SCOPE FENCES:
@@ -186,7 +186,7 @@ wrong row's ids is invisible to a test that merely counts anchors.`,
 document that de-risks part two. The plan itself says part one ships on its own first — do NOT attempt the
 one-Save-per-tab consolidation in this round.
 
-PART ONE — the clickable employee row (app/admin/personnel/page.tsx).
+PART ONE — the clickable employee row (app/(app)/admin/personnel/page.tsx).
 MEASURED: line 578 renders \`<tr className="hover:bg-muted/40">\` and the ONLY Link is at lines 587-592
 wrapping e.name. So the row already LOOKS clickable and is not — that is the reported defect.
   - Make the whole row open /admin/personnel/<employmentId>?from=personnel.
@@ -198,7 +198,7 @@ wrapping e.name. So the row already LOOKS clickable and is not — that is the r
   - Search, filters, column picker and the draft rows above the employee rows are UNCHANGED.
 
 PART TWO PREP — the classification, delivered as a document, not code.
-app/admin/personnel/[employmentId]/page.tsx is 4,740 lines carrying 35 \`<form action={...}>\` bound to 31
+app/(app)/admin/personnel/[employmentId]/page.tsx is 4,740 lines carrying 35 \`<form action={...}>\` bound to 31
 distinct server actions (actions.ts exports 39). Classify EVERY one of the 35 into:
   (a) FIELD EDITS on the person/employment record — these are what part two will consolidate under one
       Save per tab (e.g. setPersonAction ~line 881, setContactAddressAction ~line 1017);
@@ -211,7 +211,7 @@ and WHY. This is the deliverable that makes part two safe — a tab-wide "Discar
 cover a recorded salary revision would be a control lying about what it does.
 
 SCOPE FENCES:
-- No changes to app/admin/personnel/[employmentId]/page.tsx in this round beyond reading it.
+- No changes to app/(app)/admin/personnel/[employmentId]/page.tsx in this round beyond reading it.
 - No change to employee information, business rules, validation or permissions.
 
 TEST: pin that the row exposes a single accessible link target to the right employmentId, and that the
@@ -227,7 +227,7 @@ master-data grids that never got it.
 
 REUSE, DO NOT REBUILD. lib/pagination (pageState, parsePageQuery, paginateRows, PAGE_SIZE_OPTIONS,
 ALL_ROW_CEILING, pageHref, showPager) with components/pager.tsx / components/page-size-select.tsx is the
-established idiom, already on ~20 screens. app/admin/organization/page.tsx is the closest model: imports
+established idiom, already on ~20 screens. app/(app)/admin/organization/page.tsx is the closest model: imports
 line 21, pageState line 134, <Pager basePath=... params={{q,status,sort}} state={pgState}/> line 285.
 
 TARGETS (verified 2026-09-07 — all three have search/filter, NONE has a pager):
@@ -255,7 +255,7 @@ REQUIREMENTS:
 SCOPE FENCES:
 - Do NOT convert these grids into read-only lists with a separate edit screen. Edit-in-place is the
   current behaviour and the reporter did not ask for it to change.
-- Do NOT touch app/admin/organization (already paged) or the records themselves. No data is moved,
+- Do NOT touch app/(app)/admin/organization (already paged) or the records themselves. No data is moved,
   renamed or removed.
 - Item 15277676 ALREADY rebuilt Profile Options from a stack of one Card+table per category into the
   category-rail + single-grid layout, precisely because it forced excessive scrolling. Do not redo the
@@ -276,7 +276,7 @@ READ THIS FIRST — HALF THE TICKET IS ALREADY BUILT AND MUST NOT BE REBUILT. Mu
 as item d8471481: lib/import-schema.ts IMPORT_COLUMNS.optional already carries 'company', matched per row
 by legal name / company label / registration number, with department/position/cost-centre lookups done
 against THAT company, and ImportPreview already carries a resolved \`company\` per row. The screen
-(app/admin/personnel/import/employee-import.tsx) already runs Phase 'idle' → 'previewed' → 'done' with a
+(app/(app)/admin/personnel/import/employee-import.tsx) already runs Phase 'idle' → 'previewed' → 'done' with a
 generated template, validate, preview and result. Do NOT build any of that again.
 
 CURRENT COVERAGE — 6 required + 23 optional:
@@ -320,10 +320,10 @@ approved plan says so. Your job is to PROVE it stays working and to close any ga
 "fix" the filter memory; there is nothing wrong with it.
 
 WHAT THE PARENT MEASURED ON PRODUCTION, 2026-09-07:
-  - app/payroll/page.tsx line 128 builds fromQuery = encodeURIComponent(dashboardHref(filters)) and hangs
+  - app/(app)/payroll/page.tsx line 128 builds fromQuery = encodeURIComponent(dashboardHref(filters)) and hangs
     it on every row link (lines 353, 399, 413, 439).
   - Emitted href, verbatim: /payroll/451792d9-...?from=%2Fpayroll%3Fyear%3D2026%26m%3D1
-  - app/payroll/[batchId]/page.tsx line 68 backHref = payrollListReturnTo(from). The run screen,
+  - app/(app)/payroll/[batchId]/page.tsx line 68 backHref = payrollListReturnTo(from). The run screen,
     /reprocess, /remove and /reset ALL rendered Back as href="/payroll?year=2026&m=1".
   - lib/return-to.ts payrollListReturnTo keeps the whole query, stripping only toast= and error=.
   - Multi-month round-trips: dashboard-logic.ts dashboardHref appends one m= per month (line 230) and
@@ -340,10 +340,10 @@ WORK TO DO:
    \`from\` decodes to the current dashboardHref, and [batchId], reprocess, remove and reset each render a
    Back whose href equals it. Cover a single month, MULTIPLE months, the whole-year (m=all) case, and
    company/cycle/status together. Nothing guards this today.
-   Source-shape alone is NOT enough: the defect would live in the CONTRACT between app/payroll/page.tsx
+   Source-shape alone is NOT enough: the defect would live in the CONTRACT between app/(app)/payroll/page.tsx
    and lib/return-to.ts, and a unit test of either half passes throughout.
-2. Sweep every remaining screen under app/payroll/ for a Back that ignores \`from\` and route it through
-   payrollProcessBack (app/payroll/back.ts). Already covered: back-pay, individual-payslip,
+2. Sweep every remaining screen under app/(app)/payroll/ for a Back that ignores \`from\` and route it through
+   payrollProcessBack (app/(app)/payroll/back.ts). Already covered: back-pay, individual-payslip,
    process/result, statutory-adjustment, statutory-forms, transaction-view. Report which ones you found
    and fixed, and which legitimately should not carry it.
 

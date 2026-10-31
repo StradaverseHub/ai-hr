@@ -81,7 +81,7 @@ not in IA §3.1's function table, not in your anti-drop guard, not in notBuilt. 
 the reporter "every current function accounted for", so an unrecorded omission breaks that promise even
 though nothing is lost while the old screen is live.
 
-The two are on app/admin/leave/entitlements/page.tsx today:
+The two are on app/(app)/admin/leave/entitlements/page.tsx today:
   (a) line ~420, the Link to /leave/employee-balances — the r242 fix (3a3f5a2d), whose own comment says
       "THE WAY IN THE REPORTER WENT LOOKING FOR ... an HR admin who wants to look one person's balances
       up came here, to Leave Config, and found nothing pointing at it". Removing it silently at Round 5
@@ -118,7 +118,7 @@ THEN THE MINORS:
 - F31 on Tab 1 rather than Tab 3: your reason holds (one form, two markers, splitting it would create two
   writers over one save). Record it in IA §3.1 as a deliberate deviation so the table and the code agree.
 
-DO NOT: touch components/leave-type-panel.tsx, app/admin/leave/**, core/leave*, or any migration. Do not
+DO NOT: touch components/leave-type-panel.tsx, app/(app)/admin/leave/**, core/leave*, or any migration. Do not
 edit the five old guards. Do not add an entry to test/pack-drift-allowlist.json.`,
   },
   {
@@ -151,7 +151,7 @@ FOR THE PARENT, in "reporterOwed", in plain business words (do NOT change the be
   field only reaches the draft when Activate can actually carry it. Say which cards are absent and why,
   so the reporter is not left to discover it.
 
-DO NOT touch app/me/**, app/admin/personnel/import/**, app/admin/personnel/[employmentId]/** beyond the
+DO NOT touch app/(app)/me/**, app/(app)/admin/personnel/import/**, app/(app)/admin/personnel/[employmentId]/** beyond the
 two optional props you already added to components/personnel-tabs.tsx, or any migration.`,
   },
 ];

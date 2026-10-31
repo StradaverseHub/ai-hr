@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import {initializeOvertimeStartersAction} from '@/app/admin/attendance/settings/overtime-patterns/actions';
+import {initializeOvertimeStartersAction} from '@/app/(app)/admin/attendance/settings/overtime-patterns/actions';
 
 /** An explicit POST after mount keeps configuration changes out of render and link prefetch. */
 export function OvertimeStarterInitializer({scopeKey}:{scopeKey:string}){

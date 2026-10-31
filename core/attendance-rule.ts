@@ -410,7 +410,7 @@ export type AttendanceRuleInput = {
    *  ISO weekdays (1=Mon … 7=Sun). Rest is the complement, exactly as on `shift`.
    *
    *  ⚠️ `undefined` MEANS "NOT SUPPLIED", NOT "EMPTY", and the difference is a group's whole schedule.
-   *  Every existing caller — the Schedule Group form in app/admin/attendance-policy/rules — posts none
+   *  Every existing caller — the Schedule Group form in app/(app)/admin/attendance-policy/rules — posts none
    *  of these three, and an update that read `undefined` as `[]` would wipe the working week off a group
    *  the migration had just given one to, silently making every day a rest day for everybody in it.
    *  `updateAttendanceRule` therefore writes these columns only when at least one of the three is

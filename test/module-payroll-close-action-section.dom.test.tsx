@@ -7,7 +7,7 @@ vi.mock('../components/assistant/payroll-recovery-handoffs',()=>({PayrollRecover
 vi.mock('server-only',()=>({}));vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key),getLocale:source.locale}));vi.mock('../core/assistant-actions/module-action-server',()=>({readPayrollCloseModuleActionChoices:source.availability}));vi.mock('../components/assistant/module-payroll-close-action-panel',()=>({ModulePayrollCloseActionPanel:()=>null}));vi.mock('next/link',()=>({default:()=>null}));vi.mock('../components/ui',()=>({Card:()=>null,PageHeader:()=>null}));
 import {ModulePayrollCloseActionSection} from '../components/assistant/module-payroll-close-action-section';
 import {ModulePayrollCloseActionPanel} from '../components/assistant/module-payroll-close-action-panel';
-import AssistantPayrollClosePage from '../app/assistant/payroll-close/page';
+import AssistantPayrollClosePage from '../app/(app)/assistant/payroll-close/page';
 const tenant='10000000-0000-4000-8000-000000000001',user='10000000-0000-4000-8000-000000000009',review='10000000-0000-4000-8000-000000000003';
 import {choices} from './fixtures/payroll-close-browser';
 const session=()=>({tenantId:tenant,userId:user,personId:undefined,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:tenant}]});

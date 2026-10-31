@@ -32,7 +32,7 @@ creating a second source of truth for any business rule.
   operation is a server action (94 `'use server'` files) that calls `getSession()` and then a `core/`
   service. Server-action IDs are generated per build, so they are no contract for a client that ships
   through a store.
-- **FACT: the actions are thin.** `app/attendance/clock/actions.ts` resolves the employment from the
+- **FACT: the actions are thin.** `app/(app)/attendance/clock/actions.ts` resolves the employment from the
   session and calls `core/attendance.ts` `checkIn(ctx, …)`. Core owns every rule, so a mobile API can call
   the same services with the same `SessionContext`.
 - **FACT: production authenticates nobody.** `.env.production` has no `WORKOS_*` key and sets

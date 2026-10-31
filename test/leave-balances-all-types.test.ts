@@ -160,9 +160,9 @@ describe('994a5287 — a type hidden from self-service still appears on the ADMI
   });
 
   it('the retained HR balance inquiry includes hidden types while self-service keeps its visibility rule', () => {
-    const rows = readFileSync(new URL('../app/leave/employee-balances/rows.ts', import.meta.url), 'utf8');
+    const rows = readFileSync(new URL('../app/(app)/leave/employee-balances/rows.ts', import.meta.url), 'utf8');
     const personnel = readFileSync(
-      new URL('../app/admin/personnel/[employmentId]/page.tsx', import.meta.url),
+      new URL('../app/(app)/admin/personnel/[employmentId]/page.tsx', import.meta.url),
       'utf8',
     );
     expect(rows.includes('includeHidden: true')).toBe(true);
@@ -170,7 +170,7 @@ describe('994a5287 — a type hidden from self-service still appears on the ADMI
     expect(personnel.includes('personnelLeaveBreakdowns')).toBe(false);
     expect(personnel.includes('leaveBalances(')).toBe(false);
     // …and the self-service page must NOT, or hiding a leave type would stop meaning anything.
-    const leavePage = readFileSync(new URL('../app/leave/page.tsx', import.meta.url), 'utf8');
+    const leavePage = readFileSync(new URL('../app/(app)/leave/page.tsx', import.meta.url), 'utf8');
     expect(leavePage.includes('includeHidden')).toBe(false);
   });
 });

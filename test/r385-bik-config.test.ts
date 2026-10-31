@@ -16,7 +16,7 @@ vi.mock('@/lib/session', () => ({ getSession: async () => state.session }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: (url: string) => { throw new Error(`REDIRECT:${url}`); } }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (key: string) => key }));
-import { createComponentAction, updateComponentAction } from '../app/admin/pay-components/actions';
+import { createComponentAction, updateComponentAction } from '../app/(app)/admin/pay-components/actions';
 
 function form(kind: 'bik' | 'vola', code = 'BIK_HOUSE') {
   const fd = new FormData();

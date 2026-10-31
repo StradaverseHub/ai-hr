@@ -59,17 +59,17 @@ const here = dirname(fileURLToPath(import.meta.url));
  * taken the guard out rather than moved it.
  */
 const LEAVE_TYPE_SCREEN = [
-  'app/admin/leave-config/types/page.tsx',
-  'app/admin/leave-config/types/leave-type-tabs.tsx',
-  'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+  'app/(app)/admin/leave-config/types/page.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-tabs.tsx',
+  'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
 ];
 const panelSrc = LEAVE_TYPE_SCREEN.map((f) => readFileSync(resolve(here, '..', f), 'utf8')).join('\n');
-const pageSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/page.tsx'), 'utf8');
+const pageSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-config/types/page.tsx'), 'utf8');
 // 1e4eb8af retired the Application Rules tab entirely; the route is a redirect stub now, so the
 // "half-day card is gone from there" guard below holds a fortiori — kept as the tripwire against the card
 // ever being re-added to that route.
-const appRulesSrc = readFileSync(resolve(here, '../app/admin/leave/application-rules/page.tsx'), 'utf8');
-const actionsSrc = readFileSync(resolve(here, '../app/admin/actions.ts'), 'utf8');
+const appRulesSrc = readFileSync(resolve(here, '../app/(app)/admin/leave/application-rules/page.tsx'), 'utf8');
+const actionsSrc = readFileSync(resolve(here, '../app/(app)/admin/actions.ts'), 'utf8');
 // b55fdf33 — the half-day picker now lives behind a client wrapper (a server component may not pass
 // function props across the boundary). The form contract it owns is asserted against this file.
 const pickerSrc = readFileSync(resolve(here, '../components/leave/half-day-company-picker.tsx'), 'utf8');
@@ -90,9 +90,9 @@ const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
  * the same EMERGENCY gates, the same layout promises, the same expiry TRIPWIRE.
  */
 const TABS = ['identity', 'eligibility', 'entitlement', 'application', 'approvers'] as const;
-const tabsSrc = readFileSync(resolve(here, '../app/admin/leave-config/types/leave-type-tabs.tsx'), 'utf8');
+const tabsSrc = readFileSync(resolve(here, '../app/(app)/admin/leave-config/types/leave-type-tabs.tsx'), 'utf8');
 const companyRulesSrc = readFileSync(
-  resolve(here, '../app/admin/leave-config/company-rules/page.tsx'),
+  resolve(here, '../app/(app)/admin/leave-config/company-rules/page.tsx'),
   'utf8',
 );
 /**
@@ -107,7 +107,7 @@ const companyRulesSrc = readFileSync(
  * the client wrapper, the narrow write scope, the badge and the frozen note.
  */
 const specialSettingSrc = readFileSync(
-  resolve(here, '../app/admin/leave-config/special-setting/page.tsx'),
+  resolve(here, '../app/(app)/admin/leave-config/special-setting/page.tsx'),
   'utf8',
 );
 

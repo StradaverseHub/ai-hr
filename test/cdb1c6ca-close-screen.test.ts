@@ -29,10 +29,10 @@ const code = (rel: string) =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|[^:])\/\/.*$/gm, '$1');
 
-const LIST = code('app/payroll/page.tsx');
-const SCREEN = code('app/payroll/[batchId]/close/page.tsx');
-const RUN = code('app/payroll/[batchId]/page.tsx');
-const ACTIONS = code('app/payroll/actions.ts');
+const LIST = code('app/(app)/payroll/page.tsx');
+const SCREEN = code('app/(app)/payroll/[batchId]/close/page.tsx');
+const RUN = code('app/(app)/payroll/[batchId]/page.tsx');
+const ACTIONS = code('app/(app)/payroll/actions.ts');
 
 const menuBody = (() => {
   const open = LIST.indexOf('<PayrollRowActions');

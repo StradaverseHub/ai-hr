@@ -242,7 +242,7 @@ describe('da4fc817 — Sections E and F match the published form', () => {
    * block does not mention it — exactly as the printed form is pinned above.
    */
   it('r353 — the HTML statement reports the exempt total once, in Section F', () => {
-    const page = read('app/payroll/reports/ea/[employmentId]/page.tsx');
+    const page = read('app/(app)/payroll/reports/ea/[employmentId]/page.tsx');
     const reads = [...page.matchAll(/ea\.partB\.exemptAllowances/g)];
     expect(reads.length, 'the exempt figure is read more than once on one screen').toBe(1);
     // It is the Section F block that reads it, and that block no longer says "not tracked".

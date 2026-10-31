@@ -26,7 +26,7 @@ import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base 
 import { hireEmployee } from '../core/org';
 import { leaveBalances, leaveEntitlementBreakdown } from '../core/read';
 import { decideLeave, requestLeave, InsufficientLeaveBalanceOnSubmitError } from '../core/leave';
-import { employeeBalanceRows, type EmployeeBalanceRow } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows, type EmployeeBalanceRow } from '../app/(app)/leave/employee-balances/rows';
 import { explainLeaveSummary } from '../lib/leave-summary-explain';
 import { isPoolBorrower, poolBadges } from '../lib/shared-leave-balance';
 import { formatDays } from '../lib/day-format';
@@ -187,7 +187,7 @@ describe('2a57a007 · (b) the borrower reports its days under Share ONLY', () =>
   });
 
   /**
-   * THE LAYER. The zero is a DISPLAY decision taken in app/leave/employee-balances/rows.ts. `leaveBalances`
+   * THE LAYER. The zero is a DISPLAY decision taken in app/(app)/leave/employee-balances/rows.ts. `leaveBalances`
    * still answers "how many days of Emergency Leave did this person take" honestly — 690d4400 and 39136455
    * deliberately made `taken` the days FILED UNDER THIS CODE and that must not be reverted here.
    */
@@ -310,7 +310,7 @@ describe('2a57a007 · (e) the badge is DATA — one per contributing leave type'
   });
 
   it('the page renders the badge from the data, guards it to the pool row, and never writes a literal code', () => {
-    const page = read('app/leave/employee-balances/page.tsx');
+    const page = read('app/(app)/leave/employee-balances/page.tsx');
     expect(page, 'the badge label comes off the contribution').toContain('{c.code ?? c.leaveType}');
     expect(page, 'and is suppressed on a borrower row').toContain('if (!r.sharedBalance || isPoolBorrower(r)) return null;');
     expect(page, 'the tooltip is a native title, so a plain GET carries it').toContain('title={tMe(`leaveBalanceTable.${tipKey}`, {');
@@ -323,7 +323,7 @@ describe('2a57a007 · (e) the badge is DATA — one per contributing leave type'
 
 describe('2a57a007 · (f) the export carries the two source columns', () => {
   it('the route adds Share Source and Pending Share Source beside the figures they explain', () => {
-    const route = read('app/leave/employee-balances/export/route.ts');
+    const route = read('app/(app)/leave/employee-balances/export/route.ts');
     expect(route, 'the new header, in the screen’s own column order').toContain("tMe('colShareSource')");
     expect(route).toContain("tMe('colPendingShareSource')");
     expect(route, 'and the cell beside each figure').toContain("shareSource(r, 'share')");

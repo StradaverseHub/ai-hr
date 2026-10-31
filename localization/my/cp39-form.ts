@@ -58,7 +58,7 @@ import {employmentInformationAt,informationReportRelation} from '../../core/info
  * ── THE ROWS ARE NOT FILTERED BY READINESS ────────────────────────────────────────────────────────
  * Everybody the run paid is returned, including people who cannot yet appear on a completed statement.
  * The review screen has to NAME them, which it cannot do if the read has already dropped them; the gate
- * lives in `app/payroll/cp39/shared.ts` and refuses the DOCUMENT, not the preview.
+ * lives in `app/(app)/payroll/cp39/shared.ts` and refuses the DOCUMENT, not the preview.
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../../db/client';

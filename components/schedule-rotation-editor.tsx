@@ -2,7 +2,7 @@
 import { useActionState, useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { normalizeRotation, MAX_ROTATION_DAYS, type RotationCycle, type RotationDay, type WeekDayKind } from '@/core/week-pattern';
-import { saveRotationAction, type RotationActionState } from '@/app/admin/attendance/schedule/rotation-actions';
+import { saveRotationAction, type RotationActionState } from '@/app/(app)/admin/attendance/schedule/rotation-actions';
 import { AttendanceSettingsNavigation } from '@/components/attendance-settings-navigation';
 import { AttendanceSettingsActionForm } from '@/components/attendance-settings-action-form';
 import {ScheduleShiftPicker} from '@/components/schedule-shift-picker';

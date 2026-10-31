@@ -3,7 +3,7 @@
  *
  * ⚠️ THE REPORT WAS RIGHT AND THE DIAGNOSIS IN IT WAS NOT, which is why this file renders rather than
  * greps. "The archived record is not appearing in the archived list" reads like a query defect, and it is
- * not one: `app/admin/leave-config/types/page.tsx` has always passed `includeArchived: true`, sorted the
+ * not one: `app/(app)/admin/leave-config/types/page.tsx` has always passed `includeArchived: true`, sorted the
  * archived rows last and handed `archived: boolean` down per row, and the workspace has always drawn them
  * with `opacity-60`. The row was on the screen. What did not exist was the LIST — no filter, no section,
  * no count, and the word "Archived" nowhere on the page — so with nineteen leave types the only archived
@@ -346,7 +346,7 @@ describe('§I a3411394 · every locale can read the filter', () => {
 
 describe('§J/§K a3411394 · the two facts a render cannot reach', () => {
   it('§J the REAL panel carries Unarchive, so §F is not a claim about the fixture', () => {
-    const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
+    const tabs = read('app/(app)/admin/leave-config/types/leave-type-tabs.tsx');
     expect(tabs).toContain("t('unarchive')");
     expect(tabs).toContain('name="archived" value="false"');
   });
@@ -360,7 +360,7 @@ describe('§J/§K a3411394 · the two facts a render cannot reach', () => {
     expect(workspace).toContain("const [filter, setFilter] = useState<LeaveTypeFilter>('active');");
     // No new prop crossed the server/client boundary: `archived` was already on the row.
     expect(workspace).toMatch(/items: LeaveTypeWorkspaceItem\[\];/);
-    const page = read('app/admin/leave-config/types/page.tsx');
+    const page = read('app/(app)/admin/leave-config/types/page.tsx');
     expect(page).toContain('archived: !!lt.archivedAt');
     expect(page).toContain('includeArchived: true');
   });

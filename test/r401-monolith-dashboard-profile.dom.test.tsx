@@ -1,5 +1,5 @@
 /**
- * r401 — Monolith rollout STEP 4, first slice: the Dashboard (app/page.tsx) and My Profile (app/me/page.tsx),
+ * r401 — Monolith rollout STEP 4, first slice: the Dashboard (app/(app)/page.tsx) and My Profile (app/(app)/me/page.tsx),
  * rendered for real in jsdom from the PAGE FUNCTIONS themselves, with every read mocked to a fixture.
  *
  * What is pinned, and why here:
@@ -174,17 +174,17 @@ vi.mock('@/core/dependents', async () => ({
   childAgeYears: () => null,
 }));
 vi.mock('@/packs/leave/service', () => ({ serviceYearsMonthsDaysAt: () => ({ years: 5, months: 7, days: 19 }) }));
-vi.mock('../app/me/review-card', () => ({ MeReviewCard: () => null }));
-vi.mock('../app/me/actions', () => ({
+vi.mock('../app/(app)/me/review-card', () => ({ MeReviewCard: () => null }));
+vi.mock('../app/(app)/me/actions', () => ({
   myCheckIn: vi.fn(),
   myCheckOut: vi.fn(),
   mySubmitResignation: vi.fn(),
   myUpdateContact: vi.fn(),
   myWithdrawResignation: vi.fn(),
 }));
-vi.mock('../app/me/request-change-card', () => ({ RequestChangeCard: () => null, pendingProposedByKey: () => new Map() }));
+vi.mock('../app/(app)/me/request-change-card', () => ({ RequestChangeCard: () => null, pendingProposedByKey: () => new Map() }));
 // This layout fixture replaces async server slots; correction behavior is tested separately.
-vi.mock('../app/me/readiness-work', () => ({ MyReadinessWork: () => null }));
+vi.mock('../app/(app)/me/readiness-work', () => ({ MyReadinessWork: () => null }));
 vi.mock('@/components/attendance-clock-button', () => ({
   AttendanceClockButton: ({ label }: { label: string }) => <button type="button">{label}</button>,
   LocationNotice: () => null,
@@ -192,8 +192,8 @@ vi.mock('@/components/attendance-clock-button', () => ({
 vi.mock('@/core/profile-edit-policy',async()=>{const {resolveEssVisibleIds}=await import('../lib/personnel-ess-visibility');return {readProfilePresentationPolicy:vi.fn(async()=>({ctx:{tenantId:'t',roles:[]},visible:resolveEssVisibleIds('all')}))};});
 vi.mock('@/core/profile-edit',()=>({readOwnProfileWorkspace:vi.fn(async()=>({employmentId:'e1',personId:'p1',country:'MY',values:{'profile.personal_details.fullname':'Aisyah Rahman','profile.personal_details.employeecode':'EMP0042'},baselines:{},registers:[],editable:[],legacyPrimaryEditable:[],addressReview:false,legacyAddress:{},statutoryAvailable:true}))}));
 vi.mock('@/core/profile-view',()=>({readOwnProfileFacts:vi.fn(async()=>({values:{},records:[],choices:{},service:{group:{years:5,months:7,days:19},company:{years:5,months:7,days:19}},header:{name:'Aisyah Rahman',employeeCode:'EMP0042',company:'Nusantara Holdings',department:'Finance',position:'Analyst',superior:null,status:'active',photo:false,service:{years:5,months:7,days:19}},modules:{payroll:true,leave:true,attendance:true}}))}));
-vi.mock('../app/me/profile-edit-actions',()=>({saveMyProfileEditAction:vi.fn(),readMyProfileMovementAction:vi.fn()}));
-vi.mock('../app/me/record', () => ({ myProfileRecord: vi.fn(async () => RECORD) }));
+vi.mock('../app/(app)/me/profile-edit-actions',()=>({saveMyProfileEditAction:vi.fn(),readMyProfileMovementAction:vi.fn()}));
+vi.mock('../app/(app)/me/record', () => ({ myProfileRecord: vi.fn(async () => RECORD) }));
 const RECORD = {
   employmentId: 'e1',
   personId: 'p1',
@@ -207,8 +207,8 @@ const RECORD = {
   dependents: [],
 };
 
-import DashboardPage from '../app/page';
-import MePage from '../app/me/page';
+import DashboardPage from '../app/(app)/page';
+import MePage from '../app/(app)/me/page';
 
 const wrap = (ui: ReactNode) =>
   render(

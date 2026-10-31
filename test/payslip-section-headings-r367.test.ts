@@ -79,8 +79,8 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { closeBatch, createBatch, generatePayslips } from '../core/payroll';
-import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
-import EssPayslipPage from '../app/me/payslip/[payslipId]/page';
+import IndividualPayslipPage from '../app/(app)/payroll/individual-payslip/page';
+import EssPayslipPage from '../app/(app)/me/payslip/[payslipId]/page';
 import type { SessionContext } from '../db/client';
 import {
   adminCtx,
@@ -108,9 +108,9 @@ const EMPLOYER = 'me.payslip.employerContributionsHeading';
 const NOTE = 'payroll.individualPayslip.employerContributionsNote';
 
 /** The three screens that render the two headings, and the one that also renders the block heading. */
-const IP_PAGE = 'app/payroll/individual-payslip/page.tsx';
-const ESS_PAGE = 'app/me/payslip/[payslipId]/page.tsx';
-const HISTORY = 'app/payroll/transaction-view/history-table.tsx';
+const IP_PAGE = 'app/(app)/payroll/individual-payslip/page.tsx';
+const ESS_PAGE = 'app/(app)/me/payslip/[payslipId]/page.tsx';
+const HISTORY = 'app/(app)/payroll/transaction-view/history-table.tsx';
 
 /* ══════════════════════════════════════════════════════════════════════════════════════════════════
  * A. THE CATALOGUE VALUES — twelve edits, no key added, and no parenthetical left anywhere.
@@ -239,7 +239,7 @@ describe('r367 — payroll.individualPayslip.employeeHeading is retired IN PLACE
       expect(msg(l, OTHER).trim().length, `${l} ${OTHER} must not be blank`).toBeGreaterThan(0);
     }
     // …and it still has its render sites, which is the behavioural half of "do not touch it".
-    expect(read('app/payroll/statutory-adjustment/page.tsx')).toContain("employeeHeading: t('employeeHeading')");
+    expect(read('app/(app)/payroll/statutory-adjustment/page.tsx')).toContain("employeeHeading: t('employeeHeading')");
   });
 
   it('the Individual Payslip screen no longer resolves the retired key, and resolves the new one', () => {

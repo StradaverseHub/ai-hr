@@ -31,14 +31,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/me/page.tsx'), 'utf8');
+const PAGE = fs.readFileSync(path.resolve(__dirname, '../app/(app)/me/page.tsx'), 'utf8');
 // r260 (9583deac stage two) — the "request a change" FORM and the Bank & Statutory tour anchor left
 // page.tsx for this component, which /me renders once per tab that offers requestable fields. Same
 // document, same server actions, one file further down; so the bindings and the tour anchors below are
 // searched across BOTH files. That is not a relaxation: an action or an anchor still has to be provably
 // present on the /me surface, it is simply no longer required to sit in one particular file of it.
-const REQUEST_CARD = fs.readFileSync(path.resolve(__dirname, '../app/me/request-change-card.tsx'), 'utf8');
-const EDITOR=fs.readFileSync(path.resolve(__dirname,'../app/me/profile-editor.tsx'),'utf8');
+const REQUEST_CARD = fs.readFileSync(path.resolve(__dirname, '../app/(app)/me/request-change-card.tsx'), 'utf8');
+const EDITOR=fs.readFileSync(path.resolve(__dirname,'../app/(app)/me/profile-editor.tsx'),'utf8');
 const ME_SURFACE = `${PAGE}\n${EDITOR}`;
 // afc29d75 — all six catalogues, so "the retired string is gone" is checked where it can actually still
 // be hiding. An unused key removed from en.json alone is the shape the unused-key check carries forever.
@@ -49,32 +49,32 @@ const MESSAGES: Record<string, { me: Record<string, unknown> }> = Object.fromEnt
   ]),
 );
 const REQUESTS_PAGE = fs.readFileSync(
-  path.resolve(__dirname, '../app/attendance/requests/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/attendance/requests/page.tsx'),
   'utf8',
 );
 // 1e9145d4 — overtime's new home. Read here so the assertion below can prove the form did not vanish
 // when it left the Attendance Request screen, only moved.
 const PLAN_OT_APPLY_PAGE = fs.readFileSync(
-  path.resolve(__dirname, '../app/attendance/plan-ot/apply/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/attendance/plan-ot/apply/page.tsx'),
   'utf8',
 );
 // c6bb5f5a — the three screens the shared My Attendance page was split into. Each is read for the same
 // reason PLAN_OT_APPLY_PAGE is: a relocation must be provable as a MOVE, never as a disappearance.
-const PLAN_OT_LIST_SRC = fs.readFileSync(path.resolve(__dirname, '../app/attendance/plan-ot/page.tsx'), 'utf8');
+const PLAN_OT_LIST_SRC = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/plan-ot/page.tsx'), 'utf8');
 // b833a077 (r362) — MY TRAVEL WAS REMOVED, and this read is kept deliberately, now pointed at the
 // redirect stub. The reporter asked for the feature to go, so this file no longer proves a MOVE; it
 // proves the opposite, at the foot of this file: the screen is gone, the form is gone, and the address
 // still forwards rather than 404-ing a bookmark. Keeping the readFileSync at module scope is also what
 // makes a future deletion of that file a visible failure here instead of a whole-suite import error with
 // zero AssertionErrors — the signature CLAUDE.md §4 warns reads as an environment fault.
-const TRAVEL_SRC = fs.readFileSync(path.resolve(__dirname, '../app/attendance/travel/page.tsx'), 'utf8');
+const TRAVEL_SRC = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/travel/page.tsx'), 'utf8');
 const REQUEST_STATUS_SRC = fs.readFileSync(
-  path.resolve(__dirname, '../app/attendance/request-status/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/attendance/request-status/page.tsx'),
   'utf8',
 );
 // The ONE correction form, mounted twice (the pop-up every Request opens + the kept `?fix=` inline panel).
 const CORRECTION_FORM = fs.readFileSync(
-  path.resolve(__dirname, '../app/attendance/requests/correction-form.tsx'),
+  path.resolve(__dirname, '../app/(app)/attendance/requests/correction-form.tsx'),
   'utf8',
 );
 
@@ -93,13 +93,13 @@ const ACTIONS = [
   'mySubmitResignation',
   'myWithdrawResignation',
 ];
-const CLOCK_PAGE = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/page.tsx'), 'utf8');
-const CLOCK_CLIENT = fs.readFileSync(path.resolve(__dirname, '../app/attendance/clock/clock-client.tsx'), 'utf8');
+const CLOCK_PAGE = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/clock/page.tsx'), 'utf8');
+const CLOCK_CLIENT = fs.readFileSync(path.resolve(__dirname, '../app/(app)/attendance/clock/clock-client.tsx'), 'utf8');
 const CLOCK_API = fs.readFileSync(path.resolve(__dirname, '../app/api/attendance/clock/route.ts'), 'utf8');
 // A historical comment naming a retired form must not satisfy an executable binding assertion.
 const codeOnly = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 const PERFORMANCE_PAGE_SRC = fs.readFileSync(
-  path.resolve(__dirname, '../app/me/performance/page.tsx'),
+  path.resolve(__dirname, '../app/(app)/me/performance/page.tsx'),
   'utf8',
 );
 
@@ -190,12 +190,12 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
    * lands — is unchanged.
    */
   const BINDINGS: [string, string, string][] = [
-    ['myRequestCorrection', 'app/attendance/requests/page.tsx', 'submitAction={myRequestCorrection}'],
-    // b833a077 (r362) — ['myRequestTravel', 'app/attendance/travel/page.tsx', 'action={myRequestTravel}']
+    ['myRequestCorrection', 'app/(app)/attendance/requests/page.tsx', 'submitAction={myRequestCorrection}'],
+    // b833a077 (r362) — ['myRequestTravel', 'app/(app)/attendance/travel/page.tsx', 'action={myRequestTravel}']
     // stood here. The action and the form are removed, not moved, so the binding is asserted ABSENT below.
   ];
   const SRC_OF: Record<string, string> = {
-    'app/attendance/requests/page.tsx': REQUESTS_PAGE,
+    'app/(app)/attendance/requests/page.tsx': REQUESTS_PAGE,
   };
 
   it('binds each moved request action on the page that now carries it', () => {
@@ -243,9 +243,9 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     // …and nowhere else either. The three pages that carried ESS request forms are the places a rebuilt
     // travel form would plausibly land.
     for (const [name, src] of [
-      ['app/attendance/requests/page.tsx', REQUESTS_PAGE],
-      ['app/attendance/plan-ot/apply/page.tsx', PLAN_OT_APPLY_PAGE],
-      ['app/attendance/request-status/page.tsx', REQUEST_STATUS_SRC],
+      ['app/(app)/attendance/requests/page.tsx', REQUESTS_PAGE],
+      ['app/(app)/attendance/plan-ot/apply/page.tsx', PLAN_OT_APPLY_PAGE],
+      ['app/(app)/attendance/request-status/page.tsx', REQUEST_STATUS_SRC],
     ] as const) {
       expect(src.includes('myRequestTravel'), `${name} must not have picked up the removed travel form`).toBe(
         false,
@@ -282,9 +282,9 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
   it('reuses /me’s actions rather than forking a second copy', () => {
     // A fork is the failure mode that matters here: two implementations of "file an attendance request"
     // drift, and the second one skips whatever the first learns. One import, one approval route.
-    expect(REQUESTS_PAGE).toContain("from '@/app/me/actions'");
+    expect(REQUESTS_PAGE).toContain("from '@/app/(app)/me/actions'");
     expect(
-      fs.existsSync(path.resolve(__dirname, '../app/attendance/requests/actions.ts')),
+      fs.existsSync(path.resolve(__dirname, '../app/(app)/attendance/requests/actions.ts')),
       'no second copy of the request actions beside the new page',
     ).toBe(false);
   });
@@ -330,7 +330,7 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
 
   it('removes clocking only from My Profile and retains the canonical My Attendance clock course',()=>{
     for(const forbidden of ['action={myCheckIn}','action={myCheckOut}','AttendanceClockButton','<LocationNotice'])expect(ME_SURFACE).not.toContain(forbidden);
-    const clock=fs.readFileSync(path.resolve(__dirname,'../app/attendance/clock/page.tsx'),'utf8'),client=fs.readFileSync(path.resolve(__dirname,'../app/attendance/clock/clock-client.tsx'),'utf8');
+    const clock=fs.readFileSync(path.resolve(__dirname,'../app/(app)/attendance/clock/page.tsx'),'utf8'),client=fs.readFileSync(path.resolve(__dirname,'../app/(app)/attendance/clock/clock-client.tsx'),'utf8');
     expect(clock).toContain('<ClockPageClient');expect(client).toContain("fetch('/api/attendance/clock',{method:'POST'");expect(PAGE).toContain('href="/attendance"');
   });
 
@@ -338,7 +338,7 @@ describe('/me → /attendance/requests: the request forms moved, they did not di
     // The actions used to redirect to /me because that is where the forms were. Left unchanged, every
     // submission would have bounced the employee off the request page — and an error would have shown its
     // banner on a screen with no form on it.
-    const actions = fs.readFileSync(path.resolve(__dirname, '../app/me/actions.ts'), 'utf8');
+    const actions = fs.readFileSync(path.resolve(__dirname, '../app/(app)/me/actions.ts'), 'utf8');
     expect(actions).toContain("const REQUESTS_PAGE = '/attendance/requests'");
     // Travel LEFT this list at c6bb5f5a for a screen of its own, and b833a077 (r362) then removed that
     // screen and the action with it — so there is no travel redirect to check here or anywhere.
@@ -564,7 +564,7 @@ describe('r259 — /me → /me/performance: the goals and feedback moved, they d
     // the second one skips whatever the first learns.
     expect(PERFORMANCE_PAGE_SRC).toContain("from '../actions'");
     expect(
-      fs.existsSync(path.resolve(__dirname, '../app/me/performance/actions.ts')),
+      fs.existsSync(path.resolve(__dirname, '../app/(app)/me/performance/actions.ts')),
       'no second copy of the performance actions beside the new page',
     ).toBe(false);
   });
@@ -583,7 +583,7 @@ describe('r259 — /me → /me/performance: the goals and feedback moved, they d
     // The actions used to redirect to /me because that is where the forms were. Left unchanged, every
     // submission would have bounced the employee off the performance page — and an error would have shown
     // its banner on a screen with no form on it. The same rule 1e9145d4 and c6bb5f5a wrote down.
-    const actions = fs.readFileSync(path.resolve(__dirname, '../app/me/actions.ts'), 'utf8');
+    const actions = fs.readFileSync(path.resolve(__dirname, '../app/(app)/me/actions.ts'), 'utf8');
     expect(actions).toContain("const PERFORMANCE_PAGE = '/me/performance'");
     for (const marker of ['Goal+added', 'Goal+updated', 'Feedback+submitted', 'Declined']) {
       const line = actions.split('\n').find((l) => l.includes(`toast=${marker}`));

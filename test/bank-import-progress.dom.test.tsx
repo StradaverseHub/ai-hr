@@ -2,7 +2,7 @@ import {afterEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {BankImportProgress} from '../app/admin/personnel/import/bank-import-progress';
+import {BankImportProgress} from '../app/(app)/admin/personnel/import/bank-import-progress';
 import type {BankImportProgress as Progress} from '../lib/bank-import-job';
 const job:Progress={id:'11111111-1111-4111-8111-111111111111',sourceName:'bank.csv',state:'importing',total:100001,validated:100001,valid:100000,invalid:0,unchanged:1,processed:50001,saved:50000,failed:0,uploadedBytes:100,sourceBytes:100,attemptId:null,error:null,updatedAt:new Date().toISOString(),createdAt:new Date().toISOString()};
 const response=(data:unknown)=>Promise.resolve({ok:true,json:()=>Promise.resolve(data)} as Response);

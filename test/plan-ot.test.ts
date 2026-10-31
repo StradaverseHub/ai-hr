@@ -996,7 +996,7 @@ describe('8 · BULK approve reaches the deferred branch', () => {
   });
 
   it('the bulk loop still routes attendance items to decideAttendanceCorrection (no fork)', () => {
-    const src = fs.readFileSync(path.resolve(__dirname, '../app/approvals/actions.ts'), 'utf8');
+    const src = fs.readFileSync(path.resolve(__dirname, '../app/(app)/approvals/actions.ts'), 'utf8');
     expect(src).toContain("case 'attendance':");
     expect(src).toMatch(/case 'attendance':[\s\S]{0,200}decideAttendanceCorrection\(/);
   });

@@ -62,7 +62,7 @@ import {
   updateLeaveType,
 } from '../core/admin';
 import { leaveTypeConfigHealth, type HealthLeaveType } from '../lib/leave-config-health';
-import { loadEntitlementTablesData } from '../app/admin/leave/entitlements/templates/entitlement-tables-block';
+import { loadEntitlementTablesData } from '../app/(app)/admin/leave/entitlements/templates/entitlement-tables-block';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, type Base } from './harness';
 
@@ -600,9 +600,9 @@ describe('§4 Leave Balance Health — the stranded method is a BLOCKING finding
 describe('§5 the screens derive from the predicate — they do not restate it', () => {
   it('no screen, card or picker reads STANDING_LEAVE_CODES any more', () => {
     for (const rel of [
-      'app/admin/leave-config/earned-accrual/page.tsx',
-      'app/admin/leave-config/types/page.tsx',
-      'app/admin/leave-config/types/leave-type-sub-forms.tsx',
+      'app/(app)/admin/leave-config/earned-accrual/page.tsx',
+      'app/(app)/admin/leave-config/types/page.tsx',
+      'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx',
       'components/earned-accrual-card.tsx',
       'components/leave/earned-accrual-dialog.tsx',
     ]) {
@@ -611,21 +611,21 @@ describe('§5 the screens derive from the predicate — they do not restate it',
   });
 
   it('Run Earned Accrual: one boolean per option, and the Annual Leave names, from the predicate', () => {
-    const page = read('app/admin/leave-config/earned-accrual/page.tsx');
+    const page = read('app/(app)/admin/leave-config/earned-accrual/page.tsx');
     expect(page).toContain("import { entitlementYearOptions, isEarnedAccrualType } from '@/core/leave';");
     expect(page).toContain('swept: isEarnedAccrualType(lt),');
     expect(page).toContain('const sweptLeaveTypeNames = accrualTypes');
   });
 
   it('the leave type editor: the switch state and the other Annual Leave names, from the server', () => {
-    const page = read('app/admin/leave-config/types/page.tsx');
+    const page = read('app/(app)/admin/leave-config/types/page.tsx');
     expect(page).toContain('annualSwitch: annualLeaveSwitchState(lt),');
     expect(page).toContain('.filter((lt) => !lt.archivedAt && isEarnedAccrualType(lt))');
     expect(page).toContain('otherAnnualLeaveTypeNames: activeAnnualLeave.filter((a) => a.id !== lt.id).map((a) => a.name),');
   });
 
   it('the rules action forwards the switch only on its own marker', () => {
-    const actions = read('app/admin/actions.ts');
+    const actions = read('app/(app)/admin/actions.ts');
     expect(actions).toContain("const annualLeaveRendered = formData.get('annualLeaveRendered') != null;");
     expect(actions).toContain("...(annualLeaveRendered ? { isAnnualLeave: formData.get('isAnnualLeave') === '1' } : {}),");
   });

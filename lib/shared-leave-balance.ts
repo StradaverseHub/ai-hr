@@ -82,7 +82,7 @@ export function otherContributors(info: SharedLeaveBalanceInfo, leaveTypeName: s
  * 2a57a007 — IS THIS ROW A BORROWER? Named ONCE, here, because three separate display decisions turn on it
  * and a fourth reader must not re-derive it from a figure:
  *   · the borrower's Taken / Pending Approval columns read 0.00 (its days are reported under Share) —
- *     app/leave/employee-balances/rows.ts;
+ *     app/(app)/leave/employee-balances/rows.ts;
  *   · the badge and the per-type Explain list belong to the POOL row, not to the borrower's;
  *   · the export's two source columns name the pool on a borrower's row and the borrowers on the pool's.
  *
@@ -270,7 +270,7 @@ export type PooledEntitlementCaption = {
  * THE POOLED CAPTION, OR NULL — and null means "say whatever you said before, exactly as before".
  *
  * `entitlementFromPool` is the pool's leave-type NAME on a BORROWER's row (set by
- * app/leave/employee-balances/rows.ts off `isPoolBorrower`), null on the pool's own row and on every type in
+ * app/(app)/leave/employee-balances/rows.ts off `isPoolBorrower`), null on the pool's own row and on every type in
  * no pool. When it is set it OUTRANKS `entitlementStatus`, because that status was resolved for the POOL,
  * and because r209's amber diagnostic must not fire here at all.
  *

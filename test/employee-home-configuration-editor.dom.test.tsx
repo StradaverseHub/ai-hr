@@ -12,7 +12,7 @@ import {HomeConfigurationEditor} from '../components/employee-home/configuration
 import {defaultEmployeeHomeConfiguration} from '../lib/employee-home-defaults';
 import {parseEmployeeHomeConfigurationForm} from '../lib/employee-home-configuration-form';
 const state=vi.hoisted(()=>({save:vi.fn(),push:vi.fn(),refresh:vi.fn()}));
-vi.mock('../app/admin/settings/dashboard/home-actions',()=>({saveHomeConfigurationAction:state.save}));
+vi.mock('../app/(app)/admin/settings/dashboard/home-actions',()=>({saveHomeConfigurationAction:state.save}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:state.push,refresh:state.refresh})}));
 const catalogues={en,ms,zh,ta,th,vi:vietnamese};
 const initial=()=>({version:1 as const,companyId:'e17dbd09-a9a1-448c-b609-fcd74566baf6',audienceRole:'employee' as const,revisionId:null,ordinal:0,configuration:defaultEmployeeHomeConfiguration()});

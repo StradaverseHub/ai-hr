@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import * as s from '../db/schema';
-import { criteriaVocabulary } from '../app/admin/notice-board/criteria-options';
+import { criteriaVocabulary } from '../app/(app)/admin/notice-board/criteria-options';
 import { overtimePatternSetup } from '../packs/attendance/overtime-patterns';
 import { onboardingOptions, onboardingSetup } from '../packs/lifecycle/onboarding/service';
 import { resolveMyTeamScope } from '../core/my-team-scope';

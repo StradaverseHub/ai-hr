@@ -56,7 +56,7 @@ const BOUNDARIES = [
   // siblings, so a future file importing it directly is caught; in ALWAYS_ALLOWED it may import them back,
   // because leave implementation files import each other freely. It is NOT an entry in
   // pack-drift-allowlist.json — that list is audited debt and only ever shrinks, and this module's only
-  // outside consumer (app/admin/leave-config/) is already always-allowed below.
+  // outside consumer (app/(app)/admin/leave-config/) is already always-allowed below.
   'core/leave-history-import',
   // db55d08a (r369) — LEAVE B/F DATA IMPORT: the OPENING-FIGURE third of a migration, beside the BALANCE
   // and RECORD halves above. In BOTH lists for the reason every note here gives: as a BOUNDARY it is
@@ -64,12 +64,12 @@ const BOUNDARIES = [
   // import them back, because leave implementation files import each other freely. ALWAYS_ALLOWED alone
   // would silence the failure and leave the new module unguarded, which is the drift D9 exists to stop.
   // It is NOT an entry in pack-drift-allowlist.json — that list is audited debt and only ever shrinks,
-  // and this module's only outside consumer (app/admin/leave-config/) is already always-allowed below.
+  // and this module's only outside consumer (app/(app)/admin/leave-config/) is already always-allowed below.
   'core/leave-bf-import',
   // 56910869 — the Override Leave Application rule vocabulary. In BOTH lists for the reason the 241817ef
   // note above gives: as a BOUNDARY it is guarded like its siblings, so a future file importing it directly
   // is caught; in ALWAYS_ALLOWED it may import them back. Its outside importers (core/admin, core/read,
-  // app/admin/actions, components/leave-type-panel) are ALREADY audited debt on the leave allowlist for
+  // app/(app)/admin/actions, components/leave-type-panel) are ALREADY audited debt on the leave allowlist for
   // importing core/leave itself, so this adds no entry — the list only shrinks.
   'core/leave-override',
   // 491c499f — the bulk Leave Adjustments writer. In BOTH lists for the reason the r90 note above gives:
@@ -81,7 +81,7 @@ const BOUNDARIES = [
   'core/toil',
   // 296fc027 — the replacement-leave eligibility resolver. In BOTH lists for the reason the notes above
   // give: as a BOUNDARY it is guarded like its siblings, so a future file importing it directly is caught;
-  // in ALWAYS_ALLOWED it may import them back. Its outside importer (app/admin/actions) is ALREADY audited
+  // in ALWAYS_ALLOWED it may import them back. Its outside importer (app/(app)/admin/actions) is ALREADY audited
   // debt on the leave allowlist for importing core/leave itself, so this adds no entry — the list only
   // shrinks. components/replacement-eligibility-picker.tsx deliberately does NOT import it (the descriptor
   // is passed to it as serialisable props) — see that file's header.
@@ -92,12 +92,12 @@ const BOUNDARIES = [
   // roster). In BOTH lists for the reason every note above gives: as a BOUNDARY it is guarded like its
   // siblings, so a future file importing it directly is caught; in ALWAYS_ALLOWED it may import them back,
   // because leave implementation files import each other freely. No pack-drift-allowlist entry is added —
-  // its only outside consumer is app/leave/, which is already always-allowed below.
+  // its only outside consumer is app/(app)/leave/, which is already always-allowed below.
   'core/leave-credit-request',
   // r389 bc3e203d — the employee's own Leave Credit History read. In BOTH lists for the reason every note
   // above gives: as a BOUNDARY it is guarded like its siblings, so a future file importing it directly is
   // caught; in ALWAYS_ALLOWED it may import them back. No pack-drift-allowlist entry — its outside callers
-  // (app/leave/credit/page.tsx and its export route) reach it through packs/leave/service.
+  // (app/(app)/leave/credit/page.tsx and its export route) reach it through packs/leave/service.
   'core/leave-credit-history',
   'core/leave-inquiry',
   'core/leave-split-review',
@@ -105,12 +105,12 @@ const BOUNDARIES = [
   // 6e9a126e — the entitlement redesign's new layer + its archive reader. In BOTH lists, same reasoning as
   // the notes above: as BOUNDARIES they are guarded like their siblings, and in ALWAYS_ALLOWED they may
   // import the pack back, because leave implementation files import each other freely. No allowlist entry
-  // is added — the only outside importer is app/admin/leave/, which is already always-allowed.
+  // is added — the only outside importer is app/(app)/admin/leave/, which is already always-allowed.
   'core/entitlement-template',
   'core/entitlement-archive',
   // c8052ae3 — the record of the leave_ledger rows the Medical / Hospitalization reset removes. In BOTH
   // lists for the reason every note above gives. No allowlist entry: its only outside reader is
-  // app/admin/leave/, already always-allowed, and the correction script imports db/schema directly rather
+  // app/(app)/admin/leave/, already always-allowed, and the correction script imports db/schema directly rather
   // than this module precisely so an operator one-off never becomes a leave-pack consumer.
   'core/leave-ledger-archive',
 ];
@@ -145,18 +145,18 @@ const ALWAYS_ALLOWED = [
   'core/leave-generation.ts', // 93249794 — a leave SERVICE (it drives openLeaveYear), so it is pack
   // implementation, not a consumer. Declared here rather than allowlisted, following entitlement-template's
   // precedent: the allowlist is audited debt that may only shrink.
-  'app/leave/', // the My Absence self-service home (balances/apply/history/export)
-  'app/admin/leave/', // leave config: type master, entitlements, rules, approval, payroll, import, audit
+  'app/(app)/leave/', // the My Absence self-service home (balances/apply/history/export)
+  'app/(app)/admin/leave/', // leave config: type master, entitlements, rules, approval, payroll, import, audit
   // a6fe37fc Round 2 — THE SAME SCREENS AT THEIR NEW ADDRESS, not new debt. IA §2.0 moves all ten
   // leave-config screens under /admin/leave-config, so this prefix is the sibling of the line above
   // and Rounds 3-5 land here too. Declared in ALWAYS_ALLOWED — the structural statement of which
   // directories are legitimate leave-pack consumers — and deliberately NOT in
   // test/pack-drift-allowlist.json, which is audited debt that may only shrink (AGENTS 15).
   // The old prefix stays until Round 6 deletes the last page under it.
-  'app/admin/leave-config/',
-  'app/admin/leave-approval/', // approval templates + workflow matrix
-  'app/admin/toil/', // TOIL policy admin
-  'app/me/leave/', // own-attachment download route (kept for /me?tab=leave back-compat)
+  'app/(app)/admin/leave-config/',
+  'app/(app)/admin/leave-approval/', // approval templates + workflow matrix
+  'app/(app)/admin/toil/', // TOIL policy admin
+  'app/(app)/me/leave/', // own-attachment download route (kept for /me?tab=leave back-compat)
 ];
 
 describe('ADR-0080 D9: leave pack import ratchet (rung 6)', () => {

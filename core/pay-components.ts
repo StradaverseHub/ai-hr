@@ -736,7 +736,7 @@ export function createPayComponentsFromImport(ctx: SessionContext, rows: { input
 }
 
 // The diffable catalog fields for the trimmed audit payload (changed field NAMES only — no values:
-// app/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
+// app/(app)/admin/audit/page.tsx never renders payloads, and free-text name/label in the immutable event
 // stream would violate the payload discipline the comment below enforces).
 const DIFF_FIELDS = ['name', 'label', 'description', 'pendingInputKind', 'kind', 'includedInEpf', 'includedInSocsoEis', 'includedInPcb', 'includedInHrdfBase', 'isNonPayable', 'prorates', 'eaFormLine', 'roundingMethod', 'rule', 'formulaContext', 'epfBonus2012', 'pcbRemunerationType', 'pcbExemptionCode', 'displayCategory', 'orpOvertime', 'orpUnpaidLeave'] as const;
 
@@ -2574,7 +2574,7 @@ export class UnsupportedBatchComponentError extends Error {
  *  the kernel routes it by the declared classification, so the guard only fires for PCB-ticked codes
  *  LACKING classification (legacy rows keep the legacy fail-closed behaviour).
  *
- *  EXPORTED for f35f758a note 8, so the pay item MASTER SAVE (app/admin/pay-components/actions.ts) runs
+ *  EXPORTED for f35f758a note 8, so the pay item MASTER SAVE (app/(app)/admin/pay-components/actions.ts) runs
  *  the same predicate the batch picker, `setPayrollBatchComponent` and the CSV importer already run.
  *  Exported rather than copied deliberately: a second hand-written copy of a fail-closed rule is how the
  *  entry gate and the kernel start disagreeing about which pay codes are allowed to exist. STATE-BASED —

@@ -1,6 +1,6 @@
 /**
  * e6a144d4 — the Employment History event-type caption, lifted OUT of the Personnel detail page so the
- * Download Excel route (app/admin/personnel/[employmentId]/movement-export/route.ts) prints the same word
+ * Download Excel route (app/(app)/admin/personnel/[employmentId]/movement-export/route.ts) prints the same word
  * the screen prints. It was a closure inside page.tsx; two copies of a twenty-case switch is exactly how a
  * file and the screen it claims to reproduce start disagreeing about what an event is called.
  *

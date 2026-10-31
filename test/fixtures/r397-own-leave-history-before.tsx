@@ -19,7 +19,7 @@ import { LeaveDateOutcome } from '@/components/leave/leave-date-outcome';
 import { LeaveHistoryCards, type LeaveHistoryEntry } from '@/components/leave/leave-history-cards';
 import { durationLabel } from '@/lib/leave-duration';
 import { leaveDisplaySplit } from '@/lib/leave-split';
-import { requestLeaveCancellationAction, editLeaveAction, cancelOwnLeaveAction } from '@/app/leave/actions';
+import { requestLeaveCancellationAction, editLeaveAction, cancelOwnLeaveAction } from '@/app/(app)/leave/actions';
 
 export type HistorySearch = { warnHoliday?: string; hTab?: string; hType?: string | string[]; hFrom?: string; hTo?: string; leaveYear?: string; year?: string; state?: string; loaded?: string };
 
@@ -40,7 +40,7 @@ export async function loadOwnLeaveHistory({session, me, sp, locale, leaveTypes, 
   //
   // This used to be a two-branch destructure of eight names. afd0a87c emptied the admin branch of its
   // org-wide register, leaving it holding `companies` / `departments` / `employeeList` for the Employee
-  // Details listing alone — and 388e53c2 moved that listing to app/leave/tracker/page.tsx, which reads
+  // Details listing alone — and 388e53c2 moved that listing to app/(app)/leave/tracker/page.tsx, which reads
   // them there. So one path is left, and it is the self-service one. (An administrator never reaches this
   // line at all: the short page returns above.)
   //

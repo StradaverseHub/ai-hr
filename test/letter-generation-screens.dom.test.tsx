@@ -9,11 +9,11 @@ const catalogues={en,ms,zh,ta,th,vi:viMessages};
 vi.mock('../lib/authz',()=>({requireModule:async()=>({})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',userId:'actual-user'},scopeIds:['00000000-0000-4000-8000-000000000001']})}));
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterTemplates:mocks.templates,listLetterGenerationBatches:mocks.batches,getLetterTemplate:mocks.template,getLetterGenerationBatch:mocks.batch,getStaffLetter:mocks.detail}));
-vi.mock('../app/letters/generate/actions',()=>({createGeneration:mocks.create,updateGeneration:mocks.update}));
+vi.mock('../app/(app)/letters/generate/actions',()=>({createGeneration:mocks.create,updateGeneration:mocks.update}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.automation'|'letters.generate'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{automation:c.letters.automation,generate:c.letters.generate,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
-import GeneratePage from '../app/letters/generate/page';
-import NewPage from '../app/letters/generate/new/page';
-import BatchPage from '../app/letters/generate/[batchId]/page';
+import GeneratePage from '../app/(app)/letters/generate/page';
+import NewPage from '../app/(app)/letters/generate/new/page';
+import BatchPage from '../app/(app)/letters/generate/[batchId]/page';
 const companyId='00000000-0000-4000-8000-000000000001',versionId='00000000-0000-4000-8000-000000000002',batchId='00000000-0000-4000-8000-000000000003',employeeId='00000000-0000-4000-8000-000000000004',letterId='00000000-0000-4000-8000-000000000005';
 const field={key:'note',label:'Note',description:'Explicit custom note',source:'custom.text',kind:'text',required:false,editable:true,sensitive:false};
 function template(){return {root:{id:'root',companyId,code:'FICTIONAL',deactivated:false},version:{id:versionId,name:'Fictional template',category:'confirmation',ordinal:1,status:'approved',effectiveFrom:todayInKualaLumpur()},fields:[{id:'mapping',definition:field}]};}

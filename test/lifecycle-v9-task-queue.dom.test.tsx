@@ -1,18 +1,18 @@
 import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { RequestRecords } from '../app/lifecycle/v9/request-records';
-import { WorkAssignee } from '../app/lifecycle/v9/work-assignee';
-import { ChecklistBulkAssignment } from '../app/lifecycle/v9/checklist-bulk-assignment';
-import { TaskQueue } from '../app/lifecycle/v9/task-queue';
+import { RequestRecords } from '../app/(app)/lifecycle/v9/request-records';
+import { WorkAssignee } from '../app/(app)/lifecycle/v9/work-assignee';
+import { ChecklistBulkAssignment } from '../app/(app)/lifecycle/v9/checklist-bulk-assignment';
+import { TaskQueue } from '../app/(app)/lifecycle/v9/task-queue';
 import { lifecycleQueueRows } from '../lib/lifecycle-v9-task-queue';
 import { blankCase, defaultConfig, type Environment, type Task } from '../lib/onboarding-model';
 import type { Case as V9Case, Task as V9Task } from '../lib/lifecycle-v9-model';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
-import type { NativeJoinersData } from '../app/lifecycle/v9/native-joiners';
+import type { NativeJoinersData } from '../app/(app)/lifecycle/v9/native-joiners';
 const mocks = vi.hoisted(() => ({ native: vi.fn(), off: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: mocks.refresh }) }));
-vi.mock('../app/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.native }));
-vi.mock('../app/lifecycle/v9/actions', () => ({ commandV9: mocks.off }));
+vi.mock('../app/(app)/lifecycle/onboarding/v31-actions', () => ({ changeOnboarding: mocks.native }));
+vi.mock('../app/(app)/lifecycle/v9/actions', () => ({ commandV9: mocks.off }));
 function fixture() {
   const nativeConfig = defaultConfig('hr'); nativeConfig.groups = [{ id: 'shared', name: 'Shared team', members: ['hr'], limit: 0 }];
   const nativeCase = blankCase('same-case-id', 'OB-1', 'draft', { fullName: 'Native person', joinDate: '2026-10-30', company: 'one' }, { now: '2026-10-30T00:00:00Z' } as Environment);

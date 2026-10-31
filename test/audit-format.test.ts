@@ -166,16 +166,16 @@ describe('47609f53 — canOpenAggregate gates a Recent activity row on the reade
 });
 
 /**
- * The fix lives in the CONTRACT BETWEEN lib/audit-format.ts and app/page.tsx: the helper above can be
+ * The fix lives in the CONTRACT BETWEEN lib/audit-format.ts and app/(app)/page.tsx: the helper above can be
  * perfectly correct while the dashboard never calls it, and every unit test here would still pass
  * (AGENTS.md rule 17). These are source-shape assertions across the call site.
  *
- * NB app/page.tsx must not gain a `/admin/personnel` literal — test/personnel-links.test.ts asserts
+ * NB app/(app)/page.tsx must not gain a `/admin/personnel` literal — test/personnel-links.test.ts asserts
  * that everyday inbound links there never point at the admin route. The href stays in AGGREGATE.
  */
 describe('47609f53 — the dashboard Recent activity card actually applies the gate', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const src = readFileSync(root + 'app/page.tsx', 'utf8');
+  const src = readFileSync(root + 'app/(app)/page.tsx', 'utf8');
   const stripComments = (s: string) =>
     s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\/\/.*$/gm, '');
   const code = stripComments(src);

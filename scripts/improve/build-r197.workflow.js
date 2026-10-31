@@ -204,10 +204,10 @@ const triage = agent(
     `  · \`e0cd4583\` CP39-MTD/PCB         — plan at ${PLANS}/e0cd4583.md\n\n` +
     `WHAT ALREADY SHIPPED, per this repo's handoff history — verify each claim against the tree rather than ` +
     `trusting it:\n` +
-    `  · r193 shipped \`8ca344bf\` SOCSO Borang 8A. Look at app/payroll/borang-8a/ and localization/my/.\n` +
+    `  · r193 shipped \`8ca344bf\` SOCSO Borang 8A. Look at app/(app)/payroll/borang-8a/ and localization/my/.\n` +
     `  · r194 shipped \`9c8dad7a\` + \`3aae0789\` EPF Borang A (printed form AND i-Akaun text file). Look at ` +
-    `app/payroll/borang-a/.\n` +
-    `  · CP22 (\`88076362\`) has a screen at app/payroll/cp22/. NOTE CP39 IS A DIFFERENT FORM FROM CP22 — do ` +
+    `app/(app)/payroll/borang-a/.\n` +
+    `  · CP22 (\`88076362\`) has a screen at app/(app)/payroll/cp22/. NOTE CP39 IS A DIFFERENT FORM FROM CP22 — do ` +
     `not conflate them; check whether anything implements CP39 at all.\n\n` +
     `Read ${MAIN}/HANDOFF.md's statutory-form section first — it records four findings from the earlier ` +
     `round that change the work, including that the EPF and SOCSO reference attachments are NOT agency ` +

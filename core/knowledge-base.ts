@@ -202,7 +202,7 @@ export function canManage(
  * (`db/migrations/0039_kb_rls.sql`: UPDATE and DELETE require `app.is_admin()` or own-and-not-system),
  * but the INSERT policy is `WITH CHECK (tenant_id = app.current_tenant_id())` and nothing more — ADR-0017
  * §3 chose open contribution. So a create had no second line of defence, and
- * `app/knowledge-base/actions.ts` handed it a bare `getSession()`. Any employee could publish to the whole
+ * `app/(app)/knowledge-base/actions.ts` handed it a bare `getSession()`. Any employee could publish to the whole
  * company, and could aim the article at the `hr_admin` shelf, where HR reads what it takes to be official
  * guidance. That is the Part 4 "Knowledge base authoring" row of `docs/CUSTOMER-DEPLOYMENT-READINESS.md`,
  * and the customer decision reverses ADR-0017 §3 for AUTHORSHIP (see that ADR's 2026-09-16 update): the
@@ -215,7 +215,7 @@ export function canManage(
  * HIDING THE COMPOSER IS NOT A GUARD, and could never be. `createArticleAction` / `uploadFileAction` are
  * Server Actions: their ids ship inside every authenticated user's bundle and they are POST endpoints
  * whether or not a button points at them. So the refusal lives HERE, at the boundary every caller crosses,
- * and `app/knowledge-base/page.tsx` merely declines to offer what it knows will be refused.
+ * and `app/(app)/knowledge-base/page.tsx` merely declines to offer what it knows will be refused.
  */
 export class KbAuthorAdminRequiredError extends Error {
   constructor() {

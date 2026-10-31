@@ -39,7 +39,7 @@ import { describe, expect, it } from 'vitest';
 
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, p), 'utf8');
 
-const LAYOUT = read('../app/layout.tsx');
+const LAYOUT = read('../app/(app)/layout.tsx');
 const SWITCHER = read('../components/company-switcher.tsx');
 const COMMAND_BAR = read('../components/command-bar.tsx');
 const USER_MENU = read('../components/user-menu.tsx');
@@ -64,7 +64,7 @@ describe('topbar — search box and company switcher keep to their own lanes', (
     // with minmax(0,1fr) sides at every step. A fixed track is taken before the fr tracks get anything,
     // so from sm — the same breakpoint that brings in the 232px rail — the side tracks collapsed to
     // 83px at an 820px viewport against a 206px floor in the right cluster, and the account control's
-    // avatar + chevron left the viewport by 36px. See the ⚠️⚠️ block in app/layout.tsx for the numbers
+    // avatar + chevron left the viewport by 36px. See the ⚠️⚠️ block in app/(app)/layout.tsx for the numbers
     // and r374's measured sweep; the r374 sweep at the foot of
     // test/topbar-identity-width.browser.test.tsx re-measures it in a real engine.
     //

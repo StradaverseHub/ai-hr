@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { Button, ErrorBanner, tableWrapCls, thCls, theadCls, tbodyCls } from './ui';
 import { LABEL_IMPORT_DEFINITIONS, ORGANISATION_LABEL_KINDS, type LabelImportPreview, type LabelImportPreviewRow } from '@/lib/system-label-definition';
-import type { previewLabelsAction, importLabelsAction } from '@/app/admin/settings/system-labels/import-actions';
+import type { previewLabelsAction, importLabelsAction } from '@/app/(app)/admin/settings/system-labels/import-actions';
 
 export function SystemLabelImport(_props:{companies?:{id:string;name:string}[];selectedCompanyIds?:string[]}={}) {
   const w=useTranslations('labelsImportWizard'),t=useTranslations('admin.systemLabels.excel'),tx=useTranslations('labelExcelRoundTrip'),tc=useTranslations('admin.systemLabels'),tp=useTranslations('admin.profileOptions'),tg=useTranslations('admin.benefitScheme'),router=useRouter();

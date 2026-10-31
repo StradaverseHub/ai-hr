@@ -97,10 +97,10 @@ import * as schema from '../db/schema';
 import {
   removeCompanyStatutoryAuthorityAction,
   setCompanyStatutoryAuthorityAction,
-} from '../app/admin/actions';
+} from '../app/(app)/admin/actions';
 // 15e5bd93 rev 4 (r372) — the screen-wide Save, recovered from r352 (d991c149) and re-pointed. It RETURNS
 // a TabSaveResult rather than redirecting, so §4 reads its answer instead of catching a RedirectError.
-import { saveCompanyStatutoryTabAction } from '../app/admin/organization/statutory-tab-actions';
+import { saveCompanyStatutoryTabAction } from '../app/(app)/admin/organization/statutory-tab-actions';
 import { STATUTORY_AUTHORITIES } from '../lib/statutory-authorities';
 
 let b: Base;
@@ -341,7 +341,7 @@ describe('§2 the fence on the server', () => {
    * ⚠️ REVERSED BY REVISION 4 (r372), AND THE RULE IS WHAT REVERSED IT. The reporter contested the
    * per-body page as "an unnecessary intermediate page"; every body's form is on `…/statutory` again, so
    * THAT is the screen that holds the boxes, and sending the refusal there satisfies exactly the
-   * requirement r355's split was built for — app/admin/_redirects.ts's own record of `failCompany`
+   * requirement r355's split was built for — app/(app)/admin/_redirects.ts's own record of `failCompany`
    * having "showed the refusal on a screen that no longer held the form it was about".
    */
   it('a refused save reaches the statutory screen with the message, and leaves no row behind', async () => {
@@ -436,7 +436,7 @@ describe('§3 the reporter’s fourth approved point: stay here, and say what wa
 
   /**
    * AN EMPTY companyId DEGRADES TO THE LIST rather than emitting `/admin/organization//statutory`, which is
-   * okCompany's rule and the reason these helpers exist at all (app/admin/_redirects.ts). A path this
+   * okCompany's rule and the reason these helpers exist at all (app/(app)/admin/_redirects.ts). A path this
    * screen can build wrong is a path a refusal can be lost on.
    */
   it('a marker with no company id falls back to the list rather than building a broken address', async () => {
@@ -453,7 +453,7 @@ describe('§3 the reporter’s fourth approved point: stay here, and say what wa
  *
  * The reporter has asked for this in every version of their request and we have never built it: "Provide
  * one Save button for the entire Statutory Payment Setup screen… Save all changes together… remain on the
- * same screen." `app/admin/organization/statutory-tab-actions.ts` is r352's writer, recovered from
+ * same screen." `app/(app)/admin/organization/statutory-tab-actions.ts` is r352's writer, recovered from
  * d991c149 and re-pointed at the dedicated screen.
  *
  * ⚠️ THE LOAD-BEARING CLAIM OF THIS ROUND IS THAT IT WRITES ONLY THE BODIES THE OPERATOR TOUCHED, AND IT

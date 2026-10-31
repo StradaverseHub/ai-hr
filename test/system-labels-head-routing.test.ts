@@ -17,7 +17,7 @@
  * And the blank option is pinned as a real value on the same path: choosing None sends `null`, the
  * service clears the column, and the step goes back to being dropped. Blank means "no head".
  *
- * `bulkSaveLabels` is the service `saveLabelsGridAction` (app/admin/settings/actions.ts) hands the grid's
+ * `bulkSaveLabels` is the service `saveLabelsGridAction` (app/(app)/admin/settings/actions.ts) hands the grid's
  * payload to VERBATIM — it adds nothing and reshapes nothing — so calling it with a `GridSavePayload` is
  * the same write the screen makes. The action itself cannot be called here: it opens a real session.
  */

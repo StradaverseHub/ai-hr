@@ -11,7 +11,7 @@ import en from '../messages/en.json';
 const actions=vi.hoisted(()=>({createAgentCandidateAction:vi.fn(),evaluateAgentCandidateAction:vi.fn(),promoteAgentCandidateAction:vi.fn(),rollbackAgentCandidateAction:vi.fn(),tryAgentCandidateAction:vi.fn(),
  createConversationCandidateAction:vi.fn(),evaluateConversationCandidateAction:vi.fn(),promoteConversationCandidateAction:vi.fn(),eraseConversationMetadataAction:vi.fn()}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>(key:string,args:Record<string,string|number>={})=>{let value:unknown=en;for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing fixture translation');return value.replace(/\{(\w+)\}/g,(_all,name:string)=>String(args[name]??''));}}));
-vi.mock('../app/assistant/agent-review-actions',()=>actions);
+vi.mock('../app/(app)/assistant/agent-review-actions',()=>actions);
 import {ModuleAgentReview} from '../components/assistant/module-agent-review';
 import {PROMPT_HOLDOUTS} from '../lib/ai/module-agent-prompt-candidate';
 import {MODULE_AGENT_SOURCE_DIGEST} from '../lib/ai/module-agent-source-manifest';

@@ -4,7 +4,7 @@ import {cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 const ports=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:ports.ask,loadEarlierChatAction:ports.earlier}));
+vi.mock('../app/(app)/assistant/launcher-actions',()=>({askFromWorkspaceAction:ports.ask,loadEarlierChatAction:ports.earlier}));
 // The import controller owns source/consent. This port exercises transcript placement independently.
 vi.mock('../components/assistant/workspace-composer',()=>({WorkspaceComposer:(props:any)=><div>
  <button onClick={()=>props.onAttachmentTurn({id:'file',question:'File question',answer:<p>File review</p>})}>Attach source</button>

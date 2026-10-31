@@ -190,7 +190,7 @@ export class ToilAlreadyAccruedError extends Error {
  * `closeReplacementLeaveYear`).
  *
  * WHY THIS EXISTS AT ALL, AND WHY IT ARRIVED WITH ADR-0077 SLICE 3. Both sweeps are mutating,
- * tenant-scoped and reachable as bare POSTs — `app/admin/actions.ts` exports them as server actions,
+ * tenant-scoped and reachable as bare POSTs — `app/(app)/admin/actions.ts` exports them as server actions,
  * and until slice 3 the FIRST line of each service was `if (!toilEnabled()) throw`. That gate was
  * doing double duty as the only check on the path, and since `TOIL_ENABLED` is set in no tracked env
  * file (packs/catalog.ts), it refused everyone on every deployment. Slice 3 removed it on purpose —
@@ -424,7 +424,7 @@ export type ToilPolicyInput = {
  * the `toil` entitlement renders read-only, and `toil` is not in `tenant_module` for the tenant
  * (verified on production 2026-08-05; `toil_policy` also holds ZERO rows). The approved plan's
  * instruction is to let the new Leave Config screen become editable WITHOUT switching `toil` on, because
- * that same flag also lights up the legacy app/admin/toil page the reporter told us to leave alone.
+ * that same flag also lights up the legacy app/(app)/admin/toil page the reporter told us to leave alone.
  *
  * WHAT THIS DOES NOT DO, and it is the reason the change is safe: it does not let anybody accrue
  * anything. Saving a policy here writes CONFIGURATION and nothing else. Every path that can actually
@@ -3869,7 +3869,7 @@ async function lockedToilSweepRows<T>(read: () => PromiseLike<T>): Promise<T> {
  *
  * Gating it on the entitlement would have meant a tenant whose TOIL module lapses (trial end,
  * downgrade, non-payment) can no longer settle the days its employees already banked: the sweep
- * throws, and app/admin/toil/page.tsx hides the button that calls it, so the obligation becomes
+ * throws, and app/(app)/admin/toil/page.tsx hides the button that calls it, so the obligation becomes
  * unreachable through every path while the debt stays on the books. Under the old deployment flag
  * that took an operator editing .env; a per-tenant entitlement makes it an ordinary commercial event.
  *
@@ -4062,7 +4062,7 @@ export async function closeReplacementLeaveYear(
     // 'converted_to_pay'/'lapsed', so `active` is EMPTY, the condition never fires, no marker is
     // consulted, and the function returns `alreadyClosed: false` — the marker guard this docblock calls
     // "a true no-op rather than incidentally safe" was back to being incidentally safe on the one path
-    // that matters. app/admin/toil/page.tsx branches on exactly this field, so a re-run of a completed
+    // that matters. app/(app)/admin/toil/page.tsx branches on exactly this field, so a re-run of a completed
     // close reported "closed 0 accruals" instead of "already closed".
     if (markers.length > 0 && scopeCompanies.length === 0) return { ...empty, alreadyClosed: true };
 

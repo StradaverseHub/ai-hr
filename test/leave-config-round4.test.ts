@@ -44,21 +44,21 @@ const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
 
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
-const NEW_PAGE = 'app/admin/leave-config/approval-chains/page.tsx';
-const READOUT = 'app/admin/leave-config/approval-readout.tsx';
+const NEW_PAGE = 'app/(app)/admin/leave-config/approval-chains/page.tsx';
+const READOUT = 'app/(app)/admin/leave-config/approval-readout.tsx';
 const ROUTE = '/admin/leave-config/approval-chains';
 
 const page = read(NEW_PAGE);
 const readout = read(READOUT);
-const typesPage = read('app/admin/leave-config/types/page.tsx');
-const tabs = read('app/admin/leave-config/types/leave-type-tabs.tsx');
+const typesPage = read('app/(app)/admin/leave-config/types/page.tsx');
+const tabs = read('app/(app)/admin/leave-config/types/leave-type-tabs.tsx');
 /**
  * The old screen. Round 4 left it standing; a6fe37fc ROUND 5 (cutover) emptied it into a redirect stub,
  * and the assertions below are re-pointed at that fact rather than deleted — "the editor is not
  * duplicated" is still the property, and after the cutover it is stronger, because there is exactly one
  * editor left instead of two.
  */
-const oldApproval = read('app/admin/leave/approval/page.tsx');
+const oldApproval = read('app/(app)/admin/leave/approval/page.tsx');
 const policySrc = read('core/leave-approval-policy.ts');
 const consolidationSrc = read('core/leave-approval-consolidation.ts');
 
@@ -167,14 +167,14 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     // It IS the screen now, so the note comes off — a real screen telling the administrator it is a
     // preview is worse than no note.
     expect(page).not.toContain('<LeaveConfigPreviewNote');
-    // ⚠️ STATED RATHER THAN GLOSSED: `app/admin/leave-approval/actions.ts` keeps its own private
+    // ⚠️ STATED RATHER THAN GLOSSED: `app/(app)/admin/leave-approval/actions.ts` keeps its own private
     // `PAGE = '/admin/leave/approval'` literal. The migration order's Round 5 names the redirect
-    // constants it moves (app/admin/_redirects.ts's five, and app/admin/actions.ts's LEAVE_REPLACEMENT)
+    // constants it moves (app/(app)/admin/_redirects.ts's five, and app/(app)/admin/actions.ts's LEAVE_REPLACEMENT)
     // and this one is not among them, so it was left alone deliberately. A save still ARRIVES here: the
     // old address is a stub that forwards the query string, so the ?toast= / ?error= reaches this screen
     // through one extra hop. Asserted so the hop is a known, written-down cost rather than a discovery.
-    expect(read('app/admin/leave-approval/actions.ts')).toContain("const PAGE = '/admin/leave/approval';");
-    const stub = read('app/admin/leave/approval/page.tsx');
+    expect(read('app/(app)/admin/leave-approval/actions.ts')).toContain("const PAGE = '/admin/leave/approval';");
+    const stub = read('app/(app)/admin/leave/approval/page.tsx');
     expect(stub).toContain(ROUTE);
     // ⚠️ ASSERTED AS THE LOOP, NOT AS THE TOKEN — and this is the ONE stub where that matters most.
     // The first version of this case checked for the string `URLSearchParams`, exactly the shape
@@ -184,10 +184,10 @@ describe('a6fe37fc R4 · the route is registered, and it is registered on the RI
     // 4's screen, not Round 3's), so this file is the only place the hole can be closed.
     //
     // WHY IT IS LOAD-BEARING HERE ABOVE ALL: this is the only stub an action still redirects INTO.
-    // `PAGE` above is the target of 14 redirects in app/admin/leave-approval/actions.ts — 7 success
+    // `PAGE` above is the target of 14 redirects in app/(app)/admin/leave-approval/actions.ts — 7 success
     // `?toast=` (escalation settings saved, template duplicated / activated or deactivated / deleted,
     // default flow set or cleared, assignment added, assignment removed) and 7 `?error=` — and
-    // `ToastFromQuery` in app/layout.tsx renders them from the query string ALONE. (r304 / 85875e4b took
+    // `ToastFromQuery` in app/(app)/layout.tsx renders them from the query string ALONE. (r304 / 85875e4b took
     // the template SAVE out of this count: it returns its outcome to the template drawer instead of
     // redirecting, so its "created / updated" confirmation is a client toast now. Pinned in the
     // "wires the SAME server actions" case below.) A stub that stops
@@ -240,7 +240,7 @@ describe('a6fe37fc R4 · the approval editor is MOUNTED at the new address, not 
     // template manager is the action's only caller. Pinned both ways below, so a second signature change —
     // or this one quietly reverting to a redirect — is a visible decision rather than drift.
     expect(page.includes("'use server'"), `${NEW_PAGE} must not declare server actions`).toBe(false);
-    const actions = read('app/admin/leave-approval/actions.ts');
+    const actions = read('app/(app)/admin/leave-approval/actions.ts');
     const fnBody = (name: string) => {
       const from = actions.indexOf(`export async function ${name}(`);
       const next = actions.indexOf('\nexport async function ', from + 1);
@@ -361,7 +361,7 @@ describe('a6fe37fc R4 · the rules whose scope or chain nothing shows get a surf
       ).toBe(false);
     }
     // …and the per-rule actions are still retired, so there is nothing for a later edit button to post to.
-    const actions = read('app/admin/leave-approval/actions.ts');
+    const actions = read('app/(app)/admin/leave-approval/actions.ts');
     expect(actions).not.toContain('saveLeaveApprovalRuleAction');
     expect(actions).not.toContain('archiveLeaveApprovalRuleAction');
     // The widened read is READ-ONLY too: a projection beside `listTemplateAssignments` must not have
@@ -514,9 +514,9 @@ describe('a6fe37fc R5 · the editor exists at exactly ONE address, and the other
     // And the nav entry the customer clicks moved with it.
     expect(read('packs/leave/index.ts')).toContain("href: '/admin/leave-config/approval-chains'");
     expect(read('packs/leave/index.ts')).not.toContain("href: '/admin/leave/approval'");
-    // The OLDER stub (0d147b78, app/admin/leave-approval/page.tsx) was repointed in the same commit
+    // The OLDER stub (0d147b78, app/(app)/admin/leave-approval/page.tsx) was repointed in the same commit
     // rather than left chaining through this one.
-    const olderStub = read('app/admin/leave-approval/page.tsx');
+    const olderStub = read('app/(app)/admin/leave-approval/page.tsx');
     expect(olderStub).toContain(ROUTE);
     // …and it forwards, which it did NOT until r261's verify pass. It was the one leave address of the
     // eleven that stripped the query string outright — no `searchParams` parameter, no loop, a bare

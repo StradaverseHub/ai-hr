@@ -28,7 +28,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import messages from '../messages/en.json';
 import { EmployeeScopePanel, type ScopeEmployee } from '../components/collapsible-employee-panel';
-import { EmployeePicker } from '../app/payroll/transactions/fixed/employee-picker';
+import { EmployeePicker } from '../app/(app)/payroll/transactions/fixed/employee-picker';
 
 // The address bar, stubbed. push() is RECORDED rather than performed: the URL this panel asks for is its
 // entire contract with the server — selection lives in the query string precisely so the server's scope

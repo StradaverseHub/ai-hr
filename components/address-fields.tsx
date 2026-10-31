@@ -177,7 +177,7 @@ export function AddressBlockFields(props: AddressBlockFieldsProps) {
  * The two block headings and the tick's label — read HERE, in a single-namespace file, rather than passed
  * down as props (the precedent is `PassportSectionTitle`, components/passport-fields.tsx).
  *
- * THAT IS NOT A STYLE CHOICE. app/admin/personnel/new/wizard.tsx uses `people.wizard` and nothing else;
+ * THAT IS NOT A STYLE CHOICE. app/(app)/admin/personnel/new/wizard.tsx uses `people.wizard` and nothing else;
  * the moment it reads a second namespace, test/i18n-coverage.test.ts check C SKIPS THE WHOLE FILE and
  * every `people.wizard.*` key in that screen silently stops being checked. So the record's own words come
  * across inside components that already speak `people.detail`, and the draft gains no key of its own —

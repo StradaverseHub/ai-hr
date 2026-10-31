@@ -4,7 +4,7 @@ import { DEFAULT_UI_THEME, UI_THEME_COOKIE, resolveUiTheme, type UiTheme } from 
 
 /**
  * r401 — the UI theme on the SERVER, for the pages whose STRUCTURE differs by theme (Monolith rollout step
- * 4: the Dashboard and My Profile). ONE reader of the `ui_theme` cookie for the whole request: app/layout.tsx
+ * 4: the Dashboard and My Profile). ONE reader of the `ui_theme` cookie for the whole request: app/(app)/layout.tsx
  * writes `<html data-ui-theme>` from this same function, and a page that branches calls it too, so the
  * attribute the stylesheet keys on and the markup a page chose can never disagree (React `cache` makes it one
  * read per request, however many callers).

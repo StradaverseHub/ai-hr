@@ -15,7 +15,7 @@
  * missing caller is about the wiring.
  *
  * 7076f8af — THE SCREEN THIS GUARD WATCHES MOVED, AND THE GUARD MOVED WITH IT, UNWEAKENED. The six
- * bridges were extracted out of app/payroll/[batchId]/page.tsx into app/payroll/adjustments-panel.tsx,
+ * bridges were extracted out of app/(app)/payroll/[batchId]/page.tsx into app/(app)/payroll/adjustments-panel.tsx,
  * a shared server component now rendered on the run flow's Review step and on a screen under
  * Transactions. Every assertion below is the same assertion; only the file it reads changed. Two were
  * ADDED rather than relaxed, because relocation introduces a failure the original could not have: a
@@ -29,10 +29,10 @@ import path from 'node:path';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
-const PANEL = read('app/payroll/adjustments-panel.tsx');
-const ACTIONS = read('app/payroll/actions.ts');
+const PANEL = read('app/(app)/payroll/adjustments-panel.tsx');
+const ACTIONS = read('app/(app)/payroll/actions.ts');
 /** The two pages that render the panel. Neither may quietly stop doing so. */
-const PANEL_HOSTS = ['app/payroll/process/page.tsx', 'app/payroll/transactions/adjustments/page.tsx'];
+const PANEL_HOSTS = ['app/(app)/payroll/process/page.tsx', 'app/(app)/payroll/transactions/adjustments/page.tsx'];
 
 /** Every prefill action the adjustment panel offers. The point is that NONE is orphaned. */
 const PREFILL_ACTIONS = [

@@ -63,8 +63,8 @@ describe('forced FULL, each with its own reason', () => {
     ['db/schema.ts', /db\//],
     ['db/migrations/0500_x.sql', /migration/],
     ['db/migrations/meta/_journal.json', /migration/],
-    ['app/payroll/actions.ts', /server action/],
-    ['app/admin/x/y/actions.ts', /server action/],
+    ['app/(app)/payroll/actions.ts', /server action/],
+    ['app/(app)/admin/x/y/actions.ts', /server action/],
     ['app/api/health/route.ts', /route handler/],
     ['middleware.ts', /middleware/],
     ['proxy.ts', /proxy/],
@@ -79,7 +79,7 @@ describe('forced FULL, each with its own reason', () => {
     ['test/env.ts', /setup file/],
     ['test/global-setup.ts', /setup file/],
     ['deploy/deploy.sh', /deploy\//],
-    ['app/payroll/run-screen.tsx', /allow-list/], // an app/ file that is not a page/layout/loading
+    ['app/(app)/payroll/run-screen.tsx', /allow-list/], // an app/ file that is not a page/layout/loading
     ['i18n/request.ts', /allow-list/],
     ['tsconfig.json', /allow-list/],
     ['messages/sub/en.json', /allow-list/], // messages/*.json is one level only
@@ -109,14 +109,14 @@ describe('forced FULL, each with its own reason', () => {
 });
 
 describe('app/**/page.tsx, layout.tsx, loading.tsx: allowed only for a markup-only diff', () => {
-  it.each(['app/payroll/page.tsx', 'app/layout.tsx', 'app/leave/[id]/loading.tsx'])('%s with a className edit is allowed', (p) => {
+  it.each(['app/(app)/payroll/page.tsx', 'app/(app)/layout.tsx', 'app/(app)/leave/[id]/loading.tsx'])('%s with a className edit is allowed', (p) => {
     expect(verdict(p, { diffLines: ['      <div className="flex gap-2">', '      <div className="flex gap-3">'] }).allowed).toBe(true);
   });
 
   it.each(PAGE_FORBIDDEN_TOKENS.map((t) => [t]))('a changed line containing %j forces FULL', (tok) => {
-    const v = verdict('app/payroll/page.tsx', { diffLines: ['<div className="p-2">', `  x ${tok} y`] });
+    const v = verdict('app/(app)/payroll/page.tsx', { diffLines: ['<div className="p-2">', `  x ${tok} y`] });
     expect(v.allowed).toBe(false);
-    expect(reasonOf('app/payroll/page.tsx', { diffLines: [`  x ${tok} y`] })).toContain(JSON.stringify(tok));
+    expect(reasonOf('app/(app)/payroll/page.tsx', { diffLines: [`  x ${tok} y`] })).toContain(JSON.stringify(tok));
   });
 
   it('a REMOVED line counts as much as an added one (the collector passes both)', () => {

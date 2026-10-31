@@ -26,9 +26,9 @@ import { EARNED_METHODS, STANDING_LEAVE_CODES, isEarnedAccrualType, isEarnedMeth
 const here = __dirname;
 const read = (rel: string) => readFileSync(resolve(here, '..', rel), 'utf8');
 
-const PAGE = 'app/admin/leave-config/types/page.tsx';
-const TABS = 'app/admin/leave-config/types/leave-type-tabs.tsx';
-const FORMS = 'app/admin/leave-config/types/leave-type-sub-forms.tsx';
+const PAGE = 'app/(app)/admin/leave-config/types/page.tsx';
+const TABS = 'app/(app)/admin/leave-config/types/leave-type-tabs.tsx';
+const FORMS = 'app/(app)/admin/leave-config/types/leave-type-sub-forms.tsx';
 const DOM_TEST = 'test/r288-earned-sweep-warning.dom.test.tsx';
 
 let b: Base;

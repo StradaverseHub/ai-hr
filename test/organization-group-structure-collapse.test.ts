@@ -12,7 +12,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = path.resolve(__dirname, '..');
-const PAGE = path.join(ROOT, 'app/admin/organization/page.tsx');
+const PAGE = path.join(ROOT, 'app/(app)/admin/organization/page.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 const src = fs.readFileSync(PAGE, 'utf8');

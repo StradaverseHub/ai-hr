@@ -3,7 +3,7 @@
  * the MY pack contributes: one section per statutory body, mounted at its current URL (no user-visible
  * churn). The generic landing page renders the `overview` sections' links from this list, and each
  * config route resolves the acting company's pack and 404s unless it declares a section with the
- * route's key (`app/payroll/configuration/guard.ts`).
+ * route's key (`app/(app)/payroll/configuration/guard.ts`).
  *
  * Order matches `components/statutory-tabs.tsx` (epf, socso, skbbk, eis, pcb, hrdf). SKBBK is a routed
  * section but `overview: false` — it rides the SOCSO bands (674ff6a5) and is not independently

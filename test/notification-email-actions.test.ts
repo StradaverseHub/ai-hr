@@ -12,8 +12,8 @@ vi.mock('../core/notification-email',()=>({saveNotificationEmailPolicy:m.policy,
 vi.mock('../core/auth',()=>({retryAccountEmail:m.accountRetry}));
 vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:m.emailAdmin}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw new Error('REDIRECT '+p);}}));
-import { saveWorkflowEmailPolicy,retryWorkflowEmail,retryAccountEmailAction } from '../app/admin/settings/notifications/actions';
-import { saveMyWorkflowEmailPreferences } from '../app/me/notifications/actions';
+import { saveWorkflowEmailPolicy,retryWorkflowEmail,retryAccountEmailAction } from '../app/(app)/admin/settings/notifications/actions';
+import { saveMyWorkflowEmailPreferences } from '../app/(app)/me/notifications/actions';
 const session={tenantId:'tenant',userId:'server-user'},identity={issuer:'https://hr.test',subject:'server-subject',email:'verified@example.test',emailVerified:true};
 beforeEach(()=>{vi.clearAllMocks();m.session.mockResolvedValue(session);m.identity.mockResolvedValue(identity);m.internalIdentity.mockResolvedValue({...identity,issuer:'https://hr.test/auth/tenant',subject:'internal-subject'});m.workosIdentity.mockResolvedValue(null);m.internal.mockReturnValue(false);m.keycloak.mockReturnValue(true);m.policy.mockResolvedValue(undefined);m.preferences.mockResolvedValue(undefined);m.retry.mockResolvedValue(undefined);m.accountRetry.mockResolvedValue(undefined);m.emailAdmin.mockResolvedValue({session,actor:{...identity,...session}});});
 describe('workflow email server action identity boundaries',()=>{

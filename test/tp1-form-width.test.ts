@@ -66,8 +66,8 @@ import type { Tp1Counted, Tp1Row } from '../core/tax-relief';
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
 
-const MONTH_PAGE = 'app/payroll/transactions/tp1/[year]/[month]/page.tsx';
-const ESS_PAGE = 'app/me/tax-relief/page.tsx';
+const MONTH_PAGE = 'app/(app)/payroll/transactions/tp1/[year]/[month]/page.tsx';
+const ESS_PAGE = 'app/(app)/me/tax-relief/page.tsx';
 
 /** Every React element in a rendered tree, descending through EVERY element-valued prop. */
 function walk(node: unknown, acc: any[] = []): any[] {

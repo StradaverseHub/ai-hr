@@ -1,6 +1,6 @@
 'use client';
 import {useActionState,useEffect,useRef,useState} from 'react';
-import {previewTemplate} from '@/app/letters/templates/actions';
+import {previewTemplate} from '@/app/(app)/letters/templates/actions';
 import type {LetterChoice} from '@/lib/letter-choice';
 import type {LetterField} from '@/lib/letter-model';
 import {btnPrimary} from '@/components/ui';

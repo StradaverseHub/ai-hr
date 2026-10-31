@@ -25,7 +25,7 @@ import { reportPreview } from '../core/reporting';
 import { BORANG_8A_HEADER_KEYS, borang8AFrom } from '../lib/borang-8a';
 import { renderBorang8APdf } from '../lib/borang-8a-pdf';
 import { SOCSO_NOT_IN_SELECTION_REASON } from '../localization/my/statutory-month-wage';
-import { borang8AHasContributions } from '../app/payroll/borang-8a/query';
+import { borang8AHasContributions } from '../app/(app)/payroll/borang-8a/query';
 // r372 — THE THIRD SURFACE, COVERED BY ITS OWN TEST AND NOT BY INFERENCE. `socsoEisFileForBatch` is an
 // INDEPENDENT resolution of the same PERKESO population as the read above — its own batch query, its own
 // accumulator, its own download route — and r296 is what happened the last time the two resolved one field

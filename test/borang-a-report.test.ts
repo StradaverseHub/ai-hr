@@ -598,7 +598,7 @@ describe('r372 — an additional run and the Upah column', () => {
    * stored row: the regular run's payslip keeps the figure it was charged on, and the bonus run re-derives
    * the new one (`generatePayslips` reads the OPEN compensation row, `isNull(validTo)`).
    *
-   * THE GATE ITSELF IS NOT RE-ASSERTED HERE. `app/payroll/borang-a/shared.ts` already refuses the document
+   * THE GATE ITSELF IS NOT RE-ASSERTED HERE. `app/(app)/payroll/borang-a/shared.ts` already refuses the document
    * for ANY entry in this list, and test/borang-a.test.ts pins that decision on its source; what this case
    * has to prove is that the person REACHES the list, by name, with a reason that is true.
    */

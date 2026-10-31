@@ -8,7 +8,7 @@ import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import vi from '../messages/vi.json';
-import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from '../app/payroll/[batchId]/pending-overtime';
+import {PendingMoneyStatus,PendingOvertimeCashAmount,PendingOvertimeCashDetails} from '../app/(app)/payroll/[batchId]/pending-overtime';
 import type {PendingOvertimeCashEvidence} from '../packs/payroll/service';
 const catalogues={en,ms,zh,ta,th,vi};
 afterEach(cleanup);

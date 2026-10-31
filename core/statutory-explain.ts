@@ -1,7 +1,7 @@
 /**
  * Feedback 6b4ca488 part 2 — the working behind EPF, SOCSO, EIS, SKBBK, HRDF and PCB.
  *
- * THE GAP. app/payroll/pcb-detail (item 45df860a) explains ONE of the six: it reads the payslip's own
+ * THE GAP. app/(app)/payroll/pcb-detail (item 45df860a) explains ONE of the six: it reads the payslip's own
  * persisted `pcbMeta`, so an old slip explains itself with the rules that were true when it ran. For the
  * other five you could see the amount and nothing else — no wage the contribution was charged on, no
  * rate, no split between what came off take-home and what the employer funded. This module is the same

@@ -4,7 +4,7 @@ import {AllowanceEmployeePreview} from '../components/allowance-employee-preview
 import {emptyAllowanceRulesV4} from '../lib/attendance-allowance-rules';
 const {preview}=vi.hoisted(()=>({preview:vi.fn()}));
 vi.mock('next-intl',()=>({useTranslations:()=>((key:string,values?:Record<string,unknown>)=>key==='previewCount'?`matches ${values?.count}`:key)}));
-vi.mock('../app/admin/attendance-allowance/actions',()=>({previewAllowanceEmployeeSelection:preview}));
+vi.mock('../app/(app)/admin/attendance-allowance/actions',()=>({previewAllowanceEmployeeSelection:preview}));
 it('discards an old in-flight employee preview after criteria change',async()=>{
  let resolve!:(value:{rows:[];total:number;truncated:boolean})=>void;
  preview.mockReturnValueOnce(new Promise(done=>{resolve=done;}));

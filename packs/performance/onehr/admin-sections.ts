@@ -7,12 +7,12 @@ import type { OverviewModule } from './overview-model';
  * holds more than one page lists them in a row under the tabs (`?sub=` picks one; the first page is the tab's
  * own address). Every module section has the same three tabs, Overview · Run · Settings (P1-05 §7.3).
  *
- * The cards are today's cycle page (`app/performance/onehr/cycle-view.tsx`), in the order it renders them. A card
+ * The cards are today's cycle page (`app/(app)/performance/onehr/cycle-view.tsx`), in the order it renders them. A card
  * is one or more PARTS, and every part lands in exactly one page here (test/performance-admin-sections.test.ts).
  * Nothing is added or removed: the old page still renders every card whole (D8). A page may instead name an
  * existing route (`route`), which keeps its own address and is drawn inside the same area.
  *
- * Pure data and predicates only; app/performance/onehr/admin-cards.tsx renders the parts.
+ * Pure data and predicates only; app/(app)/performance/onehr/admin-cards.tsx renders the parts.
  */
 export const adminCards = [
   { id: 'cycleActions', parts: ['cycleActions'] },

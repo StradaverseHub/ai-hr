@@ -28,7 +28,7 @@ export async function moduleActionEntryAccess(supplied:SessionContext,entry:Modu
   if(entry==='org')return (await workforceCompanies(ctx,'maintain')).length>0||await positionArchiveEntryAvailable(ctx)||await departmentArchiveEntryAvailable(ctx)||await employeeIdTemplateStatusEntryAvailable(ctx)?'allowed':'refused';
   // Posting needs app.reward_admin for the unit's company (plus its payroll seat, checked per unit).
   if(entry==='rewards')return await administersRewardsForAnyCompany(ctx)?'allowed':'refused';
-  // Same audience as the native Approvals entry (app/layout.tsx canApprove = admin or manager), plus
+  // Same audience as the native Approvals entry (app/(app)/layout.tsx canApprove = admin or manager), plus
   // anyone the assigned-decision read itself currently finds an assigned leave task for.
   if(hasTeamAccess(ctx))return 'allowed';
   const choices=await readAssignedLeaveModuleActionChoices(ctx);

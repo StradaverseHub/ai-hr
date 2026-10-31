@@ -64,8 +64,8 @@ const strip = (src: string) =>
 const code = (rel: string) => strip(read(rel));
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-const VIEW = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
-const PAGE = 'app/payroll/pcb-detail/page.tsx';
+const VIEW = 'app/(app)/payroll/pcb-detail/pcb-detail-view.tsx';
+const PAGE = 'app/(app)/payroll/pcb-detail/page.tsx';
 const EXPLAIN = 'core/pcb-explain.ts';
 /** The banner this item's additions to core/pcb-explain.ts begin at. Source guards slice from HERE so the
  *  arithmetic the rest of that file legitimately does is never what they are asserting about. */

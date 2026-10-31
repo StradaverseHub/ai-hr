@@ -7,7 +7,7 @@ import {locales,localeNames} from '@/i18n/config';
 import {Button,inputCls} from '@/components/ui';
 import {HOME_QUICK_ACTIONS,HOME_TASK_KINDS,HOME_TEMPLATE_FIELDS,type HomeQuickAction} from '@/lib/employee-home';
 import type {EmployeeHomeConfigurationView} from '@/core/employee-home-configuration';
-import {saveHomeConfigurationAction,type HomeConfigurationSaveState} from '@/app/admin/settings/dashboard/home-actions';
+import {saveHomeConfigurationAction,type HomeConfigurationSaveState} from '@/app/(app)/admin/settings/dashboard/home-actions';
 
 export function HomeConfigurationEditor({initial}:{initial:EmployeeHomeConfigurationView}){
  const t=useTranslations('employeeHome.configuration'),names=useTranslations('employeeHome.templateNames'),quick=useTranslations('employeeHome.quickActions'),task=useTranslations('employeeHome.taskNames');

@@ -361,7 +361,7 @@ describe('Leave Details panel: the employee and HR inquiry owners feed summary +
     expect(page).toContain('<UpcomingLeave rows={upcoming} locale={locale} />');
     // r378 shares the owned History/upcoming projection; Overview retains the upcoming renderer.
     // UPDATED BY r397: the page takes `upcoming` from loadOwnUpcomingLeave (via its loader,
-    // app/leave/my-leave-data.ts) — the same Upcoming projection loadOwnLeaveHistory builds, without the history
+    // app/(app)/leave/my-leave-data.ts) — the same Upcoming projection loadOwnLeaveHistory builds, without the history
     // card's reads. Both loaders share the employment-id helper and the Upcoming read, so both are pinned.
     expect(page).toContain('upcoming,');
     expect(read('/app/leave/my-leave-data.ts')).toContain('const upcomingP = loadOwnUpcomingLeave({ session, me, sp });');

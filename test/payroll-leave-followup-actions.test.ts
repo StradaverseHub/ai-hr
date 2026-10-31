@@ -4,7 +4,7 @@ vi.mock('../lib/authz', () => ({ requireAdmin: m.admin }));
 vi.mock('../packs/payroll/service', () => ({ resolvePayrollLeaveException: m.resolve }));
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidate }));
 vi.mock('next/navigation', () => ({ redirect: (path: string) => { throw new Error(`REDIRECT ${path}`); } }));
-import { resolveLeavePayrollExceptionAction } from '../app/payroll/[batchId]/leave-followup-actions';
+import { resolveLeavePayrollExceptionAction } from '../app/(app)/payroll/[batchId]/leave-followup-actions';
 const batchId = '11111111-2222-4333-8444-555555555555';
 const actor = { tenantId: 'trusted-tenant', userId: 'trusted-user' };
 function form() {

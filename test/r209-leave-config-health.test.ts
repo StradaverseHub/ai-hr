@@ -58,7 +58,7 @@ import {
 } from '../core/entitlement-template';
 // The HR grid + its export both render from this one helper, so a row that contradicts itself here
 // contradicts itself in the downloaded file too.
-import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows } from '../app/(app)/leave/employee-balances/rows';
 import {
   addDaysIso,
   isBlockingFinding,
@@ -390,24 +390,24 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
       for (const k of statusKeys) {
         expect(leaf(msgs(loc), `admin.entitlementTemplates.${k}`), `${loc}.${k}`).toBeTruthy();
       }
-      // The two captions on the balance grids. `app/leave/employee-balances/page.tsx` reads three
+      // The two captions on the balance grids. `app/(app)/leave/employee-balances/page.tsx` reads three
       // namespaces and `leave-balance-table.tsx` reads two, so neither is checked by i18n-coverage.
       for (const k of ['leave.inquiry.resolvedEntitlementTable', 'leave.inquiry.sharedBalanceWith', 'me.leaveBalanceTable.sharedBalanceWith']) {
         expect(leaf(msgs(loc), k), `${loc}.${k}`).toBeTruthy();
       }
     }
     // …and the surfaces really do ask for them, or the keys above are six catalogues of dead strings.
-    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('resolvedEntitlementTable'");
-    expect(read('app/leave/employee-balances/page.tsx')).toContain("tInq('sharedBalanceWith'");
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain("tInq('resolvedEntitlementTable'");
+    expect(read('app/(app)/leave/employee-balances/page.tsx')).toContain("tInq('sharedBalanceWith'");
     expect(read('components/leave/leave-balance-table.tsx')).toContain("tt('sharedBalanceWith'");
   });
 
   it('the two mounts render it: one type inside its own step, every type on the Entitlements page', () => {
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     /**
      * r270 (5527ce8f) — UPDATED, NOT DELETED. This pair of assertions pinned the exact literals of both
      * arms of a TWO-arm ternary. There are three states now, because the Entitlement tables tab drew a
-     * second copy of a card `app/admin/leave-config/types/page.tsx` already renders at page level, and
+     * second copy of a card `app/(app)/admin/leave-config/types/page.tsx` already renders at page level, and
      * asks for it to be suppressed. Both original literals are still asserted — the two arms did not
      * change, only what is tested before them — and the suppressed state is pinned beside them so the
      * flag cannot be quietly dropped back to today's two-arm shape.
@@ -423,8 +423,8 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
     expect(block).toContain('showConfigHealth = true');
     expect(block.indexOf('!showConfigHealth ? null')).toBeLessThan(block.indexOf('<LeaveConfigHealthNotice'));
     // …and exactly one mount suppresses it: the tab that has the duplicate, never the tab that owns it.
-    expect(read('app/admin/leave-config/entitlement-tables/page.tsx')).toContain('showConfigHealth={false}');
-    expect(read('app/admin/leave-config/types/page.tsx')).not.toContain('showConfigHealth={false}');
+    expect(read('app/(app)/admin/leave-config/entitlement-tables/page.tsx')).toContain('showConfigHealth={false}');
+    expect(read('app/(app)/admin/leave-config/types/page.tsx')).not.toContain('showConfigHealth={false}');
     // ⚠️ THE "no rule points here" MARKER IS PER LEAVE TYPE, not one boolean for the whole table. The
     // unfiltered mount lists every type's tables together, so a single flag would either warn on a healthy
     // single-table type or stay silent on a broken multi-table one — and it is the same set the card above
@@ -451,17 +451,17 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
     // types tab keeps the DERIVATION (the rail's per-type "reaches nobody" badge reads it) and loses the
     // CARD — and both halves are asserted, so a half-done move that leaves two copies, or one that takes
     // the card away without giving it an address, fails here.
-    const page = read('app/admin/leave-config/types/page.tsx');
+    const page = read('app/(app)/admin/leave-config/types/page.tsx');
     expect(page, 'the per-type badge still reads this derivation').toContain('leaveConfigHealthAll(');
     expect(page, 'the full listing moved to its own page; two copies drift').not.toContain('<LeaveConfigHealthCard');
-    const moved = read('app/admin/leave-config/balance-health/page.tsx');
+    const moved = read('app/(app)/admin/leave-config/balance-health/page.tsx');
     expect(moved).toContain('leaveConfigHealthAll(');
     expect(moved).toContain('<LeaveConfigHealthCard rows={rows} />');
     // Exactly one page-level mount of the card in the whole module, so "it only changed address" holds.
     expect(
-      pagesUnder('app/admin/leave-config').filter((p) => read(p).includes('<LeaveConfigHealthCard')),
+      pagesUnder('app/(app)/admin/leave-config').filter((p) => read(p).includes('<LeaveConfigHealthCard')),
       'the full listing must live at exactly one address',
-    ).toEqual(['app/admin/leave-config/balance-health/page.tsx']);
+    ).toEqual(['app/(app)/admin/leave-config/balance-health/page.tsx']);
   });
 
   /**
@@ -472,7 +472,7 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
    * is the same outcome as the silence r209 replaced.
    */
   it('the loader supplies the three facts the derivation cannot compute for itself', () => {
-    const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
+    const block = read('app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
     expect(block).toContain('accrualMethod: x.accrualMethod ?? null');
     expect(block).toContain('accrualUnconfigured: x.accrualUnconfigured != null');
     expect(block).toContain('activeGrades: activeGrades.map((g) => ({ id: g.id, name: g.name }))');
@@ -630,7 +630,7 @@ describe('r209 · recalculate on save, instead of remembering to press Generate 
    * And it must sit BEFORE `saved(...)`: `redirect()` works by throwing, so anything after it never runs.
    */
   it('all eight entitlement writers recompute — after the service call, before the redirect', () => {
-    const src = read('app/admin/leave/entitlements/templates/actions.ts');
+    const src = read('app/(app)/admin/leave/entitlements/templates/actions.ts');
     // r210 added the two deletes. They recompute for the same reason a retire does: the employees the
     // removed lineage reached resolve to NO OPINION afterwards, which the kernel posts as a delta of 0
     // rather than clawing days back — and it is the read that re-derives the health card.
@@ -864,12 +864,12 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
       // r302 (6c9802c9): the employee's own balances are read per leave year in core/my-leave.ts, which is
       // where the pool lookup moved with them (the page no longer resolves any breakdown itself).
       'core/my-leave.ts',
-      'app/leave/employee-balances/rows.ts',
+      'app/(app)/leave/employee-balances/rows.ts',
     ]) {
       expect(read(rel), rel).toContain('balanceStoryTypeId(');
     }
-    expect(read('app/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
-    const inquiry = read('app/leave/employee-balances/page.tsx');
+    expect(read('app/(app)/leave/employee-balances/inquiry-data.ts')).toContain('await employeeBalanceRows(ctx, employmentId, query.asOf,');
+    const inquiry = read('app/(app)/leave/employee-balances/page.tsx');
     const panelStart = inquiry.indexOf('<EntitlementBreakdown');
     const panelEnd = inquiry.indexOf('/>', panelStart);
     expect(panelStart, 'HR inquiry retains the actual explanation panel').toBeGreaterThan(-1);
@@ -878,7 +878,7 @@ describe('r209 · the shared pool reads as ONE figure, and refuses when it is sp
     expect(panel.length).toBeGreaterThan(200);
     expect(panel).toContain('data={r.breakdown}');
     expect(panel).toContain('summary={{ available: r.available }}');
-    const personnel = read('app/admin/personnel/[employmentId]/page.tsx');
+    const personnel = read('app/(app)/admin/personnel/[employmentId]/page.tsx');
     expect(personnel).not.toContain('<EntitlementBreakdown');
     expect(personnel).not.toMatch(/\bleaveBalances\(/);
     // …and it stays DB-free, so the client grids can keep sharing one definition of "whose figure is this".

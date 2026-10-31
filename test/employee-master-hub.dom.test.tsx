@@ -16,10 +16,10 @@ vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('../core/employee-master-reports', () => ({ listEmployeeMasterReports: list }));
 vi.mock('../core/custom-reports', () => ({ listCustomReports: async () => [] }));
 vi.mock('../core/report-registry', () => ({ REPORT_CATEGORIES: ['master'], datasetsForCategory: () => [] }));
-vi.mock('../app/reports/employee-master/MasterReportList', () => ({ MasterReportList: ({ reports }: { reports: { id: string; name: string }[] }) => <div>{reports.map(report => <div key={report.id} data-testid="visible-master-report">{report.name}</div>)}</div> }));
-vi.mock('../app/reports/ReportRowActions', () => ({ ReportRowActions: () => null }));
+vi.mock('../app/(app)/reports/employee-master/MasterReportList', () => ({ MasterReportList: ({ reports }: { reports: { id: string; name: string }[] }) => <div>{reports.map(report => <div key={report.id} data-testid="visible-master-report">{report.name}</div>)}</div> }));
+vi.mock('../app/(app)/reports/ReportRowActions', () => ({ ReportRowActions: () => null }));
 vi.mock('../components/ui', () => ({ Card: ({ children }: React.PropsWithChildren) => <section>{children}</section>, PageHeader: ({ title }: { title: string }) => <h1>{title}</h1>, ErrorBanner: () => null }));
-import Page from '../app/reports/page';
+import Page from '../app/(app)/reports/page';
 const principal = { actor: 'Fictional scoped HR' }, companies = ['00000000-0000-4000-8000-000000000001'];
 beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: principal, scopeIds: companies }); });
 

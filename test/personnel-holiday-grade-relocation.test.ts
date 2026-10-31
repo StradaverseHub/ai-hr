@@ -1,4 +1,4 @@
-import {saveHolidayCalendarAssignmentAction} from '../app/admin/personnel/[employmentId]/holiday-calendar-actions';
+import {saveHolidayCalendarAssignmentAction} from '../app/(app)/admin/personnel/[employmentId]/holiday-calendar-actions';
 /**
  * Item 52a30630 — Holiday Calendar + Grade relocation (Personnel admin detail page).
  *
@@ -64,8 +64,8 @@ vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) =>
 import {
   setEmploymentHolidayCalendarAction,
   setPersonAction,
-} from '../app/admin/personnel/[employmentId]/actions';
-import * as personnelActions from '../app/admin/personnel/[employmentId]/actions';
+} from '../app/(app)/admin/personnel/[employmentId]/actions';
+import * as personnelActions from '../app/(app)/admin/personnel/[employmentId]/actions';
 
 let base: Base;
 
@@ -218,7 +218,7 @@ describe('Item 52a30630 — Holiday Calendar → Attendance, Grade → Leave', (
     // one of the page's `//` notes contains the characters that open a block comment, and stripping blocks
     // first makes that note swallow real JSX. (Same stripper as test/personnel-tab-save-tabs.test.ts.)
     const src = readFileSync(
-      new URL('../app/admin/personnel/[employmentId]/page.tsx', import.meta.url),
+      new URL('../app/(app)/admin/personnel/[employmentId]/page.tsx', import.meta.url),
       'utf8',
     );
     const page = src

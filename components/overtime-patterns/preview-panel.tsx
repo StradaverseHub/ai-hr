@@ -7,7 +7,7 @@ import {HR_LOCAL_TZ} from '@/lib/hr-date';
 import {OVERTIME_SAMPLE_INPUT_FIELDS,OVERTIME_NUMERIC_FIELDS,OVERTIME_LIMITS,type OvertimeEvaluation,type OvertimePattern} from '@/lib/overtime-pattern-model';
 import type {OvertimeSampleDraft} from '@/lib/overtime-pattern-ui';
 import type {OvertimePatternSetup} from '@/packs/attendance/service';
-import {previewOvertimeEmployeeAction,previewOvertimeSampleAction,readOvertimeTransferAction,calculateOvertimeDayAction,transferOvertimePayrollAction,overtimeChoicesAction,type OvertimeActionFailure} from '@/app/admin/attendance/settings/overtime-patterns/actions';
+import {previewOvertimeEmployeeAction,previewOvertimeSampleAction,readOvertimeTransferAction,calculateOvertimeDayAction,transferOvertimePayrollAction,overtimeChoicesAction,type OvertimeActionFailure} from '@/app/(app)/admin/attendance/settings/overtime-patterns/actions';
 import {OvertimeCalculationResult,OvertimeDurationResult,overtimeMoneyText} from './calculation-result';
 import {useOvertimeChoiceText} from './choice-label';
 import {ruleId,type OvertimeChoices} from './rule-controls';

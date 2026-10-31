@@ -267,7 +267,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       // screen, which has carried its own scopedAdmin matrix column since 20c699f8. ⚠️ The first version of
       // this note said an admin could have leaveEmployeeBalances "revoked in Security & Permissions"; the
       // verify pass showed that cannot happen — canReach is derived from the guard and the access grid is
-      // presentational. The real, pre-existing exposure is app/layout.tsx's wider isAdmin (it ORs in the
+      // presentational. The real, pre-existing exposure is app/(app)/layout.tsx's wider isAdmin (it ORs in the
       // payroll and perf-comp partners), which shows every adminOnly row to a non-admin partner who is then
       // redirected at the page. Disclosed, predates this row, not fixed here with a bespoke flag.
       '/leave/employee-balances': 'leaveEmployeeBalances',
@@ -302,7 +302,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // THE ROUTE IS UNMOVED. Saved links, the export links already in circulation and the rail's own hrefs
     // all depend on this address; the row is a new DOOR, not a new address.
     expect(INQUIRY_ROW.href).toBe('/leave/employee-balances');
-    expect(exists('app/leave/employee-balances/page.tsx')).toBe(true);
+    expect(exists('app/(app)/leave/employee-balances/page.tsx')).toBe(true);
     // It stays lit on the rail's other admin tab, so stepping between them does not darken the menu.
     expect(INQUIRY_ROW.ownedSubpaths).toEqual(['/leave/employee-records']);
     // Highlighting is not a gate: adding one here would be a permission invented in the nav layer.
@@ -310,7 +310,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(INQUIRY_ROW.managerUp, 'ownedSubpaths must not have become a gate').toBeUndefined();
     // It is NOT a Leave Config screen: no page under the module directory, and no map group (its own case
     // below and test/leave-config-map.test.ts pin the map half).
-    expect(exists('app/admin/leave-config/employee-balances/page.tsx')).toBe(false);
+    expect(exists('app/(app)/admin/leave-config/employee-balances/page.tsx')).toBe(false);
     expect(LEAVE_CONFIG_MAP.flatMap((g) => g.items.map((i) => i.href))).not.toContain(INQUIRY_ROW.href);
     expect(LEAVE_CONFIG_MAP.map((g) => g.navKey)).not.toContain('employeeLeaveInquiry');
   });
@@ -325,7 +325,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // question you ask about entitlements, and it is the tab it left that sits above it.
     expect(DESTINATIONS.children.map((c) => c.labelKey).slice(0, 2)).toEqual(['leaveEntitlements', 'leaveBalanceHealth']);
     // A real page, guarded, with no tabs of its own to own.
-    expect(exists('app/admin/leave-config/balance-health/page.tsx')).toBe(true);
+    expect(exists('app/(app)/admin/leave-config/balance-health/page.tsx')).toBe(true);
     expect(BALANCE_HEALTH_ROW.ownedSubpaths ?? []).toEqual([]);
     // Highlighting is not a gate: the Administration group is gated wholesale and the page calls
     // requireAdmin() for itself. A flag here would be a permission invented in the nav layer.
@@ -358,7 +358,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
       'leaveEarnedAccrual',
     ]);
     // A real page, guarded, with no tabs of its own to own.
-    expect(exists('app/admin/leave-config/earned-accrual/page.tsx')).toBe(true);
+    expect(exists('app/(app)/admin/leave-config/earned-accrual/page.tsx')).toBe(true);
     expect(EARNED_ACCRUAL_ROW.ownedSubpaths ?? []).toEqual([]);
     // Highlighting is not a gate: the Administration group is gated wholesale and the page calls
     // requireAdmin() for itself. A flag here would be a permission invented in the nav layer.
@@ -447,7 +447,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   it('/admin/leave survives as an UNGUARDED redirect stub — bookmarks land, the grid stays honest', () => {
-    const stub = read('app/admin/leave/page.tsx');
+    const stub = read('app/(app)/admin/leave/page.tsx');
     expect(stub, 'the route file must still exist').toContain('redirect(');
     // a6fe37fc Round 5 — repointed at the leave TYPE screen's new address IN THE SAME COMMIT that made
     // `/admin/leave/entitlements` a stub of its own. A stub whose destination is another stub still
@@ -465,7 +465,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   it('/admin/leave/entitlements survives as an UNGUARDED redirect stub to the new leave TYPE screen', () => {
     // a6fe37fc Round 5 — the most-bookmarked address in the area, so this stub matters more than the
     // others and is asserted the same way.
-    const stub = read('app/admin/leave/entitlements/page.tsx');
+    const stub = read('app/(app)/admin/leave/entitlements/page.tsx');
     expect(stub).toContain('redirect(');
     expect(stub).toContain('/admin/leave-config/types');
     expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
@@ -489,7 +489,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // 3fb1a611 (r299) — UPDATED, NOT LOOSENED: the replacement-leave policy left Company rules for Leave Config ›
     // Leave Credit's Rules tab, so the stub now lands there in one hop (a stub aimed at a page that no longer
     // holds the setting would deliver the bookmark to nothing).
-    const stub = read('app/admin/leave/replacement/page.tsx');
+    const stub = read('app/(app)/admin/leave/replacement/page.tsx');
     expect(stub).toContain('redirect(');
     expect(stub).toContain("redirect(`/admin/leave-config/leave-credit/rules${qs ? `?${qs}` : ''}`)");
     expect(stub).not.toContain("redirect(`/admin/leave-config/company-rules");
@@ -506,7 +506,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     // a6fe37fc Round 5, the last of the ten. Same contract as every other stub: the bookmark lands, the
     // stub carries no page guard, the route left lib/permissions.ts in the same commit, and the label key
     // retires WITH the row rather than lingering as an untranslatable orphan.
-    const stub = read('app/admin/leave/payroll/page.tsx');
+    const stub = read('app/(app)/admin/leave/payroll/page.tsx');
     expect(stub).toContain('redirect(');
     expect(stub).toContain('/admin/leave-config/company-rules');
     expect(stub).not.toMatch(/requireAdmin|scopedAdmin|scopedSession|requirePayrollAccess/);
@@ -548,7 +548,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
   });
 
   it('/admin/leave/audit survives as an UNGUARDED redirect stub to the central Audit Trail', () => {
-    const stub = read('app/admin/leave/audit/page.tsx');
+    const stub = read('app/(app)/admin/leave/audit/page.tsx');
     expect(stub, 'the route file must still exist').toContain('redirect(');
     // The destination is the one audit page, with the Leave area already chosen — a bookmark opens the
     // same view it always did, not an unfiltered firehose.
@@ -559,7 +559,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     const permissions = read('lib/permissions.ts');
     expect(permissions).not.toContain("'/admin/leave/audit',");
     // The export route retires the same way, so an old download link still returns a file.
-    const exportStub = read('app/admin/leave/audit/export/route.ts');
+    const exportStub = read('app/(app)/admin/leave/audit/export/route.ts');
     expect(exportStub).toContain('redirect(');
     expect(exportStub).toContain('/admin/audit/export');
     expect(exportStub).toContain("out.set('module', 'leave')");

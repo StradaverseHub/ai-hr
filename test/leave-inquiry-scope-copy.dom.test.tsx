@@ -31,7 +31,7 @@ vi.mock('../packs/leave/service',()=>({
   replacementRequestAvailability:async()=>({allowed:false}),
   listEntitlementRecalcAudit:historyReads,
 }));
-vi.mock('../app/leave/employee-balances/inquiry-data',()=>({inquiryBalancePage:async()=>({rows:[],total:0})}));
+vi.mock('../app/(app)/leave/employee-balances/inquiry-data',()=>({inquiryBalancePage:async()=>({rows:[],total:0})}));
 // These controls are outside the copy contract. The actual page, header, shell and picker render below.
 vi.mock('../components/filter-panel',()=>({FilterChips:()=>null,FilterPanel:()=>null}));
 vi.mock('../components/pager',()=>({Pager:()=>null}));
@@ -40,9 +40,9 @@ vi.mock('../components/leave/EntitlementBreakdown',()=>({EntitlementBreakdown:()
 vi.mock('../components/leave/replacement-availability-notice',()=>({ReplacementAvailabilityNotice:()=>null}));
 vi.mock('../components/leave/table-fullscreen',()=>({TableFullscreen:({children}:{children:ReactNode})=><>{children}</>}));
 vi.mock('../components/leave/admin-cancel-leave-dialog',()=>({AdminCancelLeaveDialog:()=>null}));
-vi.mock('../app/leave/actions',()=>({adminCancelLeaveAction:vi.fn()}));
-import BalancesPage from '../app/leave/employee-balances/page';
-import RecordsPage from '../app/leave/employee-records/page';
+vi.mock('../app/(app)/leave/actions',()=>({adminCancelLeaveAction:vi.fn()}));
+import BalancesPage from '../app/(app)/leave/employee-balances/page';
+import RecordsPage from '../app/(app)/leave/employee-records/page';
 
 // Resolve async server children before mounting the page in the client-only test renderer.
 async function settle(node:ReactNode):Promise<ReactNode>{

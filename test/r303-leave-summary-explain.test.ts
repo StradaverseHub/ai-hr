@@ -37,7 +37,7 @@ import { leaveEntitlementBreakdown, type LeaveEntitlementBreakdown } from '../co
 import { applyLeaveAdjustmentBatch } from '../core/leave-adjustment';
 import { createEligibilityRule, createEntitlementTemplate } from '../core/entitlement-template';
 import { grantLeaveCredit, reverseLeaveCredit, runToilExpiry, setToilPolicy } from '../core/toil';
-import { employeeBalanceRows } from '../app/leave/employee-balances/rows';
+import { employeeBalanceRows } from '../app/(app)/leave/employee-balances/rows';
 import type { EntitlementBreakdownData } from '../components/leave/EntitlementBreakdown';
 import {
   LEAVE_SUMMARY_EXPLAIN_KEYS,

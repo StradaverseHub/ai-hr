@@ -341,7 +341,7 @@ describe('2983802f §3 · the new columns are validated, per row and per column'
 
   it('passport_issuing_country is checked against the NATIONALITY list, not the country list', async () => {
     // The Passport card's Issuing Country picker is fed from the tenant's NATIONALITY catalog
-    // (app/admin/personnel/[employmentId]/page.tsx → IdentityFields `countryOptions`), so the value the
+    // (app/(app)/admin/personnel/[employmentId]/page.tsx → IdentityFields `countryOptions`), so the value the
     // product itself stores in this column is a demonym — "Malaysian", not "Malaysia". The separate
     // passport_issuing_country_code field carries the ISO code precisely because one is not derivable
     // from the other (e4b541c6). Checking this column against `country` inverted the whole rule: it

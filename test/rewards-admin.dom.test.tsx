@@ -10,12 +10,12 @@ vi.mock('next/link', () => ({ default: ({ children, ...props }: any) => <a {...p
 vi.mock('../lib/scope', () => ({ scopedAdmin: ports.scopedAdmin, scopedSession: ports.scopedSession }));
 vi.mock('../lib/authz', () => ({ requireModule: ports.requireModule }));
 vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRewardReviewStatus: ports.reviewStatus, rewardCoverageForUnits: async () => [], rewardSetupChoices: ports.choices, getRewardConfiguration: ports.configuration, getRewardSeniorMembership: vi.fn(), rewardSharedPolicyChoices: ports.shared, rewardPolicyMemberships: ports.memberships, getRewardCalendar: async () => ({ revision: 1, canEdit: true, values: { due: { bu: '2026-12-11' }, caseDue: null, offcycleDays: {} } }), rewardCalendarStages: ['bu'], rewardOffcycleSlaStages: ['bg'] }));
-vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
-vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
-import AdminPage from '../app/admin/rewards/page';
-import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
-import ReviewsPage from '../app/rewards/page';
-import { PolicyForm, RewardPolicyFields } from '../app/rewards/[unitId]/policy-form';
+vi.mock('../app/(app)/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
+vi.mock('../app/(app)/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
+import AdminPage from '../app/(app)/admin/rewards/page';
+import ConfigurationPage from '../app/(app)/admin/rewards/[unitId]/page';
+import ReviewsPage from '../app/(app)/rewards/page';
+import { PolicyForm, RewardPolicyFields } from '../app/(app)/rewards/[unitId]/policy-form';
 import { defaultPolicy } from '../packs/rewards/model';
 import { todayInKualaLumpur } from '../lib/hr-date';
 

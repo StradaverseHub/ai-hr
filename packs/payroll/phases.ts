@@ -6,10 +6,10 @@
  *   - the sidebar fly-out (packs/payroll/index.ts) ran  Guide → Payroll Process → Transactions →
  *     Transaction View → Reports → Settings, i.e. it opened with the FINISHED-runs workbench and
  *     closed with the settings you have to complete before you can run anything at all;
- *   - the Workflow Guide (app/payroll/guide/page.tsx, RETIRED by efe1d230 — see PAYROLL_NAV_PHASE) ran
+ *   - the Workflow Guide (app/(app)/payroll/guide/page.tsx, RETIRED by efe1d230 — see PAYROLL_NAV_PHASE) ran
  *     master data → transactions → validation → process → review → finalize, which is the order the
  *     work actually happens in;
- *   - the Process wizard (app/payroll/process/wizard.tsx) showed a five-stage rail of its own —
+ *   - the Process wizard (app/(app)/payroll/process/wizard.tsx) showed a five-stage rail of its own —
  *     Preparation → Validation → Process → Review → Finalize — whose stage names and stage COUNT
  *     matched neither of the other two, so "stage 2 of 5" in the wizard and "phase 3 of 6" in the
  *     guide named the same moment with different numbers.

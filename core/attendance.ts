@@ -241,7 +241,7 @@ export class OutsideGeofenceError extends Error {
        * beside the measured distance. 1fff489c widened this from `number` to `number | null` for exactly
        * one case: zero assigned sites, where there is no nearest site and therefore no radius to name. It
        * travels with distanceM: both are null together, and the message only quotes either when they are
-       * not (app/attendance/clock/actions.ts localizeClockError).
+       * not (app/(app)/attendance/clock/actions.ts localizeClockError).
        */
       radiusM: number | null;
       punch: 'in' | 'out';
@@ -3025,7 +3025,7 @@ export type AttendanceRangeRow = {
  * is worse; raising it would move the cliff without removing it. What was wrong is that no caller could
  * SEE the cliff, so the fix is to publish it: a caller that lets a human pick the range bounds the range
  * against THIS constant and refuses politely, rather than issuing a read it knows will be cut short.
- * app/attendance/my-records/range.ts does exactly that, and test/attendance-overview-round1.test.ts pins
+ * app/(app)/attendance/my-records/range.ts does exactly that, and test/attendance-overview-round1.test.ts pins
  * the two halves together — that the loop really does truncate at this number, and that the screen refuses
  * before it can.
  */
@@ -5472,7 +5472,7 @@ function overtimePlanFilters(employmentId: string, f: OvertimePlanFilter) {
  *
  * ⚠️ THE COUNTS MUST NOT BE COUNTED OFF THE LIST, and that is the whole reason this exists. The list is
  * paged and capped (`ALL_ROW_CEILING`) and returns no total, so a chip counted over the fetched rows says
- * 25 when the truth is 300 — the exact defect documented at app/feedback/page.tsx, which on production
+ * 25 when the truth is 300 — the exact defect documented at app/(app)/feedback/page.tsx, which on production
  * painted "All 517" over a list of 200.
  *
  * Grouped by status and filtered by everything EXCEPT status, so one read answers all five chips, the
@@ -5814,7 +5814,7 @@ async function applyApprovedOtPlanTx(
  *    than reworded, with the correction beside it, so a reader can see which half of it the code earned and
  *    when — and so nobody quietly re-derives the claim from the comment again.
  *
- * TYPED, not raw English `throw`s, because app/me/actions.ts surfaces `Error.message` straight into
+ * TYPED, not raw English `throw`s, because app/(app)/me/actions.ts surfaces `Error.message` straight into
  * `?error=` and ErrorBanner prints it verbatim — so a raw throw is English for a Tamil, Thai, Malay,
  * Vietnamese or Chinese employee. Each carries `date` so the action can interpolate it into the
  * localized sentence (`me.otPlanApprovedNotCounted` / `me.otAlreadyCountedForDate`).
@@ -5961,8 +5961,8 @@ export type MyAttendanceRequestRow = {
  * THE CLAMP IS NOT REMOVED. Removing it trades a silent truncation for an unbounded read; raising it moves
  * the cliff without removing it. What was wrong is that no caller could SEE the cliff. So it is published:
  * a caller that will show or serialise the rows bounds itself against THIS constant and refuses politely
- * rather than handing over a short answer. app/attendance/request-status/rows.ts does that, and both the
- * screen and app/attendance/request-status/export/route.ts read it from there.
+ * rather than handing over a short answer. app/(app)/attendance/request-status/rows.ts does that, and both the
+ * screen and app/(app)/attendance/request-status/export/route.ts read it from there.
  *
  * ⚠️ WHY THE CLAMP IS `+ 1` AND THE CEILING IS NOT. A caller cannot tell a complete list of exactly
  * `MY_ATTENDANCE_REQUEST_ROW_CEILING` rows from a truncated one, so it must be able to ask for ONE row past
@@ -5979,7 +5979,7 @@ export const MY_ATTENDANCE_REQUEST_ROW_CEILING = 500;
  * all the collapsed list on /me needed. The stage-one screen has to show what was asked for, when it was
  * filed, where it stands and whether it can still be taken back, and it has to be filterable by status —
  * so the columns and the ceiling grew here rather than in a second near-identical query beside it. The one
- * previous caller (app/attendance/requests) is the screen doing the asking.
+ * previous caller (app/(app)/attendance/requests) is the screen doing the asking.
  *
  * NOT merged with myOvertimePlans, deliberately: that one is OT-ONLY by construction (the Self Overtime
  * section is exactly the Plan OT list, moved in whole and still showing planned window, category and
@@ -6115,7 +6115,7 @@ export class AttendanceWithdrawRefusedError extends Error {
  * r363 — THAT FIRST LINE USED TO READ "the employee CANCELS their own clock-time attendance request",
  * and only the VERB moved. The screen calls this act "Withdraw" for a correction as well as for an
  * overtime plan now, because only the subject can ever reach this state (see `assertOwnCorrectionTx`
- * below and `statusLabel` in app/attendance/request-ui.tsx), and the refusal below follows the screen.
+ * below and `statusLabel` in app/(app)/attendance/request-ui.tsx), and the refusal below follows the screen.
  * The NAMES are untouched: the stored status is still `cancelled` and so is this function.
  *
  * WHY THIS IS NOT cancelPlannedOvertime. The subject rule is identical and is shared below, but the STATE

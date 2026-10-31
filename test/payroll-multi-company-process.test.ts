@@ -54,7 +54,7 @@ describe('multi-company payroll — pure helpers', () => {
     for(const code of ['not_found','invalid_period','stale_context'] as const)expect(reasonForPayrollError(new TaxSelectionError(code))).toBe('SYSTEM_VALIDATION_ERROR');
     expect(reasonForPayrollError(new Error('private SQL failure'))).toBe('SYSTEM_VALIDATION_ERROR');expect(reasonForPayrollError(null)).toBe('SYSTEM_VALIDATION_ERROR');
     expect(reasonForPayrollError(new Error('No localization pack for MY'))).toBe('NO_PAYROLL_CONFIG');
-    const actions=readFileSync(new URL('../app/payroll/process/actions.ts',import.meta.url),'utf8');
+    const actions=readFileSync(new URL('../app/(app)/payroll/process/actions.ts',import.meta.url),'utf8');
     const orchestration=readFileSync(new URL('../core/payroll-run-group.ts',import.meta.url),'utf8');
     expect(actions).toContain('reason: reasonForPayrollError(e)');expect(orchestration).toContain('reason: reasonForPayrollError(e)');
   });

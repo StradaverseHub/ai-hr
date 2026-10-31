@@ -24,7 +24,7 @@
  *     enum values for states nothing can produce.
  *
  * Plus an i18n check the shared guard structurally cannot do here: `test/i18n-coverage.test.ts` check C
- * SKIPS any file that binds more than one namespace, and app/payroll/page.tsx binds two
+ * SKIPS any file that binds more than one namespace, and app/(app)/payroll/page.tsx binds two
  * (`payroll.list` + `payroll.batch`, the latter so the Reset confirm copy is written once). Every key
  * this dashboard adds therefore sits in exactly the blind spot the guard is documented to have — so the
  * keys are resolved here, per binding, across all six catalogs.
@@ -56,7 +56,7 @@ import {
   summarise,
   toggleMonth,
   yearOptions,
-} from '../app/payroll/dashboard-logic';
+} from '../app/(app)/payroll/dashboard-logic';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -107,7 +107,7 @@ describe('7f6ca478 — dashboard filter arithmetic (pure)', () => {
   it('e440991b point 7 — the month default comes off the TENANT clock, asserted at 00:30 MYT on 1 January', () => {
     // THE BUG THIS PINS. 2026-01-01T00:30+08:00 is 2025-12-31T16:30Z. `new Date().getMonth()` on a UTC
     // host says December; the tenant is in January. The dashboard's YEAR default already takes this
-    // care (app/payroll/page.tsx says so in as many words), and a month default that did not would
+    // care (app/(app)/payroll/page.tsx says so in as many words), and a month default that did not would
     // open New Year's morning on December of the year the reader is no longer in — for eight hours,
     // every year, on the morning payroll is most likely to be opened.
     const newYearMorningMYT = new Date('2025-12-31T16:30:00.000Z');
@@ -252,20 +252,20 @@ describe('7f6ca478 — the three statuses in the request that do not exist stay 
 
   // 0b326d5f (r256) — UPDATED, NOT WEAKENED. The listing now renders a fourth PILL, "Reprocess
   // Required", for a processed run carrying `needs_recalc_at`. That is not an invented status and this
-  // case still holds it out: the derived state is `processed` + a real column (app/payroll/dashboard-
+  // case still holds it out: the derived state is `processed` + a real column (app/(app)/payroll/dashboard-
   // logic.ts `payrollListState`), it styles from a SEPARATE constant (REPROCESS_PILL), and STATUS_STYLE
   // below stays keyed by exactly the enum — which is precisely what keeps "no fourth payroll status"
   // enforced while the screen says what the reporter asked it to say.
   it('the dashboard styles exactly the real statuses — no invented state can render a badge', () => {
     const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'page.tsx'), 'utf8'));
     const block = /const STATUS_STYLE: Record<string, string> = \{([\s\S]*?)\n\};/.exec(src);
-    expect(block, 'STATUS_STYLE not found in app/payroll/page.tsx').toBeTruthy();
+    expect(block, 'STATUS_STYLE not found in app/(app)/payroll/page.tsx').toBeTruthy();
     const styled = [...block![1].matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]).sort();
     expect(styled).toEqual([...schema.payrollStatusEnum.enumValues].sort());
   });
 
   it('no invented status name appears in the dashboard sources or the catalogs', () => {
-    const files = ['app/payroll/page.tsx', 'app/payroll/dashboard-logic.ts', 'app/payroll/dashboard-filters.tsx'];
+    const files = ['app/(app)/payroll/page.tsx', 'app/(app)/payroll/dashboard-logic.ts', 'app/(app)/payroll/dashboard-filters.tsx'];
     for (const f of files) {
       const src = stripComments(fs.readFileSync(path.join(ROOT, f), 'utf8'));
       for (const bad of INVENTED) {
@@ -287,7 +287,7 @@ describe('7f6ca478 — every dashboard label resolves in all six catalogs', () =
   const BINDING = /(?:const|let)\s+(\w+)\s*=\s*(?:await\s+)?(?:getTranslations|useTranslations)\(\s*'([^']+)'/g;
   const CALL = /(?<![\w$])(\w+)\(\s*'([a-zA-Z][\w.]*)'/g;
 
-  it('app/payroll/page.tsx: literal keys resolve under the namespace their binding names', () => {
+  it('app/(app)/payroll/page.tsx: literal keys resolve under the namespace their binding names', () => {
     const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'page.tsx'), 'utf8'));
     const ns = new Map<string, string>();
     for (const m of src.matchAll(BINDING)) ns.set(m[1], m[2]);
@@ -302,12 +302,12 @@ describe('7f6ca478 — every dashboard label resolves in all six catalogs', () =
       if (!namespace) continue; // not a translator binding this file declares
       const key = `${namespace}.${m[2]}`;
       for (const loc of LOCALES) {
-        expect(getPath(catalog(loc), key), `${loc}: ${key} (read by app/payroll/page.tsx)`).toBeTruthy();
+        expect(getPath(catalog(loc), key), `${loc}: ${key} (read by app/(app)/payroll/page.tsx)`).toBeTruthy();
       }
       checked.push(key);
     }
     // A regex that silently matched nothing would make every assertion above vacuous.
-    expect(checked.length, 'no t() call sites found in app/payroll/page.tsx').toBeGreaterThan(20);
+    expect(checked.length, 'no t() call sites found in app/(app)/payroll/page.tsx').toBeGreaterThan(20);
   });
 
   it('the dashboard\'s dynamic label keys exist for every enum value they can be built from', () => {
@@ -360,7 +360,7 @@ describe('7f6ca478 — every dashboard label resolves in all six catalogs', () =
 
   it('the filter bar island holds NO t() lookups — every string arrives pre-translated', () => {
     // If a label lookup moves into components/ or into this island, it leaves the reach of BOTH the
-    // shared i18n guard and test/payroll-run-type-label-namespace.test.ts (which walks app/payroll and
+    // shared i18n guard and test/payroll-run-type-label-namespace.test.ts (which walks app/(app)/payroll and
     // resolves each call site's binding). That is precisely how r134's MISSING_MESSAGE reached prod.
     const src = fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'dashboard-filters.tsx'), 'utf8');
     expect(src).not.toMatch(/\buseTranslations\(/);

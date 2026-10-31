@@ -50,10 +50,10 @@
         ]
       },
       "sources": [
-        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/(app)/admin/personnel/[employmentId]/page.tsx",
         "core/profile.ts",
         "lib/permissions.ts",
-        "app/admin/personnel/[employmentId]/actions.ts",
+        "app/(app)/admin/personnel/[employmentId]/actions.ts",
         "core/org.ts"
       ],
       "reviewedSourceHash": "faafdf876ddbcc0472f0cc6d8c376d805827f3188e1cd74ce34b60593e6fe569",
@@ -107,12 +107,12 @@
         ]
       },
       "sources": [
-        "app/admin/personnel/import/page.tsx",
+        "app/(app)/admin/personnel/import/page.tsx",
         "core/import-sections.ts",
         "core/import.ts",
         "lib/permissions.ts",
-        "app/admin/personnel/import/section-actions.ts",
-        "app/admin/personnel/import/section-import.tsx",
+        "app/(app)/admin/personnel/import/section-actions.ts",
+        "app/(app)/admin/personnel/import/section-import.tsx",
         "lib/import-sections.ts"
       ],
       "reviewedSourceHash": "ae042603d0b720416131101fc364dfdf3aa27e2af7f98a6d66d8f896df3cad55",
@@ -171,10 +171,10 @@
         ]
       },
       "sources": [
-        "app/admin/personnel/import/section-import.tsx",
+        "app/(app)/admin/personnel/import/section-import.tsx",
         "core/dependents.ts",
         "lib/permissions.ts",
-        "app/admin/personnel/import/section-actions.ts",
+        "app/(app)/admin/personnel/import/section-actions.ts",
         "core/import-sections.ts",
         "lib/dependent-identity.ts",
         "lib/import-sections.ts"
@@ -230,7 +230,7 @@
         ]
       },
       "sources": [
-        "app/payroll/[batchId]/page.tsx",
+        "app/(app)/payroll/[batchId]/page.tsx",
         "core/payroll-readiness.ts",
         "core/payroll.ts",
         "lib/permissions.ts"
@@ -286,10 +286,10 @@
         ]
       },
       "sources": [
-        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/(app)/admin/personnel/[employmentId]/page.tsx",
         "core/comp.ts",
         "lib/permissions.ts",
-        "app/admin/personnel/[employmentId]/actions.ts"
+        "app/(app)/admin/personnel/[employmentId]/actions.ts"
       ],
       "reviewedSourceHash": "f89a6e638320e71935c660ada1feb8382cfdd78d1214430ed1718ebc14667839",
       "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: The Personnel page change is confined to Movement Edit metadata. The dated salary editor and compensation writer used by this guide are unchanged. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass. Additional bounded source review at b48dc7aa94ca03913f6f1a65322e78e35f5ec141: The shared Personnel page renders pending Movement saved targets separately from actual before/after snapshots. The dated Payroll salary editor and canonical compensation writer used here are unchanged; proposed salary is not applied compensation. All prior bounded guide instructions and declared sources are retained. This source review establishes no manual execution, UI, type, gate or production pass."
@@ -342,7 +342,7 @@
         ]
       },
       "sources": [
-        "app/payroll/[batchId]/page.tsx",
+        "app/(app)/payroll/[batchId]/page.tsx",
         "core/payroll.ts",
         "lib/permissions.ts",
         "lib/authz.ts"
@@ -398,7 +398,7 @@
         ]
       },
       "sources": [
-        "app/attendance/individual/[date]/page.tsx",
+        "app/(app)/attendance/individual/[date]/page.tsx",
         "core/attendance-explain.ts",
         "lib/permissions.ts",
         "components/attendance-day-parts.tsx",
@@ -455,7 +455,7 @@
         ]
       },
       "sources": [
-        "app/attendance/requests/page.tsx",
+        "app/(app)/attendance/requests/page.tsx",
         "core/attendance-workflow.ts",
         "core/attendance.ts",
         "lib/permissions.ts",
@@ -516,11 +516,11 @@
         "core/payroll-overtime-pattern.ts",
         "lib/permissions.ts",
         "packs/attendance/overtime-input.ts",
-        "app/attendance/individual/[date]/page.tsx",
+        "app/(app)/attendance/individual/[date]/page.tsx",
         "components/formula-overtime-record.tsx",
         "lib/overtime-records.ts",
         "components/overtime-patterns/preview-panel.tsx",
-        "app/admin/attendance/settings/overtime-patterns/actions.ts"
+        "app/(app)/admin/attendance/settings/overtime-patterns/actions.ts"
       ],
       "reviewedSourceHash": "a14a2607942f3389270f14122ba1f0771e5b36eb407f765c391c3a01424dd589",
       "reviewNote": "Bounded actual merged-source review at aa7ab5602d5169c300e3816b05747f53f91ed9c4: Pending mappings are excluded from cash pricing; the guide still reviews an existing cash-refused stored calculation without recalculating or transferring it. Current combined permissions and prior authority remain intact. Source bytes are bound to the implemented owners; actual manual checks remain required. This review establishes no runtime/gate/manual pass, exhaustive coverage or live arrival."
@@ -573,11 +573,11 @@
         ]
       },
       "sources": [
-        "app/leave/actions.ts",
-        "app/leave/history/page.tsx",
+        "app/(app)/leave/actions.ts",
+        "app/(app)/leave/history/page.tsx",
         "core/leave.ts",
         "lib/permissions.ts",
-        "app/leave/page.tsx",
+        "app/(app)/leave/page.tsx",
         "components/leave/own-leave-history.tsx"
       ],
       "reviewedSourceHash": "2a951c8c234916a62b277f6e2a7f5e8336aa639a8855718208f61f1f2ae5dd1c",
@@ -688,11 +688,11 @@
         ]
       },
       "sources": [
-        "app/leave/employee-balances/page.tsx",
+        "app/(app)/leave/employee-balances/page.tsx",
         "core/leave-inquiry.ts",
         "lib/permissions.ts",
-        "app/leave/employee-balances/export/route.ts",
-        "app/leave/employee-balances/inquiry-data.ts",
+        "app/(app)/leave/employee-balances/export/route.ts",
+        "app/(app)/leave/employee-balances/inquiry-data.ts",
         "lib/leave-inquiry-query.ts"
       ],
       "reviewedSourceHash": "18e26211cabbc7590f6285a42cbf1c6bb9aaa01ba99e51c07a4b4f6cf5f11c3f",
@@ -746,10 +746,10 @@
         ]
       },
       "sources": [
-        "app/admin/organization/[companyId]/page.tsx",
+        "app/(app)/admin/organization/[companyId]/page.tsx",
         "core/admin.ts",
         "lib/permissions.ts",
-        "app/admin/actions.ts",
+        "app/(app)/admin/actions.ts",
         "components/company-panel.tsx"
       ],
       "reviewedSourceHash": "4164ad8de21287b554a4a6535ff35e4e424b9674e5c37598b85cd66f8cc67717",
@@ -803,12 +803,12 @@
         ]
       },
       "sources": [
-        "app/org/page.tsx",
+        "app/(app)/org/page.tsx",
         "core/movement.ts",
         "core/org.ts",
         "lib/permissions.ts",
-        "app/admin/personnel/[employmentId]/page.tsx",
-        "app/admin/personnel/[employmentId]/actions.ts",
+        "app/(app)/admin/personnel/[employmentId]/page.tsx",
+        "app/(app)/admin/personnel/[employmentId]/actions.ts",
         "core/read.ts"
       ],
       "reviewedSourceHash": "381fc1d0df51324640f8a127be6b1e436960ab9f5443675ada48cae58d2956c7",
@@ -862,8 +862,8 @@
         ]
       },
       "sources": [
-        "app/admin/organization/[companyId]/page.tsx",
-        "app/org/page.tsx",
+        "app/(app)/admin/organization/[companyId]/page.tsx",
+        "app/(app)/org/page.tsx",
         "lib/permissions.ts",
         "lib/scope.ts",
         "lib/authz.ts",
@@ -920,7 +920,7 @@
         ]
       },
       "sources": [
-        "app/admin/settings/system-labels/page.tsx",
+        "app/(app)/admin/settings/system-labels/page.tsx",
         "core/admin.ts",
         "core/system-labels.ts",
         "lib/permissions.ts",
@@ -1038,14 +1038,14 @@
         ]
       },
       "sources": [
-        "app/admin/settings/system-labels/import-actions.ts",
+        "app/(app)/admin/settings/system-labels/import-actions.ts",
         "core/system-label-import.ts",
         "core/system-labels.ts",
         "lib/permissions.ts",
         "components/system-label-import.tsx",
-        "app/admin/settings/system-labels/current-data/route.ts",
-        "app/admin/settings/system-labels/import/route.ts",
-        "app/admin/settings/system-labels/errors/route.ts",
+        "app/(app)/admin/settings/system-labels/current-data/route.ts",
+        "app/(app)/admin/settings/system-labels/import/route.ts",
+        "app/(app)/admin/settings/system-labels/errors/route.ts",
         "lib/system-label-definition.ts",
         "lib/system-label-workbook.ts",
         "lib/system-label-upload.ts",
@@ -1102,7 +1102,7 @@
         ]
       },
       "sources": [
-        "app/approvals/page.tsx",
+        "app/(app)/approvals/page.tsx",
         "core/leave.ts",
         "lib/permissions.ts",
         "components/leave/own-leave-history.tsx",
@@ -1160,11 +1160,11 @@
         ]
       },
       "sources": [
-        "app/approvals/history/page.tsx",
-        "app/approvals/page.tsx",
+        "app/(app)/approvals/history/page.tsx",
+        "app/(app)/approvals/page.tsx",
         "core/leave.ts",
         "lib/permissions.ts",
-        "app/approvals/actions.ts",
+        "app/(app)/approvals/actions.ts",
         "components/leave/own-leave-history.tsx",
         "core/read.ts"
       ],
@@ -1219,8 +1219,8 @@
         ]
       },
       "sources": [
-        "app/approvals/history/page.tsx",
-        "app/approvals/page.tsx",
+        "app/(app)/approvals/history/page.tsx",
+        "app/(app)/approvals/page.tsx",
         "lib/permissions.ts",
         "lib/approvals-categories.ts",
         "lib/authz.ts"
@@ -1276,8 +1276,8 @@
         ]
       },
       "sources": [
-        "app/admin/organization/[companyId]/statutory/page.tsx",
-        "app/admin/organization/statutory-tab-actions.ts",
+        "app/(app)/admin/organization/[companyId]/statutory/page.tsx",
+        "app/(app)/admin/organization/statutory-tab-actions.ts",
         "lib/permissions.ts",
         "packs/payroll/service.ts",
         "core/statutory-authority.ts",
@@ -1334,12 +1334,12 @@
         ]
       },
       "sources": [
-        "app/payroll/statutory-forms/open/page.tsx",
-        "app/payroll/statutory-forms/page.tsx",
+        "app/(app)/payroll/statutory-forms/open/page.tsx",
+        "app/(app)/payroll/statutory-forms/page.tsx",
         "lib/permissions.ts",
         "packs/payroll/service.ts",
-        "app/payroll/statutory-forms/criteria.ts",
-        "app/payroll/borang-a/shared.ts",
+        "app/(app)/payroll/statutory-forms/criteria.ts",
+        "app/(app)/payroll/borang-a/shared.ts",
         "core/reporting.ts"
       ],
       "reviewedSourceHash": "46cf2bbe8cef290a2dde0e9a3260de2fc1f378c4176683711d946d1a36a2deb6",
@@ -1393,13 +1393,13 @@
         ]
       },
       "sources": [
-        "app/payroll/payment-submission/download/route.ts",
-        "app/payroll/payment-submission/page.tsx",
+        "app/(app)/payroll/payment-submission/download/route.ts",
+        "app/(app)/payroll/payment-submission/page.tsx",
         "lib/permissions.ts",
         "packs/payroll/service.ts",
-        "app/payroll/payment-submission/registry.ts",
-        "app/payroll/borang-a/shared.ts",
-        "app/payroll/payment-submission/download-dialog.tsx"
+        "app/(app)/payroll/payment-submission/registry.ts",
+        "app/(app)/payroll/borang-a/shared.ts",
+        "app/(app)/payroll/payment-submission/download-dialog.tsx"
       ],
       "reviewedSourceHash": "7503fb90ba7aea283d75c49946f581fb81c9b6c5ad159b836f0f4c107014bf41",
       "reviewNote": "Bounded permissions-owner semantic review at 61e1d7cc5ecba2226fe241b5fda0d1e931e2b094 adds eight independent task/Onboarding screens and three new guard types while preserving every existing screen, route, role and guard result used by this guide. The unchanged definition and other declared owners retain their prior reviewed meaning. This source review establishes no manual execution, gate pass, complete Onboarding coverage or live service arrival."
@@ -1465,9 +1465,9 @@
         ]
       },
       "sources": [
-        "app/me/page.tsx",
-        "app/me/profile-editor.tsx",
-        "app/me/profile-edit-actions.ts",
+        "app/(app)/me/page.tsx",
+        "app/(app)/me/profile-editor.tsx",
+        "app/(app)/me/profile-edit-actions.ts",
         "core/profile-edit.ts",
         "core/profile-edit-policy.ts",
         "core/profile.ts",
@@ -1475,9 +1475,9 @@
         "lib/personnel-ess-contract.ts",
         "lib/personnel-field-registry.ts",
         "lib/profile-proposal-display.ts",
-        "app/approvals/page.tsx",
-        "app/approvals/actions.ts",
-        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/(app)/approvals/page.tsx",
+        "app/(app)/approvals/actions.ts",
+        "app/(app)/admin/personnel/[employmentId]/page.tsx",
         "lib/permissions.ts",
         "core/read.ts",
         "core/entitlements.ts",
@@ -1554,10 +1554,10 @@
         ]
       },
       "sources": [
-        "app/admin/system-testing/page.tsx",
-        "app/admin/system-testing/[id]/page.tsx",
-        "app/admin/system-testing/workspace-actions.ts",
-        "app/system-testing/page.tsx",
+        "app/(app)/admin/system-testing/page.tsx",
+        "app/(app)/admin/system-testing/[id]/page.tsx",
+        "app/(app)/admin/system-testing/workspace-actions.ts",
+        "app/(app)/system-testing/page.tsx",
         "components/system-testing/instruction-editor.tsx",
         "components/system-testing/assignment-list.tsx",
         "components/system-testing/execution-review.tsx",
@@ -1569,8 +1569,8 @@
         "lib/system-testing/model.ts",
         "lib/permissions.ts",
         "core/system-testing.ts",
-        "app/system-testing/executions/[id]/page.tsx",
-        "app/admin/system-testing/executions/[id]/page.tsx",
+        "app/(app)/system-testing/executions/[id]/page.tsx",
+        "app/(app)/admin/system-testing/executions/[id]/page.tsx",
         "lib/system-testing/read-boundary.ts",
         "lib/hr-date.ts"
       ],
@@ -1643,13 +1643,13 @@
         ]
       },
       "sources": [
-        "app/admin/pay-components/page.tsx",
-        "app/admin/pay-components/import-pay-items.tsx",
-        "app/admin/pay-components/import/route.ts",
-        "app/admin/pay-components/template/route.ts",
-        "app/admin/pay-components/component-form.tsx",
-        "app/admin/pay-components/actions.ts",
-        "app/admin/pay-components/pay-rule-editor.tsx",
+        "app/(app)/admin/pay-components/page.tsx",
+        "app/(app)/admin/pay-components/import-pay-items.tsx",
+        "app/(app)/admin/pay-components/import/route.ts",
+        "app/(app)/admin/pay-components/template/route.ts",
+        "app/(app)/admin/pay-components/component-form.tsx",
+        "app/(app)/admin/pay-components/actions.ts",
+        "app/(app)/admin/pay-components/pay-rule-editor.tsx",
         "core/pay-component-import.ts",
         "core/pay-components.ts",
         "lib/pay-component-contract.ts",
@@ -1657,7 +1657,7 @@
         "lib/pay-component-workbook.ts",
         "lib/pay-component-workbook-layout.ts",
         "lib/pay-item-import-messages.ts",
-        "app/admin/personnel/[employmentId]/page.tsx",
+        "app/(app)/admin/personnel/[employmentId]/page.tsx",
         "lib/permissions.ts"
       ],
       "reviewedSourceHash": "482f64dd29a6a8c7927bd8b569a2f7777d5dd03931167710e7c809826b47d601",
@@ -1722,9 +1722,9 @@
         ]
       },
       "sources": [
-        "app/admin/personnel/import/import-workbench.tsx",
-        "app/admin/personnel/import/movement-import.tsx",
-        "app/admin/personnel/import/movement-actions.ts",
+        "app/(app)/admin/personnel/import/import-workbench.tsx",
+        "app/(app)/admin/personnel/import/movement-import.tsx",
+        "app/(app)/admin/personnel/import/movement-actions.ts",
         "core/movement-import.ts",
         "core/movement.ts",
         "core/movement-type.ts",
@@ -1739,9 +1739,9 @@
         "lib/personnel-field-registry.ts",
         "lib/personnel-form-contract.ts",
         "lib/permissions.ts",
-        "app/admin/personnel/[employmentId]/page.tsx",
-        "app/admin/personnel/[employmentId]/movement-new-event.tsx",
-        "app/admin/personnel/[employmentId]/actions.ts"
+        "app/(app)/admin/personnel/[employmentId]/page.tsx",
+        "app/(app)/admin/personnel/[employmentId]/movement-new-event.tsx",
+        "app/(app)/admin/personnel/[employmentId]/actions.ts"
       ],
       "reviewedSourceHash": "55c10376984114cee7044c5ffc95a1f4ab5d66ea80e78bc5b761a41f44311778",
       "reviewNote": "Follow-up bounded source review at 8344511294eda90518d8c572b971efc6664b5246: Import-specific requiredness keeps omitted Department as no change, requires an explicit Entity Transfer destination and retains lifecycle requirements; template guidance consumes that same adapter. History correction resolves custom behavior through canonical type policy without changing recorded identity or family/latest/access restrictions. The Edit card retains only its exact inactive type alongside active choices; New Event stays active-only. This guide remains the bounded Promotion/Transfer journey and makes no new custom-edit or financial execution claim. This retains the prior bounded definition and establishes no manual execution, UI, type, gate or production pass. Additional bounded source review at b48dc7aa94ca03913f6f1a65322e78e35f5ec141: Pending comparison View now shows explicit saved targets in a distinct not-applied section; it does not invent a predecessor Before or mutate current facts. Existing actual before/after snapshots remain unchanged for Reports/ESS. This guide still uses valid dates no later than today and excludes future intent execution, so its ordinary Promotion/Transfer import, retained history and current header expectations are unchanged; no future-sweep or all-lifecycle View claim is added. All prior bounded guide instructions and declared sources are retained. This source review establishes no manual execution, UI, type, gate or production pass. Additional bounded source review at 2ad1a2b6aa0e71fd87b1b5d1d4f490f7f7acc715: A Promotion whose grade or flat-info event is primary now retains its entered effective day, so history detail reconstructs its before/after state on that day rather than the recording day or a later Transfer day. Legacy anchors use only uniquely dated same-subject, same-group companions; missing/conflicting evidence retains the historical occurrence fallback. Import validation, selected per-employee atomicity, identity, current-state writers and correction/rollback authority are unchanged. The existing dated Promotion/Transfer steps remain accurate; no lifecycle, future execution or new financial parity claim is added. All prior bounded guide instructions and declared sources are retained. This source review establishes no manual execution, UI, type, gate or production pass."

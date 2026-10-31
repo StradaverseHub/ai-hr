@@ -6,7 +6,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {OvertimePositionValues} from '../components/overtime-patterns/position-values';
 const load=vi.hoisted(()=>vi.fn());
-vi.mock('../app/admin/attendance/settings/overtime-patterns/actions',()=>({overtimePositionChoicesAction:load}));
+vi.mock('../app/(app)/admin/attendance/settings/overtime-patterns/actions',()=>({overtimePositionChoicesAction:load}));
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const choices=Array.from({length:500},(_,index)=>({id:'position-'+index,label:'Position '+index}));
 function Harness(){const [selected,setSelected]=useState(['position-0']);return <NextIntlClientProvider locale="en" messages={messages}><OvertimePositionValues options={choices} selected={selected} onChange={setSelected}/></NextIntlClientProvider>;}

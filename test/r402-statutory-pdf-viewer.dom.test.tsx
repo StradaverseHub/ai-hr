@@ -24,7 +24,7 @@ vi.mock('next/link', () => ({
 
 import { StatutoryPdfViewer, pdfFrameSrc } from '../components/statutory-pdf-viewer';
 import { StatutoryVersionSwitch } from '../components/statutory-version-switch';
-import { viewerIds, viewerPairs, viewerQuery } from '../app/payroll/statutory-forms/viewer-params';
+import { viewerIds, viewerPairs, viewerQuery } from '../app/(app)/payroll/statutory-forms/viewer-params';
 
 const COMPANY = '33333333-3333-4333-8333-333333333333';
 const A = '11111111-1111-4111-8111-111111111111';

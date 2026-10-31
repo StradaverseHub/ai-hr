@@ -14,8 +14,8 @@ import { SCREENS } from '../lib/permissions';
  * pass on the empty string (CLAUDE.md §8, the r219 slice).
  */
 const ROOT = path.resolve(__dirname, '..');
-const VIEW_PATH = path.join(ROOT, 'app/admin/organization/[companyId]/view/page.tsx');
-const EDIT_PATH = path.join(ROOT, 'app/admin/organization/[companyId]/page.tsx');
+const VIEW_PATH = path.join(ROOT, 'app/(app)/admin/organization/[companyId]/view/page.tsx');
+const EDIT_PATH = path.join(ROOT, 'app/(app)/admin/organization/[companyId]/page.tsx');
 const VIEW = fs.readFileSync(VIEW_PATH, 'utf8');
 const EDIT = fs.readFileSync(EDIT_PATH, 'utf8');
 /** The source with comments removed, so a docblock that NAMES a banned thing does not trip the guard. */
@@ -38,7 +38,7 @@ describe('the view page cannot write, by construction', () => {
     const imports = CODE.match(/^import[\s\S]*?from\s+'[^']+';/gm) ?? [];
     expect(imports.length, 'imports parsed').toBeGreaterThan(10);
     for (const imp of imports) {
-      expect(imp, 'no import from the actions module').not.toMatch(/from '(\.\.\/)+actions'|from '@\/app\/admin\/actions'/);
+      expect(imp, 'no import from the actions module').not.toMatch(/from '(\.\.\/)+actions'|from '@\/app\/\(app\)\/admin\/actions'/);
       // `lib/company-panel-tabs` (the closed tab list) is fine; the editable panel component is not.
       expect(imp, 'no CompanyPanel').not.toMatch(/components\/company-panel'|\bCompanyPanel\b/);
       expect(imp, 'no logo EDIT affordance').not.toContain('CompanyLogoEdit');

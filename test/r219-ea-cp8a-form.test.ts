@@ -53,7 +53,7 @@ async function drawn(bytes: Uint8Array): Promise<{ text: string; x: number; y: n
 
 const interp = (s: string, v: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => v[k] ?? `{${k}}`);
 
-/** The label bundle EXACTLY as app/me/ea/[employmentId]/pdf/route.ts builds it, minus next-intl. */
+/** The label bundle EXACTLY as app/(app)/me/ea/[employmentId]/pdf/route.ts builds it, minus next-intl. */
 function bundleFor(locale: 'en' | 'ms'): EaPdfLabels {
   const msgs = JSON.parse(read(`messages/${locale}.json`));
   const ea = msgs.payroll.ea as Record<string, string> & { override: Record<string, string> };
@@ -465,7 +465,7 @@ describe('r219 — the boxes the C.P.8A does not have stay OFF the drawn page', 
     // …and the renderer never reads the figure either, so there is nothing for a later edit to place.
     expect(src).not.toContain('d.employee.category');
     // The HTML statement still has it — this is a decision about the FORM, not about the vocabulary.
-    expect(read('app/payroll/reports/ea/[employmentId]/page.tsx')).toContain("t('mtdCategory')");
+    expect(read('app/(app)/payroll/reports/ea/[employmentId]/page.tsx')).toContain("t('mtdCategory')");
 
     // And it is absent from the drawn page in both languages: the MTD category of this fixture is 1, and
     // no bare "1" is drawn anywhere a category value could be.

@@ -147,8 +147,8 @@ describe('ADR-0080 rung 3 (D9): the claims PayrollInputContributor kernel contra
   });
 
   it('the payroll surface consumes the contract, not core/claims (the seam moved)', () => {
-    const actions = fs.readFileSync(path.resolve(__dirname, '../app/payroll/actions.ts'), 'utf8');
-    expect(actions.includes(`@/core/claims`), 'app/payroll/actions.ts no longer imports core/claims').toBe(false);
+    const actions = fs.readFileSync(path.resolve(__dirname, '../app/(app)/payroll/actions.ts'), 'utf8');
+    expect(actions.includes(`@/core/claims`), 'app/(app)/payroll/actions.ts no longer imports core/claims').toBe(false);
     expect(actions, 'registers the contributor (static side-effect import)').toContain(`import '@/packs/claims/payroll'`);
     expect(actions, 'resolves the contributor through the kernel contract home').toContain(
       `payrollInputContributorById('claims')`,

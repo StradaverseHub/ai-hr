@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {explainPcb, pcbMtdStep1Section, pcbWorksheet} from '../core/pcb-explain';
-import {pcbFormulaBlocks} from '../app/payroll/pcb-detail/formulas';
+import {pcbFormulaBlocks} from '../app/(app)/payroll/pcb-detail/formulas';
 
 // Synthetic stored facts, not a second payroll calculation. Deliberately include a legacy rate key
 // to prove that immutable scheme dispatch takes priority over the old flat reader.

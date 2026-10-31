@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { attendanceCalendarBackHref, attendanceCalendarDetailHref, attendanceCalendarHref, calendarReturnParams, resolveAttendanceCalendarState } from '../app/attendance/my-roster/attendance-links';
-import { resolveMyAttendanceRange } from '../app/attendance/my-records/range';
+import { attendanceCalendarBackHref, attendanceCalendarDetailHref, attendanceCalendarHref, calendarReturnParams, resolveAttendanceCalendarState } from '../app/(app)/attendance/my-roster/attendance-links';
+import { resolveMyAttendanceRange } from '../app/(app)/attendance/my-records/range';
 const today='2026-10-22';
 const query=(href:string)=>Object.fromEntries(new URL(href,'http://localhost').searchParams);
 describe('personal calendar and list coordinates',()=>{

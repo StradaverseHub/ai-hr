@@ -152,7 +152,7 @@ describe('location.branch — validated against the tenant branch catalogue', ()
  * already held put drizzle's own text into the ?error= banner — `Failed query: update "location" set
  * "code" = $1 … params: TWO,Two,MY,,BUKIT JALIL,feb9dc15-…`. SQL and parameter VALUES, on an HR screen.
  * The data was never at risk (the partial unique index rejected the write and the transaction rolled
- * back); the message was. app/admin/_redirects.ts `fail()` copies `(e as Error).message` verbatim into
+ * back); the message was. app/(app)/admin/_redirects.ts `fail()` copies `(e as Error).message` verbatim into
  * the query string, so whatever core throws IS the banner.
  *
  * These assert the shape the action layer needs — a typed error naming the branch and the CODE of the

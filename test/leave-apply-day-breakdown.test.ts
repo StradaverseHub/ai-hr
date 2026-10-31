@@ -34,7 +34,7 @@ import { hireEmployee } from '../core/org';
 import { setLeaveHalfDayFullDeduction } from '../core/admin';
 import { setAttendancePolicy } from '../core/attendance';
 import { previewLeaveDeduction, leaveTypeApplySummary, requestLeave } from '../core/leave';
-import { leaveApplySummaryAction, previewLeaveDeductionAction } from '../app/leave/actions';
+import { leaveApplySummaryAction, previewLeaveDeductionAction } from '../app/(app)/leave/actions';
 import type { SessionContext } from '../db/client';
 import {
   adminCtx,

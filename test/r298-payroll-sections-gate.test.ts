@@ -130,13 +130,13 @@ import { createLoan, listLoansForEmployment } from '../core/loans';
 import { myEmploymentIdsAll, myPayslips, myTaxRelief, myTaxReliefEmploymentIds } from '../core/read';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { SectionHeader } from '../components/ui';
-import {ProfileEditor} from '../app/me/profile-editor';
-import {ME_TABS} from '../app/me/visible-fields';
+import {ProfileEditor} from '../app/(app)/me/profile-editor';
+import {ME_TABS} from '../app/(app)/me/visible-fields';
 import { TabSaveScope } from '../components/tab-save-scope';
 import { CompanyPanel } from '../components/company-panel';
-import EmployeePage from '../app/admin/personnel/[employmentId]/page';
-import CompanyMaintenancePage from '../app/admin/organization/[companyId]/page';
-import MePage from '../app/me/page';
+import EmployeePage from '../app/(app)/admin/personnel/[employmentId]/page';
+import CompanyMaintenancePage from '../app/(app)/admin/organization/[companyId]/page';
+import MePage from '../app/(app)/me/page';
 import {
   closeAll,
   createAppUser,

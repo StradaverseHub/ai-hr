@@ -94,7 +94,7 @@ export function pendingApprovalLine(trail: ApprovalTrailInput | null | undefined
 
 // ── The pre-translated lines a history row and its View panel print ───────────────────────────────────────────
 //
-// Kept HERE, as pure functions over an injected translator, rather than inline in app/leave/page.tsx, so they
+// Kept HERE, as pure functions over an injected translator, rather than inline in app/(app)/leave/page.tsx, so they
 // can be exercised against the shipping catalogues without a request (test/r302-my-leave-history-lines.test.ts)
 // — a FORMATTING_ERROR in a server-assembled string passes tsc, the suite and `next build` otherwise.
 

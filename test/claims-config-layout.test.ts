@@ -38,10 +38,10 @@ const capsPage = (cls: string) => /\bmx-auto\b/.test(cls) && /\bmax-w-\d*xl\b/.t
  * says why — it is not an omission.
  */
 const WIDE_SCREENS = [
-  'app/admin/claims/page.tsx',
-  'app/admin/claims/limits/page.tsx',
-  'app/admin/claims/mileage/page.tsx',
-  'app/admin/claims/reimbursements/page.tsx',
+  'app/(app)/admin/claims/page.tsx',
+  'app/(app)/admin/claims/limits/page.tsx',
+  'app/(app)/admin/claims/mileage/page.tsx',
+  'app/(app)/admin/claims/reimbursements/page.tsx',
 ];
 
 describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => {
@@ -68,7 +68,7 @@ describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => 
     // The panel round-trip (HANDOFF): a layout changed adjacent to what was asked gets reversed later.
     //
     // 152fea7f UPDATED THIS CASE, it did not delete it. The original wording pinned
-    // app/payroll/transactions/fixed/page.tsx as still capped, because Fixed Transaction was named in
+    // app/(app)/payroll/transactions/fixed/page.tsx as still capped, because Fixed Transaction was named in
     // e7eb5d83's plan as explicitly OUT of scope and must not be swept in as a side effect. The reporter
     // has since ASKED for exactly that follow-on — 152fea7f standardises every Payroll screen onto
     // `pageWideCls` — so the old assertion now pins a decision that has been deliberately reversed, which
@@ -76,7 +76,7 @@ describe('e7eb5d83 rev 6 · A — the claim config module is full width', () => 
     // still worth defending: this round's edit was confined to the four claims tabs, so those four are the
     // ONLY files section A names, and the payroll screens' width is owned by
     // test/payroll-screens-layout.test.ts, not by this file.
-    for (const f of WIDE_SCREENS) expect(f.startsWith('app/admin/claims/'), `${f} is not a claims screen`).toBe(true);
+    for (const f of WIDE_SCREENS) expect(f.startsWith('app/(app)/admin/claims/'), `${f} is not a claims screen`).toBe(true);
   });
 });
 
@@ -88,7 +88,7 @@ describe('e7eb5d83 rev 6 · B — /admin/claims/forms is a redirect, not a narro
     // widened. Four of those zeroes mean "capped"; this one means "renders nothing" — the file is a
     // guarded permanent redirect kept alive for bookmarks and for lib/permissions.ts. Adding pageWideCls
     // here would be a class on a component that never returns an element.
-    const src = read('app/admin/claims/forms/page.tsx');
+    const src = read('app/(app)/admin/claims/forms/page.tsx');
     expect(src).toMatch(/permanentRedirect\('\/admin\/claims'\)/);
     expect(src).toMatch(/requireAdmin/);
     expect(classNameLiterals(src)).toEqual([]);

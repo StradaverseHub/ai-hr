@@ -7,7 +7,7 @@
  *     the request popup and the edit dialogs can never disagree on the order;
  *   - previewLeaveDeductionAction keeps its myEmployment fallback (without it the deduction line is dead for
  *     every plain employee — the exact defect this item fixed);
- *   - app/me/actions.ts myPreviewLeaveDeduction does NOT pass includeDayRows, so /me's preview is untouched;
+ *   - app/(app)/me/actions.ts myPreviewLeaveDeduction does NOT pass includeDayRows, so /me's preview is untouched;
  *   - LeaveDurationFields renders the summary + the collapsed details disclosure with the fixed-height
  *     scroll container, suppresses the summary for EMERGENCY, and puts sm:col-span-2 on all three blocks
  *     (the dialog form is a 2-column grid and these are direct grid items);
@@ -23,11 +23,11 @@ import { describe, expect, it } from 'vitest';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
 
-const page = read('app/leave/page.tsx');
-const actions = read('app/leave/actions.ts');
+const page = read('app/(app)/leave/page.tsx');
+const actions = read('app/(app)/leave/actions.ts');
 const fields = read('components/leave-duration-fields.tsx');
 const dialog = read('components/leave/request-leave-dialog.tsx');
-const meActions = read('app/me/actions.ts');
+const meActions = read('app/(app)/me/actions.ts');
 
 describe('/leave: leave types are localized and sorted ONCE at the source', () => {
   it('passes the viewer locale to listLeaveTypes', () => {
@@ -35,8 +35,8 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
     // decision it pins is unchanged — the viewer's locale reaches listLeaveTypes — but that call now also
     // states `includeArchived: false` explicitly, and an exact-literal guard would have to be rewritten
     // every time a second option is named. The `locale` term itself is still required.
-    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/leave/my-leave-data.ts).
-    expect(read('app/leave/my-leave-data.ts')).toMatch(/listLeaveTypes\(session, \{ locale\b/);
+    // UPDATED BY r397: the read moved, unchanged, into the page's loader (app/(app)/leave/my-leave-data.ts).
+    expect(read('app/(app)/leave/my-leave-data.ts')).toMatch(/listLeaveTypes\(session, \{ locale\b/);
   });
 
   it('sorts the array alphabetically with a locale-aware, case-insensitive comparison', () => {
@@ -46,8 +46,8 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
     // inline copies of one comparator is exactly how they would have drifted.
     //
     // UPDATED BY r397: the reads — and so the one sort — moved into the page's loader
-    // (app/leave/my-leave-data.ts), which sorts both arrays the moment they return, before it hands them on.
-    const loader = read('app/leave/my-leave-data.ts');
+    // (app/(app)/leave/my-leave-data.ts), which sorts both arrays the moment they return, before it hands them on.
+    const loader = read('app/(app)/leave/my-leave-data.ts');
     expect(loader).toContain("a.name.localeCompare(b.name, locale, { sensitivity: 'base' })");
     expect(loader).toContain('leaveTypes.sort(byName);');
     expect(loader).toContain('eligibleLeaveTypes.sort(byName);');
@@ -58,7 +58,7 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
     // UPDATED BY r397: the sort is in the loader, inside the `.then` that receives the reads and BEFORE its
     // `return { employees, leaveTypes, eligibleLeaveTypes }`; every page consumer runs after the page's
     // `await loadMyLeave(`. So the page-side anchor is that await, and the loader-side order is pinned too.
-    const loader = read('app/leave/my-leave-data.ts');
+    const loader = read('app/(app)/leave/my-leave-data.ts');
     const loaderSort = loader.indexOf('eligibleLeaveTypes.sort(byName);');
     const loaderHandOn = loader.indexOf('return { employees, leaveTypes, eligibleLeaveTypes };');
     expect(loaderSort).toBeGreaterThan(-1);
@@ -85,7 +85,7 @@ describe('/leave: leave types are localized and sorted ONCE at the source', () =
   });
 });
 
-describe('app/leave/actions.ts: the preview is alive for self-service + one new summary action', () => {
+describe('app/(app)/leave/actions.ts: the preview is alive for self-service + one new summary action', () => {
   it('previewLeaveDeductionAction falls back to the caller\'s own employment', () => {
     const fn = actions.slice(
       actions.indexOf('export async function previewLeaveDeductionAction'),
@@ -186,7 +186,7 @@ describe('core/leave.ts: the new read-only exports', () => {
   });
 });
 
-describe('app/me: the /me preview is untouched', () => {
+describe('app/(app)/me: the /me preview is untouched', () => {
   it('myPreviewLeaveDeduction does not ask for day rows', () => {
     const fn = meActions.slice(meActions.indexOf('export async function myPreviewLeaveDeduction'));
     expect(fn.slice(0, fn.indexOf('\n}\n')).includes('includeDayRows')).toBe(false);
@@ -389,7 +389,7 @@ describe('summaryAction is bound end to end', () => {
     expect(dialog.includes('summaryAction={summaryAction}')).toBe(true);
   });
 
-  it('app/leave/page.tsx binds the server action next to previewAction', () => {
+  it('app/(app)/leave/page.tsx binds the server action next to previewAction', () => {
     expect(page.includes('summaryAction={leaveApplySummaryAction}')).toBe(true);
     expect(page.includes('previewAction={previewLeaveDeductionAction}')).toBe(true);
     expect(page.includes('leaveApplySummaryAction,')).toBe(true);
@@ -555,7 +555,7 @@ describe('5570c6a2: no document-required badge in the employee leave-type dropdo
     const en = JSON.parse(read('messages/en.json')) as {
       leave: { documentHint: string; errors: Record<string, string> };
     };
-    // The two SENTENCES (leave.errors.*) are raised from app/me/actions.ts on a refused submission — they
+    // The two SENTENCES (leave.errors.*) are raised from app/(app)/me/actions.ts on a refused submission — they
     // are not the badge, and they name the leave type on purpose.
     expect(en.leave.errors.documentRequired).toBeTruthy();
     expect(en.leave.errors.documentRequiredAfter).toBeTruthy();

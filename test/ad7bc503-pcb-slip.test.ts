@@ -19,8 +19,8 @@
  * "the row exists" assertion perfectly.
  *
  * ⚠️ THE CONTRACT IS BETWEEN TWO FILES, so it is checked on both sides (the plan asks for exactly this):
- * `core/pcb-explain.ts` must EMIT the absence kinds, and `app/payroll/pcb-detail/pcb-detail-view.tsx` plus
- * `app/payroll/pcb-detail/shared.ts` must RENDER each of them as its own sentence. A core that emits
+ * `core/pcb-explain.ts` must EMIT the absence kinds, and `app/(app)/payroll/pcb-detail/pcb-detail-view.tsx` plus
+ * `app/(app)/payroll/pcb-detail/shared.ts` must RENDER each of them as its own sentence. A core that emits
  * `notRecorded` and a renderer that prints it as "0.00" is the same defect with a different address.
  *
  * NOTHING ABOUT ANY PAYSLIP CHANGES. Every figure is read; no arithmetic is introduced (the source guard
@@ -62,7 +62,7 @@ import { TP3_SECTION_D, saveTp3 } from '../core/tp3';
 import { MY_RELIEFS } from '../localization/my/statutory-tables';
 import { hireEmployee } from '../core/org';
 import { setStatutoryProfileMY, setTaxProfileMY } from '../localization/my/statutory';
-import { pcbSlipData } from '../app/payroll/pcb-detail/slip-data';
+import { pcbSlipData } from '../app/(app)/payroll/pcb-detail/slip-data';
 import { tp1Relief } from '../db/schema';
 import { adminCtx, closeAll, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
 
@@ -74,14 +74,14 @@ const strip = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|
 const code = (rel: string) => strip(read(rel));
 
 const LOCALES = ['en', 'ms', 'ta', 'th', 'vi', 'zh'] as const;
-const VIEW = 'app/payroll/pcb-detail/pcb-detail-view.tsx';
-const PAGE = 'app/payroll/pcb-detail/page.tsx';
-const SHARED = 'app/payroll/pcb-detail/shared.ts';
-const ROUTE = 'app/payroll/pcb-detail/download/route.ts';
-const PDF = 'app/payroll/pcb-detail/slip-pdf.ts';
-const READS = 'app/payroll/pcb-detail/slip-data.ts';
+const VIEW = 'app/(app)/payroll/pcb-detail/pcb-detail-view.tsx';
+const PAGE = 'app/(app)/payroll/pcb-detail/page.tsx';
+const SHARED = 'app/(app)/payroll/pcb-detail/shared.ts';
+const ROUTE = 'app/(app)/payroll/pcb-detail/download/route.ts';
+const PDF = 'app/(app)/payroll/pcb-detail/slip-pdf.ts';
+const READS = 'app/(app)/payroll/pcb-detail/slip-data.ts';
 /** r351 — the one assembly of the substituted expressions, painted by the screen AND by the document. */
-const FORMULAS = 'app/payroll/pcb-detail/formulas.ts';
+const FORMULAS = 'app/(app)/payroll/pcb-detail/formulas.ts';
 
 const CURRENT: PcbReliefBreakdown = {
   individual: 9000, spouse: 0, children: 6000, disabledIndividual: 0, disabledSpouse: 0, lp: 0, total: 15000,
@@ -749,7 +749,7 @@ describe('ad7bc503 — the download is the screen’s own model, behind the scre
     expect(route, 'pdf-lib needs the Node runtime').toContain("runtime = 'nodejs'");
     expect(route).toContain("pcbDetailPdfResponse(req, 'attachment')");
     // The gate must NOT be re-implemented here: a second copy is a second door, and the copy that drifts
-    // is the one nobody looks at again (app/payroll/statutory-forms/pcb2ii/shared.ts says so at length).
+    // is the one nobody looks at again (app/(app)/payroll/statutory-forms/pcb2ii/shared.ts says so at length).
     for (const forbidden of ['scopedAdmin', 'payslipForReview', 'UUID', 'status: 404']) {
       expect(route, `the route must not re-implement ${forbidden}`).not.toContain(forbidden);
     }

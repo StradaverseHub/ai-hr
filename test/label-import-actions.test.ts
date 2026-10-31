@@ -2,7 +2,7 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 const calls=vi.hoisted(()=>({admin:vi.fn(async()=>({s:{tenantId:'fictional'}})),preview:vi.fn(),apply:vi.fn(),revalidate:vi.fn()}));
 vi.mock('../lib/scope',()=>({scopedAdmin:calls.admin}));vi.mock('next/cache',()=>({revalidatePath:calls.revalidate}));
 vi.mock('../core/system-label-import',()=>({previewSystemLabelImport:calls.preview,applySystemLabelImport:calls.apply}));
-import {previewLabelsAction,importLabelsAction} from '../app/admin/settings/system-labels/import-actions';
+import {previewLabelsAction,importLabelsAction} from '../app/(app)/admin/settings/system-labels/import-actions';
 beforeEach(()=>{vi.clearAllMocks();calls.preview.mockResolvedValue({token:'t',rows:[],valid:false,mode:'add'});calls.apply.mockResolvedValue({imported:1,updated:0,skipped:0,failed:0});});
 const data=(mode:string,name='fixture.xls',size=1)=>{const data=new FormData();data.set('file',new File([new Uint8Array(size)],name));data.set('mode',mode);data.set('confirmUpdates','true');data.set('token','t');return data;};
 describe('server-owned Labels import intent',()=>{

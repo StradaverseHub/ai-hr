@@ -51,7 +51,7 @@ export function payrollPublicationState(
 
 /**
  * Pill colour per publication state. `published` deliberately reuses the emerald of STATUS_STYLE.closed
- * in app/payroll/page.tsx so the existing closed pill does not change appearance; `unpublished` takes the
+ * in app/(app)/payroll/page.tsx so the existing closed pill does not change appearance; `unpublished` takes the
  * amber this repo already uses for "needs your attention, nothing is broken".
  */
 export const PAYROLL_PUBLICATION_PILL: Record<PayrollPublicationState, string> = {

@@ -5,8 +5,8 @@ import en from '../messages/en.json';
 import '../app/globals.css';
 
 const save = vi.hoisted(() => vi.fn(async (_previous: unknown, _formData: FormData) => ({ saved: true })));
-vi.mock('../app/payroll/setup/corrections-actions', () => ({ savePayrollCorrections: save }));
-const { PayrollCorrectionsForm } = await import('../app/payroll/setup/corrections-form');
+vi.mock('../app/(app)/payroll/setup/corrections-actions', () => ({ savePayrollCorrections: save }));
+const { PayrollCorrectionsForm } = await import('../app/(app)/payroll/setup/corrections-form');
 const labels = en.payroll.setup.corrections;
 afterEach(() => { cleanup(); vi.clearAllMocks(); document.documentElement.removeAttribute('data-ui-theme'); document.documentElement.classList.remove('dark'); });
 

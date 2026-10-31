@@ -194,8 +194,8 @@ describe('bf953339 — mobile + home phone pair (DB round-trip)', () => {
 
 describe('bf953339 — copy island + form wiring (source shape)', () => {
   const island = stripComments(read('components/same-as-permanent-address.tsx'));
-  const page = stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
-  const actions = stripComments(read('app/admin/personnel/[employmentId]/actions.ts'));
+  const page = stripComments(read('app/(app)/admin/personnel/[employmentId]/page.tsx'));
+  const actions = stripComments(read('app/(app)/admin/personnel/[employmentId]/actions.ts'));
 
   it('the shared pair table carries the two phone pairs so the tick box copies phones with the address', () => {
     /*

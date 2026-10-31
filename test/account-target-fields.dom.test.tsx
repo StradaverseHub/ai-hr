@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
-import { AccountTargetFields } from '../app/admin/users/account-target-fields';
+import { AccountTargetFields } from '../app/(app)/admin/users/account-target-fields';
 afterEach(cleanup);
 function show() {
   return render(<NextIntlClientProvider locale="en" messages={en}><form><AccountTargetFields idPrefix="manual" people={[{ id: 'person-a', name: 'Existing employee' }]} companies={[{ id: 'company-a', name: 'Acme' }]} roles={[{ value: 'employee', label: 'Employee' }, { value: 'hr_admin', label: 'HR admin' }]} /></form></NextIntlClientProvider>);

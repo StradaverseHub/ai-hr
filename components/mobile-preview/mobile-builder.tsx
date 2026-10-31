@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Clock, Files, Home, Inbox, Moon, Save, Send, ShieldCheck, Smartphone, Sun, Undo2, UserRound, Users } from 'lucide-react';
-import { changeMobileDesignAction } from '@/app/mobile-preview/actions';
+import { changeMobileDesignAction } from '@/app/(app)/mobile-preview/actions';
 import { UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, type MobileBuilderState, composeMobileDesign, parseMobileDesign, type MobileDesignV2 } from '@/lib/mobile-design';
 import { CompositionNavigator, CompositionInspector, StyleControls } from './composer-controls';

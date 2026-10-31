@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { Button, inputCls } from './ui';
-import { setGradeClaimLimitsAction } from '@/app/admin/claims/limits/actions';
+import { setGradeClaimLimitsAction } from '@/app/(app)/admin/claims/limits/actions';
 
 /**
  * ─────────── CLAIM LIMITS, GRADE-FIRST AND EDITABLE IN PLACE (e7eb5d83 rev 5, step 3) ───────────
@@ -87,7 +87,7 @@ export type ClaimLimitGridRow = {
  * CAUSE 2, the page width, which the plan did name: this is the sixth column of a six-column table, and
  * the page was capped at `mx-auto max-w-6xl` with a 15rem grade rail taken off the front. Even sized
  * correctly the five need ~350px (16 + 96 + label + 56 + 112 + four 6px gaps) and the column had nowhere
- * near it, so the one cell allowed to fold would have folded anyway. Hence app/admin/claims/limits/page.tsx
+ * near it, so the one cell allowed to fold would have folded anyway. Hence app/(app)/admin/claims/limits/page.tsx
  * goes full width in the same change.
  *
  * Mobile-first, so read the wrap rule in that order: below `md` the row still wraps (a tablet has no room

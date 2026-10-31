@@ -97,7 +97,7 @@ The finding marked introducedByThisBranch=false (a bucket (b) write destroying p
 with no prompt) is REAL and predates you. Fix it if you can do so safely; if not, put it in
 \\\`remaining\\\` in plain words — it is the one navigation route the new guard cannot see.
 
-SCOPE FENCE UNCHANGED: do not touch app/admin/personnel/new/**.`,
+SCOPE FENCE UNCHANGED: do not touch app/(app)/admin/personnel/new/**.`,
   },
   {
     slug: 'draft-family',
@@ -119,7 +119,7 @@ THEN: the childTaxRelief null-vs-false divergence between the draft and the Pers
 action on two screens must store the same thing), and the Study country select's missing legacy-value
 tolerance, which makes a deactivated catalog option render as empty rather than as what was stored.
 
-SCOPE FENCE UNCHANGED: do not touch app/admin/personnel/[employmentId]/**.`,
+SCOPE FENCE UNCHANGED: do not touch app/(app)/admin/personnel/[employmentId]/**.`,
   },
   {
     slug: 'leave-design',

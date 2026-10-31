@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import type { AttendanceDayEditorData } from '@/packs/attendance/service';
-import { saveAttendanceDayScheduleAction, saveAttendanceDayChangesAction, adminCorrectAttendanceDayAction, rejectAttendanceDayApplicationAction } from '@/app/attendance/individual/[date]/actions';
+import { saveAttendanceDayScheduleAction, saveAttendanceDayChangesAction, adminCorrectAttendanceDayAction, rejectAttendanceDayApplicationAction } from '@/app/(app)/attendance/individual/[date]/actions';
 import { Button, ErrorBanner, inputCls, tableWrapCls, thCls, theadCls, tbodyCls } from './ui';
 import { fmtMin } from './attendance-format';
 

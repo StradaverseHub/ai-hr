@@ -48,7 +48,7 @@ vi.mock('next/navigation', () => ({
   },
 }));
 vi.mock('next-intl/server', () => ({ getTranslations: async () => (k: string) => k }));
-const { setStatutoryAction } = await import('../app/admin/personnel/[employmentId]/actions');
+const { setStatutoryAction } = await import('../app/(app)/admin/personnel/[employmentId]/actions');
 
 let b: Base;
 

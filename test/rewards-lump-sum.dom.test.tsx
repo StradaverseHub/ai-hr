@@ -9,8 +9,8 @@ import ta from '../messages/ta.json';
 import th from '../messages/th.json';
 import viMessages from '../messages/vi.json';
 const actions = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn() }));
-vi.mock('../app/rewards/actions', () => ({ previewRewardLumpAction: actions.preview, lumpAction: actions.save }));
-import { UnitLumpSum, type UnitLumpValue } from '../app/rewards/[unitId]/lump-sum';
+vi.mock('../app/(app)/rewards/actions', () => ({ previewRewardLumpAction: actions.preview, lumpAction: actions.save }));
+import { UnitLumpSum, type UnitLumpValue } from '../app/(app)/rewards/[unitId]/lump-sum';
 
 // 4e3e1af7 / c28db2f0 — fictional fixtures.
 const catalogues = { en, ms, zh, ta, th, vi: viMessages };

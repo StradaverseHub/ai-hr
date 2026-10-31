@@ -13,7 +13,7 @@
  * 2026-07-23): the list may only SHRINK. Every entry is kernel-contract debt (D9) — a legitimate
  * cross-module consumer (approvals inbox, report-registry catalog reader) that gets a narrow
  * kernel contract at a later rung instead of the facade; the who/why table lives in
- * packs/claims/index.ts. A new importer outside the list fails (`app/payroll/actions.ts` in
+ * packs/claims/index.ts. A new importer outside the list fails (`app/(app)/payroll/actions.ts` in
  * particular must NEVER reappear — its seam is the D9 contract now); an entry whose file stopped
  * importing fails until the entry is removed.
  */
@@ -29,8 +29,8 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const ALWAYS_ALLOWED = [
   'packs/claims/', // the pack itself: wiring (index.ts) + service facade + payroll contributor
   'core/claims.ts', // the implementation file
-  'app/claims/', // employee routes: submit/list + attachment download
-  'app/admin/claims/', // admin routes: catalog, limits, reimbursements + export
+  'app/(app)/claims/', // employee routes: submit/list + attachment download
+  'app/(app)/admin/claims/', // admin routes: catalog, limits, reimbursements + export
 ];
 
 describe('ADR-0080 D9: claims pack import ratchet (rung 3)', () => {

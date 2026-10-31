@@ -159,7 +159,7 @@ describe('r261 — the field allow-list, resolved', () => {
      * and it is one removed attribute away from being submittable.
      *
      * NON-VACUITY: reverting `offeredRequestableFieldsForTab` to `requestableFieldsForTab` in
-     * app/me/request-change-card.tsx makes the length assertion below fail with the full declared count.
+     * app/(app)/me/request-change-card.tsx makes the length assertion below fail with the full declared count.
      */
     const allowed = new Set(['fullName']);
     const offered = offeredRequestableFieldsForTab('profile', allowed);

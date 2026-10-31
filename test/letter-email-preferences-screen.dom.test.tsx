@@ -11,9 +11,9 @@ vi.mock('../core/entitlements',()=>({isModuleEnabled:(_ctx:unknown,code:string,c
 vi.mock('../core/notification-email',()=>({readNotificationEmailPreferences:m.legacy}));
 vi.mock('../core/letter-email-preferences',()=>({readLetterEmailPreferences:m.account}));
 vi.mock('../lib/identity/provider',()=>({currentProviderSession:m.identity}));
-vi.mock('../app/me/notifications/actions',()=>({saveMyWorkflowEmailPreferences:vi.fn(),saveMyLetterEmailPreferences:vi.fn()}));
+vi.mock('../app/(app)/me/notifications/actions',()=>({saveMyWorkflowEmailPreferences:vi.fn(),saveMyLetterEmailPreferences:vi.fn()}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>m.locale,getTranslations:async()=>createTranslator({locale:m.locale,messages:catalogues[m.locale],namespace:'workflowEmail'})}));
-import Page from '../app/me/notifications/page';
+import Page from '../app/(app)/me/notifications/page';
 const identity={issuer:'https://identity.fixture.test',subject:'verified-user',email:'verified@fixture.test',emailVerified:true};
 beforeEach(()=>{vi.clearAllMocks();m.locale='en';m.global=false;m.enabled=true;m.legacy.mockResolvedValue({employments:[],preferences:[],policy:[]});m.account.mockResolvedValue({preference:null,current:false,enabledByPolicy:false});m.identity.mockResolvedValue(identity);m.module.mockResolvedValue(undefined);});afterEach(cleanup);
 it.each(['en','ms','zh','ta','th','vi'] as const)('offers account-only Letters consent in %s through a company entitlement',async locale=>{

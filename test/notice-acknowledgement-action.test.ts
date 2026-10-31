@@ -6,7 +6,7 @@ vi.mock('../core/notice',()=>({acknowledgeNotice:mocks.acknowledge,NoticeError:c
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/headers',()=>({headers:async()=>new Headers({'user-agent':'Fictional browser'})}));
 vi.mock('next/navigation',()=>({unstable_rethrow:vi.fn()}));
-import {acknowledgeNoticeAction} from '../app/notices/actions';
+import {acknowledgeNoticeAction} from '../app/(app)/notices/actions';
 const form=()=>{const f=new FormData();f.set('noticeId','notice');f.set('employmentId','selected-own-employment');f.set('contentVersion','2');return f;};
 beforeEach(()=>{vi.clearAllMocks();mocks.getSession.mockResolvedValue({tenantId:'tenant',userId:'actual-user'});mocks.acknowledge.mockResolvedValue({id:'receipt',contentVersion:2,acknowledgedAt:new Date('2026-10-21T12:00:00Z')});});
 describe('Notice acknowledgement server boundary',()=>{

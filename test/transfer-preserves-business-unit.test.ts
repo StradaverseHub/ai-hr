@@ -6,7 +6,7 @@
  * the new version was written with NULL. Nothing surfaced it: no error, no event, no changed label. The
  * value was simply gone from the next version onwards.
  *
- * Both live callers are on the Employment tab (app/admin/personnel/[employmentId]/actions.ts), and
+ * Both live callers are on the Employment tab (app/(app)/admin/personnel/[employmentId]/actions.ts), and
  * neither has any reason to touch a business unit:
  *   setLocationAction  — names ONLY a location
  *   transferAction     — names ONLY a department

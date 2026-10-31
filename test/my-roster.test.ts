@@ -50,14 +50,14 @@ import {
   resolveMyRosterWindow,
   stepMyRosterWindow,
   switchMyRosterView,
-} from '../app/attendance/my-roster/view';
+} from '../app/(app)/attendance/my-roster/view';
 
 const read = (rel: string) => fs.readFileSync(path.resolve(__dirname, '..', rel), 'utf8');
 /** Comments stripped, the idiom test/function-access.test.ts uses: a source guard must not be
  *  satisfiable by prose, and this page's header necessarily names the calls it does and does not make. */
 const code = (src: string) => src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
 
-const PAGE = 'app/attendance/my-roster/page.tsx';
+const PAGE = 'app/(app)/attendance/my-roster/page.tsx';
 
 // ── 1 · THE ACCESS BOUNDARY ─────────────────────────────────────────────────────────────────────────
 
@@ -274,7 +274,7 @@ describe('6948727a — nobody opens somebody else’s roster by editing the addr
     expect(src, 'nor a person').not.toMatch(/sp\.personId|searchParams\.get\(['"]personId['"]\)/);
     // Board2 adds typed independent Calendar/List coordinates. The shared parser accepts no subject.
     expect(src).toContain('resolveAttendanceCalendarState(sp, today)');
-    const links = code(read('app/attendance/my-roster/attendance-links.ts'));
+    const links = code(read('app/(app)/attendance/my-roster/attendance-links.ts'));
     const from = links.indexOf('export function resolveAttendanceCalendarState(');
     const end = links.indexOf('export function attendanceCalendarQuery(', from);
     expect(from).toBeGreaterThanOrEqual(0); expect(end).toBeGreaterThan(from);

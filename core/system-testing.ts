@@ -8,7 +8,7 @@ import { withCanonicalAiReadTx } from './ai-read-transaction';
  * The reporter asked for a test-case register whose fields were Title, Description, Expected Behaviour,
  * Expected Function, Status, Remarks, Created By, Created Date. That list IS `feedback_request` — the
  * form they were typing the request into. The DEFECT half of what they described is built and in daily
- * use (core/feedback.ts, app/feedback), so this service does not model a second one, does not copy its
+ * use (core/feedback.ts, app/(app)/feedback), so this service does not model a second one, does not copy its
  * columns and never writes to it except through its own public writer.
  *
  * What the board has no concept of, and what this adds, is the pair:
@@ -475,7 +475,7 @@ export function composeFeedbackDescription(c: TestCaseDetail, run: TestRunRow): 
  *
  * A hand-keyed "Defect ID" box is a second source of truth that can point at nothing (CLAUDE.md §1) and
  * makes the tester re-type the steps they just carried out. This raises the item on the EXISTING board
- * through `submitFeedback` — the same writer app/feedback/actions.ts calls, not a second one — and
+ * through `submitFeedback` — the same writer app/(app)/feedback/actions.ts calls, not a second one — and
  * stores the id it returns as a real foreign key.
  *
  * ADR0128 adds an explicit transaction seam to the canonical Feedback writer. The run lock, Feedback

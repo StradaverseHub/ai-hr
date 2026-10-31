@@ -18,7 +18,7 @@
  *
  * TWO THINGS FIX IT AND BOTH ARE PINNED HERE.
  *   1. The five reasons the current code emits now have labels in all six catalogues.
- *   2. The page uses `t.has` (the house idiom — app/admin/scheduled-actions/page.tsx does the same), so an
+ *   2. The page uses `t.has` (the house idiom — app/(app)/admin/scheduled-actions/page.tsx does the same), so an
  *      UNLABELLED reason degrades to the raw word instead of a key path. This is the part that matters:
  *      reasons get added by new code paths faster than labels do, and (2) is what makes that survivable.
  *
@@ -42,8 +42,8 @@ const stripComments = (s: string) =>
   s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const page = stripComments(read('components/leave/entitlement-recalc-history.tsx'));
-const inquiry = stripComments(read('app/leave/employee-balances/page.tsx'));
-const personnel = stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
+const inquiry = stripComments(read('app/(app)/leave/employee-balances/page.tsx'));
+const personnel = stripComments(read('app/(app)/admin/personnel/[employmentId]/page.tsx'));
 
 const block = (loc: string) =>
   JSON.parse(read(`messages/${loc}.json`)).people.detail.recalcReason as Record<string, string>;

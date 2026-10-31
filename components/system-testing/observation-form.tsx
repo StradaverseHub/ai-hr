@@ -1,7 +1,7 @@
 'use client';
 import { startTransition,useActionState,useEffect,useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { saveTestingObservationAction } from '@/app/admin/system-testing/workspace-actions';
+import { saveTestingObservationAction } from '@/app/(app)/admin/system-testing/workspace-actions';
 import { INITIAL_TESTING_ACTION_STATE } from '@/lib/system-testing/action-model';
 import { EXECUTION_STATUSES,type ExecutionStatus } from '@/lib/system-testing/model';
 import { btnPrimary,inputCls } from '@/components/ui';

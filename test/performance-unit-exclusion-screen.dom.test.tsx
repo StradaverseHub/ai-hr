@@ -11,9 +11,9 @@ import en from '../messages/en.json';
 
 const ports = vi.hoisted(() => ({ preview: vi.fn(), save: vi.fn(), end: vi.fn(), refresh: vi.fn() }));
 vi.mock('next/navigation', () => ({ usePathname: () => '/', useSearchParams: () => new URLSearchParams(), redirect: vi.fn(), useRouter: () => ({ refresh: ports.refresh, push: vi.fn() }) }));
-vi.mock('../app/performance/unit-exclusion-actions', () => ({ previewUnitExclusionAction: ports.preview, saveUnitExclusionAction: ports.save, endUnitExclusionAction: ports.end }));
+vi.mock('../app/(app)/performance/unit-exclusion-actions', () => ({ previewUnitExclusionAction: ports.preview, saveUnitExclusionAction: ports.save, endUnitExclusionAction: ports.end }));
 
-import { UnitExclusionCard } from '../app/performance/onehr/unit-exclusion-card';
+import { UnitExclusionCard } from '../app/(app)/performance/onehr/unit-exclusion-card';
 import type { UnitExclusionPreviewView, UnitExclusionScreen } from '../packs/performance/service';
 
 const t = en.onehr.unitExclusion;

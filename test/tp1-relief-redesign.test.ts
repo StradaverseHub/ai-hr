@@ -81,9 +81,9 @@ import { pageWideCls } from '../components/ui';
 import { AppliedInPayrollList } from '../components/applied-in-payroll-list';
 import { Tp1DeclarationsList } from '../components/tp1-declarations-list';
 import { Tp1DeclarationForm } from '../components/tp1-declaration-form';
-import Tp1TransactionPage, { TP1_PANEL_COOKIE } from '../app/payroll/transactions/tp1/page';
-import Tp1DeclarationYearPage from '../app/payroll/transactions/tp1/[year]/page';
-import Tp1DeclarationMonthPage from '../app/payroll/transactions/tp1/[year]/[month]/page';
+import Tp1TransactionPage, { TP1_PANEL_COOKIE } from '../app/(app)/payroll/transactions/tp1/page';
+import Tp1DeclarationYearPage from '../app/(app)/payroll/transactions/tp1/[year]/page';
+import Tp1DeclarationMonthPage from '../app/(app)/payroll/transactions/tp1/[year]/[month]/page';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 

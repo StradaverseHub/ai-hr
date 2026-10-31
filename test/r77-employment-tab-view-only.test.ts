@@ -215,9 +215,9 @@ describe('(C) one movement, one Employment History row', () => {
 
 // ── (D) Source guards on the tab itself ──
 const REPO = path.resolve(__dirname, '..');
-const pageSrc = fs.readFileSync(path.join(REPO, 'app/admin/personnel/[employmentId]/page.tsx'), 'utf8');
+const pageSrc = fs.readFileSync(path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/page.tsx'), 'utf8');
 const actionsSrc = fs.readFileSync(
-  path.join(REPO, 'app/admin/personnel/[employmentId]/actions.ts'),
+  path.join(REPO, 'app/(app)/admin/personnel/[employmentId]/actions.ts'),
   'utf8',
 );
 

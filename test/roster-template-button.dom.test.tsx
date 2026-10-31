@@ -29,7 +29,7 @@ import { ROSTER_TEMPLATE_ID_COLUMNS, buildRosterTemplate, cellKey, monthDates } 
 
 // components/roster-grid.tsx imports its server actions at module scope; in jsdom that would drag
 // next/cache, next/navigation and the whole database layer in. The button under test never calls them.
-vi.mock('../app/roster/actions', () => ({
+vi.mock('../app/(app)/roster/actions', () => ({
   assignCellAction: async () => ({ ok: true as const }),
   bulkAssignAction: async () => ({ ok: true as const }),
   rowAssignAction: async () => ({ ok: true as const }),
@@ -60,7 +60,7 @@ beforeEach(() => {
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: () => {} });
 });
 
-/** The props app/roster/page.tsx and app/roster/import/page.tsx pass, built the way they build them.
+/** The props app/(app)/roster/page.tsx and app/(app)/roster/import/page.tsx pass, built the way they build them.
  *  A leading-zero employee code is deliberate: the .xlsx round trip exists partly to stop Excel eating it. */
 const template = buildRosterTemplate({
   dates: DATES,

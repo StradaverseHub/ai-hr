@@ -10,8 +10,8 @@ import { beatsEligibility, winReasonFor, type EligibilityRuleRow } from '@/core/
  * rendered, and none pinned that what it said was true.
  */
 
-const BLOCK = 'app/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
-const PANEL = 'app/admin/leave/entitlements/templates/eligibility-explain.tsx';
+const BLOCK = 'app/(app)/admin/leave/entitlements/templates/entitlement-tables-block.tsx';
+const PANEL = 'app/(app)/admin/leave/entitlements/templates/eligibility-explain.tsx';
 const CORE = 'core/entitlement-template.ts';
 const read = (p: string) => readFileSync(p, 'utf8');
 

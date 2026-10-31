@@ -52,7 +52,7 @@ export function adjustmentReturnTo(raw: unknown, batchId: string): string {
 /**
  * 9066bd6c — WHERE "BACK" GOES FROM A SCREEN BELOW PAYROLL PROCESS, filters and all.
  *
- * The Payroll Process list is driven entirely by the address bar (`app/payroll/dashboard-logic.ts` —
+ * The Payroll Process list is driven entirely by the address bar (`app/(app)/payroll/dashboard-logic.ts` —
  * every control writes `?year=&m=&company=&cycle=&status=`). What loses the operator's selection is not
  * the filter bar: it is the row link and the fixed `back={{ href: '/payroll' }}` on the screens below
  * it, which throw the query away. The list therefore hands each row's links its own current query as
@@ -97,7 +97,7 @@ export function payrollListReturnTo(raw: unknown): string {
  *
  * CLEARED, NOT WIDENED, AND THE CONTROL IS WHY. The obvious alternative is to append `status=draft` and
  * keep `status=processed`, which sounds like it honours "your filters are still set" more faithfully. It
- * does not: the Status control (app/payroll/dashboard-filters.tsx) is a SINGLE `<select>` bound to
+ * does not: the Status control (app/(app)/payroll/dashboard-filters.tsx) is a SINGLE `<select>` bound to
  * `filters.statuses[0]`, so a two-value query paints "Processed" in the dropdown above a table that is
  * also listing Draft rows — the filter bar would be making a false statement about the list under it, and
  * the next filter the operator touched would carry the invisible second value along. Replacing the value
@@ -173,7 +173,7 @@ export function withPayrollFrom(destination: string, raw: unknown): string {
  * and two appenders, each pinned to `/payroll` or to `ADJUSTMENT_RETURN_PATHS`. The r338 brief asked the
  * Locations screens to "reuse the existing lib/return-to.ts helper rather than hardcoding a path"; there
  * was no helper to reuse, so the MODULE is reused and one is added here in its idiom rather than a
- * fourth private copy of the shape-whitelist being written inside app/admin/. Reported as a correction.
+ * fourth private copy of the shape-whitelist being written inside app/(app)/admin/. Reported as a correction.
  *
  * WHY A WHITELIST AT ALL. The Locations listing is a company table, and Add / View / Edit each open a
  * screen of their own. Every one of those screens has to know where "back" is, and the value reaches

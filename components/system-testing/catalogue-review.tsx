@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import type { previewTestingCatalogue } from '@/core/system-testing';
-import { confirmTestingCatalogueAction } from '@/app/admin/system-testing/workspace-actions';
+import { confirmTestingCatalogueAction } from '@/app/(app)/admin/system-testing/workspace-actions';
 import { TestingActionForm } from './action-form';
 import { TestingGuide } from './guide';
 import { TestingRecordedTime } from './recorded-time';

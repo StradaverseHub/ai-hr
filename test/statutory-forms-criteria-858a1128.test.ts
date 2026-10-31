@@ -6,7 +6,7 @@
  * reverse of the order an HR operator works in. And it asked for a Payroll Month even on the annual
  * C.P.8A (EA), where a month means nothing.
  *
- * WHAT WAS MEASURED FIRST, AND HELD. `app/payroll/statutory-forms/page.tsx` really did take companyId /
+ * WHAT WAS MEASURED FIRST, AND HELD. `app/(app)/payroll/statutory-forms/page.tsx` really did take companyId /
  * year / month as search params and gate the whole list on them, so the premise was true. Two things the
  * plan named as ALREADY BUILT are carried across unchanged and are pinned as such below: the pack's eight
  * registered reports, and the `official` / `agency-layout` / `figures` / `draft-file` / `planned` fidelity
@@ -21,7 +21,7 @@
  *
  * WHY SO MUCH OF THIS IS PURE RATHER THAN SOURCE-SCANNING. The defect this round can produce is a card
  * that opens a criteria step which then asks for the wrong thing — a mismatch BETWEEN files, invisible to
- * a test of either half. `app/payroll/statutory-forms/criteria.ts` is the one rule both read, so running
+ * a test of either half. `app/(app)/payroll/statutory-forms/criteria.ts` is the one rule both read, so running
  * it over the pack's OWN entries answers "does the EA ask for a month" as a fact rather than as a grep.
  */
 import { describe, expect, it } from 'vitest';
@@ -36,9 +36,9 @@ import {
   destinationReportId,
   parseDestination,
   reportDestination,
-} from '../app/payroll/statutory-forms/criteria';
-import { MAX_EA_SELECTION } from '../app/payroll/statutory-forms/ea/limits';
-import { filterEaRows } from '../app/payroll/statutory-forms/ea/filter';
+} from '../app/(app)/payroll/statutory-forms/criteria';
+import { MAX_EA_SELECTION } from '../app/(app)/payroll/statutory-forms/ea/limits';
+import { filterEaRows } from '../app/(app)/payroll/statutory-forms/ea/filter';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
@@ -59,13 +59,13 @@ const code = (p: string) =>
     .readFileSync(path.join(ROOT, p), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^[ \t]*\/\/.*$/gm, '');
-const DIRECTORY = code('app/payroll/statutory-forms/page.tsx');
+const DIRECTORY = code('app/(app)/payroll/statutory-forms/page.tsx');
 const READ = code('core/read.ts');
-const CRITERIA = code('app/payroll/statutory-forms/open/page.tsx');
-const FORM_PAGE = code('app/payroll/statutory-forms/[formId]/page.tsx');
-const EA_PAGE = code('app/payroll/statutory-forms/ea/page.tsx');
-const EA_PICKER = code('app/payroll/statutory-forms/ea/employee-picker.tsx');
-const EA_DOWNLOAD = code('app/payroll/statutory-forms/ea/download/route.ts');
+const CRITERIA = code('app/(app)/payroll/statutory-forms/open/page.tsx');
+const FORM_PAGE = code('app/(app)/payroll/statutory-forms/[formId]/page.tsx');
+const EA_PAGE = code('app/(app)/payroll/statutory-forms/ea/page.tsx');
+const EA_PICKER = code('app/(app)/payroll/statutory-forms/ea/employee-picker.tsx');
+const EA_DOWNLOAD = code('app/(app)/payroll/statutory-forms/ea/download/route.ts');
 /**
  * 2a1a6f42 (r331) — THE GATE MOVED HOUSE; IT DID NOT CHANGE.
  *
@@ -77,8 +77,8 @@ const EA_DOWNLOAD = code('app/payroll/statutory-forms/ea/download/route.ts');
  * a decision you are reversing is updated, not deleted); what is reversed is WHERE the gate is written, not
  * what it does. `EA_DOWNLOAD` keeps one assertion of its own — that it delegates and re-implements nothing.
  */
-const EA_SHARED = code('app/payroll/statutory-forms/ea/shared.ts');
-const EA_PREVIEW = code('app/payroll/statutory-forms/ea/preview/route.ts');
+const EA_SHARED = code('app/(app)/payroll/statutory-forms/ea/shared.ts');
+const EA_PREVIEW = code('app/(app)/payroll/statutory-forms/ea/preview/route.ts');
 
 const linkById = new Map(MY_STATUTORY_LINKS.map((l) => [l.id, l]));
 const kinds = (href: string) => parseDestination(href).criteria.map((c) => c.kind);
@@ -158,7 +158,7 @@ describe('the main screen is a directory: no company, year or month gates the fo
     expect(DIRECTORY).not.toContain('cp22MonthCohort');
     expect(DIRECTORY).not.toContain('name="companyId"');
     expect(DIRECTORY).not.toContain('name="month"');
-    expect(code('app/payroll/statutory-forms/event/page.tsx')).toContain('complianceWorklist(s, {');
+    expect(code('app/(app)/payroll/statutory-forms/event/page.tsx')).toContain('complianceWorklist(s, {');
   });
 });
 
@@ -616,7 +616,7 @@ describe('the criteria step arrives on a period that has already happened', () =
 
   it('reads the TENANT clock, never the host’s', () => {
     // Between 00:00 and 08:00 MYT the UTC date is still yesterday's, and on 1 January that is a whole year
-    // out — the failure app/payroll/dashboard-logic.ts documents.
+    // out — the failure app/(app)/payroll/dashboard-logic.ts documents.
     expect(CRITERIA).toContain('todayInKualaLumpur()');
     expect(CRITERIA).not.toContain('new Date()');
     // And the defaults come from the shared rule rather than being recomputed on the page.

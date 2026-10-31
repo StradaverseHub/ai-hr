@@ -16,7 +16,7 @@ vi.mock('../packs/performance/service',()=>({ASSESSMENT_AI_FEATURES:['review_sum
 import {redirect} from 'next/navigation';
 import {AiConfigError} from '../core/ai-config';
 import { getSession } from '../lib/session';
-import { disableAiAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, saveAiProviderConfigAction, setActiveProviderAction, testConnectionAction } from '../app/admin/ai/actions';
+import { disableAiAction, evaluateProviderCandidateAction, removeAiProviderConfigAction, saveAiProviderConfigAction, setActiveProviderAction, testConnectionAction } from '../app/(app)/admin/ai/actions';
 import { closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 let base:Base;
 const candidateId='11111111-1111-4111-8111-111111111111',candidateVersion='22222222-2222-4222-8222-222222222222';

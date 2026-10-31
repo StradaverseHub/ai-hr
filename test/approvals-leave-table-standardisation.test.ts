@@ -3,7 +3,7 @@
  * plus the multi-day action rename (feedback d6429eb4).
  *
  * WHAT WENT WRONG BEFORE: the two surfaces that list leave requests — My Leave → Requests
- * (app/leave/page.tsx) and the Approval Items leave table (app/approvals/page.tsx) — were two hand-written
+ * (app/(app)/leave/page.tsx) and the Approval Items leave table (app/(app)/approvals/page.tsx) — were two hand-written
  * copies of the same table. My Leave had grown avatars, colour-coded type chips and the ADR-0048 duration
  * label; Approval Items still rendered a bare name link, plain type text and no duration label. The fix is
  * NOT to copy the newer markup across (that guarantees a third divergence) but to extract the cells into
@@ -46,8 +46,8 @@ function sourceFiles(): string[] {
 }
 
 const CELLS = 'components/leave/leave-request-cells.tsx';
-const APPROVALS = 'app/approvals/page.tsx';
-const MY_LEAVE = 'app/leave/page.tsx';
+const APPROVALS = 'app/(app)/approvals/page.tsx';
+const MY_LEAVE = 'app/(app)/leave/page.tsx';
 const cells = read(CELLS);
 const approvals = read(APPROVALS);
 const myLeave = read(MY_LEAVE);
@@ -129,7 +129,7 @@ describe('33bf1a2d — the leave-request cells are SHARED, not copied', () => {
       );
     }
     // Same for the employee avatar: the ONLY <Avatar name={…}> left in the two request tables is the one
-    // inside the shared cell. (app/leave/page.tsx keeps a separate Employee Details listing with its own
+    // inside the shared cell. (app/(app)/leave/page.tsx keeps a separate Employee Details listing with its own
     // avatar, so this is asserted per-table, not per-file.)
     // afd0a87c — My Leave's requests table is REMOVED, so there is no slice to scan. The promise it made
     // is kept in a stronger form: My Leave must not render a request-table avatar ANYWHERE. Its Employee
@@ -199,7 +199,7 @@ describe('33bf1a2d — the Attachment column costs no extra query', () => {
   it('the icon links at the existing RLS-scoped attachment route, opened in a new tab', () => {
     expect(cells).toContain('<Paperclip');
     expect(cells).toContain("target=\"_blank\"");
-    expect(read('app/me/leave/attachment/[id]/route.ts')).toContain('getLeaveAttachment');
+    expect(read('app/(app)/me/leave/attachment/[id]/route.ts')).toContain('getLeaveAttachment');
   });
 
   it('is the LEAVE attachment, not the feedback attachment feature (r76 / migration 0321)', () => {
@@ -255,7 +255,7 @@ describe('33bf1a2d r80 — the Days column shows JUST the days', () => {
     // employee name links to the personnel record, whose leave summary carries the balance.
     expect(read('core/read.ts')).toContain('applicantBalance: sql<string>');
     expect(approvalsLeaveSection()).toContain('href={`/personnel/${r.employmentId}`}');
-    expect(read('app/personnel/[employmentId]/page.tsx')).toContain('leaveSummary.days');
+    expect(read('app/(app)/personnel/[employmentId]/page.tsx')).toContain('leaveSummary.days');
   });
 });
 
@@ -318,7 +318,7 @@ describe('33bf1a2d r80 — the leave CANCELLATION queue uses the SAME cells', ()
 });
 
 describe('33bf1a2d — approval behaviour is unchanged (presentation only)', () => {
-  const controls = read('app/approvals/leave-decide-controls.tsx');
+  const controls = read('app/(app)/approvals/leave-decide-controls.tsx');
 
   it('the whole-request control posts the same action with the same decision values', () => {
     expect(controls).toContain("import { approveLeaveAction } from './actions'");
@@ -352,7 +352,7 @@ describe('33bf1a2d — approval behaviour is unchanged (presentation only)', () 
     const section = approvalsLeaveSection();
     expect(section).toContain('(breakdowns.get(r.id)?.length ?? 0) > 0');
     expect(section).toContain('<LeaveDateBreakdown');
-    expect(read('app/approvals/leave-date-breakdown.tsx')).toContain('decideLeaveDatesAction');
+    expect(read('app/(app)/approvals/leave-date-breakdown.tsx')).toContain('decideLeaveDatesAction');
   });
 
   it('who may act on a row is decided exactly as before', () => {
@@ -384,7 +384,7 @@ describe('d6429eb4 — the multi-day action reads "Review dates"', () => {
   it('the KEY is unchanged — only the string moved', () => {
     // Renaming the key would blank the label at runtime on any surface still asking for it; tsc cannot see
     // a missing translation key.
-    expect(read('app/approvals/leave-date-breakdown.tsx')).toContain('labels.viewDateBreakdown');
+    expect(read('app/(app)/approvals/leave-date-breakdown.tsx')).toContain('labels.viewDateBreakdown');
     expect(approvals).toContain("viewDateBreakdown: t('viewDateBreakdown')");
   });
 
@@ -408,7 +408,7 @@ describe('d6429eb4 — the multi-day action reads "Review dates"', () => {
     // If a second surface expected the old words, the rename would silently reword that one too. Sweep
     // app/ + components/ for the key and check the only RENDERER is the per-date modal.
     const renderers = sourceFiles().filter((f) => read(f).includes('labels.viewDateBreakdown'));
-    expect(renderers).toEqual(['app/approvals/leave-date-breakdown.tsx']);
+    expect(renderers).toEqual(['app/(app)/approvals/leave-date-breakdown.tsx']);
     // The only place the key is resolved from the catalog is the approvals page's label set.
     const resolvers = sourceFiles().filter((f) => read(f).includes("t('viewDateBreakdown')"));
     expect(resolvers).toEqual([APPROVALS]);
@@ -428,7 +428,7 @@ describe('d6429eb4 r80 — the confirm button inside the Review dates pop-out re
   it('the KEY is unchanged — only the string moved', () => {
     // Renaming submitDecisions → submit would blank the button at runtime; tsc cannot see a missing
     // translation key, and a blank <Button> still submits, so the modal would look broken but work.
-    expect(read('app/approvals/leave-date-breakdown.tsx')).toContain('labels.submitDecisions');
+    expect(read('app/(app)/approvals/leave-date-breakdown.tsx')).toContain('labels.submitDecisions');
     expect(approvals).toContain("submitDecisions: t('submitDecisions')");
   });
 
@@ -456,11 +456,11 @@ describe('d6429eb4 r80 — the confirm button inside the Review dates pop-out re
     // Same sweep r77 ran for viewDateBreakdown: a second surface reading this key would have been
     // silently reworded too.
     expect(sourceFiles().filter((f) => read(f).includes('labels.submitDecisions'))).toEqual([
-      'app/approvals/leave-date-breakdown.tsx',
+      'app/(app)/approvals/leave-date-breakdown.tsx',
     ]);
     expect(sourceFiles().filter((f) => read(f).includes("t('submitDecisions')"))).toEqual([APPROVALS]);
     // Wording only: the one batch submit, the same action, the same missing-reason guard.
-    const modal = read('app/approvals/leave-date-breakdown.tsx');
+    const modal = read('app/(app)/approvals/leave-date-breakdown.tsx');
     expect(modal).toContain('<form action={decideLeaveDatesAction}');
     expect(modal).toContain('disabled={missingReason}');
   });

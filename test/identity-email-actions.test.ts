@@ -5,7 +5,7 @@ vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:mocks.g
 vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:mocks.ipc}));
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('next/navigation',()=>({redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
-import {saveEmailDraft,testEmailDraft,activateEmailDraft,saveEmailRetention} from '../app/admin/settings/email/actions';
+import {saveEmailDraft,testEmailDraft,activateEmailDraft,saveEmailRetention} from '../app/(app)/admin/settings/email/actions';
 const actor={issuer:'https://hr.test',subject:'server-derived',userId:'22222222-2222-4222-8222-222222222222',tenantId:'11111111-1111-4111-8111-111111111111'};
 beforeEach(()=>{vi.clearAllMocks();mocks.guard.mockResolvedValue({actor,session:{tenantId:actor.tenantId,userId:actor.userId}});mocks.ipc.mockResolvedValue({});mocks.retention.mockResolvedValue(undefined);});
 afterEach(()=>vi.unstubAllEnvs());

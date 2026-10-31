@@ -109,7 +109,7 @@ const mountAdjustments = () =>
 
 // ── Notice Board ─────────────────────────────────────────────────────────────────────────────────────
 /**
- * The copy object built EXACTLY as app/admin/notice-board/{new,[id]}/page.tsx build it — one `t()` value
+ * The copy object built EXACTLY as app/(app)/admin/notice-board/{new,[id]}/page.tsx build it — one `t()` value
  * per label, so a key this component needs but no page passes shows up as `undefined` rather than as a
  * plausible placeholder.
  */

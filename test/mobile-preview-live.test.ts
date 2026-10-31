@@ -9,7 +9,7 @@ import { setCompensation } from '../core/comp';
 import { myEmployments, listLeaveRequestsPage } from '../core/read';
 import { myLeaveDashboard } from '../core/my-leave';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { loadMobilePreview } from '../app/mobile-preview/data';
+import { loadMobilePreview } from '../app/(app)/mobile-preview/data';
 import { adminCtx, closeAll, createAppUser, entitledCtx, migrateTestDb, owner, resetDb, seedBase, seedEntitlement, setModule, type Base } from './harness';
 
 let b: Base;

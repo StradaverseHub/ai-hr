@@ -34,7 +34,7 @@ import {archiveQualification as archiveQualificationOwner} from '../core/qualifi
 import {addEmployeeDocument,getEmployeeDocument,listEmployeeDocuments,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent,deleteEmployeeDocument} from '../core/employee-documents';
 const routeSession=vi.hoisted(()=>({ctx:null as SessionContext|null}));
 vi.mock('../lib/session',()=>({getSession:async()=>{if(!routeSession.ctx)throw new Error('No fixture identity');return routeSession.ctx;}}));
-import {GET as downloadDocument} from '../app/admin/personnel/[employmentId]/document/[docId]/route';
+import {GET as downloadDocument} from '../app/(app)/admin/personnel/[employmentId]/document/[docId]/route';
 
 let b:Base;
 const admin=()=>({...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]});

@@ -69,7 +69,7 @@ import {
   saveBankStatutoryTabAction,
   saveJobTabAction,
   savePayrollTabAction,
-} from '../app/admin/personnel/[employmentId]/actions';
+} from '../app/(app)/admin/personnel/[employmentId]/actions';
 import {
   ATTENDANCE_TAB_SECTION_ORDER,
   BANK_STATUTORY_TAB_SECTION_ORDER,
@@ -99,8 +99,8 @@ function stripComments(src: string): string {
   return withoutLines.replace(/\{?\/\*[\s\S]*?\*\/\}?/g, '');
 }
 
-const PAGE = () => stripComments(read('app/admin/personnel/[employmentId]/page.tsx'));
-const ACTIONS = () => read('app/admin/personnel/[employmentId]/actions.ts');
+const PAGE = () => stripComments(read('app/(app)/admin/personnel/[employmentId]/page.tsx'));
+const ACTIONS = () => read('app/(app)/admin/personnel/[employmentId]/actions.ts');
 
 const key = (section: string, field: string) => `${SECTION_FIELD_PREFIX}.${section}.${field}`;
 
@@ -662,7 +662,7 @@ describe('420ebab5 r255 — one Save per tab on Bank & Statutory, Attendance and
       expect(saveScope).toBeGreaterThan(calendar);
       expect(attendancePanel).not.toContain('{locationCard}');
       expect(attendancePanel).not.toContain('{defaultShiftCard}');
-      const widget = stripComments(read('app/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx'));
+      const widget = stripComments(read('app/(app)/admin/personnel/[employmentId]/holiday-calendar-assignments.tsx'));
       expect(widget).toContain('saveHolidayCalendarAssignmentAction');
       expect(widget).toContain('<form');
       expect(widget).not.toContain('data-save-section');
