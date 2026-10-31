@@ -67,6 +67,28 @@ export function adjudicatePrivateAssistantReadPlan(text:string,local:unknown):Re
  if(plan.modules.some(module=>!source.modules.includes(module)))return fail();return plan;
 }
 const normalize=(value:string)=>value.normalize('NFC').trim().toLocaleLowerCase('en').replace(/[.!?。！？]+$/u,'').replace(/\s+/g,' ');
+/** Closed own-balance sentence frames. A label is a LOCAL selector hint, never provider input.
+ * Keep canonical punctuation: *Annual Leave and Annual Leave (C) are different choices. Custom
+ * tenant labels remain available through the fresh exact-label clarification, not guessed prose. */
+function ownLeaveBalanceQuestion(question:string):Readonly<{leaveType?:string}>|null{
+ const text=normalize(question);
+ const frames=[
+  /^(?:how much|how many days of) (.+) do i have(?: left)?$/,
+  /^how many (.+) days (?:do i have|have i got)(?: left)?$/,
+  /^how much (.+) have i got(?: left)?$/,
+  /^(?:what is|what's) my (.+) balance$/,
+  /^(?:show|show me|can you show me) my (.+) balance$/,
+  /^do i have any (.+) left$/,
+ ];
+ for(const frame of frames){
+  const match=frame.exec(text);if(!match)continue;const label=match[1];
+  if(label==='leave')return{};
+  // This vocabulary cannot consume a named colleague, instructions, a second task or a negation.
+  if(/^\*?(?:annual|medical|sick|hospitalization|hospitalisation|replacement|special|unpaid|maternity|paternity|compassionate|marriage|study|emergency|birthday|carry forward) leave(?: \(c\))?$/.test(label))return{leaveType:label};
+  return null;
+ }
+ return null;
+}
 const aliases:Readonly<Partial<Record<PrivateAssistantIntent,readonly string[]>>>=Object.freeze({
  module_overview:['what can you do','what can you help me with','what can you help me do in this application','how many agents are turned on and where do i activate the rest','show assistant capabilities'],
  leave_available:['my leave balance','show my leave balance','how much leave do i have','how much leave do i have left','how much leave is left','what is my leave balance','my leave'],
@@ -99,9 +121,10 @@ export function resolvePrivateAssistantProposal(question:string):Readonly<{actio
 }
 /** A closed local grammar, NOT regex masking of arbitrary language. Unknown wording stays local and
  * asks for a module; names, free prose and pasted instructions are never sent as an alleged safe intent. */
-export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode}>{
+export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode;leaveType?:string}>{
  const social=assistantSocialIntent(question);if(social&&social!=='help')return{intent:null,social};
  const normalized=normalize(question);
+ const balance=ownLeaveBalanceQuestion(question);if(balance)return{intent:'leave_available',social:null,module:'leave',...balance};
  for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date,module:'org'};}}
  for(const intent of PRIVATE_ASSISTANT_INTENTS){
   if(aliases[intent]?.some(alias=>normalize(alias)===normalized)||dictionaries.some(dictionary=>{const key=`${intent}_prompt` as keyof typeof en.assistant.workspace;const value=dictionary.assistant.workspace[key as keyof typeof dictionary.assistant.workspace];return typeof value==='string'&&!value.includes('{date}')&&normalize(value)===normalized;}))return{intent,social:null,module:privateAssistantModules(intent)[0]};
@@ -163,7 +186,7 @@ export function resolvePrivateAssistantContextualIntent(question:string,history:
  return resolvePrivateAssistantIntent(question,pending?[]:effective);
 }
 export type PrivateAssistantLocalEmployment=Readonly<{read:number;card:number;key:string;labels:readonly string[]}>;
-export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],clarification:PrivateAssistantClarification|null,employments:readonly PrivateAssistantLocalEmployment[]=[]):Readonly<{selection:readonly PrivateAssistantCardSelection[];slot?:'employment'|'leave_type'|'period'}>{
+export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],clarification:PrivateAssistantClarification|null,employments:readonly PrivateAssistantLocalEmployment[]=[],localQuestion?:string):Readonly<{selection:readonly PrivateAssistantCardSelection[];slot?:'employment'|'leave_type'|'period'}>{
  type Option={read:number;card:number;employment?:PrivateAssistantLocalEmployment;leaveType?:string;period?:string};
  let candidates:Option[]=reads.flatMap(read=>read.presentation.cards.slice(0,25).map((card,index)=>{
   const text=(field:'leaveType'|'period')=>{const value=card.facts.find(fact=>fact.field===field)?.value;return typeof value==='string'?value:undefined;};
@@ -171,6 +194,15 @@ export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:
  }));
  const result=(slot?:'employment'|'leave_type'|'period')=>({selection:reads.map(read=>({read:read.read,cards:candidates.filter(row=>row.read===read.read).map(row=>row.card)})),...(slot?{slot}:{})});
  const steps=clarification?[...clarification.earlier,{question:clarification.originalQuestion,slot:clarification.slot}]:[];
+ // Sentence hints are adjudicated against fresh cards, just like an explicit typed slot. A
+ // no-match keeps the chooser; it never falls back to all types or strips distinguishing marks.
+ // Explicit leave-type retries remain authoritative, so a person can correct the original hint.
+ const hasTypeReply=steps.some(step=>step.slot==='leave_type');
+ const typedQuestion=clarification?steps.map(step=>ownLeaveBalanceQuestion(step.question)).find(value=>value?.leaveType):localQuestion===undefined?null:ownLeaveBalanceQuestion(localQuestion);
+ if(intent==='leave_available'&&typedQuestion?.leaveType&&!hasTypeReply){
+  const matching=candidates.filter(row=>row.leaveType!==undefined&&normalize(row.leaveType)===typedQuestion.leaveType);
+  if(!matching.length)return result('leave_type');candidates=matching;
+ }
  for(let index=0;index<steps.length;index++){
   const slot=steps[index].slot;if(slot==='module'||steps[index+1]?.slot===slot)continue;const answer=normalize(steps[index+1]?.question??clarification!.answer);
   const options=new Map<string,Option[]>();
