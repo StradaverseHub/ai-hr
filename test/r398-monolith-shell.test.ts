@@ -23,8 +23,9 @@ const CLASSIC_BASE = 'f79f0259f529dfafd1426fbf70389c8555495858';
 // The baseline predates the (auth)/(app) root-layout split: its single app/(app)/layout.tsx held both shells.
 const BASELINE_PATH: Record<string, string> = { 'app/(app)/layout.tsx': 'app/layout.tsx' }; // route-groups-rewrite: keep
 const onMain = (p: string) => execFileSync('git', ['show', `${CLASSIC_BASE}:${BASELINE_PATH[p] ?? p}`], { cwd: ROOT, encoding: 'utf8' });
-/** The current source a baseline file's classes must survive in: the old layout's login branch moved to app/(auth). */
-const current = (p: string) => p === 'app/(app)/layout.tsx' ? read(p) + read('app/(auth)/layout.tsx') : read(p);
+/** The current source a baseline file's strings must survive in: the old layout's login branch moved to
+ * app/(auth), and its font and metadata declarations to app/root-document.ts. */
+const current = (p: string) => p === 'app/(app)/layout.tsx' ? read(p) + read('app/(auth)/layout.tsx') + read('app/root-document.ts') : read(p);
 
 const LAYOUT = read('app/(app)/layout.tsx');
 const SIDEBAR = read('components/sidebar.tsx');
