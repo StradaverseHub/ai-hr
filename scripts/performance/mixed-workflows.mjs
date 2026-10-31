@@ -30,7 +30,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   const response=await request(user,template.path,fields,template.status,record,template.headers,template.fieldOrder);
   const target=response.headers['x-action-redirect']??response.headers.location;
   if(target){const url=new URL(String(target).split(';')[0],base);assert(!url.searchParams.has('error'),'mutation returned a business refusal');}
-  assert(!response.content.includes('"digest"'),'server action returned an exception');return response;
+  assert(!/(?:^|\n)[0-9a-f]+:E\{/.test(response.content),'server action returned an exception record');return response;
  }
  // Use an ordinary future weekday; dates and type IDs come from the fictional fixture.
  const day=new Date(fixture.today+'T12:00:00Z');do{day.setUTCDate(day.getUTCDate()+1);}while([0,6].includes(day.getUTCDay()));
