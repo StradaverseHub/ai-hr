@@ -17,12 +17,12 @@ const errorText = (e: unknown) => e instanceof ZodError ? e.issues.map(i => `${i
 /** 328ebe84: a negative merit/promotion/special (or EC bonus/lump) reads as the business rule, in the viewer's language. */
 const rewardErrorText = async (e: unknown) => isSalaryReductionAttempt(e) ? (await getTranslations('rewards'))('unitBonus.noReduction') : errorText(e);
 
-async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSession>>, unitId: string, revision: number) => Promise<unknown>, configuration = false) {
+async function change(f: FormData, work: (s: Awaited<ReturnType<typeof getSession>>, unitId: string, revision: number) => Promise<unknown>, configuration = false, notice?: string) {
   const s = await getSession(); const unitId = str(f, 'unitId');
   const url = `${configuration ? '/admin/rewards' : '/rewards'}/${encodeURIComponent(unitId)}`;
   try { await work(s, unitId, number(f, 'revision')); }
   catch (e) { redirect(`${url}?error=${encodeURIComponent(await rewardErrorText(e))}`); }
-  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(url);
+  revalidatePath('/rewards', 'layout'); revalidatePath('/admin/rewards', 'layout'); redirect(notice ? `${url}?notice=${notice}` : url);
 }
 
 export async function createRewardAction(f: FormData) {
@@ -31,7 +31,9 @@ export async function createRewardAction(f: FormData) {
   catch (e) {if(e instanceof RewardPolicyGroupError)redirect(`/admin/rewards?sharedError=${e.code}`);redirect(`/admin/rewards?error=${encodeURIComponent(errorText(e))}`);}
   revalidatePath('/rewards'); revalidatePath('/admin/rewards'); redirect(`/admin/rewards/${unitId}`);
 }
-export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true); }
+/** A role change is stored as a pending request for an independent administrator (changeRewardMember), so the
+ *  page says so instead of reloading as if nothing happened. */
+export async function memberAction(f: FormData) { return change(f, (s, id, rev) => setRewardMember(s, id, rev, str(f, 'userId'), str(f, 'role') as RewardRole, str(f, 'remove') === 'true'), true, 'accessPending'); }
 /** 4e3e1af7: Use suggested amount / Set amount / Withhold for this BU, with a reason (required to withhold). */
 export async function lumpAction(f: FormData) {
   const mode = str(f, 'mode'), reason = str(f, 'reason');
