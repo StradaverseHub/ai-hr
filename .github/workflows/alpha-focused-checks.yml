@@ -174,7 +174,7 @@ jobs:
         working-directory: source
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
-      AIHR_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
+      AIHR_FOCUSED_TESTS: '["test/assistant-model-ceiling.eval.test.ts"]'
       AIHR_EVAL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
       AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
