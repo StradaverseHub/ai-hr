@@ -2,19 +2,22 @@
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {eq} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import type {SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
-const mode=vi.hoisted(()=>({shared:false}));
+const mode=vi.hoisted(()=>({shared:false,metadataShared:false}));
 vi.mock('../../core/access-configuration-lock',async original=>{
  const native=await original<typeof import('../../core/access-configuration-lock')>();
  return {...native,lockAccessConfigurationReadTx:(...args:Parameters<typeof native.lockAccessConfigurationReadTx>)=>
-  mode.shared?native.lockAccessConfigurationReadTx(...args):native.lockAccessConfigurationTx(...args)};
+  mode.shared?native.lockAccessConfigurationReadTx(...args):native.lockAccessConfigurationTx(...args),
+  lockAccessConfigurationTx:(...args:Parameters<typeof native.lockAccessConfigurationTx>)=>
+   mode.metadataShared?native.lockAccessConfigurationReadTx(...args):native.lockAccessConfigurationTx(...args)};
 });
-import {workforceViewScope} from '../../core/workforce-access';
+import {workforceViewScope,workforceCompanies,workforceEmploymentAccess,workforceCommandAccess} from '../../core/workforce-access';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('measures500 live menu reads before, during and after shared-reader scheduling',async()=>{
+it('measures500 live menu and standalone metadata readers with unchanged native authority',async()=>{
  await resetDb();const b=await seedBase(),base=adminCtx(b),companies=[b.companyId];
  for(let i=1;i<5;i++){const [co]=await owner.db.insert(s.company).values({tenantId:b.tenantId,country:'MY',legalName:'Fictional lock company '+i}).returning();companies.push(co.id);}
  const users=Array.from({length:500},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[i%5],role:i<2?'hr_admin' as const:'employee' as const}));
@@ -24,16 +27,33 @@ it('measures500 live menu reads before, during and after shared-reader schedulin
  await owner.db.insert(s.roleAssignment).values(users.map(u=>({tenantId:b.tenantId,appUserId:u.id,role:u.role,companyId:u.role==='hr_admin'?null:u.companyId})));
  const phases:Record<string,unknown>={};
  try{
-  for(const phase of ['exclusive-before','shared','exclusive-after']){
-   mode.shared=phase==='shared';const times:number[]=[],started=performance.now();
+  for(const workload of ['menu','metadata'])for(const phase of ['exclusive-before','shared','exclusive-after']){
+   mode.shared=workload==='menu'&&phase==='shared';mode.metadataShared=workload==='metadata'&&phase==='shared';const times:number[]=[],started=performance.now();
    const results=await Promise.allSettled(users.map(async u=>{
     const ctx:SessionContext={...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.role==='hr_admin'?null:u.companyId}]};
-    const before=performance.now(),scope=await workforceViewScope(ctx);
-    expect(scope).toEqual({companyIds:u.role==='hr_admin'?[...companies].sort():[],canOpen:u.role==='hr_admin'});times.push(performance.now()-before);
+    const before=performance.now();
+    if(workload==='menu')expect(await workforceViewScope(ctx)).toEqual({companyIds:u.role==='hr_admin'?[...companies].sort():[],canOpen:u.role==='hr_admin'});
+    else{
+     // Each public wrapper owns a complete read-only transaction. No borrowed writer is measured.
+     expect(await workforceCompanies(ctx,'maintain')).toEqual(u.role==='hr_admin'?[...companies].sort():[]);
+     expect(await workforceEmploymentAccess(ctx,u.employmentId,'maintain')).toBe(u.role==='hr_admin');
+     expect(await workforceCommandAccess(ctx,u.employmentId)).toBe(u.role==='hr_admin');
+    }
+    times.push(performance.now()-before);
    }));
    times.sort((a,b)=>a-b);const errors=results.flatMap(result=>result.status==='rejected'?[String(result.reason)]:[]);
-   phases[phase]={principals:500,elapsedMs:performance.now()-started,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'workforce-read-lock.json'),JSON.stringify({kind:'NATIVE_SCOPE_READ_LOCK_EXPERIMENT',releaseEligible:false,phases},null,2));expect(errors).toEqual([]);
+   if(workload==='metadata'){
+    const u=users[0],ctx:SessionContext={...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:null}]};
+    try{
+     await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,u.id));
+     expect(await workforceCompanies(ctx,'maintain')).toEqual([]);
+     expect(await workforceEmploymentAccess(ctx,u.employmentId,'maintain')).toBe(false);
+     expect(await workforceCommandAccess(ctx,u.employmentId)).toBe(false);
+    }finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,u.id));}
+    expect(await workforceEmploymentAccess(ctx,u.employmentId,'maintain')).toBe(true);
+   }
+   phases[workload+':'+phase]={principals:500,queriesPerPrincipal:workload==='menu'?1:3,elapsedMs:performance.now()-started,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors};
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'workforce-read-lock.json'),JSON.stringify({kind:'NATIVE_READ_ONLY_METADATA_LOCK_EXPERIMENT',releaseEligible:false,phases},null,2));expect(errors).toEqual([]);
   }
- }finally{mode.shared=false;}
+ }finally{mode.shared=false;mode.metadataShared=false;}
 },120000);
