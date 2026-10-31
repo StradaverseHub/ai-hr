@@ -1,0 +1,13 @@
+import {z} from 'zod';
+export const REWARDS_RETURN_ACTION='rewards.annual_review.return' as const;
+const id=z.guid(),digest=z.string().regex(/^[a-f0-9]{64}$/),base={action:z.literal(REWARDS_RETURN_ACTION),contractVersion:z.literal(1)};
+export const RewardsReturnHuman=z.object({...base,unitId:id,revision:z.number().int().nonnegative(),reason:z.string().trim().min(10).max(4000),confirmWholeAnnualReview:z.literal(true)}).strict();
+export const RewardsReturnReview=z.object({unitId:id,companyId:id,companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),kind:z.literal('annual'),revision:z.number().int().nonnegative(),before:z.enum(['bg','gr','ctro','ec','approved']),after:z.literal('draft'),returnedTo:z.literal('bu'),reason:z.string().min(10).max(4000),consequence:z.literal('whole_annual_review_returns_to_bu_new_revision_approvals_reset_entries_and_history_retained')}).strict();
+export const RewardsReturnReceipt=z.object({kind:z.literal('returned_to_draft'),unitId:id,decisionId:id,eventId:id,returnedRevision:z.number().int().nonnegative(),currentRevision:z.number().int().positive(),currentStatus:z.string().max(40),proof:z.literal('historical_annual_return_current_unit')}).strict().refine(r=>r.currentRevision>r.returnedRevision);
+export const RewardsReturnConfirmation=z.object({...base,actionId:id,reviewedDigest:digest}).strict();
+export const RewardsReturnRetirement=z.object({...base,actionId:id}).strict();
+export const RewardsReturnPrepared=z.object({...base,actionId:id,reviewedDigest:digest,createdAt:z.iso.datetime(),expiresAt:z.iso.datetime(),content:RewardsReturnHuman,review:RewardsReturnReview}).strict().refine(r=>r.content.unitId===r.review.unitId&&r.content.revision===r.review.revision&&r.content.reason===r.review.reason&&Date.parse(r.expiresAt)>Date.parse(r.createdAt));
+export const RewardsReturnCompleted=z.object({...base,actionId:id,state:z.literal('completed'),receipt:RewardsReturnReceipt}).strict();
+export const RewardsReturnRetired=z.object({...base,actionId:id,state:z.enum(['discarded','expired','refused'])}).strict();
+export const RewardsReturnIndex=z.object({kind:z.literal('rewards_return_review_index'),reviews:z.array(z.object({...base,actionId:id,state:z.enum(['awaiting_confirmation','completed','discarded','expired','refused']),createdAt:z.iso.datetime(),expiresAt:z.iso.datetime()}).strict()).max(25).refine(r=>new Set(r.map(x=>x.actionId)).size===r.length)}).strict();
+export const RewardsReturnChoices=z.object({kind:z.literal('choices'),units:z.array(z.object({unitId:id,companyName:z.string().min(1).max(1000),name:z.string().min(1).max(1000),revision:z.number().int().nonnegative(),status:z.enum(['bg','gr','ctro','ec','approved'])}).strict()).max(20),truncated:z.boolean()}).strict();

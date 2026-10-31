@@ -12,11 +12,13 @@ import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from '../lib/ai/provider-data-sou
 import {prepareProviderAnalysis,inspectPreparedProviderAnalysis,retireProviderAnalysis,fingerprintProviderAnalysisSource} from '../lib/ai/provider-analysis-policy';
 import type {GenerateArgs} from '../lib/ai/types';
 import {bindProviderPrivacyRequest,transferProviderPrivacyRequest,assertProviderPrivacyRequest,revokeProviderPrivacyRequest} from '../lib/ai/provider-privacy-request';
+import {assertAgentActionUnpausedTx} from './agent-action-pause';
+export {assertAgentActionUnpausedTx} from './agent-action-pause';
 import {createAiRunAccounting,type AiRunAccounting} from '../lib/ai/run-accounting';
 import { sql } from 'drizzle-orm';
 import { withTenant,type SessionContext,type Tx } from '../db/client';
 import { AiGatewayError,AiAllowanceError,type AiUsage,type AiRunObservation,type ResolvedAiConfig } from '../lib/ai/types';
-import { AI_FEATURES,isAiFeature,type AiFeatureId } from '../lib/ai/features';
+import { AI_FEATURES,isAiFeature,isTemplateOnlyAiFeature,type AiFeatureId } from '../lib/ai/features';
 
 import { resolveEntitlementsTx, getSetting } from './entitlements';
 import { assertAiProviderSnapshot, assertAiProviderSnapshotFeature, assertCurrentAiProviderSnapshotTx, type AiProviderSnapshot } from './ai-provider-snapshot';
@@ -26,6 +28,7 @@ import {captureStrictAiSpendRoot,requiresAiTaskRoot,type StrictAiSpendRoot} from
 export type {StrictAiSpendRoot} from '../lib/ai/spend-allocation';
 import {aiSpendAdmissionStep,resolveAiSpendPolicyTx,resolveReviewedAiSpendCapabilityTx,withReviewedAiSpendDispatch} from './ai-spend-capability';
 import {aiSpendConfigurationDigest,createAiSpendReceiptScope} from '../lib/ai/spend-receipt';
+import {currentAgentActionScope} from './agent-action-pause-scope';
 
 /** Reuse the gateway's fresh setting/platform-kill resolution for deterministic action checks. */
 async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<boolean>{
@@ -43,10 +46,17 @@ async function forcedPauseTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promi
  */
 export async function assertAiActionUnpausedTx(tx:Tx,ctx:SessionContext,feature:AiFeatureId):Promise<void>{
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ // WP13: template-only scheduled agents have no model admission at all.
+ if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  const forcedPause=await forcedPauseTx(tx,ctx,feature);
  const [control]=await tx.execute<{unpaused:boolean}>(sql`select app.ai_action_unpaused(${feature},${forcedPause}) as unpaused`);
  if(control?.unpaused===false)throw new AiAllowanceError('paused');
  if(control?.unpaused!==true)throw new AiGatewayError('AI action controls could not be confirmed.');
+ // WP12 (R8): inside an Assistant review-route command, that action's own pause key under hr_assistant (0696).
+ // A review-route command whose action could not be named fails closed.
+ const route=currentAgentActionScope();
+ if(route&&route.action===null)throw new AiAllowanceError('paused');
+ if(route?.action&&feature==='hr_assistant')await assertAgentActionUnpausedTx(tx,route.action);
 }
 
 /** Trusted command checks are additional refusal conditions, never model-supplied capabilities.
@@ -66,6 +76,7 @@ function createGovernedAiConfig(ctx:SessionContext,snapshot:AiProviderSnapshot,f
  assertAiProviderSnapshotFeature(snapshot,feature);
  const cfg=snapshot.configuration;
  if(!isAiFeature(feature))throw new AiGatewayError('Unknown AI feature.');
+ if(isTemplateOnlyAiFeature(feature))throw new AiGatewayError('This feature makes no model call.');
  let resolved:ResolvedAiConfig=Object.freeze({...cfg,governance:Object.freeze({async run<T>(request:AiAdmission,call:(record:(usage:AiUsage)=>void,observe?:(observation:AiRunObservation)=>void)=>Promise<T>,outgoing:ResolvedAiConfig=cfg):Promise<T>{
   const capturedRequest=Object.freeze({operation:request.operation,reservedTokens:request.reservedTokens,
    ...(request.inputDigest===undefined?{}:{inputDigest:request.inputDigest})});

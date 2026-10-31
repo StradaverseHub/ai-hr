@@ -1,3 +1,31 @@
+import {dayScheduleCorrectionReviews} from './day-schedule-correction-review-store';
+import {scheduleGroupMaintenanceReviews} from './schedule-group-maintenance-review-store';
+import {profileRequestRejectionReviews} from './profile-request-rejection-review-store';
+import {readCompletedPayrollResetOutcomeTx} from './payroll-reset-review-store';
+import {readCompletedPayrollReopenOutcomeTx} from './payroll-reopen-review-store';
+import {peopleGeneralPolicyReviews} from './people-general-policy-review-store';
+import {employeeIdTemplateStatusReviews} from './employee-id-template-status-review-store';
+import {departmentArchiveReviews} from './department-archive-review-store';
+import {positionArchiveReviews} from './position-archive-review-store';
+import {readCompletedRewardsReturnOutcomeTx} from './rewards-return-review-store';
+import {readCompletedRewardsCalendarOutcomeTx} from './rewards-calendar-review-store';
+import {readCompletedRewardsCancelOutcomeTx} from './rewards-cancel-review-store';
+import {offboardingCaseCancelReviews} from './offboarding-case-cancel-review-store';
+import {offboardingStepUndoReviews} from './offboarding-step-undo-review-store';
+import {offboardingStepReviews} from './offboarding-step-completion-review-store';
+import {checkInSchedulingReviews} from './checkin-scheduling-review-store';
+import {checkInCompletionReviews} from './checkin-completion-review-store';
+import {checkInCancellationReviews} from './checkin-cancellation-review-store';
+import {goalApprovalReviews} from './goal-approval-review-store';
+import {fixedItemArchiveReviews} from './fixed-item-archive-review-store';
+import {tp3OpeningMaintenanceReviews} from './tp3-opening-maintenance-review-store';
+import {costAllocationMaintenanceReviews} from './cost-allocation-maintenance-review-store';
+import {paymentMethodMaintenanceReviews} from './payment-method-maintenance-review-store';
+import {passportMaintenanceReviews} from './passport-maintenance-review-store';
+import {employeeCodeMaintenanceReviews} from './employee-code-maintenance-review-store';
+import {familyMaintenanceReviews} from './family-maintenance-review-store';
+import {bankMaintenanceReviews} from './bank-maintenance-review-store';
+import {documentMetadataReviews} from './document-metadata-review-store';
 import {requireNativeOutcomeTargetsTx} from '../module-native-outcome-targets';
 /** Closed actual-source adapters only. Never calls prepare/confirm, decrypts pending content,
  * executes a service string, or interprets arbitrary native SQL/event payloads in a harness. */
@@ -6,6 +34,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {NativeOutcomeReference,NativeOutcomeEvidence} from '../../lib/ai/module-native-outcomes';
+import type {AgentReviewActionId} from '../../lib/ai/agent-action-registry';
 import {readCompletedOwnLeaveOutcomeTx} from './own-leave-store';
 import {readCompletedNotificationOutcomeTx,readCompletedProfileOutcomeTx,readCompletedClaimDraftOutcomeTx,readCompletedClaimSubmissionOutcomeTx,readCompletedStandardReviewOutcomeTx,readCompletedOnehrPlanOutcomeTx,readCompletedTestingOutcomeTx} from './module-action-review-store';
 import {readCompletedOrgOutcomeTx} from './org-action-review-store';
@@ -19,6 +48,12 @@ import {readCompletedClaimCancellationOutcomeTx} from './claim-cancellation-revi
 import {leaveCancellationReviews,leaveEditReviews} from './leave-change-review-store';
 import {overtimeRequestReviews} from './overtime-request-review-store';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews} from './assigned-decision-review-store';
+import {compensationMaintenanceReviews} from './compensation-maintenance-review-store';
+import {workforceProfileMaintenanceReviews} from './workforce-profile-maintenance-review-store';
+import {emergencyContactMaintenanceReviews} from './emergency-contact-maintenance-review-store';
+import {employeeDraftActivationReviews} from './employee-draft-activation-review-store';
+import {employeeDraftDiscardReviews} from './employee-draft-discard-review-store';
+import {qualificationMaintenanceReviews} from './qualification-maintenance-review-store';
 import {leaveAdjustmentReviews,movementTransferReviews,leaveCreditReviews} from './hr-prepared-review-store';
 import {readCompletedMultiCycleRunOutcomeTx} from './multi-cycle-run-review-store';
 import {readCompletedPayComponentOutcomeTx} from './pay-component-review-store';
@@ -31,47 +66,83 @@ const unavailable=():never=>{throw Error('Native outcome unavailable.');};
 const object=(value:unknown):Record<string,unknown>|null=>value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;
 /** Only existing native status codes are projected. Completed custody is NOT business approval. */
 function currentStatus(completion:unknown){const outer=object(completion),receipt=object(outer?.receipt),native=object(receipt?.receipt)??receipt;const value=native?.currentStatus??native?.status;if(value===undefined||value===null)return null;return z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/).parse(value);}
+/** WP7: one completed-outcome reader per registry action with a review store. The Record type makes a registry
+ * entry without a reader (or a reader without an entry) a compile error. Each reader rechecks authority. */
+type CompletedOutcomeReader=(tx:Tx,ctx:SessionContext,id:string,server:NativeOutcomeServerContext)=>Promise<{completion:unknown;eventId:string}>;
+const COMPLETED_OUTCOME_READERS:Readonly<Record<AgentReviewActionId,CompletedOutcomeReader>>={
+ 'performance.checkin.cancel':(tx,ctx,id)=>checkInCancellationReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'performance.checkin.complete':(tx,ctx,id)=>checkInCompletionReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'performance.checkin.schedule':(tx,ctx,id)=>checkInSchedulingReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'performance.goal.approve':(tx,ctx,id)=>goalApprovalReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'leave.apply':(tx,ctx,id)=>readCompletedOwnLeaveOutcomeTx(tx,ctx,id),
+ 'ess.profile.request':(tx,ctx,id)=>readCompletedProfileOutcomeTx(tx,ctx,id),
+ 'notifications.email_preferences.save':(tx,ctx,id,server)=>server.notificationIdentity?readCompletedNotificationOutcomeTx(tx,ctx,id,server.notificationIdentity):unavailable(),
+ 'claims.draft.save':(tx,ctx,id)=>readCompletedClaimDraftOutcomeTx(tx,ctx,id),
+ 'claims.submit':(tx,ctx,id)=>readCompletedClaimSubmissionOutcomeTx(tx,ctx,id),
+ 'claims.cancel':(tx,ctx,id)=>readCompletedClaimCancellationOutcomeTx(tx,ctx,id),
+ 'leave.cancel':(tx,ctx,id)=>leaveCancellationReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'leave.edit':(tx,ctx,id)=>leaveEditReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'attendance.overtime.request':(tx,ctx,id)=>overtimeRequestReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'approvals.claim.decide':(tx,ctx,id)=>claimDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'approvals.attendance.decide':(tx,ctx,id)=>attendanceDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'approvals.toil.decide':(tx,ctx,id)=>toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'leave.adjustment.apply':(tx,ctx,id)=>leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.compensation.maintain':(tx,ctx,id)=>compensationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'attendance.day_schedule.correct':(tx,ctx,id)=>dayScheduleCorrectionReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'attendance.schedule_group.maintain':(tx,ctx,id)=>scheduleGroupMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.profile_request.reject':(tx,ctx,id)=>profileRequestRejectionReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.code.maintain':(tx,ctx,id)=>employeeCodeMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.payment_method.maintain':(tx,ctx,id)=>paymentMethodMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.cost_allocation.maintain':(tx,ctx,id)=>costAllocationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.workforce_profile.maintain':(tx,ctx,id)=>workforceProfileMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.passport.maintain':(tx,ctx,id)=>passportMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.tp3_opening.maintain':(tx,ctx,id)=>tp3OpeningMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.bank.maintain':(tx,ctx,id)=>bankMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.document_metadata.maintain':(tx,ctx,id)=>documentMetadataReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.fixed_item.archive':(tx,ctx,id)=>fixedItemArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.emergency_contact.maintain':(tx,ctx,id)=>emergencyContactMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.draft.discard':(tx,ctx,id)=>employeeDraftDiscardReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.draft.activate':(tx,ctx,id)=>employeeDraftActivationReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.family.maintain':(tx,ctx,id)=>familyMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.qualification.maintain':(tx,ctx,id)=>qualificationMaintenanceReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'employees.movement.transfer':(tx,ctx,id)=>movementTransferReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'toil.credit.grant':(tx,ctx,id)=>leaveCreditReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'performance.review.acknowledge':(tx,ctx,id)=>readCompletedStandardReviewOutcomeTx(tx,ctx,id),
+ 'performance.onehr.plan.acknowledge':(tx,ctx,id)=>readCompletedOnehrPlanOutcomeTx(tx,ctx,id),
+ 'system_testing.execution.save':(tx,ctx,id)=>readCompletedTestingOutcomeTx(tx,ctx,id),
+ 'org.reporting.change':(tx,ctx,id)=>readCompletedOrgOutcomeTx(tx,ctx,id),
+ 'knowledge_base.article.create':(tx,ctx,id)=>readCompletedKnowledgeArticleOutcomeTx(tx,ctx,id),
+ 'attendance.correction.request':(tx,ctx,id)=>readCompletedAttendanceCorrectionOutcomeTx(tx,ctx,id),
+ 'country-my.statutory.update':(tx,ctx,id)=>readCompletedCountryStatutoryOutcomeTx(tx,ctx,id),
+ 'approvals.leave.decide':(tx,ctx,id)=>readCompletedLeaveDecisionOutcomeTx(tx,ctx,id),
+ 'lifecycle.offboarding.case.cancel':(tx,ctx,id)=>offboardingCaseCancelReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'lifecycle.offboarding.step.undo':(tx,ctx,id)=>offboardingStepUndoReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'lifecycle.offboarding.step.complete':(tx,ctx,id)=>offboardingStepReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'lifecycle.acknowledgement.submit':(tx,ctx,id)=>readCompletedLifecycleAckOutcomeTx(tx,ctx,id),
+ 'toil.replacement.request':(tx,ctx,id)=>readCompletedToilRequestOutcomeTx(tx,ctx,id),
+ 'multi_cycle_payroll.create_run':(tx,ctx,id)=>readCompletedMultiCycleRunOutcomeTx(tx,ctx,id),
+ 'org.people_general.change':(tx,ctx,id)=>peopleGeneralPolicyReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'org.employee_id_template.status':(tx,ctx,id)=>employeeIdTemplateStatusReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'org.department.archive':(tx,ctx,id)=>departmentArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'org.position.archive':(tx,ctx,id)=>positionArchiveReviews.readCompletedOutcomeTx(tx,ctx,id),
+ 'typed_pay_components.create':(tx,ctx,id)=>readCompletedPayComponentOutcomeTx(tx,ctx,id),
+ 'payroll.reopen':(tx,ctx,id)=>readCompletedPayrollReopenOutcomeTx(tx,ctx,id),
+ 'payroll.reset':(tx,ctx,id)=>readCompletedPayrollResetOutcomeTx(tx,ctx,id),
+ 'payroll.close':(tx,ctx,id)=>readCompletedPayrollCloseOutcomeTx(tx,ctx,id),
+ 'rewards.annual_review.return':(tx,ctx,id)=>readCompletedRewardsReturnOutcomeTx(tx,ctx,id),
+ 'rewards.calendar.update':(tx,ctx,id)=>readCompletedRewardsCalendarOutcomeTx(tx,ctx,id),
+ 'rewards.cancel_review':(tx,ctx,id)=>readCompletedRewardsCancelOutcomeTx(tx,ctx,id),
+ 'rewards.post':(tx,ctx,id)=>readCompletedRewardsPostOutcomeTx(tx,ctx,id),
+};
 export async function readCompletedNativeOutcomeTx(tx:Tx,supplied:SessionContext,value:unknown,server:NativeOutcomeServerContext={}){
- const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))},capability=server.notificationIdentity;
+ const ctx={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  const reference=NativeOutcomeReference.parse(structuredClone(value));await boundNativeOutcomeTransactionTx(tx);
  if(reference.source==='employee_import'){
   const read=await readCompletedEmployeeImportOutcomeTx(tx,ctx,{attemptId:reference.attemptId,attemptVersion:reference.attemptVersion},reference.companyId);
   await requireNativeOutcomeTargetsTx(tx,ctx,{action:reference.action,sourceId:read.attemptId,eventId:read.eventId});
   return {evidence:NativeOutcomeEvidence.parse({action:reference.action,sourceId:read.attemptId,eventId:read.eventId,currentStatus:read.currentStatus}),sourceExpiresAt:read.expiresAt};
  }
- let result:{completion:unknown;eventId:string};const id=reference.actionId;
- switch(reference.action){
-  case 'leave.apply':result=await readCompletedOwnLeaveOutcomeTx(tx,ctx,id);break;
-  case 'ess.profile.request':result=await readCompletedProfileOutcomeTx(tx,ctx,id);break;
-  case 'notifications.email_preferences.save':if(!capability)return unavailable();result=await readCompletedNotificationOutcomeTx(tx,ctx,id,capability);break;
-  case 'claims.draft.save':result=await readCompletedClaimDraftOutcomeTx(tx,ctx,id);break;
-  case 'claims.submit':result=await readCompletedClaimSubmissionOutcomeTx(tx,ctx,id);break;
-  case 'claims.cancel':result=await readCompletedClaimCancellationOutcomeTx(tx,ctx,id);break;
-  case 'leave.cancel':result=await leaveCancellationReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'leave.edit':result=await leaveEditReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'attendance.overtime.request':result=await overtimeRequestReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'approvals.claim.decide':result=await claimDecisionReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'approvals.attendance.decide':result=await attendanceDecisionReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'approvals.toil.decide':result=await toilDecisionReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'leave.adjustment.apply':result=await leaveAdjustmentReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'employees.movement.transfer':result=await movementTransferReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'toil.credit.grant':result=await leaveCreditReviews.readCompletedOutcomeTx(tx,ctx,id);break;
-  case 'performance.review.acknowledge':result=await readCompletedStandardReviewOutcomeTx(tx,ctx,id);break;
-  case 'performance.onehr.plan.acknowledge':result=await readCompletedOnehrPlanOutcomeTx(tx,ctx,id);break;
-  case 'system_testing.execution.save':result=await readCompletedTestingOutcomeTx(tx,ctx,id);break;
-  case 'org.reporting.change':result=await readCompletedOrgOutcomeTx(tx,ctx,id);break;
-  case 'knowledge_base.article.create':result=await readCompletedKnowledgeArticleOutcomeTx(tx,ctx,id);break;
-  case 'attendance.correction.request':result=await readCompletedAttendanceCorrectionOutcomeTx(tx,ctx,id);break;
-  case 'country-my.statutory.update':result=await readCompletedCountryStatutoryOutcomeTx(tx,ctx,id);break;
-  case 'approvals.leave.decide':result=await readCompletedLeaveDecisionOutcomeTx(tx,ctx,id);break;
-  case 'lifecycle.acknowledgement.submit':result=await readCompletedLifecycleAckOutcomeTx(tx,ctx,id);break;
-  case 'toil.replacement.request':result=await readCompletedToilRequestOutcomeTx(tx,ctx,id);break;
-  case 'multi_cycle_payroll.create_run':result=await readCompletedMultiCycleRunOutcomeTx(tx,ctx,id);break;
-  case 'typed_pay_components.create':result=await readCompletedPayComponentOutcomeTx(tx,ctx,id);break;
-  case 'payroll.close':result=await readCompletedPayrollCloseOutcomeTx(tx,ctx,id);break;
-  case 'rewards.post':result=await readCompletedRewardsPostOutcomeTx(tx,ctx,id);break;
-  default:{const never:never=reference;void never;return unavailable();}
- }
+ const id=reference.actionId,result=await COMPLETED_OUTCOME_READERS[reference.action](tx,ctx,id,server);
  const evidence=NativeOutcomeEvidence.parse({action:reference.action,sourceId:id,eventId:result.eventId,currentStatus:currentStatus(result.completion)});
  await requireNativeOutcomeTargetsTx(tx,ctx,{action:reference.action,sourceId:id,eventId:result.eventId});
  const [retention]=await tx.execute<{expires:Date|string|null}>(sql`select app.native_outcome_review_retention(${reference.action},${id}::uuid) as expires`);if(!retention?.expires)return unavailable();

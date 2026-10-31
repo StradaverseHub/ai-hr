@@ -26,6 +26,46 @@ V9 appends immediately after the installed prefix atidx686–693/when17933300000
 |692|1793330000062|0719_lifecycle_v9_business_recipients|4547c284bbacdf709cd5a5c66b1f7458a981cc2dec40825ead194081ab9f2f22|
 |693|1793330000063|0720_lifecycle_v9_self_equipment|3e7f1b5fe1b08e33d9424ef8262649c4c9ca22356a893987aeaa1d81f391846b|
 
+
+## Personnel compensation parity — 30 October 2026 (provisional source claim)
+
+`codex/ai-user-parity-personnel-comp-20261030` reserves
+`0715_assistant_compensation_maintenance`, idx696 / when1793330000044. Position695/0714
+is another personnel package's provisional claim; composition must preserve both claims.
+This is unapplied source only, with no installation priority or deployment authority.
+Re-freeze above the then-live ordered ledger and coordinate competing allocations before integration.
+All previously applied SQL bytes and journal identities remain immutable.
+
+## Personnel qualification parity — 30 October 2026 (provisional source claim)
+
+`codex/ai-user-parity-personnel-custody-20261030` appends
+`0713_assistant_qualification_maintenance`, idx694 / when1793330000042, after the ten
+unapplied AI reservations 0703–0712. This is a **provisional source claim only**. It does
+not establish installation priority, authorize a deployment, or override a later accepted
+ledger watermark. At integration freeze re-fetch the ordered accepted journal and live
+ledger, coordinate competing claims, and relocate this unapplied migration above that tail.
+All applied SQL bytes and journal identities must remain unchanged.
+
+## AI architecture review WP6–WP14 reservations — 29 October 2026
+
+Reserved for the AI architecture review packages (handoff `docs/reviews/ai-architecture-handoff-2026-10.md`).
+Only a package that truly needs a migration uses its number.
+
+| Package | Migration file | Journal `when` | Final journal idx |
+| --- | ---: | ---: | ---: |
+| WP6 | 0692 | 1793330000018 | 682 |
+| WP7 | 0693 | 1793330000019 | 683 |
+| WP14 | 0694 | 1793330000020 | 684 |
+| WP11 | 0695 | 1793330000021 | 685 |
+| WP12 | 0696 | 1793330000022 | 686 |
+| WP13 | 0697 | 1793330000023 | 687 |
+| WP9 store 1 | 0698 | 1793330000024 | 688 |
+
+These follow Board 0688–0690 (idx 678–680, `when` 1793330000014–16) and Bank 0691 (idx 681, `when`
+1793330000017), which are unapplied reservations owned by others. The final idx values assume those land
+first. The live staging ledger watermark was **not** freshly queried for this reservation (last verified:
+563 rows through 0687); it must be re-read, together with canonical branch journals, before integration or
+application. These reservations grant no deployment.
 ## Feedback menu operator switch — 30 October 2026 (unapplied successor)
 
 Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
@@ -372,6 +412,10 @@ The existing562-entry journal prefix and all applied SQL bytes are preserved. Th
 is `ade48bffee0a5d6ebf72cdd61de36323f3650b81c805cd186701c5d8105e86c4`. This reserves source only; it authorizes no staging migration
 without the exact-candidate gate, populated upgrade proof, restore readiness and exclusive handoff.
 
+
+### AI review allocation status — provisional until integration freeze
+
+The AI review numbers and timestamps above are historical provisional reservations, not allocation authority or evidence of installation. In-flight Board/FEEDBACK migrations supersede those slots. All AI review SQL remains unapplied in this work: final names, journal indices and `when` values must be assigned together above the freshly verified live ledger at integration freeze. Additional AI follow-up drafts currently use provisional0700 automatic follow-ups,0701 template switch references and0702 delegated Leave receipts; these also require final allocation. No protected branch movement, migration application or deployment is authorized by this table.
 ## Information-only correction development candidate — 30 October 2026
 
 Feedback 8550b282 owns source filename 0698_information_only_corrections. Fresh main/alpha a3eb1eb0f
@@ -726,10 +770,10 @@ changing their SQL bytes and appended in the same dependency order:
 
 | Index | Sequence | Filename | SQL SHA256 |
 | ---: | ---: | --- | --- |
-| 698 | 1793330000212 | 0812_claim_history_order | `0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e` |
-| 699 | 1793330000213 | 0813_visibility_plan_cache | `189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2` |
-| 700 | 1793330000214 | 0814_permission_read_work | `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6` |
-| 701 | 1793330000215 | 0815_session_read_plans | `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56` |
+| 698 | 1793330000212 | 0866_claim_history_order | `0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e` |
+| 699 | 1793330000213 | 0867_visibility_plan_cache | `189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2` |
+| 700 | 1793330000214 | 0868_permission_read_work | `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6` |
+| 701 | 1793330000215 | 0869_session_read_plans | `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56` |
 
 This supersedes the older performance development positions above. Older receipts
 retain their original source identities and do not verify this merged candidate.
@@ -747,7 +791,7 @@ Append the next unapplied development successor:
 
 | Index | Sequence | Filename | SQL SHA256 |
 | ---: | ---: | --- | --- |
-| 702 | 1793330000262 | 0862_home_role_reporting_guard | `1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e` |
+| 702 | 1793330000262 | 0870_home_role_reporting_guard | `1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e` |
 
 Native experiment41107920846 (`35a9544ed`) compares100 active actual principals
 within a500-person/ten-company fixture. Necessary-edge guard p95 is98.8ms versus
@@ -761,3 +805,162 @@ This is source-only development allocation. No installed ledger or watermark was
 queried; the complete accepted ledger and all unapplied performance reservations
 still require final reconciliation. No target application, protected integration,
 release acceptance or deployment authority is granted by this record.
+
+
+## AI review source freeze above verified Board arrival — 30 October 2026
+
+This table supersedes ALL earlier provisional AI review filenames/idx/when reservations. The existing credential-free Board post-install export at `information-correction-release-controller-20261030/scratchpad/board-40951321829-ordered-ledger.json` captured568 ordered applied rows at2026-10-29T21:09:26.134Z, source `f752ac7f5d0323c5eae2280c3830af05b6da465f`, build `Cvj9_lgd4fATCyUYRwWz_`. A subsequent read-only deploy-state check matched source/build, stale_build0 and exit0. All568 applied source SQL files and journal records are preserved exactly, including the canonical historical0180/0212 applied-identity mapping. The applied watermark is1793330000030.
+
+FEEDBACK independently verified the export and retains its separately approved idx683 / when1793330000031. No confirmed competing0703–0712 reservation was reported; V9's eight drafts remain unallocated and are not included here. The unused idx683 in this AI-only journal is deliberate; do not invent or include Feedback source.
+
+Only unapplied AI files are renamed below; their complete SQL bytes, including historical comments/exception labels, remain unchanged. These are source-freeze allocations, not permission to install. Before installation, re-read the actual ledger and reconcile intervening appends without changing applied identities.
+
+| Previous draft | Allocated tag | idx | when | Unchanged SQL SHA256 |
+| --- | --- | ---: | ---: | --- |
+| 0692_ai_feature_switch_owner | 0703_ai_feature_switch_owner | 684 | 1793330000032 | 6fefed6eef2105dfc19a818a5c387dfbea10de014a732c1839d5921db02da78f |
+| 0693_assistant_action_kind | 0704_assistant_action_kind | 685 | 1793330000033 | 65b9aeb05a6980f6af46452307514af536da48df95b50d34d5cae0607cd21b8c |
+| 0694_ai_provider_change_gate | 0705_ai_provider_change_gate | 686 | 1793330000034 | acd288d90f61190327a327defd4671cea63f255f307a6ac73bee93b20c717441 |
+| 0695_assistant_learning_loop_scope | 0706_assistant_learning_loop_scope | 687 | 1793330000035 | 07da7779b5e3fe1fa6165c53827a478e15443f9fdd5928b209121db5d53ba4f1 |
+| 0696_ai_agent_action_pause | 0707_ai_agent_action_pause | 688 | 1793330000036 | 65865529b3d79342e6091437f0b99b92fdcb8e2e96f096a929c34b11bad54913 |
+| 0697_automatic_chasers | 0708_automatic_chasers | 689 | 1793330000037 | d8293d81627932b19028854328eab8d734b1eeca756a411f1aca438813d0f65a |
+| 0699_delegated_approvals | 0709_delegated_approvals | 690 | 1793330000038 | 11e6111da5fc22c1163004b995f7d0ec7a45126504b8939e3d1ddc3b45587732 |
+| 0700_automatic_followups | 0710_automatic_followups | 691 | 1793330000039 | 4759e4b988988220a0374ce0db644b4182b0005e3fe9b4e09cfe27f52e5b183c |
+| 0701_template_feature_switch_owner | 0711_template_feature_switch_owner | 692 | 1793330000040 | b351155710806e9e78656ed172ebb8ca2135284fe55298b38ed75f3679809d8b |
+| 0702_delegated_leave_review_receipts | 0712_delegated_leave_review_receipts | 693 | 1793330000041 | f3c8b4704c1100bc2449b753b470605826e01687a16ac1223dc8115f5b3b25b9 |
+
+The isolated candidate must pass exact-SHA focused ordering and populated568→578 upgrade checks, plus affected source/control/parity checks. Full release gates, deployments, protected-ref movement, GitHub PR merges and Bank/Board releases remain separately authorized actions.
+
+## Emergency contact maintenance parity — provisional 30 October 2026
+
+Source-only claim `0716_assistant_emergency_contact_maintenance`, idx697 / when1793330000045.
+This follows the parent-reserved sibling claims0714–0715; those packages are not silently included here.
+Every number/index/timestamp remains PROVISIONAL until integration freezes above the then-live ordered ledger.
+No installation priority, migration application, protected-ref move or deployment is authorized.
+The action uses the existing encrypted assigned ledger with person-keyed receipts and retains its selected employment binding.
+## Personnel saved-draft activation — provisional source reservation
+
+0714_assistant_employee_draft_activation, idx695 / when1793330000043, is UNAPPLIED and provisional. It follows qualification source0713 only in this isolated branch. Reallocate above the then-live accepted ordered ledger at integration freeze; source reservation is not deployment authority or installation priority. Historical SQL bytes are untouched.
+
+## Positive Workforce profile parity — provisional 30 October 2026
+
+Source-only claim0717_assistant_workforce_profile_maintenance / idx698 / when1793330000046.
+Every number/index/timestamp is PROVISIONAL until integration freeze above the then-live ordered ledger.
+Preserve0713–0716 sibling kinds and all applied SQL bytes. This claims no installation priority, protected-ref move or deployment.
+
+## Family maintenance parity — provisional 30 October 2026
+
+Source-only claim `0718_assistant_family_maintenance`, idx699 / when1793330000047.
+The parent reserved0717/idx698 for a separately reviewed creation package; this checkout does not include it.
+All numbers remain PROVISIONAL until integration freezes above the then-live ordered ledger.
+No installation priority, migration application, protected-ref movement or deployment is authorized.
+This appends one shared-person Approve action to the existing encrypted assigned ledger and preserves
+all predecessor checks, index predicates, verifier branches and dynamic outcome bounds.
+
+## Personnel Bank Information parity — provisional 30 October 2026
+
+Source-only claim `0719_assistant_bank_maintenance`, idx700 / when1793330000048.
+Sibling0714/0717/0718 claims are not included in this isolated package. Reconcile all reservations
+at integration freeze above the then-live ordered ledger. This is unapplied source, with no installation
+priority, deployment, protected-ref movement or release authority. Historical SQL/journal bytes remain unchanged.
+
+## Ordinary document metadata parity — provisional 30 October 2026
+
+Source-only claim `0720_assistant_document_metadata`, idx701 / when1793330000049, above frozen
+wave3 source1f5eab65a1cff89acb5409bfa5e451e7b6d03c58. Sibling code maintenance owns0721 separately.
+All numbers remain PROVISIONAL until integration reconciles the then-live ordered ledger. No installation
+priority, migration application, protected-ref movement or deployment is authorized. This adds only one
+ordinary-document metadata action to the existing encrypted assigned ledger; every prior kind remains
+under its prior owner/constraints and the same dynamic outcome bounds.
+
+0721 / idx702 / when1793330000050: employee-code Assistant maintenance, PROVISIONAL SOURCE CLAIM ONLY. Sibling0720 is separately owned; integration must reconcile the actual ordered ledger above the live watermark. No installation priority or deployment authority.
+
+## Existing-profile MY passport review — provisional 30 October 2026
+
+0722_assistant_passport_maintenance / idx703 / when1793330000051 is UNAPPLIED provisional source only.
+0720–0721 sibling packages are not included in this tree. Reconcile all claims above the then-live ordered
+ledger at integration freeze; no installation priority or deployment authority is granted.
+
+### Personnel current payment method — provisional source claim
+
+0723_assistant_payment_method_maintenance / idx704 / when1793330000052 is a PROVISIONAL
+append-only source allocation above frozen wave4 eabfe797. No installation priority or release
+authority; reconcile against the accepted migration ledger at integration freeze. Historical SQL
+is unchanged. Only the new kind gains its nullable actor scope; every predecessor rule is retained.
+
+### Existing recurring fixed-item archive — provisional source claim
+
+0724_assistant_fixed_item_archive / idx705 / when1793330000053 is UNAPPLIED PROVISIONAL
+source only over frozen47797e5. It adds one archive-only kind to the existing encrypted assigned
+ledger, retaining every predecessor scope/receipt/native-outcome branch and dynamic bounds.
+Reconcile against the actual accepted ordered installation ledger at integration freeze. No
+installation priority, protected-ref movement or deployment is authorized.
+
+### Personnel TP3 hand opening balances — provisional source claim
+
+0725_assistant_tp3_opening_maintenance / idx706 / when1793330000054 is a PROVISIONAL source
+claim above47797e588.0724/idx705 belongs to the independent archive worker and is absent from this
+isolated tree. Reconcile both at integration freeze; no installation priority or release authority.
+No historical migration bytes are edited.
+
+### Personnel Wave 5 composition — no installation priority
+
+The archive, MY TP3 opening and cost allocation source reservations 0724/0725/0726 (idx705/706/707, when1793330000053/54/55) remain UNAPPLIED and PROVISIONAL. Incoming unverified coordination reports a competing performance 0726/when55 claim and V9 append proposals at when56–63. These are leads, not verified installed history or authority. Before integration freeze, reconcile and reallocate **all our unapplied 0713–0726** above the actual then-installed ordered ledger and timestamp watermark. No exclusive reservation, applied SQL rename, silent amendment of other claims, protected-ref movement or release action is authorized by this composition.
+
+
+## Personnel action navigation — 30 October 2026 (provisional source claim only)
+
+`codex/ai-user-parity-personnel-navigation-20261030` proposes
+`0727_assistant_personnel_review_navigation`, idx708 / when1793330000064, for two boolean native
+navigation witnesses only. This is UNAPPLIED and is not a canonical reservation or installation
+priority. Incoming V9 source reportedly proposes56–63, and performance0726/55 is a collision lead;
+no sibling package or applied SQL is edited. At integration freeze reallocate the complete unapplied
+Personnel tail above the actual accepted ordered ledger after coordinating all source claims.
+
+## Parity staging aggregate — 31 October 2026, provisional append reconciliation
+
+The root release coordinator reserved 0812–0860 / idx698–746 / sequence1793330000212–260
+for the 49 frozen parity purposes after reconciling current main `b0907303caf7fcb75fdce7194a327d10ae209ba2`.
+The approved private allocation map is `/private/tmp/parity-staging-migration-map-20261031/proposed-map.json`
+(SHA256 recorded by the coordinator in the phase monitor). These are source append reservations,
+not installation or acceptance claims. The exact current-main 583-entry prefix and every historical
+SQL byte remain unchanged. The human explicitly confirmed 0717–0725 were never applied development
+drafts; the coordinator separately verified the actual installed prefix. Superseded held numeric
+filenames and lower timestamps are not alternate installation paths. Function names containing
+historical numbers remain unchanged; this allocation renames migration files and journal tags only.
+
+
+## Personnel saved-draft discard — provisional development only
+
+Coordinator assigned `0752_assistant_employee_draft_discard_custody`, idx731/version7/when1793330000089/breakpoints:true, for the closed native discard port, six private proof/admission fields, pending activation/discard cleanup and protected privacy hook. This is UNAPPLIED PROVISIONAL DEVELOPMENT identity only. Preserve all historical SQL; reconcile against the actual accepted ordered installation ledger before any future installation. The verified Lifecycle0746 remains separately owned. No live operator role provisioning, bootstrap change, protected merge or deployment is authorized.
+
+## Performance check-in completion — provisional source reservation
+
+Coordinator allocated `0740_assistant_performance_checkin_complete_custody`, idx719 / version7 / when1793330000077 / breakpoints:true on 30 October 2026. Development only, above the owned cancellation slice. The accepted installation ledger must be refreshed before integration/application. Same physical custody ledger, native same-transaction completion and exact captured native timestamp proof; ordinary native audit remains unchanged. No release or installation authorization.
+
+## Performance mounted check-in scheduling — provisional source reservation
+
+Coordinator allocated `0747_assistant_performance_checkin_schedule_custody`, idx726 / version7 / when1793330000084 / breakpoints:true on 30 October 2026. Unapplied provisional development source only. The same ledger binds an employment creation intent and private prospective UUID; a protected physical INSERT witness records the actual created result. Refresh accepted journal/ledger ordering before integration or application. No installation, release or deployment authority.
+
+
+## Shared prepared review body parent — 31 October source reservation
+
+Root coordinator reserved `0861_assistant_review_body_pending_parent`, idx747 / version7 / when1793330000261 / breakpoints:true, after0860 in the reconciled aggregate. Unapplied development source only; no installed-history priority or runtime-success claim. The exact independently reviewed SQL adds the same physical ledger body's pending-parent write invariant with sorted NOWAIT locks; existing native proof, expiry, cleanup, grants and RLS remain authoritative. Actual installed ledger and source hashes require root verification before any staging action.
+
+
+## Reviewed Bank and Organisation effect closure — 31 October source allocations
+
+Root coordinator reserved these append-only DEVELOPMENT source identities after fresh main/alpha
+`7c57d5f64cf81f60573ede28183803ff069b475a`, the refreshed actual installed581-row ledger/watermark75
+(`/private/tmp/parity-staging-ledger-refresh-20261031.json`), and reachable Git/worktree claim audit
+(`/private/tmp/parity-0863-0864-claim-audit-20261031.json`). These records establish source allocation,
+not installation, acceptance or runtime qualification.
+
+| Purpose | Tag | idx | version | when | breakpoints |
+| --- | --- | --- | --- | --- | --- |
+| Bank retained effect closure |0863_assistant_bank_effect_closure |748 |7 |1793330000263 |true |
+| Organisation catalogue effect closure |0864_assistant_catalogue_effect_closure |749 |7 |1793330000264 |true |
+
+Both append strictly after0861. Foreign0862/when1793330000262 remains preserved and excluded
+from this candidate; a numeric gap is intentional. Existing SQL bytes and the full journal prefix
+are immutable. Root must verify the then-current installation ledger and release evidence before
+any installation; neither source allocation nor focused development checks authorizes deployment.

@@ -105,7 +105,7 @@ export interface ScreenEntry {
  */
 export const SCREENS: readonly ScreenEntry[] = [
   // Shared authenticated shell; facts/effects additionally require current Assistant/native access.
-  {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs'],hasScopeNote:true},
+  {screenKey:'assistantWorkspace',href:'/assistant',labelKey:'nav.assistant',guard:'assistantSession',routes:['/assistant','/assistant/leave','/assistant/notifications','/assistant/profile','/assistant/performance','/assistant/claims','/assistant/testing','/assistant/org','/assistant/knowledge-base','/assistant/lifecycle','/assistant/toil','/assistant/approvals','/assistant/hr','/assistant/attendance','/assistant/pay-codes','/assistant/rewards','/assistant/payroll-close','/assistant/statutory','/assistant/payroll-runs','/assistant/bank','/assistant/compensation','/assistant/cost-allocation','/assistant/day-schedule','/assistant/document-details','/assistant/emergency-contacts','/assistant/employee-code','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/family','/assistant/fixed-item-archive','/assistant/offboarding-case-cancel','/assistant/offboarding-step','/assistant/offboarding-step-undo','/assistant/org-departments','/assistant/org-employee-id','/assistant/org-people-general','/assistant/org-positions','/assistant/passport','/assistant/payment-method','/assistant/payroll-reopen','/assistant/payroll-reset','/assistant/performance/checkins','/assistant/performance/checkins/complete','/assistant/performance/checkins/schedule','/assistant/performance/goals','/assistant/profile-request-rejection','/assistant/qualifications','/assistant/rewards/calendar','/assistant/rewards/cancel','/assistant/rewards/return','/assistant/schedule-group','/assistant/tp3-opening','/assistant/workforce-profile'],hasScopeNote:true},
   {screenKey:'jobDescriptions',href:'/admin/job-descriptions',labelKey:'nav.jobDescriptions',guard:'requireAdmin',routes:['/admin/job-descriptions','/admin/job-descriptions/new','/admin/job-descriptions/configuration','/admin/job-descriptions/[id]','/admin/job-descriptions/[id]/print']},
   {screenKey:'rewardsAccess',href:'/admin/rewards/access',labelKey:'rewardsAccess.title',guard:'scopedAdmin',routes:['/admin/rewards/access']},
   {screenKey:'peopleGeneral',href:'/admin/settings/people-general',labelKey:'nav.peopleGeneral',guard:'requireAdmin',routes:['/admin/settings/people-general']},
@@ -1165,6 +1165,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       // still, on isGroupAdmin, mirroring 0313's tenant_setting_write — this registry is the coarse
       // "may the role open the screen at all", by design.)
       '/control-tower/agents',
+      // WP12 (R8, ADR-0151 §4.7) — the AI inventory. Opens for any administrator (requireAdmin): a group
+      // administrator sees the full inventory and may pause one agent action; a company HR administrator sees the
+      // read-only registry/tier view (core/ai-inventory.ts decides the scope from fresh database authority).
+      '/control-tower/agents/inventory',
       // AI management sub-menu: each section is its own page behind the same requireAdmin guard. The
       // Provider page sits in the aiConfig column below, because it is the screen that column governs.
       '/control-tower/agents/assistant',

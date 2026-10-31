@@ -29,7 +29,7 @@ it without a parallel rewrite, and its behaviour must improve from how the syste
 | One physical store already owns every prepared action: `app.assistant_own_leave_review` (name historical), with an `action_kind` CHECK over the 19 actions, intent/reviewed digests, sealed encrypted content, a five-state lifecycle and per-action unique receipt-event columns. | `db/migrations/0622_own_leave_review_store.sql`, `core/assistant-actions/*-review-store.ts` |
 | Every action source re-checks login currency, Assistant grant, module entitlement and the `hr_assistant` pause before reading choices, preparing or confirming. | `core/assistant-actions/module-action-server.ts` |
 | Completed outcomes are linked to the job that produced them only through a closed, human-chosen association; semantics name what the effect does **not** prove (e.g. `submitted_not_approved`). | `lib/ai/module-native-outcomes.ts`, migration 0650 |
-| A governed improvement harness exists: candidate → ≥2 independent held-out evaluations with zero security/quality failures → promotion by an approver who is not the author → bounded jobs and ≤24h expiry → automatic baseline on regression. | `lib/ai/module-agent-improvement.ts`, `core/module-agent-releases.ts` |
+| A governed improvement harness exists: candidate → ≥2 independent held-out evaluations with zero security/quality failures → promotion by an approver who is neither the author nor an evaluator, at the user, company or tenant scope the approver chooses → bounded jobs and ≤24h expiry → baseline on expiry, exhaustion, source change, a refused configuration or a measured outcome regression (nightly sweep). | `core/module-agent-releases.ts`, migration 0695 (WP11) |
 | The Control Tower agent action catalogue has one type, `close_fixed_upstream`, `propose_only`, blast-radius cap 50. | `core/agent-actions.ts` |
 | The nightly orchestrator runs as an anonymous system context with role `hr_admin`. | `scripts/review-sweep.ts` |
 | Process assessment (ADR-0131 Phase 1) measures volume, elapsed time, staff actions and rework per process; no model participates. | `/control-tower/opportunities` |
@@ -262,6 +262,25 @@ add a second generic binding mode, **assigned**, modelled on the leave-decision 
 - Not yet covered: the other implemented actions keep their bespoke protocols and the existing human-review link
   card. Each needs its own typed hint shape and panel prefill before it can be proposed inline.
 
+### 5.3 Amendment, 30 Oct 2026: chat catalogue derived from the registry (review R6)
+
+- The proposable set is no longer a hand list. `lib/ai/assistant-action-catalogue.ts` derives it from
+  `AGENT_ACTIONS` (implemented prepare and confirm, an inline card hint shape, tier Confirm or Approve) and
+  filters it per caller on exactly three checks: the caller can read the action's module; the session holds the
+  action's registry actor class, derived coarsely from the session alone (any linked person holds `self` and
+  `assigned_approver`; admin classes come from roles and grants), so this is an offering filter, not
+  authority (the guarded choices, prepare and confirm paths re-check the real authority and the assigned
+  inbox); and the action's pause key is not paused (read fresh in a savepoint). A confirmed pause hides the
+  action; controls that cannot be read offer nothing at ask time and show a neutral retry on replay.
+- The same per-question snapshot is shown to the model as the LAST system block (after the constant blocks and
+  the per-user strategy, so the shared prefix stays first) and adjudicates the terminal plan. On replay the
+  sealed proposal is re-adjudicated against the caller's current facts; a structurally valid proposal that is no
+  longer offered renders as a refused "out of date" card with a refresh, and one whose facts or sources could
+  not be checked renders as a neutral "not checked" card with a retry. Neither is a preparable card.
+- Confirmation is unchanged: the separate same-origin, digest-bound human command on the card's panel.
+- Hint shapes stay per action (`assistant-action-proposal-hints.ts`); adding an inline card is one hint entry plus
+  its panel prefill. The other implemented actions keep the human-review link card.
+
 ## 6. Alternatives considered
 
 - **Give the agent its own broad role** (as the nightly sweep does today). Rejected: authority would no longer
@@ -446,14 +465,28 @@ This amendment corrects implementation claims; the accepted safety decisions rem
   `module-action-server.ts`. Fresh in-transaction checks and the owning service remain authoritative.
 - Twelve chat tools are hand-listed; the catalogue is not derived from the action registry yet. Chat tool
   reads execute sequentially. Preparation/confirmation stays outside the model loop regardless of order.
-- Production evaluation/promotion is in `core/module-agent-releases.ts`. The cited
-  `lib/ai/module-agent-improvement.ts` and `core/module-agent-orchestrator.ts` are test-only models, not
-  the live execution owner. Current candidate kinds are routing, read-plan prompt, canonical guidance and conversation.
-  Tool-description and argument-extraction candidates are not implemented. Routing cannot beat the
-  baseline under its present paired criteria. Fixed synthetic holdouts are not redacted production replay.
-- Promotions are per author; automatic baseline fallback follows exceptions/source or provider drift,
-  not measured outcome regression. Author differs from promoter; promoter/evaluator separation is still
-  incomplete. These remain R5/WP11 work. No learning or headcount reduction is established by this PR.
+- Production evaluation/promotion is in `core/module-agent-releases.ts`. Current candidate kinds are
+  read-plan prompt, canonical guidance and conversation. **WP11 (amendment 2026-10-29)** deleted the typed
+  routing kind (it could not beat the baseline: both arms did the same canonical work) and the test-only
+  `lib/ai/module-agent-improvement.ts` and `core/module-agent-orchestrator.ts`; stored routing rows stay
+  readable, are never applied and expire through maintenance. Tool-description and argument-extraction
+  candidates are not implemented. Fixed synthetic holdouts are not redacted production replay.
+- WP11: the approver chooses the promotion scope — user (the owner, the previous behaviour), company (current
+  employees of that company subtree) or tenant. Wider scopes are admitted for the canonical specialist kind
+  only, and only for candidates without personal feedback/outcome provenance (migration 0695); the other kinds
+  stay user-scoped. The promoter must differ from the author and from every counted evaluator.
+- WP11: `scripts/review-sweep.ts` runs promotion maintenance nightly as the tenant's named agent principal (no
+  model, no spend) and records its counts in `job_run.result`. Besides expiry and exhaustion it retires a live
+  promotion on a measured outcome regression: from the §4.6c action outcome counts, the unsuccessful rate
+  (discarded, expired, refused, proven reversed) since the promotion started exceeds the equal-length period
+  before it by ≥20 points, with ≥10 settled actions in each period (`lib/ai/promotion-outcome-regression.ts`).
+  The counts are not attributed to the promotion; the rule is a conservative non-causal brake that only
+  restores the baseline. "Incorrect" job feedback still does not roll back on its own.
+- WP11: the source manifest hashes only the AI behaviour surface listed in `scripts/ai-agent-source-scope.mjs`,
+  so a deploy that does not touch it no longer retires every promotion. Adversarial holdouts now cover all 12
+  chat tools and every implemented action entry in six locales (`lib/ai/assistant-adversarial-holdouts.ts`,
+  deterministic scorer gate; not part of the 256-case model-run conversation suite). No learning or headcount
+  reduction is established by this.
 - At this base the sweep uses a legacy no-login context; explicit orchestrator event attribution does not
   establish a named tenant principal. PR #41 is separate in-flight principal work. Scheduled model spend
   remains an owner decision; this documentation grants none.
@@ -495,3 +528,201 @@ pass. Its case rows and counts still come from the caller's existing RLS-scoped 
 pass is not evidence of that company's outcomes. Manual pass receipts still match exact administrative
 scope. This adds no execution ledger or database authority. See the [WP1 verification contract](../reviews/ai-architecture-wp1-verification-2026-10.md);
 this amendment alone proves no gate result or installation.
+
+### WP7 one action registry (§4.2) — 30 October 2026
+
+`lib/ai/agent-action-registry.ts` is the one registry §4.2 asked for. Each `defineAgentAction` entry
+declares the §4.2 fields plus its custody store family, browser dispatch owner and AI pause key; its tier
+ceiling reuses the WP2 policy type, so a never-Automatic category paired with Automatic does not compile.
+The effect-id union, module declarations, nomination parser, tier-ceiling and category maps, native-outcome
+list, handoff routes, completed-outcome readers and browser dispatch owners are derived from it.
+
+Migration 0693 adds `app.assistant_action_kind` (read-only to the application role) with one row per entry.
+The prepared-review store and the native-outcome association reference it through validated foreign keys,
+and the closed `action_kind`/`action` CHECK lists are dropped. Adding an action is one registry entry plus
+one `INSERT` row in a new migration; its owning service, store adapter and per-kind SQL column rule and
+verifier remain the action's own behaviour (WP9 collapses the stores). A parity test holds registry = seeded
+rows = capability inventory = tier-ceiling map. This amendment proves no gate result or installation.
+
+### WP13 first Automatic-tier entries (§4.4–4.5, R18) — 30 October 2026
+
+Owner decisions of 29 October 2026 set the order (approval chasers, then probation and contract-end reminders,
+then missing clock-in, expiring documents and lifecycle steps) and give the agent principal no model spend.
+Four registry entries now carry tier `automatic`: `approvals.claim.chase`, `approvals.attendance.chase` and
+`approvals.toil.chase` (category `chaser`, specialist `approval_chasers`) and `employees.review_overdue.remind`
+(category `reminder`, specialist `review_chasers`). Each declares an `automatic` block (overdue threshold in
+working days on the requester's roster minus holidays, the leave escalation's clock; registry defaults,
+per-company values a follow-up; cooldown per item and stage, lifetime cap per item and stage, cap per run) that
+`core/automatic-chasers.ts` enforces. They have no review store row, are never nominated, prepared or
+confirmed by a model, and stay out of the chat module contract, so existing specialist digests do not change.
+
+The tenant's agent principal runs them nightly in `scripts/review-sweep.ts`, each only behind its own AI
+management switch (`notifications.approval_chasers_enabled`, `notifications.review_chasers_enabled`, default
+off) attributed to the administrator who switched it on, re-checked in every effect transaction. A run appends
+one stamped `automatic-chase.*` event per item; nothing is approved, rejected, submitted or changed. The
+notification registry re-checks that the item still waits at the chased stage and tells its current approver
+(claims and replacement leave: the administrative manager on a current, non-superseded line, else company HR;
+participant-routed attendance: only the participants the workflow's outstanding rule says can act now, so one in
+a sequential level; reviews: the manager at the manager stage, else company HR). The delegated-approvals
+package adds active matching stand-ins for claims, replacement leave and delegate-capable attendance routes;
+frozen v3/v4 participants remain exact. The leave escalation is unchanged. Reminders before a review's end date stay the existing engine job.
+
+The two switches are template-only AI management agents: they never enter model admission, and the AI control
+context is unchanged. Migration 0697 adds the reference rows, the principal's read and stamp policies for the new
+event types, two id-and-date-only source definers, an outstanding-participant reader for attendance and an
+administrator-scoped outcome summary shown beside Assistant outcomes. Missing clock-in nudges, expiring documents and lifecycle step
+chasing are not yet built. The effective pause for these entries is their specialist switch (and
+`SETTING_KILL`); their `pauseKey` stays `hr_assistant` until WP12 widens it. This amendment proves no gate
+result or installation.
+
+
+### WP9 store 1 — claim cancellation custody, 30 October 2026
+
+`claims.cancel` now uses `createGenericOwnReviewStore` through the same public transport functions. Its
+0670 SQL kind, nonce commitment, sealed-body identity/purpose strings, metadata, reviewed digest, receipt
+and event verifier are unchanged. Existing in-flight rows remain readable; no migration or 0698 allocation
+is needed for this store. Compatibility tests construct the pre-refactor sealed-row format directly and
+reopen/complete/retire it through the generic family. A lost-reply fixture commits the native cancellation
+before the simulated transport failure, then reconciles it without repeating the effect.
+
+`withAgentActionGuard` composes current principal, Assistant grant, registered module, human review phase,
+tier and pause as additional prerequisites. The own-claim source and native cancellation service still own
+subject authority and effect rules. Other stores have not been migrated by this increment. The shared
+own-leave actor now calls `isAiPrincipalCurrentTx` for the existing principal/carrier check. No model writes
+or Automatic approval authority is added. Focused CI, combined-candidate acceptance and release gates
+remain separate evidence.
+
+### WP9 store 2 amendment — retained TOIL own-request custody (30 October 2026)
+
+The employee replacement-leave request now uses the generic own review owner with a typed compatibility repository for its installed SQL protocol. The repository translates projection names only: existing sealed bodies, binding order, encryption purposes, commitments, request/event columns and native SQL verifiers stay unchanged. Completion still runs the canonical native request service in the same top-level transaction; no credit or cash is granted by submission. Source authority composes the current registry guard and retains its own-employment and leave dependency interval. Retained old-writer rows and uncertain committed replies require real database evidence, and the action joins the screen/Assistant role matrix. No migration is required.
+
+### WP9 — login-bound publication compatibility (30 October 2026)
+
+Knowledge article publication uses the generic own compatibility lifecycle. Its binding remains the real author login/current person with null employment and company; source author and audience checks remain canonical. The generic owner controls the same ten-minute metadata, sealed body, private commitment, digest-bound confirmation, atomic native effect/completion and completed-only reconciliation. Installed SQL functions and row/ciphertext formats are retained through typed adapters, including existing creation provenance fences. Login-only privacy retirement remains separate from source authority. No migration or row rewrite is required.
+
+### WP9 — pay catalogue creation compatibility (30 October 2026)
+
+Typed pay-component catalogue creation uses the generic own compatibility lifecycle, bound to the actual current login with null employment/company. The source retains current payroll and typed-pay-component module gates, canonical catalogue locking and native administrator authority. Human content, installed SQL/ciphertext formats, 32KiB sealed-body limit, 64KiB outward-review cap, atomic created-event proof and historical-create reconciliation remain unchanged. No employee assignment, payroll run or model-calculated value is introduced; no migration is required.
+
+### WP9 — additional payroll draft compatibility (30 October 2026)
+
+Multi-cycle draft creation uses the generic own compatibility lifecycle with its exact installed company/month/cycle/run-type binding, 45KB sealed-body cap and source-owned erasure targets. Its explicit peek protocol keeps current actor and canonical source interval before encrypted nomination, full native preflight before custody NOWAIT, and an exact snapshot reread before execution. Completed rows reconcile without preparing or creating another run. Sensitive Approve-tier authority stays explicit; no payroll processing, closing, payslip or payment is performed. No migration or ciphertext rewrite is required.
+
+### WP9 — statutory profile compatibility (30 October 2026)
+
+The Personnel EPF/SOCSO review uses the generic assigned compatibility lifecycle, retaining the actual actor/target/person/statutory/company/country binding and installed encrypted row format. Workforce write admission, granular native field/company authority, native PERSON/statutory tuple ownership, pending preflight before custody NOWAIT, exact snapshot reread and complete erasure targets remain source-owned. The country pack remains the sole statutory writer; no Identity/Tax/Bank/TP3/Zakat or payroll calculation authority is added. Existing uppercase action-ID reopening remains supported through a protocol-local normalization option. No migration is required.
+
+### WP9 — equipment acknowledgement compatibility (30 October 2026)
+
+Lifecycle acknowledgement uses the generic own compatibility lifecycle with an explicit exact-wire body protocol. The old caseNumber field stays in the private commitment and ciphertext in its original position; it is not dropped or re-created as public metadata. The current login/person, native case person, employment and company remain distinct and nullable as before, including email-owned unlinked prehire cases. Native case readiness, equipment normalization, actual submission SQL and completed historical receipt remain canonical. Complete case/person/employment privacy targets and login-only retirement remain intact. No migration is required.
+
+### WP9 — reporting graph compatibility (30 October 2026)
+
+Reporting-line change custody uses the generic assigned compatibility lifecycle with its exact original metadata, cached-review body, manager/previous-manager person snapshots and org-specific AAD/key purposes. The protocol does not add a contractVersion field to installed metadata or substitute the module-action commitment. Native Workforce graph/field/company authority, prior/new manager views, original target capture and canonical set-event proof remain unchanged. Current source preparation revalidates every cached graph fact before pending disclosure. Completed retries reconcile instead of executing; no migration or ciphertext rewrite is required.
+
+### WP9 — attendance request compatibility (30 October 2026)
+
+Own attendance correction custody uses the generic own compatibility lifecycle with an exact legacy intent-wire codec. Its private commitment/encryption still serialize `intent`, never a renamed content field. Existing own-employee/configuration/credit ownership, bounded canonical policy/day/payroll preparation before custody NOWAIT, exact encrypted snapshot reread and native correction/request binding remain unchanged. Completed retries lock and reconcile only the existing correction without pending preparation. The public action/version/intent packet and digest-bound confirmation are unchanged; native clock and other-HR rules still adjudicate every request. No migration is required.
+
+### WP9 assigned Leave decision custody
+
+The Leave decision adapter uses generic ASSIGNED compatibility custody. Its original sealed content, actor/subject binding, pending versus recorded source nomination, native step/event provenance, privacy targets and installed SQL remain authoritative. The shared guard requests Approve explicitly; the model cannot decide. No migration or ciphertext rewrite is needed.
+
+### WP9 Payroll close custody
+
+Payroll close uses generic OWN compatibility custody while the payroll pack retains Access/period/OT/batch locks, preflight-before-custody ordering, completion provenance, configured payslip release semantics and exact post-close privacy targets. Original SQL and sealed wire stay unchanged; explicit human Approve is required.
+
+### WP9 Rewards post custody
+
+Rewards post uses generic ASSIGNED compatibility custody with its original actor/company/unit binding, sealed content, posted revision/batch/event proof and full native preflight before custody NOWAIT. Rewards retains funding, cohort, compensation and payroll authority; shared guard requires human Approve. Existing SQL and ciphertext are unchanged.
+
+### WP9 default family foundation
+
+The default 0670 OWN and 0671 ASSIGNED factories are protocol adapters to the shared custody engine, rather than separate sealing/lifecycle implementations. Their public APIs, strict binding/row validation, self-decision refusal, SQL verifiers and optional OwnReviewPersistence/nativeRequestId compatibility are retained. The seven legacy module variants and own-leave remain separate pending their explicit protocol adapters; this foundation does not claim those have already collapsed.
+
+
+### Composition controls and provider review
+
+Per-action pauses apply inside the shared human source guard, including direct trusted source invocation without browser request scope, and inside deterministic Automatic source guards. The Automatic inventory associates its switch with its registered specialist rather than Chat and omits human prepared/completed outcome counters; the native reminder outcome owner supplies reminder evidence. Per-action pause keys remain the stable `hr_assistant:<actionId>` namespace independently of the specialist switch.
+
+The owner chose to preserve current provider behavior while requiring specialist review of existing unmasked personal-data prompts. The data register remains a disclosure record, not a claim that masking is enforced. Template-only reminders send no provider fields; no model admission is granted by their switch mapping.
+### WP13 remaining deterministic reminders — 30 October 2026
+
+Three further Automatic entries run under separately attributed, default-off template-only specialists: `attendance.missing_clock.remind`, `employees.passport_expiry.remind`, and `lifecycle.step.chase`. They have no model spend, human review store or native fact writer. Current switches, module holdings, principal attribution, source stage, cooldown and caps are repeated before each reminder event; notification and email projection repeats source eligibility and current recipient routing. Each action emits only closed IDs, stage and dates plus its principal stamp. Registry and outcome rows continue to distinguish these notification observations from human native effect receipts.
+
+The missing-clock reminder says only that no clock-in is recorded for the preceding HR-local date. The existing engine calendar confirms a scheduled working date excluding public holidays; any pending/approved leave date or attendance application suppresses it. Neither absence nor actual work is inferred, and no clock or correction is written. Each date is a distinct stage with one reminder at most.
+
+The only current native document-expiry fact is the Malaysia profile's recorded passport expiry date. Reminders cover the following 30 calendar days and stop on renewal, notifying the employee and company-authorised HR. No passport number, file content or filename is projected. Arbitrary uploaded employee documents have no expiry metadata owner; this implementation does not claim that missing capability.
+
+Lifecycle steps have no native due-date field. The reminder observes an actionable incomplete step after three working days without a case workflow transition. It uses the existing lifecycle applicability and onboarding phase rules. Step completion/undo, outcome changes, reopening, owner changes, step-configuration changes and canonical laptop/carpark applicability-field changes restart the clock; comments and unrelated metadata do not. Newly available later phases and reopened cases are not treated as immediately overdue. Current scoped lifecycle staff and company HR are told; the engine never verifies equipment recovery or completes a task. Unlinked pre-employment cases cannot use an employment-bound reminder and remain a follow-up. Lifecycle reminders are in-app only until an email category and recipient policy are explicitly designed.
+
+Default bounds: missing-clock one reminder/date; passport 7-day cooldown and four reminders/expiry; lifecycle 7-day cooldown and three reminders/current step stage; each action has a cap of 100 per run. Outcome counts observe whether the source still waits at the recorded stage, without claiming a reminder caused an employee action. Migration 0700 and its timestamp are provisional until integration freeze above the current live ledger.
+
+Lifecycle reminder outcomes reuse that same canonical rule/phase owner in the outcome service. The scoped SQL summary returns null for lifecycle waiting/acted rather than guessing; a separate read-only definer returns only chased case/stage references, and the service compares them with current actionable stages. A changed stage, inapplicable/locked step or closed case is no longer waiting, without claiming a person completed it. Pending/approved clock corrections likewise stop the record-gap waiting count without attesting work.
+### WP9 notification preferences custody
+
+Notification preferences use generic OWN compatibility custody with the exact nonce/intent/cached-review wire and original capability supplied by the authenticated server owner. Current principal, module, own subject and configuration locks precede saved-card disclosure; native confirmation revalidates the original source digest. Cached reopen semantics and provider-free retirement remain unchanged.
+
+### WP9 profile request custody
+
+Profile change requests use generic OWN compatibility custody, retaining the original content wire, Workforce/own-employee interval, native request/event proof and source-drift refusal. The effect remains submission for HR review; it never applies or approves the proposal automatically.
+
+### WP9 claim draft custody
+
+Claim draft saving uses generic OWN compatibility custody while retaining the exact sealed provisional amount/quantity/taxable fields, original human content and native source fingerprint. Canonical Claims remains the sole money/rule owner; confirmation only saves a draft, never submits or reimburses. Existing rows and native provenance remain unchanged.
+
+### WP9 closed Performance acknowledgement custody
+
+Standard-cycle and OneHR plan acknowledgements share one closed OWN custody adapter, retaining the original discriminated engine/intent/cached-review wire, original private digest, employee binding and native acknowledgement event proof. Reopen compares the exact original canonical review including its original nonce. This does not edit ratings, goals, career facts or promotion decisions.
+
+### WP9 USER-scoped testing observation custody
+
+Testing observations use generic OWN compatibility custody while retaining nullable PERSON/EMPLOYMENT/company identity, exact original intent/cached-review wire, 600000-byte body and 819200-byte cipher limits, real assignment interval and native run/event proof. No staff identity is fabricated; a recorded observation is never relabeled independent verification.
+
+### WP9 claim submission custody
+
+Existing human draft submission uses generic OWN compatibility custody, keeping the original nonce/content/cached-review/native-digest wire, actual native claim interval, selected receipt set, request/event provenance and submission-only outcome. All seven module protocols now delegate encryption and lifecycle to the shared custody engine. Legacy own-leave remains a distinct pending protocol until its final compatibility increment.
+
+### WP9 final own-leave protocol boundary
+
+The original own-leave Tx APIs and candidate/refusal union remain explicit native protocol adapters. Their non-nonce protected wire, native candidate integrity recipe, purpose/AAD ordering, balance visibility and SQL repository are unchanged. Both own-leave and all generic families now use one review-envelope codec and one held-row transaction state owner for completed replay, retirement and pending confirmation digest admission. Native candidate creation/projection and exact SQL completion proof stay with their canonical source adapters; no original ciphertext is rewritten or reinterpreted.
+### WP8 completion amendment — native boundaries and assigned users (30 October 2026)
+
+Every human review action has an authored concrete native-screen/Assistant fixture adapter; the historical pending ceiling is empty and the original frozen action list remains immutable. Authored coverage is not passing runtime evidence; exact-SHA Actions results and outstanding findings govern acceptance. The matrix includes the actual tenant `super_admin` role. Payroll and Rewards administrator actors are native permission/seat predicates, not invented role-enum values. A separate positive control exercises an assigned tester with no person or employment, alongside the employee-linked tester matrix.
+
+Foreign target-company and target-tenant requests remain refused. Tenant-owned catalogue creation is different: its closed input has no tenant selector, so a foreign-tenant administrator may create in their own tenant. Those declarations state that boundary rather than falsely declaring a native refusal. Notification preferences retain an own-employment selector and get positive controls on both sides of the company/tenant boundary. Every actor, including permitted actors and a second login linked to the same person, is challenged with another login's review before any source effect.
+
+Native APIs that own a transaction are probed on separately constructed equivalent fictional worlds before the Assistant world is created. The native result cannot contaminate the Assistant's pending fixture; the owning screen service and actual current role/scope checks remain the authority. These checks are GitHub Actions focused evidence only, not deployment or release acceptance.
+
+The owner chose claimant-only cancellation on 30 October: its web action always resolves and binds the caller's own employment, including the legacy no-selector request. The current parity declaration therefore uses the own-action boundary; the earlier HR-only unbound service path is historical evidence at its original SHA. The reviewed bulk decision dependency now preserves an explicit human claim rejection reason for new preparations. Exact-SHA native-event evidence must establish that equivalence; actor admission alone does not prove equivalent human intent.
+
+### Reviewed bulk manager decisions
+
+The owner approved composing at most twenty existing prepared approval reviews in the current flow. Each full native review must be explicitly opened and its own confirmation selected; one count-labelled confirmation then sends the existing guarded browser command for each selected review sequentially. There is no new action kind, model tool, batch privilege or shared transaction. Every item repeats the current native authority, source, expiry, pause and digest checks. Earlier commits survive a later refusal. Each card presents its own canonical receipt, retirement or uncertainty; uncertain responses require reopening the same review, never automatic retry. Reloading or a server scope refresh clears selections; leaving the page stops subsequent requests and aborts an in-flight request without claiming rollback.
+
+New claim rejection preparations require the person's reason and bind it inside the existing sealed human content; the native claims service records that reason on its rejection event. Approval notes are not accepted. Existing sealed no-reason claim reviews remain readable and confirmable with their original digest and content. The new preparation requirement does not rewrite old evidence or invent a reason.
+## Owner decisions — 29 October 2026
+
+Given by the owner in chat on 2026-10-29, answering the review's decision list
+([review §7.2](../reviews/ai-architecture-review-2026-10.md), [handoff §7](../reviews/ai-architecture-handoff-2026-10.md)).
+This amends; the sections above are unchanged and remain binding.
+
+1. **Automatic-tier order (answers §8 Q2).** Follow the review's recommendation, in this order:
+   (a) chase overdue approvers on claims, attendance corrections and replacement leave, by generalising
+   `core/leave-escalation.ts`; (b) probation and contract-end reminders; (c) missing clock-in nudges;
+   (d) expiring documents; (e) lifecycle step chasing. All are deterministic and use no model.
+2. **No model spend for the scheduled agent principal.** Scheduled work (§4.5) stays template-only; the
+   principal gets no allowance subject of its own.
+3. **Performance AI switches default to off.** All six `performance.ai_*_enabled` switches default to off,
+   matching every other AI switch.
+4. **Naming.** Already approved and recorded in the
+   [WP15 verification](../reviews/ai-architecture-wp15-verification-2026-10.md) and the
+   vocabulary amendment above: "Assistant", "Control Tower", "HR work queue", "scheduled agent"; "module
+   agent" and "specialist" are dropped from the UI.
+5. **Bulk manager decisions (answers §8 Q1).** Approved in principle, with each item still individually
+   reviewed. It must be designed as its own package; WP6–WP14 do not implement it, and single-item decisions
+   remain the shipped behaviour until that package is accepted.
+
+These decisions grant no deployment and prove no implementation, gate result or installation.
+
+WP8 preserves the narrower observations from focused run 40944662433: the delegated leave offer/native decision admitted the stand-in while review preparation refused a private employment projection; the separate delegated-approvals follow-up replaces that projection with its existing request-bound subject owner after unchanged authority and locks. Its new candidate must prove full delegate parity. The native MY statutory setter also admitted another-company HR while the reviewed source required company Workforce/Payroll scope and all sensitive field categories. That Assistant refusal remains deliberately narrower; the actual native split-card write interval is probed separately. Payroll page discoverability (`requireAdmin`/`scopedAdmin`) is recorded separately from the authenticated action/service admission and its granular close permission. No page guard by itself grants authority to change a service permission.

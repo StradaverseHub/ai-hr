@@ -34,3 +34,18 @@
 ## Out of scope (flagged, not built)
 
 Delegation visibility inheritance; indirect-manager/HOD **decision** authority; `/me` self-service delegation (D4 — kept out, this is an HR/manager admin action); functional/project/dotted-line visibility; `department.head_employment_id` column; delegation-start notifications and org-chart overlays.
+
+
+## Amendment — delegated request decisions, 30 October 2026
+
+Owner-approved design: a stand-in's claim and replacement-leave decision is final. Same-company cover is the default; another company requires explicit matching organisational scope. `leave.replacement` is its own task under leave, so a leave-application-only or claims-only delegation cannot decide it. The model proposes, the native deterministic service adjudicates, and a person confirms; approval is never Automatic.
+
+The unapplied, provisionally numbered 0699 migration shares module/company/BU/department matching through `app.delegation_line_covers`. The decision overloads bind the caller's delegate login; notification fanout binds an administrator and the current approvers. The one-argument legacy visibility helper is unchanged. Claim policies add only non-draft SELECT, receipt SELECT and pending-to-decided UPDATE, with a decision-column guard. No new DELETE, draft-writing, employment or balance policy is granted.
+
+Claim approval obtains grade, company and country from `app.claim_decision_subject_facts(claim)`, rather than treating an RLS-hidden grade as no grade. A missing facts row refuses. Non-draft claim visibility preserves settled-limit sums under the existing employee/type lock. The claim path requires payroll/finance review.
+
+Replacement crediting and unrouted attendance reuse the request-bound manager calculation-identity precedent. SQL resolves only a live manager of the exact pending delegated request. Savepoints restore transaction-local identity after failure; restoration is verified before the caller records the final decision. Events retain the actual stand-in actor. The identity seam requires security sign-off and a populated-baseline rehearsal before release.
+
+Inbox and Assistant projections return only person id, display name, employee code and company for an otherwise authorised request. They do not grant Personnel or balance visibility. A closed event SELECT policy permits the caller to reconcile only their own decision events, including the existing routed-attendance path. Approval history adds replacement-leave outcomes and non-final attendance stage decisions without duplicating final effects. Its inherited coarse admin branch is clamped to the subject company; an admin grant somewhere must not expose another company’s history. The recursive manager walk and remaining history projection stay unchanged.
+
+Only the existing leave-cancellation and attendance-OT request notices fan out to active stand-ins. Claims and replacement leave gain no new notice kind. `withApprovalDelegatesTx` also fans out WP13 overdue claim, replacement-leave and delegate-capable attendance reminders on this candidate. Frozen v3/v4 participant routes keep their exact outstanding participants. The full WP8 positive delegation cells are required on the same candidate. Mobile routing, native translation review and authenticated rendered journeys remain follow-ups. This amendment establishes no test, merge, installation or release claim. Final migration allocation happens at integration freeze above the live ledger.

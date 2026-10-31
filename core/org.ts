@@ -3514,6 +3514,26 @@ export class MissingBankForTransferError extends Error {
   }
 }
 
+/** The same native two-input readiness predicate. Neither raw input leaves this owner. */
+async function paymentMethodBankReadinessTx(tx:Tx,ctx:SessionContext,personId:string){
+ const [bank]=await tx.select({bankName:employeeStatutoryMy.bankName,bankAccountNo:employeeStatutoryMy.bankAccountNo,revision:sql<string>`xmin::text`}).from(employeeStatutoryMy).where(and(eq(employeeStatutoryMy.personId,personId),eq(employeeStatutoryMy.tenantId,ctx.tenantId))).for('share');
+ return{ready:!!bank&&!bankTransferLacksBank(bank),revision:bank?.revision??null};
+}
+/** Locked purpose DTO for local human review. Current-field authority precedes this owner.
+ * Existing native setter behavior remains: only bank_transfer requires the two MY bank inputs. */
+export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;paymentMethod:PaymentMethod|null}){
+ if(!(ctx.roles??[]).some(role=>role==='hr_admin'||role==='super_admin'))throw Error('Payment method unavailable');
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockProfileValueWritesTx(tx,ctx.tenantId);
+ await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+ const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,paymentMethod:employment.paymentMethod,terminatedOn:employment.terminatedOn,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+ if(!row||row.terminatedOn)throw Error('Payment method unavailable');
+ const [scope]=await tx.execute<{allowed:boolean;country:string}>(sql`select app.is_admin_for(c.id) as allowed,c.country from company c where c.id=${row.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid for share`);
+ if(scope?.allowed!==true||scope.country!=='MY')throw Error('Payment method unavailable');
+ const bank=p.paymentMethod==='bank_transfer'?await paymentMethodBankReadinessTx(tx,ctx,row.personId):null;
+ if(bank&&!bank.ready)throw new MissingBankForTransferError();
+ return{...row,readiness:bank?'ready' as const:'not_required' as const,bankRevision:bank?.revision??null};
+}
+
 /**
  * R46 79eb7151 — set HOW this employee is paid (bank transfer / cheque / cash). Pass `null` to clear back to
  * "not specified". Admin-gated (defence-in-depth over the employment RLS admin-write policy) and idempotent:
@@ -3553,23 +3573,12 @@ export async function setEmploymentPaymentMethod(
       return { id: p.employmentId, paymentMethod: next, changed: false as const };
     }
 
-    if (next === 'bank_transfer') {
-      const [bank] = await tx
-        .select({
-          bankName: employeeStatutoryMy.bankName,
-          bankAccountNo: employeeStatutoryMy.bankAccountNo,
-        })
-        .from(employeeStatutoryMy)
-        .where(eq(employeeStatutoryMy.personId, before.personId))
-        .limit(1);
-      // The SAME predicate the draft's Payroll tab and `completeEmployeeDraft` judge with (r393).
-      if (!bank || bankTransferLacksBank(bank)) {
-        throw new MissingBankForTransferError();
-      }
+    if (next === 'bank_transfer' && !(await paymentMethodBankReadinessTx(tx,ctx,before.personId)).ready) {
+      throw new MissingBankForTransferError();
     }
 
     await tx.update(employment).set({ paymentMethod: next }).where(eq(employment.id, p.employmentId));
-    await appendEvent(tx, {
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
       aggregateId: p.employmentId,
@@ -3579,8 +3588,8 @@ export async function setEmploymentPaymentMethod(
       // How someone is paid is a disbursement-routing decision an auditor must be able to reconstruct —
       // same rationale as the bank/custom-holder before/after on employee.bank.updated.
       payload: { before: before.paymentMethod ?? null, after: next },
-    });
-    return { id: p.employmentId, paymentMethod: next, changed: true as const };
+    },{returnId:true});
+    return { id: p.employmentId, paymentMethod: next, changed: true as const, eventId };
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
 }

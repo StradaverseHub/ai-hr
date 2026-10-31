@@ -404,11 +404,19 @@ export interface CountryPack {
     /** Exact country-owned row revision for masked ESS concurrency checks; never a value digest. */
     getEditSnapshot?: MyStatutoryModule['getStatutoryEditSnapshotMY'];
     setTp3: MyStatutoryModule['setTp3ProfileMY'];
+    /** Four-field existing hand balances; unchanged nonnull year and no matching person/year form. */
+    reviewedTp3Opening?:{read:MyStatutoryModule['readReviewedTp3OpeningMYTx'];prepare:MyStatutoryModule['prepareReviewedTp3OpeningMYTx']};
     setBank: MyStatutoryModule['setBankProfileMY'];
+    bankEditAccess?: MyStatutoryModule['canMaintainBankProfileMY'];
+    /** Local human Bank Information review; exact native partial-set normalization and source locks. */
+    reviewedBank?:MyStatutoryModule['prepareReviewedBankMYTx'];
     setRegistrationNumbers?: MyStatutoryModule['setRegistrationNumbersMY'];
     setIc: MyStatutoryModule['setIcProfileMY'];
     canApplyIcChange:MyStatutoryModule['canApplyIcProfileChangeMY'];
     setPassport: MyStatutoryModule['setPassportProfileMY'];
+    passportEditAccess?:MyStatutoryModule['canMaintainPassportProfileMY'];
+    /** Minimal six-field, existing-profile local human review. */
+    reviewedPassport?:{read:MyStatutoryModule['readReviewedPassportMYTx'];prepare:MyStatutoryModule['prepareReviewedPassportMYTx']};
     validatePassport:MyStatutoryModule['validatePassportProfileMY'];
     setTax: MyStatutoryModule['setTaxProfileMY'];
     getTaxSelection?: MyTaxSelectionModule['getTaxSelectionMY'];

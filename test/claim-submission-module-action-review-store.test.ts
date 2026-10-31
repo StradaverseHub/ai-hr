@@ -1,5 +1,8 @@
 /** Authored UNRUN. Coordinated review-store draft is required; no inline SQL installation. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import * as dbClient from '../db/client';
+import * as vault from '../lib/pii/vault';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
@@ -8,7 +11,7 @@ import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {erasePersonPii} from '../core/pdpa';
 import {claimLimitLockKey,createClaimType,setClaimPolicy,saveClaimDraft,addClaimAttachment,submitClaim,decideClaim} from '../packs/claims/service';
-import {prepareOwnClaimSubmissionSourceTx,confirmOwnClaimSubmissionSourceTx} from '../core/assistant-actions/own-claim-submission-source';
+import {withOwnClaimSubmissionIntervalTx,prepareOwnClaimSubmissionSourceTx,confirmOwnClaimSubmissionSourceTx} from '../core/assistant-actions/own-claim-submission-source';
 import {prepareClaimSubmissionModuleActionReview,confirmClaimSubmissionModuleActionReview,reopenClaimSubmissionModuleActionReview,discardClaimSubmissionModuleActionReview,listClaimSubmissionModuleActionReviews} from '../core/assistant-actions/module-action-review-store';
 import {ClaimSubmissionModuleActionConfirmation} from '../lib/assistant-actions/module-action-review-contract';
 import {OWN_CLAIM_SUBMISSION_ACTION as action,type OwnClaimSubmissionHumanContent} from '../lib/assistant-actions/own-claim-submission-contract';
@@ -44,4 +47,12 @@ describe('same physical own human draft submission custody',()=>{
  it('does not relabel another prepared review of the same draft as completed or reuse its event',async()=>{const first=await prepare(),second=await prepare();expect(first.actionId).not.toBe(second.actionId);await confirm(first);const before=await state();await expect(confirm(second)).rejects.toThrow();expect(await state()).toEqual(before);expect(await custody(first.actionId)).toMatchObject({state:'completed',bodies:0});expect(await custody(second.actionId)).toMatchObject({state:'awaiting_confirmation',claim_submitted_event_id:null,bodies:1});await discardClaimSubmissionModuleActionReview(ctx,confirmation(second));});
  it('retains the shared twenty-creation rolling budget even after all reviews are discarded',async()=>{for(let n=0;n<20;n++){const review=await prepare();await discardClaimSubmissionModuleActionReview(ctx,confirmation(review));}await expect(prepare()).rejects.toThrow();const [count]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.assistant_own_leave_review where tenant_id=${b.tenantId}::uuid and user_id=${ctx.userId}::uuid`);expect(count.n).toBe(20);expect((await state()).events).toHaveLength(0);});
 
+});
+
+async function retainedClaimSubmissionReview(){return withTenant(ctx,tx=>withOwnClaimSubmissionIntervalTx(tx,ctx,human.draftId,async(actor,own)=>{const native=await prepareOwnClaimSubmissionSourceTx(tx,actor,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,review:native.review,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:actor.tenantId,userId:actor.userId!,personId:actor.personId!,employmentId:own.employmentId,companyId:own.companyId},actionId=randomUUID(),intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_claim_submission_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${own.draftId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest,action,contractVersion:1 as const};}finally{dek.fill(0);}}));}
+describe('WP9 retained claim submission custody',()=>{
+ it('opens and completes exact original cached-review writer rows once',async()=>{const old=await retainedClaimSubmissionReview();expect((await reopenClaimSubmissionModuleActionReview(ctx,old.actionId)).kind).toBe('prepared');await expect(confirmClaimSubmissionModuleActionReview(ctx,{...old,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();const done=await confirmClaimSubmissionModuleActionReview(ctx,old);expect(done.kind).toBe('completed');const after=await state();expect(await confirmClaimSubmissionModuleActionReview(ctx,old)).toEqual(done);expect(await reopenClaimSubmissionModuleActionReview(ctx,old.actionId)).toEqual(done);expect(await state()).toEqual(after);});
+ it('retires original pending custody after grant removal without decrypting or submitting',async()=>{const old=await retainedClaimSubmissionReview();await revokeAssistant(group(),{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');try{expect((await discardClaimSubmissionModuleActionReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);}finally{unwrap.mockRestore();}});
+ it('reconciles an actual committed submission after transaction reply loss',async()=>{const r=await prepare(),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(r)).rejects.toThrow();}finally{spy.mockRestore();}const after=await state(),done=await reopenClaimSubmissionModuleActionReview(ctx,r.actionId);expect(done.kind).toBe('completed');expect(await confirm(r)).toEqual(done);expect(await state()).toEqual(after);});
 });

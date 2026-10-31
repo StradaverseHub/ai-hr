@@ -107,17 +107,26 @@ export async function aiManagementView(ctx: SessionContext, search = '', runFilt
     const usable = resolved !== null;
     const selectedProvider = !usable ? null : provider ? activeProvider ? {provider:activeProvider.provider,model:activeProvider.model} : provider.envFallback : resolved;
     // Only provider/model metadata crosses to the view, after checking that its key can be resolved.
+    // One switch owner per feature (0692): a setting-backed feature follows its setting alone; a settingless one
+    // its `feature:` policy row. A feature row left over for a setting-backed feature cannot be written any more
+    // and is ignored by admission, so it is reported as a stale override instead of acting as a hidden switch.
     const features = AI_FEATURES.map(f => {
-      if(isScheduledAgentFeature(f)){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,mayWrite:isGroupAdmin(ctx)};}
       const setting = f.setting ? SETTING_CATALOG.find(s => s.key === f.setting) : undefined;
-      const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : policies.find(p => p.scopeKey === `feature:${f.id}`)?.enabled !== false;
+      const featureRow = policies.find(p => p.scopeKey === `feature:${f.id}` && p.kind === 'feature');
+      const staleOverride = setting && featureRow ? {enabled:featureRow.enabled,updatedAt:featureRow.updatedAt} : null;
+      const configured = setting ? fresh.entitlements.settings[f.setting!] !== undefined : featureRow !== undefined;
+      if(isScheduledAgentFeature(f)){const status=scheduledAgentFeatureStatus(fresh,f);return {...f,enabled:status.enabled,state:status.state,staleOverride,configured,mayWrite:isGroupAdmin(ctx)};}
+      const enabled = setting ? (fresh.entitlements.settings[f.setting!] ?? setting.defaultValue) === true : featureRow?.enabled !== false;
       const effective = enabled && (!setting || getSetting(fresh,f.setting!) === true);
       const moduleHeld = f.module == null || isModuleEnabled(fresh, f.module);
       // A configured provider does not admit scheduled model spend. This is a runtime-status mirror,
       // never an allowance or a grant to the principal.
       const state = !enabled ? 'paused' : !moduleHeld ? 'module' : !effective ? 'restricted'
+        : f.kind === 'agent' ? 'scheduled'
         : !selectedProvider ? 'provider' : 'ready';
-      return {...f,enabled,state,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
+      // WP12 (R20): whether an administrator actually set this switch (a stored setting or a `feature:` row), so drift
+      // reports a switch someone turned on that does not take effect, never a default nobody chose.
+      return {...f,enabled,state,staleOverride,configured,mayWrite:isGroupAdmin(ctx)&&f.kind!=='platform'};
     });
     // ADR-0151 §4.5 — the switch-on each agent specialist runs under, and who made it. An agent that is on
     // without a named administrator does not run until somebody switches it off and on again.
@@ -220,7 +229,9 @@ export async function setAiFeature(ctx: SessionContext, feature: AiFeatureId, en
   if (!isAiFeature(feature) || typeof enabled !== 'boolean') throw new AiControlError('Unknown AI feature.');
   const entry = AI_FEATURES.find(f=>f.id===feature)!;
   if(entry.kind==='platform') throw new AiControlError('This feature is managed by the platform.');
-  // Existing switches remain authoritative, including the deterministic reminder fallback.
+  // One switch owner per feature (0692): a setting-backed feature is switched through its setting and never gains
+  // a `feature:` policy row (app.ai_control_policy_guard refuses one by name). Only settingless features reach the
+  // policy write below. Existing switches remain authoritative, including the deterministic reminder fallback.
   if(entry.setting) return withTenant(ctx, async tx => {
     await currentControlAdminTx(tx, ctx, true);
     await setTenantSetting(ctx, { key: entry.setting!, value: enabled }, tx);
@@ -427,5 +438,28 @@ export async function clearGroupAllowance(ctx:SessionContext,p:{kind:unknown;sub
     const [removed]=await tx.delete(aiControlPolicy).where(and(eq(aiControlPolicy.tenantId,ctx.tenantId),eq(aiControlPolicy.scopeKey,groupScopeKey(target.kind,target.subject)),eq(aiControlPolicy.kind,target.kind))).returning();
     if(!removed)throw new AiControlError('There is no allowance for this group.');
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:target.kind==='group_role'?ctx.tenantId:target.subject,eventType:'ai-control.allowance-cleared',actor:actorOf(ctx),payload:{kind:target.kind,subject:target.subject,enabled:removed.enabled,dailyRequests:removed.dailyRequests,monthlyTokens:removed.monthlyTokens,maxConcurrent:removed.maxConcurrent}});
+  });
+}
+
+// ── WP14 / R19: per-feature caps (0694). Kept apart from the feature switch above. ──
+/** Features whose shared row (kind 'feature') the 0662 guard admits; a feature switched by a tenant setting has none. */
+export const AI_FEATURE_CAP_IDS: readonly AiFeatureId[] = Object.freeze(AI_FEATURES.filter(f => f.setting === null).map(f => f.id));
+/** A tenant-wide cap on one feature: every run of that feature in the tenant counts (app.ai_admit, 0678), on top of
+ *  every individual, group, default and company allowance. Blank is no additional cap. Group administrators only;
+ *  the feature's on/off switch is preserved, never changed here. */
+export async function setAiFeatureCap(ctx:SessionContext,p:{feature:unknown;dailyRequests:number|null;monthlyTokens:number|null;maxConcurrent?:number|null}){
+  ctx = captureControlContext(ctx);
+  assertAdmin(ctx);
+  if(!isGroupAdmin(ctx))throw new AiControlError('Only a group administrator may change feature caps.');
+  const feature=p.feature;
+  if(!isAiFeature(feature)||!AI_FEATURE_CAP_IDS.includes(feature))throw new AiControlError('Unknown AI feature.');
+  const caps={dailyRequests:p.dailyRequests,monthlyTokens:p.monthlyTokens,maxConcurrent:p.maxConcurrent??null};
+  for(const [value,max] of [[caps.dailyRequests,1000000],[caps.monthlyTokens,1000000000000],[caps.maxConcurrent,1000000]] as const){if(value!==null&&(!Number.isSafeInteger(value)||value<0||value>max))throw new AiControlError('Invalid AI allowance.');}
+  await withTenant(ctx,async tx=>{
+    await currentControlAdminTx(tx, ctx, true);
+    const values={...caps,updatedByUserId:ctx.userId??null,updatedAt:sql`now()`};
+    await tx.insert(aiControlPolicy).values({tenantId:ctx.tenantId,scopeKey:`feature:${feature}`,kind:'feature',featureId:feature,enabled:true,...values})
+      .onConflictDoUpdate({target:[aiControlPolicy.tenantId,aiControlPolicy.scopeKey],set:values});
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'ai-control',aggregateId:ctx.tenantId,eventType:'ai-control.feature-cap-changed',actor:actorOf(ctx),payload:{feature,...caps}});
   });
 }

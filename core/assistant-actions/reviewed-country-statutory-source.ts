@@ -6,16 +6,14 @@ import {z} from 'zod';
 import {company,employment} from '../../db/schema';
 import type {SessionContext,Tx} from '../../db/client';
 import {requirePackFor} from '../../localization/registry';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
+import {assertModuleEnabled} from '../entitlements';
 import {masterReportFieldsTx,MasterReportAccessError} from '../employee-master-access';
 import {lockLeaveDependenciesTx,lockLeaveDependencyConfigurationTx} from '../leave-dependency-lock';
 import {REVIEWED_COUNTRY_STATUTORY_ACTION as action,ReviewedCountryStatutoryHumanContent as Human,ReviewedCountryStatutoryConfirmation as Confirmation,ReviewedCountryStatutoryPreparedSource as Prepared,ReviewedCountryStatutorySourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-country-statutory-contract';
 export class ReviewedCountryStatutoryUnavailable extends Error{constructor(){super('That statutory update needs a fresh look. Please reopen the Personnel record.');this.name='ReviewedCountryStatutoryUnavailable';}}
 const fail=():never=>{throw new ReviewedCountryStatutoryUnavailable();},capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))}),hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export async function assertReviewedCountryStatutoryActorTx(tx:Tx,ctx:SessionContext){ctx=capture(ctx);await tx.execute(sql`select app.access_workforce_write_lock()`);await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'country-my');assertModuleEnabled(fresh,'payroll');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertReviewedCountryStatutoryActorTx(tx:Tx,ctx:SessionContext){ctx=capture(ctx);await tx.execute(sql`select app.access_workforce_write_lock()`);const fresh=await withAgentActionGuard(tx,ctx,action,'approve');assertModuleEnabled(fresh,'payroll');return fresh;}
 /** Source selection carries no private field values. Actual shared-person native tuple ownership is
  * acquired by the country pack before statutory facts; this prefix supplies no role or row grant. */
 async function source(tx:Tx,ctx:SessionContext,id:string){

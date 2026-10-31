@@ -116,6 +116,8 @@ describe('0280 — job_run recorder', () => {
     expect(JOBS.map((j) => j.key).sort()).toEqual(
       [
         'anomaly.sweep',
+        // WP12 (R20) — the AI alert check, added with its script, i18n and crontab documentation.
+        'ai.alerts',
         // r296 / readiness 2.1 — the entitlement-engine alarm. Added here in the same commit as the
         // script, its i18n and its crontab documentation, which is exactly what this assertion is for.
         'entitlement.alarm',

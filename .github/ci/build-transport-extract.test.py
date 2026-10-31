@@ -79,7 +79,7 @@ class Extraction(unittest.TestCase):
         self.assertEqual(module.CAPACITY_PROFILE,actual)
         self.assertEqual(module.CAPACITY_PROFILE,module.bundle.CAPACITY_PROFILE)
         self.assertEqual((module.MAX_ARCHIVE,module.MAX_ZIP,module.LIMITS['bytes/build-bundle.tar.gz']),
-                         (276824064,293601280,276824064))
+                         (285212672,293601280,285212672))
         self.assertEqual(module.LIMITS['bytes/build-bundle-files.json'],16*1024**2)
 
     def test_individually_legal_declared_members_over_aggregate_refuse_before_output(self):

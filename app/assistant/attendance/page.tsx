@@ -1,3 +1,4 @@
+import {AttendanceNativeWorkflows} from '@/components/assistant/attendance-native-workflows';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {Card,PageHeader} from '@/components/ui';
@@ -10,5 +11,5 @@ export default async function AssistantAttendanceCorrectionPage({searchParams}:{
  const link='inline-flex min-h-11 items-center underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
  return <div className="mx-auto max-w-4xl space-y-5"><Link href="/assistant?job=attendance" className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('back')}</Link><PageHeader title={overtime?o('title'):t('title')} description={overtime?o('description'):t('description')}/>
   <nav aria-label={o('flowLabel')} className="flex flex-wrap gap-3 text-sm"><Link href="/assistant/attendance" aria-current={!overtime?'page':undefined} className={link}>{o('correctionFlow')}</Link><Link href="/assistant/attendance?flow=overtime" aria-current={overtime?'page':undefined} className={link}>{o('overtimeFlow')}</Link></nav>
-  <Card className="p-5">{overtime?<OwnOvertimeRequestPanel resumeActionId={typeof query.review==='string'?query.review:undefined}/>:<ModuleAttendanceActionSection resumeActionId={query.review}/>}</Card></div>;
+  <Card className="p-5">{overtime?<OwnOvertimeRequestPanel resumeActionId={typeof query.review==='string'?query.review:undefined}/>:<ModuleAttendanceActionSection resumeActionId={query.review}/>}</Card><AttendanceNativeWorkflows/></div>;
 }

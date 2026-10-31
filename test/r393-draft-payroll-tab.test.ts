@@ -122,7 +122,14 @@ describe('§1 Bank Transfer without bank details is named on the Payroll tab', (
     expect(at, 'setEmploymentPaymentMethod not found').toBeGreaterThanOrEqual(0);
     const writer = org.slice(at, org.indexOf('\n}\n', at));
     expect(writer.length, 'the writer slice parsed empty').toBeGreaterThan(500);
-    expect(writer).toContain('bankTransferLacksBank(bank)');
+    expect(writer).toContain("next === 'bank_transfer' && !(await paymentMethodBankReadinessTx(tx,ctx,before.personId)).ready");
+    const readinessAt = org.indexOf('async function paymentMethodBankReadinessTx(');
+    expect(readinessAt, 'native bank readiness owner exists').toBeGreaterThanOrEqual(0);
+    const readiness = org.slice(readinessAt, org.indexOf('\n}\n', readinessAt));
+    expect(readiness.length, 'readiness owner slice is nonempty').toBeGreaterThan(300);
+    expect(readiness).toContain('bankTransferLacksBank(bank)');
+    expect(readiness).toContain(".for('share')");
+    expect(readiness).toContain('return{ready:!!bank&&!bankTransferLacksBank(bank),revision:bank?.revision??null}');
     expect(writer).toContain('throw new MissingBankForTransferError()');
     expect(read('lib/employee-draft-schema.ts')).toContain('bankTransferLacksBank(s)');
     expect(read('core/employee-draft.ts')).toContain('bankTransferLacksBank(s)');

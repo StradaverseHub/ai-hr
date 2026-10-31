@@ -315,6 +315,9 @@ something.
   today, so there is nothing to extend and the table is genuinely additive.
 - Individual tools are gated by their own module: no `attendance` module, no attendance tool in the
   spec list. This also keeps the cached prefix stable per (tenant, role) rather than per user.
+  *Amended 2026-10 (review R6):* no longer true of the whole prefix. The conversation strategy and the
+  registry-derived proposal catalogue are per user; they are appended after the constant blocks so the
+  shared part of the prefix stays first (`lib/ai/assistant-conversation-system.ts`).
 - **`app/assistant/page.tsx` needs a column in `lib/permissions.ts`'s `SCREENS`** or
   `test/function-access.test.ts`'s reverse-completeness case fails and the route becomes a screen
   nobody can grant or revoke (AGENTS rule 20).
@@ -522,7 +525,8 @@ the reasoning that lost is the part a later reader needs in order to reopen the 
    granted_at), admin-only write under RLS, **composed with** the ADR-0077 module gate: the tenant must
    hold the module *and* the user must hold a grant. Fail closed on either.
    *Costs nothing per question:* tools are gated by module and role, so per-user access does not vary
-   the cacheable prefix — it stays stable per (tenant, role) exactly as §2.2 requires.
+   the cacheable prefix — it stays stable per (tenant, role) exactly as §2.2 requires. (Amended 2026-10,
+   review R6: per-user strategy and proposal-catalogue blocks now follow the constant prefix; see the amendment note above.)
 2. **Tool scope — DECIDED: the full §4 catalogue**, including `my_payslip_summary` (`pay`) and
    `employee_profile` (`identity`). RLS covers both, and the payslip tool inherits the ESS release gate,
    so an unreleased payslip is invisible to the assistant because it is invisible to the employee.

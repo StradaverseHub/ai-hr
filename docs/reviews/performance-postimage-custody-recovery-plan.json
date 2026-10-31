@@ -1,0 +1,57 @@
+{
+  "purpose": "0750 actual persisted custody postcondition and exact failure/role fixtures; development recovery only",
+  "previousCandidate": "8e0925bd699a67acb6731f0e796c6777ce822909",
+  "releaseHold": true,
+  "retained": [
+    {
+      "candidate": "faf64e101db23e5c803bc4e70e8ac816592ba4a7",
+      "run": "41049590424",
+      "scope": "100 unaffected NODB assertions in 12 files; original workflow remains FAILED"
+    },
+    {
+      "candidate": "8e0925bd699a67acb6731f0e796c6777ce822909",
+      "run": "41051284314",
+      "scope": "11 boundary DB assertions and whole compiler; workflow SUCCESS"
+    }
+  ],
+  "invalidResourceWitness": {
+    "run": "41051280359",
+    "assertionsReportedPassed": 156,
+    "memoryLimit": 2147483648,
+    "memoryPeak": 2147491840,
+    "oomKilled": false,
+    "disposition": "Workflow FAILED; rerun all eight native files in smaller groups at unchanged capacity"
+  },
+  "groups": [
+    {
+      "id": "proof",
+      "run_typecheck": true,
+      "tests": [
+        "test/performance-review-postimage-proof.test.ts",
+        "test/assistant-goal-approval-custody.test.ts",
+        "test/assistant-checkin-cancellation-custody.test.ts",
+        "test/assistant-checkin-completion-custody.test.ts"
+      ]
+    },
+    {
+      "id": "native-a",
+      "run_typecheck": true,
+      "tests": [
+        "test/agent-action-permission-parity-performance.test.ts",
+        "test/module-action-performance-review-custody.test.ts",
+        "test/performance-checkins.test.ts",
+        "test/performance-lifecycle.test.ts"
+      ]
+    },
+    {
+      "id": "native-b",
+      "run_typecheck": true,
+      "tests": [
+        "test/assistant-action-catalogue-db.test.ts",
+        "test/assistant-checkin-scheduling-custody.test.ts",
+        "test/assistant-family-maintenance.test.ts",
+        "test/assistant-qualification-custody.test.ts"
+      ]
+    }
+  ]
+}

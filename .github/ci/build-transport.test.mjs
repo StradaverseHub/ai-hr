@@ -56,8 +56,8 @@ test('consumer-only repair binds retained origin separately from actual current 
 test('diagnostic transport keeps the unchanged outer ZIP bound and strict current capacity identity',()=>{
  assert.equal(validateTransportMetadata({run,jobs:[job],artifact:{...artifact,size_in_bytes:293601280}},env),job);
  assert.throws(()=>validateTransportMetadata({run,jobs:[job],artifact:{...artifact,size_in_bytes:293601281}},env));
- for(const changed of [{...p,format:1},{...p,capacityProfile:undefined},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:1}},
+ for(const changed of [{...p,capacityProfile:{profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280}},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:2}},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824064}},{...p,format:1},{...p,capacityProfile:undefined},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,profileVersion:1}},
   {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456}},{...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,zipMaxBytes:293601281}},
-  {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,extra:true}},{...p,archiveBytes:276824065}])
+  {...p,capacityProfile:{...BUILD_CAPACITY_PROFILE,extra:true}},{...p,archiveBytes:285212673}])
   assert.throws(()=>validateTransportProvenance(changed,env,{...STAGING_BUILD_RUNTIME},consumer));
 });

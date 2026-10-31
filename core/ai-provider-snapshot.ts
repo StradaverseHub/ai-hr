@@ -15,10 +15,14 @@ import { currentAiProviderAdminTx } from './ai-provider-authority';
 
 const issued = new WeakSet<object>();
 export const AI_PROVIDER_SNAPSHOT_MAX_AGE_MS = 300_000;
+/** WP14: what a baseline holdout run evaluates — a pending direct-provider change, the saved OpenRouter
+ * candidate, or the platform default (environment key and AI_DRAFT_MODEL) while the tenant uses it. */
+export type AiProviderBaselineTarget = Readonly<{ kind: 'pending'; provider: 'anthropic' | 'openai' | 'google' | 'ai_gateway' } | { kind: 'openrouter_candidate' } | { kind: 'environment' }>;
 export type AiProviderSnapshot = Readonly<{
   configuration: ResolvedAiConfig;
   purpose: 'active' | 'provider_evaluation';
   candidate?: Readonly<{ id: string; version: string }>;
+  baseline?: AiProviderBaselineTarget;
   fingerprint: string;
   principal: string;
   preparedAt: number;
@@ -94,6 +98,47 @@ export async function resolveAiProviderCandidateSnapshotTx(tx: Tx, ctx: SessionC
   return snapshot;
 }
 
+/** WP14: a provider_evaluation snapshot of a baseline target. Group-admin only, like candidate custody. A pending
+ * change is read only through its restricted resolver and never becomes the active configuration here. The
+ * environment target exists only while the tenant has no active configuration of its own. */
+export async function resolveAiProviderBaselineSnapshotTx(tx: Tx, ctx: SessionContext, target: AiProviderBaselineTarget): Promise<AiProviderSnapshot> {
+  if (!target || typeof target !== 'object') return refuse();
+  if (target.kind === 'openrouter_candidate') return resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter');
+  if (!(await currentAiProviderAdminTx(tx, ctx))) return refuse();
+  let configuration: ResolvedAiConfig, fingerprint: string, candidate: Readonly<{ id: string; version: string }> | undefined;
+  if (target.kind === 'pending') {
+    if (!['anthropic', 'openai', 'google', 'ai_gateway'].includes(target.provider)) return refuse();
+    let rows: { id: string; version_token: string; provider: string; model: string; api_key_ciphertext: string; provider_options: unknown }[];
+    try { rows = await tx.execute(sql`select id, version_token, provider, model, api_key_ciphertext, provider_options from app.ai_provider_pending_resolve_v1(${target.provider})`) as unknown as typeof rows; }
+    catch { return refuse(); }
+    if (rows.length !== 1 || rows[0].provider !== target.provider) return refuse();
+    const row = rows[0];
+    if (typeof row.model !== 'string' || !row.model.trim() || row.model !== row.model.trim()) return refuse();
+    try {
+      let gatewayBaseUrl: string | undefined;
+      if (row.provider === 'ai_gateway') gatewayBaseUrl = readGatewayOptions(row.provider_options).baseUrl;
+      else if (!row.provider_options || typeof row.provider_options !== 'object' || Array.isArray(row.provider_options) || Object.keys(row.provider_options).length) return refuse();
+      const apiKey = decryptSecret(row.api_key_ciphertext, ctx.tenantId);
+      configuration = Object.freeze({ provider: target.provider, model: row.model, apiKey, ...(gatewayBaseUrl ? { gatewayBaseUrl } : {}) });
+      fingerprint = digest(['pending-v1', ctx.tenantId, row.id, row.version_token, row.provider, row.model, row.api_key_ciphertext, gatewayBaseUrl ?? {}]);
+      candidate = Object.freeze({ id: row.id, version: row.version_token });
+    } catch { return refuse(); }
+  } else if (target.kind === 'environment') {
+    let active: { active: boolean }[];
+    try { active = await tx.execute(sql`select exists(select 1 from public.ai_provider_config where is_active) as active`) as unknown as typeof active; }
+    catch { return refuse(); }
+    if (active[0]?.active !== false) return refuse();
+    const fallback = envFallbackConfig();
+    if (!fallback) return refuse();
+    configuration = Object.freeze({ ...fallback });
+    fingerprint = digest(['environment-baseline-v1', ctx.tenantId, parameters(configuration)]);
+  } else return refuse();
+  const snapshot = Object.freeze({ configuration, purpose: 'provider_evaluation' as const, ...(candidate ? { candidate } : {}),
+    baseline: Object.freeze({ ...target }) as AiProviderBaselineTarget, fingerprint, principal: principal(ctx), preparedAt: Date.now() });
+  issued.add(snapshot);
+  return snapshot;
+}
+
 /** A candidate snapshot cannot be repurposed for HR generation; evaluation cannot use an ordinary
  * active/environment snapshot as a substitute for the explicitly reviewed stored candidate.
  */
@@ -118,7 +163,7 @@ export async function assertCurrentAiProviderSnapshotTx(tx: Tx, ctx: SessionCont
   try { if (!same(parameters(prepared.configuration), parameters(outgoing))) return refuse(); }
   catch { return refuse(); }
   const current = prepared.purpose === 'provider_evaluation'
-    ? await resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter')
+    ? prepared.baseline ? await resolveAiProviderBaselineSnapshotTx(tx, ctx, prepared.baseline) : await resolveAiProviderCandidateSnapshotTx(tx, ctx, 'openrouter')
     : await resolveAiProviderSnapshotTx(tx, ctx);
   // Access ownership may have waited. Recheck request lifetime after that wait, too.
   assertAiProviderSnapshot(prepared, ctx);

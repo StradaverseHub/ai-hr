@@ -41,6 +41,9 @@ export const JOB_KEYS = [
   // A card reading "Never run" on /admin/scheduled-actions is the visible form of "not installed".
   'entitlement.alarm',
   'reports.employee-master.deliver',
+  // WP12 (review R20) — the AI alert check (scripts/ai-alerts.ts). A DETECTOR like entitlement.alarm: it changes
+  // nothing, and its standing alert pins its own exit code non-zero, so its row here is its liveness record.
+  'ai.alerts',
 ] as const;
 export type JobKey = (typeof JOB_KEYS)[number];
 
@@ -69,6 +72,7 @@ export const JOBS: readonly JobDescriptor[] = [
   { key: 'anomaly.sweep', i18nKey: 'anomaly-sweep', schedule: 'Daily — 02:30' },
   { key: 'entitlement.alarm', i18nKey: 'entitlement-alarm', schedule: 'Daily — 03:30' },
   { key: 'reports.employee-master.deliver', i18nKey: 'reports-employee-master-deliver', schedule: 'Every minute — due report schedules' },
+  { key: 'ai.alerts', i18nKey: 'ai-alerts', schedule: 'Hourly — at 15 minutes past' },
 ];
 
 /**

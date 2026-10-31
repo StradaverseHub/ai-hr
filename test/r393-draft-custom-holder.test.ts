@@ -132,8 +132,14 @@ describe('§1 a ticked custom holder box left blank is named on the Bank & Statu
     expect(at, 'setBankProfileMY not found').toBeGreaterThanOrEqual(0);
     const writer = stat.slice(at, stat.indexOf('\n}\n', at));
     expect(writer.length, 'the writer slice parsed empty').toBeGreaterThan(500);
-    expect(writer).toContain('customHolderGaps(');
-    expect(writer).toContain('throw new IncompleteCustomHolderError(gap)');
+    expect(writer).toContain('const values = normalizedBankValuesMY(p)');
+    expect(writer.indexOf('normalizedBankValuesMY(p)')).toBeLessThan(writer.indexOf('const run = async'));
+    const normalizeAt = stat.indexOf('function normalizedBankValuesMY(');
+    expect(normalizeAt, 'native bank normalizer exists').toBeGreaterThanOrEqual(0);
+    const normalize = stat.slice(normalizeAt, stat.indexOf('\n}\n', normalizeAt));
+    expect(normalize.length, 'native bank normalizer slice is nonempty').toBeGreaterThan(500);
+    expect(normalize).toContain('customHolderGaps(');
+    expect(normalize).toContain('throw new IncompleteCustomHolderError(gap)');
     expect(read('lib/employee-draft-schema.ts')).toContain('customHolderGaps(draftCustomHolder(s))');
     const core = read('core/employee-draft.ts');
     expect(core).toContain('customHolderGaps(holder)');

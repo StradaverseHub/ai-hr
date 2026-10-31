@@ -1,0 +1,3 @@
+import {expect,it} from 'vitest';
+import {BankMaintenance as C} from '../lib/assistant-actions/bank-maintenance-contract';
+it('requires every human bank field, rejects inferred actor and unrelated statutory input',()=>{const id='60000000-0000-4000-8000-000000000001',input={action:C.action,contractVersion:1,employmentId:id,subjectId:id,fields:{bankName:null,bankAccountNo:null,enableCustomHolderName:false,customHolderName:null,enableCustomHolderId:false,customHolderId:null}};expect(C.Human.safeParse(input).success).toBe(true);for(const value of [{...input,actor:'hr_admin'},{...input,fields:{...input.fields,taxNumber:'forged'}},{...input,fields:{bankName:'guessed'}}])expect(C.Human.safeParse(value).success).toBe(false);});

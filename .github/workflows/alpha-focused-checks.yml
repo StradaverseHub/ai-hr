@@ -48,6 +48,10 @@ on:
         description: Track statements in the isolated development database
         default: false
         type: boolean
+      qualify_restricted_port_prerequisites:
+        description: Opt-in exact581 populated restricted-port prerequisite rehearsal before migrations; requires real Personnel DB files and whole typecheck
+        default: false
+        type: boolean
       profile_database:
         description: Opt-in reset/seed/template timing when the candidate implements test/profile.ts
         default: false
@@ -116,7 +120,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with: {node-version: '22.23.3'}
       - name: Focused controller regression checks
-        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs
+        run: node --experimental-strip-types --test .github/ci/focused-checks.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/restricted-port-qualification.test.mjs
       - name: Validate bounded manifest
         id: selection
         run: node .github/ci/focused-checks.mjs selection
@@ -140,6 +144,8 @@ jobs:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
+      AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
+      AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:

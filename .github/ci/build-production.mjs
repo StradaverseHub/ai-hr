@@ -11,7 +11,7 @@ const SHA=/^[a-f0-9]{40}$/;
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const fail=message=>{throw Error('Production build producer refused: '+message);};
 // Closed format2 byte-capacity identity; never use manifest values as allowance.
-export const BUILD_CAPACITY_PROFILE=Object.freeze({profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280});
+export const BUILD_CAPACITY_PROFILE=Object.freeze({profileVersion:3,archiveMaxBytes:285212672,zipMaxBytes:293601280});
 export function assertBuildCapacityProfile(profile){
  if(!isDeepStrictEqual(profile,BUILD_CAPACITY_PROFILE))fail('unknown or mixed build capacity profile');
  return profile;
@@ -74,6 +74,11 @@ export function assertSuccessfulObservation(observation,prepared,preparedBytes,b
  return true;
 }
 
+export function assertBuildProducerRunner(name){
+ if(typeof name!=='string'||name.length<1||name.length>200||/[\x00-\x1f\x7f]/.test(name))fail('actual CI producer runner name');
+ return true;
+}
+
 function bytes(path,bound){
  const st=lstatSync(path);
  if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||st.size<1||st.size>bound)fail('invalid bounded evidence file');
@@ -104,6 +109,7 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
  source=resolve(source);output=resolve(output);
  if(!['release','ci','diagnostic'].includes(purpose))fail('unknown build purpose');
  if(purpose==='release')assertBuildInvocation(environment);else if(purpose==='ci')assertCiCandidateBuildInvocation(environment);else assertDiagnosticBuildInvocation(environment);
+ if(purpose!=='diagnostic')assertBuildProducerRunner(environment.RUNNER_NAME);
  if(realpathSync(source)!==source)fail('source must be a real checkout');
  const load=async relative=>{const raw=await import(pathToFileURL(join(source,relative)).href);return {...(raw.default??{}),...raw};};
  const next=JSON.parse(readFileSync(join(source,'node_modules/next/package.json'),'utf8')).version;
@@ -148,7 +154,12 @@ export async function produceBuild({source=process.cwd(),output,purpose='release
   lockSha256:hash(readFileSync(join(source,'pnpm-lock.yaml'))),packageSha256:hash(readFileSync(join(source,'package.json'))),
   preparedSha256:hash(preparedBytes),successfulObservationSha256:hash(observationBytes),manifestSha256:hash(manifestBytes),
   archiveSha256:manifest.archiveSha256,archiveBytes:manifest.archiveBytes,releaseAuthorized:false};
- if(purpose!=='diagnostic')provenance.buildSourcePath=source;
+ if(purpose!=='diagnostic'){
+  provenance.buildSourcePath=source;
+  provenance.producerEvent=environment.GITHUB_EVENT_NAME;
+  provenance.producerRef=environment.GITHUB_REF;
+  provenance.producerRunner={name:environment.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
+ }
  if(purpose==='diagnostic'){
   provenance.diagnosticRunner={name:environment.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
   provenance.diagnosticDurations={canonicalBuildMs:endedAt-startedAt,packMs:packEndedAt-packStartedAt};

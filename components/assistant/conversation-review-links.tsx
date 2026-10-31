@@ -1,5 +1,6 @@
 /** Human-review destinations are already present in a current source-owned card. This footer
  * grants no effect permission: the selected page still owns authorization, selection and consent. */
+import {personnelReviewTitleKey} from '../../lib/ai/personnel-review-labels';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '../../db/client';
 import {assertCanonicalModuleJobView,type CanonicalModuleJobView} from '../../core/workspace-module-jobs';
@@ -17,7 +18,7 @@ export async function ConversationReviewLinks({views,ctx}:{views:readonly Canoni
    }
   }
   if(!links.length)return null;
-  const t=await getTranslations('assistant.workspace.jobs');
-  return <div className="space-y-2"><p className="text-xs text-muted-foreground">{t('humanReviewNote')}</p><ul className="flex flex-wrap gap-2">{links.map(link=><li key={JSON.stringify([link.module,link.route])}><a href={link.route} className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('reviewAction')}{' — '}{t(`module_${link.module}`)}</a></li>)}</ul></div>;
+  const t=await getTranslations('assistant.workspace.jobs'),titles=await getTranslations();
+  return <div className="space-y-2"><p className="text-xs text-muted-foreground">{t('humanReviewNote')}</p><ul className="flex flex-wrap gap-2">{links.map(link=><li key={JSON.stringify([link.module,link.route])}><a href={link.route} className="inline-flex min-h-11 items-center rounded-md px-3 text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{personnelReviewTitleKey(link.module,link.route)?titles(personnelReviewTitleKey(link.module,link.route)!):<>{t('reviewAction')}{' — '}{t(`module_${link.module}`)}</>}</a></li>)}</ul></div>;
  }catch{return null;}
 }

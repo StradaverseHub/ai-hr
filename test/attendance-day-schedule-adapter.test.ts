@@ -1,0 +1,13 @@
+/** Mounted native mode adapter; guards and calculation stay in the original native owner. */
+import {beforeEach,expect,it,vi} from 'vitest';
+const {save,scope,list,revalidate}=vi.hoisted(()=>({save:vi.fn(async()=>({version:1})),scope:vi.fn(async()=>({s:{tenantId:'fictional',roles:['hr_admin']},scopeIds:['company']})),list:vi.fn(async()=>[{employmentId:'target'}]),revalidate:vi.fn()}));
+vi.mock('../lib/scope',()=>({scopedAdmin:scope}));
+vi.mock('../core/read',()=>({listEmployees:list}));
+vi.mock('../packs/attendance/service',()=>({saveAttendanceDayEdit:save,amendExistingAttendanceApplication:vi.fn(),attendanceApplicationDetail:vi.fn(),requestAttendanceCorrection:vi.fn(),decideAttendanceCorrection:vi.fn(),ClockDataChangedError:class extends Error{},AttendancePayrollClosedError:class extends Error{}}));
+vi.mock('next/cache',()=>({revalidatePath:revalidate}));
+import {saveAttendanceDayChangesAction,saveAttendanceDayScheduleAction} from '../app/attendance/individual/[date]/actions';
+const input=(kind='schedule')=>{const fd=new FormData();for(const[key,value]of Object.entries({kind,employmentId:'target',date:'2026-10-30',baseline:'native',reason:'Fictional reviewed correction',shiftId:'shift',dayKind:'rest_day',confirmPayrollRecalculation:'on'}))fd.set(key,value);return fd;};
+beforeEach(()=>vi.clearAllMocks());
+it('delegates the mounted schedule payload to the same scoped native owner and revalidation',async()=>{const fd=input();expect(await saveAttendanceDayScheduleAction(fd)).toEqual({ok:true});expect(save).toHaveBeenCalledWith(expect.any(Object),{kind:'schedule',employmentId:'target',date:'2026-10-30',baseline:'native',reason:'Fictional reviewed correction',shiftId:'shift',dayKind:'rest_day',confirmPayrollRecalculation:true});expect(scope).toHaveBeenCalledTimes(1);expect(list).toHaveBeenCalledTimes(1);expect(revalidate).toHaveBeenCalledWith('/attendance/individual/[date]','page');expect(fd.get('kind')).toBe('schedule');});
+it('refuses overtime mode at this adapter while retaining the original overtime owner path',async()=>{expect((await saveAttendanceDayScheduleAction(input('overtime'))).ok).toBe(false);expect(save).not.toHaveBeenCalled();const original=input('overtime');original.set('rows',JSON.stringify([{key:'row',minutes:60}]));expect(await saveAttendanceDayChangesAction(original)).toEqual({ok:true});expect(save).toHaveBeenCalledWith(expect.any(Object),expect.objectContaining({kind:'overtime',rows:[{key:'row',minutes:60}]}));});
+it('retains the existing mounted company selection refusal before any native write',async()=>{list.mockResolvedValueOnce([]);expect((await saveAttendanceDayScheduleAction(input())).ok).toBe(false);expect(save).not.toHaveBeenCalled();expect(revalidate).not.toHaveBeenCalled();});

@@ -20,7 +20,7 @@
     "db:start": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /opt/homebrew/var/aihr-pg16 -o '-p 5433 -k /tmp' -l /tmp/aihr-pg16.log start",
     "db:stop": "/opt/homebrew/opt/postgresql@16/bin/pg_ctl -D /opt/homebrew/var/aihr-pg16 stop",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node --import tsx scripts/migrate-with-focused-prerequisites.ts",
     "db:seed": "node --env-file=.env.local --import tsx db/seed.ts",
     "dev:fixture-pooled-leave": "node --env-file=.env.local --import tsx scripts/dev-fixture-pooled-leave.ts",
     "dev:fixture-pcb-detail": "node --env-file=.env.local --import tsx scripts/dev-fixture-pcb-detail.ts",

@@ -20,7 +20,7 @@ vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
 vi.mock('../core/module-agent-feedback',()=>({recordOwnAgentFeedback:vi.fn(),eraseOwnAgentFeedback:owner.feedback,AGENT_FEEDBACK_OUTCOMES:['helpful','needs_correction','incorrect']}));
 vi.mock('../core/module-agent-releases',()=>({eraseOwnModulePlanProposals:owner.proposals,eraseOwnGovernedJobFeedback:owner.ratings,eraseOwnConversationStrategyMetadata:owner.conversation,
  GOVERNED_JOB_FEEDBACK_OUTCOMES:['helpful','needs_correction','incorrect'],proposeOwnModuleReadPlan:vi.fn(),evaluateHumanQuestionPlannerCandidate:vi.fn(),recordOwnGovernedJobFeedback:vi.fn(),
- createPromptAgentCandidate:vi.fn(),evaluatePromptAgentCandidate:vi.fn(),promotePromptAgentCandidate:vi.fn(),rollbackRoutingAgent:vi.fn(),rollbackAssistantPromotion:vi.fn(),runPromptPlannedSyntheticJob:vi.fn(),
+ createPromptAgentCandidate:vi.fn(),evaluatePromptAgentCandidate:vi.fn(),promotePromptAgentCandidate:vi.fn(),rollbackAssistantPromotion:vi.fn(),runPromptPlannedSyntheticJob:vi.fn(),
  createConversationAgentCandidate:vi.fn(),evaluateConversationAgentCandidate:vi.fn(),promoteConversationAgentCandidate:vi.fn()}));
 import {eraseModuleProposalsAction} from '../app/assistant/module-plan-actions';
 import {eraseGovernedJobFeedbackAction} from '../app/assistant/job-feedback-actions';

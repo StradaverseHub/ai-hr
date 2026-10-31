@@ -6,7 +6,10 @@ import {describe,expect,it} from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {AGENT_PRINCIPAL_SPECIALISTS,AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
+import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
+import {parseModuleAgentActionNomination} from '../lib/ai/module-agent-actions';
+import {PayrollReopen as PayrollReopenContract} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
+import {AGENT_PRINCIPAL_SPECIALISTS,AGENT_CAPABILITY_INVENTORY,AGENT_ACTION_TIER_CEILING,AGENT_ACTION_CATEGORY,AGENT_HANDOFF_REASONS,AGENT_INTERNAL_REASONS,agentCapabilityCoverage} from '../lib/ai/agent-capability-inventory';
 import {NATIVE_OUTCOME_ACTIONS} from '../lib/ai/module-native-outcomes';
 
 const ROOT=path.resolve(__dirname,'..');
@@ -58,7 +61,7 @@ describe('ADR-0151 agent capability inventory',()=>{
  });
 
  it('registers only declared module actions, and every declared action has a tier ceiling',()=>{
-  const declared=new Set(Object.keys(NATIVE_OUTCOME_ACTIONS));
+  const declared=new Set([...Object.keys(NATIVE_OUTCOME_ACTIONS),'approvals.claim.chase','approvals.attendance.chase','approvals.toil.chase','employees.review_overdue.remind','attendance.missing_clock.remind','employees.passport_expiry.remind','lifecycle.step.chase']);
   expect(new Set(Object.keys(AGENT_ACTION_TIER_CEILING))).toEqual(declared);
   for(const [file,entries] of Object.entries(inventory))for(const [name,value] of Object.entries(entries)){
    if(!value.startsWith('registered:'))continue;
@@ -73,21 +76,39 @@ describe('ADR-0151 agent capability inventory',()=>{
    if(!READ_VERB.test(name)||/Check(In|Out)/.test(name)||/revalidate(Path|Tag)\(/.test(body(file,name)))refused.push(`${file} › ${name}`);
   }
   expect(refused).toEqual([]);
-  // Registered effects are never Automatic today (§4.4).
-  expect(Object.values(AGENT_ACTION_TIER_CEILING)).not.toContain('automatic');
+  // Registered effects are never Automatic (§4.4), except the WP13 reminders and chasers, which change no record.
+  const automatic=Object.entries(AGENT_ACTION_TIER_CEILING).filter(([,tier])=>tier==='automatic').map(([id])=>id);
+  expect(automatic.sort()).toEqual(['approvals.attendance.chase','approvals.claim.chase','approvals.toil.chase','attendance.missing_clock.remind','employees.passport_expiry.remind','employees.review_overdue.remind','lifecycle.step.chase']);
+  for(const id of automatic)expect(['chaser','reminder']).toContain(AGENT_ACTION_CATEGORY[id as keyof typeof AGENT_ACTION_CATEGORY]);
  });
 
- it('keeps the never-automatic categories as handoffs',()=>{
+ it('keeps unsupported sensitive actions as handoffs and Payroll reopening in explicit human review',()=>{
   const expectations:[string,string,string][]=[
    ['app/admin/actions.ts','assignRoleAction','handoff:access_and_authentication'],
    ['app/admin/privacy/actions.ts','erasePersonPiiAction','handoff:privacy_erasure'],
-   ['app/payroll/actions.ts','unlockAction','handoff:payroll_reversal'],
-   ['app/payroll/actions.ts','resetAction','handoff:payroll_reversal'],
+   ['app/payroll/actions.ts','resetAction','registered:payroll.reset'],
    ['app/approvals/actions.ts','decideResignationAction','handoff:employment_exit_or_discipline'],
    ['app/control-tower/agents/actions.ts','setAiAllowanceAction','handoff:ai_governance'],
    ['app/operator/actions.ts','setCustomerFeedbackMenuAction','handoff:platform_operator'],
   ];
   for(const [file,name,value] of expectations)expect(inventory[file]?.[name],`${file} › ${name}`).toBe(value);
+  expect(inventory['app/payroll/actions.ts']?.unlockAction).toBe('registered:payroll.reopen');
+  expect(AGENT_ACTION_TIER_CEILING['payroll.reopen']).toBe('approve');
+  expect(AGENT_ACTIONS.find(action=>action.id==='payroll.reopen')).toMatchObject({
+   module:'payroll',policy:{tier:'approve',category:'payroll'},store:'generic_own',browserOwner:'payrollReopen',
+   screen:{entryPoints:['app/payroll/actions.ts#unlockAction']},review:{route:'/assistant/payroll-reopen',handoff:'review_page'},
+   humanInputs:['batchId','reason','confirmReopenClosedRun','acknowledgeRecordedDownstreamWarnings'],
+  });
+  expect(parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'prepare'})).toMatchObject({kind:'prepare',requiresHumanSelection:true,effect:'none',adapter:'module_payroll_reopen_review_v1'});
+  for(const extra of [{batchId:'model batch'},{reason:'model reason'},{confirmReopenClosedRun:true},{acknowledgeRecordedDownstreamWarnings:true}])expect(()=>parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'prepare',...extra})).toThrow();
+  expect(()=>parseModuleAgentActionNomination({module:'payroll',action:'payroll.reopen',phase:'confirm'})).toThrow();
+  const human={action:'payroll.reopen',contractVersion:1,batchId:'10000000-0000-4000-8000-000000000001',reason:'Correct the reviewed run.',confirmReopenClosedRun:true,acknowledgeRecordedDownstreamWarnings:true};
+  expect(PayrollReopenContract.Human.safeParse(human).success).toBe(true);
+  for(const consent of ['confirmReopenClosedRun','acknowledgeRecordedDownstreamWarnings']){
+   const missing:Record<string,unknown>={...human};delete missing[consent];expect(PayrollReopenContract.Human.safeParse(missing).success).toBe(false);
+   expect(PayrollReopenContract.Human.safeParse({...human,[consent]:false}).success).toBe(false);
+  }
+
   for(const entries of Object.values(inventory))for(const value of Object.values(entries)){
    const [kind,reason]=value.split(':');
    if(kind==='handoff')expect(AGENT_HANDOFF_REASONS as readonly string[]).toContain(reason);
@@ -98,8 +119,9 @@ describe('ADR-0151 agent capability inventory',()=>{
 
  it('lets the agent principal run only Automatic specialists that exist and match its switches (ADR-0151 §4.5)',()=>{
   // The same switches migration 0672 names in its attribution read and its event stamp check.
-  const migration=fs.readFileSync(path.join(process.cwd(),'db/migrations/0672_ai_agent_principal.sql'),'utf8');
-  expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS).sort()).toEqual(['claims_triage','readiness_reminders']);
+  // WP13 (0697) replaced both policies with the same rule plus the two reminder specialists.
+  const migration=['0672_ai_agent_principal','0817_automatic_chasers','0819_automatic_followups'].map(tag=>fs.readFileSync(path.join(process.cwd(),`db/migrations/${tag}.sql`),'utf8')).join('\n');
+  expect(Object.keys(AGENT_PRINCIPAL_SPECIALISTS).sort()).toEqual(['approval_chasers','claims_triage','clock_reminders','document_reminders','lifecycle_chasers','readiness_reminders','review_chasers']);
   for(const entry of Object.values(AGENT_PRINCIPAL_SPECIALISTS))expect(migration).toContain(`'${entry.setting}'`);
   for(const [feature,entry] of Object.entries(AGENT_PRINCIPAL_SPECIALISTS)){
    expect(entry.tier,feature).toBe('automatic');

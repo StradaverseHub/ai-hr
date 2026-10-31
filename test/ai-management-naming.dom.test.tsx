@@ -21,6 +21,7 @@ vi.mock('../app/delegations/actions',()=>({loadDelegationContextAction:vi.fn()})
 vi.mock('../components/delegation-manager',()=>({DelegationManager:()=>null}));
 vi.mock('../lib/authz',()=>({isGroupAdmin:()=>true,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true,isModuleEnabled:()=>true}));
+vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry',rows:[]}),aiManagementAlerts:async()=>({status:'ok',alerts:[]}),aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:1},hasMore:false,rows:[]})}));
 vi.mock('../core/ai-management',async()=>{
  const {AI_FEATURES}=await import('../lib/ai/features');const assistant=AI_FEATURES.find(feature=>feature.id==='hr_assistant');if(!assistant)throw Error('Missing actual Assistant feature definition');
  // Match the native status owner: enabled module/switch, but no configured provider means provider-required.

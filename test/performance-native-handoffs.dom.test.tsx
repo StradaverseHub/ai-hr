@@ -1,0 +1,35 @@
+/** @vitest-environment jsdom */
+import React from 'react';
+import en from '../messages/en.json';
+import zh from '../messages/zh.json';
+import ms from '../messages/ms.json';
+import ta from '../messages/ta.json';
+import th from '../messages/th.json';
+import viMessages from '../messages/vi.json';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {cleanup,render,screen} from '@testing-library/react';
+import {createTranslator,type AbstractIntlMessages} from 'next-intl';
+import {locales} from '../i18n/config';
+import {PERFORMANCE_AREA_TABS} from '../packs/performance/onehr/tab-model';
+import {PerformanceNativeHandoffs} from '../components/assistant/performance-native-handoffs';
+const source=vi.hoisted(()=>({session:vi.fn(),doors:vi.fn(),translate:vi.fn()}));
+vi.mock('server-only',()=>({}));
+vi.mock('next-intl/server',()=>({getTranslations:source.translate}));
+vi.mock('../lib/session',()=>({getBrowserCommandSession:source.session}));
+vi.mock('../core/assistant-actions/performance-native-handoffs',()=>({readPerformanceNativeHandoffs:source.doors}));
+vi.mock('next/link',()=>({default:({href,children,...props}:React.ComponentProps<'a'>)=><a href={href} {...props}>{children}</a>}));
+beforeEach(()=>{vi.clearAllMocks();source.session.mockResolvedValue({tenantId:'PRIVATE'});source.doors.mockResolvedValue(PERFORMANCE_AREA_TABS.filter(tab=>tab.strip!=='home').map(({id,href,labelKey})=>({id,href,labelKey})));});
+afterEach(cleanup);
+it.each(locales)('renders bounded native workflow links with actual %s labels',async locale=>{
+ const messages:AbstractIntlMessages=({en,zh,ms,ta,th,vi:viMessages})[locale];
+ source.translate.mockImplementation(async(namespace:string)=>createTranslator({locale,messages,namespace}));
+ const element=await PerformanceNativeHandoffs();expect(element).not.toBeNull();
+ render(element);
+ const expected=PERFORMANCE_AREA_TABS.filter(tab=>tab.strip!=='home');
+ expect(screen.getAllByRole('link')).toHaveLength(expected.length);
+ const t=createTranslator({locale,messages,namespace:'performanceArea'});
+ for(const door of expected)expect(screen.getAllByRole('link').some(link=>link.getAttribute('href')===door.href&&link.textContent===t(door.labelKey))).toBe(true);
+ expect(document.body.textContent).not.toContain('PRIVATE');
+});
+it('renders nothing for no open native workflows',async()=>{source.doors.mockResolvedValue([]);expect(await PerformanceNativeHandoffs()).toBeNull();expect(source.translate).not.toHaveBeenCalled();});
+it('renders nothing after session refusal without loading work or private errors',async()=>{source.session.mockRejectedValue(Error('PRIVATE'));expect(await PerformanceNativeHandoffs()).toBeNull();expect(source.doors).not.toHaveBeenCalled();});

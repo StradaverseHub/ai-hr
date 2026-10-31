@@ -37,7 +37,7 @@ const ALL_TABLES = [
   'app.attendance_policy_company_epoch','attendance_policy_request_contract',
   'attendance_overtime_policy_part','attendance_overtime_source','attendance_overtime_personnel_context','attendance_overtime_calculation','attendance_overtime_calculation_evidence','attendance_overtime_line','overtime_source_settlement',
   'custom_report_occurrence','custom_report_schedule','custom_report_run',
-  'ai_model_run', 'ai_control_policy',
+  'ai_model_run', 'ai_control_policy', 'app.ai_agent_action_pause',
   'performance_assessment_guide_use',
   'hr_orchestration_case',
   'performance_assessment_profit_achievement',
@@ -432,7 +432,7 @@ async function seedBaseImpl(): Promise<Base> {
 
 export async function createAppUser(
   tenantId: string,
-  personId: string,
+  personId: string | null,
   role: 'employee' | 'manager' | 'hr_admin' | 'super_admin',
 ): Promise<string> {
   const [u] = await owner.db

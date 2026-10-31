@@ -7,7 +7,7 @@ import type {SessionContext} from '../../db/client';
 import type {AgentModuleCode} from '../ai/module-agents';
 import {isAdmin,canManagePayroll,withEffectiveGrants} from '../authz-model';
 
-export const MODULE_ACTION_ENTRIES=['employee_import','org','payroll_close','knowledge','multi_cycle_run','pay_component','assigned_leave','country_statutory','rewards'] as const;
+export const MODULE_ACTION_ENTRIES=['employee_import','org','payroll_close','knowledge','multi_cycle_run','pay_component','assigned_leave','country_statutory','rewards','rewards_cancel','rewards_calendar','rewards_return'] as const;
 export type ModuleActionEntry=(typeof MODULE_ACTION_ENTRIES)[number];
 /** allowed = offer it; refused = the session's authorization rules it out; unknown = a source read
  * failed, so the link stays hidden and a page keeps its ordinary "cannot load" wording. */
@@ -36,6 +36,6 @@ export function moduleActionEntryRoleFloor(ctx:SessionContext,entry:ModuleAction
   // app.reward_admin admits only hr_admin/super_admin assignments; which companies is a live read.
   case 'rewards':return isAdmin(ctx)?null:false;
   // Reporting-line maintenance and assigned decisions depend on live scope/assignment rows.
-  case 'org':case 'assigned_leave':return null;
+  case 'org':case 'assigned_leave':case 'rewards_cancel':case 'rewards_calendar':case 'rewards_return':return null;
  }
 }

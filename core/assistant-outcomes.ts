@@ -15,9 +15,11 @@
  * observation about the native record, not a claim that the Assistant caused it.
  */
 import { sql } from 'drizzle-orm';
+import { lifecycleChaseOutcomeTx } from './automatic-followups';
 import { withTenant, type SessionContext } from '../db/client';
 import { isAdmin } from '../lib/authz-model';
 import { NATIVE_REVIEW_ACTIONS, NATIVE_OUTCOME_ACTIONS, type NativeOutcomeAction } from '../lib/ai/module-native-outcomes';
+import { agentActionsByTier } from '../lib/ai/agent-action-registry';
 import { isModuleEnabled } from './entitlements';
 import { PROCESS_PROFILES, measure, windowStart, type AssessmentWindow, type ProcessId } from './process-assessment';
 
@@ -44,6 +46,14 @@ export type ActionOutcome = {
   reversed: number | null;
   firstPreparedAt: Date | null;
 };
+
+/**
+ * WP13 — an Automatic-tier reminder kind (registry tier `automatic`). Counts from the chase receipts the agent
+ * principal wrote (`app.automatic_chase_outcome_summary`, 0697), scoped to the caller's administered companies.
+ * `acted` = chased items no longer waiting at the chased stage now; an observation, not proof the reminder caused it.
+ */
+export type AutomaticOutcome = { action: string; module: string; chased: number; items: number; acted: number; waiting: number; firstChasedAt: Date | null };
+type AutomaticRow = { action_id: string; chased: number; items: number; acted: number | null; waiting: number | null; first_chased_at: string | Date | null; lifecycle_stages: unknown };
 
 export type Period = { from: Date; to: Date; days: number; started: number; staffActions: number; per30: number };
 
@@ -115,6 +125,16 @@ export async function assistantOutcomes(ctx: SessionContext, window: AssessmentW
       processes.push({ id, actions: mapped.map(a => a.action), enabled, linked: profile.actionsLinked, firstUse, before, after, early,
         assistantCompleted: mapped.reduce((n, a) => n + a.completed, 0) });
     }
-    return { version: OUTCOME_VERSION, window, from, actions, processes };
+    const automaticRows = await tx.execute<AutomaticRow>(sql`select a.*,CASE WHEN a.action_id='lifecycle.step.chase' THEN (select coalesce(jsonb_agg(jsonb_build_object('itemId',r.item_id,'stage',r.stage)),'[]'::jsonb) from app.automatic_lifecycle_chased_stages(${from.toISOString()}::timestamptz) r) END AS lifecycle_stages from app.automatic_chase_outcome_summary(${from.toISOString()}::timestamptz) a`);
+    const lifecycleRow=automaticRows.find(r=>r.action_id==='lifecycle.step.chase');
+    const lifecycle=lifecycleRow?await lifecycleChaseOutcomeTx(tx,lifecycleRow.lifecycle_stages):{acted:0,waiting:0};
+    const automaticById = new Map(Array.from(automaticRows).map(r => [r.action_id, r]));
+    // Every registered Automatic entry, in registry order, so an unused reminder shows as unused rather than absent.
+    const automatic: AutomaticOutcome[] = agentActionsByTier('automatic').map(entry => {
+      const r = automaticById.get(entry.id);
+      return { action: entry.id, module: entry.module, chased: r?.chased ?? 0, items: r?.items ?? 0, acted: entry.id==='lifecycle.step.chase'?lifecycle.acted:r?.acted ?? 0,
+        waiting: entry.id==='lifecycle.step.chase'?lifecycle.waiting:r?.waiting ?? 0, firstChasedAt: r?.first_chased_at ? new Date(r.first_chased_at) : null };
+    });
+    return { version: OUTCOME_VERSION, window, from, actions, processes, automatic };
   });
 }

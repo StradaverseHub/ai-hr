@@ -6,6 +6,8 @@ import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {divideFormulaDecimal,applyFormulaAmount} from '../lib/pay-formula-language';
 import {payrollProrationRatio} from '../lib/payroll-proration';
 import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
+import {z} from 'zod';
+import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -1094,7 +1096,7 @@ export async function markRunsAffectedByPayComponentTx(
 export async function clearBatchRecalc(
   tx: Tx,
   ctx: SessionContext,
-  p: { batchId: string; employmentIds: string[] | null },
+  p: { batchId: string; employmentIds: string[] | null;resetEventId?:string },
 ): Promise<void> {
   const [row] = await tx
     .select({ ids: payrollBatch.recalcEmploymentIds, at: payrollBatch.needsRecalcAt })
@@ -1119,7 +1121,7 @@ export async function clearBatchRecalc(
       aggregateId: p.batchId,
       eventType: 'payroll-batch.recalc-cleared',
       actor: actorOf(ctx),
-      payload: {},
+      payload: p.resetEventId?{resetEventId:p.resetEventId}:{},
     });
   }
 }
@@ -8817,7 +8819,7 @@ export async function readReviewedPayrollCloseReferenceTx(tx:Tx,supplied:Session
 async function unwindAppliedLoanRepayments(
   tx: Tx,
   ctx: SessionContext,
-  p: { batchId: string; employmentIds: string[] | null; cause: 'payroll-reset' | 'payroll-employee-removed' },
+  p: { batchId: string; employmentIds: string[] | null; cause: 'payroll-reset' | 'payroll-employee-removed'; resetEventId?:string },
 ): Promise<{ reversed: number; loansReopened: number }> {
   if (p.employmentIds != null && p.employmentIds.length === 0) return { reversed: 0, loansReopened: 0 };
   const toC = (v: unknown) => Math.round(Number(v) * 100);
@@ -8834,6 +8836,7 @@ async function unwindAppliedLoanRepayments(
     );
   let loansReopened = 0;
   for (const rep of appliedReps) {
+    if(p.cause==='payroll-reset')await tx.execute(sql`select set_config('app.payroll_reset_current_rep',${rep.id},true)`);
     const [loan] = await tx.select().from(employeeLoan).where(eq(employeeLoan.id, rep.loanId)).limit(1);
     if (!loan) continue;
     const appliedCents = toC(rep.appliedAmount);
@@ -8904,7 +8907,7 @@ async function unwindAppliedLoanRepayments(
       eventType: 'loan.instalment.reversed',
       actor: actorOf(ctx),
       subjectEmploymentId: rep.employmentId,
-      payload: { batchId: p.batchId, loanId: rep.loanId, reason: p.cause },
+      payload: { batchId: p.batchId, loanId: rep.loanId, reason: p.cause,...(p.resetEventId?{resetEventId:p.resetEventId}:{}) },
     });
     if (reopen) {
       loansReopened += 1;
@@ -8915,10 +8918,11 @@ async function unwindAppliedLoanRepayments(
         eventType: 'loan.reopened',
         actor: actorOf(ctx),
         subjectEmploymentId: loan.employmentId,
-        payload: { batchId: p.batchId, reason: p.cause },
+        payload: { batchId: p.batchId, reason: p.cause,...(p.resetEventId?{resetEventId:p.resetEventId}:{}) },
       });
     }
   }
+  if(p.cause==='payroll-reset')await tx.execute(sql`select set_config('app.payroll_reset_current_rep','',true)`);
   return { reversed: appliedReps.length, loansReopened };
 }
 
@@ -8968,6 +8972,18 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new ResetReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    const {payslipsCleared,loanInstalmentsReversed,claimsReverted}=await resetProcessedBatchTx(tx,ctx,p);
+    return {payslipsCleared,loanInstalmentsReversed,claimsReverted};
+  });
+}
+
+/** The existing native reset owner in a caller-owned transaction. Public reset keeps its original
+ * result shape. Explicit server-allocated audit references avoid introducing audit SELECT rights. */
+export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason?:string}) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  if (!settingEnabled(ctx,'payroll.reset_enabled')) throw new SettingNotEnabledError('payroll.reset_enabled','Payroll reset is not enabled.');
+  const reason=(p.reason??'').trim();
+  if (!reason) throw new ResetReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -8990,13 +9006,15 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     await assertPayrollPermission(tx, ctx, 'payroll.rollback', batch.companyId);
     if (batch.status !== 'processed') throw new BatchNotResettableError();
 
+    const statusHistoryId=randomUUID(),resetEventId=randomUUID();
+    await tx.execute(sql`select set_config('app.payroll_reset_event',${resetEventId},true)`);
     // ── 1. Unwind the loan-ledger advance (mirror-image of applyLoansForBatch, ADR-0060) ──
     // ONE implementation, shared with removeEmployeePayroll — see unwindAppliedLoanRepayments. `null`
     // means the whole run, which is exactly what a reset unwinds.
     const { reversed: loanInstalmentsReversed, loansReopened } = await unwindAppliedLoanRepayments(tx, ctx, {
       batchId: p.batchId,
       employmentIds: null,
-      cause: 'payroll-reset',
+      cause: 'payroll-reset',resetEventId,
     });
 
     // ── 2. Un-mark the claims THIS batch paid (mirror-image of the generate-time paid block) ──
@@ -9016,7 +9034,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
         eventType: 'claim-request.payment-reversed',
         actor: actorOf(ctx),
         subjectEmploymentId: c.employmentId,
-        payload: { batchId: p.batchId, reason: 'payroll-reset' },
+        payload: { batchId: p.batchId, reason: 'payroll-reset',resetEventId },
       });
     }
 
@@ -9035,7 +9053,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     // would block the Close of the run that eventually replaces these payslips for a staleness that no
     // longer exists. (Order matters: clearBatchRecalc appends its event against the batch, and doing it
     // first keeps the history reading processed → recalc-cleared → reset.)
-    await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: null });
+    await clearBatchRecalc(tx, ctx, { batchId: p.batchId, employmentIds: null,resetEventId });
     await tx
       .update(payrollBatch)
       .set({ status: 'draft', totals: null, employeeCount: 0 })
@@ -9053,6 +9071,7 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
     // unlock/reprocess inserts so the rollback path is uniformly queryable, not only via the domain event.
     const resetActor = actorOf(ctx);
     await tx.insert(payrollStatusHistory).values({
+      id:statusHistoryId,
       tenantId: ctx.tenantId,
       batchId: p.batchId,
       action: 'rollback',
@@ -9079,9 +9098,11 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
+      id:resetEventId,
       eventType: 'payroll-batch.reset',
       actor: resetActor,
       payload: {
+        statusHistoryId,
         fromStatus: 'processed',
         toStatus: 'draft',
         companyId: batch.companyId,
@@ -9097,12 +9118,13 @@ export async function resetProcessedBatch(ctx: SessionContext, p: { batchId: str
         statutoryReportsForPeriod: statReports.length,
       },
     });
+    await tx.execute(sql`select set_config('app.payroll_reset_event','',true)`);
     return {
+      statusHistoryId,resetEventId,loansReopened,
       payslipsCleared: clearedSlips.length,
       loanInstalmentsReversed,
       claimsReverted: revertedClaims.length,
     };
-  });
 }
 
 // ─────────────── Granular payroll RBAC (feedback 9bc442bc, reporter expected_function) ───────────────
@@ -9259,6 +9281,21 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
   const reason = (p.reason ?? '').trim();
   if (!reason) throw new UnlockReasonRequiredError();
   return withTenant(ctx, async (tx) => {
+    const {warnings,reopenedPeriod}=await unlockClosedBatchTx(tx,ctx,p);
+    return {warnings,reopenedPeriod};
+  });
+}
+
+/** Same native unlock owner inside an existing top-level transaction. Exact references are
+ * returned for atomic reviewed custody; callers must not infer a latest event after commit. */
+export async function unlockClosedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason?:string}) {
+  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
+  if (!settingEnabled(ctx, 'payroll.unlock_enabled')) {
+    // See resetProcessedBatch — a risk switch being off is not "Payroll is not on your plan".
+    throw new SettingNotEnabledError('payroll.unlock_enabled', 'Payroll unlock is not enabled.');
+  }
+  const reason = (p.reason ?? '').trim();
+  if (!reason) throw new UnlockReasonRequiredError();
     await lockNativePayrollBatchPeriodTx(tx,ctx,p.batchId);
     const [batch] = await tx
       .select({
@@ -9308,7 +9345,9 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
     }
 
     const actor = actorOf(ctx);
+    const history={id:randomUUID()};
     await tx.insert(payrollStatusHistory).values({
+      id:history.id,
       tenantId: ctx.tenantId,
       batchId: p.batchId,
       action: 'unlock',
@@ -9320,26 +9359,29 @@ export async function unlockClosedBatch(ctx: SessionContext, p: { batchId: strin
       before: { status: 'closed', periodReopened: reopenedPeriod },
       after: { status: 'processed', warnings },
     });
+    const periodReopenedEventId = reopenedPeriod ? randomUUID() : null;
+    const unlockedEventId=randomUUID();
     await appendEvent(tx, {
+      id:unlockedEventId,
       tenantId: ctx.tenantId,
       aggregateType: 'payroll-batch',
       aggregateId: p.batchId,
       eventType: 'payroll-batch.unlocked',
       actor,
-      payload: { companyId: batch.companyId, payPeriod: batch.payPeriod, reason, warnings, reopenedPeriod },
+      payload: { companyId: batch.companyId, payPeriod: batch.payPeriod, reason, warnings, reopenedPeriod, statusHistoryId:history.id, periodReopenedEventId },
     });
     if (reopenedPeriod) {
       await appendEvent(tx, {
+        id:periodReopenedEventId!,
         tenantId: ctx.tenantId,
         aggregateType: 'pay-period',
         aggregateId: batch.payPeriodId,
         eventType: 'pay-period.reopened',
         actor,
-        payload: { batchId: p.batchId, reason },
+        payload: { batchId: p.batchId, reason, unlockedEventId, statusHistoryId:history.id },
       });
     }
-    return { warnings, reopenedPeriod };
-  });
+    return { warnings, reopenedPeriod, statusHistoryId:history.id, unlockedEventId, periodReopenedEventId };
 }
 
 /**
@@ -12182,4 +12224,201 @@ export function revertStatutoryAdjustment(ctx: SessionContext, p: { batchId: str
     });
     return { reverted: true as const };
   });
+}
+
+/** Actual composite native authority: configurable unlock, financial scope and the unchanged
+ * 0173 payroll_status_history INSERT policy. No new role grant or fictional employment. */
+async function reviewedPayrollReopenAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
+ const [batch]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
+ if(!batch)throw new BatchNotUnlockableError();
+ const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) AND app.is_admin() as allowed`);
+ if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.unlock');
+ await assertPayrollPermission(tx,ctx,'payroll.unlock',batch.companyId);return batch;
+}
+export async function withReviewedPayrollReopenIntervalTx<T>(tx:Tx,supplied:SessionContext,batchId:string,work:(ctx:SessionContext,source:{id:string;companyId:string;payPeriodId:string;payPeriod:string})=>Promise<T>):Promise<T>{
+ const ctx=capturePayrollCloseContext(supplied),id=batchId.toLowerCase();
+ if(!ctx.userId)throw new PayrollPermissionDeniedError('payroll.unlock');
+ await lockPayrollBatchPeriodTx(tx,ctx,id,true);
+ const source=await reviewedPayrollReopenAuthorityTx(tx,ctx,id);
+ const [locked]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1).for('update',{noWait:true});
+ if(!locked||JSON.stringify(locked)!==JSON.stringify(source))throw new BatchNotUnlockableError();
+ return work(ctx,source);
+}
+export async function prepareReviewedPayrollReopenTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string}){
+ return withReviewedPayrollReopenIntervalTx(tx,ctx,p.batchId,async(fresh,source)=>{
+  if(!settingEnabled(fresh,'payroll.unlock_enabled'))throw new SettingNotEnabledError('payroll.unlock_enabled','Payroll unlock is not enabled.');
+  if(!p.reason.trim())throw new UnlockReasonRequiredError();
+  const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,source.id)).limit(1);
+  if(batch.status!=='closed')throw new BatchNotUnlockableError();
+  const [adopted]=await tx.execute<{yes:boolean}>(sql`select app.payroll_history_batch_adopted(${source.id}::uuid) as yes`);if(adopted?.yes)throw new BatchOverwrittenByImportError();
+  const [parent]=await tx.select({status:payPeriod.status}).from(payPeriod).where(eq(payPeriod.id,source.payPeriodId)).limit(1);if(!parent)throw new BatchNotUnlockableError();
+  const warnings=await batchDownstreamWarnings(tx,{batchId:source.id,companyId:source.companyId,payPeriod:source.payPeriod});
+  const [context]=await tx.execute<{source:unknown}>(sql`select app.payroll_reopen_review_context(${source.id}::uuid) as source`);
+  const packet=z.object({companyName:z.string().min(1).max(4000),cycleName:z.string().max(4000).nullable(),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),stableSourceDigest:z.string().regex(/^[a-f0-9]{64}$/),people:z.array(z.guid()).max(10000),employees:z.array(z.guid()).max(10000)}).strict().parse(context?.source);
+  const review={batchId:source.id,companyId:source.companyId,companyName:packet.companyName,payPeriodId:source.payPeriodId,payPeriod:source.payPeriod,runType:batch.runType,runSeq:batch.runSeq,cycleName:packet.cycleName,beforeStatus:'closed' as const,afterStatus:'processed' as const,beforePeriodStatus:parent.status,afterPeriodStatus:'open' as const,parentWillReopen:parent.status==='closed',warnings,paymentWarningMeaning:'recorded_payment_summary_export_not_verified_bank_settlement' as const,consequence:'enable_later_payroll_edits_no_recalculation_payment_reversal_or_statutory_withdrawal' as const};
+  const reviewedDigest=createHash('sha256').update(JSON.stringify(['payroll-reopen:v1',{tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null},p,review,packet.sourceDigest,packet.people,packet.employees])).digest('hex');
+  return{review,reviewedDigest,stableSourceDigest:packet.stableSourceDigest,erasurePersonIds:packet.people,erasureEmploymentIds:packet.employees};
+ });
+}
+export async function reopenReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string},digest:string){
+ const prepared=await prepareReviewedPayrollReopenTx(tx,ctx,p);if(prepared.reviewedDigest!==digest)throw new Error('Payroll reopening review changed');
+ const native=await unlockClosedBatchTx(tx,ctx,p);
+ if(JSON.stringify(native.warnings)!==JSON.stringify(prepared.review.warnings)||native.reopenedPeriod!==prepared.review.parentWillReopen)throw new Error('Payroll reopening effects changed');
+ const [afterSource]=await tx.execute<{source:{stableSourceDigest?:string}}>(sql`select app.payroll_reopen_review_context(${p.batchId}::uuid) as source`);
+ if(afterSource?.source?.stableSourceDigest!==prepared.stableSourceDigest)throw new Error('Payroll reopening source changed during native effect');
+ const receipt=await readReviewedPayrollReopenReferenceTx(tx,ctx,{batchId:p.batchId,unlockedEventId:native.unlockedEventId});
+ if(!receipt||receipt.statusHistoryId!==native.statusHistoryId||receipt.periodReopenedEventId!==native.periodReopenedEventId||receipt.currentStatus!=='processed')throw new Error('Payroll reopening proof unavailable');
+ return{receipt,targetPeople:prepared.erasurePersonIds,targetEmployees:prepared.erasureEmploymentIds};
+}
+export async function readReviewedPayrollReopenReferenceTx(tx:Tx,ctx:SessionContext,p:{batchId:string;unlockedEventId:string}){
+ await reviewedPayrollReopenAuthorityTx(tx,ctx,p.batchId);
+ const [row]=await tx.execute<{receipt:unknown}>(sql`select app.read_own_payroll_reopen_effect(${p.batchId}::uuid,${p.unlockedEventId}::uuid) as receipt`);
+ if(!row?.receipt)return null;
+ const receipt=ReviewedPayrollReopenSourceReceipt.parse({...z.record(z.string(),z.unknown()).parse(row.receipt),kind:'reopened',proof:'exact_unlock_history_batch_event_conditional_parent_event',semantics:'historical_reopen_not_reset_recalculated_or_payment_reversed',replayed:false});
+ // Native reference fields only; the source adapter owns fresh-versus-historical receipt markers.
+ return {batchId:receipt.batchId,payPeriodId:receipt.payPeriodId,statusHistoryId:receipt.statusHistoryId,unlockedEventId:receipt.unlockedEventId,periodReopenedEventId:receipt.periodReopenedEventId,parentWasReopened:receipt.parentWasReopened,currentStatus:receipt.currentStatus,currentPeriodStatus:receipt.currentPeriodStatus};
+}
+export async function reviewedPayrollReopenChoiceMetadataTx(tx:Tx,ctx:SessionContext){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ if(!ctx.userId||!settingEnabled(ctx,'payroll.unlock_enabled'))return [];
+ const rows=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'closed'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(desc(payrollBatch.payPeriod),payrollBatch.id).limit(26);
+ if(rows.length>25)throw new Error('Payroll reopening choices require native filtering');
+ const choices=[];
+ for(const row of rows){
+  let source;try{source=await reviewedPayrollReopenAuthorityTx(tx,ctx,row.id);}catch(e){if(e instanceof PayrollPermissionDeniedError)continue;throw e;}
+  const [adopted]=await tx.execute<{yes:boolean}>(sql`select app.payroll_history_batch_adopted(${row.id}::uuid) as yes`);if(adopted?.yes)continue;
+  const [label]=await tx.select({companyName:company.legalName}).from(company).where(eq(company.id,source.companyId)).limit(1);
+  if(!label)throw new Error('Payroll label unavailable');
+  choices.push({batchId:row.id,companyName:label.companyName,payPeriod:source.payPeriod,cycleName:null});
+ }
+ return choices;
+}
+
+/** Private native reset preview. Membership/row locks are acquired before the SAVEPOINT and survive
+ * its rollback. This invokes the same sequential native loan/claim owner, never a second calculator.
+ * It is not an Assistant action, receipt or permission to commit; the closed custody proof is separate. */
+export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContext,p:{batchId:string;reason:string}) {
+ const ctx=capturePayrollCloseContext(supplied),batchId=z.guid().parse(p.batchId).toLowerCase();
+ if(!ctx.userId)throw new PayrollPermissionDeniedError('payroll.rollback');
+ await lockPayrollBatchPeriodTx(tx,ctx,batchId,true);
+ const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.is_admin() as allowed`);
+ if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.rollback');
+ const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId)).for('update',{noWait:true});
+ if(!batch)throw new BatchNotResettableError();
+ await assertPayrollPermission(tx,ctx,'payroll.rollback',batch.companyId);
+ if(batch.status!=='processed')throw new BatchNotResettableError();
+ if(!settingEnabled(ctx,'payroll.reset_enabled'))throw new SettingNotEnabledError('payroll.reset_enabled','Payroll reset is not enabled.');
+ if(!p.reason.trim())throw new ResetReasonRequiredError();
+ const budget=(sets:readonly (readonly unknown[])[])=>{
+  if(sets.reduce((n,rows)=>n+rows.length,0)>10000||Buffer.byteLength(JSON.stringify(sets),'utf8')>1000000)throw new Error('Payroll reset requires native handoff');
+ };
+ const applied=await tx.select({loanId:loanRepayment.loanId}).from(loanRepayment).where(and(eq(loanRepayment.appliedBatchId,batchId),eq(loanRepayment.status,'applied'))).limit(10001);
+ budget([applied]);
+ const loanIds=[...new Set(applied.map(row=>row.loanId))].sort();
+ // Loan amendments/settlement/prefill do not share the Payroll period key. Parent FOR UPDATE fences
+ // schedule FK inserts; NOWAIT on all existing schedules refuses reverse-order writer contention.
+ const loans=loanIds.length?await tx.select().from(employeeLoan).where(inArray(employeeLoan.id,loanIds)).orderBy(employeeLoan.id).limit(10001).for('update',{noWait:true}):[];
+ const schedules=loanIds.length?await tx.select().from(loanRepayment).where(inArray(loanRepayment.loanId,loanIds)).orderBy(loanRepayment.id).limit(10001).for('update',{noWait:true}):[];
+ budget([loans,schedules]);
+ const lockSources=async()=>{
+  const slips=await tx.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id).limit(10001).for('update',{noWait:true});
+  // Lock every batch claim, including currently approved rows: status can change without changing FK.
+  const claims=await tx.select().from(claimRequest).where(eq(claimRequest.payrollBatchId,batchId)).orderBy(claimRequest.id).limit(10001).for('update',{noWait:true});
+  const individuals=await tx.select().from(payrollIndividualTxn).where(or(eq(payrollIndividualTxn.batchId,batchId),eq(payrollIndividualTxn.consumedBatchId,batchId))).orderBy(payrollIndividualTxn.id).limit(10001).for('update',{noWait:true});
+  const inputs=await tx.select().from(payrollInput).where(eq(payrollInput.batchId,batchId)).orderBy(payrollInput.id).limit(10001).for('update',{noWait:true});
+  const components=await tx.select().from(payrollBatchComponent).where(eq(payrollBatchComponent.batchId,batchId)).orderBy(payrollBatchComponent.id).limit(10001).for('update',{noWait:true});
+  const adjustments=await tx.select().from(payrollStatutoryAdjustment).where(eq(payrollStatutoryAdjustment.batchId,batchId)).orderBy(payrollStatutoryAdjustment.id).limit(10001).for('update',{noWait:true});
+  budget([loans,schedules,slips,claims,individuals,inputs,components,adjustments]);
+  return{slips,claims,individuals,inputs,components,adjustments};
+ };
+ const locked=await lockSources();
+ const snapshot=async()=>{
+  const [currentBatch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,batchId));
+  const parents=await tx.select().from(payPeriod).where(eq(payPeriod.id,batch.payPeriodId));
+  const siblings=await tx.select().from(payrollBatch).where(and(eq(payrollBatch.payPeriodId,batch.payPeriodId),ne(payrollBatch.id,batchId))).orderBy(payrollBatch.id).limit(10001);
+  const source=await lockSources();
+  const currentLoans=loanIds.length?await tx.select().from(employeeLoan).where(inArray(employeeLoan.id,loanIds)).orderBy(employeeLoan.id).limit(10001):[];
+  const currentSchedules=loanIds.length?await tx.select().from(loanRepayment).where(inArray(loanRepayment.loanId,loanIds)).orderBy(loanRepayment.id).limit(10001):[];
+  const reports=await tx.select().from(statutoryReport).where(and(eq(statutoryReport.companyId,batch.companyId),eq(statutoryReport.periodKey,batch.payPeriod))).orderBy(statutoryReport.id).limit(10001);
+  budget([currentLoans,currentSchedules,...Object.values(source),siblings,reports]);
+  return{batch:currentBatch,parents,siblings,...source,loans:currentLoans,schedules:currentSchedules,reports};
+ };
+ const before=await snapshot();
+ // Re-read membership after every lock wait. A source loan disappearing behind RLS is preserved as
+ // native missing/invisible-loan semantics, never widened with SECURITY DEFINER reads.
+ const freshApplied=await tx.select({loanId:loanRepayment.loanId}).from(loanRepayment).where(and(eq(loanRepayment.appliedBatchId,batchId),eq(loanRepayment.status,'applied'))).limit(10001);
+ if(JSON.stringify(freshApplied.map(row=>row.loanId).sort())!==JSON.stringify(applied.map(row=>row.loanId).sort()))throw new Error('Payroll reset source membership changed');
+ const hash=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
+ const sourceDigest=hash(before);
+ await tx.execute(sql`SAVEPOINT payroll_reset_native_preview`);
+ try{
+  const native=await resetProcessedBatchTx(tx,ctx,{batchId,reason:p.reason});
+  const after=await snapshot();
+  const counts={payslipsCleared:native.payslipsCleared,loanInstalmentsReversed:native.loanInstalmentsReversed,loansReopened:native.loansReopened,claimsReverted:native.claimsReverted};
+  // Preview UUIDs are deliberately discarded; only actual top-transaction effects may complete custody.
+  return{sourceDigest,effectDigest:hash(after),counts,sourceCounts:{payslipsToDelete:locked.slips.length,appliedRepaymentRows:applied.length,affectedLoans:loans.length,paidClaimsToRevert:native.claimsReverted,consumedItemsToRelease:locked.individuals.filter(row=>row.consumedBatchId===batchId).length,recalculationMarked:batch.needsRecalcAt!==null}};
+ }finally{
+  // Reset and its complete call graph write only through this supplied Tx (including appendEvent).
+  // Native exceptions must be rolled back here before any subsequent SQL; caller still aborts its Tx.
+  await tx.execute(sql`ROLLBACK TO SAVEPOINT payroll_reset_native_preview`);
+  await tx.execute(sql`RELEASE SAVEPOINT payroll_reset_native_preview`);
+ }
+}
+
+async function reviewedPayrollResetAuthorityTx(tx:Tx,ctx:SessionContext,batchId:string){
+ const [batch]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,batchId)).limit(1);
+ if(!batch)throw new BatchNotResettableError();
+ const [scope]=await tx.execute<{allowed:boolean}>(sql`select app.can_admin_payroll_for(${batch.companyId}::uuid) AND app.is_admin() as allowed`);
+ if(scope?.allowed!==true)throw new PayrollPermissionDeniedError('payroll.rollback');
+ await assertPayrollPermission(tx,ctx,'payroll.rollback',batch.companyId);return batch;
+}
+export async function withReviewedPayrollResetIntervalTx<T>(tx:Tx,supplied:SessionContext,batchId:string,work:(ctx:SessionContext,source:{id:string;companyId:string;payPeriodId:string;payPeriod:string})=>Promise<T>):Promise<T>{
+ const ctx=capturePayrollCloseContext(supplied),id=z.guid().parse(batchId).toLowerCase();
+ if(!ctx.userId)throw new PayrollPermissionDeniedError('payroll.rollback');
+ await lockPayrollBatchPeriodTx(tx,ctx,id,true);
+ const source=await reviewedPayrollResetAuthorityTx(tx,ctx,id);
+ const [locked]=await tx.select({id:payrollBatch.id,companyId:payrollBatch.companyId,payPeriodId:payrollBatch.payPeriodId,payPeriod:payrollBatch.payPeriod}).from(payrollBatch).where(eq(payrollBatch.id,id)).limit(1).for('update',{noWait:true});
+ if(!locked||JSON.stringify(locked)!==JSON.stringify(source))throw new BatchNotResettableError();
+ return work(ctx,source);
+}
+export async function prepareReviewedPayrollResetTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string}){
+ return withReviewedPayrollResetIntervalTx(tx,ctx,p.batchId,async(fresh,source)=>{
+  const preview=await previewReviewedPayrollResetTx(tx,fresh,p);
+  const [batch]=await tx.select().from(payrollBatch).where(eq(payrollBatch.id,source.id));
+  const warnings=await batchDownstreamWarnings(tx,{batchId:source.id,companyId:source.companyId,payPeriod:source.payPeriod});
+  const [context]=await tx.execute<{source:unknown}>(sql`select app.payroll_reset_review_context(${source.id}::uuid) as source`);
+  const packet=z.object({companyName:z.string().min(1).max(4000),cycleName:z.string().max(4000).nullable(),sourceDigest:z.string().regex(/^[a-f0-9]{64}$/),people:z.array(z.guid()).max(10000),employees:z.array(z.guid()).max(10000)}).strict().parse(context?.source);
+  const review={batchId:source.id,companyId:source.companyId,companyName:packet.companyName,payPeriodId:source.payPeriodId,payPeriod:source.payPeriod,runType:batch.runType,runSeq:batch.runSeq,cycleName:packet.cycleName,beforeStatus:'processed' as const,afterStatus:'draft' as const,...preview.sourceCounts,statutoryReportCount:warnings.statutoryReportCount,recordedPaymentSummaryExport:warnings.paymentDisbursed,consequence:'delete_payslips_clear_totals_unwind_native_loans_claims_consumption_and_recalc_keep_draft_inputs' as const,downstreamMeaning:'recorded_exports_and_reports_retained_no_bank_reversal_or_filing_withdrawal' as const,parentAndSiblings:'unchanged' as const};
+  const reviewedDigest=createHash('sha256').update(JSON.stringify(['payroll-reset:v1',{tenantId:fresh.tenantId,userId:fresh.userId,personId:fresh.personId??null},p,review,packet.sourceDigest,preview.sourceDigest])).digest('hex');
+  return{review,reviewedDigest,sourceDigest:packet.sourceDigest,nativeCounts:preview.counts,erasurePersonIds:packet.people,erasureEmploymentIds:packet.employees};
+ });
+}
+export async function resetReviewedPayrollBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:string;reason:string},digest:string){
+ const prepared=await prepareReviewedPayrollResetTx(tx,ctx,p);if(prepared.reviewedDigest!==digest)throw new Error('Payroll reset review changed');
+ const [nomination]=await tx.execute<{id:string|null}>(sql`select nullif(current_setting('app.payroll_reset_review_id',true),'') as id`);
+ const actionId=z.guid().parse(nomination?.id);
+ await tx.execute(sql`select app.assistant_payroll_reset_review_arm(${actionId}::uuid,${p.reason})`);
+ const native=await resetProcessedBatchTx(tx,ctx,p);
+ const [result]=await tx.execute<{receipt:unknown}>(sql`select app.assistant_payroll_reset_review_verify(${actionId}::uuid,${native.resetEventId}::uuid) as receipt`);
+ const receipt=PayrollResetNativeReference.parse(result?.receipt);
+ if(receipt.batchId!==p.batchId||receipt.statusHistoryId!==native.statusHistoryId||receipt.resetEventId!==native.resetEventId||receipt.currentStatus!=='draft'||JSON.stringify(receipt.counts)!==JSON.stringify(prepared.nativeCounts))throw new Error('Payroll reset proof changed');
+ return{receipt,targetPeople:prepared.erasurePersonIds,targetEmployees:prepared.erasureEmploymentIds};
+}
+const PayrollResetNativeReference=z.object({batchId:z.guid(),payPeriodId:z.guid(),statusHistoryId:z.guid(),resetEventId:z.guid(),currentStatus:z.enum(['draft','processed','closed']),currentPeriodStatus:z.enum(['open','closed']),commitment:z.string().regex(/^[a-f0-9]{64}$/),counts:z.object({payslipsCleared:z.number().int().nonnegative(),loanInstalmentsReversed:z.number().int().nonnegative(),loansReopened:z.number().int().nonnegative(),claimsReverted:z.number().int().nonnegative()}).strict()}).strict();
+export async function readReviewedPayrollResetReferenceTx(tx:Tx,ctx:SessionContext,p:{batchId:string;resetEventId:string}){
+ await reviewedPayrollResetAuthorityTx(tx,ctx,p.batchId);
+ const [row]=await tx.execute<{receipt:unknown}>(sql`select app.read_own_payroll_reset_effect(${p.batchId}::uuid,${p.resetEventId}::uuid) as receipt`);
+ return row?.receipt?PayrollResetNativeReference.parse(row.receipt):null;
+}
+export async function reviewedPayrollResetChoiceMetadataTx(tx:Tx,ctx:SessionContext){
+ await lockAccessConfigurationTx(tx,ctx.tenantId);
+ if(!ctx.userId||!settingEnabled(ctx,'payroll.reset_enabled'))return [];
+ const rows=await tx.select({id:payrollBatch.id}).from(payrollBatch).where(and(eq(payrollBatch.tenantId,ctx.tenantId),eq(payrollBatch.status,'processed'),sql`app.can_admin_payroll_for(${payrollBatch.companyId})`)).orderBy(desc(payrollBatch.payPeriod),payrollBatch.id).limit(26);
+ if(rows.length>25)throw new Error('Payroll reset choices require native filtering');
+ const choices=[];
+ for(const row of rows){let source;try{source=await reviewedPayrollResetAuthorityTx(tx,ctx,row.id);}catch(e){if(e instanceof PayrollPermissionDeniedError)continue;throw e;}
+  const [label]=await tx.select({companyName:company.legalName}).from(company).where(eq(company.id,source.companyId)).limit(1);if(!label)throw new Error('Payroll label unavailable');
+  choices.push({batchId:row.id,companyName:label.companyName,payPeriod:source.payPeriod,cycleName:null});
+ }
+ return choices;
 }

@@ -158,7 +158,12 @@ const PAYSLIPS = [
   { id: 'p2', employmentId:'e1', payPeriod: '2026-09', company: 'Nusantara Holdings', gross: '7700', deductions: '938.14', net: '6761.86', status: 'closed', released: true, runType: 'regular', runSeq: 1 },
 ];
 vi.mock('@/core/loans', () => ({ listLoansForEmployment: vi.fn(async () => []) }));
-vi.mock('@/core/profile', () => ({ myProfileChangeRequests: vi.fn(async () => []) }));
+// The real admin/eligibility import graph consumes these same client-safe vocabulary identities.
+// Keep the backend read mocked; do not import the actual database-backed profile module.
+vi.mock('@/core/profile', async () => {
+  const {GENDERS,MARITAL_STATUSES}=await import('../lib/person-vocabulary');
+  return {GENDERS,MARITAL_STATUSES,myProfileChangeRequests:vi.fn(async()=>[])};
+});
 vi.mock('@/core/offboarding', () => ({ myResignation: vi.fn(async () => null) }));
 // core/profile-options reads the dependents vocabulary at module load, so the mock carries the real
 // client-safe vocabulary and the category key (core/dependents re-exports both) beside its two stubs.

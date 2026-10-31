@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
+import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate,assertBuildProducerRunner} from './build-production.mjs';
 const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
 test('Only the pinned target tuple passes; public/key compile overrides refuse',()=>{
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{}),true);
@@ -64,17 +64,23 @@ test('legacy Node20 packet runtime cannot be relabelled as the future Node22 tar
 
 
 test('current byte capacity is one closed format2 profile; missing, legacy and mixed bounds refuse',()=>{
- assert.deepEqual(BUILD_CAPACITY_PROFILE,{profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280});
+ assert.deepEqual(BUILD_CAPACITY_PROFILE,{profileVersion:3,archiveMaxBytes:285212672,zipMaxBytes:293601280});
  assert.doesNotThrow(()=>assertBuildCapacityProfile({...BUILD_CAPACITY_PROFILE}));
- for(const value of [undefined,null,{}, {...BUILD_CAPACITY_PROFILE,profileVersion:1},{...BUILD_CAPACITY_PROFILE,profileVersion:true},
-  {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456},{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824065},
+ for(const value of [undefined,null,{}, {profileVersion:2,archiveMaxBytes:276824064,zipMaxBytes:293601280}, {...BUILD_CAPACITY_PROFILE,profileVersion:2}, {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:276824064}, {...BUILD_CAPACITY_PROFILE,profileVersion:1},{...BUILD_CAPACITY_PROFILE,profileVersion:true},
+  {...BUILD_CAPACITY_PROFILE,archiveMaxBytes:268435456},{...BUILD_CAPACITY_PROFILE,archiveMaxBytes:285212673},
   {...BUILD_CAPACITY_PROFILE,zipMaxBytes:293601281},{...BUILD_CAPACITY_PROFILE,extra:true}])assert.throws(()=>assertBuildCapacityProfile(value));
 });
 test('actual five-member aggregate has its own hard ZIP bound independent of legal member caps',()=>{
- const archive=276824064;
+ const archive=285212672;
  assert.doesNotThrow(()=>assertBuildPacketAggregate([archive,1,1,1,293601280-archive-3]));
  for(const sizes of [[archive,1024**2,1024**2,80*1024,16*1024**2],[archive,1,1,1,293601280-archive-2],
   [1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,NaN],[1,1,1,1,-1],[1,1,1,1,1.5]])assert.throws(()=>assertBuildPacketAggregate(sizes));
  // The System Testing observation is a separate schema and remains format1.
  assert.equal(successful.format,1);assert.equal(check(successful),true);
+});
+
+// These are validation controls, not evidence that the fixture is a real VM.
+test('CI producer requires the actual bounded runner name before constructing new byte provenance',()=>{
+ assert.equal(assertBuildProducerRunner('GitHub Actions fixture producer'),true);
+ for(const name of [undefined,null,'','x'.repeat(201),'line\nbreak','nul\0byte'])assert.throws(()=>assertBuildProducerRunner(name));
 });

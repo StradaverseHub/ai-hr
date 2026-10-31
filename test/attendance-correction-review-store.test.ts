@@ -1,8 +1,11 @@
+import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
 /** Authored UNRUN: actual native correction/workflow effects, coordinated drafts required, no guard bypass. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {and,eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
@@ -76,3 +79,30 @@ describe('same physical own human Attendance correction custody',()=>{
  it('owns the actual completed native correction before custody and never uses pending-only preparation for reconciliation',async()=>{const a=await fixture(),r=await prepare(a),done=await confirm(a,r);if(done.kind!=='completed')throw Error('Expected canonical completion');const before=await state(a),stored=await custody(r.actionId);let ready!:()=>void,release!:()=>void;const start=new Promise<void>(yes=>{ready=yes;}),resume=new Promise<void>(yes=>{release=yes;}),holder=owner.db.transaction(async tx=>{await tx.select({id:schema.attendanceCorrection.id}).from(schema.attendanceCorrection).where(eq(schema.attendanceCorrection.id,done.receipt.receipt.correctionId)).for('update');ready();await resume;});try{await start;await expect(reopenAttendanceCorrectionReview(a.ctx,r.actionId)).rejects.toThrow();await owner.db.transaction(async tx=>{await tx.execute(sql`select id from app.assistant_own_leave_review where id=${r.actionId}::uuid for update nowait`);});expect(await custody(r.actionId)).toEqual(stored);expect(await state(a)).toEqual(before);}finally{release();await holder;}expect(await reopenAttendanceCorrectionReview(a.ctx,r.actionId)).toEqual(done);});
 
 });
+
+/** Original sealed Attendance wire used intent, not content. Keep the exact commitment and purposes. */
+async function retainedAttendanceReview(a:Awaited<ReturnType<typeof fixture>>){return withTenant(a.ctx,tx=>withOwnAttendanceCorrectionIntervalTx(tx,a.ctx,{employmentId:a.employmentId,correctionId:null},async(fresh,source)=>{
+ const native=await prepareOwnAttendanceCorrectionTx(tx,fresh,a.intent),body={reviewNonce:newPrivateReviewNonce(),intent:a.intent,nativeReviewedDigest:native.reviewDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId!,employmentId:source.employmentId,companyId:source.companyId},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.intent)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_attendance_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained attendance request custody',()=>{
+ it('reopens and completes an old intent-wire review exactly once',async()=>{
+  const a=await fixture(),old=await retainedAttendanceReview(a),packet={action,contractVersion:1,...old};expect((await reopenAttendanceCorrectionReview(a.ctx,old.actionId)).kind).toBe('prepared');
+  await expect(confirmAttendanceCorrectionReview(a.ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmAttendanceCorrectionReview(a.ctx,packet);expect(done.kind).toBe('completed');expect(await confirmAttendanceCorrectionReview(a.ctx,packet)).toEqual(done);expect(await reopenAttendanceCorrectionReview(a.ctx,old.actionId)).toEqual(done);expect((await state(a)).requests).toHaveLength(1);
+ });
+ it('retires an old pending request after grant removal without decrypting',async()=>{
+  const a=await fixture(),old=await retainedAttendanceReview(a);await revokeAssistant(a.admin,{appUserId:a.ctx.userId!});const before=await state(a),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardAttendanceCorrectionReview(a.ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state(a)).toEqual(before);
+ });
+ it('reconciles a lost committed reply without another request or clock effect',async()=>{
+  const a=await fixture(),before=await state(a),review=await prepare(a),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(a,review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const done=await reopenAttendanceCorrectionReview(a.ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(a,review)).toEqual(done);const after=await state(a);expect(after.requests).toHaveLength(1);expect(after.attendance).toEqual(before.attendance);
+ });
+});
+
+it('shared body contract: real Attendance pending writes and terminal retarget refusal',async()=>{const a=await fixture();await assertReviewBodyPendingParentContract({ctx:a.ctx,kind:action,businessSnapshot:()=>state(a),prepare:()=>prepare(a),retire:r=>discardAttendanceCorrectionReview(a.ctx,retirement(r))});});

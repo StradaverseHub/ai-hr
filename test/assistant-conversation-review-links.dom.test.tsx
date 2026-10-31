@@ -8,7 +8,10 @@ const state=vi.hoisted(()=>({locale:'en'}));
 // Imported catalogues initialize normally; including them in the hoisted declaration accesses
 // Vitest's transformed import binding before initialization and prevents every suite case running.
 const copies:Record<string,typeof en>={en,ms,zh,ta,th,vi:viCopy};
-vi.mock('next-intl/server',()=>({getTranslations:async()=>(key:string)=>{const value=copies[state.locale].assistant.workspace.jobs[key as keyof typeof en.assistant.workspace.jobs];if(typeof value!=='string')throw Error('Missing handoff translation');return value;}}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace?:string)=>(key:string)=>{
+ let value:unknown=copies[state.locale];for(const part of [...(namespace?namespace.split('.'):[]),...key.split('.')])value=(value as Record<string,unknown>)[part];
+ if(typeof value!=='string')throw Error('Missing handoff translation');return value;
+}}));
 vi.mock('../core/module-agent-releases',()=>({readGovernedSpecialistToolResultTx:vi.fn(),reopenGovernedModuleReadJobTx:vi.fn()}));
 vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn()}));
@@ -19,6 +22,7 @@ import {executeCanonicalSpecialist,compactSpecialistWork} from '../lib/ai/module
 import {MODULE_AGENT_CAPABILITIES,type AgentModuleCode} from '../lib/ai/module-agents';
 import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
 import type {SessionContext,Tx} from '../db/client';
+import {PERSONNEL_REVIEW_TITLE_KEYS,personnelReviewTitleKey} from '../lib/ai/personnel-review-labels';
 import {ConversationReviewLinks} from '../components/assistant/conversation-review-links';
 const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',personId:'fictional-person',roles:['employee'],grants:[{role:'employee',companyId:null}]},jobId='00000000-0000-4000-8000-000000000001';
 async function issued(module:AgentModuleCode='employees',humanActions:unknown=moduleHumanActionHandoffs(module)){
@@ -34,10 +38,20 @@ async function show(views:readonly CanonicalModuleJobView[],principal=ctx){retur
 beforeEach(()=>{state.locale='en';vi.clearAllMocks();});afterEach(cleanup);
 describe('current-source human review links',()=>{
  it.each(['en','ms','zh','ta','th','vi'])('%s labels an actual returned handoff with existing review and module copy',async locale=>{
-  state.locale=locale;const view=await issued(),shown=await show([view]),copy=copies[locale].assistant.workspace.jobs,link=screen.getByRole('link',{name:`${copy.reviewAction} — ${copy.module_employees}`});expect(link.getAttribute('href')).toBe('/admin/personnel/import');expect(link.className).toContain('min-h-11');expect(link.className).toContain('focus-visible:ring-2');expect(shown.container.textContent).toContain(copy.humanReviewNote);expect(shown.container.textContent).not.toMatch(/PRIVATE-|submit automatically/i);expect(shown.container.querySelector('form')).toBeNull();
+  state.locale=locale;const view=await issued(),shown=await show([view]),copy=copies[locale].assistant.workspace.jobs,link=screen.getAllByRole('link',{name:`${copy.reviewAction} — ${copy.module_employees}`})[0];expect(link.getAttribute('href')).toBe('/admin/personnel/import');expect(link.className).toContain('min-h-11');expect(link.className).toContain('focus-visible:ring-2');expect(shown.container.textContent).toContain(copy.humanReviewNote);expect(shown.container.textContent).not.toMatch(/PRIVATE-|submit automatically/i);expect(shown.container.querySelector('form')).toBeNull();
+ });
+ it.each(['en','ms','zh','ta','th','vi'])('%s gives all 16 Personnel operations distinct existing localized names and exact destinations',async locale=>{
+  state.locale=locale;const view=await issued(),shown=await show([view]),handoffs=moduleHumanActionHandoffs('employees').filter(row=>row.action!=='employees.import');
+  expect(handoffs).toHaveLength(16);expect(Object.keys(PERSONNEL_REVIEW_TITLE_KEYS)).toHaveLength(16);
+  const names:string[]=[];
+  for(const handoff of handoffs){const key=personnelReviewTitleKey('employees',handoff.route);expect(key).not.toBeNull();let title:unknown=copies[locale];for(const part of key!.split('.'))title=(title as Record<string,unknown>)[part];expect(typeof title).toBe('string');names.push(String(title));const link=screen.getByRole('link',{name:String(title)});expect(link.getAttribute('href')).toBe(handoff.route);}
+  expect(new Set(names).size).toBe(16);expect(shown.container.textContent).not.toMatch(/PRIVATE-/);expect(shown.container.querySelector('form')).toBeNull();
+ });
+ it('uses no title for an unknown, cross-module, parameterized or model-provided route',()=>{
+  for(const [module,route]of [['employees','/assistant/bank?label=PRIVATE'],['employees','https://outside.invalid'],['payroll','/assistant/bank'],['employees','/assistant/unknown'],['unknown','/assistant/bank']])expect(personnelReviewTitleKey(module,route)).toBeNull();
  });
  it('deduplicates exact module/route across issued views and duplicate action routes',async()=>{
-  const employees=await issued(),again=await issued(),claims=await issued('claims');await show([employees,again,claims,claims]);const links=screen.getAllByRole('link');expect(links.map(link=>link.getAttribute('href'))).toEqual(['/admin/personnel/import','/assistant/claims']);
+  const employees=await issued(),again=await issued(),claims=await issued('claims');await show([employees,again,claims,claims]);const links=screen.getAllByRole('link');expect(links.map(link=>link.getAttribute('href'))).toEqual(['/admin/personnel/import','/assistant/compensation','/assistant/profile-request-rejection','/assistant/employee-code','/assistant/workforce-profile','/assistant/bank','/assistant/document-details','/assistant/fixed-item-archive','/assistant/cost-allocation','/assistant/payment-method','/assistant/tp3-opening','/assistant/passport','/assistant/emergency-contacts','/assistant/family','/assistant/qualifications','/assistant/employee-draft-discard','/assistant/employee-drafts','/assistant/claims']);
  });
  it('rejects copied and cross-caller views before disclosing even another valid handoff',async()=>{
   const original=await issued();for(const input of [{views:[JSON.parse(JSON.stringify(original)) as CanonicalModuleJobView],principal:ctx},{views:[original],principal:{...ctx,userId:'other'}},{views:[original,JSON.parse(JSON.stringify(original)) as CanonicalModuleJobView],principal:ctx}]){const shown=await show(input.views,input.principal);expect(shown.container.textContent).toBe('');expect(screen.queryByRole('link')).toBeNull();shown.unmount();}

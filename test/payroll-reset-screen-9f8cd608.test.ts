@@ -293,7 +293,12 @@ describe('9f8cd608 · G — a refusal returns to the screen, translated', () => 
     // Derived from the SERVICE's own source (comments stripped, so prose about an error cannot satisfy
     // this), so a refusal added there without a line here fails immediately rather than reaching an
     // operator as untranslated English.
-    const service = bodyOf(code('core/payroll.ts'), 'export async function resetProcessedBatch(');
+    const payroll = code('core/payroll.ts');
+    const entry = bodyOf(payroll, 'export async function resetProcessedBatch(');
+    expect(entry, 'the public action must delegate to its native transaction owner').toContain('await resetProcessedBatchTx(tx,ctx,p)');
+    const native = bodyOf(payroll, 'export async function resetProcessedBatchTx(');
+    expect(native.length, 'the native owner source slice must not be empty').toBeGreaterThan(1000);
+    const service = entry + native;
     const thrown = [...new Set([...service.matchAll(/throw new ([A-Z]\w*)\(/g)].map((m) => m[1]))]
       .filter((n) => n !== 'Error') // the "batch not found" impossible state — not an operator outcome
       .sort();

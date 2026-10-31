@@ -14,7 +14,11 @@ const nativeTables=['tenant','company','person','app_user','role_assignment','em
 it.each(['clean','populated'] as const)('rehearses the %s ordinary Formula Builder journal upgrade without changing Native payroll or prior receipts',async mode=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  const boundary=journal.entries.findIndex(entry=>entry.tag==='0800_pay_formula_builder');expect(boundary).toBeGreaterThan(0);
- expect(journal.entries.slice(boundary).map(({tag,when})=>({tag,when}))).toEqual([{tag:'0800_pay_formula_builder',when:1793330000200},{tag:'0811_pay_formula_company_retention',when:1793330000211}]);
+ const formulaEntries=[{tag:'0800_pay_formula_builder',when:1793330000200},{tag:'0811_pay_formula_company_retention',when:1793330000211}];
+ // Pin the Formula-owned pair, allowing later canonical migrations. The full journal is still
+ // migrated and compared below, including every receipt, native row and the idempotent rerun.
+ expect(journal.entries.slice(boundary,boundary+formulaEntries.length).map(({tag,when})=>({tag,when}))).toEqual(formulaEntries);
+ for(const {tag} of formulaEntries)expect(journal.entries.filter(entry=>entry.tag===tag)).toHaveLength(1);
  expect(createHash('sha256').update(readFileSync('db/migrations/0800_pay_formula_builder.sql')).digest('hex')).toBe('f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322');
  expect(createHash('sha256').update(readFileSync('db/migrations/0811_pay_formula_company_retention.sql')).digest('hex')).toBe('b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b');
  const directory=mkdtempSync(join(tmpdir(),'formula-ordinary-upgrade-')),name='ai_hr_formula_upgrade_'+randomUUID().replaceAll('-','');

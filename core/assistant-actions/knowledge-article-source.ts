@@ -5,17 +5,13 @@ import {createHash} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {domainEvent,kbDocument} from '../../db/schema';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled,resolveEntitlementsTx} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
 import {assertKbAuthor,prepareArticleContent,createArticleTx,visibleAudiencesFor} from '../knowledge-base';
 import {KNOWLEDGE_ARTICLE_ACTION,KnowledgeArticleHumanContent,KnowledgeArticleConfirmation,KnowledgeArticlePreparedSource,KnowledgeArticleSourceReceipt} from '../../lib/assistant-actions/knowledge-article-contract';
 const fail=():never=>{throw Error('Article publication could not be confirmed.');};
 export async function assertKnowledgeArticleActorTx(tx:Tx,supplied:SessionContext){
  const current={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(g=>({...g}))};
- await assertAiPrincipalTx(tx,current);const fresh={...current,entitlements:await resolveEntitlementsTx(tx,current.tenantId)};
- await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'knowledge_base');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');assertKbAuthor(fresh);return fresh;
+ const fresh=await withAgentActionGuard(tx,current,KNOWLEDGE_ARTICLE_ACTION);assertKbAuthor(fresh);return fresh;
 }
 function normalized(ctx:SessionContext,input:KnowledgeArticleHumanContent){return KnowledgeArticleHumanContent.parse({action:KNOWLEDGE_ARTICLE_ACTION,contractVersion:1,...prepareArticleContent(ctx,input)});}
 function digest(ctx:SessionContext,content:KnowledgeArticleHumanContent){return createHash('sha256').update(JSON.stringify({version:1,tenantId:ctx.tenantId,userId:ctx.userId,content})).digest('hex');}

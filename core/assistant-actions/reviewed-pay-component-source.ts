@@ -4,15 +4,13 @@ import {z} from 'zod';
 import {sql} from 'drizzle-orm';
 import {lockPayComponentCatalogTx} from '../pay-component-catalog-lock';
 import type {SessionContext,Tx} from '../../db/client';
-import {assertAiPrincipalTx} from '../ai-principal';
-import {assertMayUseAssistant} from '../assistant-grant';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {resolveEntitlementsTx,assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
+import {assertModuleEnabled} from '../entitlements';
 import {prepareReviewedPayComponentCreateTx,createReviewedPayComponentTx,readReviewedPayComponentReferenceTx} from '../../packs/payroll/service';
 import {ReviewedPayComponentHumanContent as Human,ReviewedPayComponentConfirmation as Confirmation,ReviewedPayComponentPreparedSource as Prepared,ReviewedPayComponentSourceReceipt as Receipt} from '../../lib/assistant-actions/reviewed-pay-component-contract';
 export class ReviewedPayComponentUnavailable extends Error{constructor(){super('That pay-code setup needs another look. Please reopen Payroll Setup.');this.name='ReviewedPayComponentUnavailable';}}
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
-async function actor(tx:Tx,ctx:SessionContext){await assertAiPrincipalTx(tx,ctx);const fresh={...ctx,entitlementsError:undefined,entitlements:await resolveEntitlementsTx(tx,ctx.tenantId)};await assertMayUseAssistant(fresh,tx);assertModuleEnabled(fresh,'payroll');assertModuleEnabled(fresh,'typed_pay_components');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+async function actor(tx:Tx,ctx:SessionContext){const fresh=await withAgentActionGuard(tx,ctx,'typed_pay_components.create','approve');assertModuleEnabled(fresh,'payroll');return fresh;}
 /** Catalogue and fresh native admin ownership precede ANY custody row. The catalogue lock supplies
  * no authority; the exact existing app.is_admin predicate is still required. No source input is posted
  * to this interval and no native catalogue values leave through the callback binding itself. */

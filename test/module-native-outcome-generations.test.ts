@@ -17,7 +17,7 @@ import {createCanonicalSpecialistCandidate,evaluateCanonicalSpecialistCandidate,
 import {MODULE_CATALOG} from '../packs/catalog';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-let base:Base,admin:SessionContext,author:SessionContext,reviewer:SessionContext,second:SessionContext;
+let base:Base,admin:SessionContext,author:SessionContext,reviewer:SessionContext,second:SessionContext,promoter:SessionContext;
 let authorEmployment:string,managerA:{employmentId:string;personId:string},managerB:{employmentId:string;personId:string};
 const action='org.reporting.change' as const;
 beforeAll(async()=>{
@@ -37,6 +37,8 @@ beforeEach(async()=>{
  admin={...await entitledCtx(base),grants:[{role:'hr_admin',companyId:null}]};
  const first=await actor('Fictional native generation author'),one=await actor('Fictional independent reviewer one'),two=await actor('Fictional independent reviewer two');
  author=first.ctx;reviewer=one.ctx;second=two.ctx;authorEmployment=first.hired.employmentId;
+ // S8 (WP11): the approver is independent of the author and of both evaluators.
+ promoter=(await actor('Fictional independent promoter')).ctx;
  managerA=await hire('Fictional original functional manager');managerB=await hire('Fictional replacement functional manager');
  // Genuine nonempty Org evidence for author AND both independent evaluators. A functional
  // manager is recorded, leaving the real missing-administrative-manager diagnostic meaningful.
@@ -69,7 +71,7 @@ async function evaluateAndPromote(value:Awaited<ReturnType<typeof candidate>>,ma
  const one=await evaluateCanonicalSpecialistCandidate(reviewer,value.candidateId),two=await evaluateCanonicalSpecialistCandidate(second,value.candidateId);
  for(const report of [one,two])expect(report).toMatchObject({module:'org',state:'complete',nativeEvidence:'present',securityFailures:0,qualityFailures:0});
  expect(one.evaluationId).not.toBe(two.evaluationId);
- return promoteCanonicalSpecialistCandidate(second,{candidateId:value.candidateId,maxJobs,hours:1});
+ return promoteCanonicalSpecialistCandidate(promoter,{candidateId:value.candidateId,maxJobs,hours:1});
 }
 async function firstGeneration(maxJobs=1){
  const origin=await runGovernedSpecialistJob(author,{module:'org'},{nonce:randomUUID()});expect(origin.mode).toBe('baseline');

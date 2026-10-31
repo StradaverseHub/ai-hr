@@ -13,6 +13,7 @@ import {withAssistantRead} from '../core/assistant-read-session';
 import {workspaceGroundedAnswers} from '../core/workspace-grounded-answers';
 import {assertCanonicalModuleJobView} from '../core/workspace-module-jobs';
 import {assistantSourceDigest,sealAssistantDisclosure} from '../lib/ai/assistant-disclosure';
+import {syntheticAssistantProposalCaller,type AssistantProposalCaller} from '../lib/ai/assistant-action-catalogue';
 const ctx:SessionContext={tenantId:'fictional-tenant',userId:'fictional-user',roles:['employee']};
 const session={} as AssistantReadSession;
 function fixture(answer='MODEL_INVENTED_PAY_999999_AND_APPROVED_LEAVE',names=['employee_profile']){
@@ -56,5 +57,21 @@ describe('sealed source plans nominate current typed facts, never certify model 
  it('unknown and safely unrenderable tools do not become facts, and bounded known fallback jobs remain available',async()=>{
   const {binding,receipt}=fixture(undefined,['my_pay_change','unknown_future_tool']);const result=await workspaceGroundedAnswers(ctx,session)(binding,receipt);
   expect(result).toMatchObject({mode:'unavailable',views:[],fallbackModules:['payroll'],partial:true});expect(result.tools).toEqual([]);
+ });
+ it('R6: replays a sealed proposal against the CURRENT catalogue and marks it stale, never preparable, once it is no longer offered',async()=>{
+  const plan={version:1,mode:'propose',action:'leave.cancel',hints:{startDate:'2026-11-03'}} as const;
+  const binding={...fixture().binding,answer:JSON.stringify(plan)};const receipt=sealAssistantDisclosure(binding,[],plan);
+  const offered=await workspaceGroundedAnswers(ctx,session,undefined,syntheticAssistantProposalCaller(['leave']))(binding,receipt);
+  expect(offered).toMatchObject({mode:'generic',conversation:{plan,facts:[]}});expect(offered.conversation?.proposalStale).toBeUndefined();
+  const changed:AssistantProposalCaller[]=[{readableModules:['leave'],actors:['self'],pausedKeys:['hr_assistant']},
+   {readableModules:['claims'],actors:['self'],pausedKeys:[]},{readableModules:['leave'],actors:['hr_admin'],pausedKeys:[]}];
+  for(const caller of changed){
+   const stale=await workspaceGroundedAnswers(ctx,session,undefined,caller)(binding,receipt);
+   expect(stale.mode,JSON.stringify(caller)).toBe('generic');expect(stale.conversation).toEqual({plan,proposalStale:true,facts:[]});
+  }
+  // Facts that could not be read (null, or omitted) are NOT "no longer offered": neutral and retryable instead.
+  for(const replay of[workspaceGroundedAnswers(ctx,session,undefined,null),workspaceGroundedAnswers(ctx,session)]){
+   const unknown=await replay(binding,receipt);expect(unknown.mode).toBe('generic');expect(unknown.conversation).toEqual({plan,proposalUnverified:true,facts:[]});
+  }
  });
 });

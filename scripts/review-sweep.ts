@@ -24,6 +24,13 @@
 // script's anonymous hr_admin context. The principal holds no grant; it runs only the specialists an
 // administrator switched on (attributed by their switch-on event), and every effect names both. The
 // deterministic engine jobs above it (reviews, escalation, movements, dispatch) stay system jobs.
+// WP13 (R18): the SAME pass runs the Automatic-tier chasers (overdue approvals; reviews undecided after their end
+// date) under the same principal, each only behind its own attributed switch in AI management. Template-only,
+// no model. They run before dispatch so tonight's reminders are projected in this pass.
+// WP11 (R5, ADR-0151 §4.6d): the SAME principal then maintains Assistant promotions — retiring expired and
+// exhausted ones and any live promotion whose measured action outcomes regressed (lib/ai/
+// promotion-outcome-regression.ts). Deterministic, no model and no spend (owner decision 2); its counts
+// are recorded in job_run.result. Before this, expiry was enforced only at read time.
 // Idempotent: a re-run opens nothing already open (and escalation fires once per (group, step) ever).
 // Schedule daily, e.g.
 //   0 3 * * *  cd /opt/ai-hr && node --env-file=.env.production --import tsx scripts/review-sweep.ts
@@ -32,7 +39,9 @@ import { describeSkips, loadSweepScope } from '../core/sweep-scope';
 import { sweepDueReviews, sweepReviewReminders } from '../core/employment-review';
 import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
-import { runHrOrchestrator } from '../core/hr-orchestrator';
+import { runAutomaticChasers, runHrOrchestrator } from '../core/hr-orchestrator';
+import { engineWorkingDayCalendar } from '../core/automatic-chasers';
+import { maintainModuleAgentReleasesAsScheduledAgent } from '../core/module-agent-releases';
 import { agentContext, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
@@ -63,6 +72,8 @@ async function main() {
   let totalOpened = 0;
   let totalReminders = 0;
   let totalEscalated = 0;
+  let totalChases = 0;
+  let chaserTenants = 0;
   let totalMovements = 0;
   let totalNudges = 0;
   let totalNudgesSettled = 0;
@@ -81,6 +92,9 @@ async function main() {
   let failures = 0;
   let notificationCappedTenants = 0;
   let notificationsCreated = 0;
+  let agentPromotionsRetired = 0;
+  let agentPromotionsOutcomeRegressed = 0;
+  let agentPromotionMaintenanceFailedTenants = 0;
   for (const t of tenants) {
     try {
       // Engine jobs retain the legacy no-login context: actorOf stamps system.
@@ -126,8 +140,26 @@ async function main() {
       if (unattributed.length > 0) console.error(`  ⚠ ${unattributed.join(', ')} switched on without a named administrator — not run; switch it off and on again in AI management.`);
       // No attributed scheduled feature: no orchestrator pass tonight. An administrator's refresh in the Control Tower still
       // observes readiness under their own login.
-      const orchestration = enablements.length > 0
-        ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, enablements)) : null;
+      // Each pass carries only the switch-ons it relies on, so every stamped effect names exactly its own authority.
+      const orchestratorEnablements = enablements.filter(e => e.feature === 'readiness_reminders' || e.feature === 'claims_triage');
+      const chaserEnablements = enablements.filter(e => e.feature === 'approval_chasers' || e.feature === 'review_chasers' || e.feature === 'clock_reminders' || e.feature === 'document_reminders' || e.feature === 'lifecycle_chasers');
+      const orchestration = orchestratorEnablements.length > 0
+        ? await runHrOrchestrator(agentContext(t.id, principalId, entitlements, orchestratorEnablements)) : null;
+      const chasers = chaserEnablements.length > 0
+        ? await runAutomaticChasers(agentContext(t.id, principalId, entitlements, chaserEnablements), { today, calendar: engineWorkingDayCalendar(ctx) }) : null;
+      const approvalRun = chasers?.approvals, reviewRun = chasers?.reviews, followupRun=chasers?.followups;
+      const chaseSent = (approvalRun?.status === 'succeeded' ? approvalRun.value.sent : 0)
+        + (reviewRun?.status === 'succeeded' ? reviewRun.value.sent : 0)
+        + (followupRun?.status === 'succeeded' ? followupRun.value.sent : 0);
+      if (chasers) chaserTenants++;
+      totalChases += chaseSent;
+      for (const run of [approvalRun, reviewRun, followupRun]) if (run?.status === 'failed') console.error(`  Automatic chaser failed: ${run.error.name}: ${run.error.message}`);
+      for (const run of [approvalRun, reviewRun, followupRun]) {
+        if (run?.status !== 'succeeded') continue;
+        const capped = Object.entries(run.value.byAction).filter(([, c]) => c?.cappedOut).map(([id]) => id);
+        if (capped.length) console.error(`  ⚠ ${capped.join(', ')} reached the per-run cap; more remain.`);
+        if (run.value.stopped) console.error(`  ⚠ ${'specialist' in run.value?run.value.specialist:'followups'} stopped: its switch changed during the run.`);
+      }
       const nudge = orchestration?.nudge.status === 'succeeded' ? orchestration.nudge.value
         : { disabled: true, sent: 0, settled: 0, cooled: 0, orphaned: 0, cappedOut: false, awaitingReview: 0, changed: 0 };
       const triage = orchestration?.triage.status === 'succeeded' ? orchestration.triage.value
@@ -143,6 +175,19 @@ async function main() {
       triageNoProviderTenants += Number(triage.modelBlockReason === 'no_provider');
       triageCappedTenants += Number(triage.cappedOut);
       if (orchestration?.failed) console.error('  Orchestrator requires attention: a step failed.');
+      // WP11: promotion maintenance as the same named principal. A failure here is reported and counted,
+      // never silently skipped, and does not stop this tenant's notification dispatch below.
+      let releases = { retired: 0, outcomeRegressed: 0 };
+      let releasesFailed = false;
+      try {
+        releases = await maintainModuleAgentReleasesAsScheduledAgent(agentContext(t.id, principalId, entitlements));
+      } catch (e) {
+        releasesFailed = true;
+        agentPromotionMaintenanceFailedTenants++;
+        console.error(`  Assistant promotion maintenance failed: ${(e as Error).message}`);
+      }
+      agentPromotionsRetired += releases.retired;
+      agentPromotionsOutcomeRegressed += releases.outcomeRegressed;
 
       // Project the new started/reminder/escalation/nudge events into notifications now — gated on the
       // tenant's `notifications` entitlement, which the snapshot above makes this context answer truthfully.
@@ -152,7 +197,7 @@ async function main() {
         notificationCappedTenants++;
         console.error('  Notification queue reached its batch limit; more work may remain.');
       }
-      if (orchestration?.failed || projection.cappedOut) failures++;
+      if (orchestration?.failed || chasers?.failed || projection.cappedOut || releasesFailed) failures++;
       totalOpened += opened;
       totalReminders += reminders;
       totalEscalated += escalated;
@@ -163,10 +208,15 @@ async function main() {
       totalChangedBeforeSend += nudge.changed;
       console.log(
         `  ✓ ${t.name} (${t.id}): ${opened} review(s) opened, ${reminders} reminder(s), ${escalated} escalation(s), ${movementsApplied} movement(s) applied` +
+          (chasers ? `, ${chaseSent} automatic chase(s) using fixed templates` : ', chasers off') +
           (movementsFailed > 0 ? ` — ${movementsFailed} movement(s) COULD NOT be applied` : '') +
           // Every nudge counter is printed, not just the flattering one: `orphaned` means a real gap with
           // nobody to tell, and `cappedOut` means work was left undone. A sweep that reports only what it
           // did reads as complete when it was truncated (AGENTS: no silent caps).
+          (releases.retired > 0
+            ? `, ${releases.retired} Assistant promotion(s) retired` +
+              (releases.outcomeRegressed > 0 ? ` (${releases.outcomeRegressed} on measured outcome regression)` : '')
+            : '') +
           (nudge.disabled
             ? ', nudges off'
             : `, ${nudge.sent} nudge(s) using fixed templates [principal_not_admitted]` +
@@ -196,7 +246,7 @@ async function main() {
     }
   }
   console.log(
-    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalMovements} movement(s) applied, ${totalNudges} nudge(s) across ${nudgeTenants} opted-in tenant(s), ${totalNudgesSettled} nudge outcome(s) judged, ${totalQueries} claim question(s) across ${triageTenants} opted-in tenant(s), across ${tenants.length} tenant(s), ${failures} failure(s).` +
+    `review:sweep done — ${totalOpened} review(s) opened, ${totalReminders} reminder(s), ${totalEscalated} escalation(s), ${totalChases} automatic chase(s) across ${chaserTenants} opted-in tenant(s), ${totalMovements} movement(s) applied, ${totalNudges} nudge(s) across ${nudgeTenants} opted-in tenant(s), ${totalNudgesSettled} nudge outcome(s) judged, ${totalQueries} claim question(s) across ${triageTenants} opted-in tenant(s), across ${tenants.length} tenant(s), ${failures} failure(s).` +
       (scope.skipped.length > 0 ? ` ${scope.skipped.length} tenant(s) skipped for standing.` : ''),
   );
   // 0280 run log, in its OWN try/catch — see accrue-earned.ts. NOTE for anyone reading the screen: a
@@ -216,6 +266,8 @@ async function main() {
         opened: totalOpened,
         reminders: totalReminders,
         escalated: totalEscalated,
+        automaticChases: totalChases,
+        chaserTenants,
         movementsApplied: totalMovements,
         nudgesSent: totalNudges,
         nudgeOutcomesJudged: totalNudgesSettled,
@@ -233,6 +285,9 @@ async function main() {
         triageCappedTenants,
         notificationsCreated,
         notificationCappedTenants,
+        agentPromotionsRetired,
+        agentPromotionsOutcomeRegressed,
+        agentPromotionMaintenanceFailedTenants,
       },
     });
   } catch (e) {

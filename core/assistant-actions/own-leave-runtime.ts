@@ -4,6 +4,7 @@
 import 'server-only';
 import { appOrigin } from '../../lib/real-auth';
 import { createOwnLeaveBrowserCommandHandler } from './own-leave-browser';
+import { withAgentActionPauseScope } from '../agent-action-pause-scope';
 import { authenticateOwnLeaveBrowserSession } from './own-leave-server';
 
 /** Deployment selection owns public origin. Missing/invalid configuration refuses before session or
@@ -17,6 +18,7 @@ export async function handleConfiguredOwnLeaveBrowserCommand(request: Request): 
   // reflected Host fallback or expose its exception before the transport's bounded refusal.
   let publicOrigin: string | undefined;
   try { publicOrigin = appOrigin(); } catch { publicOrigin = undefined; }
-  return createOwnLeaveBrowserCommandHandler(authenticateOwnLeaveBrowserSession,
-    { publicOrigin })(request);
+  // WP12 (R8): every own-leave Assistant command serves leave.apply; its own pause key applies in the owning transaction.
+  return withAgentActionPauseScope('leave.apply', () => createOwnLeaveBrowserCommandHandler(authenticateOwnLeaveBrowserSession,
+    { publicOrigin })(request));
 }

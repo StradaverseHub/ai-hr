@@ -22,9 +22,16 @@ never copy the web application's environment or put connection values in Git, ar
 The runner refuses app-role connections and has no credential fallback or privilege self-grant.
 Its actual physical table-owner connection must also be able to execute the guarded policy helper
 `app.agent_signal_custody_visible(text,uuid,uuid,uuid)`. The migration/function owner already
-has that privilege. The runner checks this one function privilege before processing custody and
+has that privilege. The runner checks this fixed policy function privilege before processing custody and
 grants itself nothing; never substitute PUBLIC EXECUTE, app-role membership, candidate-table SELECT
-or BYPASSRLS for any grant below.
+or BYPASSRLS for any grant below. The runner also checks EXECUTE on the exact global review CHECK
+predicate `app._payroll_completion_shape(jsonb,text,text)` before any retirement write. This is an
+IMMUTABLE invoker-only shape predicate, not a Payroll data reader or effect owner. The existing
+migration/table/function owner already has implicit EXECUTE and remains the preferred topology.
+A split maintenance owner needs only this individually reviewed outer predicate capability, without
+grant option; it receives no nested UUID-array predicate or other private Payroll helper capability.
+The fixed preflight refuses missing capability; it never grants privileges or discovers arbitrary
+functions to execute. Re-review direct CHECK dependencies when changing the maintained schema.
 Raw Assistant chat content (question, answer, tool inputs, disclosure receipt, error) is also retired
 by this pass 30 days after it was asked, at most 100 exchanges per tenant per pass, inside the same
 tenant Access interval and before any other expiry. Exchange rows, dates, tokens and usage remain, so
@@ -36,13 +43,17 @@ owner. An exchange inserted already retired (accounting only) captures no identi
 selected again.
 
 A separately provisioned nonsuperuser owner role needs exactly the following. The runner refuses
-when relation or `app.assistant_transcripts_retire_expired` ownership is incomplete; any other
-omission fails the pass with permission denied and rolls the whole pass back:
+when relation or `app.assistant_transcripts_retire_expired` ownership, or the outer CHECK
+capability, is incomplete; any other omission fails the pass and rolls the whole pass back:
 
 - Ownership of every relation listed in `AI_RETENTION_MAINTAINED_RELATIONS`
   (`core/ai-retention-maintenance.ts`; currently 19, derived from the relations the pass mutates, its
   declared cascades and the transcript helper), including the employee-import comparison parent and
   its admitted-run membership table.
+- EXECUTE, without grant option, on the exact pure outer CHECK predicate
+  `app._payroll_completion_shape(jsonb,text,text)`. Preserve its migration owner, IMMUTABLE/invoker
+  definition, PUBLIC/app denials and the existing native discard child's typed grant. Do not grant
+  `app._payroll_completion_uuid_array(jsonb)` or other private Payroll helpers to maintenance.
 - Ownership of `app.assistant_transcripts_retire_expired(uuid,integer,integer)` and its two private
   helpers `app._assistant_transcripts_retire(uuid,uuid[],boolean)` and `app._assistant_transcript_bounds()`.
 - EXECUTE on the helpers that PUBLIC row-security policies call on the FORCE-RLS tables it owns.
@@ -55,6 +66,17 @@ omission fails the pass with permission denied and rolls the whole pass back:
   metadata) and `app.assistant_transcript_retirement_visible(uuid,uuid)` (feedback and strategy
   markers). `app.current_tenant_id()`, `app.current_user_id()` and `app.is_group_admin()` are also
   called there; they are PUBLIC-executable unless an installation revoked that.
+
+Expiry follows the existing native cleanup contract in one parent UPDATE: pending Payroll reopening
+roots clear before the immediate CHECK, and pending reporting-change manager/previous-manager links
+clear with the expired state. The body then retires; completed receipts and native HR/payroll records
+remain. Clearing these private fields grants no reopening, reporting change, approval or payment.
+Verify genuine prepared Payroll and reporting custody under the actual owner topology, alongside
+unexpired siblings, completed history, rollback, bounded backlog and FORCE-RLS visibility checks.
+
+These prerequisites are not a blanket ownership-reassignment procedure. Verify existing native
+physical-owner contracts and migration preflights before any installation change. Prefer running
+maintenance as the existing installer/table/helper owner.
 
 Ownership transfer is not isolated. `ALTER ... OWNER` moves the previous owner's own privileges to the
 new owner. The own-clear and PDPA transcript functions (`app.assistant_transcripts_erase_own`,

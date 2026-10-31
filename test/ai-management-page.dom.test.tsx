@@ -15,11 +15,12 @@ vi.mock('next-intl/server',()=>({
 }));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,code:string)=>['employees','leave','payroll'].includes(code)}));
+vi.mock('../core/ai-inventory',()=>({aiInventoryView:async()=>({scope:'registry',rows:[]}),aiManagementAlerts:async()=>({status:'ok',alerts:[]}),aiRunHistory:async()=>({range:{from:'2026-10-01',to:'2026-10-30',page:1},hasMore:false,rows:[]})}));
 vi.mock('../core/ai-management',()=>({AI_RUN_STATE_FILTERS:['blocked','failed'],aiManagementView:async()=>data.view,bulkAssistantDepartments:async()=>[{id:'44444444-4444-4444-8444-444444444444',label:'Fictional Finance · Fictional Zero Cap Sdn Bhd'}],previewBulkAssistantAccess:async()=>({matched:3,changing:2})}));
 vi.mock('../core/hr-orchestrator',()=>({orchestrationQueue:async()=>({})}));
 vi.mock('../app/control-tower/work-queue',()=>({OrchestrationWorkQueue:()=>null}));
 vi.mock('../lib/ai/spend-allocation',()=>({nanosToUsd:(value:string)=>value}));
-vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
+vi.mock('../app/control-tower/agents/actions',()=>({applyBulkAssistantAction:vi.fn(),setGroupAllowanceAction:vi.fn(),clearGroupAllowanceAction:vi.fn(),clearUserAllowanceAction:vi.fn(),setAiSpendBudgetAction:vi.fn(),setAiAllowanceAction:vi.fn(),setAiFeatureAction:vi.fn(),setAiFeatureCapAction:vi.fn(),setAssistantPermissionAction:vi.fn()}));
 import { AiManagementScreen } from '../app/control-tower/agents/screen';
 import type { AiManagementSection } from '../app/control-tower/agents/sections';
 const navigation=vi.hoisted(()=>({redirect:vi.fn((location:string)=>{throw Object.assign(Error('fixture redirect'),{location});})}));
@@ -85,6 +86,23 @@ describe('AI management page',()=>{
     expect(companies.container.querySelector(`#ai-company-${CAPPED}`)).not.toBeNull();companies.unmount();
     expect((await show(spend)).container.querySelector('#ai-spend')).not.toBeNull();cleanup();
     expect((await show(spend,'allowances')).container.querySelector('#ai-user-default')).not.toBeNull();
+  });
+  it('offers per-feature caps to group administrators only, for features without a module setting (WP14)',async()=>{
+    data.view={...view({heldNanos:'0',confirmedNanos:null}),policies:[{scopeKey:'feature:pay_rule_draft',kind:'feature',featureId:'pay_rule_draft',subjectId:null,enabled:true,dailyRequests:0,monthlyTokens:5000,maxConcurrent:null}],
+      usage:[{feature_id:'pay_rule_draft',daily_requests:'3',monthly_tokens:'1200',held_tokens:'0',blocked:'1',failed:'0'}]};
+    const page=await AiManagementScreen({session:session as never,section:'allowances',searchParams:Promise.resolve({})});
+    const {container,unmount}=render(<NextIntlClientProvider locale="en" messages={en}>{page}</NextIntlClientProvider>);
+    const caps=container.querySelector('#feature-limits') as HTMLElement;
+    expect(within(caps).getByText(en.aiManagement.featureCapsTitle)).toBeTruthy();
+    expect([...caps.querySelectorAll('input[name="feature"]')].map(input=>(input as HTMLInputElement).value).sort()).toEqual(['hr_assistant','module_agent_evaluation','module_agent_planning','pay_rule_draft','payroll_explanation','performance_assistant','personnel_import_mapping','provider_evaluation','report_insight']);
+    const row=caps.querySelector('#ai-feature-cap-pay_rule_draft') as HTMLElement;
+    expect((within(row).getByLabelText(`${en.aiManagement.features.pay_rule_draft} · ${en.aiManagement.daily}`) as HTMLInputElement).value).toBe('0');
+    expect((within(row).getByLabelText(`${en.aiManagement.features.pay_rule_draft} · ${en.aiManagement.monthly}`) as HTMLInputElement).value).toBe('5000');
+    expect(within(row).getByText(en.aiManagement.zeroCapPaused)).toBeTruthy();
+    expect(caps.querySelector('select[name="enabled"]')).toBeNull();
+    unmount();
+    const scoped=await show({heldNanos:'0',confirmedNanos:null},'allowances',{},false);
+    expect(scoped.container.querySelector('#feature-limits')).toBeNull();
   });
 });
 

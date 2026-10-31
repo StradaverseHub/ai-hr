@@ -4087,35 +4087,406 @@
       "idx": 698,
       "version": "7",
       "when": 1793330000212,
-      "tag": "0812_claim_history_order",
+      "tag": "0812_ai_feature_switch_owner",
       "breakpoints": true
     },
     {
       "idx": 699,
       "version": "7",
       "when": 1793330000213,
-      "tag": "0813_visibility_plan_cache",
+      "tag": "0813_assistant_action_kind",
       "breakpoints": true
     },
     {
       "idx": 700,
       "version": "7",
       "when": 1793330000214,
-      "tag": "0814_permission_read_work",
+      "tag": "0814_ai_provider_change_gate",
       "breakpoints": true
     },
     {
       "idx": 701,
       "version": "7",
       "when": 1793330000215,
-      "tag": "0815_session_read_plans",
+      "tag": "0815_assistant_learning_loop_scope",
       "breakpoints": true
     },
     {
       "idx": 702,
       "version": "7",
-      "when": 1793330000262,
-      "tag": "0862_home_role_reporting_guard",
+      "when": 1793330000216,
+      "tag": "0816_ai_agent_action_pause",
+      "breakpoints": true
+    },
+    {
+      "idx": 703,
+      "version": "7",
+      "when": 1793330000217,
+      "tag": "0817_automatic_chasers",
+      "breakpoints": true
+    },
+    {
+      "idx": 704,
+      "version": "7",
+      "when": 1793330000218,
+      "tag": "0818_delegated_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 705,
+      "version": "7",
+      "when": 1793330000219,
+      "tag": "0819_automatic_followups",
+      "breakpoints": true
+    },
+    {
+      "idx": 706,
+      "version": "7",
+      "when": 1793330000220,
+      "tag": "0820_template_feature_switch_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 707,
+      "version": "7",
+      "when": 1793330000221,
+      "tag": "0821_delegated_leave_review_receipts",
+      "breakpoints": true
+    },
+    {
+      "idx": 708,
+      "version": "7",
+      "when": 1793330000222,
+      "tag": "0822_assistant_qualification_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 709,
+      "version": "7",
+      "when": 1793330000223,
+      "tag": "0823_assistant_employee_draft_activation",
+      "breakpoints": true
+    },
+    {
+      "idx": 710,
+      "version": "7",
+      "when": 1793330000224,
+      "tag": "0824_assistant_compensation_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 711,
+      "version": "7",
+      "when": 1793330000225,
+      "tag": "0825_assistant_emergency_contact_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 712,
+      "version": "7",
+      "when": 1793330000226,
+      "tag": "0826_assistant_workforce_profile_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 713,
+      "version": "7",
+      "when": 1793330000227,
+      "tag": "0827_assistant_family_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 714,
+      "version": "7",
+      "when": 1793330000228,
+      "tag": "0828_assistant_bank_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 715,
+      "version": "7",
+      "when": 1793330000229,
+      "tag": "0829_assistant_document_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 716,
+      "version": "7",
+      "when": 1793330000230,
+      "tag": "0830_assistant_employee_code_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 717,
+      "version": "7",
+      "when": 1793330000231,
+      "tag": "0831_assistant_passport_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 718,
+      "version": "7",
+      "when": 1793330000232,
+      "tag": "0832_assistant_payment_method_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 719,
+      "version": "7",
+      "when": 1793330000233,
+      "tag": "0833_assistant_fixed_item_archive",
+      "breakpoints": true
+    },
+    {
+      "idx": 720,
+      "version": "7",
+      "when": 1793330000234,
+      "tag": "0834_assistant_tp3_opening_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 721,
+      "version": "7",
+      "when": 1793330000235,
+      "tag": "0835_assistant_cost_allocation_maintenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 722,
+      "version": "7",
+      "when": 1793330000236,
+      "tag": "0836_assistant_personnel_review_navigation",
+      "breakpoints": true
+    },
+    {
+      "idx": 723,
+      "version": "7",
+      "when": 1793330000237,
+      "tag": "0837_assistant_attendance_schedule_group",
+      "breakpoints": true
+    },
+    {
+      "idx": 724,
+      "version": "7",
+      "when": 1793330000238,
+      "tag": "0838_assistant_performance_goal_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 725,
+      "version": "7",
+      "when": 1793330000239,
+      "tag": "0839_assistant_rewards_cancel_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 726,
+      "version": "7",
+      "when": 1793330000240,
+      "tag": "0840_assistant_personnel_profile_request_rejection",
+      "breakpoints": true
+    },
+    {
+      "idx": 727,
+      "version": "7",
+      "when": 1793330000241,
+      "tag": "0841_assistant_position_archive_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 728,
+      "version": "7",
+      "when": 1793330000242,
+      "tag": "0842_assistant_payroll_reopen_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 729,
+      "version": "7",
+      "when": 1793330000243,
+      "tag": "0843_assistant_lifecycle_offboarding_step_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 730,
+      "version": "7",
+      "when": 1793330000244,
+      "tag": "0844_assistant_performance_checkin_cancel",
+      "breakpoints": true
+    },
+    {
+      "idx": 731,
+      "version": "7",
+      "when": 1793330000245,
+      "tag": "0845_assistant_attendance_day_schedule_correction",
+      "breakpoints": true
+    },
+    {
+      "idx": 732,
+      "version": "7",
+      "when": 1793330000246,
+      "tag": "0846_native_ess_bank_direct_purpose",
+      "breakpoints": true
+    },
+    {
+      "idx": 733,
+      "version": "7",
+      "when": 1793330000247,
+      "tag": "0847_assistant_performance_checkin_complete_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 734,
+      "version": "7",
+      "when": 1793330000248,
+      "tag": "0848_assistant_rewards_cycle_calendar_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 735,
+      "version": "7",
+      "when": 1793330000249,
+      "tag": "0849_assistant_lifecycle_offboarding_step_undo",
+      "breakpoints": true
+    },
+    {
+      "idx": 736,
+      "version": "7",
+      "when": 1793330000250,
+      "tag": "0850_assistant_department_archive_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 737,
+      "version": "7",
+      "when": 1793330000251,
+      "tag": "0851_assistant_payroll_reset_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 738,
+      "version": "7",
+      "when": 1793330000252,
+      "tag": "0852_assistant_employee_id_template_status_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 739,
+      "version": "7",
+      "when": 1793330000253,
+      "tag": "0853_onboarding_draft_discard_absence_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 740,
+      "version": "7",
+      "when": 1793330000254,
+      "tag": "0854_assistant_performance_checkin_schedule_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 741,
+      "version": "7",
+      "when": 1793330000255,
+      "tag": "0855_assistant_rewards_annual_return_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 742,
+      "version": "7",
+      "when": 1793330000256,
+      "tag": "0856_assistant_lifecycle_offboarding_case_cancel",
+      "breakpoints": true
+    },
+    {
+      "idx": 743,
+      "version": "7",
+      "when": 1793330000257,
+      "tag": "0857_assistant_performance_review_postimage_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 744,
+      "version": "7",
+      "when": 1793330000258,
+      "tag": "0858_assistant_people_general_policy_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 745,
+      "version": "7",
+      "when": 1793330000259,
+      "tag": "0859_assistant_employee_draft_discard_custody",
+      "breakpoints": true
+    },
+    {
+      "idx": 746,
+      "version": "7",
+      "when": 1793330000260,
+      "tag": "0860_assistant_payroll_review_draft_delete_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 747,
+      "version": "7",
+      "when": 1793330000261,
+      "tag": "0861_assistant_review_body_pending_parent",
+      "breakpoints": true
+    },
+    {
+      "idx": 748,
+      "version": "7",
+      "when": 1793330000263,
+      "tag": "0863_assistant_bank_effect_closure",
+      "breakpoints": true
+    },
+    {
+      "idx": 749,
+      "version": "7",
+      "when": 1793330000264,
+      "tag": "0864_assistant_catalogue_effect_closure",
+      "breakpoints": true
+    },
+    {
+      "idx": 750,
+      "version": "7",
+      "when": 1793330000265,
+      "tag": "0865_assistant_company_retention_references",
+      "breakpoints": true
+    },
+    {
+      "idx": 751,
+      "version": "7",
+      "when": 1793330000266,
+      "tag": "0866_claim_history_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 752,
+      "version": "7",
+      "when": 1793330000267,
+      "tag": "0867_visibility_plan_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1793330000268,
+      "tag": "0868_permission_read_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 754,
+      "version": "7",
+      "when": 1793330000269,
+      "tag": "0869_session_read_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1793330000270,
+      "tag": "0870_home_role_reporting_guard",
       "breakpoints": true
     }
   ]

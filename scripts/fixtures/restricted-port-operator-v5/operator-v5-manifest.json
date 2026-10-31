@@ -1,0 +1,29 @@
+{
+  "status": "PRIVATE_UNRUN_SOURCE_PROPOSAL_V5_FROZEN",
+  "files": {
+    "README.md": "1b591ae14e46a9d9d5bebe795f91296eebf8c749f173216ecbf023907caaab79",
+    "hosted-column-acl-fixtures.sql": "b8dc8de07e11bff1dcfa460a532548ca09e69ea2da88aaea85bf7df1908de9d3",
+    "prepare-commit.sql": "fd11fe73ee29d0f320abfcf51bc53cce921ab3eee0ded429de3fc7024e56cc1a",
+    "prepare-rehearse.sql": "8f7b4fc4104b10384c8005ec1addc7269fbadaba08d85742273d3379e47301c4",
+    "prepare.sql": "169cf4002223d9b79403310f7faca79f246a1c0716ffad3940ccbefb88906078",
+    "restricted-owner-rehearsal.sql": "73f63a93b017de950df8e95b0f848af425f7700fe8f74a457ea7c779b3d14ce3",
+    "rollback-preparation.sql": "6b82a27b683f53beba35be661861dfe1709296d20d35f89178f0b2fa0b71204d",
+    "snapshot-view.sql": "1feb1d9af6f84f8ab52d9b58f1bb9f642b6014ace7d094e9aa1bf3e182ef5bc9",
+    "snapshot.sql": "cdd440b11407d7793f186bb61e36b626fdf4c785506ef0d7ec1d05eb2eb2ca98",
+    "source-hashes.json": "ccca27d602ad19bea263f642d858de59511541a49d7e7395164af7c19e2759eb"
+  },
+  "parentV4ManifestSha256": "1ccb3cec76a769043595fd4e4725616937a9d765c3eb76695903cc573ffb4e2b",
+  "semanticChanges": [
+    "three absent-registry guards",
+    "hosted actual0813 empty and registry-only installed rollback fixtures"
+  ],
+  "registryDdlProvenance": {
+    "source": "9c3055718b7b6d428a3d26ae8a6f95f106b7bbfe",
+    "path": "db/migrations/0813_assistant_action_kind.sql",
+    "migrationSha256": "65b9aeb05a6980f6af46452307514af536da48df95b50d34d5cae0607cd21b8c",
+    "exactCreateTableSha256": "4505ffe807a338c499858cd92d6ea0e73cc5b7bc1c081db490db2a36817a90a3",
+    "startLine": 9,
+    "endLine": 25,
+    "runtimeCoverage": "Exact DDL bytes are embedded once in the hash-pinned hosted SQL; no extra runtime input/DDL selector."
+  }
+}

@@ -1,0 +1,143 @@
+/** Actual native metadata owner and migrated encrypted custody; fictional bytea fixtures only. */
+import {randomUUID} from 'node:crypto';
+import {eq,sql} from 'drizzle-orm';
+import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {appendEvent} from '../db/events';
+import * as s from '../db/schema';
+import {hireEmployee} from '../core/org';
+import {createCompany,createDepartment} from '../core/admin';
+import {addEmployeeDocument,updateEmployeeDocumentMeta,replaceEmployeeDocumentContent} from '../core/employee-documents';
+import {prepareDocumentMetadataSourceTx,withDocumentMetadataSubjectTx} from '../core/assistant-actions/document-metadata-source';
+import {documentMetadataReviews as store,readDocumentMetadataChoices} from '../core/assistant-actions/document-metadata-review-store';
+import {DocumentMetadata as C} from '../lib/assistant-actions/document-metadata-contract';
+import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
+import {accessConfigurationStore} from '../core/access-configuration-store';
+import {previewAccessConfiguration,saveAccessConfiguration} from '../core/access-configuration';
+import * as vault from '../lib/pii/vault';
+import {todayInKualaLumpur} from '../lib/hr-date';
+import {pgSqlState} from '../lib/db-error';
+import {readCompletedNativeOutcomeTx} from '../core/assistant-actions/completed-outcome-readers';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+type Subject={employmentId:string;personId:string};
+let b:Base,target:Subject,hrPerson:Subject,other:Subject,ctx:SessionContext,documentId:string;
+const group=(base:Base=b)=>({...adminCtx(base),grants:[{role:'hr_admin' as const,companyId:null}]});
+const hire=(name:string,base:Base=b,companyId=base.companyId,departmentId=base.deptA)=>hireEmployee(group(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()});
+async function login(person:Subject,role:'employee'|'manager'|'hr_admin'|'super_admin'='hr_admin',base:Base=b,companyId:string|null=null):Promise<SessionContext>{const userId=await createAppUser(base.tenantId,person.personId,role);if(companyId)await owner.db.update(s.roleAssignment).set({companyId}).where(eq(s.roleAssignment.appUserId,userId));await grantAssistant(group(base),{appUserId:userId});return{...await entitledCtx(base,[role]),userId,personId:person.personId,grants:[{role,companyId}]};}
+const fields=()=>({title:'  Fictional revised title  ',category:'  Human category  ',description:'  Human-authored private description  '});
+const human=(id=documentId,who=target)=>C.Human.parse({action:C.action,contractVersion:1,employmentId:who.employmentId,subjectId:id,fields:fields()});
+const confirmation=(r:{actionId:string;reviewedDigest:string})=>({action:C.action,contractVersion:1,actionId:r.actionId,reviewedDigest:r.reviewedDigest});
+async function add(who=target,actor=ctx){return addEmployeeDocument(actor,{employmentId:who.employmentId,title:'Original document title',category:'Original category',description:'Original private description',fileName:'fictional.txt',mimeType:'text/plain',content:Buffer.from('FICTIONAL ATTACHMENT BYTES; NEVER IN A REVIEW OR PROVIDER')});}
+async function state(){return{documents:await owner.db.select().from(s.employeeDocument).where(eq(s.employeeDocument.tenantId,b.tenantId)).orderBy(s.employeeDocument.id),events:await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.tenantId,b.tenantId)).orderBy(s.domainEvent.sequence)};}
+async function stored(id:string){const [row]=await owner.db.execute<{state:string;eventId:string|null;bodies:number}>(sql`select r.state,r.receipt_event_id as "eventId",(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies from app.assistant_own_leave_review r where r.id=${id}::uuid`);return row;}
+async function complete(tx:Tx,actionId:string,digest:string,eventId:string){return tx.execute(sql`select app.assistant_assigned_review_complete(${actionId}::uuid,${C.action},${digest},${eventId}::uuid)`);}
+async function deny(companyId=b.companyId){await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"document-meta-fixture","operation":"read-write"}]'::jsonb where id in ('workforce.view','workforce.maintain')`);const current=await withTenant(group(),tx=>accessConfigurationStore.loadCurrent(tx,group())),input={expectedRevision:current.snapshot.revision,command:{kind:'setOverride' as const,userId:ctx.userId!,capabilityId:'workforce.maintain',companyId,effect:'deny' as const}},preview=await previewAccessConfiguration(group(),input,accessConfigurationStore);await saveAccessConfiguration(group(),{...input,previewFingerprint:preview.fingerprint},accessConfigurationStore);}
+beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-document-metadata-custody-key');await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');target=await hire('Fictional Document Employee');hrPerson=await hire('Fictional Document HR');other=await hire('Fictional Other Employee');ctx=await login(hrPerson);documentId=(await add()).id;});
+
+describe('Ordinary document exact three-field native review',()=>{
+ it('does not write on preparation; reviews native normalization, preserves attachment bytes, confirms once and recovers the same receipt',async()=>{
+  const before=await state(),input=human(),r=(await store.prepare(ctx,input)).review;expect(await state()).toEqual(before);expect(r.content).toEqual(input);expect(r.review.before).toEqual({title:'Original document title',category:'Original category',description:'Original private description'});expect(r.review.after).toEqual({title:'Fictional revised title',category:'Human category',description:'Human-authored private description'});expect(JSON.stringify(r)).not.toContain('FICTIONAL ATTACHMENT BYTES');
+  const [first,duplicate]=await Promise.all([store.confirm(ctx,confirmation(r)),store.confirm(ctx,confirmation(r))]);expect(first).toEqual(duplicate);if(first.kind!=='completed')throw Error('Expected native metadata receipt');expect(first.receipt.receipt).toMatchObject({subjectId:documentId,employmentId:target.employmentId});expect(await store.reopen(ctx,r.actionId)).toEqual(first);expect(await store.confirm(ctx,confirmation(r))).toEqual(first);expect(await stored(r.actionId)).toMatchObject({state:'completed',bodies:0});
+  const after=await state(),{title,category,description,updatedAt,updatedByUserId,...attachment}=after.documents[0],{title:oldTitle,category:oldCategory,description:oldDescription,updatedAt:oldUpdated,updatedByUserId:oldUpdater,...prior}=before.documents[0];expect({title,category,description}).toEqual(r.review.after);expect(attachment).toEqual(prior);expect(updatedByUserId).toBe(ctx.userId);
+  const events=after.events.filter(e=>!before.events.some(old=>old.id===e.id));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({id:first.receipt.receipt.eventId,aggregateType:'employee-document',aggregateId:documentId,eventType:'employee-document.updated',subjectEmploymentId:target.employmentId,actorId:ctx.userId});expect(events[0].payload).toMatchObject({title,category,metadataAfterHash:expect.stringMatching(/^[a-f0-9]{64}$/)});expect(JSON.stringify(events[0].payload)).not.toContain(description!);
+  expect((await withTenant(ctx,tx=>readCompletedNativeOutcomeTx(tx,ctx,{source:'review',action:C.action,actionId:r.actionId}))).evidence.eventId).toBe(first.receipt.receipt.eventId);
+ });
+ it('keeps the same real native source digest under equivalent entitlement ordering and detects a real value change',async()=>{
+  const input=human(),before=await state();await withTenant(ctx,tx=>withDocumentMetadataSubjectTx(tx,ctx,documentId,'pending',async fresh=>{
+   if(!fresh.entitlements)throw Error('Expected current resolved commercial snapshot');
+   // Exercise the actual source digest against the SAME locked native row after real authority
+   // admission. These detached copies are digest probes; canonical output is never a permission input.
+   const left=structuredClone(fresh.entitlements),right=structuredClone(fresh.entitlements);expect(left.enabledModules.length).toBeGreaterThan(0);
+   left.enabledModules=[...left.enabledModules,...left.enabledModules];right.enabledModules=[...right.enabledModules].reverse();
+   left.settings={...left.settings,fictionalDigestOrdering:{z:null,a:{z:0,a:false},ordered:[{z:2,a:1},'last','last']}};
+   right.settings={fictionalDigestOrdering:{ordered:[{a:1,z:2},'last','last'],a:{a:false,z:0},z:null},...right.settings};
+   expect(JSON.stringify(left)).not.toBe(JSON.stringify(right));
+   const one=await prepareDocumentMetadataSourceTx(tx,{...fresh,entitlements:left},input),two=await prepareDocumentMetadataSourceTx(tx,{...fresh,entitlements:right},input);expect(two.review).toEqual(one.review);expect(two.reviewedDigest).toBe(one.reviewedDigest);
+   const changed=structuredClone(right);(changed.settings.fictionalDigestOrdering as {a:{z:number}}).a.z=1;
+   const three=await prepareDocumentMetadataSourceTx(tx,{...fresh,entitlements:changed},input);expect(three.review).toEqual(one.review);expect(three.reviewedDigest).not.toBe(one.reviewedDigest);
+  }));expect(await state()).toEqual(before);
+ });
+ it('shares native trim/slice200/null normalization without imposing a new category catalog',async()=>{
+  const input=human();input.fields={title:' x'+ 'z'.repeat(240)+' ',category:' ',description:' '};const r=(await store.prepare(ctx,input)).review;expect(r.review.after).toEqual({title:('x'+'z'.repeat(240)).slice(0,200),category:null,description:null});await store.confirm(ctx,confirmation(r));const [row]=await owner.db.select().from(s.employeeDocument).where(eq(s.employeeDocument.id,documentId));expect({title:row.title,category:row.category,description:row.description}).toEqual(r.review.after);
+  await expect(updateEmployeeDocumentMeta(ctx,{documentId,title:' '})).rejects.toThrow();await expect(store.prepare(ctx,{...human(),fields:{...fields(),title:' '}})).rejects.toThrow();
+ });
+ it('can prepare, reopen and confirm when runtime SELECT of content is denied',async()=>{
+  const columns=await owner.db.execute<{name:string}>(sql`select attname as name from pg_attribute where attrelid='employee_document'::regclass and attnum>0 and not attisdropped and attname<>'content' order by attnum`);await owner.db.execute(sql`revoke select on employee_document from ai_hr_app`);await owner.db.execute(sql`grant select (${sql.join([...columns.map(column=>sql.identifier(column.name)),sql.identifier('xmin')],sql`,`)}) on employee_document to ai_hr_app`);
+  try{await expect(withTenant(ctx,tx=>tx.select({content:s.employeeDocument.content}).from(s.employeeDocument))).rejects.toThrow();const r=(await store.prepare(ctx,human())).review;expect((await store.reopen(ctx,r.actionId)).kind).toBe('prepared');expect((await store.confirm(ctx,confirmation(r))).kind).toBe('completed');await expect(withTenant(ctx,tx=>tx.select({content:s.employeeDocument.content}).from(s.employeeDocument))).rejects.toThrow();}
+  finally{await owner.db.execute(sql`grant select on employee_document to ai_hr_app`);}
+ });
+ it.each(['metadata','attachment','company'] as const)('refuses changed %s revision without a metadata effect',async kind=>{
+  const r=(await store.prepare(ctx,human())).review;if(kind==='metadata')await updateEmployeeDocumentMeta(ctx,{documentId,title:'Native intervening title'});else if(kind==='attachment')await replaceEmployeeDocumentContent(ctx,{documentId,fileName:'fictional-replacement.txt',mimeType:'text/plain',content:Buffer.from('DIFFERENT FICTIONAL BYTES')});else await owner.db.update(s.company).set({legalName:'Changed fictional company'}).where(eq(s.company.id,b.companyId));const before=await state();await expect(store.confirm(ctx,confirmation(r))).rejects.toThrow();expect(await state()).toEqual(before);expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});
+ });
+ it('refuses another login, wrong digest and a revoked Assistant grant without repeating native writes',async()=>{
+  const r=(await store.prepare(ctx,human())).review,otherHr=await login(hrPerson),before=await state();await expect(store.confirm(otherHr,confirmation(r))).rejects.toThrow();await expect(store.confirm(ctx,{...confirmation(r),reviewedDigest:'0'.repeat(64)})).rejects.toThrow();expect(await state()).toEqual(before);await revokeAssistant(group(),{appUserId:ctx.userId!});const revoked=await state();await expect(store.reopen(ctx,r.actionId)).rejects.toThrow();await expect(store.confirm(ctx,confirmation(r))).rejects.toThrow();expect(await state()).toEqual(revoked);
+ });
+ it('checks current native employment denial before private body unwrap',async()=>{
+  const r=(await store.prepare(ctx,human())).review;await deny();const unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();expect(await readDocumentMetadataChoices(ctx,{query:'',employmentId:target.employmentId})).toEqual({kind:'unavailable'});await expect(store.reopen(ctx,r.actionId)).rejects.toThrow();await expect(store.confirm(ctx,confirmation(r))).rejects.toThrow();expect(unwrap).not.toHaveBeenCalled();
+ });
+ it('refuses self as super-admin, non-HR roles, wrong stored employment and foreign tenant/company',async()=>{
+  const before=await state(),self=await login(target,'super_admin');await expect(store.prepare(self,human())).rejects.toThrow();for(const role of ['employee','manager'] as const){const who=await login(other,role);expect(await readDocumentMetadataChoices(who,{query:'',employmentId:target.employmentId})).toEqual({kind:'unavailable'});await expect(store.prepare(who,human())).rejects.toThrow();}
+  await expect(store.prepare(ctx,{...human(),employmentId:other.employmentId})).rejects.toThrow();const company=await createCompany(group(),{legalName:'Fictional other company'}),department=await createDepartment(group(),{companyId:company.id,name:'Fictional Department'}),scoped=await login(await hire('Scoped other HR',b,company.id,department.id),'hr_admin',b,company.id);await expect(store.prepare(scoped,human())).rejects.toThrow();
+  const foreign=await seedBase();await setModule(foreign.tenantId,'assistant','active');const foreignHr=await login(await hire('Foreign HR',foreign),'hr_admin',foreign);await expect(store.prepare(foreignHr,human())).rejects.toThrow();expect((await state()).documents).toEqual(before.documents);
+ });
+ it('rejects invented binary, letter, photo or authority fields',async()=>{
+  const before=await state();for(const extra of [{content:'pretend stored file'},{fileName:'pretend.pdf'},{letterArtifactId:randomUUID()},{actor:'hr_admin'},{operation:'delete'},{fields:{...fields(),photo:'bytes'}}])await expect(store.prepare(ctx,{...human(),...extra})).rejects.toThrow();expect(await state()).toEqual(before);
+ });
+ it('preserves default native ownership and rolls optional outerTx metadata/event back together',async()=>{
+  const before=await state();await expect(withTenant(ctx,async tx=>{await updateEmployeeDocumentMeta(ctx,{documentId,...fields()},tx);throw Error('fictional rollback');})).rejects.toThrow('fictional rollback');expect(await state()).toEqual(before);expect(await updateEmployeeDocumentMeta(ctx,{documentId,...fields()})).toMatchObject({id:documentId,eventId:expect.any(String)});
+ });
+ it('rolls back on late native event failure and retries only through the same saved review',async()=>{
+  const r=(await store.prepare(ctx,human())).review,before=await state();await owner.db.execute(sql`create function public.document_metadata_fixture_fail() returns trigger language plpgsql as $$begin if new.event_type='employee-document.updated' then raise exception 'fictional metadata event failure';end if;return new;end$$`);await owner.db.execute(sql`create trigger document_metadata_fixture_fail before insert on domain_event for each row execute function public.document_metadata_fixture_fail()`);
+  try{await expect(store.confirm(ctx,confirmation(r))).rejects.toThrow();expect(await state()).toEqual(before);expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1});}finally{await owner.db.execute(sql`drop trigger document_metadata_fixture_fail on domain_event`);await owner.db.execute(sql`drop function public.document_metadata_fixture_fail()`);}expect((await store.confirm(ctx,confirmation(r))).kind).toBe('completed');
+ });
+});
+
+describe('Document receipt exact current native row and all three fields',()=>{
+ it('refuses old events, current events for old rows, a foreign document and a description changed after the native event',async()=>{
+  const r=(await store.prepare(ctx,human())).review,old=await updateEmployeeDocumentMeta(ctx,{documentId,...fields()});await expect(withTenant(ctx,tx=>complete(tx,r.actionId,r.reviewedDigest,old.eventId))).rejects.toThrow();
+  await expect(withTenant(ctx,async tx=>{const eventId=await appendEvent(tx,{tenantId:b.tenantId,aggregateType:'employee-document',aggregateId:documentId,eventType:'employee-document.updated',actor:{type:'user',id:ctx.userId},subjectEmploymentId:target.employmentId,payload:{title:'Fictional revised title',category:'Human category',metadataAfterHash:'a'.repeat(64)}},{returnId:true});return complete(tx,r.actionId,r.reviewedDigest,eventId);})).rejects.toThrow();
+  const foreign=await add(other);await expect(withTenant(ctx,async tx=>{const result=await updateEmployeeDocumentMeta(ctx,{documentId:foreign.id,...fields()},tx);return complete(tx,r.actionId,r.reviewedDigest,result.eventId);})).rejects.toThrow();
+  const before=await state();await expect(withTenant(ctx,async tx=>{const result=await updateEmployeeDocumentMeta(ctx,{documentId,...fields()},tx);await tx.update(s.employeeDocument).set({description:'UNREVIEWED DESCRIPTION'}).where(eq(s.employeeDocument.id,documentId));return complete(tx,r.actionId,r.reviewedDigest,result.eventId);})).rejects.toThrow();expect(await state()).toEqual(before);expect(await stored(r.actionId)).toMatchObject({state:'awaiting_confirmation',bodies:1,eventId:null});
+ });
+ it('proves current native description including null at the raw SQL completion boundary',async()=>{
+  const input=human();input.fields.description=null;input.fields.category=null;const r=(await store.prepare(ctx,input)).review;await withTenant(ctx,async tx=>{const result=await updateEmployeeDocumentMeta(ctx,{documentId,...input.fields},tx);await complete(tx,r.actionId,r.reviewedDigest,result.eventId);});expect((await store.reopen(ctx,r.actionId)).kind).toBe('completed');
+ });
+ it('keeps all dedicated receipt columns closed even on the owner connection',async()=>{
+  const r=(await store.prepare(ctx,human())).review,allowed=['action_kind','id','tenant_id','user_id','person_id','employment_id','company_id','intent_digest','reviewed_digest','state','created_at','expires_at','decision_subject_person_id','receipt_subject_kind','receipt_subject_id','receipt_event_id'];const columns=await owner.db.execute<{name:string;type:string}>(sql`select attname as name,format_type(atttypid,atttypmod) as type from pg_attribute where attrelid='app.assistant_own_leave_review'::regclass and attnum>0 and not attisdropped order by attnum`),dedicated=columns.filter(column=>!allowed.includes(column.name));expect(dedicated.length).toBeGreaterThan(40);expect(dedicated).toContainEqual({name:'allocation_effective_date',type:'date'});
+  for(const column of dedicated){const value=column.type==='uuid'?sql`${randomUUID()}::uuid`:column.type==='uuid[]'?sql`ARRAY[${randomUUID()}::uuid]`:column.type==='integer'?sql`1`:column.type==='boolean'?sql`true::boolean`:column.type==='date'?sql`DATE '2026-10-30'`:column.type==='jsonb'?sql`'{"fictional":true}'::jsonb`:column.type==='xid8'?sql`'1'::xid8`:column.type==='tid'?sql`'(0,1)'::tid`:column.type==='text'?sql`'fictional-hybrid'`:null;if(!value)throw Error('Unreviewed dedicated column '+column.name);let failure:unknown;try{await owner.db.execute(sql`update app.assistant_own_leave_review set ${sql.identifier(column.name)}=${value} where id=${r.actionId}::uuid`);}catch(error){failure=error;}expect(pgSqlState(failure),column.name).toBe('23514');}
+ });
+});
+
+it('excludes a genuinely issued immutable letter pointer and preserves the native Letter handoff',async()=>{
+ vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://letters.fixture.test');
+ const letters=await import('../core/letters');const reviewer=await login(other);
+ const name=await letters.saveLetterField(ctx,{companyId:b.companyId,definition:{key:'employeeName',label:'Employee name',description:'Fictional native source',kind:'text',source:'employee.name',required:true,editable:false,sensitive:false},active:true});
+ const template=await letters.saveLetterTemplate(ctx,{companyId:b.companyId,code:'METAFIXTURE',name:'Fictional metadata protection letter',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Fictional letter for '},{type:'field',key:'employeeName'}]}]},fieldVersionIds:[name.id]});
+ await letters.decideLetterTemplate(ctx,{versionId:template.versionId,expectedStatus:'draft',action:'submit'});await letters.decideLetterTemplate(reviewer,{versionId:template.versionId,expectedStatus:'submitted',action:'approve'});
+ await letters.saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{version:1,stages:[{key:'signatory',label:'Authorised signatory',userIds:[reviewer.userId!],allowDelegation:false}],signatoryUserId:reviewer.userId!,signingMode:'authenticated',signatureAssetId:null,letterheadAssetId:null,referenceFormat:'HR/{YYYY}/{SEQ:6}',retentionDays:365,sensitiveLinkMinutes:15,acknowledgement:'acknowledge',approvalDueHours:48,acknowledgementDueDays:7,reminderHours:24,escalationUserId:null,portalNotifications:false,emailNotifications:false}});
+ const made=await letters.createLetterDraftBatch(ctx,{companyId:b.companyId,templateVersionId:template.versionId,employmentIds:[target.employmentId],operationKey:randomUUID()});await letters.submitLetterBatch(ctx,made.batchId);const row=(await letters.getLetterGenerationBatch(ctx,made.batchId))!.rows[0];await letters.decideLetter(reviewer,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion,decision:{action:'approve',comment:'Fictional immutable pointer fixture',confirmSignature:true}});await letters.issueLetter(ctx,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:row.record.lockVersion+1});
+ const [document]=await owner.db.select().from(s.employeeDocument).where(sql`${s.employeeDocument.letterArtifactId} is not null`);expect(document).toBeTruthy();const before=await state();const choices=await readDocumentMetadataChoices(ctx,{query:'',employmentId:target.employmentId});expect(choices.kind).toBe('choices');if(choices.kind==='choices')expect(choices.documents.map(doc=>doc.id)).not.toContain(document.id);
+ await expect(store.prepare(ctx,human(document.id))).rejects.toThrow();await expect(updateEmployeeDocumentMeta(ctx,{documentId:document.id,...fields()})).rejects.toThrow();expect(await state()).toEqual(before);expect((await store.list(ctx)).reviews).toEqual([]);
+});
+
+/** Real USER-only accounts: no fixture PERSON or EMPLOYMENT is manufactured for the actor. */
+async function unlinkedCustodyLogin(role:'hr_admin'|'employee'='hr_admin'):Promise<SessionContext>{
+ const [user]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:'user_'+randomUUID(),personId:null}).returning({id:s.appUser.id});
+ await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:user.id,role,companyId:null});
+ await grantAssistant(group(),{appUserId:user.id});
+ return{...await entitledCtx(b,[role]),userId:user.id,personId:null,grants:[{role,companyId:null}]};
+}
+async function unlinkedCustodyRow(id:string){
+ const [row]=await owner.db.execute(sql`select user_id as "userId",person_id as "actorPersonId",employment_id as "employmentId",company_id as "companyId",decision_subject_person_id as "subjectPersonId",testing_execution_id as "testingExecutionId",testing_run_id as "testingRunId",testing_event_id as "testingEventId",state,receipt_event_id as "eventId",(select count(*)::int from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies,coalesce((select length(c.ciphertext)>0 from app.assistant_own_leave_review_content c where c.action_id=r.id),false) as encrypted from app.assistant_own_leave_review r where id=${id}::uuid`);return row;
+}
+
+it('keeps two genuine unlinked HR users distinct through native rollback, encrypted metadata custody, replay and actor relinking',async()=>{
+ const who=await unlinkedCustodyLogin(),foreign=await unlinkedCustodyLogin(),input=human(),before=await state();
+ await expect(withTenant(who,async tx=>{expect(await updateEmployeeDocumentMeta(who,{documentId,...input.fields},tx)).toMatchObject({id:documentId,eventId:expect.any(String)});throw Error('unlinked native rollback');})).rejects.toThrow('unlinked native rollback');expect(await state()).toEqual(before);
+ const r=(await store.prepare(who,input)).review;expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,employmentId:target.employmentId,companyId:b.companyId,subjectPersonId:target.personId,testingExecutionId:null,testingRunId:null,testingEventId:null,state:'awaiting_confirmation',eventId:null,bodies:1,encrypted:true});
+ expect((await store.reopen(who,r.actionId)).kind).toBe('prepared');await expect(store.reopen(foreign,r.actionId)).rejects.toThrow();await expect(store.confirm(foreign,confirmation(r))).rejects.toThrow();expect(await state()).toEqual(before);
+ const done=await store.confirm(who,confirmation(r));expect(done.kind).toBe('completed');expect(await store.reopen(who,r.actionId)).toEqual(done);expect(await store.confirm(who,confirmation(r))).toEqual(done);expect(await unlinkedCustodyRow(r.actionId)).toMatchObject({userId:who.userId,actorPersonId:null,subjectPersonId:target.personId,state:'completed',bodies:0,encrypted:false});
+ const events=(await state()).events.filter(event=>event.eventType==='employee-document.updated'&&event.actorId===who.userId);expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:who.userId,subjectEmploymentId:target.employmentId,aggregateId:documentId});
+ const next=(await store.prepare(who,human())).review;await owner.db.update(s.appUser).set({personId:target.personId}).where(eq(s.appUser.id,who.userId!));const relinked=await state();await expect(store.reopen(who,next.actionId)).rejects.toThrow();await expect(store.confirm(who,confirmation(next))).rejects.toThrow();await expect(store.reopen({...who,personId:target.personId},next.actionId)).rejects.toThrow();expect(await state()).toEqual(relinked);expect(await unlinkedCustodyRow(next.actionId)).toMatchObject({actorPersonId:null,subjectPersonId:target.personId,state:'awaiting_confirmation',bodies:1});
+});

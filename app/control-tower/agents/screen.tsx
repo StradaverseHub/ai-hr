@@ -15,9 +15,12 @@ import { isZeroCapped } from '@/core/ai-zero-cap';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { MODULE_JOBS } from '@/lib/ai/module-jobs';
 import { aiManagementHref, availableAiManagementSections, type AiManagementSection } from './sections';
-import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAssistantPermissionAction } from './actions';
+import { aiInventoryView, aiManagementAlerts, aiRunHistory } from '@/core/ai-inventory';
+import { AI_RUN_PAGE_SIZE } from '@/lib/ai/ai-inventory';
+import { AiInventorySection } from './inventory-section';
+import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
 
-export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[]};
+export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[];from?:string;to?:string;page?:string};
 
 /** One AI management section per route (app/control-tower/agents/<section>/page.tsx); the sub-menu links them.
  * Provider and Assistant pages pass their own content as children. */
@@ -34,6 +37,14 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const sections = availableAiManagementSections({spend:!!view.spend,provider:isGroupAdmin(s)});
   if(!sections.includes(section)) redirect(aiManagementHref('overview'));
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
+  // WP12 (R8, R20): the inventory section, the alert banner on every section, and paged, dated run history.
+  const inventory = section==='inventory' ? await aiInventoryView(s, view) : null;
+  // Awaited here (not rendered as an async child) so the section renders wherever the screen does.
+  const inventorySection = inventory ? await AiInventorySection({inventory,mayPause:isGroupAdmin(s)}) : null;
+  const alertBanner = await aiManagementAlerts(s, view);
+  const alerts = alertBanner.status==='ok' ? alertBanner.alerts : [];
+  const history = section==='runs' && isGroupAdmin(s) ? await aiRunHistory(s,{from:sp.from,to:sp.to,page:sp.page},runFilter) : null;
+  const runsHref = (page:number) => { const p=new URLSearchParams(); if(history){p.set('from',history.range.from);p.set('to',history.range.to);} if(runFilter.state)p.set('runs',runFilter.state); if(runFilter.feature)p.set('feature',runFilter.feature); if(page>1)p.set('page',String(page)); return `${aiManagementHref('runs')}?${p.toString()}#ai-runs`; };
   // Closed save outcomes only: a query string can never put its own words on this screen.
   const toast = sp.toast==='saved' ? t('saved') : sp.toast==='default' ? t('usesDefault') : sp.toast==='bulk' ? t('bulkDone') : undefined;
   const numbers = (value:unknown) => f.number(Number(value??0));
@@ -61,6 +72,27 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     <button className={btnPrimary} type="submit">{t('save')}</button>
   </>;
   const formGrid = 'grid items-end gap-3 md:grid-cols-2 xl:grid-cols-[minmax(10rem,1fr)_minmax(7rem,10rem)_minmax(8rem,12rem)_minmax(7rem,10rem)_minmax(6rem,8rem)_auto]';
+  // WP14 / R19 — per-feature caps: the shared feature row (0694) holds the same three limits; its on/off switch stays
+  // on the features page. Only features without a module setting have such a row (setAiFeatureCap re-checks this).
+  const capFeatures = view.mayWriteUsers ? AI_FEATURES.filter(feature=>feature.setting===null) : [];
+  const capLevel = (used:number,limit:number|null) => limit==null?null:used>=limit?'at' as const:used>=limit*0.8?'near' as const:null;
+  const featureCapRow = (feature:typeof capFeatures[number]) => {
+    const policy = view.policies.find(p=>p.scopeKey===`feature:${feature.id}`), activity = view.usage.find(u=>u.feature_id===feature.id);
+    const daily = Number(activity?.daily_requests??0), recorded = Number(activity?.monthly_tokens??0), held = Number(activity?.held_tokens??0);
+    const use:AiAllowanceUse = {daily:{used:daily,limit:policy?.dailyRequests??null,level:capLevel(daily,policy?.dailyRequests??null)},tokens:{used:recorded+held,limit:policy?.monthlyTokens??null,level:capLevel(recorded+held,policy?.monthlyTokens??null)},recorded,held,enabled:policy?.enabled!==false,maxConcurrent:policy?.maxConcurrent??null};
+    const label = t(`features.${feature.id}`);
+    return <li key={feature.id} id={`ai-feature-cap-${feature.id}`} className="scroll-mt-4 py-4">
+      <form action={setAiFeatureCapAction} className={formGrid}>
+        <input type="hidden" name="feature" value={feature.id}/>
+        <div className="min-w-0 md:col-span-2 xl:col-span-1"><p className="break-words font-medium">{label}</p>{meters(use)}</div>
+        <label className="text-xs">{t('daily')}<input aria-label={`${label} · ${t('daily')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="dailyRequests" defaultValue={use.daily.limit??''} placeholder={t('unlimited')}/></label>
+        <label className="text-xs">{t('monthly')}<input aria-label={`${label} · ${t('monthly')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000000000" step="1" name="monthlyTokens" defaultValue={use.tokens.limit??''} placeholder={t('unlimited')}/></label>
+        <label className="text-xs">{t('concurrent')}<input aria-label={`${label} · ${t('concurrent')}`} className={`${inputCls} mt-1`} type="number" min="0" max="1000000" step="1" name="maxConcurrent" defaultValue={use.maxConcurrent??''} placeholder={t('unlimited')}/></label>
+        <span aria-hidden className="hidden xl:block"/>
+        <button className={btnPrimary} type="submit">{t('save')}</button>
+      </form>
+    </li>;
+  };
   const companyRow = (c:typeof view.companies[number]) => <li key={c.id} id={`ai-company-${c.id}`} className="scroll-mt-4 py-4">
     <form action={setAiAllowanceAction} className={formGrid}>
       <input type="hidden" name="q" value={query}/><input type="hidden" name="kind" value="company"/><input type="hidden" name="subjectId" value={c.id}/>
@@ -135,6 +167,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <p className="min-w-0 break-words">{view.provider?t('provider',{provider:view.provider.provider,model:view.provider.model}):t('noProvider')}</p>
       <div className="flex flex-wrap gap-3">{sections.includes('provider')&&<Link href={aiManagementHref('provider')} className={btnGhost}>{t('configureProvider')}</Link>}<Link href={aiManagementHref(section)} className={btnGhost}>{t('refresh')}</Link></div>
     </div>
+    {alerts.length>0&&<section role="alert" aria-labelledby="ai-alerts-heading" className="rounded-xl border border-amber-500/50 bg-amber-50 p-4 text-sm dark:bg-amber-950/30">
+      <h2 id="ai-alerts-heading" className="font-semibold">{t('inv.alerts.title')}</h2>
+      <ul className="mt-2 list-disc space-y-1 pl-5">{alerts.map(a=><li key={a.kind}><span className={a.level==='critical'?'font-semibold text-red-700 dark:text-red-300':''}>{t(`inv.alerts.${a.kind}`,{count:a.count,detail:a.detail??''})}</span></li>)}</ul>
+      <p className="mt-2 text-xs text-muted-foreground">{t('inv.alerts.help')}</p>
+    </section>}
+    {alertBanner.status==='unavailable'&&<p role="status" className="rounded-xl border border-border p-4 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>}
+    {section==='inventory'&&inventorySection}
     {section==='overview'&&<Card id="ai-map" className="scroll-mt-4 p-5">
       <SectionHeader title={t('mapTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('mapIntro')}</p>
       <ul className="mt-3 divide-y divide-border">{map.map(row=><li key={row.key} className="flex flex-wrap items-start justify-between gap-3 py-3">
@@ -161,7 +200,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
               // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
               const sw=view.agentSwitches[feature.id as AgentFeature];
               return sw?.state==='attributed'?<p className="mt-1 text-xs text-muted-foreground">{t('agentRunsAs',{by:sw.by??t('agentUnknownAdmin'),date:f.dateTime(sw.at,{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'})})}</p>
-                :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}</td>
+                :sw?.state==='unattributed'?<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('agentUnattributed')}</p>:null;})()}
+              {feature.staleOverride&&<p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t(feature.staleOverride.enabled?'staleOverrideOn':'staleOverrideOff')}</p>}</td>
             <td className="px-5 py-4"><span className={feature.state==='ready'?'text-emerald-700 dark:text-emerald-300':'text-muted-foreground'}>{t(`states.${feature.state}`)}</span></td>
             <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
             <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><button type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</button></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>
@@ -174,6 +214,10 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <SectionHeader title={t('companyLimits')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('limitHelp')}</p><p className="mt-1 max-w-4xl text-xs text-muted-foreground">{t('concurrentHelp')}</p><p className="mt-2 max-w-4xl text-xs text-muted-foreground">{t('attribution')}</p>
       <ul className="mt-2 divide-y divide-border">{view.companies.map(companyRow)}</ul>{view.companies.length===0&&<p className="py-4 text-sm text-muted-foreground">{t('noCompanies')}</p>}
     </Card>
+    {capFeatures.length>0&&<Card id="feature-limits" className="scroll-mt-4 p-5">
+      <SectionHeader title={t('featureCapsTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('featureCapsHelp')}</p>
+      <ul className="mt-2 divide-y divide-border">{capFeatures.map(featureCapRow)}</ul>
+    </Card>}
     {view.mayWriteUsers&&<Card id="user-limits" className="scroll-mt-4 p-5">
       <SectionHeader title={t('userLimits')}/><p className="mt-1 text-sm text-muted-foreground">{t('userHelp')}</p>
       <section id="ai-bulk" aria-labelledby="ai-bulk-heading" className="mt-4 scroll-mt-4 rounded-lg border border-border p-4">
@@ -258,6 +302,8 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     {section==='runs'&&<Card id="ai-runs" className="scroll-mt-4 overflow-hidden"><div className="p-5"><SectionHeader title={t('recentRuns')}/><p className="mt-1 text-sm text-muted-foreground">{t('runsHelp')}</p>
       {isGroupAdmin(s)&&<form method="get" action={aiManagementHref('runs',{anchor:'#ai-runs'})} className="mt-3 flex flex-wrap items-end gap-3 text-xs">
         {query&&<input type="hidden" name="q" value={query}/>}
+        <label>{t('inv.rangeFrom')}<input type="date" name="from" defaultValue={history?.range.from} max={history?.range.to} className={`${inputCls} mt-1`}/></label>
+        <label>{t('inv.rangeTo')}<input type="date" name="to" defaultValue={history?.range.to} className={`${inputCls} mt-1`}/></label>
         <label>{t('runFilter')}<select name="runs" defaultValue={runFilter.state??''} className={`${inputCls} mt-1`}><option value="">{t('runAll')}</option><option value="blocked">{t('runBlocked')}</option><option value="failed">{t('runFailed')}</option></select></label>
         <label>{t('feature')}<select name="feature" defaultValue={runFilter.feature??''} className={`${inputCls} mt-1`}><option value="">{t('allFeatures')}</option>{AI_FEATURES.map(feature=><option key={feature.id} value={feature.id}>{t(`features.${feature.id}`)}</option>)}</select></label>
         <button type="submit" className={btnGhost}>{t('applyFilter')}</button>
@@ -265,7 +311,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       </form>}
       {isGroupAdmin(s)&&filtered&&<p className="mt-2 text-xs text-muted-foreground">{t('runsFiltered')}</p>}
     </div>
-      {!isGroupAdmin(s)?<p className="px-5 pb-5 text-sm text-muted-foreground">{t('runsScoped')}</p>:view.runs.length===0?<p className="px-5 pb-5 text-sm text-muted-foreground">{t(filtered?'noMatchingRuns':'noRuns')}</p>:<div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-y border-border bg-muted/40"><tr>{['time','actor','feature','state','tokens','observedAccounting'].map(key=><th key={key} scope="col" className="px-5 py-3 font-medium">{t(key)}</th>)}</tr></thead><tbody className="divide-y divide-border">{view.runs.map(run=><tr key={run.id}><td className="px-5 py-3 whitespace-nowrap">{f.dateTime(run.startedAt,{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}</td><td className="px-5 py-3">{run.actor?<Link className="text-primary hover:underline" href={userLink(run.actor)}>{run.actor}</Link>:t('scheduledActor')}</td><td className="px-5 py-3">{t.has(`features.${run.feature}`)?t(`features.${run.feature}`):run.feature}<p className="text-xs text-muted-foreground">{run.provider} · {run.model} · {t(`operations.${run.operation}`)}</p></td><td className="px-5 py-3">{t(`runStates.${run.state}`)}{run.reason&&<p className="text-xs text-muted-foreground">{t(`reasons.${run.reason}`)}</p>}</td><td className="px-5 py-3 tabular-nums">{run.state==='blocked'?(run.reason==='monthly_limit'?t('required',{tokens:numbers(run.reserved)}):'—'):run.actual==null?t('held',{tokens:numbers(run.reserved)}):numbers(run.actual)}</td><td className="px-5 py-3 tabular-nums"><p>{t('reportedCredits')}: {run.reportedCredits==null?t('unknownObservation'):f.number(Number(run.reportedCredits),{maximumSignificantDigits:15})}</p><p>{t('roundTrip')}: {run.roundTripMs==null?t('unknownObservation'):t('milliseconds',{value:numbers(run.roundTripMs)})}</p><p className="text-xs text-muted-foreground">{t(`observationStates.${run.observationStatus??'missing'}`)}</p></td></tr>)}</tbody></table></div>}
+      {history&&<p className="px-5 pb-2 text-xs text-muted-foreground">{t('inv.rangeShown',{from:f.dateTime(new Date(`${history.range.from}T00:00:00+08:00`),{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'}),to:f.dateTime(new Date(`${history.range.to}T00:00:00+08:00`),{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'}),page:history.range.page,size:AI_RUN_PAGE_SIZE})}</p>}
+      {!isGroupAdmin(s)||!history?<p className="px-5 pb-5 text-sm text-muted-foreground">{t('runsScoped')}</p>:history.rows.length===0?<p className="px-5 pb-5 text-sm text-muted-foreground">{t(filtered?'noMatchingRuns':'noRuns')}</p>:<div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><thead className="border-y border-border bg-muted/40"><tr>{['time','actor','feature','state','tokens','observedAccounting'].map(key=><th key={key} scope="col" className="px-5 py-3 font-medium">{t(key)}</th>)}</tr></thead><tbody className="divide-y divide-border">{history.rows.map(run=><tr key={run.id}><td className="px-5 py-3 whitespace-nowrap">{f.dateTime(run.startedAt,{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}</td><td className="px-5 py-3">{run.actor?<Link className="text-primary hover:underline" href={userLink(run.actor)}>{run.actor}</Link>:t('scheduledActor')}</td><td className="px-5 py-3">{t.has(`features.${run.feature}`)?t(`features.${run.feature}`):run.feature}<p className="text-xs text-muted-foreground">{run.provider} · {run.model} · {t(`operations.${run.operation}`)}</p></td><td className="px-5 py-3">{t(`runStates.${run.state}`)}{run.reason&&<p className="text-xs text-muted-foreground">{t(`reasons.${run.reason}`)}</p>}</td><td className="px-5 py-3 tabular-nums">{run.state==='blocked'?(run.reason==='monthly_limit'?t('required',{tokens:numbers(run.reserved)}):'—'):run.actual==null?t('held',{tokens:numbers(run.reserved)}):numbers(run.actual)}</td><td className="px-5 py-3 tabular-nums"><p>{t('reportedCredits')}: {run.reportedCredits==null?t('unknownObservation'):f.number(Number(run.reportedCredits),{maximumSignificantDigits:15})}</p><p>{t('roundTrip')}: {run.roundTripMs==null?t('unknownObservation'):t('milliseconds',{value:numbers(run.roundTripMs)})}</p><p className="text-xs text-muted-foreground">{t(`observationStates.${run.observationStatus??'missing'}`)}</p></td></tr>)}</tbody></table></div>}
+      {history&&(history.range.page>1||history.hasMore)&&<nav aria-label={t('inv.paging')} className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5 text-sm">
+        {history.range.page>1?<Link href={runsHref(history.range.page-1)} className={btnGhost}>{t('inv.previous')}</Link>:<span/>}
+        <span className="text-muted-foreground">{t('inv.pageOf',{page:history.range.page})}</span>
+        {history.hasMore?<Link href={runsHref(history.range.page+1)} className={btnGhost}>{t('inv.next')}</Link>:<span/>}
+      </nav>}
     </Card>}
   </div>;
 }

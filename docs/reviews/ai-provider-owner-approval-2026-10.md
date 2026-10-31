@@ -117,3 +117,100 @@ Source reviews and newly authored assertions are not executed PASS evidence. The
 repaired source still requires classifier-derived hosted qualification, ordinary clean
 and populated upgrades, actual backup/restore evidence and coordinated staging admission.
 Any further covered-source change invalidates this exact technical disposition.
+
+
+## Technical source binding — 31 October 2026
+
+The release coordinator authorized a technical binding refresh for immutable source
+`3101bb6ef51eda1a07e9df4c5b38f6b61fdecab8`, within the protected feature/UI and fixed published
+synthetic evaluation purposes of the existing provisional owner approval. This is not a new
+human approval event, independent privacy certification, runtime PASS or staging acceptance.
+The original human quote, status, reviewer, evidence and `2026-10-30T06:19:30Z` provenance above
+and in every literal record remain unchanged. The two unused legacy contracts remain pending.
+
+Independent Rewards source review reconstructed the exact transitive closure of **1133 files**,
+agreeing with the generated digest
+`c35cdfc5b601063f2f3158b073d631c3838fbacd57a7854cd969c4b6936b3b04`. The same 24 existing
+active approved records bind only to this reviewed source; no contract or pending record is added
+or promoted. Static review artifacts are retained by the coordinator as
+`rewards-provider-scope-technical-review-3101-20261031.md` and `rewards-provider-closure-3101.json`.
+
+The reviewed aggregate restores current-main native provider configuration save/activation behavior
+and preserves exact OpenRouter evaluation/account-policy receipts. Its fixed published synthetic
+conversation fixtures use the source-owned catalogue and matching synthetic caller, rather than
+a posted authority flag or an empty catalogue that would erase proposal holdouts. Optional raw
+provider-baseline UI is deferred; no new provider contract makes that path available.
+
+The exact `a59c99e512e45f78076569dfa1aade8eb2c76292` → `3101bb6ef51eda1a07e9df4c5b38f6b61fdecab8`
+covered delta contains only the Lifecycle completion store, undo store and native case owner.
+Normalized human arguments and the native public default-label catalogue pass to private SQL custody,
+not to a provider serializer. Native public events restore canonical action/number/step fields and
+remove private-derived row hashes/versions; no historical event is rewritten. Protected serializers,
+source replay, access, spend, one-use dispatch and output adjudication remain authoritative.
+No raw text, image, identity, exact HR amount/date disclosure, model money calculation or sensitive
+autonomous effect is added. These minimization controls are not an anonymity guarantee.
+
+Further covered-byte changes require another exact technical disposition. A generated digest alone
+does not renew human approval. Fresh exact-source hosted checks remain required; prior failures and
+original receipts are retained under their actual SHAs. This technical refresh grants no release
+or deployment authority by itself.
+
+
+## Technical source binding — 31 October 2026, reviewed effect closure
+
+The release coordinator authorized only a technical source binding refresh on the SAME24 existing
+active approved records for exact source `82859a9a38d6624f146839d17a20a088aae3db13` and its
+fixture-only child `343378a622aaaa6088cb21c934c2552a4a72e0ab`. Original human wording, statuses,
+reviewer identities, evidence anchors and `2026-10-30T06:19:30Z` provenance remain unchanged;
+both pending blocks remain byte-identical. This is not a new human approval, privacy certification,
+data-purpose consent, runtime PASS or staging acceptance.
+
+Independent Rewards review retained the exact **1133-file** closure and approved the combined
+`3101bb6ef51eda1a07e9df4c5b38f6b61fdecab8` → `f7b88466ea29f470584f86c58d60feaf51a120c6`
+Bank/Organisation custody delta, followed by the exact three covered Attendance source files from
+`f7b88466ea29f470584f86c58d60feaf51a120c6` → `82859a9a38d6624f146839d17a20a088aae3db13`.
+The earlier technical digest `7e377aa5ee42e92ad3deab73a896b94b381af55f70d55a33b3d66215bb8b3e94`
+and final digest `3700a99d68fe80c8d85aaa92300dd27f97d87e14bf05346fac97c54492735bcd` were independently reconstructed; closure membership did not change.
+The SAME24 literals move from `c35cdfc5b601063f2f3158b073d631c3838fbacd57a7854cd969c4b6936b3b04` to the reviewed final digest only.
+
+Review provenance: `rewards-provider-scope-technical-review-f7b88466-20261031.md`,
+`rewards-provider-scope-technical-review-82859a9a-20261031.md` (SHA256 `c8522b3713b928d0c23c7e93154a164506b3165c026aa4fa41b8e74d3839b52c`),
+and `rewards-provider-closure-82859a9a.json` (SHA256 `3a8bdd768a3c3c5af8235eb939427586e9104e8532749df761457a0890c26bbe`).
+The final covered delta is limited to the day-schedule source, schedule-group source and generic
+assigned review preparation owner. Native IDs/amounts remain in local encrypted custody; the
+arm/current-state checks add restrictions without replacing native authority. Provider serializers,
+workload descriptors, gateway transports, spend, replay, output adjudication and fixed synthetic
+purposes remain unchanged. Operator fixtures and Payroll SQL add no provider serializer capability.
+No raw text, identity, HR dates/amounts, model money calculation or autonomous sensitive effect is
+authorized. These controls are not an anonymity guarantee.
+
+Prior failures and source receipts remain at their actual producing SHAs. Fresh source-bound hosted
+qualification and separate authenticated release evidence remain required. Further covered-source
+changes require another exact technical disposition; generated identities alone grant no approval.
+
+
+## Technical source binding — 31 October 2026, bounded full-gate repairs
+
+Independent review reconstructed the same1133-file provider closure at
+`033c556d1b4e9d3818be2055a810271398bcceea25bcf40eedff9e7417db4d78`.
+Only ten covered files differ from the original combined source
+`b8134d487cce89cb974f87956e1d1a24f6d42fbc`: two scoped company-retention declarations,
+the canonical client-safe Rewards calendar facade and import, additive Assistant shell route
+metadata under the same authenticated session guard, and exactly216 native-outcome caption
+leaves across six locales. The final six captions name the employee Schedule Group assignment
+and cover setting, switching and clearing. They do not claim group catalogue, clock, overtime
+or payment effects. All other1123 covered files and closure membership are unchanged.
+
+Finite serializers, descriptors, provider transports, replay/one-use dispatch, spend controls,
+current access and literal-review validation remain unchanged. No raw-data variant, new protected
+purpose, contract, model money calculation or autonomous sensitive effect is admitted.
+The SAME24 approved records receive only this reviewed sourceDigest; every original human
+status, reviewer, evidence anchor and2026-10-30T06:19:30Z timestamp is preserved. Both pending
+blocks remain byte-identical. This technical completion within the original owner-approved
+protected feature/UI scope is not a new human approval, privacy certification, runtime PASS
+or staging acceptance. Translation review is semantic peer review, not native-speaker certification.
+
+Independent technical disposition: `rewards-provider-r1-final-technical-review-20261031.md`,
+SHA256 `9b8dba774b65f36fa5f84cebc043607d71a01fc2d2c1921cc6a651f696cef11b`.
+Fresh exact-source hosted qualification remains required; original failures retain their real
+source/controller identities. Any further covered-byte change requires another exact review.

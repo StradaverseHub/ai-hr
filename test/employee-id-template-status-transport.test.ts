@@ -1,0 +1,14 @@
+/** Protocol fixtures only; canonical database effects are covered in the custody suite. */
+import {expect,it} from 'vitest';
+import {EmployeeIdTemplateStatusBrowserPacket,parseGenericModuleActionBrowserResult} from '../lib/assistant-actions/module-action-http';
+const action='org.employee_id_template.status' as const,configId='84000000-0000-4000-8000-000000000001',companyId='84000000-0000-4000-8000-000000000002',actionId='84000000-0000-4000-8000-000000000003';
+const input={action,contractVersion:1 as const,configId,expectedStatus:'active',status:'inactive'};
+const packet=EmployeeIdTemplateStatusBrowserPacket.parse({action,operation:'prepare',input});
+const prepared=()=>({kind:'prepared',review:{action,contractVersion:1,actionId,reviewedDigest:'a'.repeat(64),createdAt:'2026-10-30T00:00:00Z',expiresAt:'2026-10-30T00:10:00Z',content:input,review:{configId,companyId,companyName:'Fictional Company',templateName:'Fictional Template',prefix:'FIC',suffix:'MY',status:'active',afterStatus:'inactive'},consequence:'template_status_only_future_hire_rule_no_counter_or_existing_code_change'}});
+it('accepts the exact native template review without an employment binding',()=>{expect(parseGenericModuleActionBrowserResult(packet,prepared()).kind).toBe('prepared');});
+it('refuses posted actor, counter, format or fake employee fields',()=>{for(const extra of [{employmentId:configId},{currentRunningNumber:7},{prefix:'EDIT'},{personId:configId},{companyId}])expect(EmployeeIdTemplateStatusBrowserPacket.safeParse({action,operation:'prepare',input:{...input,...extra}}).success).toBe(false);});
+it('refuses a substituted template even when both response halves agree',()=>{const result=prepared();result.review.content={...input,configId:companyId};result.review.review.configId=companyId;expect(()=>parseGenericModuleActionBrowserResult(packet,result)).toThrow();});
+it('refuses private source projections or a position action response',()=>{expect(()=>parseGenericModuleActionBrowserResult(packet,{...prepared(),source:{currentRunningNumber:7}})).toThrow();const result=prepared();expect(()=>parseGenericModuleActionBrowserResult(packet,{...result,review:{...result.review,action:'org.position.archive'}})).toThrow();});
+it('requires the exact saved action ID during recovery',()=>{const resume=EmployeeIdTemplateStatusBrowserPacket.parse({action,operation:'reopen',actionId:companyId});expect(()=>parseGenericModuleActionBrowserResult(resume,prepared())).toThrow();});
+
+it('reopens the exact saved template review and refuses a mismatched config projection',()=>{const resume=EmployeeIdTemplateStatusBrowserPacket.parse({action,operation:'reopen',actionId});expect(parseGenericModuleActionBrowserResult(resume,prepared()).kind).toBe('prepared');const result=prepared();result.review.review.configId=companyId;expect(()=>parseGenericModuleActionBrowserResult(resume,result)).toThrow();});

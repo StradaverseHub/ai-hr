@@ -60,6 +60,11 @@ const HOLDER = read('components/custom-holder-fields.tsx');
 const LOCALES = ['en', 'ms', 'zh', 'ta', 'th', 'vi'] as const;
 
 describe('Bank card — source layout (ef720d3a)', () => {
+  it('binds native bank editor editability to the owner metadata guard and shared form nomination',()=>{
+    const start=PAGE.indexOf('const canEditBank='),end=PAGE.indexOf('// Item df09f22a',start),card=PAGE.slice(start,end);
+    expect(start).toBeGreaterThan(0);expect(card).toContain('countryPack?.statutory.bankEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId})');expect(card).toContain('<fieldset disabled={!canEditBank}');expect(card).toContain('<BankInfoCard');expect(card).toContain('workforceReadOnly');
+  });
+
   it('renders the dedicated Bank Information card on the Bank & Statutory panel', () => {
     const start = PAGE.indexOf('bankStatutory: (');
     const end = PAGE.indexOf('),', start);

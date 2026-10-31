@@ -53,3 +53,11 @@ describe('human evaluation scope, consent and authenticated progress',()=>{
  });
 
 });
+
+it.each(['en','ms','zh','ta','th','vi'])('%s names nonempty native signals without passing native values into candidate forms',async locale=>{
+ state.locale=locale;const data=view(null);data.ownNativeSignalChoices=[{associationId:'20000000-0000-4000-8000-000000000001',module:'employees',action:'employees.bank.maintain',semantics:'bank_destination_saved_not_payment_processed_or_statutory_changed',createdAt:'2026-01-01T00:00:00Z'},{associationId:'20000000-0000-4000-8000-000000000002',module:'payroll',action:'payroll.close',semantics:'batch_close_recorded_not_payment',createdAt:'2026-01-01T00:00:00Z'}];
+ const {container}=render(await ModuleAgentReview({view:data}));const pickers=container.querySelectorAll<HTMLSelectElement>('select[name="nativeSignalId"]');expect(pickers).toHaveLength(2);
+ const copy=copies[locale].assistant.workspace;
+ for(const picker of pickers){expect([...picker.options].map(option=>option.value)).toEqual(['',...data.ownNativeSignalChoices.map(row=>row.associationId)]);expect(picker.textContent).toContain(copy.nativeOutcomes.action_employees_bank_maintain);expect(picker.textContent).toContain(copy.nativeOutcomes.action_payroll_close);expect(picker.value).toBe('');}
+ expect(container.querySelector('[name="bankAccountNo"],[name="personId"],[name="eventId"],[name="salary"]')).toBeNull();expect(container.textContent).not.toMatch(/action_employees_bank_maintain|action_payroll_close/);
+});

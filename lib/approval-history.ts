@@ -27,6 +27,7 @@ export function isApprovalHistoryModule(v: string): v is ApprovalHistoryModule {
 /** aggregate_type → module label key. Note leave CANCELLATIONS live on their own aggregate. */
 export const moduleOfAggregate: Record<string, ApprovalHistoryModule> = {
   'leave-request': 'leave',
+  'replacement-leave-request': 'leave',
   'leave-cancellation-request': 'leave',
   'attendance-correction': 'attendance',
   'claim-request': 'claims',
@@ -38,7 +39,7 @@ export const moduleOfAggregate: Record<string, ApprovalHistoryModule> = {
 
 /** module → the aggregate-type set passed to the SQL read function's p_aggregate_types filter. */
 export const aggregateTypesOfModule: Record<ApprovalHistoryModule, string[]> = {
-  leave: ['leave-request', 'leave-cancellation-request'],
+  leave: ['leave-request', 'leave-cancellation-request', 'replacement-leave-request'],
   attendance: ['attendance-correction'],
   claims: ['claim-request'],
   travel: ['travel-request'],
@@ -69,6 +70,7 @@ export type ApprovalHistoryActionKey =
 /** Derive the display-label key for one history row. resignation.ACCEPTED reads as Approved;
  *  employment-review.decided maps its ReviewDecision (confirm/extend/terminate) to its own label. */
 export function actionKeyOf(eventType: string, payload: unknown): ApprovalHistoryActionKey {
+  if(eventType==='attendance-workflow.stage.decided'||eventType==='attendance-workflow.participant.decided')return (payload as {decision?:string}|null)?.decision==='rejected'?'rejected':'stepApproved';
   if (eventType === 'leave-request.step.approved') return 'stepApproved';
   if (eventType === 'leave-request.date.decided') return 'perDayDecision';
   if (eventType === 'employment-review.decided') {

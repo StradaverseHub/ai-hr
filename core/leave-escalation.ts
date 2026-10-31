@@ -31,7 +31,7 @@
  */
 import { and, eq, gt, isNotNull, lt, asc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import { withTenant, type SessionContext } from '../db/client';
+import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import {
   company,
@@ -51,15 +51,28 @@ import { holidayDatesFor } from './holidays';
  *  conversion here goes through this zone (there is no timezone column on tenant or company today). */
 export const HR_LOCAL_TZ = 'Asia/Kuala_Lumpur';
 
-/** A timestamptz as an ISO yyyy-mm-dd calendar date in HR_LOCAL_TZ (en-CA yields yyyy-mm-dd). */
-function localDate(ts: Date): string {
+/** A timestamptz as an ISO yyyy-mm-dd calendar date in HR_LOCAL_TZ (en-CA yields yyyy-mm-dd). Shared with the
+ *  Automatic-tier approval chasers (core/automatic-chasers.ts, WP13), which generalise this sweep's clock. */
+export function localDate(ts: Date): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: HR_LOCAL_TZ }).format(ts);
 }
 
 /** Pure ISO date + days (UTC string maths — no TZ drift, mirrors employment-review's subtractDays). */
-function addDaysIso(isoDate: string, days: number): string {
+export function addDaysIso(isoDate: string, days: number): string {
   const t = Date.UTC(Number(isoDate.slice(0, 4)), Number(isoDate.slice(5, 7)) - 1, Number(isoDate.slice(8, 10)));
   return new Date(t + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** WP13 — the escalation's clock for one requester, shared with the Automatic-tier chasers
+ *  (core/automatic-chasers.ts): elapsed FULL working days in (fromDate, today] on the requester's own roster
+ *  minus their holidays, from the same owners the sweep below uses. Null when the roster has no working dates
+ *  (the sweep's empty-roster skip). Both dates are HR-local ISO dates. */
+export async function elapsedWorkingDaysTx(tx: Tx, employmentId: string, fromDate: string, today: string): Promise<number | null> {
+  const roster = await leaveWorkingDaysCounterTx(tx, employmentId);
+  if (!roster.hasWorkingDates) return null;
+  if (fromDate >= today) return 0;
+  const holidays = await holidayDatesFor(tx, { employmentId, startDate: fromDate, endDate: today });
+  return roster(addDaysIso(fromDate, 1), today, holidays);
 }
 
 export type EscalationSweepResult = {

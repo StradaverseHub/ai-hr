@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname,join,normalize } from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
-import { AI_FEATURES } from '../lib/ai/features';
+import { AI_FEATURES, TEMPLATE_ONLY_AI_FEATURES, isTemplateOnlyAiFeature } from '../lib/ai/features';
 import { MODULE_CATALOG, SETTING_CATALOG } from '../packs/catalog';
 const read=(p:string)=>readFileSync(p,'utf8');
 const walk=(p:string):string[]=>readdirSync(p,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(join(p,e.name)):/\.(?:[cm]?[jt]sx?)$/.test(e.name)?[join(p,e.name)]:[]);
@@ -25,6 +25,8 @@ const governedCallers:Record<string,{features:readonly string[];seams:readonly R
  'core/assistant-conversation-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-prompt-harness.ts':{features:['module_agent_evaluation'],seams:[/withAiAdmissionLifecycle\(cfg,\s*'module_agent_evaluation'/],issuedBy:'core/module-agent-releases.ts'},
  'core/module-agent-releases.ts':{features:['module_agent_evaluation','module_agent_planning'],seams:[/governedAiConfig\([^()]*'module_agent_evaluation'\)/,/governedAiConfig\([^()]*'module_agent_planning'\)/,/withAiAdmissionLifecycle\([^,()]*,\s*'module_agent_planning'/]},
+ // Dormant WP14 helper remains source-scanned; no mounted acceptance/activation authority is restored.
+ 'core/ai-provider-baseline.ts':{features:['provider_evaluation'],seams:[/governedAiConfig\(ctx,\s*snapshot,\s*'provider_evaluation'\)/,/bindStrictAiSpendRoot\(governedAiConfig/]},
  'core/personnel-import-assistance.ts':{features:['personnel_import_mapping'],seams:[/const FEATURE\s*=\s*'personnel_import_mapping'/,/resolveActiveAiConfig\(tx,\s*ctx,\s*FEATURE\)/]},
 };
 // Shared Performance provider seam: it resolves no configuration of its own and admits every call under the
@@ -52,6 +54,66 @@ const performanceCallers:Record<string,number>={
  'packs/performance/onehr/rewrite-service.ts':1,
  'packs/performance/onehr/talent-insight-service.ts':1,
  'packs/performance/onehr/written-remarks-service.ts':1,
+};
+// Closed native owners, including BOTH governed Performance wrappers. Explicit source owners
+// detect lost paths without treating textual call count as a measure of business coverage.
+const performanceOwners:Record<string,Record<string,string>>={
+  "packs/performance/onehr/admin-agent-service.ts": {
+    "askAssessmentAdmin": "generateDraft"
+  },
+  "packs/performance/onehr/ai.ts": {
+    "draftOnehrNarrative": "generateDraft"
+  },
+  "packs/performance/onehr/calibration-conversation.ts": {
+    "sendCalibrationMessage": "generatePerformanceSourceDraft"
+  },
+  "packs/performance/onehr/career-draft-service.ts": {
+    "suggestAssessmentCareerPlan": "generateDraft"
+  },
+  "packs/performance/onehr/competency-insight-service.ts": {
+    "getAssessmentCompetencyInsight": "generateDraft"
+  },
+  "packs/performance/onehr/development-suggestion-service.ts": {
+    "suggestAssessmentDevelopmentGoals": "generateDraft"
+  },
+  "packs/performance/onehr/evidence-reading.ts": {
+    "readAssessmentFileTexts": "readImage"
+  },
+  "packs/performance/onehr/feedback-conversation.ts": {
+    "sendFeedbackMessage": "generatePerformanceSourceDraft"
+  },
+  "packs/performance/onehr/guide-service.ts": {
+    "askPerformanceGuide": "generateDraft"
+  },
+  "packs/performance/onehr/idp-fit-service.ts": {
+    "getAssessmentIdpFit": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/insight-service.ts": {
+    "getAssessmentPerformanceInsight": "generateDraft"
+  },
+  "packs/performance/onehr/potential-insight-service.ts": {
+    "getAssessmentPotentialInsight": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/provider-source-draft.ts": {
+    "generatePerformanceNativeOutline": "generateDraft",
+    "generatePerformanceSourceDraft": "generateDraft"
+  },
+  "packs/performance/onehr/record-insight-service.ts": {
+    "getAssessmentRecordInsight": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/review-command-ai.ts": {
+    "confirmLiteral": "generateDraft",
+    "proposeSettingSuggestion": "generateDraft"
+  },
+  "packs/performance/onehr/rewrite-service.ts": {
+    "rewriteAssessmentField": "generateDraft"
+  },
+  "packs/performance/onehr/talent-insight-service.ts": {
+    "getAssessmentTalentInsight": "generatePerformanceNativeOutline"
+  },
+  "packs/performance/onehr/written-remarks-service.ts": {
+    "getAssessmentWrittenRemarks": "generatePerformanceNativeOutline"
+  }
 };
 const analysisCalls=['generatePrivateAiAnalysis','generatePrivateAiTaskAnalysis'];
 const workloadCalls=['generateDraft','readImage','converse',...analysisCalls,...performanceSeam.calls];
@@ -115,6 +177,17 @@ describe('complete AI management inventory and boundary',()=>{
   }
   expect(coreFound.sort()).toEqual([...Object.keys(coreCallers),...Object.keys(governedCallers)].sort());expect(packCalls).toBeGreaterThan(15);
   expect(packFound).toEqual(performanceCallers);expect(Object.keys(packFound)).toHaveLength(18);expect(packCalls).toBe(20);
+  // Check the concrete named caller body too, so keeping a file/import while dropping its supported
+  // operation cannot satisfy the inventory. Nested functions remain inside their real native owner.
+  for(const [file,owners] of Object.entries(performanceOwners)){
+   const src=read(file),tree=parseAiSource(file,src);
+   const declarations=new Map<string,ts.FunctionDeclaration>();
+   const collect=(node:ts.Node)=>{if(ts.isFunctionDeclaration(node)&&node.name)declarations.set(node.name.text,node);ts.forEachChild(node,collect);};collect(tree);
+   for(const [owner,call] of Object.entries(owners)){
+    const declaration=declarations.get(owner);expect(declaration,`${file} retains native owner ${owner}`).toBeDefined();
+    expect(declaration?.body?.getText(tree),`${file}#${owner} invokes ${call}`).toMatch(new RegExp(`\\b${call}\\s*\\(`));
+   }
+  }
   // Since the provider snapshot owner (ADR-0131, 64651f101) the tenant row and platform fallback are one
   // snapshot, so the active resolver issues exactly one governed configuration and nothing ungoverned.
   const config=read('core/ai-config.ts');expect(config.match(/governedAiConfig\(/g)?.length).toBe(1);
@@ -175,8 +248,11 @@ describe('complete AI management inventory and boundary',()=>{
   // feature through the live control context (0621), which refuses every unlisted feature.
   const admitAt=admit.lastIndexOf('FUNCTION app.ai_admit('),admitBody=admit.slice(admitAt,admit.indexOf('END $$',admitAt));
   expect(admitAt).toBeGreaterThanOrEqual(0);expect(admitBody.length).toBeGreaterThan(500);expect(admitBody).toContain('app._ai_control_context(wanted_feature,');
-  for(const feature of AI_FEATURES){expect(context).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
-  for(const [source,marker,expected] of [[guard,'NEW.feature_id',AI_FEATURES.filter(f=>f.setting===null)],[context,'wanted_feature',AI_FEATURES]] as const){
+  // WP13: template-only scheduled agents (no model call) are deliberately absent from model admission.
+  for(const feature of TEMPLATE_ONLY_AI_FEATURES)expect(context).not.toContain(`'${feature}'`);
+  const admitted=AI_FEATURES.filter(f=>!isTemplateOnlyAiFeature(f.id));
+  for(const feature of admitted){expect(context).toContain(`'${feature.id}'`);if(feature.module)expect(MODULE_CATALOG.some(m=>m.code===feature.module)).toBe(true);if(feature.setting)expect(SETTING_CATALOG.some(s=>s.key===feature.setting)).toBe(true);}
+  for(const [source,marker,expected] of [[guard,'NEW.feature_id',AI_FEATURES.filter(f=>f.setting===null)],[context,'wanted_feature',admitted]] as const){
    const lists=[...source.matchAll(new RegExp(`${marker.replace('.','\\.')} NOT IN \\(([^)]+)\\)`,'g'))];expect(lists,marker).toHaveLength(1);
    expect([...lists[0][1].matchAll(/'([^']+)'/g)].map(m=>m[1]).sort()).toEqual(expected.map(f=>f.id).sort());
   }

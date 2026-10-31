@@ -6136,7 +6136,7 @@ export async function lockReviewedLeaveDecisionSourceTx(tx: Tx, supplied: Sessio
  await tx.select({ id: leaveApprovalStep.id }).from(leaveApprovalStep).where(eq(leaveApprovalStep.leaveRequestId, req.id)).orderBy(asc(leaveApprovalStep.stepIndex), asc(leaveApprovalStep.id)).for('update', { noWait: true });
  const after = await nominate();
  if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error('Leave decision source changed');
- const [subject]=await tx.select({personId:employment.personId,companyId:employment.companyId}).from(employment).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);
+ const [subject]=await tx.execute<{personId:string;companyId:string}>(sql`select person_id as "personId",company_id as "companyId" from app.delegated_approval_subject(${req.employmentId}::uuid,'leave','leave.application')`);
  if(!subject)throw new Error('Leave decision subject unavailable');
  return {ctx,req,steps:after.steps,subject};
 }
@@ -12253,9 +12253,9 @@ async function assertPendingLeaveMetadataAssignmentTx(tx:Tx,ctx:SessionContext,e
  * Applicant labels are selected ONLY AFTER the same native assignment check as pendingLeaveTaskMetadata. */
 export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionContext){
  await assertAssignedWorkPrincipalTx(tx,ctx);
- const nominations=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,createdAt:leaveRequest.createdAt})
-  .from(leaveRequest).innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
-  .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`))
+ const nominations=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:sql<string>`approval_subject.person_id`,createdAt:leaveRequest.createdAt})
+  .from(leaveRequest).innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
+  .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`))
   .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id)).limit(1001);
  const tasks:{leaveRequestId:string;currentStepId:string|null;stepIndex:number|null;applicantLabel:string|null;createdAt:Date}[]=[];if(nominations.length>1000)throw Error('Assigned choices unavailable');let truncated=false;
  for(const row of nominations.slice(0,1000)){
@@ -12264,7 +12264,7 @@ export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionCont
   const current=steps.find(step=>step.status==='pending');if(steps.length&&!current)continue;
   try{await assertPendingLeaveMetadataAssignmentTx(tx,ctx,row.employmentId,current);}catch(error){if(isLeaveDecisionRefusal(error))continue;throw error;}
   if(tasks.length>=100){truncated=true;break;}
-  const [applicant]=await tx.select({name:person.fullName}).from(person).where(and(eq(person.id,row.personId),eq(person.tenantId,ctx.tenantId))).limit(1);
+  const [applicant]=await tx.execute<{name:string}>(sql`select employee as name from app.delegated_approval_subject(${row.employmentId}::uuid,'leave','leave.application')`);
   tasks.push({leaveRequestId:row.id,currentStepId:current?.id??null,stepIndex:current?.stepIndex??null,applicantLabel:applicant?.name??null,createdAt:row.createdAt});
  }
  return{tasks,truncated};
@@ -12273,12 +12273,11 @@ export async function pendingLeaveDecisionChoiceMetadataTx(tx:Tx,ctx:SessionCont
 export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:employment.personId,
-   employee:person.fullName,createdAt:leaveRequest.createdAt}).from(leaveRequest)
-   .innerJoin(employment,and(eq(employment.id,leaveRequest.employmentId),eq(employment.tenantId,leaveRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+  const candidates=await tx.select({id:leaveRequest.id,employmentId:leaveRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
+   employee:sql<string>`approval_subject.employee`,createdAt:leaveRequest.createdAt}).from(leaveRequest)
+   .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveRequest.employmentId},'leave','leave.application') AS approval_subject`,sql`true`)
+   .where(and(eq(leaveRequest.tenantId,ctx.tenantId),eq(leaveRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(leaveRequest.createdAt),asc(leaveRequest.id));
   const result:AssignedApprovalMetadata[]=[];
   for(let offset=0;offset<candidates.length;offset+=1000){
@@ -12303,12 +12302,11 @@ export function pendingLeaveTaskMetadata(ctx:SessionContext,companyIds?:string[]
 export async function pendingLeaveCancellationTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:employment.personId,
-   employee:person.fullName,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
-   .innerJoin(employment,and(eq(employment.id,leaveCancellationRequest.employmentId),eq(employment.tenantId,leaveCancellationRequest.tenantId)))
-   .leftJoin(person,eq(person.id,employment.personId))
-   .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(${employment.personId})`,
-    companyIds===undefined?undefined:inArray(employment.companyId,companyIds)))
+  return tx.select({id:leaveCancellationRequest.id,employmentId:leaveCancellationRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
+   employee:sql<string>`approval_subject.employee`,createdAt:leaveCancellationRequest.createdAt}).from(leaveCancellationRequest)
+   .innerJoin(sql`LATERAL app.delegated_approval_subject(${leaveCancellationRequest.employmentId},'leave','leave.cancellation') AS approval_subject`,sql`true`)
+   .where(and(eq(leaveCancellationRequest.tenantId,ctx.tenantId),eq(leaveCancellationRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
    .orderBy(desc(leaveCancellationRequest.createdAt),asc(leaveCancellationRequest.id));
  });
  // The native principal was already proved above. No candidate needs a second decision transaction.

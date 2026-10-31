@@ -1,6 +1,12 @@
+import {setAgentActionPause} from '../core/ai-inventory';
+import * as dbClient from '../db/client';
+import * as vault from '../lib/pii/vault';
+import {ownLeaveReviewedDigest} from '../core/assistant-actions/own-leave-review-digest';
+import {assertAiActionUnpausedTx} from '../core/ai-governance';
 /** Source-only acceptance: both SQL drafts must be journalled in a coordinated later window.
  * These cases are authored, NOT executed, while Board 3 owns the shared runtime. */
 import { randomUUID } from 'node:crypto';
+import { pgSqlState } from '../lib/db-error';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -204,8 +210,26 @@ describe('pending own-leave review custody', () => {
     expect(prepared).toHaveLength(5);
     expect(new Set(prepared.map(review => review.actionId)).size).toBe(5);
     expect(refused).toHaveLength(1);
-    expect(refused[0]).toBeInstanceOf(OwnLeaveContentUnavailable);
-    expect(await counts()).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
+    const sqlState = pgSqlState(refused[0]);
+    const contentUnavailable = refused[0] instanceof OwnLeaveContentUnavailable;
+    // Report only the canonical SQLSTATE/category: Drizzle error messages contain SQL and params.
+    const diagnostic = { kind: 'competing-own-leave-prepare-refusal', sqlState: sqlState ?? null,
+      category: contentUnavailable ? 'content-unavailable' : 'database-or-unknown' };
+    console.info(JSON.stringify(diagnostic));
+    expect(sqlState === '55P03' || (sqlState === undefined && contentUnavailable),
+      JSON.stringify(diagnostic)).toBe(true);
+    const before = await counts();
+    expect(before).toMatchObject({ bodies: 5, pending: 5, model_runs: 0, requests: 0 });
+    const persisted = async () => Array.from(await owner.db.execute<{id:string;review:unknown;bodies:unknown}>(sql`select r.id,to_jsonb(r) as review,
+      (select coalesce(jsonb_agg(to_jsonb(c) order by c.action_id),'[]'::jsonb) from app.assistant_own_leave_review_content c where c.action_id=r.id) as bodies
+      from app.assistant_own_leave_review r where r.tenant_id=${base.tenantId}::uuid order by r.id`));
+    const committed = await persisted();
+    expect(committed.map(row => row.id)).toEqual(prepared.map(review => review.actionId).sort());
+    // All six original transactions have settled. A NEW canonical preparation now proves the
+    // deterministic capacity denial separately from a possible earlier Access-lock refusal.
+    await expect(prepare()).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);
+    expect(await persisted()).toEqual(committed);
+    expect(await counts()).toEqual(before);
     for (const review of prepared) expect(await withTenant(ctx, tx => reopenOwnLeaveReviewTx(tx, ctx, review.actionId)))
       .toEqual({ kind: 'prepared', review });
   });
@@ -613,4 +637,24 @@ describe('own-leave top-level confirmation owner', () => {
 describe('fresh permitted pending own-leave reopening',()=>{
  it('refuses formerly visible saved balance after the actual canonical ESS view policy hides it, without returning private values or changing custody/native effects',async()=>{const review=await prepare();expect(review.availableBalance).not.toBeNull();const [type]=await owner.db.select().from(schema.leaveType).where(eq(schema.leaveType.id,base.annualLeaveTypeId));await updateLeaveType(await groupCtx(),{id:type.id,name:type.name,essViewConfig:{...(type.essViewConfig??{}),available:false}});const before=await counts();await expect(withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId,'en'))).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);expect(await counts()).toEqual(before);expect(before).toMatchObject({requests:0,pending:1,bodies:1,model_runs:0});});
  it('refuses a changed canonical private balance during pending reopen instead of replaying the saved estimate',async()=>{const review=await prepare();await credit(subject.employmentId);const before=await counts();await expect(withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,review.actionId,'en'))).rejects.toBeInstanceOf(OwnLeaveContentUnavailable);expect(await counts()).toEqual(before);});
+});
+
+/** Original writer: no nonce/content compatibility reinterpretation. The exact protected candidate
+ * and legacy domain-separated identity are encrypted independently of the refactored codec. */
+async function retainedOwnLeaveReview(){return withTenant(ctx,async tx=>{
+ const outcome=await readOwnLeaveCandidateTx(tx,ctx,nomination,{employmentId:subject.employmentId,leaveTypeId:base.annualLeaveTypeId},text,'en');if(outcome.kind!=='candidate')throw Error('Expected native candidate');await assertAiActionUnpausedTx(tx,ctx,'hr_assistant');
+ const review=outcome.candidate,content={review,availableBalance:outcome.privateAvailableBalance},binding=review.binding,actionId=randomUUID(),reviewedDigest=ownLeaveReviewedDigest(review),identity=JSON.stringify([1,actionId,binding.tenantId,binding.userId,binding.personId,binding.companyId,binding.employmentId,review.intentDigest,reviewedDigest]),dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_own_leave_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.employmentId}::uuid,${binding.companyId}::uuid,${review.intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:own-leave:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(content),'assistant:own-leave:body:'+identity)})`);return{actionId,reviewedDigest,contractVersion:1 as const};}finally{dek.fill(0);}
+ });}
+describe('WP9 original own-leave protocol compatibility',()=>{
+ it('opens and completes an original non-nonce writer row once across digest refusal and replay',async()=>{const old=await retainedOwnLeaveReview();expect((await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,old.actionId,'en'))).kind).toBe('prepared');await expect(confirmOwnLeaveReview(ctx,{...old,reviewedDigest:'0'.repeat(64)},'en')).rejects.toThrow();const done=await confirmOwnLeaveReview(ctx,old,'en');expect(done.kind).toBe('completed');const after=await counts();expect(after.requests).toBe(1);expect(await confirmOwnLeaveReview(ctx,old,'en')).toEqual(done);expect(await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,old.actionId,'en'))).toEqual(done);expect(await counts()).toEqual(after);});
+ it('retires original pending rows after grant removal without decrypting or requesting Leave',async()=>{const old=await retainedOwnLeaveReview();await revokeAssistant(adminCtx(base),{appUserId:ctx.userId!});const before=await counts(),unwrap=vi.spyOn(vault,'unwrapDek');try{const retired=await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,ctx,{actionId:old.actionId,contractVersion:1}));expect(retired.kind).toBe('retired');expect(unwrap).not.toHaveBeenCalled();expect(await counts()).toMatchObject({requests:before.requests,model_runs:before.model_runs,bodies:0,pending:0});}finally{unwrap.mockRestore();}});
+ it('reconciles a genuinely committed request after actual reply loss without a second request',async()=>{const r=await prepare(),real=dbClient.withTenant;const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirmOwnLeaveReview(ctx,confirmation(r),'en')).rejects.toThrow();}finally{spy.mockRestore();}const after=await counts(),done=await withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,r.actionId,'en'));expect(done.kind).toBe('completed');expect(after.requests).toBe(1);expect(await confirmOwnLeaveReview(ctx,confirmation(r),'en')).toEqual(done);expect(await counts()).toEqual(after);});
+});
+
+it('enforces the fixed own-leave action pause without browser scope and preserves privacy retirement',async()=>{
+ const r=await prepare();await setAgentActionPause(await groupCtx(),'leave.apply',true);const before=await counts();
+ await expect(confirmOwnLeaveReview(ctx,confirmation(r),'en')).rejects.toThrow();await expect(withTenant(ctx,tx=>reopenOwnLeaveReviewTx(tx,ctx,r.actionId,'en'))).rejects.toThrow();expect(await counts()).toEqual(before);
+ expect((await withTenant(ctx,tx=>discardOwnLeaveReviewTx(tx,ctx,{actionId:r.actionId,contractVersion:1}))).kind).toBe('retired');
+ await setAgentActionPause(await groupCtx(),'leave.apply',false);const fresh=await prepare();expect((await confirmOwnLeaveReview(ctx,confirmation(fresh),'en')).kind).toBe('completed');expect((await counts()).requests).toBe(1);
 });

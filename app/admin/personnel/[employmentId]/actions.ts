@@ -1670,6 +1670,7 @@ async function applyBankSection(
   if (!pack) throw new Error('No localization pack for MY');
   await pack.statutory.setBank(s, {
     personId,
+    employmentId:String(formData.get('employmentId')),
     bankName: (formData.get('bankName') as string) || null,
     bankAccountNo: (formData.get('bankAccountNo') as string) || null,
     enableCustomHolderName: formData.get('enableCustomHolderName') === 'on',
@@ -1756,6 +1757,7 @@ async function applyPassportSection(
   if (!pack) throw new Error('No localization pack for MY');
   await pack.statutory.setPassport(s, {
     personId: String(formData.get('personId')),
+    employmentId:String(formData.get('employmentId')),
     passportNumber: (formData.get('passportNumber') as string) || null,
     passportIssueDate: (formData.get('passportIssueDate') as string) || null,
     passportExpiryDate: (formData.get('passportExpiryDate') as string) || null,

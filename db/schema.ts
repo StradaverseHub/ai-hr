@@ -8129,6 +8129,8 @@ export const aiProviderConfig = pgTable(
     updatedByUserId: uuid('updated_by_user_id'),
     createdAt: createdAt(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    /** WP14 (0694): the passed or accepted baseline run that admitted this exact version; cleared by any in-place change. */
+    baselineRunId: uuid('baseline_run_id'),
   },
   (t) => [uniqueIndex('ai_provider_config_tenant_provider_uq').on(t.tenantId, t.provider)],
 );

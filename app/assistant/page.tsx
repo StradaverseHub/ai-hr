@@ -2,6 +2,7 @@ import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
 import {isAdmin} from '@/lib/authz-model';
 import {allowedCompanies} from '@/core/read';
 import {getScopeIds} from '@/lib/scope';
+import {PersonnelReviewNavigation} from '@/components/assistant/personnel-review-navigation';
 import {AssistantHistoryPrivacy} from '../../components/assistant/history-privacy';
 import {OwnClearForm,OwnClearStatus} from '../../components/assistant/own-clear';
 import {eraseConversationMetadataAction} from './agent-review-actions';
@@ -96,6 +97,7 @@ export default async function AssistantPage({
             {mayGrant && <Link href="/control-tower/agents/allowances#user-limits" className="mt-3 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{t('home.grantSelf')}</Link>}
           </section>
           {homeTabs}
+          <PersonnelReviewNavigation ctx={s}/>
         </div>
         <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-2 border-t border-border pt-4">
           <h2 id="assistant-privacy-heading" className="text-sm font-medium">{t('home.privacy')}</h2>
@@ -133,6 +135,7 @@ export default async function AssistantPage({
           initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
             answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
         {homeTabs}
+        <PersonnelReviewNavigation ctx={s}/>
       </div>
 
       {history.length>0&&<details className="mx-auto max-w-3xl border-t border-border pt-2">

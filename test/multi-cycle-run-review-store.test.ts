@@ -1,8 +1,10 @@
 import {expectNativeSourceCapture} from './native-outcome-source-capture.helpers';
 /** Authored UNRUN. Fictional canonical additional-run custody; coordinated unapplied SQL required. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import * as dbClient from '../db/client';
+import {newPrivateReviewNonce,privateReviewCommitment} from '../core/assistant-actions/private-review-commitment';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import * as vault from '../lib/pii/vault';
@@ -18,7 +20,7 @@ import {markReportFiled} from '../core/reporting';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {payrollPeriodOwnerKey} from '../core/payroll-period-lock';
 import {createAdditionalRun,generatePayslips,closeBatch,setPayrollInput} from '../core/payroll';
-import {prepareReviewedMultiCycleRunSourceTx,confirmReviewedMultiCycleRunSourceTx} from '../core/assistant-actions/reviewed-multi-cycle-run-source';
+import {withReviewedMultiCycleRunSourceIntervalTx,prepareReviewedMultiCycleRunSourceTx,confirmReviewedMultiCycleRunSourceTx} from '../core/assistant-actions/reviewed-multi-cycle-run-source';
 import {prepareMultiCycleRunReview,confirmMultiCycleRunReview,reopenMultiCycleRunReview,discardMultiCycleRunReview,listMultiCycleRunReviews} from '../core/assistant-actions/multi-cycle-run-review-store';
 import {REVIEWED_MULTI_CYCLE_RUN_ACTION as action,ReviewedMultiCycleRunHumanContent,type ReviewedMultiCycleRunHumanContent as Human} from '../lib/assistant-actions/reviewed-multi-cycle-run-contract';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -98,4 +100,30 @@ it('retains the actual whole selected payroll draft cohort after terminal privat
  const r=await prepare(),done=await confirm(r);if(done.kind!=='completed')throw Error('Expected draft completion');
  await expectNativeSourceCapture(r.actionId,done.receipt.receipt.createdEventId,[...(ctx.personId?[{kind:'person' as const,id:ctx.personId}]:[]),{kind:'person',id:personId},{kind:'employment',id:employmentId}]);
  expect(await custody(r.actionId)).toMatchObject({multi_cycle_review_person_ids:null,multi_cycle_review_employment_ids:null});
+});
+
+/** Independent old writer retains the complete source-owned erasure target set and sealed identity. */
+async function retainedMultiCycleReview(){return withTenant(ctx,tx=>withReviewedMultiCycleRunSourceIntervalTx(tx,ctx,human.input,async(fresh,source)=>{
+ const native=await prepareReviewedMultiCycleRunSourceTx(tx,fresh,human),body={reviewNonce:newPrivateReviewNonce(),content:native.content,nativeReviewedDigest:native.reviewedDigest};
+ const binding={tenantId:fresh.tenantId,userId:fresh.userId!,personId:fresh.personId??null,employmentId:null,companyId:source.companyId,payPeriod:source.payPeriod,payrollCycleId:source.payrollCycleId,runType:human.input.runType},actionId=randomUUID();
+ const intentDigest=createHash('sha256').update(JSON.stringify(body.content)).digest('hex'),reviewedDigest=privateReviewCommitment([1,action,binding],body),identity=JSON.stringify([1,action,actionId,binding,intentDigest,reviewedDigest]);
+ const ids=(list:readonly string[])=>sql`ARRAY[${sql.join(list.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`,dek=vault.newDek();
+ try{const kid=vault.newKid();await tx.execute(sql`select app.assistant_multi_cycle_run_review_prepare(${actionId}::uuid,${binding.personId}::uuid,${binding.companyId}::uuid,${binding.payPeriod},${binding.payrollCycleId}::uuid,${binding.runType},${ids(native.erasureEmploymentIds)},${ids(native.erasurePersonIds)},${intentDigest},${reviewedDigest},${kid},${vault.wrapDek(dek,'assistant:module-action:key:'+identity)},${vault.sealUnderDek(dek,kid,JSON.stringify(body),'assistant:module-action:body:'+identity)})`);return{actionId,reviewedDigest};}finally{dek.fill(0);}
+}));}
+describe('WP9 retained multi-cycle draft custody',()=>{
+ it('reopens and completes the old sealed review once through native preflight',async()=>{
+  const before=await state(),old=await retainedMultiCycleReview(),packet={action,contractVersion:1,...old};expect((await reopenMultiCycleRunReview(ctx,old.actionId)).kind).toBe('prepared');
+  await expect(confirmMultiCycleRunReview(ctx,{...packet,reviewedDigest:'0'.repeat(64)})).rejects.toThrow();
+  const done=await confirmMultiCycleRunReview(ctx,packet);expect(done.kind).toBe('completed');expect(await confirmMultiCycleRunReview(ctx,packet)).toEqual(done);expect(await reopenMultiCycleRunReview(ctx,old.actionId)).toEqual(done);expect((await state()).batches.length-before.batches.length).toBe(1);
+ });
+ it('retires an old pending draft after grant removal without decryption',async()=>{
+  const old=await retainedMultiCycleReview();await revokeAssistant(ctx,{appUserId:ctx.userId!});const before=await state(),unwrap=vi.spyOn(vault,'unwrapDek');unwrap.mockClear();
+  expect((await discardMultiCycleRunReview(ctx,{action,contractVersion:1,actionId:old.actionId})).receipt.state).toBe('discarded');expect(unwrap).not.toHaveBeenCalled();expect(await state()).toEqual(before);
+ });
+ it('reconciles a lost committed reply without another draft or payroll effect',async()=>{
+  const before=await state(),review=await prepare(),real=dbClient.withTenant;
+  const lost:typeof withTenant=async(who,work,options)=>{await real(who,work,options);throw Error('Fictional lost reply after commit');};
+  const spy=vi.spyOn(dbClient,'withTenant').mockImplementationOnce(lost);try{await expect(confirm(review)).rejects.toThrow();}finally{spy.mockRestore();}
+  const done=await reopenMultiCycleRunReview(ctx,review.actionId);expect(done.kind).toBe('completed');expect(await confirm(review)).toEqual(done);const after=await state();expect(after.batches.length-before.batches.length).toBe(1);expect(after.slips).toEqual(before.slips);
+ });
 });

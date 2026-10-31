@@ -6,16 +6,14 @@ import {z} from 'zod';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../../db/client';
 import {cancelClaimTx} from '../../packs/claims/service';
-import {readOwnLeaveActorTx} from './own-leave-actor';
-import {assertAiActionUnpausedTx} from '../ai-governance';
-import {assertModuleEnabled} from '../entitlements';
+import {withAgentActionGuard} from './agent-action-guard';
 import {myOwnEmploymentSubjectsTx} from '../read';
 import {OwnClaimCancellationHumanContent as Human,OwnClaimCancellationPreparedSource as Prepared,OwnClaimCancellationReview as Review,OwnClaimCancellationSourceReceipt as Receipt,OwnClaimCancellationChoices as Choices} from '../../lib/assistant-actions/own-claim-cancellation-contract';
 export class OwnClaimCancellationUnavailable extends Error{constructor(){super('That claim cancellation needs another look. Please reopen your claims.');this.name='OwnClaimCancellationUnavailable';}}
 const fail=():never=>{throw new OwnClaimCancellationUnavailable();};
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))});
 const digestOf=(value:unknown)=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export async function assertOwnClaimCancellationActorTx(tx:Tx,supplied:SessionContext){const fresh=await readOwnLeaveActorTx(tx,capture(supplied));if(!fresh)return fail();assertModuleEnabled(fresh,'claims');await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return fresh;}
+export async function assertOwnClaimCancellationActorTx(tx:Tx,supplied:SessionContext){if(!supplied.personId)return fail();return withAgentActionGuard(tx,capture(supplied),'claims.cancel');}
 type ClaimRow={claimId:string;employmentId:string;companyId:string;claimTypeName:string;incurredOn:string;amount:string;status:string};
 async function ownEmploymentIds(tx:Tx,fresh:SessionContext){const subjects=await myOwnEmploymentSubjectsTx(tx,fresh);if(subjects.length>16)return fail();return subjects.map(row=>row.employmentId);}
 async function claimRow(tx:Tx,fresh:SessionContext,claimId:string,lock:boolean):Promise<ClaimRow|undefined>{

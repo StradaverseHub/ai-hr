@@ -259,8 +259,8 @@ function assertRevision(unit: typeof rewardUnit.$inferSelect, revision: number) 
 function assertUnlocked(unit: typeof rewardUnit.$inferSelect) {
   if (unit.status !== 'draft') throw new RewardError('Return the unit to draft before changing its approved inputs.');
 }
-async function stamp(tx: Tx, ctx: SessionContext, unitId: string, event: string, payload: Record<string, unknown> = {}, returnEventId = false) {
-  return appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: `reward-unit.${event}`, actor: actorOf(ctx), payload }, {returnId:returnEventId});
+async function stamp(tx: Tx, ctx: SessionContext, unitId: string, event: string, payload: Record<string, unknown> = {}, returnEventId = false, eventId?: string) {
+  return appendEvent(tx, { id: eventId, tenantId: ctx.tenantId, aggregateType: 'reward-unit', aggregateId: unitId, eventType: `reward-unit.${event}`, actor: actorOf(ctx), payload }, {returnId:returnEventId});
 }
 async function touch(tx: Tx, unitId: string) {
   await tx.update(rewardUnit).set({ revision: sql`${rewardUnit.revision}+1`, approvedDigest: null, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
@@ -942,7 +942,13 @@ export async function setRewardPayWindowKeep(ctx: SessionContext, unitId: string
 
 export async function decideRewardUnit(ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
   z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
-  return withRewardsTenant(ctx, async tx => {
+  return withRewardsTenant(ctx, tx => decideRewardUnitTx(tx, ctx, unitId, revision, action, reason, acknowledged));
+}
+
+/** Supplied-transaction seam; native decision body below is preserved byte for byte. */
+export async function decideRewardUnitTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, action: 'submit' | 'approve' | 'return' | 'reject' | 'withdraw', reason: string, acknowledged = false) {
+  assertModuleGate(ctx, 'rewards');
+  z.enum(['submit', 'approve', 'return', 'reject', 'withdraw']).parse(action); reason = z.string().trim().max(4000).parse(reason);
     idSchema.parse(unitId); await funding(tx, unitId, true);
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
     const route = unit.kind === 'annual' ? ['bu', 'bg', 'gr', 'ctro', 'ec'] as RewardRole[] : offcycleRoute(unit.kind, unit.offcycle!, entries);
@@ -974,7 +980,28 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
     await tx.update(rewardUnit).set({ status: next, approvedDigest: ['return', 'reject', 'withdraw'].includes(action) ? null : hash, ...(action === 'return' ? { revision: revision + 1 } : {}), ...(unit.kind !== 'annual' ? { reservedCents: { standard: calculated.budgets.standard.used[0], h: calculated.budgets.h.used[0] } } : {}), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     await stamp(tx, ctx, unitId, next === 'approved' ? 'approved' : 'routed', { from: unit.status, to: next, revision });
     return next;
-  });
+}
+
+/** Annual-only admission uses the same native transition and private digest owner. */
+export async function reviewAnnualRewardReturnTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number) {
+  assertModuleGate(ctx, 'rewards'); idSchema.parse(unitId);
+  await funding(tx, unitId, true);
+  const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
+  if (unit.kind !== 'annual') throw new RewardError('Open the native off-cycle review for this decision.');
+  const after = transition(unit.status, roles, 'return');
+  const [source] = await tx.execute<{ xmin: string }>(sql`select xmin::text as xmin from reward_unit where id=${unitId}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+  if (!source || after !== 'draft') throw new RewardError('The annual return source is unavailable.');
+  return { unitId, companyId: unit.companyId, revision, before: unit.status, after, returnedTo: 'bu' as const,
+    decisionDigest: digest(unit, entries), fingerprint: createHash('sha256').update(JSON.stringify([unit, digest(unit, entries), source.xmin])).digest('hex') };
+}
+/** One annual review only; no Assistant transport is enabled by this native facade. */
+export async function returnAnnualRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  const source = await reviewAnnualRewardReturnTx(tx, ctx, unitId, revision);
+  const stage = await decideRewardUnitTx(tx, ctx, unitId, revision, 'return', reason);
+  return { stage, source };
+}
+export async function returnAnnualRewardReview(ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  return withRewardsTenant(ctx, tx => returnAnnualRewardReviewTx(tx, ctx, unitId, revision, reason));
 }
 
 /**
@@ -987,24 +1014,35 @@ export async function decideRewardUnit(ctx: SessionContext, unitId: string, revi
 export async function cancelRewardReview(ctx: SessionContext, unitId: string, revision: number, reason: string) {
   idSchema.parse(unitId); reason = z.string().trim().max(4000).parse(reason);
   if (reason.length < 10) throw new RewardError('Explain why the review is being cancelled (at least 10 characters).');
-  return withRewardsTenant(ctx, async tx => {
-    const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
-    if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
-    const roles = await rolesFor(tx, unitId);
-    const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
-    if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Only the company Rewards administrator or Group Rewards may cancel this review.');
-    assertRevision(unit, revision);
-    if (['posted', 'withdrawn', 'rejected'].includes(unit.status)) throw new RewardError('This review can no longer be cancelled.');
-    // Serialize with sibling off-cycle submissions against the same annual funding.
-    if (unit.parentUnitId) await tx.select({ id: rewardUnit.id }).from(rewardUnit).where(eq(rewardUnit.id, unit.parentUnitId)).for('update');
-    await tx.update(rewardUnit).set({ status: 'withdrawn', approvedDigest: null, revision: revision + 1, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
-    // reward_decision RLS admits only a seat holder; an administrator without a seat is recorded by the audit event.
-    if (roles.some(r => r !== 'pbp')) {
-      const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
-      await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
-    }
-    await stamp(tx, ctx, unitId, 'cancelled', { fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } });
-  });
+  return withRewardsTenant(ctx, tx => cancelRewardReviewTx(tx, ctx, unitId, revision, reason));
+}
+
+/** Native transaction seam for reviewed cancellation. Caller owns rollback of the entire transaction.
+ * Authority and state remain here, including GR users without an administrator role. */
+export async function cancelRewardReviewTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, reason: string) {
+  assertModuleGate(ctx, 'rewards');
+  idSchema.parse(unitId); reason = z.string().trim().min(10).max(4000).parse(reason);
+  const [unit] = await tx.select().from(rewardUnit).where(eq(rewardUnit.id, unitId)).for('update');
+  if (!unit || unit.deletedAt) throw new RewardError('Reward unit not found or access has been removed.');
+  const roles = await rolesFor(tx, unitId);
+  const [admin] = await tx.execute<{ ok: boolean }>(sql`select app.reward_admin(${unit.companyId}::uuid) as ok`);
+  if (!admin?.ok && !roles.includes('gr')) throw new RewardError('Only the company Rewards administrator or Group Rewards may cancel this review.');
+  assertRevision(unit, revision);
+  if (['posted', 'withdrawn', 'rejected'].includes(unit.status)) throw new RewardError('This review can no longer be cancelled.');
+  // Serialize with sibling off-cycle submissions against the same annual funding.
+  if (unit.parentUnitId) await tx.select({ id: rewardUnit.id }).from(rewardUnit).where(eq(rewardUnit.id, unit.parentUnitId)).for('update');
+  await tx.update(rewardUnit).set({ status: 'withdrawn', approvedDigest: null, revision: revision + 1, updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
+  // reward_decision RLS admits only a seat holder; an administrator without a seat is recorded by the audit event.
+  if (roles.some(r => r !== 'pbp')) {
+    const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
+    await tx.insert(rewardDecision).values({ tenantId: ctx.tenantId, unitId, actorId: ctx.userId!, revision, action: 'withdraw', fromStage: unit.status, toStage: 'withdrawn', reason, digest: digest(unit, entries) });
+  }
+  const [proof] = await tx.execute<{hash:string}>(sql`select encode(sha256(convert_to(to_jsonb(q)::text,'UTF8')),'hex') as hash from reward_unit q where q.id=${unitId}::uuid and q.tenant_id=${ctx.tenantId}::uuid`);
+  // Preallocation preserves the native insert-only audit path for GR users who cannot read
+  // unscoped audit rows. The enclosing custody verifier still requires the actual top-TX event.
+  const eventId = randomUUID();
+  await stamp(tx, ctx, unitId, 'cancelled', { cancelRowHash: proof.hash, fromStage: unit.status, reason, revision, before: { status: unit.status, revision }, after: { status: 'withdrawn', revision: revision + 1 } }, false, eventId);
+  return { unitId, eventId, cancelledRevision: revision, currentRevision: revision + 1, status: 'withdrawn' as const };
 }
 
 export async function rewardPayrollChoices(ctx: SessionContext, unitId: string) {
@@ -1400,25 +1438,32 @@ export async function getRewardCalendar(ctx: SessionContext, unitId: string) {
  * not yet created. A stale form is refused rather than overwriting another person's dates.
  */
 export async function saveRewardCalendar(ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  return withRewardsTenant(ctx, async tx => (await saveRewardCalendarTx(tx, ctx, unitId, revision, raw)).revision);
+}
+
+/** Same native owner, composed with Assistant custody in its supplied transaction. */
+export async function saveRewardCalendarTx(tx: Tx, ctx: SessionContext, unitId: string, revision: number, raw: unknown) {
+  assertModuleGate(ctx, 'rewards');
   const values = rewardCalendarSchema.parse(raw);
-  return withRewardsTenant(ctx, async tx => {
-    const { unit, canEdit } = await calendarUnit(tx, unitId);
-    if (!canEdit) throw new RewardError('The reward calendar is maintained by Group Rewards or a company HR administrator.');
-    const [existing] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, unit.cycleId), eq(rewardCalendar.companyId, unit.companyId))).for('update');
-    if ((existing?.revision ?? 0) !== revision) throw new RewardError('The reward calendar changed in another session. Reload before saving.');
-    const columns = {
-      buDue: values.due.bu, returnedDue: values.due.returned, bgDue: values.due.bg, grDue: values.due.gr, ctroDue: values.due.ctro, ecDue: values.due.ec, payrollDue: values.due.payroll,
-      caseDue: values.caseDue,
-      offcycleBgDays: values.offcycleDays.bg, offcycleGrDays: values.offcycleDays.gr, offcycleCtroDays: values.offcycleDays.ctro, offcycleEcDays: values.offcycleDays.ec, offcycleReturnedDays: values.offcycleDays.returned,
-      updatedBy: ctx.userId!, updatedAt: new Date(),
-    };
-    const [saved] = existing
-      ? await tx.update(rewardCalendar).set({ ...columns, revision: existing.revision + 1 }).where(eq(rewardCalendar.id, existing.id)).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision })
-      : await tx.insert(rewardCalendar).values({ tenantId: ctx.tenantId, cycleId: unit.cycleId, companyId: unit.companyId, ...columns }).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision });
-    // Deadlines stay editable after launch (62e743ed): the audit carries the dates before and after.
-    await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values, before: existing ? calendarValues(existing) : null, after: values } });
-    return saved.revision;
-  });
+  z.number().int().nonnegative().parse(revision);
+  const { unit, canEdit } = await calendarUnit(tx, unitId);
+  if (!canEdit) throw new RewardError('The reward calendar is maintained by Group Rewards or a company HR administrator.');
+  const [existing] = await tx.select().from(rewardCalendar).where(and(eq(rewardCalendar.cycleId, unit.cycleId), eq(rewardCalendar.companyId, unit.companyId))).for('update');
+  if ((existing?.revision ?? 0) !== revision) throw new RewardError('The reward calendar changed in another session. Reload before saving.');
+  const columns = {
+    buDue: values.due.bu, returnedDue: values.due.returned, bgDue: values.due.bg, grDue: values.due.gr, ctroDue: values.due.ctro, ecDue: values.due.ec, payrollDue: values.due.payroll,
+    caseDue: values.caseDue,
+    offcycleBgDays: values.offcycleDays.bg, offcycleGrDays: values.offcycleDays.gr, offcycleCtroDays: values.offcycleDays.ctro, offcycleEcDays: values.offcycleDays.ec, offcycleReturnedDays: values.offcycleDays.returned,
+    updatedBy: ctx.userId!, updatedAt: new Date(),
+  };
+  const [saved] = existing
+    ? await tx.update(rewardCalendar).set({ ...columns, revision: existing.revision + 1 }).where(eq(rewardCalendar.id, existing.id)).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision })
+    : await tx.insert(rewardCalendar).values({ tenantId: ctx.tenantId, cycleId: unit.cycleId, companyId: unit.companyId, ...columns }).returning({ id: rewardCalendar.id, revision: rewardCalendar.revision });
+  const eventId = randomUUID();
+  const [proof] = await tx.execute<{ hash: string }>(sql`select encode(sha256(convert_to(to_jsonb(c)::text,'UTF8')),'hex') as hash from reward_calendar c where c.id=${saved.id}::uuid`);
+  // Deadlines stay editable after launch (62e743ed): the audit carries the dates before and after.
+  await appendEvent(tx, { id: eventId, tenantId: ctx.tenantId, aggregateType: 'reward-calendar', aggregateId: saved.id, eventType: 'reward-calendar.updated', actor: actorOf(ctx), payload: { cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, values, before: existing ? calendarValues(existing) : null, after: values, calendarRowHash: proof.hash } });
+  return { calendarId: saved.id, cycleId: unit.cycleId, companyId: unit.companyId, revision: saved.revision, eventId };
 }
 
 // ── Approvals board (P1 WP-G) ────────────────────────────────────────────────────────────────────────────

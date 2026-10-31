@@ -9,7 +9,7 @@ import { labelInCompanyScope, labelsInCompanyScope } from '@/lib/system-label-sc
  * R51 (baf56348) — the Delegation Coverage cascade: Company → Business Unit → Department, each list enabled
  * only after the previous choice, each narrowing instantly CLIENT-side (options are props, filtered with
  * useMemo — the step-selection pattern; no per-scope-change server round-trip, no loading states). Blank at
- * a level = everything under the level above; all blank = unrestricted. Submits plain form fields
+ * a level = everything under the level above; all blank means the stand-in’s own company at decision time. Submits plain form fields
  * `scopeCompanyId` / `scopeBusinessUnitId` / `scopeDepartmentId` (the server action re-validates the chain).
  * Division is deliberately absent: it is a free-typed note today, not a maintained master.
  */
@@ -27,7 +27,8 @@ export type OrgScopeSelection = {
   departmentId: string | null;
 };
 
-/** Does a candidate (with org ids) fall inside the chosen coverage? Blank levels are wildcards. */
+/** UI candidate filter only: blank levels do not remove options. Decision authority separately defaults
+ * all-blank coverage to the selected stand-in’s company, through app.delegation_line_covers. */
 export function candidateInScope(
   c: { companyId: string; businessUnitId: string | null; departmentId: string | null },
   scope: OrgScopeSelection,

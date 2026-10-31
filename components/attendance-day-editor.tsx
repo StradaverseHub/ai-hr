@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import type { AttendanceDayEditorData } from '@/packs/attendance/service';
-import { saveAttendanceDayChangesAction, adminCorrectAttendanceDayAction, rejectAttendanceDayApplicationAction } from '@/app/attendance/individual/[date]/actions';
+import { saveAttendanceDayScheduleAction, saveAttendanceDayChangesAction, adminCorrectAttendanceDayAction, rejectAttendanceDayApplicationAction } from '@/app/attendance/individual/[date]/actions';
 import { Button, ErrorBanner, inputCls, tableWrapCls, thCls, theadCls, tbodyCls } from './ui';
 import { fmtMin } from './attendance-format';
 
@@ -37,7 +37,7 @@ function AttendanceDateScheduleForm({data,employmentId,date,onSaved,onCancel,onP
   const t=useTranslations('attendance.dayEdit'),router=useRouter();
   const [shift,setShift]=useState(data.shiftId??''),[kind,setKind]=useState(data.dayKind??''),[error,setError]=useState(''),[saved,setSaved]=useState(false),[pending,start]=useTransition();
   const disabled=data.closed||data.self||pending;
-  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);onPending(true);start(async()=>{try{setError('');setSaved(false);const r=await saveAttendanceDayChangesAction(fd);if(r.ok){setSaved(true);toast.success(t('saved'));router.refresh();onSaved();}else setError(r.message);}catch{setError(t('saveFailed'));}finally{onPending(false);}});};
+  const submit=(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);onPending(true);start(async()=>{try{setError('');setSaved(false);const r=await saveAttendanceDayScheduleAction(fd);if(r.ok){setSaved(true);toast.success(t('saved'));router.refresh();onSaved();}else setError(r.message);}catch{setError(t('saveFailed'));}finally{onPending(false);}});};
   const selected=data.shifts.find(s=>s.id===shift);
   return <form onSubmit={submit} className="space-y-3 border-t border-border p-4" data-day-edit="schedule">
     <Context data={data} employmentId={employmentId} date={date}><input type="hidden" name="kind" value="schedule"/></Context>

@@ -54,7 +54,8 @@ describe('feature-level AI switch guard', () => {
     for (const feature of AI_FEATURES) {
       if (feature.id === 'feedback_planning') expect(await refusal(rawSwitch(feature.id, false)), feature.id).toContain('Platform managed feature');
       else if (feature.setting === null) expect(await refusal(rawSwitch(feature.id, false)), feature.id).toBe('accepted');
-      else expect(await refusal(rawSwitch(feature.id, false)), feature.id).toContain('Unknown AI feature');
+      // 0692: one switch owner per feature — a setting-backed feature is refused a second (policy-row) switch by name.
+      else expect(await refusal(rawSwitch(feature.id, false)), feature.id).toContain('Setting-controlled AI feature');
     }
     expect(await refusal(rawSwitch('injected_feature', false))).toContain('Unknown AI feature');
     expect((await featureRows()).map(r => r.feature_id)).toEqual([...settingless].sort());

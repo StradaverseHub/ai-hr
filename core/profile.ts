@@ -471,11 +471,12 @@ export async function decideProfileChange(
     /** The approver's words. Required to reject; optional on an approval. */
     reason?: string | null;
   },
+  outerTx?:Tx,
 ) {
   p=structuredClone(p); ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   const reason = clean(p.reason);
   if (p.decision === 'rejected' && reason === null) throw new ProfileChangeReasonRequiredError();
-  return withTenant(ctx, async (tx) => {
+  const run=async (tx:Tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Serialize the decision with configuration revocation before loading any proposal or master data.
     await lockAccessConfigurationTx(tx,ctx.tenantId);
@@ -550,7 +551,7 @@ export async function decideProfileChange(
       await applyStoredLegacyProfileProposalTx(tx,ctx,req.employmentId,proposed);
     }
 
-    await tx
+    const changedRows=await tx
       .update(profileChangeRequest)
       .set({
         status: p.decision,
@@ -558,8 +559,10 @@ export async function decideProfileChange(
         decidedAt: sql`now()`,
         decisionReason: reason,
       })
-      .where(eq(profileChangeRequest.id, req.id));
-    await appendEvent(tx, {
+      .where(eq(profileChangeRequest.id, req.id)).returning({id:profileChangeRequest.id,employmentId:profileChangeRequest.employmentId,personId:profileChangeRequest.personId,status:profileChangeRequest.status,reason:profileChangeRequest.decisionReason});
+    if(outerTx&&(changedRows.length!==1||changedRows[0].id!==req.id||changedRows[0].employmentId!==req.employmentId||changedRows[0].personId!==req.personId||changedRows[0].status!==p.decision||changedRows[0].reason!==reason))throw new EssProfileError('stale');
+    const [decisionProof]=outerTx?await tx.execute<{hash:string}>(sql`select encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex') as hash from profile_change_request r where r.id=${req.id}::uuid and r.tenant_id=${ctx.tenantId}::uuid`):[];
+    const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'profile-change',
       aggregateId: req.id,
@@ -573,10 +576,11 @@ export async function decideProfileChange(
       // Single-line, which is the repo convention AND what test/event-payload-pii-guard.test.ts can
       // actually scan — it reads the remainder of the line containing `payload:`, so a wrapped object
       // literal in the one core file that handles bank, IC and passport values would be unscanned.
-      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null, reasonGiven: reason !== null },
-    });
-    return { status: p.decision };
-  }).catch(error=>{
+      payload: { decision: p.decision, deciderEmploymentId: p.deciderEmploymentId ?? null, reasonGiven: reason !== null, ...(outerTx?{decisionRowHash:decisionProof?.hash}: {}) },
+    },{returnId:outerTx!==undefined});
+    return { status: p.decision,...(outerTx?{eventId}: {}) };
+  };
+  return (outerTx?run(outerTx):withTenant(ctx,run)).catch(error=>{
     // Deferred SQL refusal is still a finite permission/stale result at the public decision owner.
     // Unknown storage/audit faults remain system failures and retain their original diagnostics.
     const state=pgSqlState(error);
@@ -584,6 +588,34 @@ export async function decideProfileChange(
     const refusal=new EssProfileError(state==='40001'?'stale':'permission');
     Object.defineProperty(refusal,'cause',{value:error});throw refusal;
   });
+}
+
+/** Bounded decision metadata for the existing Personnel rejection workflow. Values never leave this
+ * owner. Photo/evidence/register proposals remain on the native queue. This is not new authority. */
+export async function profileRequestRejectionContextTx(tx:Tx,ctx:SessionContext,requestId:string,mode:'pending'|'recorded'='pending'){
+ await tx.execute(sql`select app.access_workforce_write_lock()`);await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);await lockAccessConfigurationTx(tx,ctx.tenantId);
+ const policy=await freshProfileEditPolicyTx(tx,ctx);ctx=policy.ctx;
+ const [req]=await tx.select().from(profileChangeRequest).where(and(eq(profileChangeRequest.id,requestId),eq(profileChangeRequest.tenantId,ctx.tenantId),sql`octet_length(${profileChangeRequest.proposed}::text)<=65536`)).limit(1).for('update');
+ if(!req||req.status!==(mode==='pending'?'pending':'rejected')||mode==='pending'&&(req.decisionReason!==null||req.decidedAt!==null)||req.personId===ctx.personId)throw new EssProfileError('unavailable');
+ await assertProfileChangeDecisionAuthorityTx(tx,ctx,req,'rejected');
+ const [attachment]=await tx.select({id:profileChangeAttachment.id}).from(profileChangeAttachment).where(and(eq(profileChangeAttachment.tenantId,ctx.tenantId),eq(profileChangeAttachment.requestId,req.id))).limit(1);
+ if(attachment||!req.proposed||typeof req.proposed!=='object'||Array.isArray(req.proposed)||isProfilePhotoProposal(req.proposed))throw new EssProfileError('unavailable');
+ let fieldIds:string[];
+ if('v' in req.proposed){
+  const {parseEssProfileProposal}=await import('../lib/personnel-ess-contract');const proposed=parseEssProfileProposal(req.proposed);
+  if(proposed.registers.length)throw new EssProfileError('unavailable');fieldIds=proposed.fields.map(field=>field.fieldId);
+ }else{
+  fieldIds=Object.entries(req.proposed).map(([key,value])=>{const definition=requestableField(key),field=PERSONNEL_FIELDS.find(item=>item.ess.binding?.legacyKey===key);if(!definition||!field||value!==null&&!['string','number','boolean'].includes(typeof value))throw new EssProfileError('unavailable');return field.id;});
+ }
+ if(!fieldIds.length||fieldIds.length>32||new Set(fieldIds).size!==fieldIds.length||fieldIds.some(id=>!policy.visible.has(id)))throw new EssProfileError('unavailable');
+ const [identity]=await tx.select({employmentId:employment.id,companyId:employment.companyId,subjectPersonId:person.id,employeeName:person.fullName,employeeCode:employment.employeeCode,companyName:company.legalName,employmentVersion:sql<string>`employment.xmin::text`,personVersion:sql<string>`person.xmin::text`,companyVersion:sql<string>`company.xmin::text`}).from(employment).innerJoin(person,and(eq(person.id,employment.personId),eq(person.tenantId,employment.tenantId))).innerJoin(company,and(eq(company.id,employment.companyId),eq(company.tenantId,employment.tenantId))).where(and(eq(employment.id,req.employmentId),eq(employment.tenantId,ctx.tenantId),eq(person.id,req.personId))).limit(1).for('update');
+ if(!identity)throw new EssProfileError('unavailable');
+ const [version]=await tx.execute<{revision:string}>(sql`select xmin::text as revision from profile_change_request where id=${req.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
+ if(!version)throw new EssProfileError('unavailable');
+ // Canonical JSON from PostgreSQL binds the full proposal and route, without returning their values.
+ const [source]=await tx.execute<{hash:string}>(sql`select encode(sha256(convert_to(to_jsonb(r)::text,'UTF8')),'hex') as hash from profile_change_request r where r.id=${req.id}::uuid and r.tenant_id=${ctx.tenantId}::uuid`);
+ const [authority]=await tx.execute<{hash:string}>(sql`select app.assistant_profile_rejection_authority_hash(${req.id}::uuid) as hash`);if(!authority?.hash)throw new EssProfileError('unavailable');
+ return{ctx,subject:{...identity,subjectId:req.id,requestedAt:req.createdAt.toISOString(),fieldIds:fieldIds.sort()},sourceHash:source.hash,authorityHash:authority.hash,revision:version.revision,policyFingerprint:profileVisibilityFingerprint(getSetting(ctx,'ess.profile_change_fields'))};
 }
 
 /**

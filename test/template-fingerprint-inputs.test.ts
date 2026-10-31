@@ -41,6 +41,15 @@ describe('the template fingerprint covers everything that decides the schema', (
     expect([...FINGERPRINT_EXTRA_FILES]).toContain('packs/catalog.ts');
   });
 
+  it('hashes the role fixture and validates the live cluster graph before any template reuse', () => {
+    expect([...FINGERPRINT_EXTRA_FILES]).toContain('test/helpers/personnel-draft-discard-ci-role-fixture.ts');
+    const source = readFileSync('test/global-setup.ts', 'utf8');
+    const validation = source.indexOf('await ensureDraftDiscardTestRoles(adminUrl)');
+    const reuse = source.indexOf('if (await templateIsReusable(');
+    expect(validation).toBeGreaterThan(0);
+    expect(reuse).toBeGreaterThan(validation);
+  });
+
   it('every declared input actually exists, so a rename cannot silently drop one from the hash', () => {
     // readFileSync would throw inside globalSetup, which is a confusing place to discover a typo.
     for (const f of FINGERPRINT_EXTRA_FILES) {

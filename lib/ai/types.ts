@@ -172,10 +172,12 @@ export type ConverseArgs = {
   onObservation?: (observation:AiRunObservation)=>void;
   /**
    * Ordered system blocks. An ARRAY, not a string, because Anthropic can only carry a prompt-cache
-   * breakpoint on a block (`system?: string | Array<TextBlockParam>`). Every element must be STABLE per
-   * (tenant, role): nothing volatile — no clock value, no request/session/user id, no locale string, no
-   * tenant data — may ever be interpolated here, because the cacheable prefix is `tools` + `system` and
-   * one changed byte invalidates everything after it.
+   * breakpoint on a block (`system?: string | Array<TextBlockParam>`). Order the elements most stable
+   * first: constant blocks, then any per-caller block (the Assistant appends the user's versioned strategy
+   * and registry-derived proposal catalogue LAST, so those are stable per user, not per (tenant, role)).
+   * Nothing volatile — no clock value, no request/session/user id, no locale string, no tenant data — may
+   * ever be interpolated here, because the cacheable prefix is `tools` + `system` and one changed byte
+   * invalidates everything after it.
    */
   system: string[];
   turns: AiTurn[];
@@ -184,8 +186,9 @@ export type ConverseArgs = {
   /** Wall-clock ceiling for ONE provider round-trip. Defaulted at the gateway; a per-call timeout does
    *  NOT bound a loop, so the caller must additionally enforce a whole-exchange deadline. */
   timeoutMs?: number;
-  /** Opaque, non-reversible cache-routing hint (OpenAI `prompt_cache_key`). Must be stable per
-   *  (tenant, role) and must NEVER be a tenant id, user id, email or any other identifier. */
+  /** Opaque, non-reversible cache-routing hint (OpenAI `prompt_cache_key`). A constant per feature (the
+   *  Assistant uses one value for every caller); it must NEVER be a tenant id, user id, email or any other
+   *  identifier. */
   cacheKey?: string;
 };
 
