@@ -46,6 +46,9 @@ complete API/artifact/history verification and independent verifier review remai
 An optional `repair_impact_base` input runs that existing reconstruction on a standard hosted
 runner in explicit runner-diagnostic mode. Its artifact is selection information only and
 cannot replace any passing test, build, recovery certificate or release witness.
+The diagnostic uses an explicit first-attempt owned-branch runner scope with closed database
+URLs. Existing 24 GiB setup and 21 GiB ready margins remain unchanged; it cannot impersonate
+a test, build, compiler, foreign workflow, self-hosted runner or ordinary release execution.
 
 The original cc170 full run and failed consumer remain failed. This extension and its exact
 controller require hosted refusal controls and independently verified actual repair evidence

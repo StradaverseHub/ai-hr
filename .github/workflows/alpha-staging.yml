@@ -232,6 +232,10 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_SUITE_CAPACITY_PILOT: 'true'
+      AIHR_REPAIR_IMPACT_BASE: ${{ inputs.repair_impact_base }}
+      AIHR_DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+      AIHR_CONTROLLER_ONLY: ${{ inputs.controller_only }}
+      AIHR_BUILD_ONLY: ${{ inputs.build_only }}
       DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
