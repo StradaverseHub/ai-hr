@@ -60,7 +60,8 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  const grant=installationGrantFromVerifiedFiles({evidence,run:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'run.json'))),
   jobs:JSON.parse(readFileSync(join(evidence.evidenceDirectory,'jobs.json'))),...snapshot});
  await transferAndLaunchCiBuild({grant,evidence,official,ssh,save,frozen,revalidate,pendingCommand:strictPendingCommand(evidence.sha),
-  transferSource:()=>execFileSync('rsync',guardedRsync(lease,transport.rsyncArgs(official,candidatePath)),{stdio:'inherit',timeout:120000}),
+  // Canonical transfer may need to apply thousands of source mtimes; retain a finite bundle-sized transport budget.
+  transferSource:()=>execFileSync('rsync',guardedRsync(lease,transport.rsyncArgs(official,candidatePath)),{stdio:'inherit',timeout:600000}),
   transferPacket:(packet,destination)=>execFileSync('rsync',guardedRsync(lease,transport.packetRsyncArgs(packet,destination)),{stdio:'inherit',timeout:120000})});
  const status=followStagingDeployment(official,ssh);save('remote-build-result.json',status);
  requireSuccessfulBuild(official,status,evidence.sha);
@@ -71,7 +72,8 @@ async function leasedOperatorRelease({candidatePath,runId,execute=false,recovery
  save('source-arrival.json',{source:evidence.sha,checksum:true,output:checksum,checkedAt:checksumCheckedAt});
  if(checksum.length!==0)throw Error('Source checksum arrival differs; owned previous build retained for explicit recovery');
  frozen();
- const installed=JSON.parse(ssh(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),{timeout:60000}));
+ // Full read-only compiled-byte/runtime proof shares the installer's bounded verification budget.
+ const installed=JSON.parse(ssh(stagingInstallerCommand('status',grant.source,grant.installId,grant.build.buildRecordId),{timeout:600000}));
  const expectedLedger=expectedMigrationLedger(candidatePath);
  const initialArrival=validateInstalledArrival(installed,grant,expectedLedger);save('installed-arrival.json',{...initialArrival,fullSourceChecksumVerified:true});frozen();
  const cleanupCommand=stagingInstallerCommand('cleanup-session',grant.source,grant.installId,grant.build.buildRecordId);
