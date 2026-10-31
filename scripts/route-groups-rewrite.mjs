@@ -11,7 +11,8 @@
  *
  * Deliberately untouched: applied migrations (immutable), installed capability-binding owner labels
  * (deploy/access, stored by migrations as identities), the mobile app's own app/ folder, and historical
- * review/mockup/research records.
+ * review/mockup/research records. A line containing `route-groups-rewrite: keep` is left as it is, for
+ * deliberate references to pre-split paths such as a pinned historical baseline.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -79,6 +80,7 @@ const PATH_REF = new RegExp(
 const JOIN_REF = new RegExp(String.raw`(['"])app\1(\s*,\s*)(['"])(${NAMES})\3`, 'g');
 const SPECIFIER = /((?:\bfrom|\bimport|\brequire|@import|\burl|vi\.mock|vi\.importActual|new URL)\s*\(?\s*)(['"])(\.\.?\/[^'"\n]+)\2/g;
 
+const KEEP = 'route-groups-rewrite: keep';
 const changed = [];
 for (const file of git('ls-files', '-z').split('\0').filter(Boolean)) {
   if (!TEXT.test(file) || SKIP.some((r) => r.test(file)) || !existsSync(file)) continue;
@@ -105,6 +107,11 @@ for (const file of git('ls-files', '-z').split('\0').filter(Boolean)) {
     after = after.replace(/(?<=[`'"](?:\.\.\/)?)app\$\{/g, 'app/(app)${');
     after = after.replace(/(['"])app\1(\s*,\s*)(?=[A-Za-z_][\w.!]*\s*[,)])/g, (all, q, sep) => `${q}app${q}${sep}${q}(app)${q}${sep}`);
     after = after.split(".replace(/^app/, '')").join(".replace(/^app\\/\\(app\\)/, '')");
+  }
+  // A line marked `route-groups-rewrite: keep` names a pre-split path on purpose (a historical baseline).
+  if (after !== before && before.includes(KEEP)) {
+    const original = before.split('\n'), rewritten = after.split('\n');
+    if (original.length === rewritten.length) after = rewritten.map((line, i) => original[i].includes(KEEP) ? original[i] : line).join('\n');
   }
   if (after !== before) { writeFileSync(file, after); changed.push(file); }
 }
