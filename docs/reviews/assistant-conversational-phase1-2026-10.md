@@ -171,3 +171,37 @@ Findings:
 5. **Privacy holds across 38 turns.** One turn reached the provider, and its request carried no question words or fictional values.
 
 The real-model ceiling probe (`test/assistant-model-ceiling.eval.test.ts`) measures how far a question-aware, tool-using design could go on these same 58 turns. It runs only through the protected `assistant-eval` environment, with a hard spend cap. Without the secret it asserts that it is inert and calls nothing.
+
+## 10. Real-model redesign ceiling (fictional data)
+
+Run [41216417843](https://github.com/StradaverseHub/ai-hr/actions/runs/41216417843) at `fecf458`: 1/1 pass, 123 model calls, 58 turns. Model `openai/gpt-6-luna` via OpenRouter, Azure upstream only, data collection denied, zero retention, $20 cap. OpenRouter-reported spend was **$0.0144**; check this against the OpenRouter dashboard. Retained failures:
+- [41215848880](https://github.com/StradaverseHub/ai-hr/actions/runs/41215848880): the focused DB guard correctly refused a separately named job, before any provider call.
+- [41216168824](https://github.com/StradaverseHub/ai-hr/actions/runs/41216168824): ordinary-path regression check after moving the probe, passed.
+
+This is **not** the production path. The model saw the fictional question and history, called the caller's real authorized reads, and reported its own reply mode. Reads and proposals are observed; the mode is self-reported.
+
+| | Today (oracle, 58 turns) | Question-aware tool-using model |
+| --- | --- | --- |
+| Understood | 11 | **38** |
+| Complete | 5 | 35 |
+| Generic area chooser | 35 | **0** |
+| Honest "can't do that yet" | 0 | 10 |
+| Ordinary paraphrases incl. typo and Malay | 0 / 4 | 4 / 4 |
+| Follow-up and correction (leave → pending → medical) | 0 / 3 | 3 / 3 |
+| Employee 14-turn conversation | 5, trapped from turn 4 | 11, no trap |
+| New-admin 14-turn setup | 0 | 6 |
+| Multi-domain (balance + claims + holiday in one message) | fail | pass, 3 reads |
+| Natural action requests | 0 / 6 | 1 / 6 |
+
+Facts were correct wherever stated: 17.25 and 11.5 days, the holiday date, and empty claims. Answers in Malay were given in Malay. "Summarise everything we discussed" and "what was the second thing you said" were answered correctly from the conversation.
+
+Problems found by reading the replies:
+
+1. **An invented link.** It told the person to open "the Leave page (/assistant/leave)", a route that does not exist. Every link must come from the product's real navigation, never from model text.
+2. **It overclaims actions.** For "Help me request overtime tomorrow evening" it said "I've prepared an overtime request" without asking for times. A proposal needs a deterministic check for missing fields and must never be described as prepared until the native review exists.
+3. **It underuses actions.** For "Approve all the pending claims for me" and "Review claim approvals" it pointed to the Approvals page instead of proposing the existing reviewed approval action.
+4. **Admin setup is generic.** The steps were sensible, but the model correctly said it cannot see the company's configuration. Grounded guidance needs Assistant reads over the native readiness owners. "Guide me step by step" ended blank after 5 tool calls, all reading the same module summary, so the loop needs stop and repeat limits.
+5. **It sent an admin to "your HR administrator".** Replies need to know the person's role.
+6. **It declined to compute** "two days next to the holiday": this kind of figure should come from a native calculation, not the model.
+
+Conclusion: most of the gap is understanding and planning, which a question-aware, tool-using design closes on these tasks. The other two parts are separate work: grounding setup guidance needs new native reads, and trustworthy actions need deterministic proposal checks. Production adoption still needs the §4 privacy decision, because this probe sent fictional questions and records to the provider.
