@@ -7,23 +7,21 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
 import {pendingProfileTaskMetadata,actionableProfileChangeIds} from '../../core/profile';
-import {freshProfileEditPolicyTx} from '../../core/profile-edit-policy';
 import {profileRouteReaderPredicate} from '../../core/profile-routing';
 import {assertAssignedWorkPrincipalTx} from '../../core/approvals';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
-// Frozen pre-change algorithm from83d3e4304. The whole original reader is retained
+// Frozen joined reader from9098adc7fcf68b294075ac699fc8836ca885c9cf. The whole original reader is retained
 // so both paths use native RLS, principal proof and current decision authority.
 async function previous(ctx:SessionContext){
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const current=(await freshProfileEditPolicyTx(tx,ctx)).ctx;
   return tx.select({id:s.profileChangeRequest.id,employmentId:s.profileChangeRequest.employmentId,personId:s.profileChangeRequest.personId,
    employee:s.person.fullName,createdAt:s.profileChangeRequest.createdAt}).from(s.profileChangeRequest)
    .innerJoin(s.employment,and(eq(s.employment.id,s.profileChangeRequest.employmentId),eq(s.employment.tenantId,s.profileChangeRequest.tenantId)))
    .leftJoin(s.person,and(eq(s.person.id,s.profileChangeRequest.personId),eq(s.person.tenantId,s.profileChangeRequest.tenantId)))
-   .where(and(eq(s.profileChangeRequest.tenantId,ctx.tenantId),eq(s.profileChangeRequest.status,'pending'),profileRouteReaderPredicate(current),
+   .where(and(eq(s.profileChangeRequest.tenantId,ctx.tenantId),eq(s.profileChangeRequest.status,'pending'),profileRouteReaderPredicate(ctx),
     sql`NOT app.is_self_person(${s.profileChangeRequest.personId})`))
    .orderBy(desc(s.profileChangeRequest.createdAt),s.profileChangeRequest.id);
  });
