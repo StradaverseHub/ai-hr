@@ -38,7 +38,9 @@ A reversible native routing experiment passed on source2f6523765 (run41191380816
 delegation/archived assigned actor/forged person refusals. Combined plan reuse and
 necessary denial gates reduce warmed manager median323.4→177.1ms and employee
 199.1→113.3ms; assigned HR122.8→111.8ms and delegate208.4→188.6ms. Additional
-routing-plan helpers are being measured before promoting any migration.
+routing-plan helpers are being measured before promoting any migration. The first
+benchmark candidate's whole compiler also passed. Separate past-month HTTP
+Payroll close/publication coverage is being prepared; it has no passing receipt yet.
 
 Measured Claims queue improvements and129 affected passing cases remain component
 evidence; they do not establish500-user capacity. Read-only infrastructure checks

@@ -165,6 +165,35 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50});save();
   }finally{await ctx.close();}
  }
+ // Publish a separate completed past-month run; current-month mutations retain their open period.
+ {
+  const actor=fixture.users.find(user=>user.role==='groupHR'),batchId=fixture.tenants[actor.tenant].companies[1].publicationBatchId;
+  assert(batchId,'dedicated publication fixture missing');
+  const employee=fixture.users.find(user=>user.tenant===actor.tenant&&user.company===1&&user.role==='employee');
+  const ctx=await context(actor),page=await ctx.newPage();let slipId;
+  try{
+   await visit(page,actor,'/payroll/'+batchId);
+   await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollPublicationProcess');await page.waitForLoadState('networkidle');
+   await assertProcessed(batchId);
+   const [slip]=await db`select id from payslip where batch_id=${batchId}::uuid and employment_id=${employee.employmentId}::uuid`;assert(slip);slipId=slip.id;
+   await request(employee,'/me/payslip/'+slipId+'/pdf',undefined,404,false);
+   await page.getByRole('button',{name:'Close batch',exact:true}).click();
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Yes',exact:true}).click(),'payrollClose');await page.waitForLoadState('networkidle');
+   const [closed]=await db`select status,released_at from payroll_batch where id=${batchId}::uuid`;
+   assert.equal(closed.status,'closed');assert(closed.released_at&&new Date(closed.released_at).getTime()<=Date.now());
+   const events=await db`select payload from domain_event where aggregate_id=${batchId}::uuid and event_type='payroll-batch.closed'`;assert.equal(events.length,1);assert.equal(new Date(events[0].payload.releasedAt).getTime(),new Date(closed.released_at).getTime());
+  }finally{await ctx.close();}
+  const employeeContext=await context(employee),statement=await employeeContext.newPage();
+  try{
+   await visit(statement,employee,'/me/payslip?payslipId='+slipId);
+   await statement.getByRole('link',{name:'Download PDF',exact:true}).waitFor({state:'visible'});
+   assert(await statement.locator('a[href="/me/payslip/'+slipId+'/pdf"]').count(),'published statement did not expose its own document');
+   const document=await request(employee,'/me/payslip/'+slipId+'/pdf',undefined,200,false);assert(document.content.startsWith('%PDF-'));assert(String(document.headers['content-type']).includes('application/pdf'));
+   for(const foreign of [fixture.users.find(user=>user.tenant===employee.tenant&&user.company===employee.company&&user.index!==employee.index&&user.role==='employee'),fixture.users.find(user=>user.tenant!==employee.tenant&&user.role==='employee')])await request(foreign,'/me/payslip/'+slipId+'/pdf',undefined,404,false);
+   evidence.push({workflow:'payroll close and employee publication',persisted:true,employees:50,unpublishedRefused:true,ownPublishedStatement:true,foreignDocumentRefusals:2});save();
+  }finally{await employeeContext.close();}
+ }
  const importDate=offset=>new Date(Date.parse(fixture.today+'T12:00:00Z')-offset*86400000).toISOString().slice(0,10);
  const importText=(user,date)=>{const [year,month,day]=date.split('-');return fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===user.company).flatMap(actor=>[['08','31','IN'],['16','31','OUT']].map(parts=>['PERF'+String(actor.index).padStart(4,'0'),day,month,year,...parts].join(','))).join('\n');};
  async function assertImported(user,fileName,date){

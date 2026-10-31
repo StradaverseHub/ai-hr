@@ -31,6 +31,7 @@ const {internalIssuer}=await import('../../lib/internal-auth/config.ts');
 const {generateSecret}=await import('otplib');
 const today=todayInKualaLumpur(),month=today.slice(0,7),password='Synthetic-'+randomBytes(24).toString('hex');
 const historicalMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-2,1)).toISOString().slice(0,7);
+const publicationMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-3,1)).toISOString().slice(0,7);
 const attendanceDays=Number(process.env.PERF_ATTENDANCE_DAYS||180);assert([180,2000].includes(attendanceDays));
 // Retained attendance must not predate employment; preserve the old 180-day fixture's hire date.
 const hiredOn=attendanceDays===180?'2025-01-01':new Date(Date.parse(today+'T12:00:00Z')-(attendanceDays+1)*86400000).toISOString().slice(0,10);
@@ -55,7 +56,10 @@ try{
     const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId,name:'Performance department'}).returning();departmentId=department.id;
    }
    const {batchId}=await createBatch(ctx,{companyId,payPeriod:month});
-   const {batchId:historicalBatchId}=await createBatch(ctx,{companyId,payPeriod:historicalMonth});companies.push({companyId,departmentId,batchId,historicalBatchId});
+   const {batchId:historicalBatchId}=await createBatch(ctx,{companyId,payPeriod:historicalMonth});
+   // Separate past-month draft: HTTP publication must not close the live correction workload's period.
+   const publicationBatchId=t===0&&c===1?(await createBatch(ctx,{companyId,payPeriod:publicationMonth})).batchId:undefined;
+   companies.push({companyId,departmentId,batchId,historicalBatchId,publicationBatchId});
   }
   tenants.push({tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies});
   for(let i=0;i<250;i++){
