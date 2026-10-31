@@ -29,6 +29,28 @@ Latest prepared implementation: **aihr-staging-ci/v12**. The actual v11 existing
 
 Policy identifier: `aihr-staging-ci/v17`. This controller revision requires a fresh reviewed whole validation witness before operator use; draft code and focused diagnostics do not establish that witness. Version6 introduced the reviewed build-once installer contract; version7 retains it and binds duration-balanced DB grouping; version8 retains complete membership and adds duration-first within-job ordering. This policy implements the owner's authorization to use a complete validated CI gate for Board 3 staging instead of repeating the full gate on the Mac. It does not enable automatic deployment or main/live deployment.
 
+## Prepared fixture recovery extension — qualification pending
+
+The separately versioned `aihr-cross-source-recovery/v3` extends the existing cross-source
+recovery adapter with one closed fixture-only delta: existing regular files
+`test/ai-retention-extended-custody.test.ts` and `test/assistant-own-leave-store.test.ts`.
+Only modifications within that set are eligible; additions, removals, renames, mode changes,
+mixed product changes and every other tracked byte change refuse. The existing product-repair
+branch remains separate. A reviewed fixture patch is required; path admission does not prove
+that assertions retain their meaning.
+
+Immutable Git impact reconstruction remains unchanged and determines all affected units.
+Every affected original DB unit runs in full in a fresh authenticated database; original case
+inventories, runtime/resource bounds, fresh whole compiler and canonical source-bound build,
+complete API/artifact/history verification and independent verifier review remain mandatory.
+An optional `repair_impact_base` input runs that existing reconstruction on a standard hosted
+runner in explicit runner-diagnostic mode. Its artifact is selection information only and
+cannot replace any passing test, build, recovery certificate or release witness.
+
+The original cc170 full run and failed consumer remain failed. This extension and its exact
+controller require hosted refusal controls and independently verified actual repair evidence
+before operator use; source implementation alone supplies no release authority.
+
 ## Evidence authority
 
 The operator must use a clean, reviewed controller at the exact commit that ran the witness, and an unchanged clean candidate. The authenticated GitHub API must identify repository `StradaverseHub/ai-hr` (ID 1333414856), workflow `alpha-staging-ci` (ID 395777276), the exact controller commit and a first-attempt completed successful run less than 24 hours old. Manual dispatch from main or alpha is accepted; a push witness must be on alpha with candidate and controller equal. PR, fork, rerun, incomplete and diagnostic-only results cannot authorize release.
