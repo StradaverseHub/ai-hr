@@ -1,5 +1,5 @@
 "use client";
-import {useCallback,useEffect,useLayoutEffect,useRef,useState,type ReactNode} from 'react';
+import {Fragment,useCallback,useEffect,useLayoutEffect,useRef,useState,type ReactNode} from 'react';
 import {useTranslations} from 'next-intl';
 import {askFromWorkspaceAction,loadEarlierChatAction,type LauncherReply} from '../../app/assistant/launcher-actions';
 import {AssistantChatBoundary} from './chat-reply-boundary';
@@ -19,9 +19,10 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
  const epoch=useRef(0),busy=useRef(false),sequence=useRef(0),log=useRef<HTMLDivElement>(null),composeBox=useRef<HTMLFieldSetElement>(null),follow=useRef(true),previous=useRef<{id:string;token:string}|undefined>(initialResume?{id:initialResume.exchangeId,token:initialResume.conversationToken}:undefined),awaitingClarification=useRef<string|undefined>(seed.at(-1)?.clarificationRequired?seed.at(-1)?.id:undefined);
  const prependAnchor=useRef<{height:number;top:number}|null>(null),didPrepend=useRef(false);
  const attachmentKey=String(selectionKey??'')+':'+String(resetKey??'')+':'+generation,attachmentOwner=useRef(attachmentKey);attachmentOwner.current=attachmentKey;
- const [attachment,setAttachment]=useState<{key:string;turn:WorkspaceChatTurn}|null>(null),[attachmentPending,setAttachmentPending]=useState<{key:string;busy:boolean}|null>(null);
+ const latestTurn=useRef<string|null>(null);latestTurn.current=turns.at(-1)?.id??null;
+ const [attachment,setAttachment]=useState<{key:string;turn:WorkspaceChatTurn;afterId:string|null}|null>(null),[attachmentPending,setAttachmentPending]=useState<{key:string;busy:boolean}|null>(null);
  const attachmentTurn=attachment?.key===attachmentKey?attachment.turn:null,attachmentBusy=attachmentPending?.key===attachmentKey&&attachmentPending.busy;
- const publishAttachment=useCallback((turn:WorkspaceChatTurn|null)=>{if(attachmentOwner.current===attachmentKey)setAttachment(turn?{key:attachmentKey,turn}:null);},[attachmentKey]);
+ const publishAttachment=useCallback((turn:WorkspaceChatTurn|null)=>{if(attachmentOwner.current===attachmentKey)setAttachment(current=>turn?{key:attachmentKey,turn,afterId:current?.key===attachmentKey?current.afterId:latestTurn.current}:null);},[attachmentKey]);
  const publishAttachmentBusy=useCallback((value:boolean)=>{if(attachmentOwner.current===attachmentKey)setAttachmentPending({key:attachmentKey,busy:value});},[attachmentKey]);
  // A saved selection or scope reset is explicit; action revalidation alone never resets this thread.
  useEffect(()=>{epoch.current++;busy.current=false;setPending(false);setTurns(restored(seed));previous.current=initialResume?{id:initialResume.exchangeId,token:initialResume.conversationToken}:undefined;awaitingClarification.current=seed.at(-1)?.clarificationRequired?seed.at(-1)?.id:undefined;setReadOnly(historyReadOnly);setOlder(olderCursor??null);setLoadingOlder(false);setHistoryError(null);setDraft('');follow.current=true;setUnseen(false);},[selectionKey,resetKey]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -54,6 +55,7 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
   }catch{if(atEpoch!==epoch.current)return;setReadOnly(true);previous.current=undefined;awaitingClarification.current=undefined;setTurns(rows=>rows.map(row=>row.id===id?{...row,reply:{ok:false,message:t('err_provider_error')}}:row));}
   finally{if(atEpoch===epoch.current){busy.current=false;setPending(false);}}
  }
+ const attachmentContent=attachmentTurn?<div className="space-y-4"><p className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3">{attachmentTurn.question}</p><fieldset disabled={readOnly} className="min-w-0 px-1">{attachmentTurn.answer}</fieldset></div>:null;
  return <AssistantChatBoundary value={{pending:pending||readOnly||Boolean(attachmentBusy),setQuestionDraft:answer=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=undefined;setDraft(answer);setFocusRequest(n=>n+1);},clarify:async(exchangeId,answer)=>{const data=new FormData();data.set('question',answer);await send(data,exchangeId);},setClarificationDraft:(exchangeId,answer)=>{if(busy.current||readOnly||attachmentBusy)return;awaitingClarification.current=exchangeId;setDraft(answer);setFocusRequest(n=>n+1);}}}><section aria-label={c('title')} className={fullHeight||turns.length||attachmentTurn?'flex h-[min(46rem,calc(100dvh-13rem))] min-h-80 flex-col':'space-y-4'}>
   {(fullHeight||turns.length>0||Boolean(attachmentTurn))&&<>
    <div className="flex shrink-0 items-center justify-between pb-3"><h2 className="text-sm font-medium">{c('title')}</h2><button type="button" disabled={pending||Boolean(attachmentBusy)||loadingOlder||(!turns.length&&!attachmentTurn&&!readOnly)} onClick={()=>{epoch.current++;setTurns([]);setReadOnly(false);setOlder(null);setHistoryError(null);setAttachment(null);setAttachmentPending(null);previous.current=undefined;awaitingClarification.current=undefined;setDraft('');setUnseen(false);follow.current=true;setGeneration(n=>n+1);setFocusRequest(n=>n+1);}} className="min-h-11 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{c('new')}</button></div>
@@ -62,11 +64,11 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
     {historyError&&<p role="alert">{historyError}</p>}
     {readOnly&&<p role="status" className="text-xs text-muted-foreground">{t('workspace.chat.readOnlyHistory')}</p>}
     {turns.length===0&&!attachmentTurn&&<div className="flex min-h-full flex-col justify-center py-6"><p className="max-w-prose text-sm leading-relaxed text-muted-foreground">{t('description')}</p>{tasks.length>0&&<div className="mt-5 flex max-w-xl flex-wrap gap-2">{tasks.slice(0,4).map(task=><button key={task.id} type="button" onClick={()=>{setDraft(task.prompt);setFocusRequest(n=>n+1);}} className="min-h-11 rounded-full border border-border px-3 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{task.label}</button>)}</div>}</div>}
-    {turns.map(turn=><div key={turn.id} className="space-y-4">
+    {attachment?.afterId===null&&attachmentContent}
+    {turns.map(turn=><Fragment key={turn.id}><div className="space-y-4">
      <p className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3">{turn.question}</p>
      <fieldset disabled={readOnly} className="min-w-0 break-words px-1">{!turn.reply?<ThinkingIndicator label={c('thinking')}/>:turn.reply.ok?(turn.reply.answer??<p role="status">{t('workspace.conversation.unavailable')}</p>):<p role="alert">{turn.reply.message}</p>}</fieldset>
-    </div>)}
-    {attachmentTurn&&<div className="space-y-4"><p className="ml-auto w-fit max-w-[90%] whitespace-pre-wrap break-words rounded-2xl bg-muted px-4 py-3">{attachmentTurn.question}</p><fieldset disabled={readOnly} className="min-w-0 px-1">{attachmentTurn.answer}</fieldset></div>}
+    </div>{attachment?.afterId===turn.id&&attachmentContent}</Fragment>)}
    </div>
    {unseen&&<button type="button" onClick={()=>{follow.current=true;if(log.current)log.current.scrollTop=log.current.scrollHeight;setUnseen(false);}} className="mx-auto block min-h-11 rounded-full border border-border px-4 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{c('latest')}</button>}
   </>}

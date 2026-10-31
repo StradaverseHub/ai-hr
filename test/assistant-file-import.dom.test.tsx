@@ -18,7 +18,7 @@ const copy=en.assistant.fileImport;
 const source='E001 -25.50';
 const draft=captureImportDraft('payroll_history',source,{rows:[{cells:[{field:'employee_no',start:0,end:4},{field:'amount',start:5,end:11}]}]});
 function wrap(ui:React.ReactNode=<AssistantFileImport/>){return render(<NextIntlClientProvider locale="en" messages={en}><AssistantImportHandoffProvider>{ui}</AssistantImportHandoffProvider></NextIntlClientProvider>);}
-async function attach(){await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await waitFor(()=>expect(screen.getAllByText('records.pdf').length).toBeGreaterThan(0));}
+async function attach(){await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});await screen.findByLabelText(copy.consent);}
 beforeEach(()=>{vi.resetAllMocks();mocks.read.mockResolvedValue({name:'records.pdf',parts:[{label:'records.pdf',text:source}]});mocks.prepare.mockResolvedValue({ok:true,draft});window.history.replaceState({},'', '/assistant');});
 afterEach(()=>{cleanup();vi.useRealTimers();});
 
@@ -116,6 +116,15 @@ describe('inline attachment conversation lifecycle',()=>{
   const[turn,setTurn]=useState<AttachmentChatTurn|null>(null),publish=useCallback((value:AttachmentChatTurn|null)=>{setTurn(value);published?.(value);},[published]);
   return <><div role="log" aria-label="Conversation">{turn&&<><p>{turn.question}</p>{turn.answer}</>}</div><WorkspaceComposer fileImport clearAfterSubmit layout="hero" action={ordinary} tasks={[]} labels={labels} onAttachmentTurn={publish} onAttachmentBusy={busy}/></>;
  }
+ it('adopts a prefilled instruction after a deferred file read without invalidating the read',async()=>{
+  let finish!:(value:unknown)=>void;mocks.read.mockReturnValue(new Promise(resolve=>{finish=resolve;}));wrap(<Chat/>);
+  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare these records'}});
+  await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});
+  await screen.findByText(copy.reading);expect(screen.queryByLabelText(copy.consent)).toBeNull();
+  await act(async()=>finish({name:'records.pdf',parts:[{label:'records.pdf',text:source}]}));
+  await screen.findByLabelText(copy.consent);fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));
+  await screen.findByText('Draft: 1 record');expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({instruction:'Prepare these records'}));
+ });
  it('publishes selected source, consent, draft and editable review in the same thread without a second instruction field',async()=>{
   const ordinary=vi.fn(),busy=vi.fn();wrap(<Chat ordinary={ordinary} busy={busy}/>);const question=screen.getByRole('textbox',{name:labels.question});fireEvent.change(question,{target:{value:'Prepare records'}});await attach();
   expect(screen.getAllByRole('log')).toHaveLength(1);expect(screen.getByRole('log')).toHaveTextContent(copy.target);expect(screen.getAllByRole('textbox')).toHaveLength(1);

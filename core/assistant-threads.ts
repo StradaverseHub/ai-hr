@@ -85,7 +85,7 @@ export async function loadOwnAssistantChat(supplied:SessionContext,options:{exch
    if(metadata&&metadata.scopeDigest!==scopeDigest)return refuse();if(from&&!metadata)return refuse();
    const rows:Row[]=[],seen=new Set<string>();let next:string|null=from??tail.id,olderUnavailable=false;
    while(next&&rows.length<limit&&!seen.has(next)){
-    const row=next===tail.id?tail:await get(next);if(!row){olderUnavailable=true;next=null;break;}
+    const row:Row|undefined=next===tail.id?tail:await get(next);if(!row){olderUnavailable=true;next=null;break;}
     const proof=proofFor(ctx,row);
     if(metadata&&(!proof?.thread||proof.thread.scopeDigest!==scopeDigest||proof.thread.threadId!==metadata.threadId)){olderUnavailable=true;next=null;break;}
     rows.push(row);seen.add(row.id);next=metadata?row.continues:null;

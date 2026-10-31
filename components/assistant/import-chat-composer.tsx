@@ -13,7 +13,7 @@ export function ImportChatComposer({action,clearAfterSubmit,question,setQuestion
  const {source,part,target,instruction,busy,error,draft,csv,consent,reviewed,selectedName,submittedQuestion,attached}=controller;
  // The cleared chat composer does not erase the instruction already bound to the inline draft.
  // Any new nonempty instruction invalidates that draft and requires consent again.
- useEffect(()=>{if(question.trim()&&question!==instruction)controller.changeInstruction(question);},[question,instruction]); // eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(attached&&busy!=='read'&&question.trim()&&question!==instruction)controller.changeInstruction(question);},[question,instruction,attached,busy]); // eslint-disable-line react-hooks/exhaustive-deps
  const turn=useMemo<AttachmentChatTurn|null>(()=>attached?{id,question:submittedQuestion?submittedQuestion+'\n'+selectedName:selectedName||'',answer:<ChatImportReply controller={controller}/>} : null,
   [id,source,part,target,instruction,busy,error,draft,csv,consent,reviewed,selectedName,submittedQuestion,attached]); // eslint-disable-line react-hooks/exhaustive-deps
  useEffect(()=>{callbacks.current.onAttachmentTurn?.(turn);},[turn]);

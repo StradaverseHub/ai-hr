@@ -121,7 +121,7 @@ describe('floating Assistant',()=>{
   const log=screen.getByRole('dialog').querySelector('[aria-live="polite"]') as HTMLDivElement;
   Object.defineProperties(log,{scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
   log.scrollTop=120;fireEvent.scroll(log);
-  await act(async()=>{finish({ok:true,exchangeId:'exchange-delayed',answer:<p>Delayed answer</p>});});
+  await act(async()=>{finish({ok:true,exchangeId:'exchange-delayed',conversationToken:'delayed-proof',answer:<p>Delayed answer</p>});});
   expect(screen.getByText('Delayed answer')).toBeInTheDocument();expect(log.scrollTop).toBe(120);
   expect(screen.queryByRole('status')).toBeNull();
   // Sending is an explicit request to return to the latest turn.
@@ -192,7 +192,7 @@ describe('floating Assistant',()=>{
   expect(state.ask).toHaveBeenCalledTimes(1);expect(question).toHaveAttribute('readonly');
   expect(screen.getByRole('button',{name:copy.working})).toBeDisabled();
   await act(async()=>{finish({ok:false,message:'Unavailable'});});
-  expect(screen.getByRole('alert')).toHaveTextContent('Unavailable');expect(question).not.toHaveAttribute('readonly');
+  expect(screen.getByRole('alert')).toHaveTextContent('Unavailable');expect(question).toHaveAttribute('readonly');fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect(screen.getByLabelText(copy.question)).not.toHaveAttribute('readonly');
  });
 
 });
