@@ -3918,6 +3918,7 @@ export async function markReimbursementsPaid(
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
+  if(companyIds?.length===0)return [];
   // Resolve the delegated subject once per distinct pending employment, rather than once per
   // historical request. Keep the delegated owner: ordinary employment RLS can hide a valid delegate.
   const pendingSubjects=tx.selectDistinct({employmentId:claimRequest.employmentId}).from(claimRequest)
@@ -3927,16 +3928,22 @@ export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:st
    .innerJoin(sql`LATERAL app.delegated_approval_subject(${pendingSubjects.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
    .where(and(sql`NOT app.is_self_person(approval_subject.person_id)`,
     companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`));
-  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
-  if(!scoped.length)return [];
-  const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
+  return filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+ });
+ // Keep the separate fresh principal/decision check. Authority is employment-grained, so check
+ // each candidate employment once, then select its currently pending native-visible headers.
+ // This avoids transferring every header twice and re-querying thousands of ID batches.
+ return withTenant(ctx,async tx=>{
+  await tx.execute(sql`SET LOCAL jit = off`);
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const allowed=await claimDecisionEmploymentsTx(tx,ctx,candidates.map(row=>row.employmentId));
+  if(!allowed.size)return [];
+  const byEmployment=new Map(candidates.filter(row=>allowed.has(row.employmentId)).map(row=>[row.employmentId,row]));
   const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
    .from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
     inArray(claimRequest.employmentId,[...byEmployment.keys()]))).orderBy(desc(claimRequest.createdAt),claimRequest.id);
   return rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
  });
- const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
- return candidates.filter(row=>allowed.has(row.id));
 }
 
 export function pendingClaimTaskSummary(ctx:SessionContext,companyIds:string[]|undefined,limit=25){
