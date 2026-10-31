@@ -42,7 +42,7 @@ it('compares identical populated queues for native HR, manager and employee prin
   from unnest(${users.slice(2).map(u=>u.employmentId)}::uuid[])e(id)cross join generate_series(1,2000)n`;
  for(const table of ['person','employment','app_user','role_assignment','claim_request','reporting_line'])await owner.client.unsafe('analyze '+table);
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.role==='hr_admin'?null:b.companyId}]});
- const digest=(rows:AssignedApprovalMetadata[])=>createHash('sha256').update(JSON.stringify(rows)).digest('hex');
+ const digest=(rows:AssignedApprovalMetadata[])=>createHash('sha256').update(JSON.stringify(rows.map(row=>Object.fromEntries(Object.entries(row).sort(([a],[b])=>a.localeCompare(b)))))).digest('hex');
  const expected=new Map<string,string>(),phases:Record<string,unknown>={};
  for(const phase of ['previous-before','current','previous-after']){
   const read=phase==='current'?pendingClaimTaskMetadata:previous,measurements=[];

@@ -559,7 +559,7 @@ proof of one exclusive cause.
 
 Candidate5012f28a1bda64cb8674153f768dfca3695d3167 resolves delegated task subject
 metadata once per distinct pending employment, then loads every native-visible
-header and retains the original fresh, locked decision recheck. It keeps the
+header and retains the original fresh native decision recheck. It keeps the
 delegated-subject owner rather than substituting general employment visibility.
 Paired populated benchmark/compiler run41185013098 and affected assignment,
 metadata and delegation checks41185074563 are pending. No improvement is claimed
