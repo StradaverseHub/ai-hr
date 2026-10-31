@@ -36,6 +36,7 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
   for(const route of ['onbChecklists','offChecklists'] as const){
    view.rerender(workspace(theme,route));const details=screen.getByRole('region',{name:'Checklist details'}),name=within(details).getByRole('textbox',{name:'Checklist name'}),duplicate=within(details).getByRole('button',{name:'Duplicate'}),owner=within(details).getByRole('button',{name:'Change owner'});
    const n=name.getBoundingClientRect(),d=duplicate.getBoundingClientRect(),o=owner.getBoundingClientRect();
+   expect(contrast(getComputedStyle(owner).color,getComputedStyle(details).backgroundColor)).toBeGreaterThanOrEqual(4.5);
    expect(n.width).toBeGreaterThan(200);expect(d.width).toBeGreaterThan(50);
    if(!mobile){expect(Math.abs(n.top-d.top)).toBeLessThan(2);expect(d.left-n.right).toBeGreaterThanOrEqual(15);expect(d.left-n.right).toBeLessThanOrEqual(17);expect(o.left).toBeGreaterThan(d.right);expect(o.top).toBeLessThan(n.top);}
    else {for(const rect of [n,d,o]){expect(rect.left).toBeGreaterThanOrEqual(0);expect(rect.right).toBeLessThanOrEqual(391);}expect(d.top).toBeGreaterThan(n.bottom);}

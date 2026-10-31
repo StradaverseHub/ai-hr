@@ -1,4 +1,4 @@
-import {expect,it,vi} from 'vitest';
+import {beforeAll,afterAll,expect,it,vi} from 'vitest';
 import {render,screen,fireEvent,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -7,6 +7,14 @@ vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})})
 vi.mock('../components/user-menu',()=>({UserMenu:()=> <button>Account menu</button>}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 import {V9Workspace} from '../app/lifecycle/v9/workspace';
+// jsdom lacks modal methods; keep the real workflow editor and restore the test-local shim.
+const dialogMethods = ['showModal', 'close'] as const;
+const originalDialogMethods = dialogMethods.map(name => Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name));
+beforeAll(() => {
+ Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {configurable:true,value(this:HTMLDialogElement){this.setAttribute('open','');}});
+ Object.defineProperty(HTMLDialogElement.prototype, 'close', {configurable:true,value(this:HTMLDialogElement){this.removeAttribute('open');}});
+});
+afterAll(() => {dialogMethods.forEach((name,index) => {const original=originalDialogMethods[index];if(original)Object.defineProperty(HTMLDialogElement.prototype,name,original);else Reflect.deleteProperty(HTMLDialogElement.prototype,name);});});
 function workspace(scope:string[]|undefined,view:'leavers'|'records'|'offChecklists'|'workflows'='leavers') {
  const initial=v9HtmlWorkspace();initial.cases=['alpha','beta'].map(v9HtmlCase);
  return <NextIntlClientProvider locale="en" messages={messages}><V9Workspace initial={initial} viewer={{name:'Fictional HR',employeeCode:null,employed:false}} navigation="global" initialView={view} companyScope={scope}/></NextIntlClientProvider>;
