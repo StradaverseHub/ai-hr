@@ -153,13 +153,13 @@ reporter described:
   → lands on /payroll/<batchId>?toast=Payroll+closed  (no \`from\`)
   → press Back → /payroll → September 2026.
 
-closeAction (app/(app)/payroll/actions.ts:650), generateAction (:127), unlockAction (:599) and
+closeAction (app/payroll/actions.ts:650), generateAction (:127), unlockAction (:599) and
 reprocessSelectedAction (:500) all redirect to a hardcoded path with NO \`from\`, and the forms that post
 to them carry only batchId. Your sweep audited Back LINKS and never looked at ACTION REDIRECTS.
 
 SO THE ITEM IS NOT "already works". FIX IT:
 1. Carry \`from\` through those four actions — hidden input on the posting form, preserved in the redirect
-   — so the destination re-renders with the selection intact. app/(app)/payroll/[batchId]/page.tsx:423 already
+   — so the destination re-renders with the selection intact. app/payroll/[batchId]/page.tsx:423 already
    does exactly this for the reset form; follow that precedent rather than inventing one.
 2. reprocess/page.tsx uses sp.from for the header only (:138) and never passes it to ReprocessForm
    (:362). Pass it.

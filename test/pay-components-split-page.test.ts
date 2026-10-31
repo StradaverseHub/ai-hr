@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DIR = join(__dirname, '..', 'app', 'admin', 'pay-components');
+const DIR = join(__dirname, '..', 'app', '(app)', 'admin', 'pay-components');
 const read = (...p: string[]) => readFileSync(join(...p), 'utf8');
 
 const listSrc = read(DIR, 'page.tsx');

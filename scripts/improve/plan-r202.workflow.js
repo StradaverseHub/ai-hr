@@ -56,7 +56,7 @@ const ITEMS = [
       `**Remove Employee Payroll** action (its own screen, search, multi-select, required reason, audited,\n` +
       `refusing to empty a run) plus Back navigation across the payroll screens — and 152fea7f, which\n` +
       `standardised the payroll screens to full width. Both are live on main. Read what shipped BEFORE\n` +
-      `proposing anything: app/(app)/payroll/[batchId]/remove/, app/(app)/payroll/back.ts, lib/return-to.ts, and\n` +
+      `proposing anything: app/payroll/[batchId]/remove/, app/payroll/back.ts, lib/return-to.ts, and\n` +
       `test/payroll-screens-layout.test.ts. A large part of this request may already be answered, and saying\n` +
       `so with file:line is the most valuable thing this plan can do.`,
   },
@@ -74,7 +74,7 @@ const ITEMS = [
     id: 'e14334ef', title: 'Add a latest-action updated date field to the Feedback module',
     extra:
       `This one is about the feedback board ITSELF — the module this whole improvement loop runs on\n` +
-      `(core/feedback.ts, db/schema.ts feedback_request, app/(app)/feedback). feedback_request already carries\n` +
+      `(core/feedback.ts, db/schema.ts feedback_request, app/feedback). feedback_request already carries\n` +
       `created_at, updated_at and decided_at, and every transition appends a domain_event. So the data may\n` +
       `well already be there and the ask may be a DISPLAY change. Establish that before proposing a column.`,
   },

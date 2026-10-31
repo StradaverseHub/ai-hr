@@ -177,7 +177,7 @@ describe('the agent action registry',()=>{
   for(const action of AGENT_ACTIONS){
    expect(anchorExported(action.permission.guard),action.permission.guard).toBe(true);
    expect(existsSync(path.join(ROOT,action.screen.native)),action.screen.native).toBe(true);
-   const page=action.review.route.split('?')[0]!;expect(existsSync(path.join(ROOT,'app',page,'page.tsx')),page).toBe(true);
+   const page=action.review.route.split('?')[0]!;expect(existsSync(path.join(ROOT,'app','(app)',page,'page.tsx')),page).toBe(true);
    if(action.browserOwner&&action.browserOwner!=='root'&&action.browserOwner!=='ownLeave'){
     expect(http,action.browserOwner).toMatch(new RegExp(`\\n ${action.browserOwner}\\?:`));expect(server,action.browserOwner).toMatch(new RegExp(`\\n  ${action.browserOwner}:\\{`));
    }

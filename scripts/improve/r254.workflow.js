@@ -159,7 +159,7 @@ before it. That is the promise the customer approved, and it is worth more than 
 r253 and is live. Build PART TWO: one Save per tab on the employee detail screen.
 
 START FROM THE CLASSIFICATION r253 PRODUCED: docs/audits/420ebab5-personnel-save-classification.md. It
-sorts all 35 \`<form action={...}>\` on app/(app)/admin/personnel/[employmentId]/page.tsx (4,740 lines, 31
+sorts all 35 \`<form action={...}>\` on app/admin/personnel/[employmentId]/page.tsx (4,740 lines, 31
 distinct server actions) into two buckets. READ IT FIRST and treat it as the design, not as background.
 
   (a) FIELD EDITS on the person/employment record — these consolidate under one Save per tab.
@@ -184,7 +184,7 @@ BUILD, per the plan:
 rather than updating in place. A consolidated Save must still call the SAME services per section, in
 order — do not collapse it into one blanket write, and do not bypass a service to write a table directly.
 
-SCOPE FENCE: do NOT touch app/(app)/admin/personnel/new/** — another workstream is working there this round.
+SCOPE FENCE: do NOT touch app/admin/personnel/new/** — another workstream is working there this round.
 If you need something from it, say so in your report instead of editing it.`,
   },
   {
@@ -224,7 +224,7 @@ them); save-without-validation must still work — that is what a draft IS; and 
 the reserved code back to its issuing config, or to the tenant counter when reservedConfigId is null.
 
 ⚠️ SCOPE FENCE, AND IT IS ABOUT A MERGE CONFLICT, NOT TASTE: do NOT modify anything under
-app/(app)/admin/personnel/[employmentId]/**. Another workstream is restructuring that screen's save behaviour
+app/admin/personnel/[employmentId]/**. Another workstream is restructuring that screen's save behaviour
 this round. If reusing one of its components looks right, say so in your report and leave it for the next
 round — the shared-component step is deliberately NOT in this stage.
 
@@ -319,8 +319,8 @@ LOOK FOR, IN THIS ORDER:
      example NOT implemented; premise actually checked rather than assumed;
    personnel-save → bucket (b) actions still have their own buttons and are NOT covered by the tab's
      Discard; effective dating preserved (close+insert, services called per section, no blanket write);
-     app/(app)/admin/personnel/new/** untouched;
-   draft-family → Route B not substituted; app/(app)/admin/personnel/[employmentId]/** untouched; save-without-
+     app/admin/personnel/new/** untouched;
+   draft-family → Route B not substituted; app/admin/personnel/[employmentId]/** untouched; save-without-
      validation still works; reserved code still released on discard;
    leave-design → no module code, no migration, no table proposed for dropping, the day-count engine
      retained, every current function mapped or explicitly named as homeless.

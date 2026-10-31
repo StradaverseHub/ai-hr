@@ -241,8 +241,8 @@ describe('r378 · legacy HR inquiry links redirect while explicit calendar inten
   it('the balances and records routes remain registered at their saved/export addresses', () => {
     for (const href of ['/leave/employee-balances', '/leave/employee-records']) {
       expect(REGISTERED_ROUTES.has(href)).toBe(true);
-      expect(fs.existsSync(path.join(root, `app${href}/page.tsx`))).toBe(true);
-      expect(read(`app${href}/page.tsx`)).toContain('await scopedAdmin()');
+      expect(fs.existsSync(path.join(root, `app/(app)${href}/page.tsx`))).toBe(true);
+      expect(read(`app/(app)${href}/page.tsx`)).toContain('await scopedAdmin()');
     }
   });
 

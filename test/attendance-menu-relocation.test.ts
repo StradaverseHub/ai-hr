@@ -180,7 +180,7 @@ describe('0bb0e303 — the relocated admin screens guard themselves, not via the
     // requireAdmin in its own page body, pinned by test/r299-leave-credit-screens.test.ts and
     // test/function-access.test.ts.
   ])('%s calls a server-side admin guard in its own page body', (route) => {
-    const src = read(`app${route}/page.tsx`);
+    const src = read(`app/(app)${route}/page.tsx`);
     // Either helper is fine — both resolve the session server-side and refuse a non-administrator.
     // What must not happen is a page relying on the sidebar having hidden its link.
     expect(src, `${route} must call requireAdmin() or scopedAdmin()`).toMatch(/requireAdmin\(|scopedAdmin\(/);
@@ -449,7 +449,7 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       });
       // …and their pages must not acquire a page guard either, for the reason this describe exists: a
       // self-service request screen behind an approval-side gate is a capability taken away, not secured.
-      const src = read(`app${href}/page.tsx`);
+      const src = read(`app/(app)${href}/page.tsx`);
       expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
       expect(src, `${href} resolves the caller’s own employment`).toContain('myEmployment(s)');
     }
@@ -479,7 +479,7 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
         adminOnly: undefined,
         managerUp: undefined,
       });
-      const src = read(`app${href}/page.tsx`)
+      const src = read(`app/(app)${href}/page.tsx`)
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
       expect(src, `${href} carries no page guard`).not.toMatch(/requireAdmin\(|scopedAdmin\(/);
@@ -507,7 +507,7 @@ describe('0bb0e303 rev2 — Attendance Request is self-service, and stays that w
       expect(mine.children.find((c) => c.href === href), `${href} is no longer a row in My Attendance`).toBeUndefined();
       // Comments stripped: the page's header explains what was removed and so necessarily names what it
       // no longer does. Same idiom as the my-records block above, for the same reason.
-      const src = read(`app${href}/page.tsx`)
+      const src = read(`app/(app)${href}/page.tsx`)
         .replace(/\/\*[\s\S]*?\*\//g, ' ')
         .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
       expect(src, `${href} forwards to Clock in/out`).toContain("redirect('/attendance/clock')");

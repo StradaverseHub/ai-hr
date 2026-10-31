@@ -44,7 +44,7 @@ describe('r431: the Settings page cards', () => {
 
   it('every card is a real, registered screen — nothing was renamed, so no redirect is needed', () => {
     for (const c of ATTENDANCE_SETTINGS_CARDS) {
-      expect(fs.existsSync(path.join(root, `app${c.href}`, 'page.tsx')), `${c.href} page exists`).toBe(true);
+      expect(fs.existsSync(path.join(root, `app/(app)${c.href}`, 'page.tsx')), `${c.href} page exists`).toBe(true);
       expect(REGISTERED_ROUTES.has(c.href), `${c.href} stays a registered route`).toBe(true);
     }
   });

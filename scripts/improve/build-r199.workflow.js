@@ -79,7 +79,7 @@ const WORK = [
       `The journal is APPEND-ONLY — never re-sort it.` },
   { slug: 'txnsearch', ns: 'r199txnsearch', ids: ['bd14b7e2'], migration: null,
     title: 'Payroll Transaction View — standardize the employee search UI',
-    extra: `The plan scopes this to ONE page (app/(app)/payroll/transaction-view/page.tsx), four tabs, no reads and ` +
+    extra: `The plan scopes this to ONE page (app/payroll/transaction-view/page.tsx), four tabs, no reads and ` +
       `no core/ change. Hold that line: this round also touches payroll screens in a sibling worktree, and ` +
       `every file you touch outside your page is a merge conflict someone else has to resolve blind.` },
   { slug: 'holidays', ns: 'r199holidays', ids: ['4509d2b8'], migration: null,

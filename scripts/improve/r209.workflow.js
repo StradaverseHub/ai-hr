@@ -200,7 +200,7 @@ BUILD, in this order of value:
    arrears — per the mapping. Where a line has no payroll source, it belongs in (5), not invented here.
 5. Manual-entry boxes (ESOS, gratuity, benefits in kind, living accommodation, unapproved fund refunds,
    compensation for loss of employment): EXTEND the existing generic amend mechanism
-   (app/(app)/payroll/reports/ea/[employmentId]/ea-amend-panel.tsx takes {field, amount, reason, year,
+   (app/payroll/reports/ea/[employmentId]/ea-amend-panel.tsx takes {field, amount, reason, year,
    employmentId} and the PDF already prints an "amended" footnote). Extend the allowed field list — do
    NOT build a second override path.
 
@@ -213,11 +213,11 @@ If you need a migration, say so in your report — do not take a number.`,
     slug: 'payslip',
     ns: 'r209payslip',
     items: ['6b4ca488', '5a29686c'],
-    brief: `TWO ITEMS, ONE FILE — they both edit app/(app)/payroll/individual-payslip/page.tsx, which is why they
+    brief: `TWO ITEMS, ONE FILE — they both edit app/payroll/individual-payslip/page.tsx, which is why they
 are one workstream. Read both approved plans: ${PLANS}/6b4ca488.txt and ${PLANS}/5a29686c.txt.
 
 PART 1 (6b4ca488, small and mandatory — do this FIRST and commit it before starting anything else):
-app/(app)/payroll/individual-payslip/page.tsx:675 renders
+app/payroll/individual-payslip/page.tsx:675 renders
     <span className="tabular-nums">−{rm(b.totalDeductions)}</span>
 That is a literal U+2212 prefix on an already-positive formatted value. Remove it. Sweep Transaction
 View's history and detail surfaces for the same prefix — the ticket names both screens and r206 touched
@@ -228,7 +228,7 @@ statutory wage, the rule/rate applied, the working, and the final employee and e
 - Reachable BOTH from the Individual Payslip for the slip on screen AND as a new tab under
   /payroll/transaction-view (that page already has fixed/individual/history/outstanding tabs — add
   alongside, same mechanism).
-- READ THE PERSISTED WORKING ONLY. The precedent is app/(app)/payroll/pcb-detail (item 45df860a), which reads
+- READ THE PERSISTED WORKING ONLY. The precedent is app/payroll/pcb-detail (item 45df860a), which reads
   the payslip's OWN pcbMeta so an old slip explains itself with the rules that were true when it ran.
   DO NOT recompute from today's configuration: an explanation that disagrees with the payslip beside it
   is the worst possible outcome here.

@@ -8,8 +8,8 @@ import {OVERTIME_SELECTION_FIELDS,OVERTIME_NUMERIC_FIELDS,OVERTIME_ASSIGNMENT_SE
 const root=resolve(__dirname,'..');
 const read=(file:string)=>readFileSync(resolve(root,file),'utf8');
 const PAGE='/admin/attendance/settings/overtime-patterns';
-const action=read(`app${PAGE}/actions.ts`);
-const page=read(`app${PAGE}/page.tsx`);
+const action=read(`app/(app)${PAGE}/actions.ts`);
+const page=read(`app/(app)${PAGE}/page.tsx`);
 const workspace=read('components/overtime-patterns/workspace.tsx');
 
 describe('Overtime Patterns uses the existing Attendance access and storage owners',()=>{
@@ -17,7 +17,7 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
   expect(ATTENDANCE_SETTINGS_CARDS.filter(card=>card.href===PAGE)).toEqual([{key:'overtimePatterns',href:PAGE}]);
   const owners=SCREENS.filter(screen=>screen.routes.includes(PAGE));
   expect(owners).toHaveLength(1);expect(owners[0].screenKey).toBe('attendancePolicyConfig');expect(owners[0].guard).toBe('requireAdmin');
-  expect(page).toContain('await scopedAdmin()');expect(existsSync(resolve(root,`app${PAGE}/loading.tsx`))).toBe(true);
+  expect(page).toContain('await scopedAdmin()');expect(existsSync(resolve(root,`app/(app)${PAGE}/loading.tsx`))).toBe(true);
   expect(read('app/(app)/admin/attendance/layout.tsx')).toContain("moduleLayout('attendance')");
  });
  it('leaves existing Schedule Group settings and bookmarks in place and links to the new OT owner',()=>{

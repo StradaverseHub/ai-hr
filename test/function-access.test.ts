@@ -82,16 +82,16 @@ function guardedRoutes(): string[] {
   const out: string[] = [];
   // This actual layout call guards every descendant, including pages whose data guards live in
   // server sections. A removed/renamed guard makes registered Assistant routes fail the stale set.
-  const layout=path.join(APP,'assistant/layout.tsx'),assistantGuard=fs.existsSync(layout)&&hasAssistantSessionGuard(fs.readFileSync(layout,'utf8'));
+  const layout=path.join(APP,'(app)/assistant/layout.tsx'),assistantGuard=fs.existsSync(layout)&&hasAssistantSessionGuard(fs.readFileSync(layout,'utf8'));
+  // Route groups such as (app) and (auth) organise files without adding a URL segment.
+  const routeOf=(p:string)=>{const rel=path.relative(APP,p).replace(/\\/g,'/').split('/').filter(s=>!/^\(.+\)$/.test(s)).join('/');const route=rel.replace(/(^|\/)page\.tsx$/,'');return route===''?'/':`/${route}`;};
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) walk(p);
-      else if (e.name === 'page.tsx' && (GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))||assistantGuard&&path.relative(APP,p).split(path.sep)[0]==='assistant')) {
-        // app/foo/bar/page.tsx -> /foo/bar ; app/(app)/page.tsx -> /
-        const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
-        const route = rel.replace(/(^|\/)page\.tsx$/, '');
-        out.push(route === '' ? '/' : `/${route}`);
+      else if (e.name === 'page.tsx' && (GUARD_RE.test(codeWithoutComments(fs.readFileSync(p, 'utf8')))||assistantGuard&&routeOf(p).split('/')[1]==='assistant')) {
+        // app/(app)/foo/bar/page.tsx -> /foo/bar ; app/(app)/page.tsx -> /
+        out.push(routeOf(p));
       }
     }
   };
@@ -174,7 +174,7 @@ describe('function-access registry (lib/permissions)', () => {
     const expectedShellReach={employee:true,manager:true,hr_admin:true,super_admin:true,payroll_partner:true,performance_comp_partner:true,operator:true,performance_partner:true};
     expect(Object.keys(expectedShellReach).sort()).toEqual([...roleEnum.enumValues].sort());
     for(const [role,reachable] of Object.entries(expectedShellReach))expect(canReach(role as typeof roleEnum.enumValues[number],screen!),role).toBe(reachable);
-    const layout=codeWithoutComments(fs.readFileSync(path.join(APP,'assistant/layout.tsx'),'utf8'));
+    const layout=codeWithoutComments(fs.readFileSync(path.join(APP,'(app)/assistant/layout.tsx'),'utf8'));
     expect(layout).toContain('if(!session.userId)throw new AuthRequiredError');
     expect(String(getPath(en,'admin.users.scope.assistantWorkspace'))).toContain('do not grant effect permission');
   });
@@ -214,7 +214,7 @@ describe('function-access registry (lib/permissions)', () => {
     const screen = SCREENS.find((row) => row.screenKey === 'onehrAssignments');
     expect(screen).toMatchObject({ guard: 'scopedSession', hasScopeNote: true });
     expect(SCREENS.filter((row) => row.routes.includes('/performance/department')).map((row) => row.screenKey)).toEqual(['onehrAssignments']);
-    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'performance/department/page.tsx'), 'utf8'));
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, '(app)/performance/department/page.tsx'), 'utf8'));
     expect(page).toMatch(/await requireModule\('performance'\)/);
     expect(page).toMatch(/await scopedSession\(\)/);
     expect(guardedRoutes()).toContain('/performance/department');
@@ -227,7 +227,7 @@ describe('function-access registry (lib/permissions)', () => {
     const performance = SCREENS.find((x) => x.screenKey === 'performance');
     expect(performance?.routes).toContain('/performance/leaders');
     expect(performance?.routes).toContain('/performance/[cycleId]');
-    const page = codeWithoutComments(fs.readFileSync(path.join(APP, 'performance/leaders/page.tsx'), 'utf8'));
+    const page = codeWithoutComments(fs.readFileSync(path.join(APP, '(app)/performance/leaders/page.tsx'), 'utf8'));
     expect(page).toMatch(/await requireOnehrAdminAccess\(\)/);
     expect(SCREENS.filter((x) => x.href === '/performance/leaders')).toEqual([]);
   });

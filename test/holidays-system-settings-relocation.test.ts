@@ -161,7 +161,7 @@ describe('4509d2b8 — access is UNCHANGED: administrators only, same guard, sam
     // benefit, since the ticket asked for a navigation path, not an address.
     const screen = SCREENS.find((s) => s.screenKey === 'holidays')!;
     for (const route of screen.routes) {
-      const file = path.join(ROOT, 'app', route, 'page.tsx');
+      const file = path.join(ROOT, 'app', '(app)', route, 'page.tsx');
       expect(fs.existsSync(file), `${route} has a page at app${route}/page.tsx`).toBe(true);
     }
     // …and the screen's own tab bar still points at the same two addresses.

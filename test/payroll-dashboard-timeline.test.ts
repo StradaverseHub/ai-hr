@@ -257,7 +257,7 @@ describe('7f6ca478 — the three statuses in the request that do not exist stay 
   // below stays keyed by exactly the enum — which is precisely what keeps "no fourth payroll status"
   // enforced while the screen says what the reporter asked it to say.
   it('the dashboard styles exactly the real statuses — no invented state can render a badge', () => {
-    const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'page.tsx'), 'utf8'));
+    const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', '(app)', 'payroll', 'page.tsx'), 'utf8'));
     const block = /const STATUS_STYLE: Record<string, string> = \{([\s\S]*?)\n\};/.exec(src);
     expect(block, 'STATUS_STYLE not found in app/(app)/payroll/page.tsx').toBeTruthy();
     const styled = [...block![1].matchAll(/^\s{2}(\w+):/gm)].map((m) => m[1]).sort();
@@ -288,7 +288,7 @@ describe('7f6ca478 — every dashboard label resolves in all six catalogs', () =
   const CALL = /(?<![\w$])(\w+)\(\s*'([a-zA-Z][\w.]*)'/g;
 
   it('app/(app)/payroll/page.tsx: literal keys resolve under the namespace their binding names', () => {
-    const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'page.tsx'), 'utf8'));
+    const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', '(app)', 'payroll', 'page.tsx'), 'utf8'));
     const ns = new Map<string, string>();
     for (const m of src.matchAll(BINDING)) ns.set(m[1], m[2]);
     // The premise of this whole test: the file binds MORE THAN ONE namespace, which is exactly what
@@ -337,7 +337,7 @@ describe('7f6ca478 — every dashboard label resolves in all six catalogs', () =
     // island whose props are all serialisable cannot be handed a closure by anyone. Same idea as that
     // file's "the wrapper takes only serialisable props" test.
     const src = stripComments(
-      fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'dashboard-filters.tsx'), 'utf8'),
+      fs.readFileSync(path.join(ROOT, 'app', '(app)', 'payroll', 'dashboard-filters.tsx'), 'utf8'),
     );
     const region = (startMarker: string, endMarker: string) => {
       const from = src.indexOf(startMarker);
@@ -362,7 +362,7 @@ describe('7f6ca478 — every dashboard label resolves in all six catalogs', () =
     // If a label lookup moves into components/ or into this island, it leaves the reach of BOTH the
     // shared i18n guard and test/payroll-run-type-label-namespace.test.ts (which walks app/(app)/payroll and
     // resolves each call site's binding). That is precisely how r134's MISSING_MESSAGE reached prod.
-    const src = fs.readFileSync(path.join(ROOT, 'app', 'payroll', 'dashboard-filters.tsx'), 'utf8');
+    const src = fs.readFileSync(path.join(ROOT, 'app', '(app)', 'payroll', 'dashboard-filters.tsx'), 'utf8');
     expect(src).not.toMatch(/\buseTranslations\(/);
     expect(src).not.toMatch(/\bgetTranslations\(/);
   });

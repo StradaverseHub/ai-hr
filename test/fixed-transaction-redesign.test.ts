@@ -12,8 +12,8 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const FIXED = join(__dirname, '..', 'app', 'payroll', 'transactions', 'fixed');
-const INDIVIDUAL = join(__dirname, '..', 'app', 'payroll', 'transactions', 'individual');
+const FIXED = join(__dirname, '..', 'app', '(app)', 'payroll', 'transactions', 'fixed');
+const INDIVIDUAL = join(__dirname, '..', 'app', '(app)', 'payroll', 'transactions', 'individual');
 const read = (...p: string[]) => readFileSync(join(...p), 'utf8');
 
 /**
@@ -184,13 +184,13 @@ describe('f3ae3245 — what the redesign deliberately did NOT do', () => {
  */
 describe('009c8a37 — one header line, in both panel states, on every screen with the panel', () => {
   const SCREENS: readonly [string, string][] = [
-    ['Loans', join(__dirname, '..', 'app', 'admin', 'loans', 'page.tsx')],
-    ['Individual Payslip', join(__dirname, '..', 'app', 'payroll', 'individual-payslip', 'page.tsx')],
-    ['Transaction View', join(__dirname, '..', 'app', 'payroll', 'transaction-view', 'page.tsx')],
+    ['Loans', join(__dirname, '..', 'app', '(app)', 'admin', 'loans', 'page.tsx')],
+    ['Individual Payslip', join(__dirname, '..', 'app', '(app)', 'payroll', 'individual-payslip', 'page.tsx')],
+    ['Transaction View', join(__dirname, '..', 'app', '(app)', 'payroll', 'transaction-view', 'page.tsx')],
     ['Fixed Transaction', join(FIXED, 'page.tsx')],
     ['Individual Transaction', join(INDIVIDUAL, 'txn-workspace.tsx')],
-    ['TP1 Relief', join(__dirname, '..', 'app', 'payroll', 'transactions', 'tp1', 'page.tsx')],
-    ['Zakat', join(__dirname, '..', 'app', 'payroll', 'transactions', 'zakat', 'page.tsx')],
+    ['TP1 Relief', join(__dirname, '..', 'app', '(app)', 'payroll', 'transactions', 'tp1', 'page.tsx')],
+    ['Zakat', join(__dirname, '..', 'app', '(app)', 'payroll', 'transactions', 'zakat', 'page.tsx')],
   ];
 
   /** The shell's JSX, from its `return (` to the end of the component. */
@@ -269,7 +269,7 @@ describe('009c8a37 — one header line, in both panel states, on every screen wi
     const factory = panelSrc.slice(panelSrc.indexOf('const toggleButton'), panelSrc.indexOf('return ('));
     expect(factory).toContain('print:hidden');
     // …and the header ROW itself is print-hidden on the one screen whose output is a printed payslip.
-    expect(read(join(__dirname, '..', 'app', 'payroll', 'individual-payslip', 'page.tsx'))).toContain(
+    expect(read(join(__dirname, '..', 'app', '(app)', 'payroll', 'individual-payslip', 'page.tsx'))).toContain(
       'headerClassName="print:hidden"',
     );
   });

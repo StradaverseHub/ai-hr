@@ -137,7 +137,7 @@ describe('function access and loading shells', () => {
     expect(SCREENS.filter(screen => screen.routes.some(route => NEW_ROUTES.includes(route))).map(screen => screen.screenKey)).toEqual(['performanceTabs']);
   });
   it.each(NEW_ROUTES)('%s has a page with the module and session guards and the shared loading shell', route => {
-    const dir = path.join(process.cwd(), 'app', route);
+    const dir = path.join(process.cwd(), 'app', '(app)', route);
     const page = fs.readFileSync(path.join(dir, 'page.tsx'), 'utf8');
     expect(page).toMatch(/await requireModule\('performance'\)/);
     expect(page).toMatch(/await scopedSession\(\)/);

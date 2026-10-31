@@ -498,7 +498,7 @@ describe('r256 — the one prompt reads the same way in every locale', () => {
    */
   it('the screen no longer renders a separate "Add to this run" control', () => {
     const workspace = fs.readFileSync(
-      path.resolve(__dirname, '..', 'app', 'payroll', 'transactions', 'individual', 'txn-workspace.tsx'),
+      path.resolve(__dirname, '..', 'app', '(app)', 'payroll', 'transactions', 'individual', 'txn-workspace.tsx'),
       'utf8',
     );
     expect(workspace, 'the two-step button is still on the screen').not.toContain('addToRunCta');

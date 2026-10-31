@@ -99,7 +99,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
           `consolidated into ${NEW_ROUTE}; if that is being reversed, reverse this case with it.`,
       ).not.toContain(route);
       expect(
-        existsSync(path.join(root, `app${route}/page.tsx`)),
+        existsSync(path.join(root, `app/(app)${route}/page.tsx`)),
         `${route} lost its page. The ROUTES survive — as the owning editors in r287, and since r301 ` +
           `(6d091cc0) as requireAdmin() redirects to the General-tab card that holds their content — so ` +
           `retiring the row must never delete the page: bookmarks, the module gate and the screenKey ride it.`,
@@ -151,7 +151,7 @@ describe('e4471e3c (r287) — the Schedule screen ABSORBED Schedule Group and Wo
       [OLD_WORK_SCHEDULE_ROUTE, 'WORK_SCHEDULE_OVERTIME_ANCHOR'],
     ];
     for (const [route, anchor] of stubs) {
-      const stub = read(`app${route}/page.tsx`);
+      const stub = read(`app/(app)${route}/page.tsx`);
       expect(stub, `${route} still refuses a non-administrator itself`).toMatch(/await requireAdmin\(\);\s*redirect\(/);
       if(route===OLD_WORK_SCHEDULE_ROUTE)expect(stub).toContain('redirect(legacyWorkScheduleRedirect(await searchParams))');
       else expect(stub, `${route} redirects to its owning destination`).toContain(`redirect(\`\${SCHEDULE}#\${${anchor}}\`)`);

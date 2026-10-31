@@ -209,7 +209,7 @@ describe('a6fe37fc — the leave configuration map', () => {
     expect(byGroup.leaveBfImport).toBeUndefined();
     expect(byGroup.leaveHistoryImport).toBeUndefined();
     for (const [type, path] of [['history', '/admin/leave-config/history-import'], ['bf', '/admin/leave-config/bf-import']]) {
-      const stub = readFileSync(new URL(`../app${path}/page.tsx`, import.meta.url), 'utf8');
+      const stub = readFileSync(new URL(`../app/(app)${path}/page.tsx`, import.meta.url), 'utf8');
       expect(stub).toContain('requireAdmin()');
       expect(stub).toContain(`/admin/leave-config/data-import?type=${type}`);
     }

@@ -148,8 +148,8 @@ describe('61bf109d rev2 — the formula reads as plain words', () => {
 });
 
 describe('61bf109d rev2 — the list points at the screen that changes the value', () => {
-  const listSrc = read('app', 'admin', 'pay-components', 'page.tsx');
-  const formSrc = read('app', 'admin', 'pay-components', 'component-form.tsx');
+  const listSrc = read('app', '(app)', 'admin', 'pay-components', 'page.tsx');
+  const formSrc = read('app', '(app)', 'admin', 'pay-components', 'component-form.tsx');
 
   it('makes the Input Type cell a link to the pay item, same target as the row Edit action', () => {
     const value = '{t(`inputType_${inputTypeOf(c.rule, c.pendingInputKind)}`)}';
@@ -198,7 +198,7 @@ describe('61bf109d rev2 — the list points at the screen that changes the value
 });
 
 describe('61bf109d rev2 — THE SCOPE GUARD: still no parser, no eval, no expression string', () => {
-  const wordsSrc = read('app', 'admin', 'pay-components', 'pay-rule-words.ts');
+  const wordsSrc = read('app', '(app)', 'admin', 'pay-components', 'pay-rule-words.ts');
 
   it('the words module evaluates nothing and reads no expression text', () => {
     // Scoped to THIS module on purpose: it is the one file the item added, and the one place a
@@ -251,7 +251,7 @@ describe('61bf109d rev2 — THE SCOPE GUARD: still no parser, no eval, no expres
   });
 
   it('statutory pay codes are still excluded from formula operands on the form', () => {
-    const formSrc = read('app', 'admin', 'pay-components', 'component-form.tsx');
+    const formSrc = read('app', '(app)', 'admin', 'pay-components', 'component-form.tsx');
     expect(formSrc, 'the operand picker still filters statutory items').toContain('isStatutoryComponent(c.code, c.kind)');
   });
 });

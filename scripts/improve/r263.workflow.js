@@ -100,14 +100,14 @@ const WORK = [
     brief: `YOUR APPROVED PLAN IS AT ${PLANS}/a485afa1.txt. Read it first — its business half is a
 promise to the reporter and its build notes carry the measurements.
 
-THE PREMISE IS CONFIRMED, NOT CORRECTED. app/(app)/admin/attendance/schedule-assignment/page.tsx (229 lines)
+THE PREMISE IS CONFIRMED, NOT CORRECTED. app/admin/attendance/schedule-assignment/page.tsx (229 lines)
 lists employees with columns Employee ID · Name · Company · Shift Type · Backup Shift · Effective From ·
 Status, and its ONLY row action at :210-216 uses editHref built at :145 as
 \`/admin/personnel/\${employmentId}?tab=attendance#section-default-shift\` — so View/Edit leaves the
 Attendance module entirely.
 
 WHAT IS ON THE OTHER END, and it is why this is Moderate rather than Large:
-app/(app)/admin/personnel/[employmentId]/page.tsx:2235, card id="section-default-shift", is a form posting
+app/admin/personnel/[employmentId]/page.tsx:2235, card id="section-default-shift", is a form posting
 setDefaultShiftAction over components/employee-shift-fields.tsx — THREE controls: shiftType (select),
 shiftId i.e. the backup shift (select), effectiveFrom (date) — plus a read-only shiftArrangementHistory
 table.
@@ -129,7 +129,7 @@ rather than updating in place (ADR-0001/0003). Call it exactly as the Personnel 
 arguments, same effective-date semantics. Pin it with a test that saves from the NEW screen and asserts
 the history row it produces is identical in shape to one saved from Personnel.
 
-⚠️ SCOPE FENCE, AND IT IS HARD: DO NOT EDIT app/(app)/admin/personnel/[employmentId]/page.tsx. The plan tells
+⚠️ SCOPE FENCE, AND IT IS HARD: DO NOT EDIT app/admin/personnel/[employmentId]/page.tsx. The plan tells
 the reporter Personnel Management KEEPS its copy — "you asked for a second entry point, not for the first
 one to be taken away". Removing or altering that card would break the promise and collide with nothing
 else this round is doing. Also do NOT touch packs/attendance/index.ts: Schedule Assignment already has
@@ -184,10 +184,10 @@ new screen ALONGSIDE — the existing Work Schedule row keeps working and is NOT
 round. Register the new guarded page.tsx in lib/permissions.ts in the SAME commit
 (test/function-access.test.ts fails both ways). NEVER rename a screen KEY — it may key stored role configs.
 
-SCOPE FENCE: app/(app)/admin/attendance/schedule/** (new), packs/attendance/index.ts (the new nav row — you own
+SCOPE FENCE: app/admin/attendance/schedule/** (new), packs/attendance/index.ts (the new nav row — you own
 this file this round), lib/permissions.ts, your tests, six locales. Do NOT touch
-app/(app)/admin/attendance/schedule-assignment/** (the other agent owns it), do NOT modify
-app/(app)/admin/attendance-policy/schedule/** (it keeps working untouched), and only READ core/attendance.ts
+app/admin/attendance/schedule-assignment/** (the other agent owns it), do NOT modify
+app/admin/attendance-policy/schedule/** (it keeps working untouched), and only READ core/attendance.ts
 and core/roster.ts.
 
 RENDER CHECK MANDATORY: load the new screen on a dev server, read the dev log, and probe the DOM for each

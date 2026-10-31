@@ -34,7 +34,7 @@ describe('Leave Settings retains every destination with exactly one menu owner',
     expect(canReach('hr_admin', hub)).toBe(true); expect(canReach('super_admin', hub)).toBe(true);
     for (const role of ['employee', 'manager', 'payroll_partner'] as const) expect(canReach(role, hub)).toBe(false);
     for (const row of LEAVE_SETTINGS_DESTINATIONS) {
-      expect(fs.existsSync(path.join(root, `app${row.href}/page.tsx`))).toBe(true);
+      expect(fs.existsSync(path.join(root, `app/(app)${row.href}/page.tsx`))).toBe(true);
       const screen = SCREENS.find(screen => screen.routes.includes(row.href))!;
       expect(screen.screenKey).toBe(row.labelKey === 'leaveApprovalWorkflow' ? 'leaveApproval' : 'leaveConfig');
     }

@@ -64,7 +64,7 @@ const WORK = [
   { slug:'labels', ns:'r256lbl', items:['f1bbc572'], brief:
 `Read ${PLANS}/f1bbc572.txt. A Global system label must be visible to EVERY company.
 
-THE DEFECT IS ONE LINE, already located: app/(app)/admin/settings/system-labels/page.tsx:151
+THE DEFECT IS ONE LINE, already located: app/admin/settings/system-labels/page.tsx:151
   const inScope = <T extends { companyId: string }>(rows: T[]) => rows.filter((r) => scopedIdSet.has(r.companyId));
 It tests the row's ORIGIN company and never consults isGlobal. Applied at :153-156 to all four kinds.
 MEASURED: 59 global rows (21 department / 27 position / 5 cost_center / 6 business_unit) created under
@@ -82,7 +82,7 @@ company-A row is not; a single-company scope returns (that company's rows + all 
   { slug:'header', ns:'r256hdr', items:['fbf6abd0'], brief:
 `Read ${PLANS}/fbf6abd0.txt. Show who is signed in.
 
-MEASURED: app/(app)/layout.tsx renders the header's right cluster as divider → language → theme → LogoutButton
+MEASURED: app/layout.tsx renders the header's right cluster as divider → language → theme → LogoutButton
 (~:184-221). No name, no employee code, no avatar. DevIdentitySwitcher at :184 is dev/demo only and is
 hidden on a real deployment, so a normal login shows no identity at all.
 
@@ -100,19 +100,19 @@ If a guard pins LogoutButton's current position, UPDATE it rather than deleting 
 `Read ${PLANS}/b372e923.txt. THIS IS A CONTESTED ITEM — r253 shipped the wrong affordance and the
 reporter rejected it. Build what they actually asked for.
 
-MEASURED: app/(app)/payroll/[batchId]/page.tsx:1049-1056 wraps BOTH the EmployeeCode and the name in
+MEASURED: app/payroll/[batchId]/page.tsx:1049-1056 wraps BOTH the EmployeeCode and the name in
 <Link href={payslipDetailHref(...)}> — the run screen already behaves correctly.
-app/(app)/payroll/[batchId]/reprocess/page.tsx:325 renders <span>{r.employeeName}</span> with a SEPARATE link
+app/payroll/[batchId]/reprocess/page.tsx:325 renders <span>{r.employeeName}</span> with a SEPARATE link
 at :366. So we added a second control instead of the one that existed.
 
-FIX (markup only — the destination helper app/(app)/payroll/payroll-result-href.ts is already shared):
+FIX (markup only — the destination helper app/payroll/payroll-result-href.ts is already shared):
 wrap the name AND the EmployeeCode on the reprocess rows in the existing link; REMOVE the separate
 "Payroll Result" column and its header; keep plain text for a row with no resolvable payslip.
 The r253 test asserted the separate link carried BOTH ids for THAT row — KEEP that assertion and
 re-point it at the name (AGENTS 18: update the case, never delete it).
 "Regardless of status" needs NO work: resultHrefs joins jobRows to slips and never reads batch.status.
 Say so rather than building a status check.
-SCOPE FENCE: app/(app)/payroll/[batchId]/reprocess/** is YOURS this round. Do not touch app/(app)/payroll/page.tsx.` },
+SCOPE FENCE: app/payroll/[batchId]/reprocess/** is YOURS this round. Do not touch app/payroll/page.tsx.` },
 
   { slug:'reprocess-status', ns:'r256rs', items:['0b326d5f'], brief:
 `Read ${PLANS}/0b326d5f.txt. Show "Reprocess Required" in the Payroll Process listing.
@@ -131,11 +131,11 @@ the reporter so. Derive a DISPLAY state instead: processed + needsRecalcAt ⇒ "
 BUILD: the display state in the listing, the affected-employee count from recalcEmploymentIds, and a link
 into the selective reprocess with that set preselected. New label in six locales.
 The dashboard status FILTER is a single select bound to filters.statuses[0]
-(app/(app)/payroll/dashboard-filters.tsx) — decide whether the new state is filterable and SAY WHICH; do not
+(app/payroll/dashboard-filters.tsx) — decide whether the new state is filterable and SAY WHICH; do not
 leave a chip the filter cannot reach.
 TEST: a processed run with needsRecalcAt shows the state and count; clearing the last employment returns
 it to Processed; a CLOSED run never shows it whatever the flag says.
-SCOPE FENCE: do NOT touch app/(app)/payroll/[batchId]/reprocess/** — another workstream owns it.` },
+SCOPE FENCE: do NOT touch app/payroll/[batchId]/reprocess/** — another workstream owns it.` },
 
   { slug:'txn-prompt', ns:'r256txn', items:['4b909202'], brief:
 `Read ${PLANS}/4b909202.txt. CONTESTED — and it is the reject our own plan invited, so treat it as an
@@ -157,7 +157,7 @@ that can never complete. When canAddToRun is false the prompt must NOT offer Con
 instead. Do not regress that while changing the presentation.
 Closed runs still refuse outright. i18n in six locales; retire the two-step's keys only after checking no
 other caller resolves them.
-SCOPE FENCE: do NOT touch app/(app)/payroll/page.tsx or reprocess/** — other workstreams own those.` },
+SCOPE FENCE: do NOT touch app/payroll/page.tsx or reprocess/** — other workstreams own those.` },
 
   { slug:'shift', ns:'r256shift', items:['6340aecb'], brief:
 `Read ${PLANS}/6340aecb.txt. Redesign Shift Settings.
@@ -165,7 +165,7 @@ SCOPE FENCE: do NOT touch app/(app)/payroll/page.tsx or reprocess/** — other w
 MIGRATION 0457 IS YOURS — the only one this round. when = 1781862557000, tag 0457_shift_colour_flex_break.
 Journal entry AND .sql; append, never re-sort.
 
-ALREADY EXIST (db/schema.ts shift + app/(app)/admin/attendance/shift-form.tsx) — do NOT rebuild:
+ALREADY EXIST (db/schema.ts shift + app/admin/attendance/shift-form.tsx) — do NOT rebuild:
   halfDayFirstOut / halfDaySecondIn (request point 9 — BUILT, rendered at :236-238)
   earlyIn / lateOut (point 8 — the fields to RELABEL, at :220 and :223)
   startTime/endTime, breakMinutes, breakPeriods, grace minutes, crossesMidnight, lateOutNextDay
@@ -185,7 +185,7 @@ time sequence. Existing shifts must round-trip unchanged — assert it.` },
   { slug:'statutory', ns:'r256stat', items:['858a1128'], brief:
 `Read ${PLANS}/858a1128.txt. Statutory Forms becomes a form directory.
 
-MEASURED: app/(app)/payroll/statutory-forms/page.tsx takes companyId/year/month as searchParams (:239-243) —
+MEASURED: app/payroll/statutory-forms/page.tsx takes companyId/year/month as searchParams (:239-243) —
 the period genuinely precedes the form choice. ALREADY BUILT and NOT to be rebuilt: the pack registers
 EIGHT reports (:32) and each carries a FormStatus of 'official' | 'agency-layout' | 'figures' |
 'draft-file' | 'planned' (:130). Carry that grouping and those chips across unchanged.
@@ -223,7 +223,7 @@ that sentence in plain words — put it in notBuilt.
 recorded salary revision would be a control lying about what it does.
 EFFECTIVE DATING SURVIVES (ADR-0001/0003): a save CLOSES and INSERTS a version. Call the SAME services per
 section, in order — never one blanket write.
-SCOPE FENCE: do NOT touch app/(app)/admin/personnel/new/** or app/(app)/me/**.` },
+SCOPE FENCE: do NOT touch app/admin/personnel/new/** or app/me/**.` },
 ];
 
 const built = await parallel(WORK.map((w) => () =>

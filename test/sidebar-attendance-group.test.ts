@@ -217,7 +217,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
   it('3fb1a611: Time off in lieu has LEFT the rail — folded into Leave Credit, its address a redirect', () => {
     for (const href of TICKET_FOLDED) {
       expect(countQuoted(SRC, href), `${href} still has a row somewhere in the rail`).toBe(0);
-      const page = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
+      const page = fs.readFileSync(path.resolve(__dirname, '..', `app/(app)${href}`, 'page.tsx'), 'utf8');
       expect(page, `${href} must still resolve, as a redirect to Leave Credit`).toContain(
         'redirect(`/admin/leave-config/leave-credit',
       );
@@ -242,7 +242,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       expect(navigationPlacement(href)).toEqual({area:'ops',module:'attendance',section:'config'});
       const cards=fs.readFileSync(path.resolve(__dirname,'../app/(app)/admin/attendance/settings/cards.ts'),'utf8');
       expect(cards.match(/key: 'locations', href: '\/admin\/work-locations\/clocking'/g)).toHaveLength(1);
-      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
+      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app/(app)${href}`, 'page.tsx'), 'utf8');
       const guard = stub.indexOf('requireAdmin()');
       const fwd = stub.indexOf('redirect(');
       expect(guard, `${href} guards itself`).toBeGreaterThan(-1);
@@ -274,7 +274,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
       // …and the OLD address keeps no row anywhere, while still resolving as a guarded redirect stub.
       expect(node.indexOf(`'${was}'`), `${was} is NOT a child of the node — the route did not move back`).toBe(-1);
       expect(countQuoted(SRC, was), `${was} must have no menu row left anywhere in the rail`).toBe(0);
-      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app${was}`, 'page.tsx'), 'utf8');
+      const stub = fs.readFileSync(path.resolve(__dirname, '..', `app/(app)${was}`, 'page.tsx'), 'utf8');
       expect(stub, `${was} must still resolve, guard first, as a redirect to ${now}`).toContain('requireAdmin()');
       // r423 — the old address meant clocking locations, so it forwards to the clocking list.
       expect(stub, `${was} must forward to the register's address`).toContain('forward(await searchParams, CLOCKING_LIST)');
@@ -332,7 +332,7 @@ describe('sidebar Attendance group (5cb199b3 consolidation, after the a324a4b3 r
           `assertion with it and say why.`,
       ).toBe(0);
       expect(
-        fs.existsSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx')),
+        fs.existsSync(path.resolve(__dirname, '..', `app/(app)${href}`, 'page.tsx')),
         `${href} lost its page. Retiring a menu row must never delete a screen's address — since r301 ` +
           `(6d091cc0) the route is a requireAdmin() redirect to the Schedule General-tab card that holds its ` +
           `content, and bookmarks, the module gate and the permission screenKey all ride that page.`,
@@ -700,7 +700,7 @@ describe('sidebar Attendance group — Clock in/out and Records are the staff no
     expect(node.indexOf(`labelKey: 'myTravel'`), 'no row may carry the retired myTravel key').toBe(-1);
     // And the address must still answer, because travel bookmarks are in the wild. /attendance/clock is
     // the destination on purpose; /attendance/my-records is blank (item 2aef3cd8).
-    const page = fs.readFileSync(path.resolve(__dirname, '..', `app${href}`, 'page.tsx'), 'utf8');
+    const page = fs.readFileSync(path.resolve(__dirname, '..', `app/(app)${href}`, 'page.tsx'), 'utf8');
     expect(page, `${href} must forward to Clock in/out, not 404`).toContain("redirect('/attendance/clock')");
   });
 });

@@ -32,7 +32,7 @@ const getPath = (obj: Dict, dotted: string): unknown =>
   dotted.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Dict)[k] : undefined), obj);
 
 /** Every .ts/.tsx under app/(app)/payroll, walked rather than listed — a new screen is covered on arrival. */
-function payrollSources(dir = path.join(ROOT, 'app', 'payroll')): string[] {
+function payrollSources(dir = path.join(ROOT, 'app', '(app)', 'payroll')): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) return payrollSources(full);
@@ -86,7 +86,7 @@ describe('r134 — payroll runType labels resolve under the namespace each scree
   });
 
   it('the run detail page reads the cycle label from payroll.list, where it actually lives', () => {
-    const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', 'payroll', '[batchId]', 'page.tsx'), 'utf8'));
+    const src = stripComments(fs.readFileSync(path.join(ROOT, 'app', '(app)', 'payroll', '[batchId]', 'page.tsx'), 'utf8'));
     // Pinned as the specific reversion guard: re-binding this call to `t` (payroll.batch) reintroduces
     // the exact MISSING_MESSAGE this test was written for. The negative needs the same `(?<![\w$])`
     // boundary as CALL above — a plain substring check matches `tLis` + `t(` and fails on correct code.

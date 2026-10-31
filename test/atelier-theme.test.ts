@@ -85,10 +85,12 @@ describe('Atelier reaches the app only through its own scope', () => {
     }
   });
   it('the layout imports it as a module (never an @import a warm build cache can drop); the variant stays in globals', () => {
-    const layout = read('app/(app)/layout.tsx');
     const globals = read('app/globals.css');
-    expect(layout).toMatch(/^import '\.\/atelier\.css';$/m);
-    expect(layout.indexOf("import './atelier.css';")).toBeGreaterThan(layout.indexOf("import './globals.css';"));
+    // Both root layouts (the shell and the login flow) sit one folder below app/.
+    for (const layout of [read('app/(app)/layout.tsx'), read('app/(auth)/layout.tsx')]) {
+      expect(layout).toMatch(/^import '\.\.\/atelier\.css';$/m);
+      expect(layout.indexOf("import '../atelier.css';")).toBeGreaterThan(layout.indexOf("import '../globals.css';"));
+    }
     expect(globals).not.toMatch(/@import\s+["']\.\/atelier\.css/);
     // D-P1-32 D3: the same variant, with an area theme (<div data-area-theme>) excluded at zero specificity.
     expect(globals).toContain("@custom-variant atelier (&:where([data-ui-theme='atelier'] *):not(:where([data-area-theme], [data-area-theme] *)));");

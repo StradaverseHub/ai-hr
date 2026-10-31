@@ -182,7 +182,7 @@ describe('§A · the map is the submenu rows, in the submenu\'s order', () => {
     // one row like every other route, and this loop needed no second exemption.
     expect(LEAVE_CONFIG_RECORDS_HREF).toBe('/admin/leave-config/records');
     for (const r of leaveConfig.routes) {
-      expect(onMap.filter((h) => h === r), r).toHaveLength(r === '/admin/leave-config/settings' || r === LEAVE_CONFIG_RECORDS_HREF || Object.keys(IMPORT_ALIASES).some((p) => p.replace(/^app/, '').replace(/\/page\.tsx$/, '') === r) ? 0 : 1);
+      expect(onMap.filter((h) => h === r), r).toHaveLength(r === '/admin/leave-config/settings' || r === LEAVE_CONFIG_RECORDS_HREF || Object.keys(IMPORT_ALIASES).some((p) => p.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '') === r) ? 0 : 1);
     }
     expect(leaveConfig.routes).toContain(LEAVE_CONFIG_RECORDS_HREF);
     expect(read('app/(app)/admin/leave-config/adjustments/page.tsx')).toContain('<Link href={LEAVE_CONFIG_RECORDS_HREF}');
@@ -266,7 +266,7 @@ describe('§B · no Leave Config page renders the nine-screen pill row', () => {
       const mounts = [...src.matchAll(/<LeaveConfigMap current="([a-zA-Z]+)" \/>/g)];
       expect(mounts, `${rel} must mount the tab row exactly once`).toHaveLength(1);
       const id = mounts[0][1] as MappedLeaveConfigScreenId;
-      const own = rel.replace(/^app/, '').replace(/\/page\.tsx$/, '');
+      const own = rel.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '');
       expect(leaveConfigGroupOf(id).items.map((i) => i.href), `${rel} mounts a tab of another row`).toContain(own);
       // …and it is the only thing that looks like a strip: no second <nav> of leave-config links.
       expect((src.match(/<nav /g) ?? []).length, `${rel} renders a second navigation strip`).toBe(0);

@@ -100,9 +100,9 @@ records product-wide, and that we would plan that separately if they want it.
 
 THEN THE MINORS in your findings file.
 
-SCOPE FENCE: app/(app)/me/**, core/profile.ts, core/tenant-settings.ts, lib/profile-requestable-fields.ts,
-packs/catalog.ts, the settings screen, your tests, docs/, six locales. Do NOT touch app/(app)/admin/leave/** or
-app/(app)/admin/leave-config/** — the other agent owns the cutover. Do NOT change the migration number.`,
+SCOPE FENCE: app/me/**, core/profile.ts, core/tenant-settings.ts, lib/profile-requestable-fields.ts,
+packs/catalog.ts, the settings screen, your tests, docs/, six locales. Do NOT touch app/admin/leave/** or
+app/admin/leave-config/** — the other agent owns the cutover. Do NOT change the migration number.`,
   },
   {
     slug: 'leave-cutover',
@@ -120,7 +120,7 @@ engine file is touched (core/leave-approval-policy.ts, core/leave-approval-conso
 and say so in "remaining".
 
 ⚠️ MAJOR 2 — YOUR STATED MITIGATION FOR THE UNMOVED CONSTANT IS VACUOUS, AND THE VERIFIER PROVED IT.
-You left app/(app)/admin/leave-approval/actions.ts's PAGE = '/admin/leave/approval' unmoved (defensible — it is
+You left app/admin/leave-approval/actions.ts's PAGE = '/admin/leave/approval' unmoved (defensible — it is
 outside the constants Round 5 names) and justified it by saying test/leave-config-round4.test.ts "asserts
 BOTH the literal and the stub's query forwarding". It does not: line 178-180 only asserts the stub
 contains the token 'URLSearchParams' — the exact token-level shape you yourself replaced for the other
@@ -133,9 +133,9 @@ deleting the loop.
 
 THEN THE THREE MINORS in your findings file.
 
-SCOPE FENCE unchanged: app/(app)/admin/leave/**, app/(app)/admin/leave-config/**, components/leave-config-map.tsx,
-lib/permissions.ts, app/(app)/admin/_redirects.ts, the affected tests, six locales. Do NOT touch core/leave*,
-app/(app)/me/** (the other agent is there), and do NOT delete components/leave-sub-step-bar.tsx or any stub.`,
+SCOPE FENCE unchanged: app/admin/leave/**, app/admin/leave-config/**, components/leave-config-map.tsx,
+lib/permissions.ts, app/admin/_redirects.ts, the affected tests, six locales. Do NOT touch core/leave*,
+app/me/** (the other agent is there), and do NOT delete components/leave-sub-step-bar.tsx or any stub.`,
   },
 ];
 

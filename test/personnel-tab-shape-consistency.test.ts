@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DIR = join(__dirname, '..', 'app', 'admin', 'personnel', '[employmentId]');
+const DIR = join(__dirname, '..', 'app', '(app)', 'admin', 'personnel', '[employmentId]');
 const PAGE = readFileSync(join(DIR, 'page.tsx'), 'utf8');
 const DOCS_MANAGER = readFileSync(join(DIR, 'documents-manager.tsx'), 'utf8');
 const DOCS_SECTION = readFileSync(join(DIR, 'documents-section.tsx'), 'utf8');

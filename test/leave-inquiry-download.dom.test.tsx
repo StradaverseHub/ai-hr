@@ -17,7 +17,7 @@ afterEach(cleanup);
  * detects that regression; jsdom cannot prove a saved file or diagnose a Chrome download refusal.
  */
 function exportActions(page: 'employee-balances' | 'employee-records', selection: string) {
-  const path = resolve(process.cwd(), 'app', 'leave', page, 'page.tsx');
+  const path = resolve(process.cwd(), 'app', '(app)', 'leave', page, 'page.tsx');
   const source = ts.createSourceFile(path, readFileSync(path, 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const actions: ts.JsxElement[] = [];
   const declarations = new Map<string, ts.VariableDeclaration[]>();

@@ -20,7 +20,11 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), 'utf8');
  * (r401): once r398 merged, `main:` WAS this branch, so the sweep compared the shell with itself and passed on
  * nothing. A ref that moves cannot be a baseline. */
 const CLASSIC_BASE = 'f79f0259f529dfafd1426fbf70389c8555495858';
-const onMain = (p: string) => execFileSync('git', ['show', `${CLASSIC_BASE}:${p}`], { cwd: ROOT, encoding: 'utf8' });
+// The baseline predates the (auth)/(app) root-layout split: its single app/(app)/layout.tsx held both shells.
+const BASELINE_PATH: Record<string, string> = { 'app/(app)/layout.tsx': 'app/(app)/layout.tsx' };
+const onMain = (p: string) => execFileSync('git', ['show', `${CLASSIC_BASE}:${BASELINE_PATH[p] ?? p}`], { cwd: ROOT, encoding: 'utf8' });
+/** The current source a baseline file's classes must survive in: the old layout's login branch moved to app/(auth). */
+const current = (p: string) => p === 'app/(app)/layout.tsx' ? read(p) + read('app/(auth)/layout.tsx') : read(p);
 
 const LAYOUT = read('app/(app)/layout.tsx');
 const SIDEBAR = read('components/sidebar.tsx');
@@ -105,7 +109,7 @@ describe('Classic shell baseline, with the approved mobile notification position
         // The rail's own panel classes are cn() strings, not attributes — prove they are in the sweep.
         expect(cnStrings(onMain(file)).some((c) => c.includes('rounded-[1.25rem]'))).toBe(true);
       }
-      const now = read(file);
+      const now = current(file);
       for(const oldClass of Object.keys(CLASSIC_APPROVED_MOBILE_REPAIRS[file]??{}))expect(before.filter(cls=>cls===oldClass)).toHaveLength(1);
       if (file === 'components/notification-center.tsx') {
         expect(before.filter(cls => cls === CLASSIC_NOTIFICATION_PANEL)).toHaveLength(1);

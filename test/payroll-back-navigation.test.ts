@@ -41,7 +41,7 @@ import { describe, expect, it } from 'vitest';
 import { payrollListReturnTo, withPayrollFrom } from '../lib/return-to';
 
 const ROOT = path.resolve(__dirname, '..');
-const PAYROLL = path.join(ROOT, 'app', 'payroll');
+const PAYROLL = path.join(ROOT, 'app', '(app)', 'payroll');
 
 /**
  * The screens that legitimately have no Back, stated by path so adding one is a deliberate act.

@@ -100,7 +100,7 @@ const WORK = [
     brief: `YOU ARE BUILDING ROUND 3 ONLY. READ docs/design/a6fe37fc-migration-order.md "Round 3" IN FULL
 FIRST, plus IA docs/design/a6fe37fc-leave-config-ia.md §2.0.3, §3.1 and §3.2. Rounds 1 and 2 are built
 and DEPLOYED: the approval replay harness (do not touch core/leave-approval-*, scripts/replay-approval-
-routing.ts or docs/baselines/) and app/(app)/admin/leave-config/types/ (read it — it is the pattern this round
+routing.ts or docs/baselines/) and app/admin/leave-config/types/ (read it — it is the pattern this round
 follows, including how it registers its route and how it mounts shared components).
 
 ⚠️ THIS ROUND ADDS AND REMOVES NOTHING, exactly like Round 2. All seven pages are NEW page components
@@ -142,9 +142,9 @@ CARRY FORWARD WHAT ROUND 2 LEARNED THE HARD WAY:
   · Put <LeaveConfigMap current="…" /> on each new page as Round 2 does, so the new screens can reach
     each other, and carry any data-tour anchor its old page has.
 
-SCOPE FENCE: app/(app)/admin/leave-config/** (new), lib/permissions.ts (routes only), your new tests, and the
-six locales. Do NOT touch app/(app)/admin/leave/**, components/leave-type-panel.tsx, core/leave*, app/(app)/me/**
-(another agent is there), or app/(app)/admin/personnel/**.`,
+SCOPE FENCE: app/admin/leave-config/** (new), lib/permissions.ts (routes only), your new tests, and the
+six locales. Do NOT touch app/admin/leave/**, components/leave-type-panel.tsx, core/leave*, app/me/**
+(another agent is there), or app/admin/personnel/**.`,
   },
   {
     slug: 'my-profile',
@@ -166,14 +166,14 @@ earlier build note wrongly said this had to be built. Do not build a second one,
 
 WHAT STAGE ONE IS:
   · My Profile is rebuilt with the SAME TABS and the SAME SECTION NAMES as Personnel Management:
-    Profile, Employment, Bank and Statutory, Payroll, Family and Documents. Today app/(app)/me/page.tsx:234
+    Profile, Employment, Bank and Statutory, Payroll, Family and Documents. Today app/me/page.tsx:234
     has five different ones (overview, profile, pay, performance, documents).
   · Full width, arranged in cards, so a section reads across the screen instead of being scrolled past.
   · Employees see ONLY their own record. There is no way to search for or open anybody else — assert it.
 
 ⚠️ IT IS A READ SURFACE THIS ROUND. Reuse the Personnel section components with an EMPLOYEE-SCOPED READ.
 DO NOT FORK THEM — a fork is how the two screens drift apart again, which is the whole complaint. r258
-just moved the DRAFT employee onto those same components (app/(app)/admin/personnel/new/wizard.tsx mounts
+just moved the DRAFT employee onto those same components (app/admin/personnel/new/wizard.tsx mounts
 components/personnel-tabs.tsx), so there is now a worked example of a second consumer: read it.
 
 ⚠️ THE FIELD-VISIBILITY LIST IS A DELIVERABLE OF THIS ROUND, NOT AN IMPLEMENTATION DETAIL. The plan
@@ -189,9 +189,9 @@ employee's id cannot be reached, and check RLS is doing the work rather than a f
 
 RENDER CHECK MANDATORY: load /me on a dev server, read the dev log, and probe the DOM for the new tabs.
 
-SCOPE FENCE: app/(app)/me/**, the shared personnel section components ONLY where a second consumer genuinely
+SCOPE FENCE: app/me/**, the shared personnel section components ONLY where a second consumer genuinely
 needs a prop (and say so), lib/permissions.ts if a route is needed, your new tests, six locales.
-Do NOT touch app/(app)/admin/leave-config/** or app/(app)/admin/leave/** (another agent is there), core/payroll.ts,
+Do NOT touch app/admin/leave-config/** or app/admin/leave/** (another agent is there), core/payroll.ts,
 or any migration.`,
   },
 ];

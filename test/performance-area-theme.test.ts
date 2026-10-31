@@ -75,9 +75,9 @@ const areaRules = rules(css);
 describe('the area stylesheet is loaded once, from the root layout, after the theme CSS', () => {
   it('is a module import of app/(app)/layout.tsx placed after atelier.css', () => {
     expect(layout).toMatch(/^import '\.\/performance\/area-theme\.css';$/m);
-    const atelierAt = layout.indexOf("import './atelier.css';");
+    const atelierAt = layout.indexOf("import '../atelier.css';");
     const areaAt = layout.indexOf("import './performance/area-theme.css';");
-    expect(atelierAt).toBeGreaterThan(layout.indexOf("import './globals.css';"));
+    expect(atelierAt).toBeGreaterThan(layout.indexOf("import '../globals.css';"));
     expect(areaAt).toBeGreaterThan(atelierAt);
     expect(globals).not.toMatch(/@import\s+["'][^"']*area-theme\.css/);
   });

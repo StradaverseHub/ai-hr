@@ -262,9 +262,9 @@ describe('510f4bd1 — the History filter whitelists cannot drift apart, because
     // cleanBatchStatus returns undefined for an unrecognised value, which DROPS the filter rather than
     // narrowing to nothing: a value offered on screen but missing from the read silently shows EVERY row.
     // Read off the sources, because the two whitelists are the thing that can drift.
-    const viewSrc = readFileSync(join(__dirname, '..', 'app', 'payroll', 'transaction-view', 'page.tsx'), 'utf8');
+    const viewSrc = readFileSync(join(__dirname, '..', 'app', '(app)', 'payroll', 'transaction-view', 'page.tsx'), 'utf8');
     const exportSrc = readFileSync(
-      join(__dirname, '..', 'app', 'payroll', 'transaction-view', 'export', 'route.ts'),
+      join(__dirname, '..', 'app', '(app)', 'payroll', 'transaction-view', 'export', 'route.ts'),
       'utf8',
     );
     expect(INDIVIDUAL_TXN_STATUS_FILTERS).toContain('reprocess');

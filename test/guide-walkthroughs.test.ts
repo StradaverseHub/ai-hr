@@ -42,7 +42,7 @@ describe('knowledge-base walkthrough coverage', () => {
       expect(step.text.title.trim().length).toBeGreaterThan(5);
       expect(step.text.body.trim().length).toBeGreaterThan(40);
       expect(step.route).toMatch(/^\/[a-z/-]+$/);
-      const page = join(process.cwd(), 'app', step.route!, 'page.tsx');
+      const page = join(process.cwd(), 'app', '(app)', step.route!, 'page.tsx');
       expect(existsSync(page), step.route).toBe(true);
       if (!step.target) continue;
       const anchor = step.target.match(/^\[data-tour="([a-z-]+)"\]$/)?.[1];

@@ -814,7 +814,7 @@ describe('a6fe37fc R3 · every cross-screen link in the preview module points wh
   it.each(FILES)('%s links at no OTHER screen inside the preview module', (rel) => {
     // `href="…"`, `href={'…'}` and `back={{ href: '…' }}` all in one: the literal destinations only —
     // a link resolved through `leaveConfigScreenHref` has no literal to find, which is the point.
-    const own = rel.replace(/^app/, '').replace(/\/page\.tsx$/, '');
+    const own = rel.replace(/^app\/\(app\)/, '').replace(/\/page\.tsx$/, '');
     const literals = [...read(rel).matchAll(/href[=:]\s*\{?\s*['"`]([^'"`]+)['"`]/g)].map((m) => m[1]);
     const inward = literals.filter((h) => h.startsWith('/admin/leave-config') && h !== own);
     expect(

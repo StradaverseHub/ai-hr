@@ -392,7 +392,7 @@ describe('c11e81aa · a company with no configured cycles keeps the old field, e
  * the operator's choice is dropped on the floor. Source-shape assertions across all three are what pin it.
  */
 describe('c11e81aa · the page → workspace → action → service contract', () => {
-  const dir = join(__dirname, '..', 'app', 'payroll', 'transactions', 'individual');
+  const dir = join(__dirname, '..', 'app', '(app)', 'payroll', 'transactions', 'individual');
   const read = (f: string) => readFileSync(join(dir, f), 'utf8');
   const pageSrc = read('page.tsx');
   const actionsSrc = read('actions.ts');

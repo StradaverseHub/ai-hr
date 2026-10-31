@@ -201,7 +201,7 @@ const BALANCE_HEALTH_ROW = DESTINATIONS.children.find((c) => c.labelKey === 'lea
 const EARNED_ACCRUAL_ROW = DESTINATIONS.children.find((c) => c.labelKey === 'leaveEarnedAccrual')!;
 
 /** href → the route file that must exist for it to be a live destination. */
-const routeFile = (href: string) => `app${href}/page.tsx`;
+const routeFile = (href: string) => `app/(app)${href}/page.tsx`;
 
 describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () => {
   it('carries every retired tab destination, same hrefs, same order, plus what was added since at its own position — no broken bookmarks', () => {
@@ -595,7 +595,7 @@ describe('645e67c4 — Leave config is a sidebar fly-out, not a tab strip', () =
     expect(exists('components/leave-tabs.tsx'), 'components/leave-tabs.tsx must be deleted').toBe(false);
     // Any surviving import would be a build error, but a surviving RENDER in a comment or a stale
     // string would mislead the next author, so scan the leave admin surface for the symbol at all.
-    const dir = path.join(ROOT, 'app', 'admin', 'leave');
+    const dir = path.join(ROOT, 'app', '(app)', 'admin', 'leave');
     const walk = (d: string): string[] =>
       fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => {
         const full = path.join(d, e.name);

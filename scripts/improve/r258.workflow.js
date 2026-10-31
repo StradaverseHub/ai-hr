@@ -129,7 +129,7 @@ reporter "something that works at every point". Specifically:
     say so in notBuilt rather than inventing a number.
   · The engine is never touched: core/leave.ts, core/leave-compute.ts, core/entitlement-template.ts.
 
-WHAT TO BUILD: app/(app)/admin/leave-config/types/page.tsx and the components under it — a NEW page component,
+WHAT TO BUILD: app/admin/leave-config/types/page.tsx and the components under it — a NEW page component,
 NOT an edit of components/leave-type-panel.tsx. The old screen's four steps and six sub-steps become FIVE
 TABS, and the 24 sub-forms are rewritten onto them. The left rail that picks a leave type is RE-CREATED,
 not dropped — it is the only way to choose one.
@@ -168,8 +168,8 @@ sets that did not exist. Every new tab label in all six locales with real transl
 server, load /admin/leave-config/types, and READ THE DEV LOG for MISSING_MESSAGE. Report the URL and what
 the log said in "renderChecked".
 
-SCOPE FENCE: app/(app)/admin/leave-config/** (new), and your new tests. You may READ leave-type-panel.tsx and
-the existing actions. Do NOT touch app/(app)/admin/personnel/** or app/(app)/me/** — another agent is in personnel.
+SCOPE FENCE: app/admin/leave-config/** (new), and your new tests. You may READ leave-type-panel.tsx and
+the existing actions. Do NOT touch app/admin/personnel/** or app/me/** — another agent is in personnel.
 If this is too large to finish, build the tabs in the design's order and report the rest in notBuilt —
 a stated shortfall is fine, a silent one is not.`,
   },
@@ -182,7 +182,7 @@ HARDEST PART IS ALREADY DONE. Read it before you write code, and do not rebuild 
 
 ALREADY BUILT AND DEPLOYED — MEASURED, DO NOT REDO:
   · lib/employee-draft-schema.ts:195 DRAFT_STEPS = ['profile','employment','statutory','payroll','family'].
-  · app/(app)/admin/personnel/new/family-step.tsx (23KB) is the Family step.
+  · app/admin/personnel/new/family-step.tsx (23KB) is the Family step.
   · core/employee-draft.ts:586-594 validates the family BEFORE anything is created (activation is ONE
     transaction, so every refusal the dependent writer can make must be provoked there), and
     materialiseDependents (core/dependents.ts) writes the real rows at Activate, sharing ONE column
@@ -207,7 +207,7 @@ exclude it.
 
 ⚠️ THE SHARED SECTIONS WERE CONSOLIDATED LAST ROUND AND YOU ARE BINDING INTO THAT WORK, NOT AROUND IT.
 420ebab5 shipped one Save per tab through a shared runTabSave: lib/personnel-tab-sections.ts declares the
-section order per tab, app/(app)/admin/personnel/[employmentId]/actions.ts has save<Tab>TabAction, the page
+section order per tab, app/admin/personnel/[employmentId]/actions.ts has save<Tab>TabAction, the page
 marks each card data-save-section="<id>", lib/tab-save-dom.ts packs the dirty ones into one payload and
 diffs old→new, lib/unsaved-changes.ts joins the two client islands, components/tab-save-scope.tsx owns
 the dirty state and the Save/Discard/Cancel dialog. READ THOSE FILES BEFORE DESIGNING ANYTHING. A draft
@@ -228,9 +228,9 @@ FIELD, not by spot check. A silently dropped field is the failure mode this whol
 
 RENDER CHECK MANDATORY: load the new-employee screen on a dev server and read the dev log.
 
-SCOPE FENCE: app/(app)/admin/personnel/new/**, lib/employee-draft-schema.ts, core/employee-draft.ts, and the
-shared personnel section components you must re-bind. Do NOT touch app/(app)/me/** (that is 9583deac, next
-round), app/(app)/admin/personnel/import/**, or core/leave-*. No new migration — the draft is a jsonb blob and
+SCOPE FENCE: app/admin/personnel/new/**, lib/employee-draft-schema.ts, core/employee-draft.ts, and the
+shared personnel section components you must re-bind. Do NOT touch app/me/** (that is 9583deac, next
+round), app/admin/personnel/import/**, or core/leave-*. No new migration — the draft is a jsonb blob and
 that is the point.`,
   },
 ];

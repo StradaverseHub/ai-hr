@@ -146,7 +146,7 @@ describe('1459e116 — the payroll fly-out carries the retired tab strip, unbrok
 
   it('every href resolves to a route that exists (no dead entries)', () => {
     for (const c of NODE.children) {
-      const page = `app${c.href === '/' ? '' : c.href}/page.tsx`;
+      const page = `app/(app)${c.href === '/' ? '' : c.href}/page.tsx`;
       expect(exists(page), `${c.href} has no page at ${page}`).toBe(true);
     }
   });

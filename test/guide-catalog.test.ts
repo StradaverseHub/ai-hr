@@ -52,7 +52,7 @@ describe('bundled guide catalog', () => {
     let checked = 0;
     for (const body of bodies) for (const match of body.matchAll(/\]\((\/[^)]+)\)/g)) {
       const route = match[1].split(/[?#]/)[0];
-      expect(existsSync(join(process.cwd(), 'app', route, 'page.tsx')), route).toBe(true);
+      expect(existsSync(join(process.cwd(), 'app', '(app)', route, 'page.tsx')), route).toBe(true);
       checked++;
     }
     expect(checked).toBeGreaterThan(100);

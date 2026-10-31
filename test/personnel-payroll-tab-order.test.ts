@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const PAGE = join(__dirname, '..', 'app', 'admin', 'personnel', '[employmentId]', 'page.tsx');
+const PAGE = join(__dirname, '..', 'app', '(app)', 'admin', 'personnel', '[employmentId]', 'page.tsx');
 
 /** Extract the JSX inside `payroll: ( <> ... </> ),` from the page source. */
 function payrollFragment(src: string): string {

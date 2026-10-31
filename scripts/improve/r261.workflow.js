@@ -114,7 +114,7 @@ route whose page no longer calls a guard — so the halves land together or neit
 per-commit safety net; run it every time.
 
 THE TEN, BY NAME (the design lists them with line counts, ~5,794 lines total):
-  app/(app)/admin/leave/entitlements/page.tsx · components/leave-type-panel.tsx (3,367 lines, and with it the
+  app/admin/leave/entitlements/page.tsx · components/leave-type-panel.tsx (3,367 lines, and with it the
   step bar, its two SubStepBar mountings, STEP_KEYS, GENERAL_SUB_STEP_KEYS, ESS_SUB_STEP_KEYS) ·
   approval/page.tsx · replacement/page.tsx · adjustments/page.tsx · generate/page.tsx ·
   entitlements/ledger-archive/page.tsx · entitlements/archive/page.tsx · payroll/page.tsx ·
@@ -132,8 +132,8 @@ file, not deleted — c459bff9 removed that step on purpose."
 
 ⚠️ ONE TEST IS EXPECTED TO FAIL AND YOU MUST NOT DELETE IT. test/leave-config-round3.test.ts → "the three
 save banners on Company rules are DORMANT until Round 5" asserts the OLD redirect constant. Repointing
-app/(app)/admin/_redirects.ts (ENTITLEMENTS / LEAVE / GENERATE / ADJUSTMENTS / ENTITLEMENT_TEMPLATES) and
-app/(app)/admin/actions.ts's private LEAVE_REPLACEMENT is what makes those three banners LIVE. Re-point the
+app/admin/_redirects.ts (ENTITLEMENTS / LEAVE / GENERATE / ADJUSTMENTS / ENTITLEMENT_TEMPLATES) and
+app/admin/actions.ts's private LEAVE_REPLACEMENT is what makes those three banners LIVE. Re-point the
 case, then RE-READ Company rules with each of ?saved= ?warning= ?error= and confirm each renders.
 The warning= one carries the Phase-B #14 premium-equivalent BANKING-RISK warning, which was produced on
 every qualifying save for months and silently dropped because the screen it landed on never read the
@@ -154,10 +154,10 @@ exactly what §2 exists for. Report the result per commit. Do NOT touch producti
 NO MIGRATION. RENDER CHECK MANDATORY: after the cutover load every one of the ten OLD addresses and
 confirm each redirects (not 404s), and load all ten new screens and read the dev log.
 
-SCOPE FENCE: app/(app)/admin/leave/**, app/(app)/admin/leave-config/**, components/leave-type-panel.tsx (delete),
-components/leave-config-map.tsx, lib/permissions.ts, app/(app)/admin/_redirects.ts, app/(app)/admin/actions.ts (the
+SCOPE FENCE: app/admin/leave/**, app/admin/leave-config/**, components/leave-type-panel.tsx (delete),
+components/leave-config-map.tsx, lib/permissions.ts, app/admin/_redirects.ts, app/admin/actions.ts (the
 redirect constant only), the affected tests, six locales. Do NOT touch core/leave*, do NOT touch
-app/(app)/me/** (another agent is there), and do NOT delete components/leave-sub-step-bar.tsx.`,
+app/me/** (another agent is there), and do NOT delete components/leave-sub-step-bar.tsx.`,
   },
   {
     slug: 'profile-stage3',
@@ -205,9 +205,9 @@ THE SAFETY PROPERTIES, and they are the point of the whole item:
 RENDER CHECK MANDATORY: load the settings screen and /me on a dev server, read the dev log, and probe the
 DOM for a field you have switched OFF to prove no control is offered.
 
-SCOPE FENCE: app/(app)/me/**, the settings screen you add, core/profile.ts, core/tenant-settings.ts,
+SCOPE FENCE: app/me/**, the settings screen you add, core/profile.ts, core/tenant-settings.ts,
 lib/profile-requestable-fields.ts, db/migrations (0459 ONLY, and only if truly needed), your tests, docs/,
-six locales. Do NOT touch app/(app)/admin/leave/** or app/(app)/admin/leave-config/** — another agent is doing the
+six locales. Do NOT touch app/admin/leave/** or app/admin/leave-config/** — another agent is doing the
 leave cutover this round and will conflict with you.`,
   },
 ];

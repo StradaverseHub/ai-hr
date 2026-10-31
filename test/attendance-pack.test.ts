@@ -703,7 +703,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         flattened.filter((c) => c.href === row.href),
         `${row.href} still has a nav row. ${row.why}`,
       ).toHaveLength(0);
-      const page = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');
+      const page = path.resolve(__dirname, '..', `app/(app)${row.href}`, 'page.tsx');
       expect(fs.existsSync(page), `${row.href} lost its page. ${row.why}`).toBe(true);
       expect(
         REGISTERED_ROUTES.has(row.href),
@@ -718,7 +718,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
     const cardsSrc = fs.readFileSync(path.resolve(__dirname, '../app/(app)/admin/attendance/settings/cards.ts'), 'utf8');
     for (const row of SETTINGS_CARDS) {
       expect(flattened.filter((c) => c.href === row.href), `${row.href} still has a nav row`).toHaveLength(0);
-      const page = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');
+      const page = path.resolve(__dirname, '..', `app/(app)${row.href}`, 'page.tsx');
       expect(fs.existsSync(page), `${row.href} lost its page`).toBe(true);
       expect(REGISTERED_ROUTES.has(row.href), `${row.href} is no longer a registered route`).toBe(true);
       expect(
@@ -731,7 +731,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
   it('3fb1a611: a FOLDED row is gone from the nav, its old address redirects, and its destination is registered', () => {
     for (const row of FOLDED) {
       expect(flattened.filter((c) => c.href === row.href), `${row.href} still has a nav row. ${row.why}`).toHaveLength(0);
-      const page = fs.readFileSync(path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx'), 'utf8');
+      const page = fs.readFileSync(path.resolve(__dirname, '..', `app/(app)${row.href}`, 'page.tsx'), 'utf8');
       expect(page, `${row.href} must redirect to ${row.into}. ${row.why}`).toContain(`redirect(\`${row.into}`);
       expect(REGISTERED_ROUTES.has(row.href), `${row.href} is a stub and must not stay registered`).toBe(false);
       expect(REGISTERED_ROUTES.has(row.into), `${row.into} must be a registered route. ${row.why}`).toBe(true);
@@ -755,7 +755,7 @@ describe('ADR-0080 rung 2: nav parity with the pre-retrofit sidebar', () => {
         flattened.filter((c) => c.href === row.href),
         `${row.href} still has a nav row. ${row.why}`,
       ).toHaveLength(0);
-      const file = path.resolve(__dirname, '..', `app${row.href}`, 'page.tsx');
+      const file = path.resolve(__dirname, '..', `app/(app)${row.href}`, 'page.tsx');
       expect(
         fs.existsSync(file),
         `${row.href} must keep its page.tsx as a redirect — deleting it 404s a shipped URL. ${row.why}`,
