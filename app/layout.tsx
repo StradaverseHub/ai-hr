@@ -27,6 +27,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
+import { AuthRouteReload } from '@/components/auth-route-reload';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
@@ -148,6 +149,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="h-dvh overflow-hidden font-sans">
         <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
+          <AuthRouteReload />
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
         </UiThemeProvider></Providers></NextIntlClientProvider>
@@ -485,6 +487,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <ToastFromQuery />
           </Suspense>
           <Toaster />
+          <AuthRouteReload />
         </UiThemeProvider>
         </Providers>
         </NextIntlClientProvider>
