@@ -50,6 +50,24 @@ describe('local closed intent grammar',()=>{
   expect(resolvePrivateAssistantContextualIntent('And pending?',[{question:'Alice leave balance',slot:'module',completed:false},{question:'leave',slot:null,completed:true}])).toEqual({intent:null,social:null});
  });
 
+ it.each(['Alice leave balance','Unknown private request'])('keeps a current bare module closed while %s has an unresolved module slot',question=>{
+  for(const history of [[{question,slot:'module' as const,completed:false}],[{question,slot:'module' as const,completed:false},{question:'Unknown reply',slot:'module' as const,completed:false}]]){
+   expect(resolvePrivateAssistantContextualIntent('leave',history)).toEqual({intent:null,social:null});
+   expect(resolvePrivateAssistantContextualIntent('My leave balance',history)).toMatchObject({intent:'leave_available',social:null});
+   expect(resolvePrivateAssistantContextualIntent('Hello',history)).toEqual({intent:null,social:'greeting'});
+  }
+ });
+ it('keeps a new unresolved module slot closed after a rejected typed transition',()=>{
+  const history=[{question:'My leave balance',slot:'employment' as const,completed:false},{question:'Unknown next request',slot:'module' as const,completed:false}];
+  expect(resolvePrivateAssistantContextualIntent('leave',history)).toEqual({intent:null,social:null});
+  expect(resolvePrivateAssistantContextualIntent('My leave balance',history)).toMatchObject({intent:'leave_available',social:null});
+ });
+ it('requires a complete own-task phrase rather than a bare module to restart an unresolved known slot',()=>{
+  const history=[{question:'My leave balance',slot:'leave_type' as const,completed:false}];
+  expect(resolvePrivateAssistantContextualIntent('leave',history)).toEqual({intent:null,social:null});
+  expect(resolvePrivateAssistantContextualIntent('And pending?',history)).toEqual({intent:null,social:null});
+  expect(resolvePrivateAssistantContextualIntent('My leave balance',history)).toMatchObject({intent:'leave_available',social:null});
+ });
  it('allows a complete explicit own-task restart after a named module clarification without reinterpreting bare replies',()=>{
   const history=[{question:'Alice leave balance',slot:'module' as const,completed:false},{question:'My leave balance',slot:null,completed:true}];
   expect(resolvePrivateAssistantContextualIntent('And pending?',history)).toMatchObject({intent:'leave_pending',social:null});
