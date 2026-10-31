@@ -139,3 +139,35 @@ Confirmed in source. Rendered checks are still needed for mobile, themes, contra
 - **Already right:** the Thinking indicator is small plain text; there is no forced scroll while reading; the transcript stays mounted in the workspace and dashboard; saved chats are scope-isolated; suggestions only fill the composer; proposals prepare nothing until the person acts; the activity list shows labels, not tool names.
 
 These are fixable within the current architecture and are independent of the redesign. Most are small client changes and should be a separate bounded package after PR166.
+
+## 9. Harder corpus: long, multi-domain, admin setup and actions
+
+Source `ca85e06`, run [41213765774](https://github.com/StradaverseHub/ai-hr/actions/runs/41213765774): 5/5 tests pass, typecheck succeeds, and the real-model job was skipped (no model requested). The prior failed attempts are retained:
+- [41212219838](https://github.com/StradaverseHub/ai-hr/actions/runs/41212219838): a false-positive leak match on the two-letter question "Hi".
+- [41213022082](https://github.com/StradaverseHub/ai-hr/actions/runs/41213022082): the runner correctly rejected a skipped probe assertion.
+
+The corpus has 38 turns, and each is labelled with where its capability lives today.
+
+| Conversation | Turns | Understood | First generic chooser | Longest understood run |
+| --- | --- | --- | --- | --- |
+| New HR admin: guided setup of onboarding, attendance, leave, payroll | 14 | 0 | turn 1 | 0 |
+| Employee: one long conversation across leave, claims, holidays, pay | 14 | 5 | none | 4 |
+| Multi-domain and planning requests | 5 | 0 | turn 2 | 0 |
+| Approver action requests | 5 | 1 (exact command) | turn 2 | 1 |
+
+By capability:
+- An Assistant read or proposal already exists: 6 of 23 turns understood.
+- A native product owner exists but the Assistant cannot reach it (setup guidance, payroll readiness, missing-data checks, entitlement or shift setup): 0 of 11.
+- No owner exists yet (progress summary, back-reference, year comparison): 0 of 4.
+
+No turn produced an honest "I can't do that yet". Every failure was the generic chooser or a repeated slot question.
+
+Findings:
+
+1. **A new admin gets nothing.** All 14 setup turns, including "Thanks, that helps", get the area chooser. Guidance needs two things, and both are missing: understanding the request, and Assistant access to the native readiness owners (`core/payroll-readiness.ts`, `core/record-readiness.ts`).
+2. **One clarification traps a long conversation.** After "and pending?", the Assistant asked for the leave type again. Every one of the following ten turns was treated as an answer to that slot: leave requests, cancel, claims, holiday, planning, payslip, pay change, manager, back-to-leave and summary. Most of them have an Assistant read that would have answered them. This assumes the composer keeps answering a pending clarification, as the test does; confirm this in a rendered check.
+3. **Natural action requests are not recognised.** Examples: "Approve all the pending claims for me", "Are there overtime requests I need to approve?", "Cancel the second one". The exact command "Review claim approvals" works. "Terminate Siti Fictional" read nothing and proposed nothing (safe), but was answered with the chooser rather than a clear refusal.
+4. **Multi-domain requests fail at understanding, not coverage.** "My leave balance, pending claims and next public holiday" needs three reads that all exist.
+5. **Privacy holds across 38 turns.** One turn reached the provider, and its request carried no question words or fictional values.
+
+The real-model ceiling probe (`test/assistant-model-ceiling.eval.test.ts`) measures how far a question-aware, tool-using design could go on these same 58 turns. It runs only through the protected `assistant-eval` environment, with a hard spend cap. Without the secret it asserts that it is inert and calls nothing.
