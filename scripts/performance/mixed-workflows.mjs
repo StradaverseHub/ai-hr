@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {setTimeout as pause} from 'node:timers/promises';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
- const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
+ const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
   const marker={leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
@@ -14,7 +14,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   try{
    [req]=await Promise.all([waiting,click()]);
    response=await Promise.race([req.response(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Mutation response headers exceeded90 seconds')),90000);})]);
-   assert(response,'Mutation request failed before response headers');
+   assert(response,'Mutation request failed before response headers');assert(response.status()<400,'Browser mutation returned an HTTP error');
   }catch(error){report.mixedWorkflows.error={stage:kind,message:String(error.message).slice(0,350)};save();throw error;}
   finally{clearTimeout(timer);}
   const headers={};
@@ -29,6 +29,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
   const actionUrl=new URL(req.url());
   const template={path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status()};
+  report.mixedWorkflows.capturedTransport.push({stage:kind,path:actionUrl.pathname,status:response.status(),encoding:Array.isArray(fields)?'typed JSON':'FormData',shape:Array.isArray(fields)?fields.map(value=>value&&typeof value==='object'?Object.keys(value).sort():typeof value):fieldOrder});save();
   if(redirect){const target=new URL(String(redirect).split(';')[0],base);if(target.searchParams.has('error')){report.mixedWorkflows.error={stage:kind,message:target.searchParams.get('error')};save();throw Error('Browser mutation refused: '+target.searchParams.get('error'));}}
   templates[kind]=template;return template;
  }

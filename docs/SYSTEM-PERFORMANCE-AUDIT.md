@@ -599,9 +599,12 @@ Native run41185593278 passed54 cases with no skips; its whole compiler passed.
 
 Browser workflow preflight41185134683 was rejected at controller selection because
 the submitted test list was empty. Corrected-input run41185378631 keeps the exact
-606a35db41a3a4b177e167cca50e0d6d5fdf6c1d source. It records handled Home failures,
-continues collecting independent mutation evidence, and still refuses preflight
-acceptance or500-user load whenever a card fails. Browser Home request outcomes
+606a35db41a3a4b177e167cca50e0d6d5fdf6c1d source. It failed at the600-second
+HTTP/browser phase limit while waiting on Playwright response.finished() for a
+Leave edit; it also retained one handled manager summary failure. No completed
+expanded mutation preflight or concurrent phase is claimed. The original response
+wait is retained as a failure. Its purpose was to collect handled Home failures
+while continuing independent mutation checks, without permitting load acceptance. Browser Home request outcomes
 and elapsed times are now retained. No card deadline or acceptance threshold was
 relaxed.
 
@@ -609,8 +612,31 @@ Expanded500-user runs41185656999(one-second) and41185654964(five-second) freeze 
 same748352f59 source, one million Claims plus one million Attendance records,
 Node24.22.1, one application worker and a five-minute sustained interval. Their
 browser, mutation, processing and subject-bound Home request preflights must pass
-before concurrent traffic begins. Both are pending. They remain smaller shared
-hosted development experiments, not production-equivalent acceptance.
+before concurrent traffic begins. Five-second run41185654964 failed before load:
+fixture/build succeeded, the first employee Home had no handled failures, but
+browser navigation to/me/payslip exceeded90 seconds waiting for network idle.
+Its screenshot shows a fully rendered own payslip, the later database snapshot
+contains idle sessions, and the application CPU profile is mostly idle. These
+observations do not yet identify the unfinished browser request or prove usability.
+The timeout remains a failure. One-second run41185656999 also failed at the same
+payslip navigation before concurrent traffic; it too passed fixture/build, recorded
+no Home handled failure on its first employee visit and had no browser runtime
+errors. Neither attempt is a500-user latency result.
+Both are smaller shared hosted development experiments, not production-equivalent
+acceptance. Diagnostic preflight41186781411 on4849474d0 records outstanding
+browser requests, preserves the same deadline/acceptance, and tests independent
+mutations before its explicit payslip visit.
+
+Diagnostic candidate d5efdaf436de55a9ea7d6b7b0c90df1a6c63cd1c binds each action
+template to a request initiated after the click listener was armed, avoiding an
+already-running advisory response. Capture reads transport headers rather than
+awaiting the original response stream across follow-up navigation; actual UI and
+committed native outcomes remain independently required, and the timed HTTP driver
+still consumes complete responses. Run41187497364 is workflow-only, with one
+million Claims and90,000 Attendance rows to diagnose capture/request lifecycle.
+It is not a two-million-record or500-user capacity receipt. Periodic pending-request
+snapshots retain same-origin paths/statuses and hide external addresses/query values.
+Browser error checks after processing are additionally required before acceptance.
 
 A separate source review found that the earlier counted shell preview used ordinary
 employment/person RLS, omitting a valid delegate whose full metadata is authorized.
@@ -620,7 +646,7 @@ one fails because the preview reports0 while native full metadata contains1. Fix
 between full metadata and counted preview, retaining scoped native authority/counts
 and removing the unused unbounded branch of the preview-only helper. Native/Home
 checks in41185883781 passed60 cases with no failures or skips; its whole compiler
-remains pending. This later preview change affects
+passed. This later preview change affects
 global-shell performance; earlier748352f59 HTTP evidence must retain its own source.
 
 Coverage remains a bounded development matrix: selected30 page routes, Claims

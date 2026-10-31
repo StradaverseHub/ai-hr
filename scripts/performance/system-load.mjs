@@ -304,6 +304,7 @@ try{
  }
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
  if(suite==='workflow-preflight'){const ctx=await context(employee);try{const page=await ctx.newPage();await visit(page,employee,'/me/payslip');}finally{await ctx.close();}}
+ assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
  await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
  await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
  assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
