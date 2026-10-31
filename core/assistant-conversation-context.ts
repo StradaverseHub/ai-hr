@@ -1,6 +1,7 @@
 /** Ordinary chat continuation carries human intent only. Every earlier question remains owned by its
  * original exchange and 30-day deadline; prior answers and HR reads never become current evidence. */
 import {createHash} from 'node:crypto';
+import {assistantClarificationContextSource,type OwnAssistantClarification} from './assistant-clarification';
 import {openAssistantAnswerDisclosure,type AssistantThreadMetadata} from '../lib/ai/assistant-disclosure';
 import {decryptSecret,encryptSecret,isSecretStorable} from '../lib/ai/crypto';
 import {and,eq,inArray,isNull,sql} from 'drizzle-orm';
@@ -14,7 +15,7 @@ import {boundNativeOutcomeTransactionTx} from './module-native-outcome-bounds';
 
 export const ASSISTANT_CHAT_CONTEXT_LIMITS=Object.freeze({exchanges:6,characters:8000,question:2000});
 export type OwnAssistantConversationContext=Readonly<{questions:readonly string[]}>;
-type SourceRow=Readonly<{id:string;question:string;answer?:string;receipt?:string}>;
+type SourceRow=Readonly<{id:string;question:string;answer:string|null;receipt:string|null}>;
 type Source=Readonly<{tenantId:string;userId:string;exchangeId:string;rows:readonly SourceRow[];conversationScope:string;principal:string;threadId?:string}>;
 const sources=new WeakMap<object,Source>();
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
@@ -49,6 +50,26 @@ function sealConversationToken(ctx:SessionContext,exchanges:readonly string[],co
  if(!exchanges.length||exchanges.length>ASSISTANT_CHAT_CONTEXT_LIMITS.exchanges||!exchanges.every(uuid)||new Set(exchanges).size!==exchanges.length||!isSecretStorable())return undefined;
  return encryptSecret(JSON.stringify({version:1,scope:scope(ctx,conversationScope),exchanges}),aad(ctx));
 }
+/** Bridge only genuine explicit clarification custody into the existing opaque normal token.
+ * It carries bounded row identities, never a second transcript, posted scope or persisted capability. */
+export function assistantConversationContextFromClarification(ctx:SessionContext,clarification:OwnAssistantClarification,conversationScope='assistant-service'):OwnAssistantConversationContext{
+ const source=assistantClarificationContextSource(ctx,clarification,conversationScope);
+ const selected=source.rows.slice(-(ASSISTANT_CHAT_CONTEXT_LIMITS.exchanges-1));
+ if(!selected.length||selected.reduce((sum,row)=>sum+row.question.length+2,0)>ASSISTANT_CHAT_CONTEXT_LIMITS.characters)return unavailable();
+ const rows=Object.freeze(selected.map(row=>Object.freeze({id:row.exchangeId,question:row.question,answer:row.answer,receipt:row.receipt})));
+ const issued=Object.freeze({questions:Object.freeze(rows.map(row=>row.question))});
+ sources.set(issued,Object.freeze({tenantId:source.tenantId,userId:source.userId,exchangeId:source.exchangeId,rows,conversationScope,principal:source.scopeDigest,...(source.threadId?{threadId:source.threadId}:{})}));
+ return issued;
+}
+/** Local typed transitions come only from genuine same-owner source bytes already captured by this
+ * owner. Historical answer text and HR values are never read as intent or returned to a provider. */
+export function assistantConversationLocalHistory(value:OwnAssistantConversationContext|null){
+ const source=value===null?null:sources.get(value);if(!source)return [];
+ return source.rows.map(row=>{
+  const proof=row.answer?openAssistantAnswerDisclosure({tenantId:source.tenantId,userId:source.userId,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt):null;
+  return Object.freeze({question:row.question,slot:proof?.plan?.mode==='clarify'?proof.plan.slot:null,completed:proof?.plan?.mode==='answer'});
+ });
+}
 /** Only this owner's genuine context may carry durable thread identity into a new committed turn. */
 export function assistantConversationThreadId(context:OwnAssistantConversationContext|null):string|undefined{return context===null?undefined:sources.get(context)?.threadId;}
 export class AssistantConversationContextError extends Error {
@@ -82,8 +103,9 @@ export async function ownAssistantConversationContext(supplied:SessionContext,ex
    if(!row?.question?.trim()||(index>0&&row.continues!==ids[index-1]))return unavailable();
    if(used+row.question.length+2>ASSISTANT_CHAT_CONTEXT_LIMITS.characters){if(rows.length===0)return unavailable();break;}
    const proof=row.answer?openAssistantAnswerDisclosure({tenantId:ctx.tenantId,userId,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt):null;
-   if(index===ids.length-1&&proof?.thread?.scopeDigest===scope(ctx,conversationScope))threadId=proof.thread.threadId;
-   rows.unshift(Object.freeze({id:row.id,question:row.question,...(proof?.thread&&row.answer&&row.receipt?{answer:row.answer,receipt:row.receipt}:{})}));used+=row.question.length+2;
+   if(proof?.thread&&(proof.thread.scopeDigest!==scope(ctx,conversationScope)||threadId!==undefined&&proof.thread.threadId!==threadId))return unavailable();
+   if(index===ids.length-1&&proof?.thread)threadId=proof.thread.threadId;
+   rows.unshift(Object.freeze({id:row.id,question:row.question,answer:row.answer,receipt:row.receipt}));used+=row.question.length+2;
   }
   const issued:OwnAssistantConversationContext=Object.freeze({questions:Object.freeze(rows.map(row=>row.question))});
   sources.set(issued,Object.freeze({tenantId:ctx.tenantId,userId,exchangeId:id,rows:Object.freeze(rows),conversationScope,principal:assistantConversationScopeDigest(ctx,conversationScope),...(threadId?{threadId}:{})}));
@@ -103,7 +125,7 @@ export async function assertOwnAssistantConversationContextCurrentTx(tx:Tx,ctx:S
    .where(and(inArray(assistantExchange.id,source.rows.map(row=>row.id)),eq(assistantExchange.tenantId,source.tenantId),eq(assistantExchange.appUserId,source.userId),
     isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`));
   const byId=new Map(found.map(row=>[row.id,row]));
-  current=source.rows.length>0&&source.rows.every((row,index)=>{const current=byId.get(row.id);return current?.question===row.question&&context.questions[index]===row.question&&(row.receipt===undefined||(current.answer===row.answer&&current.receipt===row.receipt));})&&context.questions.length===source.rows.length;
+  current=source.rows.length>0&&source.rows.every((row,index)=>{const current=byId.get(row.id);return current?.question===row.question&&context.questions[index]===row.question&&(current.answer===row.answer&&current.receipt===row.receipt);})&&context.questions.length===source.rows.length;
  }catch{/* A database failure is never current source authority. */}
  if(!current)return unavailable();
 }

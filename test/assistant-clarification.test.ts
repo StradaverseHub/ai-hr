@@ -9,9 +9,10 @@ import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {grantAssistant,revokeAssistant} from '../core/assistant-grant';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
-import {ownAssistantClarification,canClarifyAssistantQuestion,ASSISTANT_CONVERSATION_LIMITS,AssistantClarificationError,type OwnAssistantClarification} from '../core/assistant-clarification';
+import {ownAssistantClarification,assertOwnAssistantClarificationCurrentTx,canClarifyAssistantQuestion,ASSISTANT_CONVERSATION_LIMITS,AssistantClarificationError,type OwnAssistantClarification} from '../core/assistant-clarification';
 import * as clarificationOwner from '../core/assistant-clarification';
 import {askAssistant} from '../core/assistant';
+import {assistantConversationScopeDigest,assistantConversationContextFromClarification} from '../core/assistant-conversation-context';
 import {eraseOwnAssistantHistory} from '../core/assistant-history-retention';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import {sealAssistantDisclosure,assistantSourceDigest,type AssistantDisclosureBinding} from '../lib/ai/assistant-disclosure';
@@ -83,6 +84,32 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   const before=await state();for(const row of [legacy,nonclarify,corrupt,swapped])await refused(ctx,row.binding.exchangeId);
   expect(await state()).toEqual(before);
  });
+ it('retains linked genuine legacy clarification context without inventing saved-chat scope, but stops at different authenticated v3 threads or scopes',async()=>{
+  const {ctx}=await actor(),root=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance'),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave'),threadId=tail.binding.exchangeId;
+  const tailReceipt=sealAssistantDisclosure(tail.binding,[],{version:1,mode:'clarify',slot:'leave_type'},{threadId,scopeDigest:assistantConversationScopeDigest(ctx)})!;
+  await owner.db.update(s.assistantExchange).set({disclosureReceipt:tailReceipt,continuesExchangeId:root.binding.exchangeId}).where(eq(s.assistantExchange.id,tail.binding.exchangeId));
+  const issued=await ownAssistantClarification(ctx,threadId,'Annual Leave');expect(issued.earlier).toEqual([{question:'My leave balance',slot:'leave_type'}]);
+  expect(()=>assistantConversationContextFromClarification(ctx,{...issued})).toThrow('Current clarification unavailable.');
+  expect(()=>assistantConversationContextFromClarification(ctx,issued,'other-company')).toThrow('Current clarification unavailable.');
+  for(const metadata of [{threadId:randomUUID(),scopeDigest:assistantConversationScopeDigest(ctx)},{threadId,scopeDigest:assistantConversationScopeDigest(ctx,'other-company')}]){
+   const receipt=sealAssistantDisclosure(root.binding,[],{version:1,mode:'clarify',slot:'leave_type'},metadata)!;await owner.db.update(s.assistantExchange).set({disclosureReceipt:receipt}).where(eq(s.assistantExchange.id,root.binding.exchangeId));
+   expect((await ownAssistantClarification(ctx,threadId,'Annual Leave')).earlier).toEqual([]);
+  }
+ });
+ it.each(['answer','receipt','missing_receipt'] as const)('rechecks genuine legacy clarify %s bytes after read, before any later admission',async change=>{
+  const {ctx}=await actor(),stored=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance'),issued=await ownAssistantClarification(ctx,stored.binding.exchangeId,'Annual Leave');
+  const patch=change==='answer'?{answer:'CHANGED PRIVATE BODY'}:{disclosureReceipt:change==='missing_receipt'?null:stored.receipt+'!'};
+  await owner.db.update(s.assistantExchange).set(patch).where(eq(s.assistantExchange.id,stored.binding.exchangeId));
+  await expect(withTenant(ctx,tx=>assertOwnAssistantClarificationCurrentTx(tx,ctx,issued))).rejects.toThrow('Current clarification unavailable.');
+  await refused(ctx,stored.binding.exchangeId,'Annual Leave');
+ });
+ it.each(['expired','retired','foreign'] as const)('excludes %s legacy ancestors from a new scoped explicit clarification',async state=>{
+  const {ctx}=await actor(),other=state==='foreign'?await actor():null,root=await exchange(other?.ctx??ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance',state==='expired'?new Date(Date.now()-31*86400000):undefined),tail=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'Unknown Leave');
+  const receipt=sealAssistantDisclosure(tail.binding,[],{version:1,mode:'clarify',slot:'leave_type'},{threadId:tail.binding.exchangeId,scopeDigest:assistantConversationScopeDigest(ctx)})!;
+  await owner.db.update(s.assistantExchange).set({disclosureReceipt:receipt,continuesExchangeId:root.binding.exchangeId}).where(eq(s.assistantExchange.id,tail.binding.exchangeId));
+  if(state==='retired')await owner.db.execute(sql`select app._assistant_transcripts_retire(${ctx.tenantId}::uuid,array[${root.binding.exchangeId}::uuid],true)`);
+  expect((await ownAssistantClarification(ctx,tail.binding.exchangeId,'Annual Leave')).earlier).toEqual([]);
+ });
  it('accepts a full original 2000-character human question and 500-character clarification without serialization overhead or truncation',async()=>{
   const {ctx}=await actor(),question='q'.repeat(2000),answer='x'.repeat(500),stored=await exchange(ctx,undefined,question),before=await state();
   const result=await ownAssistantClarification(ctx,stored.binding.exchangeId,answer);
@@ -102,6 +129,12 @@ describe('actual caller-bound Assistant clarification continuation',()=>{
   await refused(ctx,tooLong.binding.exchangeId,answer);await refused(ctx,stored.binding.exchangeId,'x'.repeat(501));
   await refused(ctx,stored.binding.exchangeId,'  ');await refused(ctx,stored.binding.exchangeId,null);await refused(ctx,'not-an-id');
   let invoked=false;await refused(ctx,stored.binding.exchangeId,{toString(){invoked=true;return '2026';}});expect(invoked).toBe(false);expect(await state()).toEqual(before);
+ });
+ it('keeps the explicit clarification bridge within the existing six whole-question token suffix',async()=>{
+  const {ctx}=await actor(),ids:string[]=[];let parent:string|null=null;
+  for(let n=0;n<8;n++){const stored=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'q'+n+'x'.repeat(400));await owner.db.update(s.assistantExchange).set({continuesExchangeId:parent}).where(eq(s.assistantExchange.id,stored.binding.exchangeId));ids.push(stored.binding.exchangeId);parent=stored.binding.exchangeId;}
+  const issued=await ownAssistantClarification(ctx,parent!,'Annual Leave'),bridge=assistantConversationContextFromClarification(ctx,issued);
+  expect(bridge.questions).toHaveLength(5);expect(bridge.questions.every(question=>question.length===402)).toBe(true);expect(bridge.questions[0]).toBe('q3'+'x'.repeat(400));expect(bridge.questions.reduce((sum,question)=>sum+question.length+2,0)).toBeLessThanOrEqual(8000);
  });
  it('captures original caller context and scalar answer before an actual Access wait without retargeting',async()=>{
   const {ctx,admin}=await actor(),stored=await exchange(ctx),before=await state();
@@ -180,6 +213,12 @@ describe('a continuation rechecks its own original exchange before every provide
   expect(transport).not.toHaveBeenCalled();expect(await custody(ctx.tenantId)).toEqual(before);
   const rows=await own(ctx);expect(rows.map(row=>row.id)).toEqual([stored.binding.exchangeId]);
   expect(rows[0].question).toBe('');expect(rows[0].contentRetiredAt).not.toBeNull();
+ });
+ it.each(['answer','receipt'] as const)('refuses legacy clarification %s mutation after source read before marker/provider/persist',async field=>{
+  provider();const {ctx}=await providerActor(),stored=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance'),read=clarificationOwner.ownAssistantClarification,transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
+  vi.spyOn(clarificationOwner,'ownAssistantClarification').mockImplementationOnce(async(supplied,id,response,scope)=>{const issued=await read(supplied,id,response,scope);await owner.db.update(s.assistantExchange).set(field==='answer'?{answer:'CHANGED LEGACY BODY'}:{disclosureReceipt:stored.receipt+'!'}).where(eq(s.assistantExchange.id,stored.binding.exchangeId));return issued;});
+  const before=await custody(ctx.tenantId);await expect(askAssistant(ctx,{question:reply,clarificationExchangeId:stored.binding.exchangeId})).rejects.toBeInstanceOf(AssistantClarificationError);
+  expect(transport).not.toHaveBeenCalled();expect(await custody(ctx.tenantId)).toEqual(before);expect((await own(ctx)).map(row=>row.id)).toEqual([stored.binding.exchangeId]);
  });
  it('makes no additional dispatch and retires content when the original exchange is erased during the sole call',async()=>{
   provider();const {ctx}=await providerActor(),stored=await exchange(ctx,{version:1,mode:'clarify',slot:'leave_type'},'My leave balance');

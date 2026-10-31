@@ -27,9 +27,9 @@ export function useAssistantImport({instruction:providedInstruction,onInstructio
   const timer=setTimeout(()=>{expiresAt.current=null;epoch.current++;active.current=false;setBusy(null);setSource(null);setSelectedName(null);setDraft(null);setCsvState('');setInstruction('');setConsentState(false);consentInstruction.current=null;setReviewed(false);setSubmittedQuestion('');setError(t('expired'));},Math.max(0,(expiresAt.current??Date.now())-Date.now()));
   return()=>clearTimeout(timer);
  },[source,t,setInstruction]);
- async function load(files:File[]){
+ async function load(files:File[],requestAtSelection?:string){
   if(active.current)return;
-  invalidate();expiresAt.current=null;setSource(null);setPart(0);setSubmittedQuestion('');setSelectedName(files[0]?.name??null);
+  invalidate();if(requestAtSelection!==undefined)setInstruction(requestAtSelection);expiresAt.current=null;setSource(null);setPart(0);setSubmittedQuestion('');setSelectedName(files[0]?.name??null);
   if(files.length!==1){setError(t('oneFile'));return;}
   active.current=true;setBusy('read');const revision=epoch.current;
   try{const next=await readAssistantImportFile(files[0]);if(alive.current&&epoch.current===revision){expiresAt.current=Date.now()+600000;setSource(next);}}

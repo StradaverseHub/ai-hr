@@ -39,8 +39,8 @@ import {AiPrivacyGateError} from '../lib/ai/provider-privacy-request';
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
 import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx, assistantClarificationSourceExchangeId,assistantClarificationThreadId } from './assistant-clarification';
-import {ownAssistantConversationContext,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,issueAssistantConversationToken,assistantConversationScopeDigest,assistantConversationThreadId} from './assistant-conversation-context';
-import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,privateAssistantCatalogue,adjudicatePrivateAssistantTerminal,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards,type PrivateAssistantLocalEmployment} from '../lib/ai/provider-assistant-policy';
+import {ownAssistantConversationContext,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,issueAssistantConversationToken,assistantConversationScopeDigest,assistantConversationThreadId,assistantConversationContextFromClarification,assistantConversationLocalHistory} from './assistant-conversation-context';
+import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantContextualIntent,resolvePrivateAssistantProposal,privateAssistantCatalogue,adjudicatePrivateAssistantTerminal,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards,type PrivateAssistantLocalEmployment} from '../lib/ai/provider-assistant-policy';
 import {preparePrivateAiTask} from './ai-governance';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
@@ -226,8 +226,7 @@ export async function askAssistant(
   const tools = offered.map((t) => t.spec);
   // Own-row context is interpreted only by the closed LOCAL grammar. Human wording, prior
   // answers, tenant labels and provider continuation state never enter a provider request.
-  const localHistory=clarification?[...clarification.earlier.map(step=>step.question),clarification.originalQuestion]:conversationContext?.questions??[];
-  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantIntent(humanQuestion,localHistory);
+  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantContextualIntent(humanQuestion,assistantConversationLocalHistory(conversationContext));
   const proposal=resolvePrivateAssistantProposal(humanQuestion);
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
@@ -349,7 +348,7 @@ export async function askAssistant(
   // answer was not. The caller sees the generic, warm failure and nothing that confirms what was erased.
   if (!recorded.retained) throw new AssistantError('provider_error');
 
-  return { exchangeId: recorded.exchangeId, conversationToken:issueAssistantConversationToken(ctx,recorded.exchangeId,conversationContext,p.conversationScope), stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
+  return { exchangeId: recorded.exchangeId, conversationToken:issueAssistantConversationToken(ctx,recorded.exchangeId,clarification?assistantConversationContextFromClarification(ctx,clarification,p.conversationScope):conversationContext,p.conversationScope), stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
 }
 
 /**

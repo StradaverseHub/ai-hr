@@ -46,6 +46,7 @@ export function ComposerFields({ tasks, labels, layout = 'stacked',question,setQ
           className={`${btnPrimary} size-11 shrink-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:transform-none`}><ArrowUp aria-hidden className="size-4"/></button>
       </div>
     </div>
+    {externalPending===undefined&&<span className="sr-only" role="status" aria-live="polite">{pending?labels.working:''}</span>}
     {tasks.length > 0 && <section aria-labelledby="assistant-task-heading" className="flex flex-wrap items-center justify-center gap-2">
       <h2 id="assistant-task-heading" className="sr-only">{labels.tasks}</h2>
       <p id="assistant-task-hint" className="sr-only">{labels.taskHint}</p>
@@ -76,6 +77,7 @@ export function ComposerFields({ tasks, labels, layout = 'stacked',question,setQ
       <div className="flex min-w-0 items-center gap-2">{attachmentControls}<p id="assistant-question-scope" className="text-xs text-muted-foreground">{labels.scope}</p></div>
       <button type="submit" disabled={pending || submitDisabled || !question.trim()} aria-busy={pending}
         className={`${btnPrimary} min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none motion-reduce:transform-none`}>{pending ? labels.working : labels.ask}</button>
+      {externalPending===undefined&&<span className="sr-only" role="status" aria-live="polite">{pending?labels.working:''}</span>}
       </div>
   </>;
 }

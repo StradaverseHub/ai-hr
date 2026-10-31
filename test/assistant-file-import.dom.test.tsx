@@ -130,7 +130,7 @@ describe('inline attachment conversation lifecycle',()=>{
   await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});
   await screen.findByText(copy.reading);expect(screen.queryByLabelText(copy.consent)).toBeNull();
   await act(async()=>finish({name:'records.pdf',parts:[{label:'records.pdf',text:source}]}));
-  await screen.findByLabelText(copy.consent);fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));
+  await screen.findByLabelText(copy.consent);fireEvent.click(screen.getByLabelText(copy.consent));expect(screen.getByLabelText(copy.consent)).toBeChecked();expect(screen.getByRole('button',{name:'Send'})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:'Send'}));
   await screen.findByText('Draft: 1 record');expect(mocks.prepare).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({instruction:'Prepare these records'}));
  });
  it('publishes selected source, consent, draft and editable review in the same thread without a second instruction field',async()=>{
@@ -147,7 +147,7 @@ describe('inline attachment conversation lifecycle',()=>{
  });
  it('does not republish source or a late response after the attachment composer unmounts',async()=>{
   let finish!:(value:unknown)=>void;mocks.prepare.mockReturnValue(new Promise(resolve=>{finish=resolve;}));const publish=vi.fn(),busy=vi.fn();const view=wrap(<Chat published={publish} busy={busy}/>);
-  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare records'}});await attach();fireEvent.click(screen.getByLabelText(copy.consent));fireEvent.click(screen.getByRole('button',{name:'Send'}));expect(mocks.prepare).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare records'}});await attach();fireEvent.click(screen.getByLabelText(copy.consent));expect(screen.getByRole('button',{name:'Send'})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:'Send'}));await waitFor(()=>expect(mocks.prepare).toHaveBeenCalledTimes(1));
   view.unmount();expect(publish).toHaveBeenLastCalledWith(null);expect(busy).toHaveBeenLastCalledWith(false);const calls=publish.mock.calls.length;
   await act(async()=>finish({ok:true,draft}));expect(publish).toHaveBeenCalledTimes(calls);expect(mocks.push).not.toHaveBeenCalled();
  });

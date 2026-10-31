@@ -22,7 +22,7 @@ export type OwnAssistantClarification=Readonly<{originalQuestion:string;slot:Ass
  earlier:readonly Readonly<{question:string;slot:AssistantClarificationSlot}>[]}>;
 /** How many earlier linked replies one continuation may carry, besides the exchange it answers. */
 export const ASSISTANT_CONTINUATION_DEPTH=6;
-type SourceRow=Readonly<{exchangeId:string;question:string;answer?:string;receipt?:string}>;
+type SourceRow=Readonly<{exchangeId:string;question:string;answer:string;receipt:string}>;
 /** Server-only source binding of each clarification this owner issued. Never serialized or returned. */
 const clarificationSources=new WeakMap<object,Readonly<{tenantId:string;userId:string;exchangeId:string;rows:readonly SourceRow[];scopeDigest:string;conversationScope:string;threadId?:string}>>();
 /** The exchange this clarification answers, for the new row's `continues_exchange_id`. Only an object this
@@ -32,6 +32,12 @@ export function assistantClarificationSourceExchangeId(clarification:OwnAssistan
 }
 /** Durable identity is exposed only from this owner's verified same-scope clarification. */
 export function assistantClarificationThreadId(value:OwnAssistantClarification|null):string|undefined{return value===null?undefined:clarificationSources.get(value)?.threadId;}
+/** Server-only bridge input: copied or posted clarification objects have no source custody. */
+export function assistantClarificationContextSource(ctx:SessionContext,value:OwnAssistantClarification,conversationScope='assistant-service'){
+ const source=clarificationSources.get(value);
+ if(!source||source.tenantId!==ctx.tenantId||source.userId!==ctx.userId||source.conversationScope!==conversationScope||source.scopeDigest!==assistantConversationScopeDigest(ctx,conversationScope))throw new AssistantClarificationError();
+ return source;
+}
 /** A conservative UI offer: every allowed next human answer must fit, without truncation. */
 export function canClarifyAssistantQuestion(question:unknown):boolean{
  return typeof question==='string'&&question.length+2+ASSISTANT_CONVERSATION_LIMITS.humanAnswer<=ASSISTANT_CONVERSATION_LIMITS.history;
@@ -56,7 +62,7 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
   const step=async(stepId:string)=>{
    const [row]=await tx.select({id:assistantExchange.id,question:assistantExchange.question,answer:assistantExchange.answer,receipt:assistantExchange.disclosureReceipt,continues:assistantExchange.continuesExchangeId})
     .from(assistantExchange).where(and(eq(assistantExchange.id,stepId),eq(assistantExchange.tenantId,captured.tenantId),eq(assistantExchange.appUserId,userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
-   if(!row?.answer)return null;
+   if(!row?.answer||typeof row.receipt!=='string'||!row.receipt)return null;
    const proof=openAssistantAnswerDisclosure({tenantId:captured.tenantId,userId,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt);
    return proof?.plan?.mode==='clarify'&&(!proof.thread||proof.thread.scopeDigest===scopeDigest)?{id:row.id,question:row.question,answer:row.answer,receipt:row.receipt,threadId:proof.thread?.threadId,slot:proof.plan.slot,continues:row.continues}:null;
   };
@@ -69,12 +75,14 @@ export async function ownAssistantClarification(ctx:SessionContext,exchangeId:un
   // Walk back through earlier replies of the same conversation. Stop, without refusing, at the depth or
   // history bound, a deleted link, or any row that is retired, foreign, expired or not a clarification:
   // the conversation simply starts later. Nothing older than a row's own 30 days is ever carried.
-  const earlier:{question:string;slot:AssistantClarificationSlot}[]=[],rows:SourceRow[]=[{exchangeId:row.id,question:row.question,...(row.threadId&&row.receipt?{answer:row.answer,receipt:row.receipt}:{})}],seen=new Set([row.id]);
+  const earlier:{question:string;slot:AssistantClarificationSlot}[]=[],rows:SourceRow[]=[{exchangeId:row.id,question:row.question,answer:row.answer,receipt:row.receipt}],seen=new Set([row.id]);
   for(let next=row.continues;next&&!seen.has(next)&&earlier.length<ASSISTANT_CONTINUATION_DEPTH;){
    const prior=await step(next);
-   if(!prior||row.threadId&&prior.threadId!==row.threadId||used+prior.question.length+2>ASSISTANT_CONVERSATION_LIMITS.history)break;
+   // A genuine legacy clarification is transient same-owner context, never invented saved-chat scope.
+   // A different authenticated v3 thread remains a hard traversal boundary.
+   if(!prior||row.threadId&&prior.threadId!==undefined&&prior.threadId!==row.threadId||used+prior.question.length+2>ASSISTANT_CONVERSATION_LIMITS.history)break;
    used+=prior.question.length+2;seen.add(prior.id);
-   earlier.unshift({question:prior.question,slot:prior.slot});rows.unshift({exchangeId:prior.id,question:prior.question,...(prior.threadId&&prior.receipt?{answer:prior.answer,receipt:prior.receipt}:{})});
+   earlier.unshift({question:prior.question,slot:prior.slot});rows.unshift({exchangeId:prior.id,question:prior.question,answer:prior.answer,receipt:prior.receipt});
    next=prior.continues;
   }
   const issued:OwnAssistantClarification=Object.freeze({originalQuestion:row.question,slot:row.slot,answer,earlier:Object.freeze(earlier.map(e=>Object.freeze(e)))});
@@ -101,7 +109,7 @@ export async function assertOwnAssistantClarificationCurrentTx(tx:Tx,ctx:Session
    .where(and(inArray(assistantExchange.id,source.rows.map(r=>r.exchangeId)),eq(assistantExchange.tenantId,source.tenantId),eq(assistantExchange.appUserId,source.userId),
     isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`));
   const byId=new Map(found.map(r=>[r.id,r]));
-  current=source.rows.at(-1)?.question===clarification.originalQuestion&&source.rows.every(r=>{const current=byId.get(r.exchangeId);return current?.question===r.question&&(r.receipt===undefined||current.answer===r.answer&&current.receipt===r.receipt);});
+  current=source.rows.at(-1)?.question===clarification.originalQuestion&&source.rows.every(r=>{const current=byId.get(r.exchangeId);return current?.question===r.question&&(current.answer===r.answer&&current.receipt===r.receipt);});
  }catch{/* A storage failure aborts the caller's transaction; it is never read as a current source. */}
  if(!current)throw new AssistantClarificationError();
 }

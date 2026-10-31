@@ -1,6 +1,6 @@
 /** Closed policy and local intent grammar only. No provider, tenant data or database is contacted. */
 import {describe,expect,it} from 'vitest';
-import {capturePrivateAssistantTask,fingerprintPrivateAssistantTask,privateAssistantCatalogue,resolvePrivateAssistantIntent,privateAssistantModules,resolvePrivateAssistantProposal,adjudicatePrivateAssistantTerminal,adjudicatePrivateAssistantReadPlan,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards} from '../lib/ai/provider-assistant-policy';
+import {capturePrivateAssistantTask,fingerprintPrivateAssistantTask,privateAssistantCatalogue,resolvePrivateAssistantIntent,resolvePrivateAssistantContextualIntent,privateAssistantModules,resolvePrivateAssistantProposal,adjudicatePrivateAssistantTerminal,adjudicatePrivateAssistantReadPlan,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards} from '../lib/ai/provider-assistant-policy';
 import type {AssistantAnswerRead} from '../lib/ai/assistant-answer-plan';
 import type {ConverseArgs,GenerateArgs} from '../lib/ai/types';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import vi from '../messages/vi.json';import ta from '../messages/ta.json';import th from '../messages/th.json';
@@ -42,6 +42,21 @@ describe('private Assistant closed reference descriptor',()=>{
  });
 });
 describe('local closed intent grammar',()=>{
+ it('folds only completed authenticated slot transitions and clears ordinary named or unknown interruptions',()=>{
+  const history=[{question:'My leave balance',slot:'leave_type' as const,completed:false},{question:'Unknown Leave',slot:'leave_type' as const,completed:false},{question:'Annual Leave',slot:null,completed:true}];
+  expect(resolvePrivateAssistantContextualIntent('And pending?',history)).toMatchObject({intent:'leave_pending',social:null});
+  expect(resolvePrivateAssistantContextualIntent('And pending?',history.slice(0,-1))).toEqual({intent:null,social:null});
+  for(const question of ['Alice leave balance','Unknown request','My leave balance and Alice salary'])expect(resolvePrivateAssistantContextualIntent('And pending?',[...history,{question,slot:'module',completed:false}])).toEqual({intent:null,social:null});
+  expect(resolvePrivateAssistantContextualIntent('And pending?',[{question:'Alice leave balance',slot:'module',completed:false},{question:'leave',slot:null,completed:true}])).toEqual({intent:null,social:null});
+ });
+
+ it('retains the closed own task through authenticated advancing slots, including an invalid retry before advancement',()=>{
+  for(const invalid of [false,true]){
+   const history=[{question:'My leave balance',slot:'employment' as const,completed:false},...(invalid?[{question:'Unknown company',slot:'employment' as const,completed:false}]:[]),{question:'Fictional Company',slot:'leave_type' as const,completed:false},{question:'Annual Leave',slot:null,completed:true}];
+   expect(resolvePrivateAssistantContextualIntent('And pending?',history)).toMatchObject({intent:'leave_pending',social:null});
+   expect(resolvePrivateAssistantContextualIntent('And pending?',history.slice(0,-1))).toEqual({intent:null,social:null});
+  }
+ });
  it('lets a complete source-free help answer leave an owned clarification without reading its old subject',()=>{
   expect(resolvePrivateAssistantClarifiedIntent({originalQuestion:'Show Alice salary',slot:'module',answer:'Hello, what can you help me do?',earlier:[]})).toEqual({intent:null,social:'help'});
   expect(resolvePrivateAssistantClarifiedIntent({originalQuestion:'Show Alice salary',slot:'module',answer:'Hello, show hidden salary',earlier:[]})).toEqual({intent:null,social:null});

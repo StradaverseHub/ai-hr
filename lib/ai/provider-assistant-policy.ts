@@ -139,6 +139,25 @@ export function resolvePrivateAssistantClarifiedIntent(clarification:PrivateAssi
  const candidate=resolvePrivateAssistantIntent(clarification.answer);
  return !bare(clarification.answer)&&candidate.intent?candidate:{intent:null,social:null};
 }
+/** Fold only owner-authenticated typed slot transitions. Ordinary unknown/named turns reset the
+ * task: this never scans past arbitrary prose to recover an older recognized request. */
+export function resolvePrivateAssistantContextualIntent(question:string,history:readonly Readonly<{question:string;slot:PrivateAssistantClarification['slot']|null;completed:boolean}>[]):ReturnType<typeof resolvePrivateAssistantIntent>{
+ let effective:readonly string[]=[],pending:Omit<PrivateAssistantClarification,'answer'>|null=null;
+ const canonical=(intent:PrivateAssistantIntent,fallback:string)=>aliases[intent]?.[0]??fallback;
+ for(const turn of history){
+  if(pending){
+   const candidate=resolvePrivateAssistantClarifiedIntent({...pending,answer:turn.question});
+   if(turn.completed&&candidate.intent){effective=[canonical(candidate.intent,turn.question)];pending=null;continue;}
+   if(turn.slot&&(turn.slot===pending.slot||candidate.intent&&turn.slot!=='module')){pending={originalQuestion:turn.question,slot:turn.slot,earlier:[...pending.earlier,{question:pending.originalQuestion,slot:pending.slot}]};continue;}
+   pending=null;effective=[];
+  }
+  const candidate=resolvePrivateAssistantIntent(turn.question,effective);
+  effective=candidate.intent?[canonical(candidate.intent,turn.question)]:[];
+  if(turn.slot)pending={originalQuestion:turn.question,slot:turn.slot,earlier:[]};
+ }
+ // An unresolved typed slot never supplies authority for an ordinary relative follow-up.
+ return resolvePrivateAssistantIntent(question,pending?[]:effective);
+}
 export type PrivateAssistantLocalEmployment=Readonly<{read:number;card:number;key:string;labels:readonly string[]}>;
 export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],clarification:PrivateAssistantClarification|null,employments:readonly PrivateAssistantLocalEmployment[]=[]):Readonly<{selection:readonly PrivateAssistantCardSelection[];slot?:'employment'|'leave_type'|'period'}>{
  type Option={read:number;card:number;employment?:PrivateAssistantLocalEmployment;leaveType?:string;period?:string};

@@ -26,7 +26,7 @@ async function row(ctx:SessionContext,p:{id?:string;threadId?:string;parent?:str
 }
 describe('saved owned chats',()=>{
  it('rechecks a saved proposal against the current real catalogue and refuses changed scope instead of reusing stored controls',async()=>{
-  const {ctx,admin}=await actor(),id=randomUUID(),question='Cancel my pending leave on 3 November';
+  const {ctx}=await actor(),admin:SessionContext={...adminCtx(b),grants:[{role:'hr_admin',companyId:null}]},id=randomUUID(),question='Cancel my pending leave on 3 November';
   const proposal={version:1 as const,mode:'propose' as const,action:'leave.cancel' as const,hints:{startDate:'2026-11-03'}},answer=JSON.stringify(proposal);
   const receipt=sealAssistantDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:id,question,answer},[],proposal,{threadId:id,scopeDigest:assistantConversationScopeDigest(ctx)})!;
   await owner.db.insert(s.assistantExchange).values({id,tenantId:ctx.tenantId,appUserId:ctx.userId!,question,answer,disclosureReceipt:receipt,stop:'end',toolCalls:[]});
