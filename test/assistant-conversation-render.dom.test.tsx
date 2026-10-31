@@ -51,8 +51,8 @@ describe('grounded conversation rendering',()=>{
   expect(issued.state).toBe('ready');const draft=vi.fn(),clarify=vi.fn();
   const node=await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply({version:1,mode:'clarify',slot:'leave_type'}),views:[issued],tools:['my_leave_balances']}});
   const shown=render(<AssistantChatSubmitContext.Provider value={{pending:false,setClarificationDraft:draft,clarify}}>{node}</AssistantChatSubmitContext.Provider>);
-  const exact=screen.getByRole('button',{name:'*Annual Leave',exact:true});expect(exact.closest('details')).toBeNull();
-  expect(screen.getByRole('button',{name:'Annual Leave (C)',exact:true})).toBeTruthy();expect(shown.container.querySelector('textarea,form')).toBeNull();
+  const exact=screen.getByRole('button',{name:'*Annual Leave'});expect(exact.closest('details')).toBeNull();
+  expect(screen.getByRole('button',{name:'Annual Leave (C)'})).toBeTruthy();expect(shown.container.querySelector('textarea,form')).toBeNull();
   fireEvent.click(exact);expect(draft).toHaveBeenCalledExactlyOnceWith(exchangeId,'*Annual Leave');expect(clarify).not.toHaveBeenCalled();expect(askAssistantAction).not.toHaveBeenCalled();
  });
  it('does not offer copied, foreign, expired or non-Mine canonical leave labels as choices',async()=>{
@@ -63,19 +63,19 @@ describe('grounded conversation rendering',()=>{
   const base=reply({version:1,mode:'clarify',slot:'leave_type'});
   for(const [views,principal]of [[[copied],ctx],[[issued],{...ctx,userId:'another-user'}],[[moduleView],ctx]] as const){
    const shown=render(await GroundedWorkspaceReply({ctx:principal,exchangeId,reply:{...base,views}}));
-   expect(screen.queryByRole('button',{name:'*Annual Leave',exact:true})).toBeNull();expect(screen.queryByRole('button',{name:'NOT-A-MINE-CHOICE',exact:true})).toBeNull();shown.unmount();
+   expect(screen.queryByRole('button',{name:'*Annual Leave'})).toBeNull();expect(screen.queryByRole('button',{name:'NOT-A-MINE-CHOICE'})).toBeNull();shown.unmount();
   }
   vi.spyOn(Date,'now').mockReturnValue(Date.now()+30001);
-  const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued]}}));expect(screen.queryByRole('button',{name:'*Annual Leave',exact:true})).toBeNull();shown.unmount();
+  const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued]}}));expect(screen.queryByRole('button',{name:'*Annual Leave'})).toBeNull();shown.unmount();
  });
  it('withholds leave-choice shortcuts when continuation is unavailable and never auto-submits a pending shortcut',async()=>{
   state.leaveTool=true;state.data={ok:true,employments:[{company:'Own employer',balances:[{leaveType:'*Annual Leave',available:4}]}]};
   const issued=await loadCanonicalToolJob(ctx,'my_leave_balances',{},assistantSourceDigest(state.data),{} as AssistantReadSession),draft=vi.fn();
   const base=reply({version:1,mode:'clarify',slot:'leave_type'});
   const denied=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued],conversation:{...base.conversation!,clarificationAllowed:false}}}));
-  expect(screen.queryByRole('button',{name:'*Annual Leave',exact:true})).toBeNull();denied.unmount();
+  expect(screen.queryByRole('button',{name:'*Annual Leave'})).toBeNull();denied.unmount();
   render(<AssistantChatSubmitContext.Provider value={{pending:true,setClarificationDraft:draft,clarify:vi.fn()}}>{await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued]}})}</AssistantChatSubmitContext.Provider>);
-  const choice=screen.getByRole('button',{name:'*Annual Leave',exact:true}) as HTMLButtonElement;expect(choice.disabled).toBe(true);fireEvent.click(choice);expect(draft).not.toHaveBeenCalled();
+  const choice=screen.getByRole('button',{name:'*Annual Leave'}) as HTMLButtonElement;expect(choice.disabled).toBe(true);fireEvent.click(choice);expect(draft).not.toHaveBeenCalled();
  });
 
  it('answers agent switch counts directly and exposes only the source-owned group administration link',async()=>{

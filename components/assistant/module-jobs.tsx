@@ -115,7 +115,7 @@ function currentLeaveChoices(views:readonly CanonicalModuleJobView[],ctx:Session
 const closedConversationFields=(value:object,fields:readonly string[])=>JSON.stringify(Object.keys(value).sort())===JSON.stringify([...fields].sort());
 /** Selection/order comes from the checked plan; every displayed value still comes from an original
  * fresh canonical view. Unknown plans, hidden/null facts and unsupported explanations refuse. */
-async function ConversationReplyBody({conversation,views,ctx,exchangeId}:{conversation:ConversationReply;views:readonly CanonicalModuleJobView[];ctx:SessionContext;exchangeId?:string}){
+async function ConversationReplyBody({conversation,views:sourceViews,ctx,exchangeId}:{conversation:ConversationReply;views:readonly CanonicalModuleJobView[];ctx:SessionContext;exchangeId?:string}){
  const[copy,text,workspaceCopy]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText(),getTranslations('assistant.workspace')]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
  try{
@@ -130,7 +130,7 @@ async function ConversationReplyBody({conversation,views,ctx,exchangeId}:{conver
    const taskModules={leave_available:'leave',leave_requests:'leave',claim_statuses:'claims',holidays:'org',reporting_line:'org',work_profile:'employees',payslip:'payroll',module_overview:'assistant'} as const;
    // Optional shortcuts cannot suppress the existing owned reply form or exhausted-context notice.
    // An absent offering snapshot grants nothing; the actual command reauthorizes every reply.
-   const choices=plan.slot==='leave_type'&&conversation.clarificationAllowed!==false?currentLeaveChoices(views,ctx):plan.slot==='module'&&conversation.clarificationAllowed!==false?(()=>{try{const readable=assistantReadableModules(ctx);return Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})}));}catch{return [];}})():undefined;
+   const choices=plan.slot==='leave_type'&&conversation.clarificationAllowed!==false?currentLeaveChoices(sourceViews,ctx):plan.slot==='module'&&conversation.clarificationAllowed!==false?(()=>{try{const readable=assistantReadableModules(ctx);return Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})}));}catch{return [];}})():undefined;
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
     {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')} choices={choices} choicesVisible={plan.slot==='leave_type'}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
