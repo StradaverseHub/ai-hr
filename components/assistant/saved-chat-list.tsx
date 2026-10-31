@@ -3,6 +3,7 @@ import {useEffect,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useTranslations} from 'next-intl';
 import {loadMoreChatsAction} from '../../app/assistant/launcher-actions';
+import {observeChatListUpdates} from './chat-list-updates';
 type Chat={threadId:string;exchangeId:string;title:string};
 /** Earlier scan pages may repeat a long chat. Preserve the newest/first selected tail per thread. */
 function distinct(rows:readonly Chat[]):Chat[]{const seen=new Set<string>();return rows.filter(row=>{if(seen.has(row.threadId))return false;seen.add(row.threadId);return true;});}
@@ -13,6 +14,8 @@ export function SavedChatList({initialChats,nextCursor,scopeDigest,activeThreadI
  // The server issues a fresh New-chat nonce on each authoritative render, including erasure.
  const signature=JSON.stringify([scopeDigest,nextCursor,initialChats,newChatHref]);
  useEffect(()=>{epoch.current++;busy.current=false;setPending(false);setChats(distinct(initialChats));setCursor(nextCursor);setError(null);},[signature]); // eslint-disable-line react-hooks/exhaustive-deps
+ // Only the summaries change after an ask; the visible transcript and route stay mounted.
+ useEffect(()=>observeChatListUpdates(scopeDigest,page=>{epoch.current++;busy.current=false;setPending(false);setChats(distinct(page.chats));setCursor(page.nextCursor);setError(null);}),[signature,scopeDigest]);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;epoch.current++;};},[]);
  async function more(){if(!cursor||busy.current)return;busy.current=true;setPending(true);setError(null);const at=epoch.current;
   try{const page=await loadMoreChatsAction({cursor});if(!alive.current||at!==epoch.current)return;

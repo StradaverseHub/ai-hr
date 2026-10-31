@@ -35,6 +35,7 @@ const {PageHeader}=await import('../components/ui');
 const {InternalAuthForm}=await import('../app/login/internal-form');
 const {WorkspaceComposer}=await import('../components/assistant/workspace-composer');
 const {AtelierAskBox}=await import('../components/atelier-ask-box');
+const {AssistantLauncher}=await import('../components/assistant/assistant-launcher');
 const themes:UiTheme[]=['atelier','classic','monolith'];
 const companies=[{id:'fictional-a',name:'Fictional Company A'},{id:'fictional-b',name:'Fictional Company B'}];
 const initialBodyClass=document.body.className;
@@ -83,6 +84,16 @@ afterEach(async()=>{
 });
 
 describe('isolated combined release: actual shell CSS and controls',()=>{
+ for(const theme of themes)it(`${theme} floating chat draws one complete composer ring and keeps ordinary field focus`,async()=>{
+  document.documentElement.setAttribute('data-ui-theme',theme);await page.viewport(390,844);
+  render(providers(theme,<><AssistantLauncher position="bottom-right" hiddenAreas={[]}/><label htmlFor="floating-focus-control">Ordinary floating focus control</label><input id="floating-focus-control"/></>));
+  fireEvent.click(screen.getByRole('button',{name:en.assistant.launcher.open}));const dialog=screen.getByRole('dialog',{name:en.assistant.launcher.title});
+  const field=within(dialog).getByLabelText(en.assistant.launcher.question),frame=field.closest('[data-ui-composer]')!;field.focus();await tick();
+  expect(document.activeElement).toBe(field);expect(frame.matches(':focus-within')).toBe(true);expect(getComputedStyle(frame).boxShadow).not.toBe('none');expect(getComputedStyle(field).outlineStyle).toBe('none');expect(getComputedStyle(field).boxShadow).toBe('none');
+  const send=within(dialog).getByRole('button',{name:en.assistant.launcher.send});expect(send).toBeDisabled();expect(box(frame).left).toBeGreaterThanOrEqual(0);expect(box(frame).right).toBeLessThanOrEqual(390);expect(ports.launcherAsk).not.toHaveBeenCalled();await capture(`${theme}-floating-single-focus`,dialog);
+  const ordinary=screen.getByLabelText('Ordinary floating focus control');ordinary.focus();expect(getComputedStyle(ordinary).outlineStyle).not.toBe('none');expect(parseFloat(getComputedStyle(ordinary).outlineWidth)).toBeGreaterThan(0);
+ });
+
  for(const theme of themes)for(const width of [390,639,640,1280])for(const dark of [false,true])it(`${theme} ${width} ${dark?'dark':'light'} keeps real scrolling, header actions and page chrome`,async()=>{
   await mount(theme,width,dark);
   const main=screen.getByTestId('release-main'),header=main.querySelector('[data-page-header]')!;

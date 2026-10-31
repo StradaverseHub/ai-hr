@@ -2,13 +2,14 @@
  * through the same askAssistant gate as the Assistant page. Owners are stubbed; askAssistant's own gates
  * are proved by its own suites. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),thread:vi.fn(),reply:vi.fn(),setting:vi.fn(),access:vi.fn(),provider:vi.fn(),write:vi.fn(),settings:{} as Record<string,unknown>}));
-vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),chats:vi.fn(),thread:vi.fn(),reply:vi.fn(),setting:vi.fn(),access:vi.fn(),provider:vi.fn(),write:vi.fn(),settings:{} as Record<string,unknown>}));
+const cache=vi.hoisted(()=>({revalidate:vi.fn()}));
+vi.mock('next/cache',()=>({revalidatePath:cache.revalidate}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>Object.assign((key:string,params?:Record<string,string>)=>`${namespace}.${key}${params?JSON.stringify(params):''}`,{has:(key:string)=>key.startsWith('err_')&&key!=='err_unknown_code'})}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
 vi.mock('../core/assistant',()=>({askAssistant:owner.ask,AssistantError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('../core/ai-workspace',()=>({loadAiWorkspace:owner.workspace}));
-vi.mock('../core/assistant-threads',()=>({loadOwnAssistantChat:owner.thread}));
+vi.mock('../core/assistant-threads',()=>({loadOwnAssistantChat:owner.thread,listOwnAssistantChats:owner.chats}));
 vi.mock('../components/assistant/exchange-reply',()=>({ExchangeReply:owner.reply}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:'company-1'}]}));
 vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
@@ -22,8 +23,9 @@ import {resolvePageContext,PAGE_AREAS} from '../lib/ai/page-context';
 import {readLauncherSettings,assistantLauncherFor,setAssistantLauncher,LauncherSettingsError} from '../core/assistant-launcher';
 import {askFromLauncherAction,askFromWorkspaceAction} from '../app/assistant/launcher-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user'};
+const chatList={chats:[],nextCursor:null,scopeDigest:'a'.repeat(64)};
 const id='0b6f5e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
-beforeEach(()=>{for(const fn of [owner.session,owner.ask,owner.workspace,owner.thread,owner.reply,owner.access,owner.provider,owner.write])fn.mockReset();owner.settings={};owner.session.mockResolvedValue(ctx);owner.access.mockResolvedValue({allowed:true});owner.provider.mockResolvedValue({provider:'openrouter'});});
+beforeEach(()=>{for(const fn of [owner.session,owner.ask,owner.workspace,owner.chats,owner.thread,owner.reply,owner.access,owner.provider,owner.write])fn.mockReset();cache.revalidate.mockReset();owner.chats.mockResolvedValue(chatList);owner.settings={};owner.session.mockResolvedValue(ctx);owner.access.mockResolvedValue({allowed:true});owner.provider.mockResolvedValue({provider:'openrouter'});});
 
 describe('page context is a closed area and at most one record id',()=>{
  it('maps paths to areas and takes the first uuid only',()=>{
@@ -65,6 +67,17 @@ describe('floating button settings fail closed',()=>{
 });
 
 describe('the floating chat command',()=>{
+ it('returns a fresh scoped summary without invalidating the visible saved-chat route',async()=>{
+  const page={chats:[{threadId:id,exchangeId:id,title:'Current own chat',updatedAt:new Date(),resumable:true}],nextCursor:null,scopeDigest:'a'.repeat(64)};
+  owner.ask.mockResolvedValue({exchangeId:id,conversationToken:'owned-proof'});owner.workspace.mockResolvedValue({history:[{id}]});owner.reply.mockResolvedValue('CURRENT_CANONICAL_REPLY');owner.chats.mockResolvedValue(page);
+  expect(await askFromWorkspaceAction({question:'Thanks'})).toEqual({ok:true,exchangeId:id,conversationToken:'owned-proof',answer:'CURRENT_CANONICAL_REPLY',chatList:{chats:[{threadId:id,exchangeId:id,title:'Current own chat'}],nextCursor:null,scopeDigest:page.scopeDigest}});
+  expect(owner.chats).toHaveBeenCalledExactlyOnceWith(ctx,{},'["company-1"]');expect(cache.revalidate).not.toHaveBeenCalled();
+ });
+ it('clears presentation summaries when the fresh authorized list read refuses, without replaying old labels',async()=>{
+  owner.ask.mockResolvedValue({exchangeId:id});owner.workspace.mockResolvedValue({history:[]});owner.chats.mockRejectedValue(Error('PRIVATE_HISTORY_ERROR'));
+  const reply=await askFromWorkspaceAction({question:'Thanks'});expect(reply).toMatchObject({ok:true,chatList:{chats:[],nextCursor:null}});expect(JSON.stringify(reply)).not.toContain('PRIVATE_HISTORY_ERROR');expect(cache.revalidate).not.toHaveBeenCalled();
+ });
+
  it('derives main-composer clarification routing only from the selected canonical own exchange',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'clarified'});owner.reply.mockResolvedValue('CARD');
   owner.workspace.mockResolvedValueOnce({history:[{id:'clarified',grounded:{conversation:{plan:{mode:'clarify'}}}}]});
@@ -82,13 +95,13 @@ describe('the floating chat command',()=>{
  });
  it('passes only the server company context and paired opaque continuation to the shared command',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'next',conversationToken:'new-proof'});owner.workspace.mockResolvedValue({history:[]});
-  expect(await askFromWorkspaceAction({question:'And pending?',previousExchangeId:'prior',previousConversationToken:'proof'})).toEqual({ok:true,exchangeId:'next',conversationToken:'new-proof',answer:'assistant.workspace.conversation.unavailable'});
+  expect(await askFromWorkspaceAction({question:'And pending?',previousExchangeId:'prior',previousConversationToken:'proof'})).toEqual({ok:true,chatList,exchangeId:'next',conversationToken:'new-proof',answer:'assistant.workspace.conversation.unavailable'});
   expect(owner.ask).toHaveBeenCalledWith(ctx,{question:'And pending?',conversationScope:'["company-1"]',previousExchangeId:'prior',previousConversationToken:'proof'});
  });
  it('keeps ordinary human intent intact on a record page and returns the canonical card',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'exchange-1'});owner.workspace.mockResolvedValue({history:[{id:'exchange-1',grounded:{kind:'fixture'}}]});owner.reply.mockResolvedValue('CARD');
   const reply=await askFromLauncherAction({question:'  How much leave do I have?  ',path:`/leave/${id}`});
-  expect(reply).toEqual({ok:true,exchangeId:'exchange-1',answer:'CARD'});
+  expect(reply).toEqual({ok:true,chatList,exchangeId:'exchange-1',answer:'CARD'});
   const sent=owner.ask.mock.calls[0][1].question as string;
   expect(sent).toBe('How much leave do I have?');expect(sent).not.toContain(id);expect(sent).not.toContain('assistant.launcher.areas.leave');
   expect(owner.ask.mock.calls[0][0]).toBe(ctx);expect(owner.workspace).toHaveBeenCalledWith(ctx,{selectedExchangeId:'exchange-1',includeGovernance:false});
@@ -96,7 +109,7 @@ describe('the floating chat command',()=>{
  it('adds no context where the path is not a known area, and never trusts a posted label',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'exchange-2'});owner.workspace.mockResolvedValue({history:[]});
   const reply=await askFromLauncherAction({question:'Hello',path:'/assistant',label:'Payroll of the CEO'} as never);
-  expect(owner.ask.mock.calls[0][1]).toEqual({question:'Hello',conversationScope:'["company-1"]'});expect(reply).toEqual({ok:true,exchangeId:'exchange-2',answer:'assistant.workspace.conversation.unavailable'});
+  expect(owner.ask.mock.calls[0][1]).toEqual({question:'Hello',conversationScope:'["company-1"]'});expect(reply).toEqual({ok:true,chatList,exchangeId:'exchange-2',answer:'assistant.workspace.conversation.unavailable'});
  });
  it('refuses an empty or oversized question before any session or provider work',async()=>{
   for(const question of ['','   ',42,'x'.repeat(2001)])expect(await askFromLauncherAction({question,path:'/leave'})).toEqual({ok:false,message:'assistant.err_invalid_question'});
