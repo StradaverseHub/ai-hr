@@ -487,3 +487,68 @@ Native run41179640317 on9098adc7fcf68b294075ac699fc8836ca885c9cf executed74
 selected cases (68DB/6nonDB), zero failures and zero skips. Compiler and HTTP/browser
 results were still pending when this evidence was added; their final outcomes must
 be recorded independently.
+
+## Resumed verification — 31 October 2026
+
+The owner selected an existing isolated environment for production-equivalent
+acceptance. Available operator configs identify staging and the two production
+hosts only; the isolated target's alias/config path is still required. No workload
+was directed at those live installations.
+
+Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` was integrated normally in
+`f1444f59c`. Its636-entry journal and every canonical SQL file were independently
+verified unchanged. The641-entry candidate appends only the five reservations
+0866–0870. No migration was applied outside disposable hosted databases.
+
+| Hosted evidence | Exact source | Result |
+| --- | --- | --- |
+|41179640317 |9098adc7fcf68b294075ac699fc8836ca885c9cf |74 cases PASS (68DB/6nonDB), no skips; whole compiler PASS |
+|41179939683 |9098adc7fcf68b294075ac699fc8836ca885c9cf |304 cases PASS (257DB/47nonDB), no skips,18 module suites |
+|41180201688 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |40 Profile cases PASS (23DB/17nonDB), no skips |
+|41180173334 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |Original selected-tests failure: nonexistent selected test path; retained. Its whole compiler independently PASS. Corrected selection is41180201688. |
+|41180553216 |310b5977c |165 fixture/role-transfer/task-metadata cases PASS, no skips; compiler was pending at this update |
+|41180556156 |310b5977c |Paired native empty-Profile benchmark PASS;500 actual principals x3 reads each, no errors, native forged-principal checks retained |
+
+The Profile reader now checks for one native-authorized pending header before
+planning employment/person joins. Nonempty queues retain their original projection
+and locked current-policy decision checks. The same-host benchmark measured p95
+for each principal's three-read journey at1178.46ms before,624.44ms changed, and
+934.05ms after restoring the joined reader. This is component evidence only; it
+cannot establish a whole-system HTTP speed improvement.
+
+All initial expanded HTTP attempts before the fixture repair failed before traffic:
+41179453346/41179456415 (`b28d7f00b`),41179633915/41179637258 (`9098adc7f`), and
+41180079447/41180082400 (`871342bb8`). Current main's strict focused migration owner
+refused their dedicated disposable database/job. Production builds passed where
+observed; there are no new HTTP latency samples from these attempts.
+
+Service benchmark41180175791 also failed before executing its case because the
+new role prerequisite owner admitted only the ordinary selected-tests job. A finite
+performance admission now retains the existing host/workflow/source/URL/evidence
+checks and exact role graph, adding only the two named performance jobs, their own
+evidence directories and the fixed password-free loopback system database. It does
+not spoof a job identity, disable a guard or admit live targets. Its negative tests
+and native role-transfer checks are included in41180553216.
+
+Repaired runs41180573016/41180575968 (`56fc0848f`) passed migration/catalog setup,
+then the fictional all-company Attendance workflow correctly failed self-approval
+validation. The fixture population is now explicitly employee applicants, excluding
+the named HR approver. Runs41180942249/41180945047 on`ab55b5775` test that repair at
+one-second/five-second pacing, Node24.22.1, two million retained Claims/Attendance
+rows and a five-minute sustained phase. They were pending at this update.
+
+Coverage remains a bounded development matrix: selected30 page routes, Claims
+CRUD, Leave create/edit/withdraw, Personnel draft CRUD, Attendance correction and
+approval, Payroll calculation/scoped CSV generation, and clocking-file import.
+Payroll close/publication, Lifecycle/Performance/Rewards mutations, large Personnel
+imports, report-definition CRUD and long-running document jobs are not certified.
+The hosted runner remains four CPUs with app, DB, driver and browsers sharing it.
+
+Generated provider source digest is now
+`6112d554c1f7a5b9283e5d9220c3bb02b05630a8e99086aea66ee5c085f611f4`;
+module-agent source digest is
+`8c5541705977071c609f2f339d616d73bb7f469f3c861c64347608800b9a4d16`.
+Literal human approval records remain unchanged. Earlier exact-source technical
+reviews/proposed approval patches do not approve this newer source. The approval
+hold remains unresolved; no provider call, integration, release or deployment is
+claimed by these development checks.
