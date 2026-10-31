@@ -463,11 +463,11 @@ max_parallel_workers8, max_worker_processes8, effective_io_concurrency1 and
 random_page_cost4. TLS, fsync, synchronous_commit and JIT are enabled. The database
 VM exposes a900GiB data disk. These are observed settings, not evidence of disk
 IOPS, network latency, sustained available capacity or an accepted tuning change.
-The inspected application cgroup contains one Next.js server process; its observed current memory charge was2022572032bytes (not a peak-load measurement). No benchmark, write, restart, installation or configuration change ran on production.
+The inspected application cgroup contains one Next.js server process; its observed current memory charge was2022572032bytes (not a peak-load measurement). All five observed app database sessions used TLS. Three bounded app-to-DB ICMP probes averaged0.319ms (not application request latency or sustained network capacity). No database benchmark, write, restart, installation or configuration change ran on production.
 
 The standard four-CPU shared Actions diagnostic environment cannot reproduce this
 two-host capacity/topology. Matching isolated infrastructure remains required for
-final acceptance. The owner has been asked whether such an environment exists.
+final acceptance. The owner selected an existing isolated environment; its SSH alias or connection-config path remains required.
 
 Expanded workload candidates capture actual built Leave and Personnel actions,
 including typed Personnel transport. Independent database reads verify create/edit/
@@ -484,16 +484,16 @@ Node24.22.1 and can hold sustained activity for five minutes. Neither runtime
 alignment nor a longer interval makes the smaller shared runner production-equivalent.
 
 Native run41179640317 on9098adc7fcf68b294075ac699fc8836ca885c9cf executed74
-selected cases (68DB/6nonDB), zero failures and zero skips. Compiler and HTTP/browser
-results were still pending when this evidence was added; their final outcomes must
-be recorded independently.
+selected cases (68DB/6nonDB), zero failures and zero skips; its whole compiler passed.
+HTTP/browser outcomes remain separate, as recorded below.
 
 ## Resumed verification — 31 October 2026
 
 The owner selected an existing isolated environment for production-equivalent
 acceptance. Available operator configs identify staging and the two production
-hosts only; the isolated target's alias/config path is still required. No workload
-was directed at those live installations.
+hosts only; the isolated target's alias/config path is still required. The configured
+staging VM exposes2 CPUs and approximately4GiB RAM, so it is not an equivalent
+substitute. No workload was directed at those live installations.
 
 Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` was integrated normally in
 `f1444f59c`. Its636-entry journal and every canonical SQL file were independently
@@ -532,10 +532,38 @@ and native role-transfer checks are included in41180553216.
 
 Repaired runs41180573016/41180575968 (`56fc0848f`) passed migration/catalog setup,
 then the fictional all-company Attendance workflow correctly failed self-approval
-validation. The fixture population is now explicitly employee applicants, excluding
-the named HR approver. Runs41180942249/41180945047 on`ab55b5775` test that repair at
-one-second/five-second pacing, Node24.22.1, two million retained Claims/Attendance
-rows and a five-minute sustained phase. They were pending at this update.
+validation. The fixture population was repaired to include employee applicants only,
+excluding the named HR approver. Runs41180942249/41180945047 on`ab55b5775` then
+passed30 route pilots, Claims browser CRUD and persisted Leave create/edit/withdraw,
+but failed before the500-user phase because the Personnel driver omitted the
+required manual employee ID. The original failures are retained; this was not a
+500-user latency measurement.
+
+Workflow-only run41182199060 on`2c50477ff` independently verified persisted Leave
+create/edit/withdraw, Personnel draft create/edit/delete and Attendance correction,
+approval and applied punch changes. It failed before load at Payroll processing.
+The fixture incorrectly prepopulated current draft batches with payslips. The next
+fixture instead generates and closes real historical runs, leaving processing
+drafts empty; complete action responses and business refusals are now captured.
+This fixture diagnosis is not a claim that a particular SQL error was observed.
+
+Workflow-only run41183418076 on`af950afcae5607c429e76da032ac1a724fb1d26d`
+passed native fixture construction and the production build, then the stricter Home
+browser assertion detected two handled card failures for a manager. The screenshot
+shows a timed-out summary; the Tasks card also failed. HTTP200 and absence of
+JavaScript errors had not established card readiness in earlier checks. This run
+never reached concurrent load or the later mutation preflights. The2.8-second Home
+card deadline is unchanged. Native SQL evidence includes four uncapped claim-task
+metadata reads and177 batched request rechecks; these are diagnostic samples, not
+proof of one exclusive cause.
+
+Candidate5012f28a1bda64cb8674153f768dfca3695d3167 resolves delegated task subject
+metadata once per distinct pending employment, then loads every native-visible
+header and retains the original fresh, locked decision recheck. It keeps the
+delegated-subject owner rather than substituting general employment visibility.
+Paired populated benchmark/compiler run41185013098 and affected assignment,
+metadata and delegation checks41185074563 are pending. No improvement is claimed
+until the paired benchmark and native regressions finish.
 
 Coverage remains a bounded development matrix: selected30 page routes, Claims
 CRUD, Leave create/edit/withdraw, Personnel draft CRUD, Attendance correction and
@@ -545,9 +573,9 @@ imports, report-definition CRUD and long-running document jobs are not certified
 The hosted runner remains four CPUs with app, DB, driver and browsers sharing it.
 
 Generated provider source digest is now
-`6112d554c1f7a5b9283e5d9220c3bb02b05630a8e99086aea66ee5c085f611f4`;
+`f99b26cf9080e77d5fa4ed2455f76b3c97c01e7ba094b651a709979f29077f66`;
 module-agent source digest is
-`8c5541705977071c609f2f339d616d73bb7f469f3c861c64347608800b9a4d16`.
+`cc3343d810bbf477a8a72abbca7a34e764d8db0ff0ad897f82572355bc5a034c`.
 Literal human approval records remain unchanged. Earlier exact-source technical
 reviews/proposed approval patches do not approve this newer source. The approval
 hold remains unresolved; no provider call, integration, release or deployment is
