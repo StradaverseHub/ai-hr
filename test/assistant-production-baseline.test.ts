@@ -35,13 +35,13 @@ async function actor(){
 }
 /** Oracle reference selector: every available fact/explanation the closed catalogue offers (max 16). */
 function oracle(requests:ConverseArgs[]){
- return vi.spyOn(openaiAdapter,'converse').mockImplementation(async(_configuration:unknown,args:ConverseArgs):Promise<ConverseResult>=>{
+ return vi.spyOn(openaiAdapter,'converse').mockImplementation((async(_configuration:unknown,args:ConverseArgs):Promise<ConverseResult>=>{
   requests.push(args);const turn=args.turns[0],catalogue=JSON.parse(turn&&'content'in turn&&typeof turn.content==='string'?turn.content:'{}');
   const blocks:unknown[]=[];for(const read of catalogue.reads??[]){for(const card of read.cards)for(const fact of card.facts)if(fact.available)blocks.push({kind:'fact',read:read.read,card:card.card,fact:fact.fact});
    for(const item of read.explanations)blocks.push({kind:'explanation',read:read.read,card:item.card,code:item.code});}
   const plan=blocks.length?{version:1,mode:'answer',blocks:blocks.slice(0,16)}:{version:1,mode:'insufficient',code:'no_verified_facts'};
   return{text:JSON.stringify(plan),stop:'end',toolCalls:[],usageReported:true,usage:{inputTokens:0,outputTokens:0,cachedInputTokens:0}};
- } as never);
+ }) as never);
 }
 async function observe(ctx:SessionContext,question:string,previous:{exchangeId:string;token?:string;clarify:boolean}|null,requests:ConverseArgs[]){
  const before=requests.length;
