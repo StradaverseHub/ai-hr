@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { readFileSync } from 'node:fs';
 import { NativeJoiners, type NativeJoinersData } from '../app/lifecycle/v9/native-joiners';
@@ -14,11 +14,14 @@ it('uses the native register, identities and progress while applying V9 company 
   const data: NativeJoinersData = { config, rows: [first, second].map(c => ({ case: c, revision: 1, isNew: false, progress: progress(config, c) })), options: { company: [], department: [], businessGroup: [], grade: [], title: [], employmentType: [], supervisor: [] } };
   const snapshot = JSON.stringify(data);
   const messages = JSON.parse(readFileSync('messages/en.json', 'utf8'));
-  render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur"><NativeJoiners data={data} company="company-one" search="EMP-101"/></NextIntlClientProvider>);
+  const view=render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur"><NativeJoiners data={data} company="company-one" search="EMP-101"/></NextIntlClientProvider>);
   expect(screen.getByRole('link', { name: 'Fictional Joiner One' })).toHaveAttribute('href', '/lifecycle/v9/onboarding/native-one');
   expect(screen.queryByRole('link', { name: 'Fictional Joiner Two' })).not.toBeInTheDocument();
   expect(screen.getByText('OB-001')).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'New Joiners' })).not.toBeInTheDocument();
+  view.rerender(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur"><NativeJoiners data={data} company="" search=""/></NextIntlClientProvider>);
+  fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'EMP-101'}});expect(screen.getByRole('link',{name:'Fictional Joiner One'})).toBeVisible();expect(screen.queryByRole('link',{name:'Fictional Joiner Two'})).toBeNull();
+  fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'OB-002'}});expect(screen.getByRole('link',{name:'Fictional Joiner Two'})).toBeVisible();expect(screen.queryByRole('link',{name:'Fictional Joiner One'})).toBeNull();
   expect(JSON.stringify(data)).toBe(snapshot);
 });
 it('shows the module access requirement without a register projection', () => {

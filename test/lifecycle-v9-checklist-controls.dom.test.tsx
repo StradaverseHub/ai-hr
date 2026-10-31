@@ -50,3 +50,16 @@ it('keeps nonowners and view-only users from ownership and lifecycle actions',()
   expect(screen.getByRole('button',{name:'Change owner'})).toBeDisabled();expect(screen.getByRole('button',{name:'Delete checklist'})).toBeDisabled();view.unmount();
   render(<ManagedEditor editable={false}/>);for(const name of ['New checklist','Duplicate','Change owner','Delete checklist'])expect(screen.getByRole('button',{name})).toBeDisabled();
 });
+
+it('uses independent reference accordions without saving, losing edits or changing view-only access',()=>{
+  const view=render(<ManagedEditor/>), before=screen.getByTestId('managed-config').textContent;
+  const rules=screen.getByRole('button',{name:'Assignment rules'}),tasks=screen.getByRole('button',{name:'Tasks'});
+  expect(rules).toHaveAttribute('aria-expanded','false');expect(tasks).toHaveAttribute('aria-expanded','true');
+  fireEvent.click(rules);expect(rules).toHaveAttribute('aria-expanded','true');expect(screen.getByText('Population preview · 0 of 0 match')).toBeVisible();
+  fireEvent.click(tasks);expect(tasks).toHaveAttribute('aria-expanded','false');expect(screen.queryByRole('textbox',{name:'Task name'})).toBeNull();
+  fireEvent.click(tasks);expect(screen.getByRole('textbox',{name:'Task name'})).toHaveValue('Keep task');
+  expect(screen.getByTestId('managed-config').textContent).toBe(before);
+  fireEvent.change(screen.getByRole('textbox',{name:'Task name'}),{target:{value:'Retained edit'}});fireEvent.click(tasks);fireEvent.click(tasks);expect(screen.getByRole('textbox',{name:'Task name'})).toHaveValue('Retained edit');
+  view.unmount();render(<ManagedEditor editable={false}/>);fireEvent.click(screen.getByRole('button',{name:'Assignment rules'}));
+  expect(screen.getByRole('textbox',{name:'Checklist name'})).toBeDisabled();expect(screen.getByRole('button',{name:'Add task'})).toBeDisabled();
+});
