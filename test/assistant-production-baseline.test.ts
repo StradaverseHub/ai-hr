@@ -23,12 +23,12 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-baseline-passphras
  await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 // Distinctive fictional values: none may ever appear in a provider request.
 const SENTINELS=['Fictional Baseline Actor','Siti Fictional','17.25','11.5','Medical Leave','Annual Leave'];
-async function actor(){
- const admin=adminCtx(base),[medical]=await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'MEDICAL',name:'Medical Leave',paid:true}).returning({id:schema.leaveType.id});
- await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:17.25,validFrom:'2020-01-01'});await seedEntitlement(admin,{leaveTypeId:medical.id,annualDays:11.5,validFrom:'2020-01-01'});
+async function actor(medicalType=true){
+ const admin=adminCtx(base),medical=medicalType?(await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'MEDICAL',name:'Medical Leave',paid:true}).returning({id:schema.leaveType.id}))[0]:null;
+ await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:17.25,validFrom:'2020-01-01'});if(medical)await seedEntitlement(admin,{leaveTypeId:medical.id,annualDays:11.5,validFrom:'2020-01-01'});
  const mine=await hireEmployee(admin,{person:{fullName:'Fictional Baseline Actor',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  await hireEmployee(admin,{person:{fullName:'Siti Fictional',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
- for(const [leaveTypeId,days] of [[base.annualLeaveTypeId,'17.25'],[medical.id,'11.5']] as const)await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:mine.employmentId,leaveTypeId,entryType:'accrual',days,effectiveOn:todayInKualaLumpur()});
+ for(const [leaveTypeId,days] of [[base.annualLeaveTypeId,'17.25'],...(medical?[[medical.id,'11.5']]:[])] as [string,string][])await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:mine.employmentId,leaveTypeId,entryType:'accrual',days,effectiveOn:todayInKualaLumpur()});
  const userId=await createAppUser(base.tenantId,mine.personId,'employee');await grantAssistant(admin,{appUserId:userId});
  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:mine.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  return {admin,ctx,userId};
@@ -76,6 +76,16 @@ describe('Assistant production-fidelity conversation baseline',()=>{
   const summary=summarizeBaseline(scores);
   process.stdout.write('AIHR_ASSISTANT_BASELINE '+JSON.stringify({summary,providerRequests:requests.length,turns:scores})+'\n');
  },120_000);
+
+ it('sends only closed ordinal references when an own-leave answer genuinely reaches the provider',async()=>{
+  // One leave type, so no type clarification stops the route before the provider: the egress gate is non-vacuous.
+  const {ctx}=await actor(false),requests:ConverseArgs[]=[];oracle(requests);const question='How much leave do I have?';
+  const {observation}=await observe(ctx,question,null,requests);
+  expect(observation.reads).toEqual(['my_leave_balances']);expect(observation.providerCalls).toBe(1);expect(observation.plan?.mode).toBe('answer');
+  const body=JSON.stringify(requests[0]);expect(requests[0].tools??[]).toEqual([]);
+  for(const value of [...SENTINELS,question])expect(body.includes(value),value).toBe(false);
+  process.stdout.write('AIHR_ASSISTANT_BASELINE_EGRESS '+JSON.stringify({providerCalls:observation.providerCalls,plan:observation.plan,requestBytes:Buffer.byteLength(body)})+'\n');
+ });
 
  it('refuses a revoked login before any read or provider request',async()=>{
   const {admin,ctx,userId}=await actor(),requests:ConverseArgs[]=[];oracle(requests);
