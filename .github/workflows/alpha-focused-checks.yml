@@ -23,7 +23,7 @@ on:
         description: Comparable Claims-heavy workload or wider authorized page mix
         default: claims-heavy
         type: choice
-        options: [claims-heavy, whole-system]
+        options: [claims-heavy, whole-system, workflow-preflight]
       system_think_time:
         description: Time between actions for each of the 500 active users
         default: 1s
