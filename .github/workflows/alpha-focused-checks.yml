@@ -115,7 +115,10 @@ jobs:
   selected-tests:
     needs: resolve
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # The fictional-data model ceiling probe needs the focused DB guard, which admits only this job, so the
+    # protected environment and its secret attach here only when model_eval names a model.
+    environment: ${{ inputs.model_eval != '' && 'assistant-eval' || '' }}
+    timeout-minutes: ${{ inputs.model_eval != '' && 45 || 20 }}
     defaults:
       run:
         working-directory: source
@@ -125,6 +128,10 @@ jobs:
       AIHR_FOCUSED_SUITE_CAPACITY: 'true'
       AIHR_QUALIFY_RESTRICTED_PORT: ${{ inputs.qualify_restricted_port_prerequisites }}
       AIHR_RESTRICTED_PORT_TYPECHECK: ${{ inputs.run_typecheck }}
+      AIHR_EVAL_OPENROUTER_KEY: ${{ inputs.model_eval != '' && secrets.OPENROUTER_API_KEY || '' }}
+      AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
+      AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
+      AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -162,51 +169,6 @@ jobs:
           name: focused-development-evidence
           path: ${{ runner.temp }}/aihr-focused/
           if-no-files-found: error
-          retention-days: 14
-  model-eval:
-    if: ${{ inputs.model_eval != '' }}
-    needs: resolve
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    environment: assistant-eval
-    defaults:
-      run:
-        working-directory: source
-    env:
-      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
-      AIHR_FOCUSED_TESTS: '["test/assistant-model-ceiling.eval.test.ts"]'
-      AIHR_EVAL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
-      AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
-      AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: automation
-          persist-credentials: false
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ needs.resolve.outputs.sha }}
-          path: source
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: ./automation/.github/actions/setup-alpha
-      - name: Run the fictional-data model ceiling probe
-        run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-model-eval"
-        env:
-          AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-model-eval
-      - name: Ensure owned database cleanup
-        if: always()
-        run: bash ../automation/.github/ci/postgres.sh stop
-        env:
-          AIHR_CI_UNIT: db-1
-      - if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: model-eval-evidence
-          path: ${{ runner.temp }}/aihr-model-eval/
-          if-no-files-found: warn
           retention-days: 14
   typecheck:
     if: ${{ inputs.run_typecheck }}
