@@ -13,6 +13,8 @@ import {isDeepStrictEqual} from 'node:util';
 import {brotliDecompressSync} from 'node:zlib';
 import {assertBuildRuntime,assertDiagnosticBuildInvocation,assertSuccessfulObservation,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
 
+import {assertCiTransportInvocation,validateCiTransportRefs,validateCiTransportConsumerRun,validateCiTransportMetadata,validateCiTransportProvenance} from './ci-build-transport-policy.mjs';
+
 const controller=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr',WORKFLOW='.github/workflows/alpha-staging-diagnostics.yml';
 const NAME='diagnostic-build-transport-producer';
@@ -156,21 +158,46 @@ async function runtimeServer(source,manifest,directory){
  }
 }
 
-export async function consumeBuild({source=process.cwd(),output=join(process.env.RUNNER_TEMP,'diagnostic-build-transport')}={}){
+/** Re-authenticate before candidate dependency installation and again before byte transfer. */
+export function authenticateCiTransportOrigin(env=process.env){
+ assertCiTransportInvocation(env);
+ const producerRunId=Number(env.AIHR_BUILD_PRODUCER_RUN_ID);
+ const run=api('actions/runs/'+producerRunId),jobsResponse=api('actions/runs/'+producerRunId+'/attempts/1/jobs?per_page=100');
+ const consumerRun=api('actions/runs/'+env.GITHUB_RUN_ID);validateCiTransportConsumerRun(consumerRun,env);
+ requireValue(jobsResponse.total_count===jobsResponse.jobs.length&&jobsResponse.jobs.length<100,'bounded complete CI jobs inventory');
+ const refs={source:api('git/ref/heads/'+env.AIHR_BUILD_SOURCE_BRANCH),producer:api('git/ref/heads/'+env.AIHR_BUILD_PRODUCER_BRANCH),consumer:api('git/ref/heads/'+env.GITHUB_REF_NAME)};
+ validateCiTransportRefs(refs,env);
+ const artifact=api('actions/artifacts/'+env.AIHR_BUILD_ARTIFACT_ID),inventory=api('actions/runs/'+producerRunId+'/artifacts?per_page=100');
+ requireValue(inventory.total_count===inventory.artifacts.length&&inventory.artifacts.length<100,'bounded complete CI artifacts inventory');
+ const producer=validateCiTransportMetadata({run,jobs:jobsResponse.jobs,artifact,artifacts:inventory.artifacts},env);
+ return {run,jobsResponse,consumerRun,refs,artifact,inventory,producer};
+}
+
+export async function consumeBuild({source=process.cwd(),output=join(process.env.RUNNER_TEMP,'diagnostic-build-transport'),qualification='diagnostic'}={}){
  const env=process.env,started=Date.now();source=resolve(source);output=resolve(output);
- assertTransportConsumerInvocation(env);
+ requireValue(['diagnostic','ci'].includes(qualification),'explicit transport qualification mode');
+ const ci=qualification==='ci';
+ if(ci)assertCiTransportInvocation(env);else assertTransportConsumerInvocation(env);
  requireValue(realpathSync(source)===source&&git(source,['rev-parse','HEAD'])===env.AIHR_CI_HEAD&&!git(source,['status','--porcelain'])
   &&git(controller,['rev-parse','HEAD'])===env.AIHR_CI_CONTROL_HEAD&&!git(controller,['status','--porcelain']),'clean exact source/controller');
  requireValue(!existsSync(join(source,'.next')),'consumer must start without a build');
  mkdirSync(output,{mode:0o700});
  const phases={};let built,originalMode;const cleanup={ownedNextStopped:false,ownedBuildRemoved:false,sourceModeRestored:false};
  try{
-  const run=api('actions/runs/'+originRunId(env)),jobsResponse=api('actions/runs/'+originRunId(env)+'/attempts/1/jobs?per_page=100');
-  const consumerRun=api('actions/runs/'+env.GITHUB_RUN_ID);
-  requireValue(consumerRun.id===Number(env.GITHUB_RUN_ID)&&consumerRun.run_attempt===1&&consumerRun.event==='workflow_dispatch'&&consumerRun.head_sha===env.AIHR_CI_CONTROL_HEAD&&consumerRun.path===WORKFLOW&&consumerRun.head_branch==='codex/test-suite-efficiency-review-20261025'&&consumerRun.repository?.full_name===REPO&&consumerRun.repository.id===1333414856,'authenticated consumer run identity');
-  requireValue(jobsResponse.total_count===jobsResponse.jobs.length&&jobsResponse.jobs.length<100,'bounded complete jobs inventory');
-  const artifact=api('actions/artifacts/'+env.AIHR_BUILD_ARTIFACT_ID);
-  const producer=validateTransportMetadata({run,jobs:jobsResponse.jobs,artifact},env);
+  let run,jobsResponse,consumerRun,artifact,producer;
+  if(ci){
+   const origin=authenticateCiTransportOrigin(env);
+   ({run,jobsResponse,consumerRun,artifact,producer}=origin);
+   writeFileSync(join(output,'origin-refs.json'),JSON.stringify(origin.refs)+'\n',{flag:'wx',mode:0o600});
+   writeFileSync(join(output,'origin-artifacts.json'),JSON.stringify(origin.inventory)+'\n',{flag:'wx',mode:0o600});
+  }else{
+   run=api('actions/runs/'+originRunId(env));jobsResponse=api('actions/runs/'+originRunId(env)+'/attempts/1/jobs?per_page=100');
+   consumerRun=api('actions/runs/'+env.GITHUB_RUN_ID);
+   requireValue(consumerRun.id===Number(env.GITHUB_RUN_ID)&&consumerRun.run_attempt===1&&consumerRun.event==='workflow_dispatch'&&consumerRun.head_sha===env.AIHR_CI_CONTROL_HEAD&&consumerRun.path===WORKFLOW&&consumerRun.head_branch==='codex/test-suite-efficiency-review-20261025'&&consumerRun.repository?.full_name===REPO&&consumerRun.repository.id===1333414856,'authenticated consumer run identity');
+   requireValue(jobsResponse.total_count===jobsResponse.jobs.length&&jobsResponse.jobs.length<100,'bounded complete jobs inventory');
+   artifact=api('actions/artifacts/'+env.AIHR_BUILD_ARTIFACT_ID);
+   producer=validateTransportMetadata({run,jobs:jobsResponse.jobs,artifact},env);
+  }
   for(const [name,value]of Object.entries({run,consumerRun,jobs:jobsResponse,artifact}))writeFileSync(join(output,name+'.json'),JSON.stringify(value)+'\n',{flag:'wx',mode:0o600});
   const archive=join(output,'authenticated-build.zip'),digest=artifact.digest.slice(7),downloadStart=Date.now();
   const downloadedBytes=await download(artifact.id,archive,digest);requireValue(downloadedBytes===artifact.size_in_bytes,'authenticated ZIP size differs');phases.downloadMs=Date.now()-downloadStart;
@@ -178,7 +205,8 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const packet=join(output,'packet'),p=JSON.parse(readFileSync(join(packet,'build-provenance.json')));
   const runtime={node:process.versions.node,abi:process.versions.modules,platform:process.platform,arch:process.arch,glibc:process.report.getReport().header.glibcVersionRuntime,next:JSON.parse(readFileSync(join(source,'node_modules/next/package.json'))).version};
   const runner={name:env.RUNNER_NAME,sourcePath:source,bootSha256:hash(readFileSync('/proc/sys/kernel/random/boot_id'))};
-  validateTransportProvenance(p,env,runtime,runner);
+  if(ci)validateCiTransportProvenance(p,env,runtime,runner,producer);else validateTransportProvenance(p,env,runtime,runner);
+  const producerRunner=ci?p.producerRunner:p.diagnosticRunner;
   const binding=[['pnpm-lock.yaml',p.lockSha256,source],['package.json',p.packageSha256,source],['system-testing.json',p.preparedSha256,packet],['successful-build.json',p.successfulObservationSha256,packet],['bytes/build-bundle-files.json',p.manifestSha256,packet]];
   for(const [name,digest,base]of binding)requireValue(hash(readFileSync(join(base,name)))===digest,'bound input changed: '+name);
   const load=async name=>{const value=await import(pathToFileURL(join(source,name)).href);return {...(value.default??{}),...value};};
@@ -186,16 +214,16 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const preparedBytes=readFileSync(join(packet,'system-testing.json')),prepared=testing.parsePreparedTestingBuild(preparedBytes,{sourceRef:p.source,buildRecordId:p.buildRecordId});
   testing.verifyInstalledTestingBuild(prepared,source);
   const observation=JSON.parse(readFileSync(join(packet,'successful-build.json')));
-  assertSuccessfulObservation(observation,prepared,preparedBytes,p.nextBuildId,Date.parse(run.run_started_at),Date.parse(producer.completed_at));
+  assertSuccessfulObservation(observation,prepared,preparedBytes,p.nextBuildId,Date.parse(ci?producer.started_at:run.run_started_at),Date.parse(producer.completed_at));
   const manifest=JSON.parse(readFileSync(join(packet,'bytes/build-bundle-files.json')));
   assertBuildCapacityProfile(manifest.capacityProfile);
   assertBuildPacketAggregate(['build-provenance.json','system-testing.json','successful-build.json','bytes/build-bundle-files.json','bytes/build-bundle.tar.gz'].map(name=>lstatSync(join(packet,name)).size));
   requireValue(manifest.format===2&&manifest.platform==='linux'&&manifest.nextBuildId===p.nextBuildId&&manifest.archiveBytes===p.archiveBytes&&manifest.archiveSha256===p.archiveSha256,'manifest provenance differs');
-  const packageEvidence=execFileSync('python3',[join(controller,'.github/ci/build-package-diagnostic.py'),source,p.diagnosticRunner.sourcePath],{maxBuffer:1024*1024});
+  const packageEvidence=execFileSync('python3',[join(controller,'.github/ci/build-package-diagnostic.py'),source,producerRunner.sourcePath],{maxBuffer:1024*1024});
   writeFileSync(join(output,'runtime-packages.json'),packageEvidence,{flag:'wx',mode:0o600});
   originalMode=lstatSync(source).mode&0o777;chmodSync(source,0o700);
   const unpackStart=Date.now();
-  execFileSync('python3',[join(controller,'.github/ci/build-bundle.py'),'unpack-with-origin',join(packet,'bytes/build-bundle.tar.gz'),join(packet,'bytes/build-bundle-files.json'),join(source,'.next'),source,p.diagnosticRunner.sourcePath],{stdio:'inherit'});
+  execFileSync('python3',[join(controller,'.github/ci/build-bundle.py'),'unpack-with-origin',join(packet,'bytes/build-bundle.tar.gz'),join(packet,'bytes/build-bundle-files.json'),join(source,'.next'),source,producerRunner.sourcePath],{stdio:'inherit'});
   built=lstatSync(join(source,'.next'));phases.unpackMs=Date.now()-unpackStart;
   requireValue(testing.testingNextBuildId(source)===p.nextBuildId,'installed BUILD_ID');
   const config=JSON.parse(readFileSync(join(source,'.next/required-server-files.json')));
@@ -208,7 +236,7 @@ export async function consumeBuild({source=process.cwd(),output=join(process.env
   const sourceStatus={source:git(source,['status','--porcelain','--untracked-files=all']),controller:git(controller,['status','--porcelain','--untracked-files=all'])};
   writeFileSync(join(output,'source-status.json'),JSON.stringify(sourceStatus)+'\n',{flag:'wx',mode:0o600});
   requireValue(!sourceStatus.source&&!sourceStatus.controller,'source/controller cleanliness changed during consumer');
-  const result={format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:consumerRun.id,producerRunId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner:p.diagnosticRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false};
+  const result={format:2,capacityProfile:BUILD_CAPACITY_PROFILE,kind:ci?'ci-build-transport-qualified-not-release':'diagnostic-build-transport-verified-not-release',releaseAuthorized:false,source:p.source,controller:env.AIHR_CI_CONTROL_HEAD,producerController:p.controller,runId:consumerRun.id,producerRunId:run.id,runAttempt:1,artifact:{id:artifact.id,digest:artifact.digest,downloadedBytes},runtime,producerRunner,consumerRunner:runner,nextBuildId:p.nextBuildId,buildRecordId:p.buildRecordId,files:manifest.files.length,unpackedBytes:manifest.unpackedBytes,phases,native,server,elapsedMs:Date.now()-started,activeStagingServiceVerified:false,...(ci?{applicationDatabaseHealthVerified:false,authenticatedApplicationJourneysVerified:false,producerEvent:run.event}: {})};
   writeFileSync(join(output,'transport.json'),JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});
   // Keep only small audit/runtime evidence; the authenticated producer artifact retains build bytes.
   rmSync(archive);rmSync(join(packet,'bytes/build-bundle.tar.gz'));

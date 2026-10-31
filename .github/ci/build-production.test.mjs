@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate} from './build-production.mjs';
+import {assertBuildRuntime,assertBuildInvocation,assertCiCandidateBuildInvocation,assertDiagnosticBuildInvocation,assertSuccessfulObservation,STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE,assertBuildCapacityProfile,assertBuildPacketAggregate,assertBuildProducerRunner} from './build-production.mjs';
 const environment={GITHUB_ACTIONS:'true',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',AIHR_CI_HEAD:'a'.repeat(40),AIHR_CI_CONTROL_HEAD:'b'.repeat(40),GITHUB_SHA:'b'.repeat(40),GITHUB_RUN_ATTEMPT:'1',GITHUB_RUN_ID:'123',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
 test('Only the pinned target tuple passes; public/key compile overrides refuse',()=>{
  assert.equal(assertBuildRuntime({...STAGING_BUILD_RUNTIME},{}),true);
@@ -77,4 +77,10 @@ test('actual five-member aggregate has its own hard ZIP bound independent of leg
   [1,1,1,1],[1,1,1,1,1,1],[1,1,1,1,NaN],[1,1,1,1,-1],[1,1,1,1,1.5]])assert.throws(()=>assertBuildPacketAggregate(sizes));
  // The System Testing observation is a separate schema and remains format1.
  assert.equal(successful.format,1);assert.equal(check(successful),true);
+});
+
+// These are validation controls, not evidence that the fixture is a real VM.
+test('CI producer requires the actual bounded runner name before constructing new byte provenance',()=>{
+ assert.equal(assertBuildProducerRunner('GitHub Actions fixture producer'),true);
+ for(const name of [undefined,null,'','x'.repeat(201),'line\nbreak','nul\0byte'])assert.throws(()=>assertBuildProducerRunner(name));
 });

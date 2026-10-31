@@ -27,6 +27,15 @@ const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readines
 // The executed old worker still receives its own immutable original bytes below.
 const REVIEWED_BANK_SOURCE='9a1b613d8f7208e59ca389b0f72a67970a023a36';
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
+// The web package migration entry changed for guarded CI provisioning, not for the worker tick.
+// Pin all three reviewed owners byte-for-byte; no arbitrary command omission or script allowlist.
+const WORKER_MIGRATION_COMMAND='drizzle-kit migrate';
+const WEB_MIGRATION_COMMAND='node --import tsx scripts/migrate-with-focused-prerequisites.ts';
+const REVIEWED_MIGRATION_INPUTS=[
+ {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
+ {path:'scripts/lib/discard-premigration.ts',sha256:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'},
+ {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
+] as const;
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...unchanged.filter(path=>path!=='db/client.ts')],{encoding:'utf8'}).trim()).toBe('');
@@ -37,10 +46,15 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT)).toBe(workerClient);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
  expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
- // PR61 adds a pinned provider-schema validator for tests only. Prove the complete old package
- // and lock graph remain identical after removing ONLY the explicit validator and server-boundary marker deltas.
+ // PR61 adds the explicit validator/server marker deltas. The later guarded migration entry
+ // still delegates to the same drizzle-kit engine; the archived worker is started directly below.
+ // Normalize only this one EXACT reviewed comparison value; every other package key remains checked.
  const oldPackage=JSON.parse(execFileSync('git',['show',WORKER_SOURCE+':package.json'],{encoding:'utf8'}));
- expect(JSON.parse(readFileSync('package.json','utf8'))).toEqual({...oldPackage,dependencies:{...oldPackage.dependencies,'server-only':'0.0.1'},devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
+ const webPackage=JSON.parse(readFileSync('package.json','utf8'));
+ expect(oldPackage.scripts['db:migrate']).toBe(WORKER_MIGRATION_COMMAND);
+ expect(webPackage.scripts['db:migrate']).toBe(WEB_MIGRATION_COMMAND);
+ for(const input of REVIEWED_MIGRATION_INPUTS)expect(createHash('sha256').update(readFileSync(input.path)).digest('hex'),input.path).toBe(input.sha256);
+ expect({...webPackage,scripts:{...webPackage.scripts,'db:migrate':WORKER_MIGRATION_COMMAND}}).toEqual({...oldPackage,dependencies:{...oldPackage.dependencies,'server-only':'0.0.1'},devDependencies:{...oldPackage.devDependencies,ajv:'8.20.0'}});
  const additions=[
   '      server-only:\n        specifier: 0.0.1\n        version: 0.0.1\n',
   '  server-only@0.0.1:\n    resolution: {integrity: sha512-qepMx2JxAa5jjfzxG79yPPq+8BuFToHd1hm7kI+Z4zAq1ftQiP7HcxMhDDItrbtwVeLg/cY2JnKnrcFkmiswNA==}\n\n',
@@ -64,7 +78,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   expect(roots).toEqual(expect.arrayContaining(['package.json','pnpm-lock.yaml','tsconfig.json','core','db','i18n','localization','lib','scripts','packs']));
   const archive=execFileSync('git',['archive',WORKER_SOURCE,...roots],{maxBuffer:128*1024**2});
   execFileSync('tar',['-xf','-','-C',directory],{input:archive,maxBuffer:1024**2});
-  for(const path of [...unchanged,...reviewedChanges])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
+  for(const path of ['package.json','pnpm-lock.yaml',...unchanged,...reviewedChanges])expect(readFileSync(join(directory,path)).equals(execFileSync('git',['show',WORKER_SOURCE+':'+path])),'Executed old worker retains original '+path).toBe(true);
   // Real isolated dependency files, preserving internal pnpm links. No external module symlink,
   // installation files, frozen worker source or vendor network is modified by this disposable fixture.
   execFileSync('cp',['-a',...(process.platform==='linux'?['--reflink=auto']:[]),join(process.cwd(),'node_modules'),join(directory,'node_modules')],{timeout:60000,maxBuffer:1024**2});
@@ -100,7 +114,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
    kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
-   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
+   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
   },null,2)+'\n');}

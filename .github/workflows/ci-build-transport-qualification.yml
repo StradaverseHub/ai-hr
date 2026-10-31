@@ -1,0 +1,90 @@
+name: CI build transport qualification
+run-name: Native and static byte qualification · ${{ inputs.source_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact source commit in the original CI packet
+        required: true
+        type: string
+      source_branch:
+        description: Frozen owned codex branch currently pointing to source_sha
+        required: true
+        type: string
+      producer_run_id:
+        description: Actual original alpha-staging CI producer run
+        required: true
+        type: string
+      producer_controller_sha:
+        description: Exact original producer controller commit
+        required: true
+        type: string
+      producer_controller_branch:
+        description: Frozen owned codex controller branch, or alpha for an actual final alpha-push producer
+        required: true
+        type: string
+      artifact_id:
+        description: Original unique production-build-v1 artifact ID
+        required: true
+        type: string
+      artifact_digest:
+        description: Exact lowercase API SHA256 hex without prefix
+        required: true
+        type: string
+permissions: {contents: read, actions: read}
+concurrency:
+  group: ci-build-transport-qualification-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  CI: 'true'
+  AIHR_CI_BUILD_TRANSPORT: consumer
+  AIHR_CI_HEAD: ${{ inputs.source_sha }}
+  AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
+  AIHR_BUILD_SOURCE_BRANCH: ${{ inputs.source_branch }}
+  AIHR_BUILD_PRODUCER_RUN_ID: ${{ inputs.producer_run_id }}
+  AIHR_BUILD_PRODUCER_CONTROL_HEAD: ${{ inputs.producer_controller_sha }}
+  AIHR_BUILD_PRODUCER_BRANCH: ${{ inputs.producer_controller_branch }}
+  AIHR_BUILD_ARTIFACT_ID: ${{ inputs.artifact_id }}
+  AIHR_BUILD_ARTIFACT_DIGEST: ${{ inputs.artifact_digest }}
+  DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  TEST_MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
+  NEXT_TELEMETRY_DISABLED: '1'
+jobs:
+  build-consumer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ github.workflow_sha }}', path: automation, persist-credentials: false}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with: {node-version: '22.23.3'}
+      - name: Run explicit CI and legacy diagnostic transport refusal controls
+        run: node --test automation/.github/ci/build-transport.test.mjs automation/.github/ci/ci-build-transport-policy.test.mjs
+      - name: Authenticate immutable origin and consumer metadata before candidate checkout
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: node automation/.github/ci/ci-build-transport-qualification.mjs --metadata-only
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with: {ref: '${{ inputs.source_sha }}', path: recipient, fetch-depth: 0, persist-credentials: false}
+      - uses: ./automation/.github/actions/setup-alpha
+        with: {node: '22.23.3', mobile: 'false', path: recipient}
+      - name: Install independent PDF text and raster inspection tools
+        run: |
+          if ! command -v pdftoppm || ! command -v pdftotext; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends poppler-utils
+          fi
+          pdftoppm -v
+          pdftotext -v
+      - name: Authenticate original CI packet and qualify relocated native and static bytes
+        working-directory: recipient
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: pnpm exec tsx ../automation/.github/ci/ci-build-transport-qualification.mjs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-build-transport-qualification-not-release
+          path: ${{ runner.temp }}/ci-build-transport-qualification/
+          if-no-files-found: error
+          retention-days: 3

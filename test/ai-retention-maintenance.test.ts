@@ -286,7 +286,7 @@ describe('out-of-band expired AI custody maintenance', () => {
       expect(rows.map(row=>row.id)).toEqual(f.before.map(row=>row.id));
       for(const id of f.expired){
         const prior=f.before.find(row=>row.id===id)!,after=rows.find(row=>row.id===id)!;
-        expect(after.ledger).toEqual({...prior.ledger,state:'expired',intent_digest:null,reviewed_digest:null,payroll_completion_root:null,org_manager_person_id:null,org_previous_manager_person_id:null});
+        expect(after.ledger).toEqual({...prior.ledger,state:'expired',intent_digest:null,reviewed_digest:null,payroll_completion_root:null,org_manager_person_id:null,org_previous_manager_person_id:null,payroll_reopen_person_ids:prior.ledger.action_kind==='payroll.reopen'?null:prior.ledger.payroll_reopen_person_ids});
         expect(after.bodies).toEqual([]);
       }
       for(const id of [f.sibling,f.completed])expect(rows.find(row=>row.id===id)).toEqual(f.before.find(row=>row.id===id));
