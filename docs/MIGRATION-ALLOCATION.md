@@ -968,3 +968,21 @@ any installation; neither source allocation nor focused development checks autho
 ## Performance reconciliation — 31 October 2026
 
 Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` owns the complete immutable prefix. A scan of 293 unique reachable journals found maximum prefix0865, idx750 and timestamp1793330000265. The five unapplied performance drafts are now0866–0870, idx751–755, timestamps1793330000266–270, in existing dependency order. This supersedes their earlier names/indices/timestamps above. No applied SQL was edited and no installation was changed. Final release allocation still requires then-current reconciliation.
+
+
+## Attendance routing performance — 31 October 2026 (unapplied development)
+
+Fresh main/alpha `30118cc6f242df3129424bd2d44e22445931516e` retains identical
+original definitions for all six functions. The current claim audit inspected2713
+refs/294 distinct ref journals plus380 registered worktrees/673 total journals,
+including WIP; maxima were0870, idx755, when1793330000270. The paired native
+experiment41191787745 preserves exact ordered tasks and live refusal behavior.
+
+| Purpose | Tag | idx | when |
+| --- | --- | ---: | ---: |
+| Reuse five visibility/routing query plans, never results |0871_visibility_routing_plans |756 |1793330000271 |
+| Necessary named-actor/delegation-recipient denial gates |0872_attendance_assignment_work |757 |1793330000272 |
+
+No prior SQL or journal entry is rewritten. These reservations have no live-installation
+authority; exact-file native/regression/load qualification remains required, followed
+by fresh canonical and installed-ledger reconciliation before any later release.

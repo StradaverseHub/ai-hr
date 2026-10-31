@@ -4488,6 +4488,20 @@
       "when": 1793330000270,
       "tag": "0870_home_role_reporting_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 756,
+      "version": "7",
+      "when": 1793330000271,
+      "tag": "0871_visibility_routing_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 757,
+      "version": "7",
+      "when": 1793330000272,
+      "tag": "0872_attendance_assignment_work",
+      "breakpoints": true
     }
   ]
 }
