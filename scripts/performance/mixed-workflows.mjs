@@ -5,8 +5,12 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[]};
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
-  const waiting=page.waitForResponse(r=>r.request().method()==='POST'&&Boolean(r.request().headers()['next-action'])&&(kind!=='leaveCreate'||r.request().postDataBuffer()?.includes(Buffer.from('PERF_LEAVE_BROWSER'))),{timeout:90000});
-  await click();const response=await waiting,req=response.request(),headers={};
+  const marker={leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
+  const waiting=page.waitForResponse(r=>r.request().method()==='POST'&&Boolean(r.request().headers()['next-action'])&&(!marker||r.request().postDataBuffer()?.includes(Buffer.from(marker))),{timeout:90000});
+  let response;
+  try{[response]=await Promise.all([waiting,click()]);}
+  catch(error){report.mixedWorkflows.error={stage:kind,message:String(error.message).slice(0,350)};save();throw error;}
+  const req=response.request(),headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
   const type=req.headers()['content-type'];let fields,fieldOrder=[];
   if(type.startsWith('text/plain')){fields=JSON.parse(req.postDataBuffer().toString());assert(Array.isArray(fields));}
@@ -66,6 +70,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   try{
    await visit(page,hr,'/admin/personnel/new');
    await page.locator('select[data-personnel-field="employment.organisation_assignment.companyname"]').selectOption(hr.companyId);
+   await page.locator('input[data-personnel-field="profile.personal_details.employeecode"]').fill('PFD-BROWSER');
    await page.locator('input[data-personnel-field="profile.personal_details.fullname"]').fill('PERF_PERSONNEL_BROWSER');
    await page.locator('input[data-personnel-field="profile.contact_and_permanent_address.primaryemail"]').fill('perf-browser@example.invalid');
    await capture(page,()=>page.getByRole('button',{name:'Create employee',exact:true}).click(),'personnelCreate');
@@ -171,7 +176,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   }
   if(user.role==='companyHR'||user.role==='groupHR'){
    const create=templates.personnelCreate,args=structuredClone(create.fields);
-   assert.equal(args.length,1);Object.assign(args[0],{companyId:user.companyId,fullName:marker,primaryEmail:`perf-${user.index}-${iteration}@example.invalid`,employeeCode:'',employeeIdMode:undefined});
+   assert.equal(args.length,1);Object.assign(args[0],{companyId:user.companyId,fullName:marker,primaryEmail:`perf-${user.index}-${iteration}@example.invalid`,employeeCode:`PFD-${user.index}-${iteration}`,employeeIdMode:'manual'});
    await send(user,create,args);
    const rows=await db`select id,data,company_id,reserved_employee_code from employee_draft where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and label=${marker}`;
    assert.equal(rows.length,1);const row=rows[0];assert.equal(row.company_id,user.companyId);assert(row.reserved_employee_code,'Personnel ID was not reserved');
