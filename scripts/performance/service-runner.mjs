@@ -15,7 +15,7 @@ const profiles={
 };
 const mode=process.env.PERF_SERVICE_PROFILE;assert(Object.hasOwn(profiles,mode));
 const out=join(process.env.RUNNER_TEMP,'service-performance-evidence');mkdirSync(out,{recursive:true});
-const env={...process.env,TEST_DB_NAMESPACE:'aifocus',AIHR_FOCUSED_EVIDENCE_DIR:out,
+const env={...process.env,AIHR_PERFORMANCE_ROLE_FIXTURE:'true',AIHR_FOCUSED_SUITE_CAPACITY:'true',TEST_DB_NAMESPACE:'aifocus',AIHR_FOCUSED_EVIDENCE_DIR:out,
  DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test',
  TEST_DATABASE_URL:'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test',TEST_MIGRATION_DATABASE_URL:'postgres://postgres@127.0.0.1:5433/ai_hr_test'};
 assert.equal(env.AIHR_CI_PG_STATEMENTS,'1');
