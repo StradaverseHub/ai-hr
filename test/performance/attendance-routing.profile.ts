@@ -32,7 +32,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
   await checkOut(root,{employmentId:a.employmentId,date:today,time:'17:00',manual:true});
   await requestAttendanceCorrection(a.ctx,{employmentId:a.employmentId,date:today,checkIn:'09:00',checkOut:'18:00',reason:'Fictional native routing profile'});
  }
- const signatures=['app.can_see_employment(uuid)','app.is_admin_report_of(uuid,uuid)','app.can_decide_via_delegation_from(uuid,uuid,text,text)'];
+ const signatures=['app.can_see_employment(uuid)','app.is_admin_report_of(uuid,uuid)','app.can_decide_via_delegation_from(uuid,uuid,text,text)','app.attendance_workflow_v3_effective(uuid,integer)','app.attendance_workflow_v3_actor(uuid,integer,text)'];
  const definitions=[];
  for(const signature of signatures){
   const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure) as original,prosrc as body,l.lanname as language from pg_proc p join pg_language l on l.oid=p.prolang where p.oid=${signature}::regprocedure`;
@@ -55,9 +55,9 @@ it('compares fresh request-grained routing before, during and after query-plan r
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','original-after']){
-   for(const d of definitions)await owner.client.unsafe(phase.startsWith('cached')?d.cached:d.original);
-   await owner.client.unsafe(phase==='cached-plans-and-denial-gates'?guarded:assignment.original);
+  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after']){
+   for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||phase.startsWith('routing')?d.cached:d.original);
+   await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
    const measurements=[];
    for(let i=0;i<4;i++){
     const times=[];

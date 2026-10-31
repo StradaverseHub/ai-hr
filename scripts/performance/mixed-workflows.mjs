@@ -28,7 +28,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   }
   const redirect=response.headers()['x-action-redirect']??response.headers().location;
   const actionUrl=new URL(req.url());
-  const template={path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status()};
+  const template={kind,path:actionUrl.pathname+actionUrl.search,fields,fieldOrder,headers,status:response.status()};
   report.mixedWorkflows.capturedTransport.push({stage:kind,path:actionUrl.pathname,status:response.status(),encoding:Array.isArray(fields)?'typed JSON':'FormData',shape:Array.isArray(fields)?fields.map(value=>value&&typeof value==='object'?Object.keys(value).sort():typeof value):fieldOrder});save();
   if(redirect){const target=new URL(String(redirect).split(';')[0],base);if(target.searchParams.has('error')){report.mixedWorkflows.error={stage:kind,message:target.searchParams.get('error')};save();throw Error('Browser mutation refused: '+target.searchParams.get('error'));}}
   templates[kind]=template;return template;
@@ -44,8 +44,28 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
  async function send(user,template,fields,record=true){
   const response=await request(user,template.path,fields,template.status,record,template.headers,template.fieldOrder);
   const target=response.headers['x-action-redirect']??response.headers.location;
-  if(target){const url=new URL(String(target).split(';')[0],base);assert(!url.searchParams.has('error'),'mutation returned a business refusal');}
-  assert(!/(?:^|\n)[0-9a-f]+:E\{/.test(response.content),'server action returned an exception record');return response;
+  const fail=(reason)=>{
+   const safe=String(reason).replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi,'<email>').replace(/[A-Za-z0-9_-]{40,}/g,'<token>').slice(0,240);
+   report.mixedWorkflows.failures.push({stage:template.kind,user:user.index,role:user.role,reason:safe});
+   save();throw Error(template.kind+': '+safe);
+  };
+  if(target){const url=new URL(String(target).split(';')[0],base);if(url.searchParams.has('error'))fail('business refusal: '+url.searchParams.get('error'));}
+  if(/(?:^|\n)[0-9a-f]+:E\{/.test(response.content))fail('server action returned an exception record');
+  if(template.kind==='personnelDelete'){
+   // The native typed contract can refuse with HTTP200. Keep its public reference, never its SQL/body.
+   const outcomes=[];
+   for(const line of response.content.split('\n')){
+    const match=/^[0-9a-f]+:(\{.*\})$/.exec(line);if(!match)continue;
+    let value;try{value=JSON.parse(match[1]);}catch{continue;}
+    if(value&&typeof value==='object'&&typeof value.ok==='boolean')outcomes.push(value);
+   }
+   assert.equal(outcomes.length,1,'Personnel delete typed outcome missing or ambiguous');
+   if(outcomes[0].ok!==true){
+    const reference=/^DRAFT-[A-F0-9]{8}$/.test(outcomes[0].reference??'')?outcomes[0].reference:'unavailable';
+    fail('native typed refusal; reference '+reference);
+   }
+  }
+  return response;
  }
  // Use an ordinary future weekday; dates and type IDs come from the fictional fixture.
  const day=new Date(fixture.today+'T12:00:00Z');do{day.setUTCDate(day.getUTCDate()+1);}while([0,6].includes(day.getUTCDay()));

@@ -33,7 +33,12 @@ respectively. Host counters overlap these components; they must not be summed.
 Timed SQL identifies Attendance approval metadata as the largest recorded query
 cost, alongside repeated visibility/routing proofs and advisory lock waits. Nested
 execution times include waits and overlap; they are not independent CPU costs.
-A reversible native routing experiment is being prepared before further changes.
+A reversible native routing experiment passed on source2f6523765 (run41191380816):
+32 actual requests/35 linked principals, exact ordered results, audit on, expired
+delegation/archived assigned actor/forged person refusals. Combined plan reuse and
+necessary denial gates reduce warmed manager median323.4→177.1ms and employee
+199.1→113.3ms; assigned HR122.8→111.8ms and delegate208.4→188.6ms. Additional
+routing-plan helpers are being measured before promoting any migration.
 
 Measured Claims queue improvements and129 affected passing cases remain component
 evidence; they do not establish500-user capacity. Read-only infrastructure checks
@@ -530,13 +535,13 @@ HTTP/browser outcomes remain separate, as recorded below.
 Current candidate `1a0ed296a1ddc03afebbed627de2a1547d957f22` passed129 focused
 cases (105DB/24nonDB), zero failures/skips, and the whole compiler. The current
 expanded HTTP/browser runs are41188713821(one-second) and41188713828(five-second);
-both remain pending. No newer500-user speed pass or production-equivalent
+both completed and failed; see the current outcome table above. No500-user speed pass or production-equivalent
 acceptance is established. The owner selected an existing isolated environment;
 its SSH alias/config path remains required. Configured staging is2 CPUs/~4GiB,
 compared with production's two16-CPU/~64GiB VMs. No workload ran on either live
 installation, and no deployment occurred.
 
-Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` was integrated normally in
+Baseline main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` was integrated normally in
 `f1444f59c`. Its636-entry journal and every canonical SQL byte were independently
 verified unchanged. The641-entry candidate appends only reservations0866–0870.
 No migration was applied outside disposable hosted databases; allocation/fresh refs
@@ -602,7 +607,7 @@ The native HTTP manifestation after repair remains to be verified by current run
 |41185656999(1s)/41185654964(5s) |748352f59364493725ef23d79a30d4345f6ea916 |Fixture/build PASS. Both fail at90-second browser navigation to/me/payslip before concurrent traffic. First employee Home had no handled failures; other Home roles were not all reached. Screenshots show the statement rendered, later DB sessions idle and V8 mostly idle; the unfinished request/cause is not established |
 |41186781411;41187497364 |4849474d0;d5efdaf43 |Manager Home summary503 and handled failure before mutation/load; no concurrent latency receipt |
 |41188286052 |f95f7788989a9941c5dac0caae65a4d64490aa97 |Same uncorrected manager503 blocks preflight before the explicit PDF checks. Independent whole compiler PASS |
-|41188713821(1s)/41188713828(5s) |1a0ed296a1ddc03afebbed627de2a1547d957f22 |Pending; two million records,500 HTTP principals, five-minute sustained interval after mandatory preflights |
+|41188713821(1s)/41188713828(5s) |1a0ed296a1ddc03afebbed627de2a1547d957f22 |Both FAIL; all expanded preflights PASS,500 peak users; 1s0/500 journeys,5s226/500 journeys; current outcome table retains latency and errors |
 
 Performance-job admission is finite: only the two named hosted performance jobs,
 fixed evidence directories and exact password-free loopback DB target were added.
@@ -619,7 +624,7 @@ external addresses/query values. No readiness deadline or latency threshold was
 relaxed. Diagnostic41187497364 used90,000 Attendance rows, not one million.
 
 The own PDF download uses a native attachment anchor; HTML review remains a Next
-Link. Its pending browser checks require no unsolicited PDF request on statement
+Link. Its passing native browser checks require no unsolicited PDF request on statement
 open, correct own identity/salary, an explicit valid PDF and two foreign PDF refusals.
 This change is not yet established as the90-second navigation timeout's cause.
 

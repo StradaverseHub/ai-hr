@@ -61,6 +61,23 @@ function summarizeCpu(){
  });
  writeFileSync(join(out,'cpu-hot-frames.json'),JSON.stringify(rows,null,2));
 }
+function summarizeNativeFailures(){
+ // The raw logs remain private. Publish only generated references, SQLSTATEs and fixed diagnostic flags.
+ const failures=[];
+ for(const name of readdirSync(privateDir).filter(name=>/^server-[0-9]+\.log$/.test(name))){
+  const text=readFileSync(join(privateDir,name),'utf8');
+  const markers=[...text.matchAll(/\[Draft (activate|delete) failure (DRAFT-[A-F0-9]{8})\]/g)];
+  for(let i=0;i<markers.length&&failures.length<100;i++){
+   const marker=markers[i],block=text.slice(marker.index,Math.min(markers[i+1]?.index??text.length,marker.index+32000));
+   failures.push({worker:Number(name.match(/[0-9]+/)[0]),operation:marker[1],reference:marker[2],
+    sqlStates:[...new Set([...block.matchAll(/\bcode:\s*['"]([0-9A-Z]{5})['"]/g)].map(match=>match[1]))],
+    lockTimeoutMessage:/canceling statement due to lock timeout/.test(block),
+    statementTimeoutMessage:/canceling statement due to statement timeout/.test(block),
+    deadlockMessage:/deadlock detected/.test(block),permissionDeniedMessage:/permission denied/.test(block)});
+  }
+ }
+ writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'SQLSTATEs and diagnostic flags in bounded log blocks following fixed native Draft markers; concurrent errors may overlap; raw logs and SQL excluded',failures},null,2));
+}
 const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;
 try{
@@ -106,6 +123,7 @@ finally{
  if(upstream)upstream.destroy();
  await Promise.all(apps.map(async app=>{if(app.exitCode!==null)return;app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),pause(5000)]);if(app.exitCode===null)app.kill('SIGKILL');}));
  for(const fd of appFds)closeSync(fd);
+ try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
  if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
  if(dbStarted){const stats=spawnSync('bash',['.github/ci/postgres.sh','stats'],{env,encoding:'utf8'});writeFileSync(join(out,'postgres-resources.txt'),stats.stdout??'');await run('cleanup','bash',['.github/ci/postgres.sh','stop']).catch(()=>{report.exitCode=1;});}
  save();

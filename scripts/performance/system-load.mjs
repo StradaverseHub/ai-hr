@@ -335,8 +335,28 @@ try{
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
  if(suite==='workflow-preflight'){await verifyAudit();report.preflightPassed=true;save();return;}
+ const lockKeys=[];
+ for(const [index,tenant]of fixture.tenants.entries()){
+  for(const [kind,key]of [['access-configuration','access-configuration:'+tenant.tenantId],['payroll-history','payroll-history:'+tenant.tenantId],['pay-component-catalog',tenant.tenantId+':pay-component-catalog']])lockKeys.push({label:kind+':fixture-tenant-'+index,key});
+ }
+ for(const user of fixture.users)lockKeys.push({label:'employment:fixture-user-'+user.index,key:fixture.tenants[user.tenant].tenantId+':'+user.employmentId});
+ const hashedLocks=await db`select k,((hashtextextended(k,0)>>32)&4294967295)::text as classid,(hashtextextended(k,0)&4294967295)::text as objid from unnest(${lockKeys.map(row=>row.key)}::text[])k`;
+ const labelsByKey=new Map(lockKeys.map(row=>[row.key,row.label])),lockLabels=new Map(hashedLocks.map(row=>[row.classid+':'+row.objid+':1',labelsByKey.get(row.k)]));
+ // Audit's native key uses hashtext (int4), unlike the other bigint advisory namespaces.
+ for(const [index,tenant]of fixture.tenants.entries()){
+  const [row]=await db`select ((hashtext(${'audit-chain:'+tenant.tenantId})::bigint>>32)&4294967295)::text as classid,(hashtext(${'audit-chain:'+tenant.tenantId})::bigint&4294967295)::text as objid`;
+  lockLabels.set(row.classid+':'+row.objid+':1','audit-chain:fixture-tenant-'+index);
+ }
  await db`select pg_stat_statements_reset()`;
- const waits=[];let samplingBusy=false;sampling=setInterval(async()=>{if(samplingBusy)return;samplingBusy=true;try{const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;waits.push({at:Date.now(),rows});}catch{}finally{samplingBusy=false;}},1000);
+ const waits=[];let samplingBusy=false;
+ sampling=setInterval(async()=>{
+  if(samplingBusy)return;samplingBusy=true;
+  try{
+   const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;
+   const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.classid::text,l.objid::text,l.objsubid from pg_locks l join pg_stat_activity a on a.pid=l.pid where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())and l.locktype='advisory'and not l.granted order by a.pid limit 20`;
+   waits.push({at:Date.now(),rows,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
+  }catch{}finally{samplingBusy=false;}
+ },1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
