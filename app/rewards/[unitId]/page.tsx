@@ -26,16 +26,19 @@ import {SalaryIncreaseTable} from './desk/salary-increase-table';
 import {FlagsPanel} from './desk/flags-panel';
 import {BonusPoolWorking} from './desk/bonus-pool-working';
 import {changedRewardMatrixCells} from './desk/reference-matrix';
+import {DecisionPanel} from './desk/decision-panel';
+import {PersonDrawer} from './desk/person-drawer';
+import {transition} from '@/packs/rewards/model';
 
 const rm = (cents: number) => new Intl.NumberFormat('en-MY', { style: 'currency', currency: 'MYR' }).format(cents / 100);
-export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string; check?: string }> }) {
+export default async function RewardUnitPage({ params, searchParams }: { params: Promise<{ unitId: string }>; searchParams: Promise<{ view?: string; q?: string; error?: string; check?: string; person?: string }> }) {
   await requireModule('rewards'); const { s, scopeIds } = await scopedSession();
   const { unitId } = await params; const sp = await searchParams; const t = await getTranslations('rewards');
   if (sp.view === 'configuration') redirect(`/admin/rewards/${encodeURIComponent(unitId)}`);
   const v = await getRewardUnit(s, unitId); const { unit } = v;
   if(unit.kind==='annual'&&sp.view&&['review','budget','approvals','data','excluded','rules'].includes(sp.view)){
     const anchor=sp.check?'checks':({review:'people',budget:'salary-increase',approvals:'approvals',data:'data',excluded:'excluded',rules:'rules'} as Record<string,string>)[sp.view];
-    const query=new URLSearchParams({... (sp.q?{q:sp.q}:{}),... (sp.check?{check:sp.check}:{})}).toString();
+    const query=new URLSearchParams({... (sp.q?{q:sp.q}:{}),... (sp.check?{check:sp.check}:{}),... (sp.person?{person:sp.person}:{})}).toString();
     redirect(`/rewards/${encodeURIComponent(unitId)}${query?'?'+query:''}#${anchor}`);
   }
   const [choices,batches,list,governance]=await Promise.all([rewardSetupChoices(s,scopeIds),rewardPayrollChoices(s,unitId),unit.kind==='annual'?listRewardUnits(s,[unit.companyId]):Promise.resolve([]),getRewardUnitGovernance(s,unitId)]);
@@ -52,6 +55,13 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const checks = sp.check ? v.flags.filter(f => f.code === sp.check && f.severity === 'exception') : v.flags;
   const scope = t('unitBonus.appliesOnlyTo', { company: v.companyName, unit: v.name });
   const canApprove = ['bg', 'gr', 'ctro', 'ec'].some(role => role === unit.status && v.roles.includes(role as 'bg' | 'gr' | 'ctro' | 'ec'));
+  // 5d34d00d Step 2: per-person flags, the open person (side panel) and the stage each decision moves to.
+  const rowFlags = (id: string) => v.flags.filter(f => f.entryId === id);
+  const hidden = (r: typeof v.rows[number]) => isSeniorPlanMember(unit.policy, r.facts, r.source.grade) && !v.seniorAmountsVisible;
+  const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
+  const personHref = (id: string) => { const q = new URLSearchParams({ ...(sp.q ? { q: sp.q } : {}), ...(sp.check ? { check: sp.check } : {}), person: id }); return `/rewards/${encodeURIComponent(unitId)}?${q}`; };
+  const openIndex = sp.person ? rows.findIndex(r => r.id === sp.person) : -1; const open = openIndex >= 0 ? rows[openIndex] : null;
+  const decisionTargets = annual ? (['submit', 'approve', 'return'] as const).filter(a => a === 'submit' ? canSubmit : a === 'approve' ? canApprove : canApprove || (unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)))).flatMap(a => { try { return [{ action: a, to: t(`stages.${transition(unit.status, v.roles, a)}`) }]; } catch { return []; } }) : [];
   return <div className="w-full space-y-5">
     <Link href="/rewards" className="text-sm text-primary hover:underline">← {t('title')}</Link>
     <PageHeader title={rewardReviewTitle(v.cycle?.name ?? t('title'), v.companyName, v.name)} description={`${t(`kinds.${unit.kind}`)} · ${v.returned ? t(`returnedTo.${v.returned.toSeat}`) : t(`stages.${unit.status}`)}${v.due ? ` · ${t('dueOn', { date: v.due })}` : ''} · ${t('snapshotDate')}: ${unit.snapshotDate}`} />
@@ -60,6 +70,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {(v.roles.includes('gr') || choices.companies.some(c => c.id === unit.companyId)) && <Link href={`/admin/rewards/${unitId}`} className="inline-block text-sm font-medium text-primary hover:underline">{t('adminTitle')}</Link>}
     {!annual&&<nav aria-label={t('sections')} className="flex flex-wrap gap-1 border-b border-border pb-2">{['review', 'budget', 'approvals', ...(v.roles.includes('gr') ? ['data'] : []), ...(v.roles.includes('gr') && annual ? ['excluded'] : []), 'rules'].map(key => <Link key={key} href={`/rewards/${unitId}?view=${key}`} aria-current={tab === key ? 'page' : undefined} className={`rounded-md px-3 py-2 text-sm ${tab === key ? 'bg-primary/10 font-semibold text-primary' : 'text-muted-foreground hover:bg-accent'}`}>{t(key)}</Link>)}</nav>}
     {v.hiddenCount > 0 && <p className="max-w-3xl text-sm text-muted-foreground">{t('privacyNote')}</p>}
+    {annual && v.hiddenCount > 0 && <p role="note" className="max-w-3xl rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{t('desk.hiddenRows', { count: v.hiddenCount })}</p>}
     {!annual && <Card className="space-y-3 p-5"><h2 className="font-semibold">{t('offcycleFunding')}</h2><p className="text-sm text-muted-foreground">{t('offcycleFundingHelp')}</p>{(['standard', 'h'] as const).map(plan => <p key={plan} className="text-sm tabular-nums">{t(plan)}: {rm(v.budgets[plan].used[0])} / {rm(v.budgets[plan].pools[0])}</p>)}{unit.offcycle?.exceptionReason && <p className="text-sm">{t('budgetException')}: {unit.offcycle.exceptionReason}</p>}<Link className="text-sm text-primary hover:underline" href={`/rewards/${unit.parentUnitId}`}>{t('annualSource')}</Link></Card>}
     {annual&&<UnitGovernance value={governance} branch={unit.policy.bonusStructure==='branch'}/>}
     {annual&&<SummaryStrip value={v} holders={listMeta?.holders??[]}/>}
@@ -88,14 +99,15 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     </>}
     {(annual||tab === 'review') && <>
       <section id="people" className="scroll-mt-6 space-y-3"><h2 className="text-base font-semibold">{t('people')}</h2><form className="flex max-w-lg gap-2"><input name="q" defaultValue={sp.q} aria-label={t('search')} placeholder={t('search')} className={inputCls} /><RewardSubmit type="submit" variant="secondary">{t('search')}</RewardSubmit></form>
-        <div className={tableWrapCls}><table className="w-full whitespace-nowrap text-sm"><thead className={theadCls}><tr>{['employee', 'grade', 'talent', 'performance', 'currentPay', 'newPay', 'bonus', 'lumpSum', 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(r => <tr key={r.id}><td className="px-3 py-3"><span className="mr-2 font-mono text-xs text-muted-foreground">{r.source.employeeCode}</span>{r.source.name}{!r.facts.reviewed && <span className="ml-2 text-xs text-destructive">{t('unverified')}</span>}{r.source.leftOn && <span className="ml-2 text-xs text-muted-foreground">{t('sourceRefresh.leftMarker', { date: r.source.leftOn })}</span>}{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&<span className="ml-2 text-xs font-medium">{t('governance.seniorTag')}</span>}<PayWindowTag row={r} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} /></td><td className="px-3 py-3">{r.source.grade}{r.recommendation.promotionGrade && ` → ${r.recommendation.promotionGrade}`}</td><td className="px-3 py-3">{r.facts.talent ?? '—'}</td><td className="px-3 py-3">{r.facts.performance ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.source.basicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.newBasicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.bonusCents)}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.lumpCents)}</td><td className="px-3 py-3"><Link className="text-primary hover:underline" href={`/rewards/${unitId}/people/${r.id}`}>{t('reviewPerson')}</Link></td></tr>)}</tbody></table>{!rows.length && <p className="p-6 text-sm text-muted-foreground">{t('noPeople')}</p>}</div>
+        <div className={tableWrapCls}><table className="w-full whitespace-nowrap text-sm"><thead className={theadCls}><tr>{['employee', 'grade', 'talent', 'performance', 'currentPay', ...(annual ? ['desk.increase'] : []), 'newPay', 'bonus', 'lumpSum', ...(annual ? ['desk.flags'] : []), 'action'].map(k => <th key={k} className={thCls}>{t(k)}</th>)}</tr></thead><tbody className={tbodyCls}>{rows.map(r => <tr key={r.id}><td className="px-3 py-3"><span className="mr-2 font-mono text-xs text-muted-foreground">{r.source.employeeCode}</span>{annual ? <Link scroll={false} href={personHref(r.id)} aria-current={open?.id === r.id ? 'true' : undefined} className="font-medium text-primary hover:underline">{r.source.name}</Link> : r.source.name}{!r.facts.reviewed && <span className="ml-2 text-xs text-destructive">{t('unverified')}</span>}{r.source.leftOn && <span className="ml-2 text-xs text-muted-foreground">{t('sourceRefresh.leftMarker', { date: r.source.leftOn })}</span>}{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&<span className="ml-2 text-xs font-medium">{t('governance.seniorTag')}</span>}<PayWindowTag row={r} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} /></td><td className="px-3 py-3">{r.source.grade}{r.recommendation.promotionGrade && ` → ${r.recommendation.promotionGrade}`}</td><td className="px-3 py-3">{r.facts.talent ?? '—'}</td><td className="px-3 py-3">{r.facts.performance ?? '—'}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.source.basicCents)}</td>{annual && <td className="px-3 py-3 text-right tabular-nums">{hidden(r) ? '—' : pct(r.meritBp + r.promotionBp + r.specialBp)}</td>}<td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.newBasicCents)}</td><td className="px-3 py-3 text-right tabular-nums">{isSeniorPlanMember(unit.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible?t('governance.handledSeparately'):rm(r.bonusCents)}</td><td className="px-3 py-3 text-right tabular-nums">{rm(r.lumpCents)}</td>{annual && <td className="px-3 py-3"><FlagChips flags={rowFlags(r.id)} label={s => t(`severity.${s}`)} /></td>}<td className="px-3 py-3"><Link className="text-primary hover:underline" href={`/rewards/${unitId}/people/${r.id}`}>{t('reviewPerson')}</Link></td></tr>)}</tbody></table>{!rows.length && <p className="p-6 text-sm text-muted-foreground">{t('noPeople')}</p>}</div>
       </section>
       {!annual&&<section id="checks" className="space-y-3"><h2 className="font-semibold">{t('checks')} ({checks.length}){sp.check && <Link className="ml-3 text-sm font-normal text-primary hover:underline" href={`/rewards/${unitId}?view=review#checks`}>{t('showAllChecks')}</Link>}</h2>{!checks.length && <p className="text-sm text-muted-foreground">{t('noChecks')}</p>}<ul className="divide-y divide-border rounded-md border border-border">{checks.map((f, i) => <li key={i} className="flex flex-wrap items-start gap-3 px-4 py-3 text-sm"><span className={`min-w-20 font-semibold ${f.severity === 'block' ? 'text-destructive' : 'text-muted-foreground'}`}>{t(`severity.${f.severity}`)}</span><span className="min-w-0 flex-1">{f.message}{f.entryId && <Link className="ml-2 text-primary hover:underline" href={`/rewards/${unitId}/people/${f.entryId}`}>{t('reviewPerson')}</Link>}</span><span className="font-mono text-xs text-muted-foreground">{f.code}</span></li>)}</ul></section>}
     </>}
     {(annual||tab === 'approvals') && <div id="approvals" className="scroll-mt-6 space-y-6"><h2 className="text-lg font-semibold">{t('approvals')}</h2>
       <p className="text-sm">{v.route.map(role => t(`roles.${role}`)).join(' → ')}</p>
-      {(canSubmit || canApprove) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><textarea name="reason" rows={3} maxLength={4000} className={`${inputCls} h-auto py-2`} /></Field>{!annual && v.rows.some(e => e.recommendation.promotionGrade) && <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" />{t('roleAcknowledgement')}</label>}<div className="flex flex-wrap gap-3">{editable ? <RewardSubmit name="action" value="submit" type="submit">{t('submit')}</RewardSubmit> : <><RewardSubmit name="action" value="approve" type="submit">{t('approve')}</RewardSubmit><RewardSubmit name="action" value="return" type="submit" variant="secondary">{t('return')}</RewardSubmit>{!annual && <RewardSubmit name="action" value="reject" type="submit" variant="secondary">{t('reject')}</RewardSubmit>}</>}</div></form>}
-      {unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><textarea required minLength={10} name="reason" rows={3} className={`${inputCls} h-auto py-2`} /></Field><RewardSubmit name="action" value="return" type="submit" variant="secondary">{t('return')}</RewardSubmit></form>}
+      {annual && decisionTargets.length > 0 && <DecisionPanel action={decideAction} unitId={unitId} revision={unit.revision} decisions={decisionTargets} from={t(`stages.${unit.status}`)} blocks={v.flags.filter(f => f.severity === 'block').length} warnings={v.flags.filter(f => f.severity === 'exception' || f.severity === 'warning').length} />}
+      {!annual && (canSubmit || canApprove) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><textarea name="reason" rows={3} maxLength={4000} className={`${inputCls} h-auto py-2`} /></Field>{!annual && v.rows.some(e => e.recommendation.promotionGrade) && <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="acknowledged" />{t('roleAcknowledgement')}</label>}<div className="flex flex-wrap gap-3">{editable ? <RewardSubmit name="action" value="submit" type="submit">{t('submit')}</RewardSubmit> : <><RewardSubmit name="action" value="approve" type="submit">{t('approve')}</RewardSubmit><RewardSubmit name="action" value="return" type="submit" variant="secondary">{t('return')}</RewardSubmit>{!annual && <RewardSubmit name="action" value="reject" type="submit" variant="secondary">{t('reject')}</RewardSubmit>}</>}</div></form>}
+      {!annual && unit.status === 'approved' && v.roles.some(r => ['gr', 'ctro', 'ec'].includes(r)) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><textarea required minLength={10} name="reason" rows={3} className={`${inputCls} h-auto py-2`} /></Field><RewardSubmit name="action" value="return" type="submit" variant="secondary">{t('return')}</RewardSubmit></form>}
       {/* H1: Post appears only when postRewardUnit's own predicate (v.posting) says it would succeed. */}
       {unit.status === 'approved' && <RewardPostPanel posting={v.posting} batches={batches} fields={fields} action={postAction} />}
       {!annual && unit.status === 'draft' && (canSubmit || v.roles.includes('gr')) && <form action={decideAction} className="max-w-3xl space-y-3">{fields}<Field label={t('decisionReason')}><input required minLength={10} name="reason" className={inputCls} /></Field><RewardSubmit name="action" value="withdraw" type="submit" variant="secondary">{t('withdraw')}</RewardSubmit></form>}
@@ -106,5 +118,42 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {annual && v.roles.includes('gr') && <section id="excluded" className="scroll-mt-6"><PayWindowExcluded unitId={unitId} revision={unit.revision} canEdit={v.canConfigure} window={{ from: unit.policy.blockedFrom, to: unit.policy.blockedTo }} rows={v.rows} kept={unit.policy.payWindowKeep ?? {}} /></section>}
     {(annual||tab === 'rules') && <section id="rules" className="max-w-3xl space-y-4"><h2 className="font-semibold">{t('rules')}</h2>{['rulePools', 'ruleBonus', 'ruleEC', 'ruleExemption', 'ruleLump', 'rulePrivacy', 'ruleApproval', 'rulePosting'].map(k => <p key={k} className="text-sm leading-6">{t(k)}</p>)}</section>}
     </div>{annual&&<FlagsPanel unitId={unitId} flags={checks} filtered={!!sp.check}/>}</div>
+    {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={rows[openIndex - 1]?.id ?? null} nextId={rows[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: rows.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
+      <PersonCalculation row={open} hidden={hidden(open)} flags={rowFlags(open.id)} t={t} rm={rm} pct={pct} />
+    </PersonDrawer>}
+  </div>;
+}
+
+type Row = Awaited<ReturnType<typeof getRewardUnit>>['rows'][number];
+type Flag = Awaited<ReturnType<typeof getRewardUnit>>['flags'][number];
+const chipCls: Record<Flag['severity'], string> = { block: 'bg-destructive/10 text-destructive', exception: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200', warning: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200', review: 'bg-muted text-muted-foreground' };
+/** 5d34d00d Step 2 — one chip per severity on the person's row: "Block 1", "Warning 2". */
+function FlagChips({ flags, label }: { flags: Flag[]; label: (s: Flag['severity']) => string }) {
+  if (!flags.length) return <span className="text-muted-foreground">—</span>;
+  return <span className="flex flex-wrap gap-1">{(['block', 'exception', 'warning', 'review'] as const).map(sev => { const n = flags.filter(f => f.severity === sev).length; return n ? <span key={sev} className={`rounded-full px-2 py-0.5 text-xs font-medium ${chipCls[sev]}`}>{label(sev)} {n}</span> : null; })}</span>;
+}
+/** 5d34d00d Step 2 — the full calculation for one person, read only. Every figure comes from the server's
+ *  calculated row (getRewardUnit); nothing is worked out here. Editing stays on the person record. */
+function PersonCalculation({ row: r, hidden, flags, t, rm, pct }: { row: Row; hidden: boolean; flags: Flag[]; t: (key: string) => string; rm: (cents: number) => string; pct: (bp: number) => string }) {
+  const money = (cents: number) => hidden ? t('governance.handledSeparately') : rm(cents);
+  const line = (label: string, value: string, strong = false) => <div key={label} className="flex items-baseline justify-between gap-4 py-1.5"><dt className="text-muted-foreground">{label}</dt><dd className={`text-right tabular-nums ${strong ? 'font-semibold' : 'font-medium'}`}>{value}</dd></div>;
+  return <div className="space-y-5 text-sm">
+    <dl className="divide-y divide-border">{line(t('talent'), r.facts.talent ?? '—')}{line(t('performance'), r.facts.performance ?? '—')}</dl>
+    <section><h3 className="mb-1 font-semibold">{t('desk.salary')}</h3><dl className="divide-y divide-border">
+      {line(t('currentPay'), rm(r.source.basicCents))}
+      {line(`${t('merit')} ${hidden ? '' : pct(r.meritBp)}`, money(r.meritCents))}
+      {line(`${t('promotion')} ${hidden ? '' : pct(r.promotionBp)}${r.recommendation.promotionGrade ? ` → ${r.recommendation.promotionGrade}` : ''}`, money(r.promotionCents))}
+      {line(`${t('special')} ${hidden ? '' : pct(r.specialBp)}`, money(r.specialCents))}
+      {line(t('newPay'), money(r.newBasicCents), true)}
+      {line(t('incrementEligibility'), r.incrementReason || t('eligible'))}
+    </dl></section>
+    <section><h3 className="mb-1 font-semibold">{t('desk.bonus')}</h3><dl className="divide-y divide-border">
+      {r.bonusBasicCents !== r.source.basicCents && line(t('payWindow.bonusBasic'), rm(r.bonusBasicCents))}
+      {line(t('bonusMultiplier'), hidden ? t('governance.handledSeparately') : (r.bonusMultiplierBp / 10000).toFixed(2))}
+      {line(t('bonus'), money(r.bonusCents), true)}
+      {line(t('lumpSum'), rm(r.lumpCents))}
+      {line(t('bonusEligibility'), r.bonusReason || t('eligible'))}
+    </dl></section>
+    <section><h3 className="mb-1 font-semibold">{t('desk.flags')}</h3>{flags.length ? <ul className="space-y-2">{flags.map((f, i) => <li key={i} className="flex gap-2"><span className={`h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${chipCls[f.severity]}`}>{t(`severity.${f.severity}`)}</span><span>{f.message}</span></li>)}</ul> : <p className="text-muted-foreground">{t('desk.person.noFlags')}</p>}</section>
   </div>;
 }
