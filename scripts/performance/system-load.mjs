@@ -1,6 +1,7 @@
 /** Real HTTPS requests + Chromium against the isolated production server; no auth/test route bypass. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
+import {createHomeHttpReplay} from './home-http.mjs';
 import {prepareMixedWorkflows} from './mixed-workflows.mjs';
 import {actionFormData} from './action-form.ts';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
@@ -15,13 +16,13 @@ const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_system_perf');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
 const db=postgres(process.env.MIGRATION_DATABASE_URL,{max:2});
-const agent=new https.Agent({keepAlive:true,maxSockets:600,rejectUnauthorized:false,
+const agent=new https.Agent({keepAlive:true,maxSockets:4000,rejectUnauthorized:false,
  lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)});
 const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system','workflow-preflight'].includes(suite));
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
 const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:suite==='workflow-preflight'?'HTTP_WORKFLOW_PREFLIGHT_ONLY':'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:suite==='workflow-preflight'?0:500,fixtureUsers:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress, observed subject-bound Home GETs and real server actions',driverMaxSockets:4000,tls:'fixture-only self-signed localhost',browserContexts:6,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
  workloadManifest:{readRoutes:30,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
@@ -55,7 +56,8 @@ function appMemory(){
   return {worker,rssMiB:Number(rss[1])/1024,peakRssMiB:Number(peak[1])/1024};
  });}catch{return null;}
 }
-const samples=[];
+const samples=[],pageInteractions=[];
+const homeHttp=createHomeHttpReplay({base,fixture,request,report});
 async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[]){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}
@@ -127,7 +129,7 @@ async function verifyAudit(){
 const employee=fixture.users.find(u=>u.role==='employee'),hr=fixture.users.find(u=>u.role==='companyHR'),group=fixture.users.find(u=>u.role==='groupHR'),manager=fixture.users.find(u=>u.role==='manager');
 const employeeRoutes=['/','/me','/claims','/leave','/attendance/individual','/me/payslip','/notices','/performance/home','/lifecycle'];
 const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports/employee-master','/lifecycle/onboarding','/lifecycle/offboarding','/roster','/letters/register','/performance','/rewards','/system-testing','/feedback','/knowledge-base','/control-tower','/admin/settings/movement','/admin/security-center','/payroll/formula-builder','/payroll/formula-builder/new'];
-const managerRoutes=['/approvals','/approvals/history','/performance/home','/claims'];
+const managerRoutes=['/','/approvals','/approvals/history','/performance/home','/claims'];
 const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 let browser,sampling,progressTimer,contextTemplates,lastPage,runMixedWorkflow;
@@ -161,7 +163,7 @@ try{
   return context;
  }
  async function visit(page,user,path,phase='baseline'){
-  lastPage=page;
+  lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
   const start=performance.now();const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
@@ -176,11 +178,12 @@ try{
    homeCards=await page.locator('[data-home-card]').count();assert(homeCards>0,'expected fictional Home cards');
   }
   const timing=await page.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return {ttfbMs:n.responseStart-n.requestStart,domInteractiveMs:n.domInteractive,decodedBytes:n.decodedBodySize,transferBytes:n.transferSize};});
+  stopHomeTracking();
   report.browser.push({phase,role:user.role,path,heading,homeCards,elapsedMs:performance.now()-start,...timing});save();
  }
  for(const user of [employee,manager,hr,group,fixture.users[254],fixture.users[251]]){
   const ctx=await context(user),page=await ctx.newPage();
-  for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/claims','/leave','/attendance/individual']:user.role==='manager'?['/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
+  for(const route of suite==='whole-system'?routePool(user):user.role==='employee'?['/','/claims','/leave','/attendance/individual']:user.role==='manager'?['/','/approvals','/performance/home']:['/admin/personnel','/payroll','/lifecycle/onboarding'])await visit(page,user,route);
   await page.screenshot({path:join(out,'browser-'+user.index+'.png'),fullPage:false});await ctx.close();
  }
  // Locale projection and real client navigation must work before any capacity claim.
@@ -278,6 +281,8 @@ try{
   await request(victim,'/claims',{...deleteTemplate.fields,[deleteTemplate.prefix+'employmentId']:victim.employmentId,[deleteTemplate.prefix+'id']:protectedDraft.id},deleteTemplate.status,false,deleteTemplate.headers,deleteTemplate.fieldOrder);
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
+ await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
+ await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
  await databaseSnapshot('pilot');
  if(report.coverage.some(v=>v.status==='failed'))throw Error('Pilot route failures must be diagnosed before a 500-user run');
@@ -304,7 +309,10 @@ try{
   try{do{
   const pool=routePool(user);
   const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(roleOrdinals.get(user.index)+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
-  for(const route of routes){await request(user,route);await pause(thinkTimeMs);}
+  for(const route of routes){const navigationStarted=performance.now();await request(user,route);
+   if(route==='/'&&['employee','manager'].includes(user.role))await homeHttp.read(user,true);
+   pageInteractions.push({role:user.role,route,startedMs:navigationStarted,durationMs:performance.now()-navigationStarted});await pause(thinkTimeMs);
+  }
   if(runMixedWorkflow&&await runMixedWorkflow(user,iteration)){await pause(thinkTimeMs);iteration++;progress.iterations++;continue;}
   const description='PERF_HTTP_'+i+'_'+iteration;
   const template=contextTemplates.createTemplate,fields={...template.fields};
@@ -345,11 +353,13 @@ try{
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
  report.concurrentRouteCoverage=[...new Set([...employeeRoutes,...managerRoutes,...hrRoutes])].map(route=>({route,requests:loaded.filter(sample=>sample.method==='GET'&&sample.route===route).length,users:new Set(loaded.filter(sample=>sample.method==='GET'&&sample.route===route).map(sample=>sample.user)).size}));
  const steady=loaded.filter(sample=>sample.startedMs>=steadyStart&&sample.startedMs<steadyUntil);
+ report.pageInteractions=pageInteractions;
  report.steady={durationMs:steadyHoldMs,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
+  navigation:summary(pageInteractions.filter(v=>v.role===role&&v.startedMs>=steadyStart&&v.startedMs<steadyUntil).map(v=>v.durationMs)),
   read:summary(steady.filter(v=>v.role===role&&v.method==='GET').map(v=>v.durationMs)),
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
- report.latencyTargetMet=progress.peakActive===500&&Object.values(report.steady.roles).every(role=>role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
+ report.latencyTargetMet=progress.peakActive===500&&Object.values(report.steady.roles).every(role=>role.navigation.samples>0&&role.navigation.p95Ms<1000&&role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  await databaseSnapshot('loaded');await verifyAudit();save();if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
