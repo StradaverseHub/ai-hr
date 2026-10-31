@@ -463,7 +463,7 @@ max_parallel_workers8, max_worker_processes8, effective_io_concurrency1 and
 random_page_cost4. TLS, fsync, synchronous_commit and JIT are enabled. The database
 VM exposes a900GiB data disk. These are observed settings, not evidence of disk
 IOPS, network latency, sustained available capacity or an accepted tuning change.
-No benchmark, write, restart, installation or configuration change ran on production.
+The inspected application cgroup contains one Next.js server process; its observed current memory charge was2022572032bytes (not a peak-load measurement). No benchmark, write, restart, installation or configuration change ran on production.
 
 The standard four-CPU shared Actions diagnostic environment cannot reproduce this
 two-host capacity/topology. Matching isolated infrastructure remains required for
@@ -506,8 +506,8 @@ verified unchanged. The641-entry candidate appends only the five reservations
 |41179939683 |9098adc7fcf68b294075ac699fc8836ca885c9cf |304 cases PASS (257DB/47nonDB), no skips,18 module suites |
 |41180201688 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |40 Profile cases PASS (23DB/17nonDB), no skips |
 |41180173334 |dbc3c4e33db31d52f3a3eacacd3375fa020d2b3d |Original selected-tests failure: nonexistent selected test path; retained. Its whole compiler independently PASS. Corrected selection is41180201688. |
-|41180553216 |310b5977c |165 fixture/role-transfer/task-metadata cases PASS, no skips; compiler was pending at this update |
-|41180556156 |310b5977c |Paired native empty-Profile benchmark PASS;500 actual principals x3 reads each, no errors, native forged-principal checks retained |
+|41180553216 |310b5977c815c2ff37a9b595f058c714de885e60 |165 fixture/role-transfer/task-metadata cases PASS, no skips; whole compiler PASS |
+|41180556156 |310b5977c815c2ff37a9b595f058c714de885e60 |Paired native empty-Profile benchmark PASS;500 actual principals x3 reads each, no errors, native forged-principal checks retained |
 
 The Profile reader now checks for one native-authorized pending header before
 planning employment/person joins. Nonempty queues retain their original projection
