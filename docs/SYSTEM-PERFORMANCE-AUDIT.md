@@ -37,10 +37,22 @@ A reversible native routing experiment passed on source2f6523765 (run41191380816
 32 actual requests/35 linked principals, exact ordered results, audit on, expired
 delegation/archived assigned actor/forged person refusals. Combined plan reuse and
 necessary denial gates reduce warmed manager median323.4→177.1ms and employee
-199.1→113.3ms; assigned HR122.8→111.8ms and delegate208.4→188.6ms. Additional
-routing-plan helpers are being measured before promoting any migration. The first
-benchmark candidate's whole compiler also passed. Separate past-month HTTP
-Payroll close/publication coverage is being prepared; it has no passing receipt yet.
+199.1→113.3ms; assigned HR122.8→111.8ms and delegate208.4→188.6ms. The additional native comparison41191787745 on sourceabbd32ce4 passed: warmed
+manager160.8→65.0ms, employee103.8→41.6ms, assigned HR61.4→37.4ms and
+delegate97.4→77.6ms, always against its own restored baseline. Separate runners
+show materially different absolute timings; only within-run comparisons are used.
+The first benchmark candidate's whole compiler also passed.
+
+Candidate `4b0a8bc56a521d9d471da2dd109c91bcbf4d1b6c` now drafts0871–0872:
+five unchanged live query bodies use reusable plans and named actor validation
+returns early only when a necessary identity/recipient condition cannot hold.
+No authorization result is cached. All636 canonical journal entries/SQL bytes
+remain unchanged; the candidate appends seven unapplied performance reservations.
+Exact-file qualification/compiler41192498275 and fourteen affected native/model
+files41192504628 are running. Past-month HTTP Payroll close/publication coverage
+is prepared but has no passing receipt yet. Expanded500-user HTTP/browser runs41192576077(1s)/41192579997(5s) are now running
+on that exact source with two million records and the new publication preflight.
+No speed or functional pass is claimed until complete artifacts are verified.
 
 Measured Claims queue improvements and129 affected passing cases remain component
 evidence; they do not establish500-user capacity. Read-only infrastructure checks
@@ -609,6 +621,7 @@ The native HTTP manifestation after repair remains to be verified by current run
 |41185656999(1s)/41185654964(5s) |748352f59364493725ef23d79a30d4345f6ea916 |Fixture/build PASS. Both fail at90-second browser navigation to/me/payslip before concurrent traffic. First employee Home had no handled failures; other Home roles were not all reached. Screenshots show the statement rendered, later DB sessions idle and V8 mostly idle; the unfinished request/cause is not established |
 |41186781411;41187497364 |4849474d0;d5efdaf43 |Manager Home summary503 and handled failure before mutation/load; no concurrent latency receipt |
 |41188286052 |f95f7788989a9941c5dac0caae65a4d64490aa97 |Same uncorrected manager503 blocks preflight before the explicit PDF checks. Independent whole compiler PASS |
+|41191367882 |dispatch input error |Refused an incorrect expected SHA before candidate checks; corrected dispatch41191380816 retained separately |
 |41188713821(1s)/41188713828(5s) |1a0ed296a1ddc03afebbed627de2a1547d957f22 |Both FAIL; all expanded preflights PASS,500 peak users; 1s0/500 journeys,5s226/500 journeys; current outcome table retains latency and errors |
 
 Performance-job admission is finite: only the two named hosted performance jobs,
