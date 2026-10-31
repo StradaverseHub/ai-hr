@@ -123,7 +123,7 @@ describe('grounded conversation rendering',()=>{
  });
  it.each(['en','ms','zh','ta','th','vi'])('%s greets and acknowledges thanks conversationally without a factual lookup or effect',async locale=>{
   state.locale=locale;const copy=localeCopy(locale).assistant.workspace.conversation;
-  for(const code of ['greeting','thanks'] as const){const shown=render(await GroundedWorkspaceReply({ctx,reply:reply({version:1,mode:'social',code})}));expect(shown.container.textContent).toBe(copy[`social_${code}`]);expect(shown.container.querySelector('form,details,a')).toBeNull();expect(screen.queryByRole('status')).toBeNull();expect(state.reviewLinks).not.toHaveBeenCalled();expect(state.proposalCard).not.toHaveBeenCalled();shown.unmount();}
+  for(const code of ['greeting','thanks','help'] as const){const shown=render(await GroundedWorkspaceReply({ctx,reply:reply({version:1,mode:'social',code})}));expect(shown.container.textContent).toBe(copy[`social_${code}`]);expect(shown.container.querySelector('form,details,a')).toBeNull();expect(screen.queryByRole('status')).toBeNull();expect(state.reviewLinks).not.toHaveBeenCalled();expect(state.proposalCard).not.toHaveBeenCalled();shown.unmount();}
  });
  it('refuses invented social text, effects, codes or attached record selectors',async()=>{
   const issued=await view('employees',{rows:[{employeeCode:'SOCIAL-PRIVATE',company:'Social employer',hiredOn:'2020-01-01',terminatedOn:null,status:'active'}],truncated:false});

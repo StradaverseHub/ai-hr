@@ -6,7 +6,7 @@ import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const state=vi.hoisted(()=>({ask:vi.fn()}));
 vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
-import {ConversationClarification} from '../components/assistant/conversation-clarification';
+import {ConversationClarification} from '../components/assistant/chat-reply-boundary';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
 function show(initialTurn?:{id:string;question:string;answer:React.ReactNode}){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn}/></NextIntlClientProvider>);}

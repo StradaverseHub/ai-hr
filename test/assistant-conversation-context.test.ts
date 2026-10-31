@@ -109,6 +109,26 @@ describe('same-login human chat context owner',()=>{
 });
 
 describe('ordinary follow-up admission uses current human context only',()=>{
+ it('answers help from the actual clarification form without repeating the chooser or calling a provider',async()=>{
+  provider();const {ctx}=await actor();const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
+  const first=await askAssistant(ctx,{question:'Please explain how this works'});
+  const second=await askAssistant(ctx,{question:'Hello, what can you help me do?',clarificationExchangeId:first.exchangeId});
+  const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:second.exchangeId,includeGovernance:false});
+  expect(workspace.history.find(row=>row.id===second.exchangeId)?.grounded?.conversation).toEqual({plan:{version:1,mode:'social',code:'help'},facts:[]});
+  expect(transport).not.toHaveBeenCalled();for(const row of await ownRows(ctx))expect(row.toolCalls).toEqual([]);
+ });
+
+ it('keeps general help and its follow-up entirely local while returning a useful source-free answer',async()=>{
+  provider();const {ctx}=await actor();const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue(end);
+  const first=await askAssistant(ctx,{question:'What can you help me do? Please keep it simple and do not read personal records or make changes.'});
+  expect(first.conversationToken).toBeTruthy();
+  const second=await askAssistant(ctx,{question:'I only want a short explanation of what you can help with. Do not retrieve records.',previousExchangeId:first.exchangeId,previousConversationToken:first.conversationToken});
+  const workspace=await loadAiWorkspace(ctx,{selectedExchangeId:second.exchangeId,includeGovernance:false});
+  expect(workspace.history.find(row=>row.id===second.exchangeId)?.grounded?.conversation).toEqual({plan:{version:1,mode:'social',code:'help'},facts:[]});
+  expect(transport).not.toHaveBeenCalled();
+  const rows=await ownRows(ctx);expect(rows).toHaveLength(2);for(const row of rows)expect(row.toolCalls).toEqual([]);
+ });
+
  async function providerActor(){const result=await actor();await seedEntitlement(result.admin,{leaveTypeId:b.annualLeaveTypeId,annualDays:113.75,validFrom:'2020-01-01'});await owner.db.insert(s.leaveLedger).values({tenantId:b.tenantId,employmentId:result.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'accrual',days:'113.75',effectiveOn:todayInKualaLumpur()});return result;}
  it('records and reopens a genuine greeting without reading HR records or claiming missing facts',async()=>{
   provider();const {ctx}=await providerActor();const transport=vi.spyOn(openaiAdapter,'converse').mockResolvedValue({...end,text:JSON.stringify({version:1,mode:'social',code:'greeting'})});

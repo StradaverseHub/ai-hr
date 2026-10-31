@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { ArrowUp, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
 import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
-import {AssistantChatSubmitContext} from './chat-submit-context';
+import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 
@@ -71,7 +71,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
     } finally { inFlight.current = false; setPending(false); }
   }
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
-  return <AssistantChatSubmitContext.Provider value={{pending,clarify:async(id,answer)=>{await send({id,answer});}}}>
+  return <AssistantChatBoundary value={{pending,clarify:async(id,answer)=>{await send({id,answer});}}}>
     {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={t('open')} aria-haspopup="dialog"
       className={`fixed bottom-4 ${side} z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none`}>
       <Sparkles aria-hidden className="size-5"/>
@@ -126,5 +126,5 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
         <p className="mt-2 text-xs text-muted-foreground">{t('scope')}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">{privacyNotice}</p>
       </form>
     </section>}
-  </AssistantChatSubmitContext.Provider>;
+  </AssistantChatBoundary>;
 }

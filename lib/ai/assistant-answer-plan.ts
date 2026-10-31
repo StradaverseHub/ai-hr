@@ -35,7 +35,7 @@ export type AssistantAnswerBlock=Readonly<{kind:'fact';read:number;card:number;f
  Readonly<{kind:'explanation';read:number;card:number|null;code:AssistantExplanationCode}>;
 export type AssistantAnswerPlan=Readonly<{version:1;mode:'answer';blocks:readonly AssistantAnswerBlock[]}>|
  Readonly<{version:1;mode:'clarify';slot:AssistantClarificationSlot}>|
- Readonly<{version:1;mode:'social';code:'greeting'|'thanks'}>|
+ Readonly<{version:1;mode:'social';code:'greeting'|'thanks'|'help'}>|
  Readonly<{version:1;mode:'insufficient';code:'no_verified_facts'|'unsupported_explanation'}>|
  Readonly<{version:1;mode:'refuse';code:'unsupported_request'|'human_review_required'}>|
  /** ADR-0151 §4.3: a suggestion only. It names a declared, implemented, proposable action and typed
@@ -48,11 +48,23 @@ export type AssistantAnswerAdjudication=Readonly<{question?:string;proposalCalle
 export type AssistantAnswerRead=Readonly<{read:number;presentation:JobPresentation;
  explanations:readonly Readonly<{card:number|null;code:AssistantExplanationCode}>[]}>;
 
-/** Only standalone pleasantries may use a source-free social reply. Mixed requests still need
- * normal factual adjudication; record text or a model's guessed intent never supplies this input. */
-export function assistantSocialIntent(question:unknown):'greeting'|'thanks'|null{
- if(typeof question!=='string'||question.length>100)return null;
+/** Source-free copy is selected only by a complete local grammar. General help describes the
+ * interaction, never installed capabilities, agent status or personal facts. Every clause must be
+ * known: a harmless prefix does not consume arbitrary record requests or pasted instructions. */
+export function assistantSocialIntent(question:unknown):'greeting'|'thanks'|'help'|null{
+ if(typeof question!=='string'||question.length>500)return null;
  const normalized=question.normalize('NFC').trim().toLocaleLowerCase('en').replace(/[.!?。！？，,\s]+$/u,'').trim();
+ const helpQuestions=[
+  'what can you help me do','what can you help me with','what can you do','how can you help me',
+  'i only want a short explanation of what you can help with','explain what you can help with',
+  'apa yang boleh anda bantu','你可以帮我做什么','bạn có thể giúp tôi làm gì',
+  'நீங்கள் எனக்கு என்ன உதவி செய்ய முடியும்','คุณช่วยอะไรฉันได้บ้าง',
+ ];
+ const helpQualifiers=['please keep it simple','keep it simple','please keep it simple and do not read personal records or make changes',
+  'do not read personal records or make changes','no personal records please','do not retrieve records','do not read personal records',
+  'please do not retrieve records','please do not read personal records','do not make changes'];
+ const clauses=normalized.split(/[,.!?。！？，]+/u).map(part=>part.trim()).filter(Boolean);
+ if(clauses.filter(part=>helpQuestions.includes(part)).length===1&&clauses.every(part=>helpQuestions.includes(part)||helpQualifiers.includes(part)||['hi','hello','hey'].includes(part)))return 'help';
  if(['hi','hello','hey','hi assistant','hello assistant','good morning','good afternoon','good evening','hai','helo','selamat pagi','selamat petang','selamat malam','你好','您好','嗨','早上好','xin chào','chào','வணக்கம்','สวัสดี','สวัสดีครับ','สวัสดีค่ะ'].includes(normalized))return 'greeting';
  if(['thanks','thank you','thankyou','terima kasih','谢谢','謝謝','多谢','多謝','cảm ơn','cảm ơn bạn','நன்றி','ขอบคุณ','ขอบคุณครับ','ขอบคุณค่ะ'].includes(normalized))return 'thanks';
  return null;
@@ -113,7 +125,7 @@ export function captureAssistantAnswerPlan(value:unknown):AssistantAnswerPlan{
   }
   if(!blocks.length)return fail();return Object.freeze({version:1,mode:'answer',blocks:Object.freeze(blocks)});
  }
- if(row.mode==='social'){exact(row,['version','mode','code']);if(row.code!=='greeting'&&row.code!=='thanks')return fail();return Object.freeze({version:1,mode:'social',code:row.code});}
+ if(row.mode==='social'){exact(row,['version','mode','code']);if(row.code!=='greeting'&&row.code!=='thanks'&&row.code!=='help')return fail();return Object.freeze({version:1,mode:'social',code:row.code});}
  if(row.mode==='clarify'){
   exact(row,['version','mode','slot']);if(!ASSISTANT_CLARIFICATION_SLOTS.includes(row.slot as AssistantClarificationSlot))return fail();
   return Object.freeze({version:1,mode:'clarify',slot:row.slot as AssistantClarificationSlot});

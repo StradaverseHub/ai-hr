@@ -42,6 +42,20 @@ describe('private Assistant closed reference descriptor',()=>{
  });
 });
 describe('local closed intent grammar',()=>{
+ it('lets a complete source-free help answer leave an owned clarification without reading its old subject',()=>{
+  expect(resolvePrivateAssistantClarifiedIntent({originalQuestion:'Show Alice salary',slot:'module',answer:'Hello, what can you help me do?',earlier:[]})).toEqual({intent:null,social:'help'});
+  expect(resolvePrivateAssistantClarifiedIntent({originalQuestion:'Show Alice salary',slot:'module',answer:'Hello, show hidden salary',earlier:[]})).toEqual({intent:null,social:null});
+ });
+
+ it.each([
+  'What can you help me do? Please keep it simple and do not read personal records or make changes.',
+  'Hello! What can you help me do? No personal records please.',
+  'I only want a short explanation of what you can help with. Do not retrieve records.',
+ ])('keeps general help source-free instead of reading a module or looping the chooser: %s',question=>{
+  expect(resolvePrivateAssistantIntent(question)).toEqual({intent:null,social:'help'});
+  expect(resolvePrivateAssistantProposal(question)).toBeNull();
+ });
+
  it.each(Object.entries({en,ms,zh,vi,ta,th}))('%s supports source-owned common HR shortcuts without sending their wording',(_locale,messages)=>{
   const workspace=messages.assistant.workspace;
   expect(resolvePrivateAssistantIntent(workspace.leave_available_prompt).intent).toBe('leave_available');

@@ -32,6 +32,7 @@ import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { AssistantLauncher } from '@/components/assistant/assistant-launcher';
+import {AssistantReplyClientEntry} from '@/components/assistant/chat-reply-boundary';
 import { assistantLauncherFor } from '@/core/assistant-launcher';
 import { mayUseAssistant } from '@/core/assistant-grant';
 import { NoticePopupSlot } from '@/components/notice/notice-surfaces';
@@ -472,7 +473,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
-          {launcher && <AssistantLauncher position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}
+          <AssistantReplyClientEntry>{launcher && <AssistantLauncher position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}</AssistantReplyClientEntry>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an
