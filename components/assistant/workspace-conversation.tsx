@@ -36,7 +36,7 @@ export function WorkspaceConversation({initialTurn,initialTurns,initialResume,hi
   }catch{if(at===epoch.current)setHistoryError(t('workspace.conversation.unavailable'));}finally{if(at===epoch.current)setLoadingOlder(false);}
  }
  useLayoutEffect(()=>{const anchor=prependAnchor.current;if(anchor&&log.current){log.current.scrollTop=anchor.top+log.current.scrollHeight-anchor.height;prependAnchor.current=null;didPrepend.current=true;}},[turns]);
- useEffect(()=>{if(didPrepend.current){didPrepend.current=false;return;}if(log.current&&follow.current){log.current.scrollTop=log.current.scrollHeight;setUnseen(false);}else if(turns.length)setUnseen(true);},[turns]);
+ useEffect(()=>{if(didPrepend.current){didPrepend.current=false;return;}if(log.current&&follow.current){log.current.scrollTop=log.current.scrollHeight;setUnseen(false);}else if(turns.length||attachmentTurn)setUnseen(true);},[turns,attachmentTurn]);
  useEffect(()=>{if(focusRequest)composeBox.current?.querySelector<HTMLTextAreaElement>('textarea[name="question"]')?.focus();},[focusRequest]);
  async function send(data:FormData,clarificationExchangeId?:string){
   const question=String(data.get('question')??'').trim();if(!question||busy.current||readOnly||attachmentBusy)return;

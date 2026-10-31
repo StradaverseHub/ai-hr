@@ -116,6 +116,14 @@ describe('inline attachment conversation lifecycle',()=>{
   const[turn,setTurn]=useState<AttachmentChatTurn|null>(null),publish=useCallback((value:AttachmentChatTurn|null)=>{setTurn(value);published?.(value);},[published]);
   return <><div role="log" aria-label="Conversation">{turn&&<><p>{turn.question}</p>{turn.answer}</>}</div><WorkspaceComposer fileImport clearAfterSubmit layout="hero" action={ordinary} tasks={[]} labels={labels} onAttachmentTurn={publish} onAttachmentBusy={busy}/></>;
  }
+ it.each([['scan','scan'],['read failure','readError']] as const)('keeps a failed %s read visible with a prefilled question and permits discard',async(reason,key)=>{
+  let fail!:(error:Error)=>void;mocks.read.mockReturnValue(new Promise((_,reject)=>{fail=reject;}));const ordinary=vi.fn();wrap(<Chat ordinary={ordinary}/>);
+  fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare these records'}});
+  await screen.findByRole('button',{name:copy.attach});fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[new File(['data'],'records.pdf')]}});
+  await screen.findByText(copy.reading);await act(async()=>fail(new Error(reason)));
+  expect(await screen.findByRole('alert')).toHaveTextContent(copy[key]);expect(screen.queryByLabelText(copy.consent)).toBeNull();expect(screen.getByRole('button',{name:'Send'})).toBeDisabled();expect(mocks.prepare).not.toHaveBeenCalled();expect(ordinary).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:copy.discard}));expect(screen.getByRole('log')).toBeEmptyDOMElement();expect(screen.queryByText('records.pdf')).toBeNull();
+ });
  it('adopts a prefilled instruction after a deferred file read without invalidating the read',async()=>{
   let finish!:(value:unknown)=>void;mocks.read.mockReturnValue(new Promise(resolve=>{finish=resolve;}));wrap(<Chat/>);
   fireEvent.change(screen.getByRole('textbox',{name:labels.question}),{target:{value:'Prepare these records'}});

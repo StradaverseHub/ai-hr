@@ -25,3 +25,10 @@ it('keeps file preparation between its preceding and following turns when its re
  precedes('Older answer','First answer');precedes('First answer','Updated file review');precedes('Updated file review','Later question');
  expect(ports.ask).toHaveBeenCalledExactlyOnceWith({question:'Later question',previousExchangeId:'first',previousConversationToken:'proof-first'});
 });
+
+it('follows attachment updates only while the reader is near the latest turn',async()=>{
+ render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport fullHeight/></NextIntlClientProvider>);
+ const log=screen.getByRole('log');Object.defineProperties(log,{scrollHeight:{configurable:true,value:1000},clientHeight:{configurable:true,value:200}});
+ log.scrollTop=780;fireEvent.scroll(log);fireEvent.click(screen.getByRole('button',{name:'Attach source'}));await screen.findByText('File review');expect(log.scrollTop).toBe(1000);
+ log.scrollTop=100;fireEvent.scroll(log);fireEvent.click(screen.getByRole('button',{name:'Update review'}));await screen.findByText('Updated file review');expect(log.scrollTop).toBe(100);
+});
