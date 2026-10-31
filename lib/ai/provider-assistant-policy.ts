@@ -99,7 +99,7 @@ export function resolvePrivateAssistantProposal(question:string):Readonly<{actio
 }
 /** A closed local grammar, NOT regex masking of arbitrary language. Unknown wording stays local and
  * asks for a module; names, free prose and pasted instructions are never sent as an alleged safe intent. */
-export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|null;fromDate?:string;module?:AgentModuleCode}>{
+export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode}>{
  const social=assistantSocialIntent(question);if(social)return{intent:null,social};
  const normalized=normalize(question);
  for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date,module:'org'};}}
@@ -126,6 +126,8 @@ export function privateAssistantModules(intent:PrivateAssistantIntent):readonly 
  * The caller supplies only freshly read canonical cards and its authenticated clarification chain. */
 export type PrivateAssistantClarification=Readonly<{originalQuestion:string;slot:'employment'|'leave_type'|'period'|'module';answer:string;earlier:readonly Readonly<{question:string;slot:'employment'|'leave_type'|'period'|'module'}>[]} >;
 export function resolvePrivateAssistantClarifiedIntent(clarification:PrivateAssistantClarification):ReturnType<typeof resolvePrivateAssistantIntent>{
+ // A complete source-free reply can leave an earlier chooser without acquiring read authority.
+ const latest=resolvePrivateAssistantIntent(clarification.answer);if(latest.social)return latest;
  const questions=[...clarification.earlier.map(step=>step.question),clarification.originalQuestion];
  const bare=(text:string)=>AGENT_MODULE_CODES.some(module=>[module.replaceAll('_',' '),...(moduleNames[module]??[])].some(name=>normalize(name)===normalize(text)));
  for(let index=0;index<questions.length;index++){const candidate=resolvePrivateAssistantIntent(questions[index]);if(candidate.intent&&(index===0||!bare(questions[index])))return candidate;}

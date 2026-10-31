@@ -2,7 +2,7 @@
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useTranslations} from 'next-intl';
 import {askFromWorkspaceAction,type LauncherReply} from '../../app/assistant/launcher-actions';
-import {AssistantChatSubmitContext} from './chat-submit-context';
+import {AssistantChatBoundary} from './chat-reply-boundary';
 import {WorkspaceComposer} from './workspace-composer';
 import {ThinkingIndicator} from './thinking-indicator';
 import type {AiWorkspaceTaskId} from '../../lib/ai/workspace-tasks';
@@ -32,7 +32,7 @@ export function WorkspaceConversation({initialTurn,tasks,fileImport,composer,res
   }catch{if(atEpoch!==epoch.current)return;previous.current=undefined;setTurns(rows=>rows.map(row=>row.id===id?{...row,reply:{ok:false,message:t('err_provider_error')}}:row));}
   finally{if(atEpoch===epoch.current){busy.current=false;setPending(false);}}
  }
- return <AssistantChatSubmitContext.Provider value={{pending,clarify:async(exchangeId,answer)=>{const data=new FormData();data.set('question',answer);await send(data,exchangeId);}}}><section aria-label={c('title')} className={turns.length?'flex h-[min(44rem,calc(100dvh-12rem))] min-h-80 flex-col':'space-y-4'}>
+ return <AssistantChatBoundary value={{pending,clarify:async(exchangeId,answer)=>{const data=new FormData();data.set('question',answer);await send(data,exchangeId);}}}><section aria-label={c('title')} className={turns.length?'flex h-[min(44rem,calc(100dvh-12rem))] min-h-80 flex-col':'space-y-4'}>
   {turns.length>0&&<>
    <div className="flex shrink-0 items-center justify-between pb-3"><h2 className="text-sm font-medium">{c('title')}</h2><button type="button" disabled={pending} onClick={()=>{setTurns([]);previous.current=undefined;setUnseen(false);follow.current=true;setGeneration(n=>n+1);}} className="min-h-11 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{c('new')}</button></div>
    <div ref={log} role="log" aria-label={c('title')} aria-live="polite" aria-relevant="additions text" onScroll={()=>{const el=log.current;if(el){follow.current=el.scrollHeight-el.clientHeight-el.scrollTop<64;if(follow.current)setUnseen(false);}}} className="min-h-0 flex-1 space-y-8 overflow-y-auto overscroll-contain px-1 text-sm leading-relaxed [overflow-anchor:none]">
@@ -45,5 +45,5 @@ export function WorkspaceConversation({initialTurn,tasks,fileImport,composer,res
   </>}
   <div className={turns.length?'shrink-0 pt-4':undefined}>{composer?<div key={generation}>{composer({action:send,pending})}</div>:<WorkspaceComposer key={generation} fileImport={fileImport} clearAfterSubmit clientSubmit pending={pending} layout="hero" action={send} tasks={turns.length?[]:tasks} labels={{tasks:t('workspace.tasks'),taskHint:t('workspace.taskHint'),question:t('workspace.question'),placeholder:t('placeholder'),ask:t('ask'),working:t('workspace.working'),scope:t('scopeNote')}}/>}</div>
  <p className="shrink-0 pt-2 text-xs leading-relaxed text-muted-foreground">{c('privacy')}</p>
- </section></AssistantChatSubmitContext.Provider>;
+ </section></AssistantChatBoundary>;
 }

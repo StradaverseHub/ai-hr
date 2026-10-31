@@ -42,6 +42,11 @@ describe('private Assistant closed reference descriptor',()=>{
  });
 });
 describe('local closed intent grammar',()=>{
+ it('lets a complete source-free help answer leave an owned clarification without reading its old subject',()=>{
+  expect(resolvePrivateAssistantClarifiedIntent({originalQuestion:'Show Alice salary',slot:'module',answer:'Hello, what can you help me do?',earlier:[]})).toEqual({intent:null,social:'help'});
+  expect(resolvePrivateAssistantClarifiedIntent({originalQuestion:'Show Alice salary',slot:'module',answer:'Hello, show hidden salary',earlier:[]})).toEqual({intent:null,social:null});
+ });
+
  it.each([
   'What can you help me do? Please keep it simple and do not read personal records or make changes.',
   'Hello! What can you help me do? No personal records please.',

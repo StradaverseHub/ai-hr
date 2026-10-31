@@ -5,7 +5,7 @@ import type {ReactNode} from 'react';
 import {conversationFactLayout} from '../../lib/ai/assistant-answer-layout';
 import {assistantFactSentenceKey} from '../../lib/ai/assistant-fact-sentences';
 import {randomUUID} from 'node:crypto';
-import {ConversationClarification} from './conversation-clarification';
+import {ConversationClarification,ConversationActionProposal} from './chat-reply-boundary';
 import {saveGovernedJobFeedbackAction,eraseGovernedJobFeedbackAction} from '../../app/assistant/job-feedback-actions';
 import {runGovernedPlanAction} from '../../app/assistant/governed-job-actions';
 import type {GovernedWorkspaceJobView} from '../../core/workspace-module-jobs';
@@ -19,7 +19,6 @@ import type {GroundedWorkspaceAnswer,AssistantConversationSegment} from '../../c
 import {MODULE_JOBS} from '../../lib/ai/module-jobs';
 import type {ModuleActionEntry} from '../../lib/assistant-actions/module-action-entries';
 import {ConversationReviewLinks} from './conversation-review-links';
-import {ConversationActionProposal} from './conversation-action-proposal';
 import {moduleHumanActionHandoffs} from '../../lib/ai/module-human-handoffs';
 import {ASSISTANT_PROPOSAL_MODULE,isAssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
 import {ConversationExplanation} from './conversation-explanation';
@@ -104,7 +103,7 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
   const plan=conversation.plan;if(!closedConversationFields(conversation,['plan','facts',...(conversation.clarificationAllowed===undefined?[]:['clarificationAllowed']),...(conversation.segments===undefined?[]:['segments'])])||!Array.isArray(conversation.facts)||(conversation.clarificationAllowed!==undefined&&conversation.clarificationAllowed!==false)||!plan||plan.version!==1)return unavailable();
   if(plan.mode!=='answer'&&conversation.segments!==undefined)return unavailable();
   if(plan.mode==='social'){
-   if(!closedConversationFields(plan,['version','mode','code'])||!['greeting','thanks'].includes(plan.code)||conversation.facts.length!==0)return unavailable();
+   if(!closedConversationFields(plan,['version','mode','code'])||!['greeting','thanks','help'].includes(plan.code)||conversation.facts.length!==0)return unavailable();
    return <p className="text-sm leading-relaxed">{copy(`social_${plan.code}`)}</p>;
   }
   if(plan.mode==='clarify'){

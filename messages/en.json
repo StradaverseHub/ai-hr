@@ -19435,6 +19435,7 @@
         "allAreas": "See all available areas",
         "social_greeting": "Hi! What would you like to know about your work?",
         "social_thanks": "You’re welcome. What else can I help with?",
+        "social_help": "I can explain work information, help you understand records you’re allowed to see, and guide you through supported tasks. Tell me what you’re trying to do. I haven’t read personal records for this explanation, and changes need your review and confirmation.",
         "backgroundSwitchNote": "These switch settings do not mean the agents are running.",
         "example_leave": "How much leave do I have?",
         "example_payroll": "Where can I see my payslip?",
