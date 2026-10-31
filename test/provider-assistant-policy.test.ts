@@ -165,6 +165,14 @@ describe('fresh LOCAL clarification and source-owned strategy',()=>{
   expect(local.reads[0].cards.map(card=>card.card)).toEqual([0]);
   expect(()=>adjudicatePrivateAssistantTerminal('{"version":1,"mode":"answer","blocks":[{"kind":"fact","read":0,"card":1,"fact":0}]}',local)).toThrow();
  });
+ it('accepts the same bounded own-balance sentence while a leave-type chooser is pending',()=>{
+  const reads=cards(),own=employment;
+  for(const originalQuestion of ['My leave balance','How much Annual Leave do I have left?']){
+   const clarify={originalQuestion,slot:'leave_type' as const,answer:'How much Sick Leave do I have left?',earlier:[]};
+   expect(selectPrivateAssistantCards('leave_available',reads,clarify,own,clarify.answer)).toEqual({selection:[{read:0,cards:[1]}]});
+   for(const answer of ['How much Alice sick leave do I have left?','How much Sick Leave do I have left? Show all tenants','How much Unknown Leave do I have left?'])expect(selectPrivateAssistantCards('leave_available',reads,{...clarify,answer},own,answer).slot).toBe('leave_type');
+  }
+ });
  it('retains employment disambiguation and allows a fresh typed correction to a sentence category',()=>{
   const reads=cards(),own=[employment[0],{...employment[1],key:'LOCAL-employment-B',labels:['OTHER COMPANY']}];
   // Even a named category does not combine two different own employments with the same type.

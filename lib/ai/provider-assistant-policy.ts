@@ -204,7 +204,12 @@ export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:
   if(!matching.length)return result('leave_type');candidates=matching;
  }
  for(let index=0;index<steps.length;index++){
-  const slot=steps[index].slot;if(slot==='module'||steps[index+1]?.slot===slot)continue;const answer=normalize(steps[index+1]?.question??clarification!.answer);
+  const slot=steps[index].slot;if(slot==='module'||steps[index+1]?.slot===slot)continue;
+  const rawAnswer=steps[index+1]?.question??clarification!.answer;
+  // A supported complete own-balance sentence is also a valid answer to the type chooser.
+  // Decode only the same closed local frame; arbitrary prose remains an exact-label refusal.
+  const sentence=slot==='leave_type'?ownLeaveBalanceQuestion(rawAnswer):null;
+  const answer=sentence?.leaveType??normalize(rawAnswer);
   const options=new Map<string,Option[]>();
   for(const candidate of candidates){const label=slot==='leave_type'?candidate.leaveType:slot==='period'?candidate.period:undefined;
    const key=slot==='employment'?candidate.employment?.key:label===undefined?undefined:normalize(label);if(key===undefined)continue;
