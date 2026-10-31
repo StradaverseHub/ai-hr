@@ -14,7 +14,7 @@ import {loadAiWorkspace} from '../core/ai-workspace';
 import {openaiAdapter} from '../lib/ai/providers/openai';
 import type {ConverseArgs,ConverseResult} from '../lib/ai/types';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {ASSISTANT_PRODUCTION_BASELINE,scoreBaselineTurn,summarizeBaseline,type BaselineObservation,type BaselineScore} from './assistant-production-baseline-corpus';
+import {ASSISTANT_COMPLEX_BASELINE,ASSISTANT_PRODUCTION_BASELINE,conversationRun,scoreBaselineTurn,summarizeBaseline,type BaselineObservation,type BaselineScore} from './assistant-production-baseline-corpus';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 let base:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();});
@@ -22,7 +22,7 @@ beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-baseline-passphras
  for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');
  await resetDb();base=await seedBase();await setModule(base.tenantId,'assistant','active');});
 // Distinctive fictional values: none may ever appear in a provider request.
-const SENTINELS=['Fictional Baseline Actor','Siti Fictional','17.25','11.5','Medical Leave','Annual Leave'];
+const SENTINELS=['Fictional Baseline Actor','Fictional New Admin','Fictional Holiday','Siti Fictional','17.25','11.5','Medical Leave','Annual Leave'];
 async function actor(medicalType=true){
  const admin=adminCtx(base),medical=medicalType?(await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'MEDICAL',name:'Medical Leave',paid:true}).returning({id:schema.leaveType.id}))[0]:null;
  await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:17.25,validFrom:'2020-01-01'});if(medical)await seedEntitlement(admin,{leaveTypeId:medical.id,annualDays:11.5,validFrom:'2020-01-01'});
@@ -33,6 +33,15 @@ async function actor(medicalType=true){
  const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:mine.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  return {admin,ctx,userId};
 }
+/** A real new administrator: own person record, hr_admin login and an Assistant grant. */
+async function adminActor(){
+ const admin=adminCtx(base),person=await hireEmployee(admin,{person:{fullName:'Fictional New Admin',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptB,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const userId=await createAppUser(base.tenantId,person.personId,'hr_admin');await grantAssistant(admin,{appUserId:userId});
+ return{...await entitledCtx(base,['hr_admin']),userId,personId:person.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]} as SessionContext;
+}
+/** Two upcoming national holidays, dated through the HR date owner. */
+async function holidays(){for(const days of [9,40]){const date=todayInKualaLumpur(new Date(Date.now()+days*86400000));
+ await owner.db.insert(schema.holiday).values({tenantId:base.tenantId,country:'MY',holidayDate:date,name:'Fictional Holiday '+days});}}
 /** Oracle reference selector: every available fact/explanation the closed catalogue offers (max 16). */
 function oracle(requests:ConverseArgs[]){
  return vi.spyOn(openaiAdapter,'converse').mockImplementation((async(_configuration:unknown,args:ConverseArgs):Promise<ConverseResult>=>{
@@ -86,6 +95,28 @@ describe('Assistant production-fidelity conversation baseline',()=>{
   for(const value of [...SENTINELS,question])expect(body.includes(value),value).toBe(false);
   process.stdout.write('AIHR_ASSISTANT_BASELINE_EGRESS '+JSON.stringify({providerCalls:observation.providerCalls,plan:observation.plan,requestBytes:Buffer.byteLength(body)})+'\n');
  });
+
+ it('records long-running admin, employee, multi-domain and approver conversations with the same hard gates',async()=>{
+  await holidays();const {ctx}=await actor(),adminContext=await adminActor(),requests:ConverseArgs[]=[];oracle(requests);
+  const scores:BaselineScore[]=[],runs:Record<string,ReturnType<typeof conversationRun>>={};
+  for(const conversation of ASSISTANT_COMPLEX_BASELINE){
+   const caller=conversation.persona==='admin'?adminContext:ctx,rows:BaselineScore[]=[];
+   let previous:{exchangeId:string;token?:string;clarify:boolean}|null=null;
+   for(const turn of conversation.turns){
+    const {observation,next}=await observe(caller,turn.question,turn.continues?previous:null,requests);previous=next??previous;
+    const score=scoreBaselineTurn(turn,observation);rows.push(score);scores.push(score);
+    if(turn.category==='negative')expect(observation.reads,turn.id).toEqual([]);
+    // Hard gate: no action request is ever answered by anything but a native proposal card or a non-effect reply.
+    if(turn.category==='action')expect(['propose','clarify','insufficient','refuse','answer',undefined],turn.id).toContain(observation.plan?.mode);
+   }
+   runs[conversation.id]=conversationRun(rows);
+  }
+  expect(scores).toHaveLength(ASSISTANT_COMPLEX_BASELINE.reduce((total,row)=>total+row.turns.length,0));
+  const questions=ASSISTANT_COMPLEX_BASELINE.flatMap(row=>row.turns.map(turn=>turn.question));
+  for(const args of requests){const body=JSON.stringify(args);expect(args.tools??[]).toEqual([]);
+   for(const value of [...SENTINELS,...questions])expect(body.includes(value),value).toBe(false);}
+  process.stdout.write('AIHR_ASSISTANT_COMPLEX_BASELINE '+JSON.stringify({summary:summarizeBaseline(scores),runs,providerRequests:requests.length,turns:scores})+'\n');
+ },180_000);
 
  it('refuses a revoked login before any read or provider request',async()=>{
   const {admin,ctx,userId}=await actor(),requests:ConverseArgs[]=[];oracle(requests);
