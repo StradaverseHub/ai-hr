@@ -9,6 +9,7 @@ import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { dayDate } from '../lib/onboarding-model';
+import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
     beforeEach(async () => {
@@ -40,6 +41,58 @@ describe('V3.1 onboarding database and authorization', () => {
         await onboardingCommand(admin, row!.case.id, row!.revision, { type: 'submit' });
         return (await onboardingList(admin))[0]!;
     }
+    async function masterWithoutOnboarding() {
+        const before = await onboardingContext(admin), config = structuredClone(before.config);
+        // Keep another existing member and two ordered steps to exercise actual scope and ordering.
+        config.access.onboarding = [tech.userId!];
+        config.workflows[0]!.steps.push({ id: 'second-approval', label: 'Second approval', type: 'group', target: 'people-gbs', method: 'rr' });
+        await onboardingSaveConfig(admin, before.revision, config);
+        const current = await onboardingContext(admin);
+        expect(current.actor).toMatchObject({ master: true, module: false });
+        return current;
+    }
+    it('allows a first access-only grant after a real jsonb roundtrip without changing cases or other memberships', async () => {
+        await draft();
+        const before = await masterWithoutOnboarding(), input = structuredClone(before.config);
+        const retainedCases = await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.tenantId, b.tenantId)).orderBy(schema.lcOnboardingCase.id);
+        const retainedHistory = await owner.db.select().from(schema.lcOnboardingCaseRevision).where(eq(schema.lcOnboardingCaseRevision.tenantId, b.tenantId)).orderBy(schema.lcOnboardingCaseRevision.caseId, schema.lcOnboardingCaseRevision.revision);
+        expect(retainedCases).toHaveLength(1);
+        input.access.onboarding.push(admin.userId!);
+        // The database reader returns jsonb key order; Zod reconstructs the declared schema order.
+        // These are equal settings, but the old serialized-text guard rejects this exact pair.
+        const parsed = onboardingConfigSchema.parse(input);
+        const allowed = { ...before.config, groups: parsed.groups, access: parsed.access };
+        expect(allowed).toEqual(parsed);
+        expect(JSON.stringify(allowed)).not.toBe(JSON.stringify(parsed));
+        await expect(onboardingSaveConfig(admin, before.revision - 1, input)).rejects.toThrow('Settings changed.');
+        await onboardingSaveConfig(admin, before.revision, input);
+        const after = await onboardingContext(admin);
+        expect(after.revision).toBe(before.revision + 1);
+        expect(after.actor).toMatchObject({ master: true, module: true });
+        expect(after.config).toEqual({ ...before.config, access: { ...before.config.access, onboarding: [tech.userId!, admin.userId!] } });
+        expect(after.config.access.offboarding).toEqual(before.config.access.offboarding);
+        expect(after.config.groups).toEqual(before.config.groups);
+        expect(await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.tenantId, b.tenantId)).orderBy(schema.lcOnboardingCase.id)).toEqual(retainedCases);
+        expect(await owner.db.select().from(schema.lcOnboardingCaseRevision).where(eq(schema.lcOnboardingCaseRevision.tenantId, b.tenantId)).orderBy(schema.lcOnboardingCaseRevision.caseId, schema.lcOnboardingCaseRevision.revision)).toEqual(retainedHistory);
+    });
+    it('still rejects non-access settings and ordered-step changes before first access, and refuses non-master access grants', async () => {
+        const before = await masterWithoutOnboarding();
+        for (const change of [
+            (config: typeof before.config) => { config.countEquipment = !config.countEquipment; },
+            (config: typeof before.config) => { config.exceptions.remindDays += 1; },
+            (config: typeof before.config) => { config.checklists[0]!.tasks[0]!.name = 'Unauthorized task edit'; },
+            (config: typeof before.config) => { config.workflows[0]!.steps.reverse(); },
+        ]) {
+            const input = structuredClone(before.config); input.access.onboarding.push(admin.userId!); change(input);
+            await expect(onboardingSaveConfig(admin, before.revision, input)).rejects.toThrow('Grant yourself Onboarding access before editing its settings.');
+        }
+        const forbidden = structuredClone(before.config); forbidden.access.onboarding.push(other.userId!);
+        await expect(onboardingSaveConfig(tech, before.revision, forbidden)).rejects.toThrow('Only the Master Admin changes module access.');
+        await expect(onboardingSaveConfig(other, before.revision, forbidden)).rejects.toThrow('Onboarding access is required.');
+        const after = await onboardingContext(admin);
+        expect(after.revision).toBe(before.revision); expect(after.config).toEqual(before.config);
+        expect(after.actor).toMatchObject({ master: true, module: false });
+    });
     it('projects only actual unlocked personal work for Home and removes a completed checklist task', async()=>{
         const row=await prepared(),tasks=await onboardingTasks(tech),assigned=await onboardingAssignedTaskMetadata(tech);
         const welcome=tasks.find(item=>item.caseId===row.case.id&&item.taskId==='welcome')!;
