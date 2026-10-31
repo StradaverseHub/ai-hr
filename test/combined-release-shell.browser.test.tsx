@@ -18,12 +18,12 @@ import '../app/globals.css';
 import '../app/atelier.css';
 import '../app/login/login.css';
 
-const ports=vi.hoisted(()=>({path:'/admin/personnel',search:'q=Fictional&size=25',replace:vi.fn(),push:vi.fn(),scope:vi.fn(),ask:vi.fn(),workspaceAsk:vi.fn(),delegation:vi.fn()}));
+const ports=vi.hoisted(()=>({path:'/admin/personnel',search:'q=Fictional&size=25',replace:vi.fn(),push:vi.fn(),scope:vi.fn(),ask:vi.fn(),workspaceAsk:vi.fn(),launcherAsk:vi.fn(()=>{throw Error('No floating chat command in shell fixture');}),earlierChat:vi.fn(()=>{throw Error('No earlier history read in shell fixture');}),moreChats:vi.fn(()=>{throw Error('No saved history read in shell fixture');}),delegation:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>ports.path,useSearchParams:()=>new URLSearchParams(ports.search),useRouter:()=>({replace:ports.replace,push:ports.push,refresh:vi.fn()})}));
 vi.mock('../components/intent-link',async()=>{const React=await import('react');function Link({prefetch:_prefetch,...props}:ComponentProps<'a'>&{prefetch?:boolean}){return React.createElement('a',{...props,onClick:(event:MouseEvent<HTMLAnchorElement>)=>{event.preventDefault();props.onClick?.(event);}});}return{default:Link,IntentLink:Link};});
 vi.mock('@/app/scope-actions',()=>({setCompanyScope:ports.scope}));
 vi.mock('@/app/assistant/actions',()=>({askAssistantAction:ports.ask}));
-vi.mock('@/app/assistant/launcher-actions',()=>({askFromWorkspaceAction:ports.workspaceAsk}));
+vi.mock('@/app/assistant/launcher-actions',()=>({askFromLauncherAction:ports.launcherAsk,askFromWorkspaceAction:ports.workspaceAsk,loadEarlierChatAction:ports.earlierChat,loadMoreChatsAction:ports.moreChats}));
 vi.mock('@/app/delegations/actions',()=>({loadDelegationContextAction:ports.delegation}));
 vi.mock('@/components/delegation-manager',()=>({DelegationManager:()=>null}));
 const {Sidebar}=await import('../components/sidebar');
@@ -77,6 +77,7 @@ async function capture(name:string,element:Element){
 }
 afterEach(async()=>{
  cleanup();await new Promise<void>(resolve=>setTimeout(resolve,0));
+ expect(ports.launcherAsk).not.toHaveBeenCalled();expect(ports.earlierChat).not.toHaveBeenCalled();expect(ports.moreChats).not.toHaveBeenCalled();
  document.body.className=initialBodyClass;document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');
  ports.path='/admin/personnel';ports.search='q=Fictional&size=25';vi.clearAllMocks();vi.unstubAllGlobals();await page.viewport(1280,844);
 });

@@ -91,8 +91,10 @@ const h=vi.hoisted(()=>{
  });
  const retireStrategy=vi.fn();
  const completeBudget=vi.fn(async()=>undefined);
- const seal=vi.fn((_binding:{question:string;answer:string})=>'sealed-fixture-receipt');
- return {state,runInTenant,converse,prepareStrategy,recheckContinuation,completeStrategy,retireStrategy,completeBudget,seal};
+ const seal=vi.fn((_binding:{question:string;answer:string},_reads?:unknown,_plan?:unknown,_thread?:unknown)=>'sealed-fixture-receipt');
+ // This double issues no genuine WeakMap custody or inherited thread/context capability.
+ const bridge=vi.fn((_ctx:unknown,_clarification:unknown,_scope?:string)=>null),thread=vi.fn(()=>undefined),sourceId=vi.fn(()=>null),contextSource=vi.fn(()=>{throw Error('No genuine clarification source in accounting double');});
+ return {state,runInTenant,converse,prepareStrategy,recheckContinuation,completeStrategy,retireStrategy,completeBudget,seal,bridge,thread,sourceId,contextSource};
 });
 
 vi.mock('../db/client',()=>({withTenant:h.runInTenant}));
@@ -120,7 +122,9 @@ vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrate
 vi.mock('../core/ai-governance',async()=>({preparePrivateAiTask:async(configuration:unknown,_contract:string,readSource:(tx:unknown,ctx:unknown)=>Promise<unknown>)=>{const {capturePrivateAssistantTask}=await import('../lib/ai/provider-assistant-policy');const prepared=capturePrivateAssistantTask(await readSource({},ctx));return{...prepared,configuration,operation:prepared.local.operation,dispose:()=>undefined};}}));
 vi.mock('../core/entitlements',()=>({resolveEntitlementsTx:async()=>({})}));
 vi.mock('../core/assistant-disclosure-read',()=>({assistantSourceReplay:()=>async()=>true}));
-vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:()=>null,assertOwnAssistantClarificationCurrentTx:h.recheckContinuation}));
+vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{if(!h.state.clarification)throw Error('Current clarification unavailable.');return Object.freeze({earlier:[],...h.state.clarification});},assistantClarificationSourceExchangeId:h.sourceId,assistantClarificationThreadId:h.thread,assistantClarificationContextSource:h.contextSource,assertOwnAssistantClarificationCurrentTx:h.recheckContinuation}));
+// Preserve the real context module except this explicit fake-owner boundary. Real custody is DB-tested.
+vi.mock('../core/assistant-conversation-context',async importOriginal=>({...await importOriginal<typeof import('../core/assistant-conversation-context')>(),assistantConversationContextFromClarification:h.bridge}));
 vi.mock('../core/assistant-tools',()=>{const tool={module:'leave',sensitivity:'ordinary',spec:{name:'my_leave_balances',description:'Fictional bounded own read',inputSchema:{type:'object',properties:{},additionalProperties:false}},run:async()=>({ok:true,employments:[{employmentId:'fixture-employment',company:'Fixture Company',balances:[{leaveType:'Annual leave',available:113.75,taken:0,pending:0}]}]})};return{ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,read:(session:unknown)=>Promise<unknown>)=>read({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,read:(session:unknown)=>Promise<unknown>)=>read({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
@@ -147,7 +151,7 @@ beforeEach(()=>{
  Object.assign(h.state,{committed:{exchanges:[],usage:[]},budget:null,configured:true,prepareFails:false,erased:false,eraseDuringProvider:false,continuationRetired:false,retireContinuationDuringProvider:false,providerFailure:null,lostCommitAcks:0,clarification:null});
  vi.clearAllMocks();
 });
-afterEach(()=>{vi.clearAllMocks();});
+afterEach(()=>{expect(h.contextSource).not.toHaveBeenCalled();vi.clearAllMocks();});
 
 describe('every admitted Assistant question counts exactly once',()=>{
  it('ask, clear history mid-flight, repeat: the cleared question still counts and the repeat meets the daily ceiling',async()=>{
@@ -225,6 +229,8 @@ describe('a clarification continuation cannot carry the original question past i
   // recheck in the marker transaction and at every provider admission (DB-proven in assistant-clarification).
   expect(typeof h.prepareStrategy.mock.calls[0][4]).toBe('function');
   expect(h.seal.mock.calls[0][0].question).toBe('Annual leave');
+  expect(h.bridge).toHaveBeenCalledExactlyOnceWith(ctx,expect.objectContaining({originalQuestion:original,slot:'leave_type',answer:'Annual leave',earlier:[]}),undefined);expect(h.bridge).toHaveReturnedWith(null);expect(h.thread).toHaveReturnedWith(undefined);expect(h.sourceId).toHaveReturnedWith(null);
+  expect(row.continuesExchangeId).toBeNull();expect(h.seal.mock.calls[0][0]).toMatchObject({exchangeId:answer.exchangeId});expect(h.seal.mock.calls[0][3]).toMatchObject({threadId:answer.exchangeId});
   const turns=h.converse.mock.calls[0][1].turns;
   expect(turns).toHaveLength(1);expect(turns[0]).toMatchObject({role:'user'});expect(JSON.parse(String(turns[0].content))).toMatchObject({operation:'conversation',intent:'leave_available',strategy:'baseline_v1'});
   expect(JSON.stringify(turns)).not.toContain(original);expect(JSON.stringify(turns)).not.toContain('Annual leave');
