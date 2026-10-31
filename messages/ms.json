@@ -19679,6 +19679,12 @@
         "doneCredit": "{days} hari Kredit Cuti disimpan untuk {date}."
       },
       "chat": {
+        "activity": "Yang saya semak ({n})",
+        "suggested": "Langkah seterusnya yang dicadangkan",
+        "chats": "Sembang",
+        "older": "Mesej terdahulu",
+        "moreChats": "Lagi sembang",
+        "readOnlyHistory": "Perbualan ini boleh dibaca tetapi tidak boleh disambung dalam konteks semasa. Mulakan sembang baharu untuk meneruskan.",
         "title": "Perbualan",
         "new": "Sembang baharu",
         "thinking": "Sedang berfikir…",

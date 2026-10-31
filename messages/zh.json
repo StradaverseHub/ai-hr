@@ -19679,6 +19679,12 @@
         "doneCredit": "已为 {date} 记入 {days} 天假期抵扣。"
       },
       "chat": {
+        "activity": "我查看了什么（{n}）",
+        "suggested": "建议的下一步",
+        "chats": "对话",
+        "older": "较早的消息",
+        "moreChats": "更多对话",
+        "readOnlyHistory": "此对话可以阅读，但无法在当前范围内继续。请开始新对话。",
         "title": "对话",
         "new": "新对话",
         "thinking": "思考中…",

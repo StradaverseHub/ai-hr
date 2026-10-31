@@ -2,6 +2,7 @@
 import type {ComponentProps,ReactNode} from 'react';
 import {AssistantChatSubmitContext} from './chat-submit-context';
 import {ConversationClarification as Clarification} from './conversation-clarification';
+import {ConversationSuggestions as Suggestions} from './conversation-suggestions';
 import {ConversationActionProposal as Proposal} from './conversation-action-proposal';
 
 /** Both chat hosts and server-produced reply controls use this one client entry. A reply returned
@@ -14,3 +15,4 @@ export function AssistantChatBoundary({value,children}:{value:NonNullable<Compon
 }
 export function ConversationClarification(props:ComponentProps<typeof Clarification>){return <Clarification {...props}/>;}
 export function ConversationActionProposal(props:ComponentProps<typeof Proposal>){return <Proposal {...props}/>;}
+export function ConversationSuggestions(props:ComponentProps<typeof Suggestions>){return <Suggestions {...props}/>;}

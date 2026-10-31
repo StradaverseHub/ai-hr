@@ -19679,6 +19679,12 @@
         "doneCredit": "Đã ghi {days} ngày phép bù cho {date}."
       },
       "chat": {
+        "activity": "Những gì tôi đã kiểm tra ({n})",
+        "suggested": "Bước tiếp theo được đề xuất",
+        "chats": "Trò chuyện",
+        "older": "Tin nhắn trước",
+        "moreChats": "Thêm cuộc trò chuyện",
+        "readOnlyHistory": "Bạn có thể đọc cuộc trò chuyện này nhưng không thể tiếp tục trong phạm vi hiện tại. Hãy bắt đầu cuộc trò chuyện mới.",
         "title": "Cuộc trò chuyện",
         "new": "Trò chuyện mới",
         "thinking": "Đang suy nghĩ…",

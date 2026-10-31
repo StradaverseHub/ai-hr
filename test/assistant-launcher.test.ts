@@ -64,6 +64,16 @@ describe('floating button settings fail closed',()=>{
 });
 
 describe('the floating chat command',()=>{
+ it('derives main-composer clarification routing only from the selected canonical own exchange',async()=>{
+  owner.ask.mockResolvedValue({exchangeId:'clarified'});owner.reply.mockResolvedValue('CARD');
+  owner.workspace.mockResolvedValueOnce({history:[{id:'clarified',grounded:{conversation:{plan:{mode:'clarify'}}}}]});
+  expect(await askFromLauncherAction({question:'Which leave?',path:'/leave'})).toMatchObject({ok:true,exchangeId:'clarified',clarificationRequired:true});
+  for(const grounded of [{conversation:{plan:{mode:'clarify'},clarificationAllowed:false}},{conversation:{plan:{mode:'social',code:'help'}}},null]){
+   owner.workspace.mockResolvedValueOnce({history:[{id:'clarified',grounded}]});
+   expect(await askFromLauncherAction({question:'Question',path:'/leave',clarificationRequired:true} as never)).not.toHaveProperty('clarificationRequired');
+  }
+ });
+
  it('passes a full 500-character clarification answer unchanged without a page-context suffix',async()=>{
   owner.ask.mockResolvedValue({exchangeId:'clarified'});owner.workspace.mockResolvedValue({history:[]});
   const question='x'.repeat(500);await askFromLauncherAction({question,path:'/leave',clarificationExchangeId:id});

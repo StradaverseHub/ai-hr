@@ -20,6 +20,17 @@ const show=(hiddenAreas:string[]=[],position:'bottom-right'|'bottom-left'='botto
 beforeEach(()=>{state.path='/leave';state.ask.mockReset();});
 afterEach(cleanup);
 describe('floating Assistant',()=>{
+ it('uses the same composer for a canonical clarification and resumes ordinary continuation afterwards',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'needs-answer',conversationToken:'first-proof',clarificationRequired:true,answer:<p>Which leave type?</p>})
+   .mockResolvedValueOnce({ok:true,exchangeId:'answered',conversationToken:'next-proof',answer:<p>Annual leave: 12 days</p>})
+   .mockResolvedValueOnce({ok:true,exchangeId:'next',answer:<p>Pending leave: 2 days</p>});
+  show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
+  const send=(value:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
+  send('My leave');await screen.findByText('Which leave type?');expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  send('Annual leave');await screen.findByText('Annual leave: 12 days');expect(state.ask).toHaveBeenLastCalledWith({question:'Annual leave',path:'/leave',clarificationExchangeId:'needs-answer'});
+  send('And pending?');await screen.findByText('Pending leave: 2 days');expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',path:'/leave',previousExchangeId:'answered',previousConversationToken:'next-proof'});
+ });
+
  it('opens as a tall rounded messenger with an honest AI welcome and the composer outside its scrolling transcript',()=>{
   show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
   const dialog=screen.getByRole('dialog',{name:copy.title});
@@ -33,7 +44,7 @@ describe('floating Assistant',()=>{
   expect(screen.getByText(copy.welcome).closest('[data-message-role="assistant"]')).toHaveClass('rounded-2xl','bg-muted/60');
   expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();
  });
- it('keeps a continuous left/right bubble transcript in the approved messenger presentation',async()=>{
+ it('keeps a continuous transcript with quiet prose replies',async()=>{
   state.ask.mockResolvedValue({ok:true,exchangeId:'messenger-example',answer:<p>You have 12 days of annual leave left.</p>});show();
   fireEvent.click(screen.getByRole('button',{name:copy.open}));fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'How much leave do I have left?'}});fireEvent.click(screen.getByRole('button',{name:copy.send}));
   const answer=await screen.findByText('You have 12 days of annual leave left.');
@@ -41,7 +52,7 @@ describe('floating Assistant',()=>{
   expect(screen.getByText(copy.welcome)).toBeInTheDocument();
   expect(log.querySelectorAll('[data-message-role="assistant"]')).toHaveLength(2);
   expect(screen.getByText('How much leave do I have left?').closest('[data-message-role="user"]')).toHaveClass('ml-auto','rounded-tr-sm');
-  expect(answer.closest('[data-message-role="assistant"]')).toHaveClass('rounded-tl-sm','bg-muted/60');
+  expect(answer.closest('[data-message-role="assistant"]')?.className).not.toMatch(/bg-|rounded|border|shadow/);
  });
  it('captures the approved messenger fixture separately from functional interaction timeouts',async()=>{
   state.ask.mockResolvedValue({ok:true,exchangeId:'messenger-fixture',answer:<p>You have 12 days of annual leave left.</p>});const view=show();

@@ -76,7 +76,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
     } finally { inFlight.current = false; setPending(false); }
   }
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
-  return <AssistantChatBoundary value={{pending,clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
+  return <AssistantChatBoundary value={{pending,setQuestionDraft:answer=>{if(inFlight.current)return;setQuestion(answer);box.current?.focus();},clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
     {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={t('open')} aria-haspopup="dialog"
       className={`fixed bottom-4 ${side} z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none`}>
       <Sparkles aria-hidden className="size-5"/>
