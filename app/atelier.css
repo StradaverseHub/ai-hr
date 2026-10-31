@@ -240,6 +240,8 @@
     border-radius: .375rem; color: var(--sidebar-foreground); text-decoration: none; text-align: left;
   }
   :root[data-ui-theme='atelier'] .atelier-row:hover { background: var(--accent); color: var(--foreground); }
+  /* A split module's chevron must not claim the row's full width and squeeze its linked label away. */
+  :root[data-ui-theme='atelier'] .atelier-row.atelier-module-toggle { width: auto; flex: none; padding: 0 .375rem; }
   :root[data-ui-theme='atelier'] .atelier-row[aria-current='page'] { background: #e9e9ec; color: var(--foreground); font-weight: 500; }
   :root[data-ui-theme='atelier'].dark .atelier-row[aria-current='page'] { background: #2c2c32; }
   :root[data-ui-theme='atelier'] .atelier-row svg { width: 1rem; height: 1rem; flex: none; color: var(--atelier-ink-3); }

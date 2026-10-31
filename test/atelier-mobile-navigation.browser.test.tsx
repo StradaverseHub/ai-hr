@@ -16,18 +16,43 @@ vi.mock('../components/intent-link',async()=>{
  return {default:BrowserLink,IntentLink:BrowserLink};
 });
 const {Sidebar}=await import('../components/sidebar');
-afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.body.style.margin='';await page.viewport(1280,720);});
+afterEach(async()=>{cleanup();document.documentElement.removeAttribute('data-ui-theme');document.documentElement.classList.remove('dark');document.body.style.margin='';await page.viewport(1280,720);});
 const box=(element:Element)=>element.getBoundingClientRect();
-function mount(messages:typeof en|typeof ta=en,defaultCollapsed=false){
+function mount(messages:typeof en|typeof ta=en,defaultCollapsed=false,security=false){
  document.documentElement.setAttribute('data-ui-theme','atelier');document.body.style.margin='0';
  return render(<NextIntlClientProvider locale={messages===ta?'ta':'en'} messages={messages}>
   <div data-app-shell className="flex" style={{height:'100dvh'}}>
-   <Sidebar isAdmin canApprove defaultCollapsed={defaultCollapsed} enabledModules={null}/>
+   <Sidebar isAdmin canApprove canAdministerSecurity={security} canConfigureAccess={security} canProvisionUsers={security} defaultCollapsed={defaultCollapsed} enabledModules={null}/>
    <div data-app-content className="flex min-w-0 flex-1 flex-col"><main data-testid="working-page">Working page</main></div>
   </div>
  </NextIntlClientProvider>);
 }
 describe('Atelier navigation remains reachable in actual compact CSS',()=>{
+ it.each([false,true].flatMap(dark=>[390,768,1280].map(width=>({dark,width}))))('keeps the Security Center label beside its separate chevron at $width px (dark=$dark)',async({dark,width})=>{
+  await page.viewport(width,900);document.documentElement.classList.toggle('dark',dark);mount(en,false,true);
+  if(width<768)fireEvent.click(screen.getByRole('button',{name:en.nav.workspaceSwitch}));
+  fireEvent.click(screen.getByRole('button',{name:en.nav.systemConfiguration,expanded:false}));
+  const module=document.querySelector('[data-atelier-module="securityCenter"]')!;
+  const link=within(module as HTMLElement).getByRole('link',{name:en.nav.securityCenter});
+  const toggle=within(module as HTMLElement).getByRole('button',{name:en.nav.securityCenter});
+  const label=within(link).getByText(en.nav.securityCenter);
+  if(width===1280&&!dark){
+   // Reproduce the reported old split-row classes under the same real CSS before checking the repair.
+   toggle.className='atelier-row w-auto px-1.5';
+   expect(box(link).width).toBeLessThan(40);
+   toggle.className='atelier-row atelier-module-toggle';
+  }
+  expect(box(toggle).width).toBeLessThanOrEqual(40);
+  expect(box(link).width).toBeGreaterThan(120);
+  expect(box(label).width).toBeGreaterThan(80);
+  expect(box(label).right).toBeLessThanOrEqual(box(toggle).left+.5);
+  expect(link.getAttribute('href')).toBe('/admin/security-center');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  const panel=screen.getByRole('navigation',{name:en.nav.securityCenter});
+  expect(within(panel).getAllByRole('link')).toHaveLength(6);
+ });
  it.each([320,390])('opens bounded navigation above the working page at %ipx and restores keyboard focus',async width=>{
   await page.viewport(width,844);mount(ta);
   const toggle=screen.getByRole('button',{name:ta.nav.workspaceSwitch});
