@@ -29,6 +29,13 @@ describe('saved owned chats',()=>{
   const opened=await loadOwnAssistantChat(ctx,{exchangeId:second.exchangeId});expect(opened.turns.map(turn=>turn.id)).toEqual([first.exchangeId,second.exchangeId]);expect(opened.resume?.exchangeId).toBe(second.exchangeId);expect(opened.turns.every(turn=>turn.answer===null)).toBe(true);
   const context=await ownAssistantConversationContext(ctx,second.exchangeId,'Hello',opened.resume!.conversationToken);expect(context.questions).toEqual(['Hello','Thanks']);
  });
+ it('keeps authoritative parent order when equal timestamps would put the child UUID first, including paged history',async()=>{
+  const {ctx}=await actor(),askedAt=new Date(Date.now()-1000),parentId='ffffffff-ffff-4fff-8fff-ffffffffffff',childId='00000000-0000-4000-8000-000000000001';
+  const parent=await row(ctx,{id:parentId,askedAt}),child=await row(ctx,{id:childId,threadId:parent,parent,askedAt});
+  expect((await loadOwnAssistantChat(ctx,{exchangeId:child})).turns.map(turn=>turn.id)).toEqual([parent,child]);
+  const latest=await loadOwnAssistantChat(ctx,{exchangeId:child,limit:1});expect(latest.turns.map(turn=>turn.id)).toEqual([child]);expect(latest.olderCursor).toBeTruthy();
+  const older=await loadOwnAssistantChat(ctx,{exchangeId:child,before:latest.olderCursor!,limit:1});expect(older.turns.map(turn=>turn.id)).toEqual([parent]);expect([...older.turns,...latest.turns].map(turn=>turn.id)).toEqual([parent,child]);
+ });
  it('shows more than ten retained turns through honest pagination while intent stays at most six; selected old branch is independent of recent rows',async()=>{
   const {ctx}=await actor(),root=await row(ctx,{askedAt:new Date(Date.now()-14000)});let tail=root;const ids=[root];for(let n=1;n<13;n++){tail=await row(ctx,{threadId:root,parent:tail,askedAt:new Date(Date.now()-13000+n*1000)});ids.push(tail);}
   // A different, newer chat does not change which leaf the selected thread resumes.

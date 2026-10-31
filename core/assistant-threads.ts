@@ -69,7 +69,9 @@ export async function loadOwnAssistantChat(supplied:SessionContext,options:{exch
    // Probe the next row without rendering it, so an expired parent never produces a dead continuation.
    if(next){const prior=await get(next),priorProof=prior?proofFor(ctx,prior):null;if(!prior||!priorProof?.thread||priorProof.thread.scopeDigest!==scopeDigest||priorProof.thread.threadId!==metadata?.threadId||seen.has(next)){olderUnavailable=true;next=null;}}
    const olderCursor=next?encryptSecret(JSON.stringify({nextId:next}),pageAad(ctx,tail.id,scopeDigest)):null;
-   rows.sort((a,b)=>a.askedAt.getTime()-b.askedAt.getTime()||a.id.localeCompare(b.id));
+   // Traversal follows the selected branch from tail to parent. Those immutable links own display
+   // order even when timestamps tie or skew; random UUID order must never reorder a conversation.
+   rows.reverse();
    const turns=await withAssistantReadTx(fresh,tx,async session=>{const replay=workspaceGroundedAnswers(fresh,session,tx);const turns=[];
     for(const row of rows){const grounded=row.answer?await replay({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:row.id,question:row.question,answer:row.answer},row.receipt):null;
      turns.push({id:row.id,question:row.question,answer:null,hasAnswer:Boolean(row.answer),grounded,answerVisibility:row.answer?((grounded?.mode==='grounded'||grounded?.conversation)?'current' as const:'unavailable' as const):'none' as const,stop:row.stop,hitTurnCap:row.hitTurnCap,askedAt:row.askedAt,toolCalls:(grounded?.tools??[]).map(name=>({name})),error:row.error});
