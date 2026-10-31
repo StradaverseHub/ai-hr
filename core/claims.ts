@@ -3918,13 +3918,22 @@ export async function markReimbursementsPaid(
 export async function pendingClaimTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
  const candidates=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,personId:sql<string>`approval_subject.person_id`,
-   employee:sql<string>`approval_subject.employee`,createdAt:claimRequest.createdAt}).from(claimRequest)
-   .innerJoin(sql`LATERAL app.delegated_approval_subject(${claimRequest.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
-   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),sql`NOT app.is_self_person(approval_subject.person_id)`,
-    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`))
-   .orderBy(desc(claimRequest.createdAt),claimRequest.id);
-  return filterDelegationOrgScopeTx(tx,ctx,rows,row=>row.employmentId);
+  // Resolve the delegated subject once per distinct pending employment, rather than once per
+  // historical request. Keep the delegated owner: ordinary employment RLS can hide a valid delegate.
+  const pendingSubjects=tx.selectDistinct({employmentId:claimRequest.employmentId}).from(claimRequest)
+   .where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'))).as('pending_claim_subjects');
+  const subjects=await tx.select({employmentId:pendingSubjects.employmentId,personId:sql<string>`approval_subject.person_id`,
+   employee:sql<string>`approval_subject.employee`}).from(pendingSubjects)
+   .innerJoin(sql`LATERAL app.delegated_approval_subject(${pendingSubjects.employmentId},'claims','claims.claim') AS approval_subject`,sql`true`)
+   .where(and(sql`NOT app.is_self_person(approval_subject.person_id)`,
+    companyIds===undefined?undefined:sql`approval_subject.company_id = ANY(ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`));
+  const scoped=await filterDelegationOrgScopeTx(tx,ctx,subjects,row=>row.employmentId);
+  if(!scoped.length)return [];
+  const byEmployment=new Map(scoped.map(row=>[row.employmentId,row]));
+  const rows=await tx.select({id:claimRequest.id,employmentId:claimRequest.employmentId,createdAt:claimRequest.createdAt})
+   .from(claimRequest).where(and(eq(claimRequest.tenantId,ctx.tenantId),eq(claimRequest.status,'pending'),
+    inArray(claimRequest.employmentId,[...byEmployment.keys()]))).orderBy(desc(claimRequest.createdAt),claimRequest.id);
+  return rows.map(row=>({...byEmployment.get(row.employmentId)!,...row}));
  });
  const allowed=new Set(await actionablePendingClaimIds(ctx,candidates.map(row=>row.id)));
  return candidates.filter(row=>allowed.has(row.id));
