@@ -94,10 +94,28 @@ export async function CanonicalModuleJob({view,ctx}:{view:CanonicalModuleJobView
 }
 
 type ConversationReply=NonNullable<GroundedWorkspaceAnswer['conversation']>;
+/** Labels are UI-only suggestions from the replay's current, caller-owned native Mine read.
+ * No new catalogue read, historical/model label, posted identifier or provider field is introduced. */
+function currentLeaveChoices(views:readonly CanonicalModuleJobView[],ctx:SessionContext):readonly {label:string;prompt:string}[]{
+ const choices=new Map<string,{label:string;prompt:string}>();
+ for(const view of views){
+  try{assertCanonicalModuleJobView(view,ctx);}catch{continue;}
+  if(view.state!=='ready'||view.toolName!=='my_leave_balances'||view.presentation.module!=='leave')continue;
+  for(const card of view.presentation.cards.slice(0,25)){
+   const label=card.title.kind==='text'?card.title.value:undefined;
+   if(typeof label!=='string'||!label.trim()||label.length>500||/[\u0000-\u001f\u007f]/u.test(label))continue;
+   const prompt=label.trim(),key=prompt.normalize('NFC').toLocaleLowerCase('en');
+   if(!choices.has(key))choices.set(key,{label:prompt,prompt});
+   if(choices.size===25)return [...choices.values()];
+  }
+ }
+ return [...choices.values()];
+}
+
 const closedConversationFields=(value:object,fields:readonly string[])=>JSON.stringify(Object.keys(value).sort())===JSON.stringify([...fields].sort());
 /** Selection/order comes from the checked plan; every displayed value still comes from an original
  * fresh canonical view. Unknown plans, hidden/null facts and unsupported explanations refuse. */
-async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation:ConversationReply;ctx:SessionContext;exchangeId?:string}){
+async function ConversationReplyBody({conversation,views,ctx,exchangeId}:{conversation:ConversationReply;views:readonly CanonicalModuleJobView[];ctx:SessionContext;exchangeId?:string}){
  const[copy,text,workspaceCopy]=await Promise.all([getTranslations('assistant.workspace.conversation'),canonicalJobText(),getTranslations('assistant.workspace')]);
  const unavailable=()=> <p role="status" className="text-sm text-muted-foreground">{copy('unavailable')}</p>;
  try{
@@ -112,10 +130,10 @@ async function ConversationReplyBody({conversation,ctx,exchangeId}:{conversation
    const taskModules={leave_available:'leave',leave_requests:'leave',claim_statuses:'claims',holidays:'org',reporting_line:'org',work_profile:'employees',payslip:'payroll',module_overview:'assistant'} as const;
    // Optional shortcuts cannot suppress the existing owned reply form or exhausted-context notice.
    // An absent offering snapshot grants nothing; the actual command reauthorizes every reply.
-   const choices=plan.slot==='module'&&conversation.clarificationAllowed!==false?(()=>{try{const readable=assistantReadableModules(ctx);return Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})}));}catch{return [];}})():undefined;
+   const choices=plan.slot==='leave_type'&&conversation.clarificationAllowed!==false?currentLeaveChoices(views,ctx):plan.slot==='module'&&conversation.clarificationAllowed!==false?(()=>{try{const readable=assistantReadableModules(ctx);return Object.entries(taskModules).filter(([,module])=>readable.includes(module)).map(([task])=>({label:workspaceCopy(`${task}_label`),prompt:workspaceCopy(`${task}_prompt`,{date:todayInKualaLumpur()})}));}catch{return [];}})():undefined;
    const bound=typeof exchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(exchangeId),labelId=bound?'assistant-clarification-'+exchangeId:'assistant-clarification-unavailable';
    return <section aria-labelledby={labelId} className="space-y-3"><h2 id={labelId} className="text-base font-medium">{copy(`clarify_${plan.slot}`)}</h2>
-    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')} choices={choices}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
+    {conversation.clarificationAllowed===false?<p role="status" className="text-sm text-muted-foreground">{copy('contextLimit')}</p>:bound?<ConversationClarification exchangeId={exchangeId!} replyLabel={copy('replyLabel')} continueLabel={copy('continue')} choices={choices} choicesVisible={plan.slot==='leave_type'}/>:<p role="status" className="text-sm text-muted-foreground">{copy('reopenBeforeReply')}</p>}
    </section>;
   }
   // ADR-0151 §4.3: an adjudicated proposal renders the inline review card. It is a suggestion only: the
@@ -191,7 +209,7 @@ export async function GroundedWorkspaceReply({reply,ctx,exchangeId}:{reply:Groun
  if(conversation===null&&reply.mode==='grounded'&&reply.views.length===1)catalogue=await AssistantCatalogueSummary({view:reply.views[0],ctx});
  const legacySources=conversation===null&&reply.mode==='grounded'?await Promise.all(reply.views.map(async view=>({id:view.viewId,card:await CanonicalModuleJob({view,ctx})}))):[];
  return <div className="mt-3 space-y-4">
-  {conversation!==null?await ConversationReplyBody({conversation,ctx,exchangeId}):reply.mode==='grounded'?<>{catalogue??<p className="text-sm">{t('grounded')}</p>}
+  {conversation!==null?await ConversationReplyBody({conversation,views:reply.views,ctx,exchangeId}):reply.mode==='grounded'?<>{catalogue??<p className="text-sm">{t('grounded')}</p>}
    <details className="text-muted-foreground"><summary className="min-h-11 w-fit cursor-pointer py-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{copy('sources')}</summary><div className="mt-2 space-y-4 rounded-lg border border-border p-3">{legacySources.map(source=><div key={source.id}>{source.card}</div>)}</div></details>
    {reply.partial&&<p className="text-xs text-muted-foreground">{t('partial')}</p>}</>:
    <p className="text-sm text-muted-foreground">{t(reply.mode==='generic'?'generic':'unavailable')}</p>}

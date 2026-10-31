@@ -4,7 +4,7 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';
-const state=vi.hoisted(()=>({locale:'en',data:{} as unknown,reviewLinks:vi.fn(),proposalCard:vi.fn()}));
+const state=vi.hoisted(()=>({locale:'en',data:{} as unknown,reviewLinks:vi.fn(),proposalCard:vi.fn(),leaveTool:false}));
 const copies:Record<string,unknown>={en,ms,zh,ta,th,vi:viCopy};
 vi.mock('next-intl/server',()=>({getLocale:async()=>state.locale,getTranslations:async(namespace:string)=>(key:string,params?:Record<string,string|number>)=>{
  let value:unknown=copies[state.locale];for(const part of [...namespace.split('.'),...key.split('.')])value=(value as Record<string,unknown>)[part];if(typeof value!=='string')throw Error('Missing translated conversation copy');return value.replace(/\{(\w+)\}/g,(_whole,field:string)=>String(params?.[field]??''));
@@ -18,10 +18,13 @@ vi.mock('../components/assistant/module-specialist-findings',()=>({ModuleSpecial
 // The inline review card is a client component with its own DOM tests; here only the composition is checked.
 vi.mock('../components/assistant/conversation-action-proposal',async()=>{const React=await import('react');return {ConversationActionProposal:(props:{action:string;hints:unknown})=>{state.proposalCard(props);return React.createElement('div',{'data-proposal-card':props.action});}};});
 vi.mock('../core/module-agent-releases',()=>({reopenGovernedModuleReadJobTx:vi.fn(),readGovernedSpecialistToolResultTx:vi.fn()}));
-vi.mock('../core/assistant-tools',()=>({toolsFor:()=>[]}));
+vi.mock('../core/assistant-tools',()=>({toolsFor:()=>state.leaveTool?[{module:'leave',spec:{name:'my_leave_balances'},run:async()=>state.data}]:[]}));
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:vi.fn(async(_ctx:unknown,module:string,consume:(read:unknown)=>Promise<unknown>)=>consume({moduleWork:async()=>({module,capability:MODULE_AGENT_CAPABILITIES.find(row=>row[0]===module)![1],scope:'current-caller',data:state.data})}))}));
 import {askAssistantAction} from '../app/assistant/actions';
-import {loadCanonicalModuleJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
+import {assistantSourceDigest} from '../lib/ai/assistant-disclosure';
+import type {AssistantReadSession} from '../core/assistant-read-session';
+import {AssistantChatSubmitContext} from '../components/assistant/chat-submit-context';
+import {loadCanonicalModuleJob,loadCanonicalToolJob,type CanonicalModuleJobView} from '../core/workspace-module-jobs';
 import {GroundedWorkspaceReply} from '../components/assistant/module-jobs';
 import {projectMineLeaveBalance} from '../core/assistant-leave-projection';
 import {resolveEssView} from '../core/ess-view';
@@ -40,8 +43,41 @@ function reply(plan:AssistantAnswerPlan,facts:readonly Selected[]=[]):Reply{retu
 function select(view:CanonicalModuleJobView,card:number,field:string):Selected{if(view.state!=='ready')throw Error('Expected actual issued canonical fixture');const fact=view.presentation.cards[card].facts.findIndex(value=>value.field===field);if(fact<0)throw Error('Missing canonical fixture field');return{view,card,fact};}
 function answer(facts:readonly Selected[]):Reply{return reply({version:1,mode:'answer',blocks:facts.map(row=>({kind:'fact',read:0,card:row.card,fact:row.fact}))},facts);}
 async function view(module:AgentModuleCode,data:unknown){state.data=data;return loadCanonicalModuleJob(ctx,{module});}
-beforeEach(()=>{state.locale='en';vi.clearAllMocks();});afterEach(()=>{cleanup();vi.restoreAllMocks();});
+beforeEach(()=>{state.locale='en';state.leaveTool=false;vi.clearAllMocks();});afterEach(()=>{cleanup();vi.restoreAllMocks();});
 describe('grounded conversation rendering',()=>{
+ it('offers exact fresh Mine leave labels visibly and only fills the one chat composer',async()=>{
+  state.leaveTool=true;state.data={ok:true,employments:[{company:'Current own employer',balances:[{leaveType:'*Annual Leave',available:4,taken:0,pending:0},{leaveType:'Annual Leave (C)',available:2,taken:0,pending:0}]}]};
+  const issued=await loadCanonicalToolJob(ctx,'my_leave_balances',{},assistantSourceDigest(state.data),{} as AssistantReadSession);
+  expect(issued.state).toBe('ready');const draft=vi.fn(),clarify=vi.fn();
+  const node=await GroundedWorkspaceReply({ctx,exchangeId,reply:{...reply({version:1,mode:'clarify',slot:'leave_type'}),views:[issued],tools:['my_leave_balances']}});
+  const shown=render(<AssistantChatSubmitContext.Provider value={{pending:false,setClarificationDraft:draft,clarify}}>{node}</AssistantChatSubmitContext.Provider>);
+  const exact=screen.getByRole('button',{name:'*Annual Leave',exact:true});expect(exact.closest('details')).toBeNull();
+  expect(screen.getByRole('button',{name:'Annual Leave (C)',exact:true})).toBeTruthy();expect(shown.container.querySelector('textarea,form')).toBeNull();
+  fireEvent.click(exact);expect(draft).toHaveBeenCalledExactlyOnceWith(exchangeId,'*Annual Leave');expect(clarify).not.toHaveBeenCalled();expect(askAssistantAction).not.toHaveBeenCalled();
+ });
+ it('does not offer copied, foreign, expired or non-Mine canonical leave labels as choices',async()=>{
+  state.leaveTool=true;state.data={ok:true,employments:[{company:'Own employer',balances:[{leaveType:'*Annual Leave',available:4}]}]};
+  const issued=await loadCanonicalToolJob(ctx,'my_leave_balances',{},assistantSourceDigest(state.data),{} as AssistantReadSession);
+  const copied=JSON.parse(JSON.stringify(issued)) as CanonicalModuleJobView;
+  const moduleView=await view('leave',[{company:'Other canonical entry',balances:[{leaveType:'NOT-A-MINE-CHOICE',available:2}]}]);
+  const base=reply({version:1,mode:'clarify',slot:'leave_type'});
+  for(const [views,principal]of [[[copied],ctx],[[issued],{...ctx,userId:'another-user'}],[[moduleView],ctx]] as const){
+   const shown=render(await GroundedWorkspaceReply({ctx:principal,exchangeId,reply:{...base,views}}));
+   expect(screen.queryByRole('button',{name:'*Annual Leave',exact:true})).toBeNull();expect(screen.queryByRole('button',{name:'NOT-A-MINE-CHOICE',exact:true})).toBeNull();shown.unmount();
+  }
+  vi.spyOn(Date,'now').mockReturnValue(Date.now()+30001);
+  const shown=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued]}}));expect(screen.queryByRole('button',{name:'*Annual Leave',exact:true})).toBeNull();shown.unmount();
+ });
+ it('withholds leave-choice shortcuts when continuation is unavailable and never auto-submits a pending shortcut',async()=>{
+  state.leaveTool=true;state.data={ok:true,employments:[{company:'Own employer',balances:[{leaveType:'*Annual Leave',available:4}]}]};
+  const issued=await loadCanonicalToolJob(ctx,'my_leave_balances',{},assistantSourceDigest(state.data),{} as AssistantReadSession),draft=vi.fn();
+  const base=reply({version:1,mode:'clarify',slot:'leave_type'});
+  const denied=render(await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued],conversation:{...base.conversation!,clarificationAllowed:false}}}));
+  expect(screen.queryByRole('button',{name:'*Annual Leave',exact:true})).toBeNull();denied.unmount();
+  render(<AssistantChatSubmitContext.Provider value={{pending:true,setClarificationDraft:draft,clarify:vi.fn()}}>{await GroundedWorkspaceReply({ctx,exchangeId,reply:{...base,views:[issued]}})}</AssistantChatSubmitContext.Provider>);
+  const choice=screen.getByRole('button',{name:'*Annual Leave',exact:true}) as HTMLButtonElement;expect(choice.disabled).toBe(true);fireEvent.click(choice);expect(draft).not.toHaveBeenCalled();
+ });
+
  it('answers agent switch counts directly and exposes only the source-owned group administration link',async()=>{
   const principal={...ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
   state.data={capabilities:[{module:'assistant',capability:'current-caller'}],adminAgentStatus:{total:3,switchesOn:1,effectiveSwitchesOn:0,managementHref:'/control-tower/agents/features#ai-features'}};
