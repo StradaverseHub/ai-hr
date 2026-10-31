@@ -32,9 +32,24 @@ describe('saved owned chats',()=>{
  it('keeps authoritative parent order when equal timestamps would put the child UUID first, including paged history',async()=>{
   const {ctx}=await actor(),askedAt=new Date(Date.now()-1000),parentId='ffffffff-ffff-4fff-8fff-ffffffffffff',childId='00000000-0000-4000-8000-000000000001';
   const parent=await row(ctx,{id:parentId,askedAt}),child=await row(ctx,{id:childId,threadId:parent,parent,askedAt});
-  expect((await loadOwnAssistantChat(ctx,{exchangeId:child})).turns.map(turn=>turn.id)).toEqual([parent,child]);
+  const listed=await listOwnAssistantChats(ctx);expect(listed.chats).toHaveLength(1);expect(listed.chats[0].exchangeId).toBe(child);
+  expect((await loadOwnAssistantChat(ctx,{exchangeId:listed.chats[0].exchangeId})).turns.map(turn=>turn.id)).toEqual([parent,child]);
   const latest=await loadOwnAssistantChat(ctx,{exchangeId:child,limit:1});expect(latest.turns.map(turn=>turn.id)).toEqual([child]);expect(latest.olderCursor).toBeTruthy();
   const older=await loadOwnAssistantChat(ctx,{exchangeId:child,before:latest.olderCursor!,limit:1});expect(older.turns.map(turn=>turn.id)).toEqual([parent]);expect([...older.turns,...latest.turns].map(turn=>turn.id)).toEqual([parent,child]);
+ });
+ it('refines a tail beyond the consumed prefix without skipping unreturned chat groups',async()=>{
+  const {ctx}=await actor(),askedAt=new Date(Date.now()-1000),root=await row(ctx,{id:'ffffffff-ffff-4fff-8fff-ffffffffff02',askedAt}),other=await row(ctx,{id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeee02',askedAt});
+  const child=await row(ctx,{id:'00000000-0000-4000-8000-000000000002',threadId:root,parent:root,askedAt});
+  const first=await listOwnAssistantChats(ctx,{limit:1});expect(first.chats.map(chat=>chat.exchangeId)).toEqual([child]);expect(first.nextCursor).toBeTruthy();
+  const second=await listOwnAssistantChats(ctx,{limit:1,cursor:first.nextCursor!});expect(second.chats.map(chat=>chat.exchangeId)).toEqual([other]);expect(second.nextCursor).toBeTruthy();
+  const third=await listOwnAssistantChats(ctx,{limit:1,cursor:second.nextCursor!});expect(third.chats.map(chat=>chat.exchangeId)).toEqual([child]);expect(third.nextCursor).toBeNull();
+ });
+ it('chooses a deterministic concurrent leaf after removing all in-page ancestors, despite clock skew',async()=>{
+  const {ctx}=await actor(),now=Date.now(),root=await row(ctx,{askedAt:new Date(now-1000)}),branchParent=await row(ctx,{threadId:root,parent:root,askedAt:new Date(now-2000)});
+  const newerLeaf=await row(ctx,{threadId:root,parent:root,askedAt:new Date(now-3000)}),olderLeaf=await row(ctx,{threadId:root,parent:branchParent,askedAt:new Date(now-4000)});
+  const first=await listOwnAssistantChats(ctx),again=await listOwnAssistantChats(ctx);expect(first.chats[0].exchangeId).toBe(newerLeaf);expect(again.chats[0].exchangeId).toBe(newerLeaf);
+  expect((await loadOwnAssistantChat(ctx,{exchangeId:first.chats[0].exchangeId})).turns.map(turn=>turn.id)).toEqual([root,newerLeaf]);
+  expect((await loadOwnAssistantChat(ctx,{exchangeId:olderLeaf})).turns.map(turn=>turn.id)).toEqual([root,branchParent,olderLeaf]);
  });
  it('shows more than ten retained turns through honest pagination while intent stays at most six; selected old branch is independent of recent rows',async()=>{
   const {ctx}=await actor(),root=await row(ctx,{askedAt:new Date(Date.now()-14000)});let tail=root;const ids=[root];for(let n=1;n<13;n++){tail=await row(ctx,{threadId:root,parent:tail,askedAt:new Date(Date.now()-13000+n*1000)});ids.push(tail);}
