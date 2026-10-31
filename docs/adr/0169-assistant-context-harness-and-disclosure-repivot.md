@@ -2,7 +2,7 @@
 
 > Decision record at its recorded date; implementation/status observations are historical. Verify current source and later amendments. [Branch/release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
-- **Status:** Proposed. Before any implementation changes what leaves the system, it needs an owner decision on §5 and a privacy/legal review. The number is provisional: reconcile it at merge (open PR126 holds 0167).
+- **Status:** Direction accepted by the owner on 2026-11-01 ("Option 2, with review"), **conditional on privacy/legal review** (§5.1). No real HR data may reach a provider under this design until that review passes. The number is provisional: reconcile it at merge (open PR126 holds 0167).
 - **Date:** 2026-11-01
 - **Deciders:** Owner. The Orchestrator owns sequencing against the release queue.
 - **Amends:** [ADR-0082](0082-ai-assistant-access-scoped-tool-calling.md). It restores access-scoped tool calling, now with a context layer. For Assistant conversation, it replaces the closed intent/reference protocol: defined in `cbf0fbc45`, then bound to chat and planning in `b131fedb3` and `6db32d4e8` (all 30 October 2026).
@@ -144,6 +144,24 @@ Choose the disclosure model:
 3. **In-boundary model only.** No external disclosure. It requires hosting a model, and its understanding is weaker and unmeasured.
 
 Option 2 can be combined with option 3 for the most sensitive domains, such as pay amounts and medical leave reasons.
+
+### 5.1 Owner decision (1 November 2026)
+
+The owner chose **option 2, with review** ("Option 2, with review"). This settles the direction; it does not authorise disclosure. Until the review passes:
+- No real HR data, real questions or tenant records go to a provider under this design. Work uses fictional data only, as in the phase-1 probes.
+- Today's closed reference protocol stays in production unchanged.
+- Phase B (context and capability layers, no egress change) and the phase-C harness may be built and measured on fictional data. They ship behind a switch that stays off.
+
+**The review must produce, before any pilot:**
+- the per-tool, per-field disclosure contract;
+- the identifier denylist;
+- a processor decision: direct upstream contract versus the OpenRouter intermediary;
+- a data processing agreement confirming zero retention and no training;
+- a PDPA cross-border transfer assessment;
+- an updated data register (threat-model R21/WP12);
+- an updated threat model.
+
+**Still open:** who performs the privacy/legal review. Its approval binds to the exact source, as existing provider approvals do; a later change needs fresh approval.
 
 ## 6. Sequencing and acceptance
 
