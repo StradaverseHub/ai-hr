@@ -19,8 +19,10 @@ const agent=new https.Agent({keepAlive:true,maxSockets:600,rejectUnauthorized:fa
  lookup:(_host,options,callback)=>options.all?callback(null,[{address:'127.0.0.1',family:4}]):callback(null,'127.0.0.1',4)});
 const suite=process.env.PERF_HTTP_SUITE||'claims-heavy';assert(['claims-heavy','whole-system'].includes(suite));
 const thinkTimeMs=Number(process.env.PERF_HTTP_THINK_MS||1000);assert([1000,5000].includes(thinkTimeMs));
+const steadyHoldMs=Number(process.env.PERF_HTTP_HOLD_MS||30000);assert([30000,300000].includes(steadyHoldMs));
 const report={suite,kind:'HTTP_AND_CHROMIUM_DEVELOPMENT_ONLY',releaseEligible:false,users:500,tenants:2,companies:10,startedAt:new Date().toISOString(),
- assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs:30000,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ assumptions:{arrivalWindowMs:10000,thinkTimeMs,steadyHoldMs,navigation:'full-document HTTP stress plus real server actions',tls:'fixture-only self-signed localhost',browserContexts:6,persistenceObserverPrincipals:6,persistencePollIntervalMs:100,loginEnrollmentLoad:false,performanceFixture:'enabled dashboard; no assigned review cycle; task-gated tabs excluded'},
+ workloadManifest:{readRoutes:30,mutations:['Claims draft create/edit/delete','Leave request create/edit/withdraw','Personnel draft create/edit/delete','Attendance correction and authorized approval'],processing:['Payroll calculation','scoped Payroll CSV generation','clocking-file validation/import'],notCovered:['Payroll close/publish','Lifecycle mutations','Performance mutations','Rewards mutations','large Personnel imports','report-definition CRUD','long-running document jobs'],productionEquivalent:false},
  coverage:[],boundaries:[],browser:[],phases:[],functionalErrors:[],browserErrors:[],persistenceObservers:[],latencyTargetMet:false};
 const save=()=>writeFileSync(join(out,'http-browser.json'),JSON.stringify(report,null,2));
 function processCpu(ids){
@@ -99,7 +101,7 @@ async function observedMutation(user,operation,visible,send){
 }
 const summary=values=>{const sorted=[...values].sort((a,b)=>a-b);return {samples:sorted.length,p50Ms:sorted[Math.ceil(sorted.length*.5)-1]??null,p95Ms:sorted[Math.ceil(sorted.length*.95)-1]??null,p99Ms:sorted[Math.ceil(sorted.length*.99)-1]??null,maxMs:sorted.at(-1)??null};};
 async function databaseSnapshot(label){
- const settings=await db`select current_setting('fsync')as fsync,current_setting('synchronous_commit')as synchronous_commit,current_setting('jit')as jit`;
+ const settings=await db`select current_setting('fsync')as fsync,current_setting('synchronous_commit')as synchronous_commit,current_setting('jit')as jit,current_setting('server_version')as server_version,current_setting('shared_buffers')as shared_buffers,current_setting('work_mem')as work_mem,current_setting('max_connections')as max_connections`;
  assert.equal(settings[0].fsync,'on');assert.equal(settings[0].synchronous_commit,'on');
  const statements=await db`select queryid::text,calls,total_exec_time,total_plan_time,mean_exec_time,rows,shared_blks_hit,shared_blks_read,temp_blks_written,
  jit_generation_time,jit_inlining_time,jit_optimization_time,jit_emission_time,left(query,1800)as normalized_query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database())
@@ -265,7 +267,7 @@ try{
  await db`select pg_stat_statements_reset()`;
  const waits=[];let samplingBusy=false;sampling=setInterval(async()=>{if(samplingBusy)return;samplingBusy=true;try{const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;waits.push({at:Date.now(),rows});}catch{}finally{samplingBusy=false;}},1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
- const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+30000;
+ const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  progressTimer=setInterval(()=>{report.progress={...progress,elapsedMs:performance.now()-started};save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));},5000);
  // Representative hydrated browsers share the load interval with all 500 HTTP principals.
@@ -283,7 +285,7 @@ try{
   const pool=routePool(user);
   const routes=suite==='whole-system'?Array.from({length:3},(_,step)=>pool[(roleOrdinals.get(user.index)+iteration*3+step)%pool.length]):user.role==='employee'?['/me','/claims','/leave']:user.role==='manager'?['/approvals','/claims','/performance/home']:['/admin/personnel','/payroll','/claims'];
   for(const route of routes){await request(user,route);await pause(thinkTimeMs);}
-  if(runMixedWorkflow&&await runMixedWorkflow(user,iteration)){iteration++;progress.iterations++;continue;}
+  if(runMixedWorkflow&&await runMixedWorkflow(user,iteration)){await pause(thinkTimeMs);iteration++;progress.iterations++;continue;}
   const description='PERF_HTTP_'+i+'_'+iteration;
   const template=contextTemplates.createTemplate,fields={...template.fields};
   for(const [key,value]of Object.entries({employmentId:user.employmentId,claimTypeId:user.claimTypeId,amount:'1',incurredOn:fixture.today,description,intent:'draft'}))fields[template.prefix+key]=value;
@@ -300,7 +302,7 @@ try{
    return (await db`select id from claim_request where id=${draft.id}::uuid`).length===0;
   },()=>request(user,'/claims',{...contextTemplates.deleteTemplate.fields,[contextTemplates.deleteTemplate.prefix+'employmentId']:user.employmentId,[contextTemplates.deleteTemplate.prefix+'id']:draft.id},contextTemplates.deleteTemplate.status,true,contextTemplates.deleteTemplate.headers,contextTemplates.deleteTemplate.fieldOrder));
   assert.equal((await db`select id from claim_request where id=${draft.id}::uuid`).length,0);
-  iteration++;progress.iterations++;
+  await pause(thinkTimeMs);iteration++;progress.iterations++;
   }while(performance.now()<steadyUntil);
   progress.completed++;
   }catch(error){progress.failed++;throw error;}finally{progress.active--;}
@@ -323,12 +325,12 @@ try{
   read:summary(reads.map(v=>v.durationMs)),write:summary(writes.map(v=>v.durationMs)),ttfb:summary(loaded.map(v=>v.ttfbMs)),wireBytes:loaded.reduce((sum,v)=>sum+v.wireBytes,0),decodedBytes:loaded.reduce((sum,v)=>sum+v.decodedBytes,0)});
  report.concurrentRouteCoverage=[...new Set([...employeeRoutes,...managerRoutes,...hrRoutes])].map(route=>({route,requests:loaded.filter(sample=>sample.method==='GET'&&sample.route===route).length,users:new Set(loaded.filter(sample=>sample.method==='GET'&&sample.route===route).map(sample=>sample.user)).size}));
  const steady=loaded.filter(sample=>sample.startedMs>=steadyStart&&sample.startedMs<steadyUntil);
- report.steady={durationMs:30000,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
+ report.steady={durationMs:steadyHoldMs,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,{
   read:summary(steady.filter(v=>v.role===role&&v.method==='GET').map(v=>v.durationMs)),
   write:summary(steady.filter(v=>v.role===role&&v.method==='POST').map(v=>v.durationMs)),
  }]))};
  report.latencyTargetMet=progress.peakActive===500&&Object.values(report.steady.roles).every(role=>role.read.samples>0&&role.write.samples>0&&role.read.p95Ms<1000&&role.write.p95Ms<500);
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
- await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
+ await databaseSnapshot('loaded');await verifyAudit();save();if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}

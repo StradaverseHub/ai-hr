@@ -476,3 +476,14 @@ Attendance approval workflow, verifies corrected punches after authorized review
 and calculates50-person Payroll batches with scoped CSV content checks. Leave
 withdrawal preserves history; it is not a physical DELETE. These additions require
 hosted execution before they establish any coverage or speed claim.
+
+A subsequent read-only `pg_db_role_setting` check found no role/database overrides
+for the inspected buffer, work-memory, durability, JIT, parallelism or connection
+settings. The next development workload pins its application toolchain to observed
+Node24.22.1 and can hold sustained activity for five minutes. Neither runtime
+alignment nor a longer interval makes the smaller shared runner production-equivalent.
+
+Native run41179640317 on9098adc7fcf68b294075ac699fc8836ca885c9cf executed74
+selected cases (68DB/6nonDB), zero failures and zero skips. Compiler and HTTP/browser
+results were still pending when this evidence was added; their final outcomes must
+be recorded independently.

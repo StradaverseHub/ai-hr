@@ -2,9 +2,10 @@
 import assert from 'node:assert/strict';
 import {setTimeout as pause} from 'node:timers/promises';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
- const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0},failures:[]};
+ const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[]};
  async function capture(page,click,kind){
-  const waiting=page.waitForResponse(r=>r.request().method()==='POST'&&Boolean(r.request().headers()['next-action']),{timeout:90000});
+  report.mixedWorkflows.currentStage=kind;save();
+  const waiting=page.waitForResponse(r=>r.request().method()==='POST'&&Boolean(r.request().headers()['next-action'])&&(kind!=='leaveCreate'||r.request().postDataBuffer()?.includes(Buffer.from('PERF_LEAVE_BROWSER'))),{timeout:90000});
   await click();const response=await waiting,req=response.request(),headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
   const type=req.headers()['content-type'];let fields,fieldOrder=[];
@@ -128,6 +129,30 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50});save();
   }finally{await ctx.close();}
  }
+ const importDate=offset=>new Date(Date.parse(fixture.today+'T12:00:00Z')-offset*86400000).toISOString().slice(0,10);
+ const importText=(user,date)=>'employee,timestamp\n'+fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===user.company).flatMap(actor=>['08:31','16:31'].map(time=>'PERF'+String(actor.index).padStart(4,'0')+','+date+' '+time)).join('\n');
+ async function assertImported(user,fileName,date){
+  const rows=await db`select id,total_lines,imported_lines,failure_reason from clocking_import_run where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and file_name=${fileName}`;
+  assert.equal(rows.length,1);const row=rows[0];assert.equal(row.failure_reason,null);assert.equal(row.total_lines,100);assert.equal(row.imported_lines,100);
+  const lines=await db`select employment_id,result from clocking_import_line where run_id=${row.id}::uuid`;
+  assert.equal(lines.length,100);const expected=new Set(fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===user.company).map(actor=>actor.employmentId));
+  for(const line of lines){assert(expected.has(line.employment_id),'import line crossed company/tenant scope');assert.equal(line.result,'imported');}
+  const punches=await db`select p.employment_id,p.punch_at::text as punch_at from attendance_punch p join attendance a on a.id=p.attendance_id where a.employment_id=any(${[...expected]}::uuid[])and a.attendance_date=${date}::date and p.method='import' and p.voided_at is null`;
+  assert.equal(punches.length,100);for(const id of expected)assert.equal(punches.filter(punch=>punch.employment_id===id).length,2);
+ }
+ {
+  const ctx=await context(hr),page=await ctx.newPage(),date=importDate(2),text=importText(hr,date),fileName='PERF_IMPORT_BROWSER.csv';
+  try{
+   await visit(page,hr,'/attendance/import');await page.locator('main select').selectOption('builtin');
+   await page.locator('input[type="file"]').setInputFiles({name:fileName,mimeType:'text/csv',buffer:Buffer.from(text)});
+   const before=await db`select count(*)::int as count from clocking_import_run`;
+   await capture(page,()=>page.getByRole('button',{name:'Validate',exact:true}).click(),'importValidate');await page.waitForLoadState('networkidle');
+   assert.equal((await db`select count(*)::int as count from clocking_import_run`)[0].count,before[0].count,'import preview wrote a run');
+   await capture(page,()=>page.getByRole('button',{name:'Import 100 valid records',exact:true}).click(),'importCommit');
+   await page.waitForURL(url=>url.pathname.startsWith('/attendance/import/logs/'),{timeout:90000});await assertImported(hr,fileName,date);
+   evidence.push({workflow:'clocking file validate/import',persisted:true,lines:100,employees:50});save();
+  }finally{await ctx.close();}
+ }
  return async function run(user,iteration){
   const marker=`PERF_MIXED_${user.index}_${iteration}`;
   if(user.role==='groupHR'&&iteration===0){
@@ -153,7 +178,15 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    await pause(thinkTimeMs);const editArgs=structuredClone(templates.personnelEdit.fields);editArgs[0]=row.id;editArgs[1]=row.data;editArgs[1].profile.fullName=marker+'_EDITED';
    await send(user,templates.personnelEdit,editArgs);const [edited]=await db`select label from employee_draft where id=${row.id}::uuid`;assert.equal(edited.label,marker+'_EDITED');
    await pause(thinkTimeMs);await send(user,templates.personnelDelete,[row.id]);assert.equal((await db`select id from employee_draft where id=${row.id}::uuid`).length,0);
-   report.mixedWorkflows.completed.personnel++;return true;
+   report.mixedWorkflows.completed.personnel++;
+   // One company owner per cohort avoids submitting the same file twice concurrently.
+   if(user.index%50===1){
+    const date=importDate(3+iteration),text=importText(user,date),fileName=marker+'.csv';
+    await pause(thinkTimeMs);await send(user,templates.importValidate,['builtin',text]);
+    await pause(thinkTimeMs);await send(user,templates.importCommit,['builtin',text,fileName,Buffer.byteLength(text)]);
+    await assertImported(user,fileName,date);report.mixedWorkflows.completed.clockingImport++;
+   }
+   return true;
   }
   if(user.role==='employee'&&user.index%2===0){
    const fields=formFields(templates.leaveCreate,{employmentId:user.employmentId,leaveTypeId:user.leaveTypeId,startDate:leaveDate,endDate:leaveDate,reason:marker,durationType:'full_day'});
