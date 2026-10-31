@@ -6,17 +6,33 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {installationFixture} from './staging-install-test-fixture.mjs';
-import {openNormalCleanupChannel,driveNormalCleanup} from './normal-cleanup-operator.mjs';
+import {openNormalCleanupChannel,driveNormalCleanup,waitForRealReadyClock} from './normal-cleanup-operator.mjs';
+import {selection,READY_KIND} from './normal-cleanup-session.mjs';
 import {withNormalCleanupLock,retainNormalCleanupAudit} from './staging-build-install.mjs';
 import {canonicalSourceExclusions,captureNormalCleanupFences} from './normal-cleanup-fences.mjs';
 const root=fileURLToPath(new URL('../../',import.meta.url));
-for(const dirty of [false,true])test('actual parent driver and server orchestration '+(dirty?'refuse dirty checksum':'complete one valid-grant handshake'),async t=>{
+for(const scenario of [
+ {name:'complete one valid-grant handshake',dirty:false,ahead:0,replay:false},
+ {name:'refuse dirty checksum',dirty:true,ahead:0,replay:false},
+ {name:'complete a real future20ms READY handshake',dirty:false,ahead:20,replay:false},
+ {name:'refuse a future2500ms READY without COMMIT',dirty:false,ahead:2500,replay:false},
+ {name:'refuse a replayed nonce at the actual peer',dirty:false,ahead:0,replay:true},
+])test('actual parent driver and server orchestration '+scenario.name,async t=>{
  const directory=mkdtempSync(join(tmpdir(),'normal-cleanup-ipc-'));t.after(()=>rmSync(directory,{recursive:true,force:true}));const {grant}=installationFixture();writeFileSync(join(directory,'grant.json'),JSON.stringify(grant),{mode:0o600});
- const channel=openNormalCleanupChannel([],{launch:()=>spawn(process.execPath,[fileURLToPath(new URL('./normal-cleanup-fixture-child.mjs',import.meta.url)),directory],{stdio:['pipe','pipe','pipe']})});
+ const channel=openNormalCleanupChannel([],{launch:()=>spawn(process.execPath,[fileURLToPath(new URL('./normal-cleanup-fixture-child.mjs',import.meta.url)),directory,String(scenario.ahead)],{stdio:['pipe','pipe','pipe']})});
  const arrival={source:grant.source,installId:grant.installId,buildRecordId:grant.build.buildRecordId,nextBuildId:grant.build.nextBuildId,healthStatus:200},saved=[];
- const run=driveNormalCleanup({channel,grant,arrival,checksum:async()=>dirty?'>f fixture changed\n':'',frozen:()=>{},save:(name)=>saved.push(name)});
- if(dirty){await assert.rejects(run);await assert.rejects(channel.success());assert.ok(!existsSync(join(directory,'engine-observed.json')));assert.ok(saved.includes('cleanup-session-incomplete.json'));}
+ const driverChannel=scenario.replay?{...channel,stdin:{end:value=>channel.stdin.end(value?JSON.stringify({...JSON.parse(value),nonce:'f'.repeat(64)})+'\n':undefined)}}:channel;
+ const run=driveNormalCleanup({channel:driverChannel,grant,arrival,checksum:async()=>scenario.dirty?'>f fixture changed\n':'',frozen:()=>{},save:(name)=>saved.push(name)});
+ if(scenario.dirty||scenario.replay||scenario.ahead>2000){await assert.rejects(run);await assert.rejects(channel.success());assert.ok(!existsSync(join(directory,'engine-observed.json')));assert.ok(!existsSync(join(directory,'consumed.json')));assert.ok(!existsSync(join(directory,'authority.json')));assert.ok(saved.includes('cleanup-session-incomplete.json'));if(scenario.ahead>2000)assert.ok(!saved.includes('cleanup-session-commit.json'));}
  else{const result=await run;assert.equal(result.cleanup.fictional,true);assert.equal(JSON.parse(readFileSync(join(directory,'engine-observed.json'))).consumed,true);assert.ok(saved.includes('cleanup-session-commit.json'));assert.ok(!existsSync(join(directory,'normal-cleanup.lock')));}
+});
+test('future20ms READY catches up using actual elapsed wallclock before strict validation',async()=>{
+ const at=Date.now()+20;await waitForRealReadyClock({readyAt:new Date(at).toISOString()});assert.ok(Date.now()>=at);
+});
+for(const age of ['expired','future'])test(age+' READY cannot send COMMIT',async()=>{
+ const at=Date.now()+(age==='expired'?-180001:2500),{grant}=installationFixture(),ready={format:1,kind:READY_KIND,selection:selection(grant),nonce:'c'.repeat(64),fencesSha256:'d'.repeat(64),readyAt:new Date(at).toISOString()},writes=[],saved=[];
+ const channel={frames:{next:async()=>ready},stdin:{end:value=>writes.push(value)},success:async()=>assert.fail('No terminal success expected')};
+ await assert.rejects(driveNormalCleanup({channel,grant,arrival:{},checksum:async()=>assert.fail('Invalid READY must precede checksum'),frozen:()=>{},save:name=>saved.push(name)}),age==='expired'?/Cleanup READY expired/:/Cross-host clock gap/);assert.deepEqual(writes,[undefined]);assert.ok(saved.includes('cleanup-session-incomplete.json'));assert.ok(!saved.includes('cleanup-session-commit.json'));
 });
 test('actual canonical release filter imports under installed tsx and parses every exclusion',()=>{
  const script=`const raw=await import('./scripts/improve/release.ts');const official={...(raw.default??{}),...raw};if(typeof official.deploymentRsyncArgs!=='function')throw Error('Actual canonical filter export missing');console.log(JSON.stringify(official.deploymentRsyncArgs('/fictional/source')));`;
