@@ -43,7 +43,7 @@ export function useAssistantImport({instruction:providedInstruction,onInstructio
   try{
    const result=await prepareAssistantImportAction({target,source:selected.text,sourceKind:selected.kind??'text',instruction:request,consent:true});
    if(!alive.current||revision!==epoch.current)return false;
-   if(!result.ok){setError(t('prepareError'));return false;}
+   if(!result.ok){setError(t(result.reason==='protected_input'?'protectedInput':'prepareError'));return false;}
    setDraft(result.draft);setCsvState(importDraftCsv(result.draft));return true;
   }catch{if(alive.current&&revision===epoch.current)setError(t('prepareError'));return false;}
   finally{if(alive.current&&revision===epoch.current){active.current=false;setBusy(null);}}

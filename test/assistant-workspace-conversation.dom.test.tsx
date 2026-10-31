@@ -4,15 +4,35 @@ import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/reac
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
-const state=vi.hoisted(()=>({ask:vi.fn()}));
-vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask}));
+const state=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn()}));
+vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier}));
 import {ConversationClarification} from '../components/assistant/chat-reply-boundary';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
 function show(initialTurn?:{id:string;question:string;answer:React.ReactNode;clarificationRequired?:boolean},fullHeight=false){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn} fullHeight={fullHeight}/></NextIntlClientProvider>);}
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
-beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
+beforeEach(()=>{state.ask.mockReset();state.earlier.mockReset();});afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('restores more than six displayed turns while continuing only with the owner-issued selected tail proof',async()=>{
+  const turns=Array.from({length:9},(_,index)=>({id:'saved-'+index,question:'Saved question '+index,answer:<p>Checked answer {index}</p>}));
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight initialTurns={turns} historyTailId="saved-8" initialResume={{exchangeId:'saved-8',conversationToken:'owned-tail-proof'}}/></NextIntlClientProvider>);
+  expect(screen.getByRole('log')).toHaveTextContent('Saved question 0');expect(screen.getByRole('log')).toHaveTextContent('Saved question 8');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',answer:<p>New checked answer</p>});send('And pending?');await screen.findByText('New checked answer');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',previousExchangeId:'saved-8',previousConversationToken:'owned-tail-proof'});
+ });
+ it('keeps legacy or uncertain saved history read-only until the person explicitly starts New chat',async()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId="legacy" initialTurns={[{id:'legacy',question:'Old question',answer:<button>Prepare old action</button>}]} historyReadOnly/></NextIntlClientProvider>);
+  expect(screen.getByRole('button',{name:copy.ask})).toBeDisabled();expect(screen.getByRole('button',{name:'Prepare old action'})).toBeDisabled();expect(state.ask).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:chat.new}));state.ask.mockResolvedValueOnce({ok:true,exchangeId:'fresh',answer:<p>Fresh reply</p>});send('Hello');await screen.findByText('Fresh reply');expect(state.ask).toHaveBeenLastCalledWith({question:'Hello'});expect(screen.queryByText('Old question')).toBeNull();
+ });
+ it('prepends a selected-branch earlier page without replacing the live tail continuation',async()=>{
+  state.earlier.mockResolvedValueOnce({ok:true,turns:[{id:'earlier',question:'Earlier question',answer:<p>Earlier checked reply</p>}],olderCursor:null});
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId="tail" olderCursor="sealed-earlier" initialTurns={[{id:'tail',question:'Latest question',answer:<p>Latest checked reply</p>}]} initialResume={{exchangeId:'tail',conversationToken:'tail-proof'}}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:chat.older}));await screen.findByText('Earlier checked reply');expect(state.earlier).toHaveBeenCalledExactlyOnceWith({exchangeId:'tail',before:'sealed-earlier'});
+  expect(screen.getByText('Earlier question').compareDocumentPosition(screen.getByText('Latest question'))&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'next',answer:<p>Continued reply</p>});send('Continue');await screen.findByText('Continued reply');expect(state.ask).toHaveBeenLastCalledWith({question:'Continue',previousExchangeId:'tail',previousConversationToken:'tail-proof'});
+ });
+
  it('starts the full workspace with a transcript and one anchored composer before the first question',()=>{
   show(undefined,true);expect(screen.getByRole('log')).toBeInTheDocument();expect(screen.getAllByRole('textbox')).toHaveLength(1);
   expect(screen.getByRole('region',{name:chat.title}).className).toContain('flex-col');expect(screen.getByRole('log').className).toContain('flex-1');

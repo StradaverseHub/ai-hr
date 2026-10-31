@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {listOwnAssistantChats,loadOwnAssistantChat} from '@/core/assistant-threads';
 import {assistantBrowserConversationScope} from './conversation-scope';
 import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
@@ -116,6 +117,7 @@ export default async function AssistantPage({
   }
 
   const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
+  const newChatHref='/assistant?chatReset='+randomUUID();
   const conversationScope=await assistantBrowserConversationScope(s);
   const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
   const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
@@ -132,19 +134,19 @@ export default async function AssistantPage({
 
   return (
     <div data-tour="intelligence-assistant" className="mx-auto max-w-7xl space-y-5">
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <section className="min-w-0 space-y-3">
-          <PageHeader title={greeting} />
+      <div className="grid items-start gap-6 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <section className="min-w-0 space-y-3 lg:order-2">
+          <PageHeader title={t('title')} />
           <OwnClearStatus status={sp.ownClear}/>
-          <ErrorBanner message={errorMessage} />
+          <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
           <WorkspaceConversation key={(savedChats?.scopeDigest??'')+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+(savedChats?.scopeDigest??'')} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
             initialTurns={initialTurns} historyReadOnly={Boolean(selectedChat&&!selectedChat.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
 
         </section>
-        <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:border-l lg:border-t-0 lg:pl-5">
+        <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:order-1 lg:border-r lg:border-t-0 lg:pr-5">
           <nav aria-label={t('workspace.chat.chats')} className="pb-3">
             <h2 className="py-3 text-sm font-medium">{t('workspace.chat.chats')}</h2>
-            <Link href="/assistant" scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.new')}</Link>
+            <Link href={newChatHref} scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.new')}</Link>
             <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{(savedChats?.chats??[]).map(chat=><li key={chat.threadId}><Link href={'/assistant?e='+encodeURIComponent(chat.exchangeId)} scroll={false} aria-current={selectedChat?.threadId===chat.threadId?'page':undefined} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-muted">{chat.title}</Link></li>)}</ul>
             {savedChats?.nextCursor&&<Link href={'/assistant?'+(sp.e?'e='+encodeURIComponent(sp.e)+'&':'')+'chatCursor='+encodeURIComponent(savedChats.nextCursor)} scroll={false} className="inline-flex min-h-11 items-center px-2 text-xs underline">{t('workspace.chat.moreChats')}</Link>}
           </nav>

@@ -37,13 +37,20 @@ export async function loadAiWorkspace(ctx: SessionContext, options:{includeHisto
     const taskIds = workspaceTasksFor(toolsFor(fresh).map(tool => tool.spec.name));
     // HR visibility is broader than personal conversation custody. Keep the explicit actual-user
     // predicate even when RLS could let an administrator read other users' exchange rows.
-    const rows = includeHistory?await tx.select({
+    const historyFields={
       id: assistantExchange.id, question: assistantExchange.question, answer: assistantExchange.answer,
       stop: assistantExchange.stop, hitTurnCap: assistantExchange.hitTurnCap,
       toolCalls: assistantExchange.toolCalls, askedAt: assistantExchange.askedAt,
       disclosureReceipt: assistantExchange.disclosureReceipt,
-    }).from(assistantExchange).where(and(eq(assistantExchange.appUserId, userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`))
+    };
+    const rows = includeHistory?await tx.select(historyFields).from(assistantExchange).where(and(eq(assistantExchange.tenantId,captured.tenantId),eq(assistantExchange.appUserId, userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`))
       .orderBy(desc(assistantExchange.askedAt), desc(assistantExchange.id)).limit(10):[];
+    // Selecting a retained own exchange is independent of the recent list's page size.
+    // A guessed foreign/retired identity returns no row, even under broad administrator RLS.
+    if(includeHistory&&typeof selectedExchangeId==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(selectedExchangeId)&&!rows.some(row=>row.id===selectedExchangeId)){
+      const [selected]=await tx.select(historyFields).from(assistantExchange).where(and(eq(assistantExchange.id,selectedExchangeId),eq(assistantExchange.tenantId,captured.tenantId),eq(assistantExchange.appUserId,userId),isNull(assistantExchange.contentRetiredAt),sql`${assistantExchange.askedAt}>clock_timestamp()-interval '30 days'`)).limit(1);
+      if(selected)rows.push(selected);
+    }
     const history = includeHistory?await withAssistantReadTx(fresh, tx, async session => {
       const replay = workspaceGroundedAnswers(fresh, session,tx);
       const history = [];

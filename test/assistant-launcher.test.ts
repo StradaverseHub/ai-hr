@@ -2,12 +2,13 @@
  * through the same askAssistant gate as the Assistant page. Owners are stubbed; askAssistant's own gates
  * are proved by its own suites. */
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),reply:vi.fn(),setting:vi.fn(),access:vi.fn(),provider:vi.fn(),write:vi.fn(),settings:{} as Record<string,unknown>}));
+const owner=vi.hoisted(()=>({session:vi.fn(),ask:vi.fn(),workspace:vi.fn(),thread:vi.fn(),reply:vi.fn(),setting:vi.fn(),access:vi.fn(),provider:vi.fn(),write:vi.fn(),settings:{} as Record<string,unknown>}));
 vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>Object.assign((key:string,params?:Record<string,string>)=>`${namespace}.${key}${params?JSON.stringify(params):''}`,{has:(key:string)=>key.startsWith('err_')&&key!=='err_unknown_code'})}));
 vi.mock('../lib/session',()=>({getBrowserCommandSession:owner.session}));
 vi.mock('../core/assistant',()=>({askAssistant:owner.ask,AssistantError:class extends Error{constructor(readonly code:string){super(code);}}}));
 vi.mock('../core/ai-workspace',()=>({loadAiWorkspace:owner.workspace}));
+vi.mock('../core/assistant-threads',()=>({loadOwnAssistantChat:owner.thread}));
 vi.mock('../components/assistant/exchange-reply',()=>({ExchangeReply:owner.reply}));
 vi.mock('../core/read',()=>({allowedCompanies:async()=>[{id:'company-1'}]}));
 vi.mock('../lib/scope',()=>({getScopeIds:async(ids:string[])=>ids}));
@@ -22,7 +23,7 @@ import {readLauncherSettings,assistantLauncherFor,setAssistantLauncher,LauncherS
 import {askFromLauncherAction,askFromWorkspaceAction} from '../app/assistant/launcher-actions';
 const ctx={tenantId:'fixture-tenant',userId:'fixture-user'};
 const id='0b6f5e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
-beforeEach(()=>{for(const fn of [owner.session,owner.ask,owner.workspace,owner.reply,owner.access,owner.provider,owner.write])fn.mockReset();owner.settings={};owner.session.mockResolvedValue(ctx);owner.access.mockResolvedValue({allowed:true});owner.provider.mockResolvedValue({provider:'openrouter'});});
+beforeEach(()=>{for(const fn of [owner.session,owner.ask,owner.workspace,owner.thread,owner.reply,owner.access,owner.provider,owner.write])fn.mockReset();owner.settings={};owner.session.mockResolvedValue(ctx);owner.access.mockResolvedValue({allowed:true});owner.provider.mockResolvedValue({provider:'openrouter'});});
 
 describe('page context is a closed area and at most one record id',()=>{
  it('maps paths to areas and takes the first uuid only',()=>{
