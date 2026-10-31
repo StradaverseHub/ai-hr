@@ -445,3 +445,34 @@ database or configuration was changed or load-tested. Deployment remains exclude
 Fixtures, private keys and native session tokens stay outside public artifacts.
 The HTTP evidence contains fictional screenshots, timings, normalized SQL, sampled
 CPU frames and request outcomes. No private production data was used in load tests.
+
+
+## Production-equivalent target — read-only inventory, 31 October 2026
+
+After the owner connected the required network, bounded SSH inventory succeeded
+on the separately configured production application and database hosts. Both expose
+16 CPUs and approximately62.7GiB RAM. The application unit has MemoryHigh10GiB,
+MemoryMax12GiB, unlimited CPU quota and TasksMax512. The active application uses
+Node24.22.1, internal authentication and production mode; NODE_OPTIONS and
+AIHR_DB_POOL_MAX are unset in the inspected process environment. The latter alone
+does not establish the installed application's effective pool size.
+
+PostgreSQL reports16.15, max_connections100, shared_buffers16384x8kB(128MiB),
+effective_cache_size524288x8kB(4GiB), work_mem4096kB, maintenance_work_mem65536kB,
+max_parallel_workers8, max_worker_processes8, effective_io_concurrency1 and
+random_page_cost4. TLS, fsync, synchronous_commit and JIT are enabled. The database
+VM exposes a900GiB data disk. These are observed settings, not evidence of disk
+IOPS, network latency, sustained available capacity or an accepted tuning change.
+No benchmark, write, restart, installation or configuration change ran on production.
+
+The standard four-CPU shared Actions diagnostic environment cannot reproduce this
+two-host capacity/topology. Matching isolated infrastructure remains required for
+final acceptance. The owner has been asked whether such an environment exists.
+
+Expanded workload candidates capture actual built Leave and Personnel actions,
+including typed Personnel transport. Independent database reads verify create/edit/
+delete or state transitions. A later candidate also adds an explicit fictional
+Attendance approval workflow, verifies corrected punches after authorized review,
+and calculates50-person Payroll batches with scoped CSV content checks. Leave
+withdrawal preserves history; it is not a physical DELETE. These additions require
+hosted execution before they establish any coverage or speed claim.

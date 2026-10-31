@@ -20,6 +20,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 const s=await import('../../db/schema.ts');
 const {hireEmployee}=await import('../../core/org.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
+const {saveAttendanceWorkflow,setAttendanceWorkflowEnabled}=await import('../../core/attendance-workflow.ts');
 const {createBatch}=await import('../../packs/payroll/service.ts');
 const {MODULE_CATALOG}=await import('../../packs/catalog.ts');
 const {todayInKualaLumpur}=await import('../../lib/hr-date.ts');
@@ -78,6 +79,12 @@ try{
     select ${b.tenantId}::uuid,e.id,${today}::date-n,'09:00'::time,'17:00'::time,'present',480,0
     from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n`;
   await owner.db.insert(s.payslip).values(cohort.map(u=>({tenantId:b.tenantId,batchId:u.batchId,employmentId:u.employmentId,basicSalary:'100',grossPay:'100',totalDeductions:'0',netPay:'100',employerCost:'100',statutory:{epfEmployee:0,epfEmployer:0,socsoEmployee:0,socsoEmployer:0,eisEmployee:0,eisEmployer:0,pcb:0}})));
+  await owner.db.insert(s.compensation).values(cohort.map(u=>({tenantId:b.tenantId,employmentId:u.employmentId,basicSalary:'100',validFrom:hiredOn})));
+  for(const company of companies){
+   const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);
+   await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,criteria:{},stages:[{name:'HR',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[approver.employmentId]}],hrAlternative:false}],cc:[]});
+   await setAttendanceWorkflowEnabled(ctx,company.companyId,'irregularity',true);
+  }
   // A real current administrative reporting line, inside the same company, for each manager.
   await owner.db.insert(s.reportingLine).values(cohort.filter(u=>u.role==='manager').flatMap(u=>cohort.filter(v=>v.company===u.company&&v.index%50>=4+(u.index%50-2)*10&&v.index%50<14+(u.index%50-2)*10).map(v=>({tenantId:b.tenantId,managerEmploymentId:u.employmentId,subordinateEmploymentId:v.employmentId,lineType:'administrative',validFrom:'2025-01-01'}))));
  }

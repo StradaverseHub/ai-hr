@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {setTimeout as pause} from 'node:timers/promises';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
- const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0},failures:[]};
+ const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0},failures:[]};
  async function capture(page,click,kind){
   const waiting=page.waitForResponse(r=>r.request().method()==='POST'&&Boolean(r.request().headers()['next-action']),{timeout:90000});
   await click();const response=await waiting,req=response.request(),headers={};
@@ -81,8 +81,69 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    evidence.push({workflow:'personnel draft create/edit/delete',persisted:true});save();
   }finally{await ctx.close();}
  }
+ // A real correction workflow and Payroll processing/export, not page-render timing.
+ const approverFor=user=>fixture.users.find(actor=>actor.tenant===user.tenant&&actor.company===user.company&&['companyHR','groupHR'].includes(actor.role));
+ async function assertProcessed(batchId){
+  const [batch]=await db`select status,employee_count from payroll_batch where id=${batchId}::uuid`;
+  assert.equal(batch.status,'processed');assert.equal(batch.employee_count,50);
+  const rows=await db`select employment_id,basic_salary,gross_pay,total_deductions,net_pay from payslip where batch_id=${batchId}::uuid`;
+  assert.equal(rows.length,50);assert.equal(new Set(rows.map(row=>row.employment_id)).size,50);
+  for(const row of rows){assert.equal(Number(row.basic_salary),100);assert(Number.isFinite(Number(row.net_pay)));assert.equal(Math.round(Number(row.gross_pay)*100)-Math.round(Number(row.total_deductions)*100),Math.round(Number(row.net_pay)*100));}
+ }
+ async function exportPayroll(user,batchId,company){
+  const response=await request(user,`/payroll/${batchId}/export?format=csv`,undefined,200,true);
+  assert(String(response.headers['content-type']).includes('text/csv'));assert(String(response.headers['content-disposition']).includes('attachment'));
+  const expected=fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===company);
+  for(const actor of expected)assert(response.content.includes(actor.name),'payroll export omitted an expected fictional employee');
+  for(const actor of fixture.users.filter(actor=>actor.tenant!==user.tenant||actor.company!==company))assert(!response.content.includes(actor.name),'payroll export crossed company/tenant scope');
+  report.mixedWorkflows.completed.payrollExport++;
+ }
+ {
+  const ctx=await context(employee),page=await ctx.newPage();let correction;
+  try{
+   await visit(page,employee,'/attendance/my-records/'+fixture.today);
+   await page.locator('[name="checkIn"]').fill('09:15');await page.locator('[name="checkOut"]').fill('18:15');await page.locator('[name="reason"]').fill('PERF_ATTENDANCE_BROWSER');
+   await capture(page,()=>page.locator('form').filter({has:page.locator('[name="checkIn"]')}).locator('button[type="submit"]').click(),'attendanceCreate');await page.waitForLoadState('networkidle');
+   [correction]=await db`select id,status from attendance_correction where employment_id=${employee.employmentId}::uuid and reason='PERF_ATTENDANCE_BROWSER'`;
+   assert(correction&&correction.status==='pending');
+  }finally{await ctx.close();}
+  const approver=approverFor(employee),reviewCtx=await context(approver),review=await reviewCtx.newPage();
+  try{
+   await visit(review,approver,'/attendance/application-history/'+correction.id);
+   const form=review.locator('form').filter({has:review.locator('[name="action"][value="approved"]')});
+   await capture(review,()=>form.locator('button[type="submit"]').click(),'attendanceApprove');await review.waitForLoadState('networkidle');
+   const [row]=await db`select status from attendance_correction where id=${correction.id}::uuid`;assert.equal(row.status,'approved');
+   const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${employee.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,'09:15:00');assert.equal(day.check_out_at,'18:15:00');
+   evidence.push({workflow:'attendance correction/approval/applied punches',persisted:true});save();
+  }finally{await reviewCtx.close();}
+ }
+ {
+  const actor=fixture.users.find(user=>user.role==='groupHR'),batchId=fixture.tenants[actor.tenant].companies[1].batchId;
+  const ctx=await context(actor),page=await ctx.newPage();
+  try{
+   await visit(page,actor,'/payroll/'+batchId);
+   await page.getByRole('button',{name:'Process Payroll',exact:true}).click();
+   await capture(page,()=>page.getByRole('alertdialog').getByRole('button',{name:'Process anyway',exact:true}).click(),'payrollProcess');await page.waitForLoadState('networkidle');
+   await assertProcessed(batchId);await exportPayroll(actor,batchId,1);
+   evidence.push({workflow:'payroll calculation and scoped CSV export',persisted:true,employees:50});save();
+  }finally{await ctx.close();}
+ }
  return async function run(user,iteration){
   const marker=`PERF_MIXED_${user.index}_${iteration}`;
+  if(user.role==='groupHR'&&iteration===0){
+   await send(user,{...templates.payrollProcess,path:'/payroll/'+user.batchId},formFields(templates.payrollProcess,{batchId:user.batchId}));
+   await assertProcessed(user.batchId);report.mixedWorkflows.completed.payroll++;await pause(thinkTimeMs);await exportPayroll(user,user.batchId,user.company);return true;
+  }
+  if(user.role==='employee'&&user.index%2===1){
+   const checkIn=iteration%2?'09:30':'09:15',checkOut=iteration%2?'18:30':'18:15';
+   await send(user,{...templates.attendanceCreate,path:'/attendance/my-records/'+fixture.today},formFields(templates.attendanceCreate,{date:fixture.today,employmentId:user.employmentId,checkIn,checkOut,reason:marker}));
+   const rows=await db`select id,status from attendance_correction where employment_id=${user.employmentId}::uuid and reason=${marker}`;assert.equal(rows.length,1);assert.equal(rows[0].status,'pending');
+   await pause(thinkTimeMs);const approver=approverFor(user);assert(approver);
+   await send(approver,{...templates.attendanceApprove,path:'/attendance/application-history/'+rows[0].id},formFields(templates.attendanceApprove,{id:rows[0].id,action:'approved',workflowStage:'0',workflowParticipant:'0:0',reason:marker+'_APPROVED'}));
+   const [approved]=await db`select status from attendance_correction where id=${rows[0].id}::uuid`;assert.equal(approved.status,'approved');
+   const [day]=await db`select check_in_at,check_out_at from attendance where employment_id=${user.employmentId}::uuid and attendance_date=${fixture.today}::date`;assert.equal(day.check_in_at,checkIn+':00');assert.equal(day.check_out_at,checkOut+':00');
+   report.mixedWorkflows.completed.attendance++;return true;
+  }
   if(user.role==='companyHR'||user.role==='groupHR'){
    const create=templates.personnelCreate,args=structuredClone(create.fields);
    assert.equal(args.length,1);Object.assign(args[0],{companyId:user.companyId,fullName:marker,primaryEmail:`perf-${user.index}-${iteration}@example.invalid`,employeeCode:'',employeeIdMode:undefined});
