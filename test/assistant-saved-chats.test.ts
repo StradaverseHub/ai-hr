@@ -16,7 +16,7 @@ let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-saved-chat-key');vi.stubEnv('OPENAI_API_KEY','fictional-saved-chat-never-sent');for(const key of ['ANTHROPIC_API_KEY','GOOGLE_API_KEY','GEMINI_API_KEY'])vi.stubEnv(key,'');await resetDb();b=await seedBase();await setModule(b.tenantId,'assistant','active');});
 afterEach(()=>vi.unstubAllEnvs());
-async function actor(){const admin=adminCtx(b),employee=await hireEmployee(admin,{person:{fullName:'Fictional saved chat actor',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});const userId=await createAppUser(b.tenantId,employee.personId,'employee');await grantAssistant(admin,{appUserId:userId});const ctx:SessionContext={...await entitledCtx(b,['employee']),userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};return{ctx,admin,userId};}
+async function actor(base:Base=b){const admin=adminCtx(base),employee=await hireEmployee(admin,{person:{fullName:'Fictional saved chat actor',primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});const userId=await createAppUser(base.tenantId,employee.personId,'employee');await grantAssistant(admin,{appUserId:userId});const ctx:SessionContext={...await entitledCtx(base,['employee']),userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};return{ctx,admin,userId};}
 const plan={version:1 as const,mode:'social' as const,code:'greeting' as const};
 async function row(ctx:SessionContext,p:{id?:string;threadId?:string;parent?:string;scope?:string;askedAt?:Date;legacy?:boolean;error?:boolean;corrupt?:boolean}={}){
  const id=p.id??randomUUID(),question='Hello',answer=p.error?null:JSON.stringify(plan),receipt=answer?sealAssistantDisclosure({tenantId:ctx.tenantId,userId:ctx.userId!,exchangeId:id,question,answer},[],plan,p.legacy?undefined:{threadId:p.threadId??id,scopeDigest:assistantConversationScopeDigest(ctx,p.scope)}):null;
@@ -47,6 +47,11 @@ describe('saved owned chats',()=>{
   await expect(resumeOwnAssistantConversation(mine.ctx,id,'other-company-selection')).rejects.toThrow();await expect(resumeOwnAssistantConversation(mine.ctx,expired)).rejects.toThrow();
   await owner.db.execute(sql`select app._assistant_transcripts_retire(${mine.ctx.tenantId}::uuid,array[${id}::uuid],true)`);await expect(resumeOwnAssistantConversation(mine.ctx,id)).rejects.toThrow();
   const latest=await row(mine.ctx);await revokeAssistant(mine.admin,{appUserId:mine.userId});await expect(resumeOwnAssistantConversation(mine.ctx,latest)).rejects.toThrow();
+ });
+ it('keeps actual foreign-tenant chats outside listing, display and resume',async()=>{
+  const mine=await actor(),foreignBase=await seedBase();await setModule(foreignBase.tenantId,'assistant','active');const foreign=await actor(foreignBase),id=await row(mine.ctx),otherId=await row(foreign.ctx);
+  await expect(loadOwnAssistantChat(foreign.ctx,{exchangeId:id})).rejects.toThrow('Saved chat unavailable.');await expect(resumeOwnAssistantConversation(foreign.ctx,id)).rejects.toThrow('Current conversation unavailable.');
+  expect((await listOwnAssistantChats(mine.ctx)).chats.some(chat=>chat.exchangeId===otherId)).toBe(false);
  });
  it('retains a valid newer suffix after its root expires, while expired text stays absent and metadata is not replaced by legacy parents',async()=>{
   const {ctx}=await actor(),root=await row(ctx,{askedAt:new Date(Date.now()-31*86400000)}),child=await row(ctx,{threadId:root,parent:root});const opened=await loadOwnAssistantChat(ctx,{exchangeId:child});
