@@ -42,10 +42,12 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
    else {for(const rect of [n,d,o]){expect(rect.left).toBeGreaterThanOrEqual(0);expect(rect.right).toBeLessThanOrEqual(391);}expect(d.top).toBeGreaterThan(n.bottom);}
    const rules=screen.getByRole('button',{name:'Assignment rules'}),tasks=screen.getByRole('button',{name:'Tasks'});
    expect(rules.getAttribute('aria-expanded')).toBe('false');expect(tasks.getAttribute('aria-expanded')).toBe('true');
-   rules.focus();await userEvent.keyboard('{Enter}');expect(rules.getAttribute('aria-expanded')).toBe('true');expect(screen.getByText(/Population preview/)).toBeVisible();
-   tasks.focus();await userEvent.keyboard(' ');expect(tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
-   await userEvent.keyboard('{Enter}');expect(tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
-   rules.focus();await userEvent.keyboard('{Enter}');expect(rules.getAttribute('aria-expanded')).toBe('false');
+   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');
+   const rulesAtKeyReturn=rules.getAttribute('aria-expanded');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('true');expect(screen.getByText(/Population preview/)).toBeVisible();
+   console.info('V9_KEYBOARD_COMMIT '+JSON.stringify({theme,dark,mobile,route,atKeyReturn:rulesAtKeyReturn,committed:rules.getAttribute('aria-expanded'),focused:document.activeElement===rules}));
+   tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);await userEvent.keyboard(' ');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
+   await userEvent.keyboard('{Enter}');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
+   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('false');
    console.info('V9_CHECKLIST_GEOMETRY '+JSON.stringify({theme,dark,mobile,route,name:n.toJSON(),duplicate:d.toJSON(),owner:o.toJSON()}));
    // Fictional derived fixture only, never labelled as staging or the reference artifact.
    name.focus();const shot=await page.screenshot({base64:true,path:`../.vitest-attachments/v9-html-gaps-${theme}-${dark?'dark':'light'}-${mobile?'mobile':'desktop'}-${route}.png`,animations:'disabled',scale:'css'});console.info('V9_HTML_GAPS_SCREENSHOT '+JSON.stringify({theme,dark,mobile,route,fixture:'fictional-derived-not-staging',base64:shot.base64}));
