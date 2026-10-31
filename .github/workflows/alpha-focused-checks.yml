@@ -48,6 +48,21 @@ on:
         description: Linux Node 20 production build in a separate standard runner
         default: false
         type: boolean
+      model_eval:
+        description: Optional OpenRouter model id for the fictional-data Assistant ceiling probe (protected assistant-eval environment); empty skips
+        required: false
+        default: ''
+        type: string
+      eval_budget_usd:
+        description: Hard spend cap in USD for model_eval (maximum 50)
+        required: false
+        default: '20'
+        type: string
+      eval_allowed_providers:
+        description: Optional comma-separated OpenRouter upstream providers for model_eval
+        required: false
+        default: ''
+        type: string
 permissions:
   contents: read
   actions: read
@@ -147,6 +162,51 @@ jobs:
           name: focused-development-evidence
           path: ${{ runner.temp }}/aihr-focused/
           if-no-files-found: error
+          retention-days: 14
+  model-eval:
+    if: ${{ inputs.model_eval != '' }}
+    needs: resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: assistant-eval
+    defaults:
+      run:
+        working-directory: source
+    env:
+      AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
+      AIHR_FOCUSED_TESTS: ${{ needs.resolve.outputs.tests }}
+      AIHR_EVAL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      AIHR_EVAL_MODEL: ${{ inputs.model_eval }}
+      AIHR_EVAL_BUDGET_USD: ${{ inputs.eval_budget_usd }}
+      AIHR_EVAL_ALLOWED_PROVIDERS: ${{ inputs.eval_allowed_providers }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: automation
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./automation/.github/actions/setup-alpha
+      - name: Run the fictional-data model ceiling probe
+        run: node ../automation/.github/ci/focused-checks.mjs run "$RUNNER_TEMP/aihr-model-eval"
+        env:
+          AIHR_FOCUSED_EVIDENCE_DIR: ${{ runner.temp }}/aihr-model-eval
+      - name: Ensure owned database cleanup
+        if: always()
+        run: bash ../automation/.github/ci/postgres.sh stop
+        env:
+          AIHR_CI_UNIT: db-1
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: model-eval-evidence
+          path: ${{ runner.temp }}/aihr-model-eval/
+          if-no-files-found: warn
           retention-days: 14
   typecheck:
     if: ${{ inputs.run_typecheck }}
