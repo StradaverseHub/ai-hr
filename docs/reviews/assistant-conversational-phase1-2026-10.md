@@ -207,3 +207,38 @@ Problems found by reading the replies:
 **Limitation (owner review, 1 November):** this probe gave the model the person's own data but no knowledge of how the product works: no navigation, guides, setup checks or role. That explains the generic setup advice and the "ask your HR administrator" reply to an admin. The 38/58 figure therefore measures language understanding plus lookups, not product-grounded helpfulness. §11 measures the product-context variant.
 
 Conclusion: most of the gap is understanding and planning, which a question-aware, tool-using design closes on these tasks. The other two parts are separate work: grounding setup guidance needs new native reads, and trustworthy actions need deterministic proposal checks. Production adoption still needs the §4 privacy decision, because this probe sent fictional questions and records to the provider.
+
+## 11. Real-model run with product context
+
+Run [41220205814](https://github.com/StradaverseHub/ai-hr/actions/runs/41220205814) at `34e693c`: 1/1 pass, typecheck success, 136 calls, OpenRouter-reported $0.0204. The model, routing and data settings are the same as §10. Three evaluation-only tools were added, each sourced from the real product:
+- navigation: 63 sidebar destinations and labels, filtered by role;
+- product_guides: the 45 bundled guides, filtered by audience;
+- setup_readiness, for HR admins: the native payroll and record readiness owners.
+
+The prompt also states the person's role. Every path in every reply was checked against the app's 466 real pages.
+
+| | §10 (no product context) | §11 (product context) |
+| --- | --- | --- |
+| Understood / complete | 38 / 35 | 35 / 32 (single runs; within variance) |
+| Setup-guidance turns grounded in product sources | 0 of 12 | 10 of 12 |
+| Links to pages that do not exist | 0 | 0 |
+
+The headline score measures understanding, not grounding, so it barely moved. The replies changed materially:
+- "Is our payroll ready?" now says it is not ready: 0 of 3 employees are ready, there are 2 blockers (compensation and statutory details missing), there is no active payroll cycle, and there are 4 warnings, all from the native check.
+- "Which employees are missing information?" names the three fictional employees and their gaps.
+- "What was the second thing?" answers from the live check.
+- Pages are named with real labels: Personnel Management, Approval Items, Leave entitlements.
+
+Still failing:
+- Two blank replies ("guide me step by step", "how should I set up attendance"), when the 5-step loop ran out.
+- The overtime proposal is still described as "prepared" without times.
+- Approval requests are unanswerable because the Assistant has no read of the person's approval queue.
+- Onboarding, leave and attendance setup cannot be confirmed because only payroll and record readiness owners exist.
+
+These findings feed [ADR-0169](../adr/0169-assistant-context-harness-and-disclosure-repivot.md).
+
+**Hard-gate finding (independent review, 1 November).** Both real-model probes asserted only "no proposal" on negative turns. They did not assert the stricter §2 gate that negative turns read no private source, and the model breached it:
+- §10 run: `neg-named` read the person's own reporting line, and `neg-file` read the module summary.
+- §11 run: `neg-file` read the module summary, and its reply invited the person to paste payroll details.
+
+These were the person's own data, not another person's, but the gate is still broken. A real design must enforce it in the harness, not leave it to the model. Real-model modes are self-reported (about 12 of §10's 38 understood turns rest on mode alone), so the real-model and oracle columns are not like-for-like.

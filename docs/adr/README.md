@@ -173,3 +173,4 @@ Read only records relevant to the task. A newer decision supersedes an older one
 - [ADR-0165 — Tenant-owned termination reasons and event-type descriptions](0165-tenant-termination-reason-catalogue.md)
 - [ADR-0166 — Custom Termination types, per-type reasons, Field Controls and movement documents](0166-movement-type-controls-and-custom-termination.md)
 - [ADR-0168 — Bounded reusable payroll formulas](0168-bounded-pay-formula-builder.md)
+- [ADR-0169 — Assistant repivot: context layer, agent harness and minimum-necessary disclosure (proposed)](0169-assistant-context-harness-and-disclosure-repivot.md)
