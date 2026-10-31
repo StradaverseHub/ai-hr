@@ -132,6 +132,7 @@ const hrRoutes=['/admin/personnel','/attendance','/payroll','/reports','/reports
 const managerRoutes=['/','/approvals','/approvals/history','/performance/home','/claims'];
 const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
+const pendingBrowserRequests=new WeakMap();
 let browser,sampling,progressTimer,contextTemplates,lastPage,runMixedWorkflow;
 async function main(){
 try{
@@ -157,6 +158,10 @@ try{
   const context=await browser.newContext({ignoreHTTPSErrors:true,locale});
   await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:locale,url:base}]);
   context.on('page',page=>{
+   const pending=new Map();pendingBrowserRequests.set(page,pending);
+   page.on('request',req=>{const url=new URL(req.url());if(url.origin===base)pending.set(req,{method:req.method(),path:url.pathname,type:req.resourceType(),startedMs:performance.now()});});
+   page.on('requestfinished',req=>pending.delete(req));page.on('requestfailed',req=>pending.delete(req));
+   page.on('response',response=>{const row=pending.get(response.request());if(row)row.status=response.status();});
    const started=new WeakMap();
    const homeRequest=req=>{const url=new URL(req.url());return url.origin===base&&url.pathname.startsWith('/api/home/')&&req.method()==='GET';};
    page.on('request',req=>{if(homeRequest(req))started.set(req,performance.now());});
@@ -170,7 +175,10 @@ try{
  }
  async function visit(page,user,path,phase='baseline'){
   lastPage=page;const stopHomeTracking=homeHttp.track(page,user,path);
-  const start=performance.now();const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});assert.equal(response.status(),200);
+  const start=performance.now();let response;
+  try{response=await page.goto(base+path,{waitUntil:'networkidle',timeout:90000});}
+  catch(error){report.browserPendingRequests=[...(pendingBrowserRequests.get(page)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));save();throw error;}
+  assert.equal(response.status(),200);
   assert(!new URL(page.url()).pathname.startsWith('/login'));await page.locator('main').waitFor();assert((await page.locator('body').innerText()).includes(user.name));
   const heading=(await page.locator('h1').allTextContents()).join(' ').trim();assert(heading.length>0&&!/^404\b/.test(heading),'missing or not-found page heading');
   const skip=page.getByRole('dialog').getByRole('button',{name:'Skip',exact:true});
@@ -291,6 +299,7 @@ try{
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
+ if(suite==='workflow-preflight'){const ctx=await context(employee);try{const page=await ctx.newPage();await visit(page,employee,'/me/payslip');}finally{await ctx.close();}}
  await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
  await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
  assert.equal(report.homeCardFailures.length,0,'Home rendered a handled card/summary failure');
@@ -373,7 +382,7 @@ try{
  writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'loaded Home card/summary failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
-}catch(error){if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
+}catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}
 }
 await main();
