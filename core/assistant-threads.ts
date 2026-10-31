@@ -35,15 +35,39 @@ export async function listOwnAssistantChats(supplied:SessionContext,options:{cur
  if(!Number.isInteger(limit)||limit<1||limit>ASSISTANT_THREAD_LIMITS.chats)return refuse();
  try{return await withTenant(ctx,async tx=>{await authorize(tx,ctx);
   const rows=await tx.select(fields).from(assistantExchange).where(and(owned(ctx),cursor?or(lt(assistantExchange.askedAt,new Date(cursor.askedAt)),and(eq(assistantExchange.askedAt,new Date(cursor.askedAt)),lt(assistantExchange.id,cursor.id))):undefined)).orderBy(desc(assistantExchange.askedAt),desc(assistantExchange.id)).limit(ASSISTANT_THREAD_LIMITS.scan);
-  const chats:OwnAssistantChatSummary[]=[],seen=new Set<string>();let last:Row|undefined;
-  for(const row of rows){last=row;const proof=proofFor(ctx,row);if(proof?.thread&&proof.thread.scopeDigest!==scopeDigest)continue;
-   const threadId=proof?.thread?.threadId??row.id;if(seen.has(threadId))continue;seen.add(threadId);
-   let label=title(row.question);
-   if(proof?.thread&&threadId!==row.id){const [root]=await tx.select(fields).from(assistantExchange).where(and(owned(ctx),eq(assistantExchange.id,threadId))).limit(1);const rootProof=root?proofFor(ctx,root):null;if(root&&rootProof?.thread?.threadId===threadId&&rootProof.thread.scopeDigest===scopeDigest)label=title(root.question);}
-   chats.push(Object.freeze({threadId,exchangeId:row.id,title:label,updatedAt:row.askedAt,resumable:Boolean(proof?.thread&&proof.plan&&row.stop==='end'&&!row.error)}));
-   if(chats.length===limit)break;
+  type Candidate={row:Row;threadId:string;authenticated:boolean;resumable:boolean};
+  type Group={threadId:string;candidates:Candidate[];firstIndex:number};
+  const byId=new Map<string,Candidate>(),groups=new Map<string,Group>();
+  // Inspect the whole bounded page before choosing a tail: equal timestamps or clock skew can put
+  // an ancestor before its descendant in the recent-row index. Receipt scope still owns grouping.
+  for(const [index,row] of rows.entries()){
+   const proof=proofFor(ctx,row);if(proof?.thread&&proof.thread.scopeDigest!==scopeDigest)continue;
+   const threadId=proof?.thread?.threadId??row.id,candidate={row,threadId,authenticated:Boolean(proof?.thread),resumable:Boolean(proof?.thread&&proof.plan&&row.stop==='end'&&!row.error)};
+   byId.set(row.id,candidate);const group=groups.get(threadId);
+   if(group)group.candidates.push(candidate);else groups.set(threadId,{threadId,candidates:[candidate],firstIndex:index});
   }
-  return Object.freeze({chats:Object.freeze(chats),scopeDigest,nextCursor:last&&(rows.length===ASSISTANT_THREAD_LIMITS.scan||last.id!==rows.at(-1)?.id)?encodeListCursor(last):null});
+  const orderedGroups=[...groups.values()],selectedGroups=orderedGroups.slice(0,limit),chats:OwnAssistantChatSummary[]=[];
+  for(const group of selectedGroups){
+   const ancestors=new Set<string>();
+   for(const candidate of group.candidates){
+    if(!candidate.authenticated)continue;
+    const seen=new Set([candidate.row.id]);let next=candidate.row.continues;
+    for(let depth=0;next&&depth<ASSISTANT_THREAD_LIMITS.scan&&!seen.has(next);depth++){
+     const parent=byId.get(next);if(!parent?.authenticated||parent.threadId!==group.threadId)break;
+     ancestors.add(parent.row.id);seen.add(parent.row.id);next=parent.row.continues;
+    }
+   }
+   // Among concurrent leaves, retain the existing deterministic recent-row order. Neither leaf is
+   // silently made the parent of the other; load/resume remain bound to the chosen exchange itself.
+   const chosen=group.candidates.find(candidate=>!ancestors.has(candidate.row.id))??group.candidates[0],row=chosen.row;
+   let label=title(row.question);
+   if(chosen.authenticated&&group.threadId!==row.id){const [root]=await tx.select(fields).from(assistantExchange).where(and(owned(ctx),eq(assistantExchange.id,group.threadId))).limit(1);const rootProof=root?proofFor(ctx,root):null;if(root&&rootProof?.thread?.threadId===group.threadId&&rootProof.thread.scopeDigest===scopeDigest)label=title(root.question);}
+   chats.push(Object.freeze({threadId:group.threadId,exchangeId:row.id,title:label,updatedAt:row.askedAt,resumable:chosen.resumable}));
+  }
+  // Refinement may look beyond this page's consumed prefix, but it must not consume an unreturned
+  // distinct chat. Duplicate summaries on later scan pages are harmless and deduplicated by ID.
+  const omittedGroups=orderedGroups.length>limit,last=omittedGroups?rows[selectedGroups.at(-1)!.firstIndex]:rows.at(-1);
+  return Object.freeze({chats:Object.freeze(chats),scopeDigest,nextCursor:last&&(omittedGroups||rows.length===ASSISTANT_THREAD_LIMITS.scan)?encodeListCursor(last):null});
  });}catch{return refuse();}
 }
 const pageAad=(ctx:SessionContext,tail:string,scopeDigest:string)=>JSON.stringify(['ai-hr.assistant-thread-page.v1',ctx.tenantId,ctx.userId,tail,scopeDigest]);
