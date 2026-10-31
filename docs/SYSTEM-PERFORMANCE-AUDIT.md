@@ -424,11 +424,23 @@ Additional whole-system source findings need their own behavior and load evidenc
   and loaded Home navigation should supplement the existing heading/table checks;
   successful root HTML alone does not certify all asynchronous cards.
 
-The final500-user acceptance hardware/topology is not confirmed. The owner was
-asked whether to match production infrastructure, retain the four-CPU all-in-one
-diagnostic target, or specify application/database resources. This does not block
-isolated profiling; it does prevent treating these runner measurements as production
-capacity acceptance. No live host, database or configuration was changed or load-tested.
+On 31 October 2026 the owner selected **production-equivalent infrastructure**
+for final 500-concurrent-user acceptance, at both one-second and five-second
+activity levels. The historical production record describes separate application
+and PostgreSQL VMs, Nginx HTTPS and TLS between application and database. Current
+CPU/RAM allocations, storage performance, network latency, process limits and
+PostgreSQL configuration still require verification before an isolated acceptance
+environment can be described as equivalent. Generic customer sizing guidance is
+not evidence of the actual production installation.
+
+The shared four-CPU development runner remains diagnostic evidence only. Final
+acceptance must also cover representative writes and processing outside Claims;
+the existing concurrent mutation workload exercises Claims draft CRUD only. Tests
+must use fictional data in an isolated environment, with load generation separated
+from application/database capacity. Standard hosted Actions remain the authorized
+execution route; do not provision paid runners, incur new infrastructure costs or
+load-test the live installation by inference from this selection. No live host,
+database or configuration was changed or load-tested. Deployment remains excluded.
 
 Fixtures, private keys and native session tokens stay outside public artifacts.
 The HTTP evidence contains fictional screenshots, timings, normalized SQL, sampled
