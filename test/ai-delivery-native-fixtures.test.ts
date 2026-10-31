@@ -31,7 +31,7 @@ describe('actual complete AI browser native prerequisite composition',()=>{
   const platform=await phase('canonical Platform prerequisites and initial nonempty holdouts',()=>populateAiDeliveryPlatform(c));
   const [released]=await owner.db.select({status:s.payrollBatch.status,period:s.payrollBatch.payPeriod}).from(s.payrollBatch).where(and(eq(s.payrollBatch.tenantId,c.tenantId),eq(s.payrollBatch.id,financial.releasedBatchId)));
   expect(released).toEqual({status:'closed',period:aiDeliveryFixtureCalendar(c.today).releasedPeriod});
-  for(const item of Object.values(platform.attendance))for(const date of [item.date,item.workedDate]){expect(date<c.today).toBe(true);expect(released.period<date.slice(0,7)).toBe(true);}
+  for(const item of Object.values(platform.attendance.subjects))for(const date of [item.date,item.workedDate]){expect(date<c.today).toBe(true);expect(released.period<date.slice(0,7)).toBe(true);}
   const closable=await phase('canonical Financial refresh after platform inputs',()=>finalizeAiDeliveryFinancial(c,financial));expect(closable.state).toBe('prepared_not_closed');
   // Fresh final native reads after the last changed inputs, never a hand-built moduleWork result.
   for(const actor of [c.actors.operator,...c.actors.reviewers])for(const module of AGENT_MODULE_CODES){
