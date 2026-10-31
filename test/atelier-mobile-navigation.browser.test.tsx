@@ -31,6 +31,7 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
  it.each([false,true].flatMap(dark=>[390,768,1280].map(width=>({dark,width}))))('keeps the Security Center label beside its separate chevron at $width px (dark=$dark)',async({dark,width})=>{
   await page.viewport(width,900);document.documentElement.classList.toggle('dark',dark);mount(en,false,true);
   if(width<768)fireEvent.click(screen.getByRole('button',{name:en.nav.workspaceSwitch}));
+  fireEvent.click(screen.getByRole('button',{name:en.nav.systemConfiguration,expanded:false}));
   const module=document.querySelector('[data-atelier-module="securityCenter"]')!;
   const link=within(module as HTMLElement).getByRole('link',{name:en.nav.securityCenter});
   const toggle=within(module as HTMLElement).getByRole('button',{name:en.nav.securityCenter});
