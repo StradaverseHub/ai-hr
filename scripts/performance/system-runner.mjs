@@ -67,12 +67,14 @@ try{
  for(const port of ports)await assertPortFree(port);await assertPortFree(3443);
  const buildEnv={...env,NODE_ENV:'production',NODE_OPTIONS:'--max-old-space-size=6144'};
  for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL','TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL'])buildEnv[key]='postgres://nobody:nothing@127.0.0.1:1/no_database';
- await run('build','pnpm',['build'],buildEnv);
- report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
  await run('postgres','bash',['.github/ci/postgres.sh','reset']);dbStarted=true;
  await run('database','docker',['exec',container,'psql','-U','postgres','-p','5433','-d','postgres','-v','ON_ERROR_STOP=1','-c','CREATE DATABASE ai_hr_system_perf OWNER ai_hr_app']);
  await run('migrate','pnpm',['db:migrate']);await run('catalogs',process.execPath,['--import','tsx','scripts/seed-catalogs.ts']);
  await run('fixture',process.execPath,['--import','tsx','scripts/performance/system-fixture.mjs'],{...env,NODE_ENV:'development'},600000);
+ // Refuse invalid database/role/fixture setup before paying for the production build.
+ await run('build','pnpm',['build'],buildEnv);
+ report.buildId=readFileSync('.next/BUILD_ID','utf8').trim();
+
  await run('certificate','openssl',['req','-x509','-newkey','rsa:2048','-nodes','-keyout',join(privateDir,'key.pem'),'-out',join(privateDir,'cert.pem'),'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost']);
  mkdirSync(join(out,'cpu'),{recursive:true});
  for(const [index,port]of ports.entries()){
