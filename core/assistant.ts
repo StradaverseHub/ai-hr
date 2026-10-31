@@ -266,7 +266,7 @@ export async function askAssistant(
         if(result.name==='my_leave_balances'&&Array.isArray(outcome.employments)){let card=0;for(const employment of outcome.employments){if(!employment||typeof employment!=='object'||!Array.isArray(employment.balances))continue;for(const _balance of employment.balances){if(card<presentation.cards.length&&typeof employment.employmentId==='string'&&typeof employment.company==='string')localEmployments.push({read,card,key:employment.employmentId,labels:[employment.company]});card++;}}}
       }}catch{/* No unsupported source acquires answer authority. */}}
       if(!sourcesComplete)throw new AssistantError('provider_error');
-      const selectedCards=selectPrivateAssistantCards(intent.intent,answerReads,clarification,localEmployments);
+      const selectedCards=selectPrivateAssistantCards(intent.intent,answerReads,clarification,localEmployments,humanQuestion);
       const catalogue=privateAssistantCatalogue(intent.intent,answerReads,conversationStrategy.variant,selectedCards.selection);
       const hasReferences=catalogue.operation==='conversation'&&catalogue.reads.some(read=>read.explanations.length||read.cards.some(card=>card.facts.some(fact=>fact.available)));
       if(selectedCards.slot){answerPlan={version:1,mode:'clarify',slot:selectedCards.slot};stop='end';answer=JSON.stringify(answerPlan);}
