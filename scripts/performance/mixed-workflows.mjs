@@ -19,7 +19,9 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    const pairs=[...form].filter(([,v])=>typeof v==='string');fieldOrder=pairs.map(([k])=>k);
    assert.equal(new Set(fieldOrder).size,fieldOrder.length,'fixture replay does not support repeated string fields');fields=Object.fromEntries(pairs);
   }
+  const redirect=response.headers()['x-action-redirect']??response.headers().location;
   const template={path:new URL(req.url()).pathname,fields,fieldOrder,headers,status:response.status()};
+  if(redirect){const target=new URL(String(redirect).split(';')[0],base);if(target.searchParams.has('error')){report.mixedWorkflows.error={stage:kind,message:target.searchParams.get('error')};save();throw Error('Browser mutation refused: '+target.searchParams.get('error'));}}
   templates[kind]=template;return template;
  }
  const formFields=(template,values)=>{

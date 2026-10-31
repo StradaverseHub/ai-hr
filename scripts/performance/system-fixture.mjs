@@ -22,7 +22,7 @@ const {hireEmployee}=await import('../../core/org.ts');
 const {createClockingMapping}=await import('../../packs/attendance/service.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
 const {saveAttendanceWorkflow,setAttendanceWorkflowEnabled}=await import('../../core/attendance-workflow.ts');
-const {createBatch}=await import('../../packs/payroll/service.ts');
+const {createBatch,generatePayslips,closeBatch}=await import('../../packs/payroll/service.ts');
 const {MODULE_CATALOG}=await import('../../packs/catalog.ts');
 const {todayInKualaLumpur}=await import('../../lib/hr-date.ts');
 const {passwordHash,opaque,digest}=await import('../../lib/internal-auth/crypto.ts');
@@ -30,6 +30,7 @@ const {writeRecord}=await import('../../lib/internal-auth/record-store.ts');
 const {internalIssuer}=await import('../../lib/internal-auth/config.ts');
 const {generateSecret}=await import('otplib');
 const today=todayInKualaLumpur(),month=today.slice(0,7),password='Synthetic-'+randomBytes(24).toString('hex');
+const historicalMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-2,1)).toISOString().slice(0,7);
 const attendanceDays=Number(process.env.PERF_ATTENDANCE_DAYS||180);assert([180,2000].includes(attendanceDays));
 // Retained attendance must not predate employment; preserve the old 180-day fixture's hire date.
 const hiredOn=attendanceDays===180?'2025-01-01':new Date(Date.parse(today+'T12:00:00Z')-(attendanceDays+1)*86400000).toISOString().slice(0,10);
@@ -50,7 +51,8 @@ try{
    if(c){const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:`PERF Company ${t}-${c}`,country:'MY'}).returning();companyId=company.id;
     const [department]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId,name:'Performance department'}).returning();departmentId=department.id;
    }
-   const {batchId}=await createBatch(ctx,{companyId,payPeriod:month});companies.push({companyId,departmentId,batchId});
+   const {batchId}=await createBatch(ctx,{companyId,payPeriod:month});
+   const {batchId:historicalBatchId}=await createBatch(ctx,{companyId,payPeriod:historicalMonth});companies.push({companyId,departmentId,batchId,historicalBatchId});
   }
   tenants.push({tenantId:b.tenantId,organization,claimTypeId:type.id,clockingMappingId,companies});
   for(let i=0;i<250;i++){
@@ -81,8 +83,9 @@ try{
   await owner.client`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,worked_minutes,ot_minutes)
     select ${b.tenantId}::uuid,e.id,${today}::date-n,'09:00'::time,'17:00'::time,'present',480,0
     from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n`;
-  await owner.db.insert(s.payslip).values(cohort.map(u=>({tenantId:b.tenantId,batchId:u.batchId,employmentId:u.employmentId,basicSalary:'100',grossPay:'100',totalDeductions:'0',netPay:'100',employerCost:'100',statutory:{epfEmployee:0,epfEmployer:0,socsoEmployee:0,socsoEmployer:0,eisEmployee:0,eisEmployer:0,pcb:0}})));
   await owner.db.insert(s.compensation).values(cohort.map(u=>({tenantId:b.tenantId,employmentId:u.employmentId,basicSalary:'100',validFrom:hiredOn})));
+  // Retained published slips belong to a real completed historical run. Processing drafts stay empty.
+  for(const company of companies){await generatePayslips(ctx,{batchId:company.historicalBatchId});await closeBatch(ctx,{batchId:company.historicalBatchId});}
   for(const company of companies){
    const approver=cohort.find(u=>u.companyId===company.companyId&&['companyHR','groupHR'].includes(u.role));assert(approver);
    await saveAttendanceWorkflow(ctx,{companyId:company.companyId,applicationType:'irregularity',routingVersion:4,code:'PERF',name:'Fictional performance approval',priority:100,active:true,criteria:{employeeIds:cohort.filter(u=>u.companyId===company.companyId&&u.role==='employee').map(u=>u.employmentId)},stages:[{name:'HR',mode:'any_one',sources:[{kind:'specific_employee',employmentIds:[approver.employmentId]}],hrAlternative:false}],cc:[]});
@@ -107,6 +110,6 @@ try{
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
  writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,tenants:2,companies:10,users:500,historicalMonth,payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}
