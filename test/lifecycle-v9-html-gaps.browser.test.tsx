@@ -47,7 +47,7 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
    rules.focus();await userEvent.keyboard('{Enter}');expect(rules.getAttribute('aria-expanded')).toBe('false');
    console.info('V9_CHECKLIST_GEOMETRY '+JSON.stringify({theme,dark,mobile,route,name:n.toJSON(),duplicate:d.toJSON(),owner:o.toJSON()}));
    // Fictional derived fixture only, never labelled as staging or the reference artifact.
-   await page.screenshot({path:`../.vitest-attachments/v9-html-gaps-${theme}-${dark?'dark':'light'}-${mobile?'mobile':'desktop'}-${route}.png`,animations:'disabled',scale:'css'});
+   name.focus();const shot=await page.screenshot({base64:true,path:`../.vitest-attachments/v9-html-gaps-${theme}-${dark?'dark':'light'}-${mobile?'mobile':'desktop'}-${route}.png`,animations:'disabled',scale:'css'});console.info('V9_HTML_GAPS_SCREENSHOT '+JSON.stringify({theme,dark,mobile,route,fixture:'fictional-derived-not-staging',base64:shot.base64}));
   }
   expect(saves).not.toHaveBeenCalled();
  });

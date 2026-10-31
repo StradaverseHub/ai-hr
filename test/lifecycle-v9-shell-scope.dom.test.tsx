@@ -7,7 +7,7 @@ vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn(),push:vi.fn()})})
 vi.mock('../components/user-menu',()=>({UserMenu:()=> <button>Account menu</button>}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn(),readV9Case:vi.fn(),commandV9:vi.fn(),createV9Offboarding:vi.fn(),saveV9Config:vi.fn(),setupV9:vi.fn()}));
 import {V9Workspace} from '../app/lifecycle/v9/workspace';
-function workspace(scope:string[]|undefined,view:'leavers'|'records'|'offChecklists'='leavers') {
+function workspace(scope:string[]|undefined,view:'leavers'|'records'|'offChecklists'|'workflows'='leavers') {
  const initial=v9HtmlWorkspace();initial.cases=['alpha','beta'].map(v9HtmlCase);
  return <NextIntlClientProvider locale="en" messages={messages}><V9Workspace initial={initial} viewer={{name:'Fictional HR',employeeCode:null,employed:false}} navigation="global" initialView={view} companyScope={scope}/></NextIntlClientProvider>;
 }
@@ -36,8 +36,14 @@ it('keeps native joiners in the shell company selection and retains employee/cas
  const today='2099-01-01',config=defaultConfig('fictional-hr'),env={today,now:today+'T02:00:00Z',id:()=> 'fictional-id',nextNumber:()=> 'IT-fictional',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[]};
  const rows=['alpha','beta'].map(id=>{const c=blankCase('native-'+id,'OB-'+id,'draft-'+id,{fullName:'Native '+id,employeeId:'EMP-'+id,joinDate:today,company:id},env);return {case:c,revision:1,isNew:false,progress:progress(config,c)};});
  const joiners={config,rows,options:{company:[],department:[],businessGroup:[],grade:[],title:[],employmentType:[],supervisor:[]}};
- const content=(scope:string[])=> <NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur"><V9Workspace navigation="global" companyScope={scope} initialView="joiners" initial={v9HtmlWorkspace()} joiners={joiners} viewer={{name:'Fictional HR',employeeCode:null,employed:false}}/></NextIntlClientProvider>;
- const view=render(content(['alpha']));expect(screen.getByRole('link',{name:'Native alpha'})).toBeVisible();expect(screen.queryByRole('link',{name:'Native beta'})).toBeNull();
+ const content=(scope:string[],view:'joiners'|'leavers'='joiners')=> <NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur"><V9Workspace navigation="global" companyScope={scope} initialView={view} initial={v9HtmlWorkspace()} joiners={joiners} viewer={{name:'Fictional HR',employeeCode:null,employed:false}}/></NextIntlClientProvider>;
+ const view=render(content(['alpha'],'leavers'));fireEvent.change(screen.getByRole('textbox',{name:'Search cases'}),{target:{value:'No matching person'}});view.rerender(content(['alpha']));expect(screen.getByRole('link',{name:'Native alpha'})).toBeVisible();expect(screen.queryByRole('link',{name:'Native beta'})).toBeNull();
  view.rerender(content(['alpha','beta']));fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'EMP-beta'}});expect(screen.getByRole('link',{name:'Native beta'})).toBeVisible();expect(screen.queryByRole('link',{name:'Native alpha'})).toBeNull();
  fireEvent.change(screen.getByRole('textbox',{name:'Search by name'}),{target:{value:'OB-alpha'}});expect(screen.getByRole('link',{name:'Native alpha'})).toBeVisible();expect(screen.queryByRole('link',{name:'Native beta'})).toBeNull();
+});
+
+it('does not carry a hidden Leavers search into workflow dry-run choices',()=>{
+ const view=render(workspace(['alpha']));fireEvent.change(screen.getByRole('textbox',{name:'Search cases'}),{target:{value:'No matching person'}});expect(screen.queryByRole('button',{name:'Fictional alpha'})).toBeNull();
+ view.rerender(workspace(['alpha'],'workflows'));expect(screen.queryByRole('textbox',{name:'Search cases'})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Send the exit form and survey'}));
+ const testCase=screen.getByRole('combobox',{name:'Test case'});expect(within(testCase).getByRole('option',{name:/Fictional alpha/})).toBeInTheDocument();expect(within(testCase).queryByRole('option',{name:/Fictional beta/})).toBeNull();
 });

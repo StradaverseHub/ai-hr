@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { expect, it } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { ChecklistEditor } from '../app/lifecycle/v9/workspace';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 function Editor() {
@@ -25,7 +25,7 @@ it('places New above grouped checklist cards, duplicates independent task identi
   render(<ManagedEditor/>);
   const nav=screen.getByRole('navigation',{name:'Checklists'});
   expect(nav.querySelector('button')?.textContent).toBe('New checklist');
-  expect(screen.getByText('OWNED BY YOU')).toBeInTheDocument();expect(screen.getByText('Case type: Resignation')).toBeInTheDocument();
+  expect(screen.getByText('OWNED BY YOU')).toBeInTheDocument();expect(within(nav).getByText('Case type: Resignation')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button',{name:'Duplicate'}));
   const config=JSON.parse(screen.getByTestId('managed-config').textContent!);
   expect(config.checklists).toHaveLength(2);expect(config.checklists[1]).toMatchObject({name:'Copy of Managed checklist',ownerUserId:'hr'});
