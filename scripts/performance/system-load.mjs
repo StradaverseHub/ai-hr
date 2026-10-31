@@ -303,7 +303,31 @@ try{
   assert.equal((await db`select id from claim_request where id=${protectedDraft.id}::uuid`).length,0);
  }
  if(suite!=='claims-heavy')runMixedWorkflow=await prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs});
- if(suite==='workflow-preflight'){const ctx=await context(employee);try{const page=await ctx.newPage();await visit(page,employee,'/me/payslip');}finally{await ctx.close();}}
+ if(suite!=='claims-heavy'){
+  const ctx=await context(employee),page=await ctx.newPage();let automaticPdfRequests=0;
+  const observe=req=>{if(req.method()==='GET'&&/^\/me\/payslip\/[^/]+\/pdf$/.test(new URL(req.url()).pathname))automaticPdfRequests++;};
+  page.on('request',observe);
+  try{
+   await visit(page,employee,'/me/payslip');assert.equal(automaticPdfRequests,0,'opening the statement requested a PDF without a download click');page.off('request',observe);
+   const text=await page.locator('main').innerText(),code='PERF'+String(employee.index).padStart(4,'0');
+   assert(text.includes(employee.name)&&text.includes(code),'own statement identity missing');assert(/5,000\.00/.test(text),'native fixture salary missing from statement');
+   const link=page.getByRole('link',{name:'Download PDF',exact:true}),href=await link.getAttribute('href');assert(/^\/me\/payslip\/[^/]+\/pdf$/.test(href??''));
+   const [download]=await Promise.all([page.waitForEvent('download',{timeout:90000}),link.click()]);
+   // Chromium can hand attachment navigation to its download manager without a normal page Response.
+   // Check transport headers independently with the same real browser context/cookies.
+   const transport=await ctx.request.get(base+href);assert.equal(transport.status(),200);
+   assert(String(transport.headers()['content-type']).includes('application/pdf'));assert(String(transport.headers()['content-disposition']).includes('attachment'));assert(String(transport.headers()['cache-control']).includes('no-store'));
+   const stream=await download.createReadStream();assert(stream);const chunks=[];let bytes=0;
+   for await(const chunk of stream){bytes+=chunk.length;assert(bytes<=12*1024*1024,'PDF exceeded diagnostic ceiling');chunks.push(chunk);}
+   const file=Buffer.concat(chunks);assert(bytes>1000);assert.equal(file.subarray(0,5).toString(),'%PDF-');assert.equal(await download.failure(),null);assert(download.suggestedFilename().includes(code));
+   const {PDFDocument}=await import('pdf-lib'),document=await PDFDocument.load(file),pages=document.getPageCount();assert(pages>0&&pages<=10);
+   for(const target of [fixture.users[5],fixture.users[254]]){
+    const [slip]=await db`select id from payslip where employment_id=${target.employmentId}::uuid order by created_at desc limit 1`;assert(slip);
+    const denied=await ctx.request.get(base+'/me/payslip/'+slip.id+'/pdf');assert.equal(denied.status(),404,'foreign own-only PDF was accessible');report.boundaries.push({kind:'foreign-own-payslip-pdf',scope:target.tenant===employee.tenant?'same-company-other-person':'other-tenant',passed:true});
+   }
+   report.payslipDocument={nativeDownload:true,automaticPdfRequests,bytes,pages,ownIdentity:true,foreignBoundaries:2};save();
+  }finally{await ctx.close();}
+ }
  assert.equal(report.browserErrors.length,0,'mutation/processing browser runtime errors');
  await homeHttp.read(fixture.users[5],false);await homeHttp.read(fixture.users[3],false);
  await homeHttp.boundary(employee,fixture.users[5]);await homeHttp.boundary(manager,employee);
