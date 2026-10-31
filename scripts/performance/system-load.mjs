@@ -74,7 +74,13 @@ async function request(user,path,fields,expectedStatus=200,record=true,actionHea
  response.durationMs=performance.now()-started;
  if(record)samples.push({user:user?.index??null,role:user?.role??'anonymous',route:path.split('?')[0],method:fields?'POST':'GET',status:response.status,startedMs:started,durationMs:response.durationMs,ttfbMs:response.ttfbMs,wireBytes:response.wireBytes,decodedBytes:response.decodedBytes});
  assert.equal(response.status,expectedStatus,`Unexpected HTTP status for ${path.split('?')[0]}`);
- if(!fields&&expectedStatus===200&&!path.startsWith('/api/')&&!String(response.headers['content-type']).includes('text/csv')){
+ const ownPayslipPdf=/^\/me\/payslip\/[0-9a-f-]{36}\/pdf$/.test(path.split('?')[0]);
+ if(!fields&&expectedStatus===200&&ownPayslipPdf){
+  assert(String(response.headers['content-type']).includes('application/pdf'),'personal document returned a non-PDF response');
+  assert(response.content.startsWith('%PDF-'),'personal document PDF header missing');
+  assert(String(response.headers['cache-control']).includes('private')&&String(response.headers['cache-control']).includes('no-store'),'personal document cache policy');
+  assert(String(response.headers['content-disposition']).includes('attachment'),'personal document download disposition');
+ }else if(!fields&&expectedStatus===200&&!path.startsWith('/api/')&&!String(response.headers['content-type']).includes('text/csv')){
   assert(!/NEXT_HTTP_ERROR_FALLBACK;(404|500)/.test(response.content)&&!/<h1[^>]*>\s*404(?:\s|<)/.test(response.content),'streamed error boundary');
   assert(response.content.includes(user.name),'signed-in principal marker missing');
   assert(!response.content.includes('PERF Person '+String(user.tenant?0:250).padStart(4,'0')),'cross-tenant person leaked');

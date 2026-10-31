@@ -48,11 +48,21 @@ five unchanged live query bodies use reusable plans and named actor validation
 returns early only when a necessary identity/recipient condition cannot hold.
 No authorization result is cached. All636 canonical journal entries/SQL bytes
 remain unchanged; the candidate appends seven unapplied performance reservations.
-Exact-file qualification/compiler41192498275 and fourteen affected native/model
-files41192504628 are running. Past-month HTTP Payroll close/publication coverage
-is prepared but has no passing receipt yet. Expanded500-user HTTP/browser runs41192576077(1s)/41192579997(5s) are now running
-on that exact source with two million records and the new publication preflight.
-No speed or functional pass is claimed until complete artifacts are verified.
+Exact-file qualification and the whole compiler41192498275 PASS. All14 affected
+files41192504628 PASS:278 cases (268DB-classified/10model), zero failures/skips.
+The complete pre-existing canonical migration prefix remains unchanged.
+
+Expanded HTTP/browser runs41192576077(1s)/41192579997(5s) both FAIL before load.
+Build/migration/two-million-record fixture checks passed, as did Leave, Personnel,
+Attendance and50-person Payroll processing/export preflights. The added past-month
+publication check verified native close, release/event identity and the employee's
+rendered statement, but its PDF GET then hit an HTML-only principal-marker assertion
+in the shared driver. Neither run reached500-user traffic; neither supplies latency
+evidence. Their exact original failures remain retained. The driver repair checks
+the exact personal-PDF route's binary header, MIME, private/no-store and attachment
+headers; HTML identity checks and native foreign-person/tenant refusals remain.
+Only affected HTTP/browser evidence needs rerunning; native/compiler receipts
+retain source4b0a8bc56 and are not relabelled onto the harness repair.
 
 Measured Claims queue improvements and129 affected passing cases remain component
 evidence; they do not establish500-user capacity. Read-only infrastructure checks
