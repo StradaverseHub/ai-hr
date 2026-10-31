@@ -10,8 +10,8 @@ import {AssistantClarificationError} from '@/core/assistant-clarification';
 import { askAssistant, AssistantError } from '@/core/assistant';
 import { loadAiWorkspace } from '@/core/ai-workspace';
 import { resolvePageContext } from '@/lib/ai/page-context';
-import {allowedCompanies} from '@/core/read';
-import {getScopeIds} from '@/lib/scope';
+import {assistantBrowserConversationScope} from './conversation-scope';
+import {loadOwnAssistantChat} from '@/core/assistant-threads';
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
 
 export type LauncherReply =
@@ -32,7 +32,7 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
   if(input.clarificationExchangeId!==undefined&&(typeof input.clarificationExchangeId!=='string'||input.previousExchangeId!==undefined))return {ok:false,message:t('workspace.conversation.unavailable')};
   try {
     const session = await getBrowserCommandSession();
-    const conversationScope=JSON.stringify((await getScopeIds((await allowedCompanies(session)).map(company=>company.id))).sort());
+    const conversationScope=await assistantBrowserConversationScope(session);
     const { exchangeId, conversationToken } = await askAssistant(session, { question, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
     revalidatePath('/assistant');
     const workspace = await loadAiWorkspace(session, { selectedExchangeId: exchangeId, includeGovernance: false });
@@ -51,4 +51,16 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */
 export async function askFromWorkspaceAction(input: {question:unknown;previousExchangeId?:unknown;previousConversationToken?:unknown;clarificationExchangeId?:unknown}):Promise<LauncherReply>{
  return askFromLauncherAction({question:input.question,path:'/assistant',...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId}),...(input.previousExchangeId===undefined?{}:{previousExchangeId:input.previousExchangeId,previousConversationToken:input.previousConversationToken})});
+}
+
+/** Read one earlier page of this exact selected own branch. Scope and canonical answers are rederived. */
+export async function loadEarlierChatAction(input:{exchangeId:unknown;before:unknown}):Promise<{ok:true;turns:readonly {id:string;question:string;answer:ReactNode;clarificationRequired?:boolean}[];olderCursor:string|null}|{ok:false;message:string}>{
+ const t=await getTranslations('assistant');
+ try{
+  if(typeof input.exchangeId!=='string'||typeof input.before!=='string')throw Error();
+  const session=await getBrowserCommandSession(),scope=await assistantBrowserConversationScope(session);
+  const page=await loadOwnAssistantChat(session,{exchangeId:input.exchangeId,before:input.before},scope);
+  const turns=await Promise.all(page.turns.map(async exchange=>({id:exchange.id,question:exchange.question,answer:await ExchangeReply({exchange,ctx:session}),clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false})));
+  return{ok:true,turns,olderCursor:page.olderCursor};
+ }catch{return{ok:false,message:t('workspace.conversation.unavailable')};}
 }

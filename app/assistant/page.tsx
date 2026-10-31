@@ -1,3 +1,5 @@
+import {listOwnAssistantChats,loadOwnAssistantChat} from '@/core/assistant-threads';
+import {assistantBrowserConversationScope} from './conversation-scope';
 import {ProtectedAnalysis} from '@/components/assistant/protected-analysis';
 import {isAdmin} from '@/lib/authz-model';
 import {allowedCompanies} from '@/core/read';
@@ -56,7 +58,7 @@ import { eraseAgentFeedbackAction } from './feedback-actions';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string }>;
+  searchParams: Promise<{ e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -114,7 +116,12 @@ export default async function AssistantPage({
   }
 
   const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
-  const { history } = workspace;
+  const conversationScope=await assistantBrowserConversationScope(s);
+  const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
+  const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
+  const initialTurns=selectedChat?.turns.map(exchange=>({id:exchange.id,question:exchange.question,
+    clarificationRequired:exchange.grounded?.conversation?.plan.mode==='clarify'&&exchange.grounded?.conversation?.clarificationAllowed!==false,
+    answer:<ExchangeReply exchange={exchange} ctx={s}/>}));
   const selectedJob=sp.job===undefined||sp.governed!==undefined?null:await loadCanonicalModuleJob(s,{module:sp.job});
   // Shortcuts are offered only where the target's own authorization rules admit this session.
   const actionEntries=await allowedModuleActionEntries(s,workspace.jobModules);
@@ -130,16 +137,17 @@ export default async function AssistantPage({
           <PageHeader title={greeting} />
           <OwnClearStatus status={sp.ownClear}/>
           <ErrorBanner message={errorMessage} />
-          <WorkspaceConversation fullHeight resetKey={sp.chatReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-            initialTurn={history.find(h=>h.id===sp.e)?{id:sp.e!,question:history.find(h=>h.id===sp.e)!.question,
-              clarificationRequired:history.find(h=>h.id===sp.e)!.grounded?.conversation?.plan.mode==='clarify'&&history.find(h=>h.id===sp.e)!.grounded?.conversation?.clarificationAllowed!==false,
-              answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>} : undefined}/>
+          <WorkspaceConversation key={(savedChats?.scopeDigest??'')+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+(savedChats?.scopeDigest??'')} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+            initialTurns={initialTurns} historyReadOnly={Boolean(selectedChat&&!selectedChat.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
+
         </section>
         <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:border-l lg:border-t-0 lg:pl-5">
-          {history.length>0&&<details>
-            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.recent')}</summary>
-            <ul className="max-h-72 space-y-1 overflow-y-auto overscroll-contain pb-3">{history.map(h=><li key={h.id}><Link href={'/assistant?e='+encodeURIComponent(h.id)} scroll={false} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{h.question}</Link></li>)}</ul>
-          </details>}
+          <nav aria-label={t('workspace.chat.chats')} className="pb-3">
+            <h2 className="py-3 text-sm font-medium">{t('workspace.chat.chats')}</h2>
+            <Link href="/assistant" scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.new')}</Link>
+            <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{(savedChats?.chats??[]).map(chat=><li key={chat.threadId}><Link href={'/assistant?e='+encodeURIComponent(chat.exchangeId)} scroll={false} aria-current={selectedChat?.threadId===chat.threadId?'page':undefined} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-muted">{chat.title}</Link></li>)}</ul>
+            {savedChats?.nextCursor&&<Link href={'/assistant?'+(sp.e?'e='+encodeURIComponent(sp.e)+'&':'')+'chatCursor='+encodeURIComponent(savedChats.nextCursor)} scroll={false} className="inline-flex min-h-11 items-center px-2 text-xs underline">{t('workspace.chat.moreChats')}</Link>}
+          </nav>
           <details className="border-t border-border">
             <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.tabs')}</summary>
             <div className="pb-3">{homeTabs}</div>
