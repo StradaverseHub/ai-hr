@@ -133,7 +133,7 @@ const managerRoutes=['/','/approvals','/approvals/history','/performance/home','
 const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 const pendingBrowserRequests=new WeakMap();
-let browser,sampling,progressTimer,contextTemplates,lastPage,runMixedWorkflow;
+let browser,sampling,progressTimer,browserDiagnosticTimer,contextTemplates,lastPage,runMixedWorkflow;
 async function main(){
 try{
  save();await db`select pg_stat_statements_reset()`;
@@ -154,12 +154,16 @@ try{
  }
  browser=await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE||undefined,args:['--host-resolver-rules=MAP localhost 127.0.0.1']});
  report.browserVersion=browser.version();
+ browserDiagnosticTimer=setInterval(()=>{
+  if(!lastPage||lastPage.isClosed())return;
+  report.browserPendingSnapshot={at:new Date().toISOString(),requests:[...(pendingBrowserRequests.get(lastPage)?.values()??[])].slice(0,50).map(row=>({...row,elapsedMs:performance.now()-row.startedMs}))};save();
+ },5000);
  async function context(user,locale='en'){
   const context=await browser.newContext({ignoreHTTPSErrors:true,locale});
   await context.addCookies([{name:'__Host-aihr_internal',value:user.token,url:base,secure:true,httpOnly:true,sameSite:'Lax'},{name:'NEXT_LOCALE',value:locale,url:base}]);
   context.on('page',page=>{
    const pending=new Map();pendingBrowserRequests.set(page,pending);
-   page.on('request',req=>{const url=new URL(req.url());if(url.origin===base)pending.set(req,{method:req.method(),path:url.pathname,type:req.resourceType(),startedMs:performance.now()});});
+   page.on('request',req=>{const url=new URL(req.url());pending.set(req,{method:req.method(),path:url.origin===base?url.pathname:'<external>',sameOrigin:url.origin===base,type:req.resourceType(),startedMs:performance.now()});});
    page.on('requestfinished',req=>pending.delete(req));page.on('requestfailed',req=>pending.delete(req));
    page.on('response',response=>{const row=pending.get(response.request());if(row)row.status=response.status();});
    const started=new WeakMap();
@@ -383,6 +387,6 @@ try{
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'loaded Home card/summary failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
-finally{if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}
+finally{if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}
 }
 await main();

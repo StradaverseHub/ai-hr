@@ -2,16 +2,22 @@
 import assert from 'node:assert/strict';
 import {setTimeout as pause} from 'node:timers/promises';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
- const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[]};
+ const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  async function capture(page,click,kind){
   report.mixedWorkflows.currentStage=kind;save();
   const marker={leaveCreate:'PERF_LEAVE_BROWSER',leaveEdit:'PERF_LEAVE_BROWSER_EDITED',personnelCreate:'PERF_PERSONNEL_BROWSER',personnelEdit:'PERF_PERSONNEL_BROWSER_EDITED'}[kind];
-  const waiting=page.waitForResponse(r=>r.request().method()==='POST'&&Boolean(r.request().headers()['next-action'])&&(!marker||r.request().postDataBuffer()?.includes(Buffer.from(marker))),{timeout:90000});
-  let response;
-  try{[response]=await Promise.all([waiting,click()]);}
-  catch(error){report.mixedWorkflows.error={stage:kind,message:String(error.message).slice(0,350)};save();throw error;}
-  await response.finished();
-  const req=response.request(),headers={};
+  // Bind to a request initiated after arming this click, never an advisory response already in flight.
+  // Capture needs transport metadata only. Redirect/toast navigation can cancel the original stream;
+  // the surrounding workflow still verifies UI readiness and independent committed native state.
+  const waiting=page.waitForRequest(req=>req.method()==='POST'&&Boolean(req.headers()['next-action'])&&(!marker||req.postDataBuffer()?.includes(Buffer.from(marker))),{timeout:90000});
+  let response,req,timer;
+  try{
+   [req]=await Promise.all([waiting,click()]);
+   response=await Promise.race([req.response(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Mutation response headers exceeded90 seconds')),90000);})]);
+   assert(response,'Mutation request failed before response headers');
+  }catch(error){report.mixedWorkflows.error={stage:kind,message:String(error.message).slice(0,350)};save();throw error;}
+  finally{clearTimeout(timer);}
+  const headers={};
   for(const key of ['accept','next-action','next-router-state-tree'])if(req.headers()[key])headers[key]=req.headers()[key];
   const type=req.headers()['content-type'];let fields,fieldOrder=[];
   if(type.startsWith('text/plain')){fields=JSON.parse(req.postDataBuffer().toString());assert(Array.isArray(fields));}
