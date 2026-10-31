@@ -69,19 +69,34 @@ export function mergeOutcomes(outcomes: ActivationOutcome[]): ActivationOutcome 
  *
  * ON CONFLICT DO NOTHING on (tenant_id, key) is what makes reactivation safe. A customer who changed a
  * setting keeps their value; only genuinely absent rows are created.
+ *
+ * SCOPED TO THE MODULE BEING INSTALLED, with the same rule as provisioning's `settingsOnInstallFor`.
+ * The first version read EVERY definition with an install value, so turning on Rewards wrote
+ * `payroll.individual_txn_pay_enabled = true` into any tenant that had no row for it — a payslip
+ * arithmetic change made by installing an unrelated module. It also wrote rows equal to their catalog
+ * default, which change nothing yet read as a recorded decision to scripts/reconcile-entitlement-parity.ts
+ * and, under the column default `source = 'customer'`, as the customer's own choice. So: only this
+ * module's keys, only values that differ from the default, and `source: 'platform'` as provisioning and
+ * 0313 write it.
  */
-export const seedModuleSettingDefaults: ModuleActivator = async ({ tx, tenantId }) => {
+export const seedModuleSettingDefaults = (moduleCode: string): ModuleActivator => async ({ tx, tenantId }) => {
   const defs = await tx
     .select({ key: settingDefinition.key, value: settingDefinition.defaultOnInstall })
     .from(settingDefinition)
-    .where(sql`${settingDefinition.defaultOnInstall} is not null`);
+    .where(
+      and(
+        eq(settingDefinition.moduleCode, moduleCode),
+        sql`${settingDefinition.defaultOnInstall} is not null`,
+        sql`${settingDefinition.defaultOnInstall} is distinct from ${settingDefinition.defaultValue}`,
+      ),
+    );
   if (defs.length === 0) return emptyOutcome();
 
   let seeded = 0;
   for (const d of defs) {
     const res = await tx
       .insert(tenantSetting)
-      .values({ tenantId, key: d.key, value: d.value as never })
+      .values({ tenantId, key: d.key, value: d.value as never, source: 'platform' })
       .onConflictDoNothing()
       .returning({ key: tenantSetting.key });
     if (res.length > 0) seeded += 1;
@@ -188,7 +203,7 @@ export const MODULE_ACTIVATORS: Readonly<Record<string, ModuleActivator>> = {
 /** Everything the RUNNER executes for an activation: the tenant-level pass, then the per-company ones. */
 export function activatorsFor(moduleCode: string): { tenant: ModuleActivator[]; perCompany: ModuleActivator[] } {
   const own = MODULE_ACTIVATORS[moduleCode];
-  return { tenant: [seedModuleSettingDefaults], perCompany: own ? [own] : [] };
+  return { tenant: [seedModuleSettingDefaults(moduleCode)], perCompany: own ? [own] : [] };
 }
 
 /** What a NEWLY CREATED company needs from an already-active module. Never the tenant-level pass. */
