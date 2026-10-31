@@ -66,7 +66,9 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
     const page=read('app/assistant/page.tsx');expect(page).not.toContain('{h.answer}');
     expect(page).toContain('CanonicalModuleJob');
     expect(page).toContain("from '@/components/assistant/workspace-conversation'");
-    expect(page).toContain('<WorkspaceConversation');
+    expect(page).toContain('<WorkspaceConversation fullHeight');
+    expect(page).toContain('lg:grid-cols-[minmax(0,1fr)_20rem]');
+    expect(page).toContain('<aside');
     expect(page).toContain('initialTurn={history.find(h=>h.id===sp.e)?');
     expect(page).toContain("from '@/components/assistant/exchange-reply'");
     expect(page).toContain('answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>');
