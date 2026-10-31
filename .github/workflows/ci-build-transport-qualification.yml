@@ -20,7 +20,7 @@ on:
         required: true
         type: string
       producer_controller_branch:
-        description: Frozen owned codex controller branch, or alpha for an actual final alpha-push producer
+        description: Frozen owned codex controller branch, or alpha for an actual same-source push or manual producer
         required: true
         type: string
       artifact_id:

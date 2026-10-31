@@ -12,7 +12,7 @@ const run={id:123,workflow_id:395777276,run_attempt:1,event:'workflow_dispatch',
 const job={id:124365556166,runner_id:100000001,runner_name:'producer fixture',head_branch:'codex/producer-frozen',name:'build',run_id:123,run_attempt:1,head_sha:origin,status:'completed',conclusion:'success',started_at:'2026-10-31T00:00:05Z',completed_at:'2026-10-31T00:03:00Z'};
 const artifact={id:456,name:'production-build-v1',expired:false,workflow_run:{id:123,head_sha:origin,repository_id:1333414856,head_repository_id:1333414856,head_branch:'codex/producer-frozen'},created_at:'2026-10-31T00:02:59Z',expires_at:'2026-11-02T00:02:58Z',digest:'sha256:'+digest,size_in_bytes:1234};
 const metadata={run,jobs:[job],artifact,artifacts:[artifact]};
-const validateCiTransportProvenance=(value,e,runtime,localRunner,actualProducerJob=job)=>provenanceWithJob(value,e,runtime,localRunner,actualProducerJob);
+const validateCiTransportProvenance=(value,e,runtime,localRunner,actualProducerJob=job,actualProducerRun=run)=>provenanceWithJob(value,e,runtime,localRunner,actualProducerJob,actualProducerRun);
 const ref=(name,sha)=>({ref:'refs/heads/'+name,object:{type:'commit',sha}});
 const refs={source:ref(env.AIHR_BUILD_SOURCE_BRANCH,source),producer:ref(env.AIHR_BUILD_PRODUCER_BRANCH,origin),consumer:ref(env.GITHUB_REF_NAME,control)};
 const consumerRun={id:999,run_attempt:1,event:'workflow_dispatch',head_sha:control,path:CI_TRANSPORT_WORKFLOW,head_branch:env.GITHUB_REF_NAME,repository,head_repository:repository};
@@ -63,21 +63,47 @@ test('actual final alpha-push producer is separately admitted without relabellin
  const pushProvenance={...p,source:origin,producerEvent:'push',producerRef:'refs/heads/alpha',workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
  assert.equal(assertCiTransportInvocation(pushEnv),true);
  assert.equal(validateCiTransportMetadata(pushMetadata,pushEnv),pushJob);
- assert.equal(validateCiTransportProvenance(pushProvenance,pushEnv,{...STAGING_BUILD_RUNTIME},consumer,pushJob),true);
+ assert.equal(validateCiTransportProvenance(pushProvenance,pushEnv,{...STAGING_BUILD_RUNTIME},consumer,pushJob,pushRun),true);
  assert.equal(validateCiTransportRefs({...refs,source:ref(pushEnv.AIHR_BUILD_SOURCE_BRANCH,origin),producer:ref('alpha',origin)},pushEnv),true);
- for(const changed of [{...pushRun,event:'workflow_dispatch'},{...pushRun,event:'pull_request'},{...pushRun,head_branch:'main'},{...pushRun,head_sha:source}])assert.throws(()=>validateCiTransportMetadata({...pushMetadata,run:changed},pushEnv));
+ for(const changed of [{...pushRun,event:'pull_request'},{...pushRun,head_branch:'main'},{...pushRun,head_sha:source}])assert.throws(()=>validateCiTransportMetadata({...pushMetadata,run:changed},pushEnv));
  for(const changes of [{AIHR_CI_HEAD:source},{AIHR_BUILD_PRODUCER_CONTROL_HEAD:control},{AIHR_BUILD_PRODUCER_BRANCH:'main'},{AIHR_BUILD_PRODUCER_BRANCH:'codex/producer-frozen'}])assert.throws(()=>validateCiTransportMetadata(pushMetadata,{...pushEnv,...changes}));
- for(const changes of [{source},{producerEvent:'workflow_dispatch'},{producerRef:'refs/heads/main'},{workflowRef:p.workflowRef},{controller:control}])assert.throws(()=>validateCiTransportProvenance({...pushProvenance,...changes},pushEnv,{...STAGING_BUILD_RUNTIME},consumer));
+ for(const changes of [{source},{producerEvent:'workflow_dispatch'},{producerRef:'refs/heads/main'},{workflowRef:p.workflowRef},{controller:control}])assert.throws(()=>validateCiTransportProvenance({...pushProvenance,...changes},pushEnv,{...STAGING_BUILD_RUNTIME},consumer,pushJob,pushRun));
  assert.throws(()=>validateCiTransportMetadata({...metadata,run:{...run,event:'push'}},env),undefined,'Owned codex branch cannot impersonate the alpha push path');
 });
 
 
-test('both producer events require actual job ID/branch and complete artifact origin/timing',()=>{
+test('manual alpha producer binds the authenticated event and exact source without accepting a relabelled push',()=>{
+ const alphaEnv={...env,AIHR_CI_HEAD:origin,AIHR_BUILD_PRODUCER_BRANCH:'alpha'};
+ const alphaRun={...run,head_branch:'alpha'},alphaJob={...job,head_branch:'alpha'};
+ const alphaArtifact={...artifact,workflow_run:{...artifact.workflow_run,head_branch:'alpha'}};
+ const alphaMetadata={run:alphaRun,jobs:[alphaJob],artifact:alphaArtifact,artifacts:[alphaArtifact]};
+ const alphaProvenance={...p,source:origin,producerRef:'refs/heads/alpha',workflowRef:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/alpha'};
+ assert.equal(validateCiTransportMetadata(alphaMetadata,alphaEnv),alphaJob);
+ assert.equal(validateCiTransportProvenance(alphaProvenance,alphaEnv,{...STAGING_BUILD_RUNTIME},consumer,alphaJob,alphaRun),true);
+ assert.equal(validateCiTransportRefs({...refs,source:ref(alphaEnv.AIHR_BUILD_SOURCE_BRANCH,origin),producer:ref('alpha',origin)},alphaEnv),true);
+ for(const changes of [{AIHR_CI_HEAD:source},{AIHR_BUILD_PRODUCER_CONTROL_HEAD:control},{AIHR_BUILD_PRODUCER_BRANCH:'main'}]){
+  assert.throws(()=>validateCiTransportMetadata(alphaMetadata,{...alphaEnv,...changes}));
+  assert.throws(()=>validateCiTransportProvenance(alphaProvenance,{...alphaEnv,...changes},{...STAGING_BUILD_RUNTIME},consumer,alphaJob,alphaRun));
+ }
+ for(const event of ['push','workflow_dispatch']){
+  const actualRun={...alphaRun,event},packet={...alphaProvenance,producerEvent:event};
+  assert.equal(validateCiTransportProvenance(packet,alphaEnv,{...STAGING_BUILD_RUNTIME},consumer,alphaJob,actualRun),true);
+  assert.throws(()=>validateCiTransportProvenance({...packet,producerEvent:event==='push'?'workflow_dispatch':'push'},alphaEnv,{...STAGING_BUILD_RUNTIME},consumer,alphaJob,actualRun));
+ }
+ for(const forged of [undefined,null,{},...Object.entries({id:999,workflow_id:1,run_attempt:2,head_sha:source,head_branch:'main',event:'pull_request',path:CI_TRANSPORT_WORKFLOW,repository:{...repository,id:1},head_repository:{...repository,full_name:'fork/ai-hr'},run_started_at:'invalid'}).map(([key,value])=>({...alphaRun,[key]:value}))]){
+  assert.throws(()=>validateCiTransportMetadata({...alphaMetadata,run:forged},alphaEnv));
+  assert.throws(()=>validateCiTransportProvenance(alphaProvenance,alphaEnv,{...STAGING_BUILD_RUNTIME},consumer,alphaJob,forged));
+ }
+ assert.throws(()=>provenanceWithJob(p,env,{...STAGING_BUILD_RUNTIME},consumer,job),undefined,'Missing actual producer run has no fallback');
+});
+
+test('all supported producer events require actual job ID/branch and complete artifact origin/timing',()=>{
  const pushEnv={...env,AIHR_CI_HEAD:origin,AIHR_BUILD_PRODUCER_BRANCH:'alpha'};
  const pushJob={...job,head_branch:'alpha'};
  const pushArtifact={...artifact,workflow_run:{...artifact.workflow_run,head_branch:'alpha'}};
  const pushMetadata={...metadata,run:{...run,event:'push',head_branch:'alpha'},jobs:[pushJob],artifact:pushArtifact,artifacts:[pushArtifact]};
- for(const [current,e]of [[metadata,env],[pushMetadata,pushEnv]]){
+ const manualAlphaMetadata={...pushMetadata,run:{...pushMetadata.run,event:'workflow_dispatch'}};
+ for(const [current,e]of [[metadata,env],[pushMetadata,pushEnv],[manualAlphaMetadata,pushEnv]]){
   const actualJob=current.jobs[0],actualArtifact=current.artifact;
   for(const runner_name of [undefined,'','x'.repeat(201),'line\nbreak'])assert.throws(()=>validateCiTransportMetadata({...current,jobs:[{...actualJob,runner_name}]},e));
   assert.equal(validateCiTransportMetadata(current,e),actualJob);
