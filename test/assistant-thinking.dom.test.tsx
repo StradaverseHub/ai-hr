@@ -56,13 +56,14 @@ describe('honest visible thinking state',()=>{
     const message=status.closest('[data-message-role=assistant]');if(message)expect(message.className).not.toMatch(/bg-|rounded|border|shadow/);
     expect(log).toHaveTextContent('What is my leave balance?');expect(within(log).queryByRole('progressbar')).toBeNull();
     const active=surface==='Floating messenger'?state.launcher:state.workspace;expect(active).toHaveBeenCalledTimes(1);
-    if(outcome==='success')await act(async()=>request.resolve({ok:true,exchangeId:'fictional-answered',answer:<p>You have 12 days of annual leave left.</p>}));
+    if(outcome==='success')await act(async()=>request.resolve({ok:true,exchangeId:'fictional-answered',conversationToken:'fixture-proof',answer:<p>You have 12 days of annual leave left.</p>}));
     else if(outcome==='refusal')await act(async()=>request.resolve({ok:false,message:'Please try again.'}));
     else await act(async()=>request.reject(Error('PRIVATE provider details')));
-    expect(within(log).queryByRole('status')).toBeNull();expect(box.readOnly).toBe(false);
+    expect(within(log).queryByText('Thinking…')).toBeNull();
     if(outcome==='success')expect(within(log).getByText('You have 12 days of annual leave left.')).toBeInTheDocument();
     else expect(within(log).getByRole('alert')).toHaveTextContent(outcome==='refusal'?'Please try again.':surface==='Floating messenger'?en.assistant.launcher.failed:en.assistant.err_provider_error);
     expect(log).not.toHaveTextContent('PRIVATE provider details');
+    if(outcome==='success'){expect(box.readOnly).toBe(false);expect(box).not.toBeDisabled();}else{const sendName=surface==='Floating messenger'?en.assistant.launcher.send:surface==='Dashboard'?'Ask':en.assistant.ask;expect(screen.getByRole('button',{name:sendName})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect(screen.getByRole('textbox')).not.toBeDisabled();expect((screen.getByRole('textbox') as HTMLTextAreaElement).readOnly).toBe(false);}
    }finally{await act(async()=>request.finish());}
   });
  }

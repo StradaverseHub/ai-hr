@@ -19684,7 +19684,7 @@
         "chats": "Chats",
         "older": "Earlier messages",
         "moreChats": "More chats",
-        "readOnlyHistory": "This saved conversation can be read, but cannot be continued in the current context. Start a new chat to continue.",
+        "readOnlyHistory": "This conversation can be read, but cannot be continued in the current context. Start a new chat to continue.",
         "title": "Conversation",
         "new": "New chat",
         "thinking": "Thinking…",

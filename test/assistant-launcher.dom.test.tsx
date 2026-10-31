@@ -79,7 +79,7 @@ describe('floating Assistant',()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'first',conversationToken:'proof',answer:<p>First answer</p>}).mockRejectedValueOnce(Error('PRIVATE')).mockResolvedValueOnce({ok:true,exchangeId:'third',answer:<p>Third answer</p>});
   show();fireEvent.click(screen.getByRole('button',{name:copy.open}));
   const send=(question:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
-  send('First');await screen.findByText('First answer');send('Second');await screen.findByRole('alert');send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third',path:'/leave'});
+  send('First');await screen.findByText('First answer');send('Second');await screen.findByRole('alert');expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third',path:'/leave'});
  });
  it('is absent on the Assistant itself, in a hidden area and on an unknown area',()=>{
   for(const [path,hidden] of [['/assistant',[]],['/assistant/leave',[]],['/payroll',['payroll']],['/somewhere-else',[]]] as const){state.path=path;const view=show([...hidden]);expect(screen.queryByRole('button',{name:copy.open}),path).toBeNull();view.unmount();}
@@ -108,7 +108,7 @@ describe('floating Assistant',()=>{
   fireEvent.click(screen.getByRole('button',{name:copy.open}));
   fireEvent.change(screen.getByLabelText(copy.question),{target:{value:'Hi'}});fireEvent.keyDown(screen.getByLabelText(copy.question),{key:'Enter'});
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent(en.assistant.err_budget_daily));
-  expect((screen.getByLabelText(copy.question) as HTMLTextAreaElement).readOnly).toBe(false);
+  expect((screen.getByLabelText(copy.question) as HTMLTextAreaElement).readOnly).toBe(true);fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));expect((screen.getByLabelText(copy.question) as HTMLTextAreaElement).readOnly).toBe(false);
  });
  it('keeps a delayed reply beside the question without pulling a scrolled-up reader down',async()=>{
   let finish!:(reply:unknown)=>void;
@@ -151,7 +151,7 @@ describe('floating Assistant',()=>{
   send('My leave');await screen.findByText('First answer');
   send('What about tomorrow?');await screen.findByRole('alert');
   expect(state.ask).toHaveBeenNthCalledWith(2,{question:'What about tomorrow?',path:'/leave',previousExchangeId:'exchange-parent',previousConversationToken:'scope-bound-parent'});
-  send('Try that again');await screen.findByText('Another answer');
+  fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));send('Try that again');await screen.findByText('Another answer');
   expect(state.ask).toHaveBeenNthCalledWith(3,{question:'Try that again',path:'/leave'});
   state.path='/claims';view.rerender(<NextIntlClientProvider locale="en" messages={en}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
   send('My claims');await waitFor(()=>expect(state.ask).toHaveBeenCalledTimes(4));
@@ -165,7 +165,7 @@ describe('floating Assistant',()=>{
   const send=(question:string)=>{fireEvent.change(screen.getByLabelText(copy.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.send}));};
   send('First');await screen.findByText('Signed answer');send('Second');await screen.findByText('Fresh answer');
   expect(state.ask).toHaveBeenNthCalledWith(2,{question:'Second',path:'/leave',previousExchangeId:'exchange-signed',previousConversationToken:'signed-scope'});
-  send('Third');await screen.findByText('Third answer');
+  expect(screen.getByRole('button',{name:copy.send})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:en.assistant.workspace.chat.new}));send('Third');await screen.findByText('Third answer');
   expect(state.ask).toHaveBeenNthCalledWith(3,{question:'Third',path:'/leave'});
  });
  it('does not attach a late response from the page left behind to the new page',async()=>{

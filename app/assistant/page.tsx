@@ -1,3 +1,5 @@
+import {SavedChatList} from '@/components/assistant/saved-chat-list';
+import {assistantConversationScopeDigest} from '@/core/assistant-conversation-context';
 import {randomUUID} from 'node:crypto';
 import {listOwnAssistantChats,loadOwnAssistantChat} from '@/core/assistant-threads';
 import {assistantBrowserConversationScope} from './conversation-scope';
@@ -69,15 +71,14 @@ export default async function AssistantPage({
   const workspace = await loadAiWorkspace(s,{includeHistory:sp.job===undefined&&sp.governed===undefined&&sp.proposal===undefined,includeGovernance:false,selectedExchangeId:sp.e,governedJobId:sp.governed,proposalId:sp.proposal});
   const access = workspace.access;
 
-  // Home: a greeting, the question box, then "My work" and "Calendar". Both panels are the existing home
-  // cards, each reading its own authorized facts for the signed-in person's selected employment. A login
-  // with no employment (or an unreadable one) simply sees a short note instead of the two panels.
+  // The denied-access fallback retains own work/calendar. The active chat never preloads those
+  // unrelated records; its secondary navigation links to the dashboard instead.
   const clock = homeDisplayClock(new Date(), 'Asia/Kuala_Lumpur');
-  const name = await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null);
+  const name = !access.allowed?await viewerIdentity(s).then(viewer => viewer.name?.trim() || null).catch(() => null):null;
   const greeting = clock.hour < 12 ? (name ? t('home.morning', { name }) : t('home.morningNoName'))
     : clock.hour < 18 ? (name ? t('home.afternoon', { name }) : t('home.afternoonNoName'))
     : (name ? t('home.evening', { name }) : t('home.eveningNoName'));
-  const employmentId = await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null);
+  const employmentId = !access.allowed?await readEmployeeHomeIdentity(s).then(identity => identity.selectedEmploymentId).catch(() => null):null;
   const homeTabs = employmentId ? <AssistantHomeTabs labels={{tabs:t('home.tabs'),work:t('home.myWork'),calendar:t('home.calendar')}}
     work={<HomeTasksCard employmentId={employmentId}/>}
     calendar={<HomeCalendarCard employmentId={employmentId} initialMonth={clock.date.slice(0,7)}/>}/>
@@ -119,6 +120,7 @@ export default async function AssistantPage({
   const analysisScope=isAdmin(s)?await allowedCompanies(s).then(rows=>getScopeIds(rows.map(row=>row.id))).catch(()=>[]):[];
   const newChatHref='/assistant?chatReset='+randomUUID();
   const conversationScope=await assistantBrowserConversationScope(s);
+  const scopeReset=assistantConversationScopeDigest(s,conversationScope);
   const savedChats=await listOwnAssistantChats(s,{cursor:sp.chatCursor},conversationScope).catch(()=>null);
   const selectedChat=sp.e?await loadOwnAssistantChat(s,{exchangeId:sp.e},conversationScope).catch(()=>null):null;
   const initialTurns=selectedChat?.turns.map(exchange=>({id:exchange.id,question:exchange.question,
@@ -139,21 +141,13 @@ export default async function AssistantPage({
           <PageHeader title={t('title')} />
           <OwnClearStatus status={sp.ownClear}/>
           <ErrorBanner message={errorMessage??(sp.e&&!selectedChat?t('workspace.conversation.unavailable'):undefined)} />
-          <WorkspaceConversation key={(savedChats?.scopeDigest??'')+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+(savedChats?.scopeDigest??'')} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
-            initialTurns={initialTurns} historyReadOnly={Boolean(selectedChat&&!selectedChat.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
+          <WorkspaceConversation key={scopeReset+':'+(sp.e??'')+':'+(sp.chatReset??'')} fullHeight resetKey={(sp.chatReset??'')+':'+scopeReset} fileImport={(s.roles??[]).some(role=>role==='hr_admin'||role==='super_admin')} tasks={tasks}
+            initialTurns={initialTurns} historyReadOnly={Boolean(sp.e&&!selectedChat?.resume)} initialResume={selectedChat?.resume??undefined} historyTailId={sp.e} olderCursor={selectedChat?.olderCursor??undefined}/>
 
         </section>
         <aside aria-label={t('workspace.chat.tools')} className="min-w-0 space-y-1 border-t border-border lg:order-1 lg:border-r lg:border-t-0 lg:pr-5">
-          <nav aria-label={t('workspace.chat.chats')} className="pb-3">
-            <h2 className="py-3 text-sm font-medium">{t('workspace.chat.chats')}</h2>
-            <Link href={newChatHref} scroll={false} className="mb-2 inline-flex min-h-11 items-center rounded-md px-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('workspace.chat.new')}</Link>
-            <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">{(savedChats?.chats??[]).map(chat=><li key={chat.threadId}><Link href={'/assistant?e='+encodeURIComponent(chat.exchangeId)} scroll={false} aria-current={selectedChat?.threadId===chat.threadId?'page':undefined} className="block break-words rounded-md px-2 py-3 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-[current=page]:bg-muted">{chat.title}</Link></li>)}</ul>
-            {savedChats?.nextCursor&&<Link href={'/assistant?'+(sp.e?'e='+encodeURIComponent(sp.e)+'&':'')+'chatCursor='+encodeURIComponent(savedChats.nextCursor)} scroll={false} className="inline-flex min-h-11 items-center px-2 text-xs underline">{t('workspace.chat.moreChats')}</Link>}
-          </nav>
-          <details className="border-t border-border">
-            <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.tabs')}</summary>
-            <div className="pb-3">{homeTabs}</div>
-          </details>
+          <SavedChatList key={scopeReset} initialChats={(savedChats?.chats??[]).map(({threadId,exchangeId,title})=>({threadId,exchangeId,title}))} nextCursor={savedChats?.nextCursor??null} scopeDigest={scopeReset} activeThreadId={selectedChat?.threadId} newChatHref={newChatHref}/>
+          <Link href="/" className="flex min-h-11 items-center border-t border-border py-3 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.tabs')}</Link>
           <details open={Boolean(sp.historyPrivacy||sp.importHistory||sp.nativeOutcome||sp.ownClear)} className="border-t border-border">
             <summary className="min-h-11 cursor-pointer py-3 text-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{t('home.privacy')}</summary>
             <section id="assistant-privacy" aria-labelledby="assistant-privacy-heading" className="scroll-mt-4 space-y-3 pb-3">

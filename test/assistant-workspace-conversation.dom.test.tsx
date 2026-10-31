@@ -6,13 +6,25 @@ import en from '../messages/en.json';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 const state=vi.hoisted(()=>({ask:vi.fn(),earlier:vi.fn()}));
 vi.mock('../app/assistant/launcher-actions',()=>({askFromWorkspaceAction:state.ask,loadEarlierChatAction:state.earlier}));
-import {ConversationClarification} from '../components/assistant/chat-reply-boundary';
+import {ConversationSuggestions,ConversationClarification} from '../components/assistant/chat-reply-boundary';
 import {WorkspaceConversation} from '../components/assistant/workspace-conversation';
 const copy=en.assistant,chat=copy.workspace.chat;
 function show(initialTurn?:{id:string;question:string;answer:React.ReactNode;clarificationRequired?:boolean},fullHeight=false){return render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} initialTurn={initialTurn} fullHeight={fullHeight}/></NextIntlClientProvider>);}
 function send(question:string){fireEvent.change(screen.getByLabelText(copy.workspace.question),{target:{value:question}});fireEvent.click(screen.getByRole('button',{name:copy.ask}));}
 beforeEach(()=>{state.ask.mockReset();state.earlier.mockReset();});afterEach(cleanup);
 describe('in-place Assistant conversation',()=>{
+ it('a generic suggested task leaves a pending clarification target without submitting immediately',async()=>{
+  show({id:'checked',question:'Earlier checked question',answer:<ConversationSuggestions label="Next" suggestions={[{label:'Upcoming holidays',prompt:'When is the next public holiday?'}]}/>});
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'clarify',conversationToken:'clarify-proof',clarificationRequired:true,answer:<p>Which leave type?</p>});send('My leave');await screen.findByText('Which leave type?');
+  fireEvent.click(screen.getByRole('button',{name:'Upcoming holidays'}));expect(state.ask).toHaveBeenCalledTimes(1);expect(screen.getByRole('textbox')).toHaveValue('When is the next public holiday?');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'holiday',conversationToken:'holiday-proof',answer:<p>Checked holiday answer</p>});fireEvent.click(screen.getByRole('button',{name:copy.ask}));await screen.findByText('Checked holiday answer');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'When is the next public holiday?',previousExchangeId:'clarify',previousConversationToken:'clarify-proof'});
+ });
+ it('allows explicit New chat from an unavailable selection with no restored turns',async()=>{
+  render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight historyTailId="missing" historyReadOnly/></NextIntlClientProvider>);
+  expect(screen.getByRole('button',{name:copy.ask})).toBeDisabled();expect(screen.getByRole('button',{name:chat.new})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:chat.new}));state.ask.mockResolvedValueOnce({ok:true,exchangeId:'fresh',conversationToken:'fresh-proof',answer:<p>Fresh answer</p>});send('Hello');await screen.findByText('Fresh answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Hello'});
+ });
+
  it('restores more than six displayed turns while continuing only with the owner-issued selected tail proof',async()=>{
   const turns=Array.from({length:9},(_,index)=>({id:'saved-'+index,question:'Saved question '+index,answer:<p>Checked answer {index}</p>}));
   render(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} fullHeight initialTurns={turns} historyTailId="saved-8" initialResume={{exchangeId:'saved-8',conversationToken:'owned-tail-proof'}}/></NextIntlClientProvider>);
@@ -57,7 +69,7 @@ describe('in-place Assistant conversation',()=>{
   view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1"/></NextIntlClientProvider>);
   expect(screen.queryByText('Private pending question')).toBeNull();
   await act(async()=>resolve({ok:true,exchangeId:'erased',conversationToken:'erased-token',answer:<p>Erased reply</p>}));expect(screen.queryByText('Erased reply')).toBeNull();
-  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',answer:<p>New reply</p>});send('New question');await screen.findByText('New reply');expect(state.ask).toHaveBeenLastCalledWith({question:'New question'});
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'new',conversationToken:'new-proof',answer:<p>New reply</p>});send('New question');await screen.findByText('New reply');expect(state.ask).toHaveBeenLastCalledWith({question:'New question'});
   state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));send('Pending old selection');
   view.rerender(<NextIntlClientProvider locale="en" messages={en}><WorkspaceConversation tasks={[]} fileImport={false} resetKey="successful-erase-1" initialTurn={{id:'selected',question:'Selected question',answer:<p>Selected reply</p>}}/></NextIntlClientProvider>);
   await act(async()=>resolve({ok:true,exchangeId:'old',conversationToken:'old-token',answer:<p>Late old answer</p>}));expect(screen.queryByText('Late old answer')).toBeNull();expect(screen.getByText('Selected reply')).toBeInTheDocument();
@@ -96,6 +108,6 @@ describe('in-place Assistant conversation',()=>{
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'one',conversationToken:'token',answer:<p>First answer</p>});show();send('First');await screen.findByText('First answer');
   let reject!:(reason:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise((_done,fail)=>{reject=fail;}));send('Second');const log=screen.getByRole('log');Object.defineProperties(log,{scrollHeight:{value:900,configurable:true},clientHeight:{value:300,configurable:true}});log.scrollTop=590;fireEvent.scroll(log);
   await act(async()=>reject(Error('PRIVATE provider data')));expect(log.scrollTop).toBe(900);expect(screen.getByRole('alert')).toHaveTextContent(copy.err_provider_error);expect(screen.queryByText('PRIVATE provider data')).toBeNull();
-  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'three',answer:<p>Third answer</p>});send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third'});
+  expect(screen.getByRole('button',{name:copy.ask})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:chat.new}));state.ask.mockResolvedValueOnce({ok:true,exchangeId:'three',answer:<p>Third answer</p>});send('Third');await screen.findByText('Third answer');expect(state.ask).toHaveBeenLastCalledWith({question:'Third'});
  });
 });
