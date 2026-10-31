@@ -6,20 +6,45 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
-The31 October candidate adds measured queue-reader improvements: a paired native
-100,000-claim benchmark preserves identical ordered metadata while reducing warmed
-median HR reads from1132.8ms to188.3ms and manager20,000-item reads from316.2ms
-to59.8ms. These are component measurements. Expanded HTTP/browser runs at both
-activity levels are in progress, and no newer500-user speed pass is established.
-The bounded shell preview's delegated visibility is also being corrected and
-verified; the exact-source receipts and remaining module gaps appear in
-[resumed verification](#resumed-verification--31-october-2026).
+The current expanded mixed-workflow candidate is
+`1a0ed296a1ddc03afebbed627de2a1547d957f22`. Both activity levels reached500 active
+HTTP principals against one million Claims and one million attendance records,
+but both failed speed and functional acceptance on standard4-CPU hosted runners:
 
-Read-only infrastructure checks found production's two16-CPU/~64GiB VMs, whereas
-configured staging is2 CPUs/~4GiB. The owner selected an existing isolated matching
-environment; its connection alias/config path remains required. No live load ran.
+| Activity pause | Successful-read p95 | Successful-write p95 | Completed / failed journeys | Complete loaded browsers |
+| --- | ---: | ---: | ---: | ---: |
+| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41188713821) | 69.6s | no completed writes | 0 /500 | 0/6 |
+| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41188713828) | 38.2s | 88.5s | 226 /274 | 5/6 |
 
-The newest completed 30-route workload (`645a2ac90`) retains **one million Claims
+Both passed all expanded preflight workflows: Leave create/edit/withdraw, Personnel
+draft create/edit/delete, Attendance correction/approval/applied punches, native
+50-person Payroll calculation/scoped CSV and100-line clocking import. Actual own
+payslip browser downloads passed, with no unsolicited PDF requests, parsed one-page
+PDFs and native404 refusals for another person and another tenant. Post-load native
+audit verification passed for both tenants in both runs. Home cards timed out under
+load; baseline cards passed. Successful-response latency excludes aborted requests:
+all500 one-second journeys aborted; the five-second failures include265 aborts,
+five Personnel deletion state mismatches and four business refusals whose causes
+remain unresolved. These failures are retained, not retried or suppressed.
+
+PostgreSQL consumed983.4 CPU seconds over355.5 wall seconds in the one-second run,
+and1084.1 over399.2 in the five-second run. Application CPU was252.7 and258.6 seconds
+respectively. Host counters overlap these components; they must not be summed.
+Timed SQL identifies Attendance approval metadata as the largest recorded query
+cost, alongside repeated visibility/routing proofs and advisory lock waits. Nested
+execution times include waits and overlap; they are not independent CPU costs.
+A reversible native routing experiment is being prepared before further changes.
+
+Measured Claims queue improvements and129 affected passing cases remain component
+evidence; they do not establish500-user capacity. Read-only infrastructure checks
+found production's two16-CPU/~64GiB VMs, whereas configured staging is2 CPUs/~4GiB.
+The owner selected an existing isolated matching environment; its connection
+alias/config path remains required. No live load ran and nothing was deployed.
+See [resumed verification](#resumed-verification--31-october-2026) for exact-source
+receipts and remaining module gaps. The wider workload includes additional Home
+API reads and mutation owners, so comparison with older workloads is not causal.
+
+The older completed 30-route workload (`645a2ac90`) retains **one million Claims
 and one million attendance rows**. All500 data journeys, allsix loaded browser
 journeys and native audit checks complete at both activity levels, but speed
 acceptance fails:
