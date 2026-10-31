@@ -15,7 +15,7 @@ import {getScopeIds} from '@/lib/scope';
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
 
 export type LauncherReply =
-  | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string }
+  | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string; clarificationRequired?:true }
   | { ok: false; message: string };
 
 /** The floating Assistant's one command. The same askAssistant path as the Assistant page: grant, module,
@@ -38,7 +38,9 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
     const workspace = await loadAiWorkspace(session, { selectedExchangeId: exchangeId, includeGovernance: false });
     const exchange = workspace.history.find(row => row.id === exchangeId);
     const answer = exchange ? await ExchangeReply({ exchange, ctx: session }) : t('workspace.conversation.unavailable');
-    return { ok: true, exchangeId, answer, ...(conversationToken?{conversationToken}:{}) };
+    const conversation=exchange?.grounded?.conversation;
+    const clarificationRequired=conversation?.plan.mode==='clarify'&&conversation.clarificationAllowed!==false;
+    return { ok: true, exchangeId, answer, ...(conversationToken?{conversationToken}:{}),...(clarificationRequired?{clarificationRequired:true as const}:{}) };
   } catch (error) {
     if(error instanceof AssistantClarificationError)return {ok:false,message:t('workspace.conversation.unavailable')};
     const code = error instanceof AuthRequiredError ? 'ai_control' : error instanceof AssistantError ? error.code : 'provider_error';

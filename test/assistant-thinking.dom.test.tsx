@@ -38,14 +38,14 @@ function deferred(){
 }
 beforeEach(()=>{state.workspace.mockReset();state.launcher.mockReset();});afterEach(cleanup);
 describe('honest visible thinking state',()=>{
- it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s retains an accessible visible waiting label with decorative reduced-motion-safe dots',(_locale,messages)=>{
+ it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s retains a small accessible plain waiting label without decoration',(_locale,messages)=>{
   const label=messages.assistant.workspace.chat.thinking;
   render(<ThinkingIndicator label={label}/>);
   const status=screen.getByRole('status');expect(status).toHaveTextContent(label);expect(status).not.toHaveClass('sr-only');
   expect(status).toHaveAttribute('aria-live','polite');expect(status).toHaveAttribute('aria-atomic','true');
   expect(messages.assistant.launcher.working).toBe(label);
-  const decoration=status.querySelector('[aria-hidden="true"]')!;expect(decoration.children).toHaveLength(3);
-  for(const dot of decoration.children){expect(dot).toHaveClass('motion-safe:animate-pulse','motion-reduce:animate-none');expect(dot.textContent).toBe('');}
+  expect(status).toHaveClass('text-xs','font-normal');expect(status.querySelector('[aria-hidden]')).toBeNull();expect(status.className).not.toMatch(/bg-|rounded|border|shadow/);
+
  });
  for(const surface of surfaces){
   it.each(['success','refusal','error'] as const)(`${surface} shows Thinking immediately and removes it after %s`,async outcome=>{
@@ -53,6 +53,7 @@ describe('honest visible thinking state',()=>{
    try{
     const{box,log}=show(surface),status=within(log).getByRole('status');
     expect(status).toHaveTextContent('Thinking…');expect(status).not.toHaveClass('sr-only');expect(box.readOnly).toBe(true);
+    const message=status.closest('[data-message-role=assistant]');if(message)expect(message.className).not.toMatch(/bg-|rounded|border|shadow/);
     expect(log).toHaveTextContent('What is my leave balance?');expect(within(log).queryByRole('progressbar')).toBeNull();
     const active=surface==='Floating messenger'?state.launcher:state.workspace;expect(active).toHaveBeenCalledTimes(1);
     if(outcome==='success')await act(async()=>request.resolve({ok:true,exchangeId:'fictional-answered',answer:<p>You have 12 days of annual leave left.</p>}));

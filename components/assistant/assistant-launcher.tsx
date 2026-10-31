@@ -9,7 +9,7 @@ import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 
-type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string } | { ok: false; message: string } };
+type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
  * core/assistant-launcher.ts); every question still goes through the Assistant's own checks. It opens as a
@@ -29,12 +29,14 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
   const nextTurnId = React.useRef(0);
   const inFlight = React.useRef(false);
   const pageGeneration = React.useRef(0);
+  const awaitingClarification=React.useRef<string|null>(null);
   const previousExchange = React.useRef<{ path: string; id: string; token: string } | null>(null);
   React.useEffect(() => {
     // A new page starts a new context. A response arriving from the previous page may still be shown,
     // but must never silently become the parent of a question about this page.
     pageGeneration.current += 1;
     previousExchange.current = null;
+    awaitingClarification.current=null;
     setTurns([]);
   }, [pathname]);
   React.useEffect(() => {
@@ -56,22 +58,25 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
     const id = ++nextTurnId.current;
     const generation = pageGeneration.current;
     const previous = previousExchange.current?.path === pathname ? previousExchange.current : null;
+    const clarificationId=clarification?.id??awaitingClarification.current;
     followLatest.current = true;
     setTurns(list => [...list, { id, question: text, area: context?.area ?? null }]);
     if(!clarification)setQuestion(''); setPending(true);
     try {
       const reply = await askFromLauncherAction({ question: text, path: pathname,
-        ...(clarification?{clarificationExchangeId:clarification.id}:previous ? { previousExchangeId: previous.id, previousConversationToken: previous.token } : {}) });
-      if (generation === pageGeneration.current) previousExchange.current = reply.ok && reply.conversationToken
-        ? { path: pathname, id: reply.exchangeId, token: reply.conversationToken } : null;
+        ...(clarificationId?{clarificationExchangeId:clarificationId}:previous ? { previousExchangeId: previous.id, previousConversationToken: previous.token } : {}) });
+      if (generation === pageGeneration.current) {
+        previousExchange.current = reply.ok && reply.conversationToken ? { path: pathname, id: reply.exchangeId, token: reply.conversationToken } : null;
+        awaitingClarification.current=reply.ok&&reply.clarificationRequired?reply.exchangeId:null;
+      }
       setTurns(list => list.map(turn => turn.id === id ? { ...turn, reply } : turn));
     } catch {
-      if(generation===pageGeneration.current)previousExchange.current=null;
+      if(generation===pageGeneration.current){previousExchange.current=null;awaitingClarification.current=null;}
       setTurns(list => list.map(turn => turn.id === id ? { ...turn, reply: { ok: false, message: t('failed') } } : turn));
     } finally { inFlight.current = false; setPending(false); }
   }
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
-  return <AssistantChatBoundary value={{pending,clarify:async(id,answer)=>{await send({id,answer});}}}>
+  return <AssistantChatBoundary value={{pending,clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
     {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={t('open')} aria-haspopup="dialog"
       className={`fixed bottom-4 ${side} z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none`}>
       <Sparkles aria-hidden className="size-5"/>
@@ -105,7 +110,7 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
         </div>
         {turns.map(turn => <div key={turn.id} className="space-y-3">
           <p data-message-role="user" className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-primary/10 px-4 py-3 leading-relaxed">{turn.question}</p>
-          <div data-message-role="assistant" className="mr-5 min-w-0 max-w-full break-words rounded-2xl rounded-tl-sm bg-muted/60 px-4 py-3 leading-relaxed">
+          <div data-message-role="assistant" className={turn.reply?"mr-5 min-w-0 max-w-full break-words px-1 py-2 leading-relaxed":"min-w-0 px-1"}>
             {!turn.reply ? <ThinkingIndicator label={t('working')}/>
               : !turn.reply.ok ? <p role="alert">{turn.reply.message}</p>
               : <div className="space-y-2">{turn.reply.answer ?? <p className="text-muted-foreground">{t('noCard')}</p>}
