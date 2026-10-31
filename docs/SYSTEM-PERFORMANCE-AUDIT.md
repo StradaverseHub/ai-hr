@@ -6,7 +6,7 @@
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
 
-The current expanded mixed-workflow candidate is
+The latest completed500-user timed mixed-workflow source is
 `1a0ed296a1ddc03afebbed627de2a1547d957f22`. Both activity levels reached500 active
 HTTP principals against one million Claims and one million attendance records,
 but both failed speed and functional acceptance on standard4-CPU hosted runners:
@@ -61,8 +61,10 @@ in the shared driver. Neither run reached500-user traffic; neither supplies late
 evidence. Their exact original failures remain retained. The driver repair checks
 the exact personal-PDF route's binary header, MIME, private/no-store and attachment
 headers; HTML identity checks and native foreign-person/tenant refusals remain.
-Only affected HTTP/browser evidence needs rerunning; native/compiler receipts
-retain source4b0a8bc56 and are not relabelled onto the harness repair.
+Only affected HTTP/browser evidence reruns on harness-only source
+`396c5d36f5b0afa599f2a4f722788e6c3e372eda`:41194141433(1s)/41194146086(5s),
+currently running. Its application/SQL code is byte-identical to4b0a8bc56.
+Native/compiler receipts retain source4b0a8bc56 and are not relabelled.
 
 Measured Claims queue improvements and129 affected passing cases remain component
 evidence; they do not establish500-user capacity. Read-only infrastructure checks
@@ -661,7 +663,13 @@ RED:4PASS/3FAIL, no skips. Only the three standalone metadata methods fail reade
 overlap; existing writer exclusion and borrowed view/maintain exclusivity pass.
 The prepared fix uses the existing shared barrier only for complete owned read-only
 transactions. Borrowed transactions and all actual write/assertion paths retain
-their exclusive barrier. Wider native and compiler qualification remains pending.
+their exclusive barrier. Source `1be4d2d267867cc2337d8689a705ba94858eb029` passes all158 affected cases
+in12 files (145DB-classified/13model), no failures/skips, in41195110022. All seven
+native concurrency cases pass, including the three original failures. The same
+source's500-principal paired experiment41195116641 passes: triple-reader p95
+exclusive6281.9ms / shared2669.6ms / restored6222.1ms, with unchanged native
+results and archive refusals. The whole compiler remains running. This newer
+metadata source has no whole-system HTTP acceptance receipt yet.
 
 Coverage remains bounded:30 selected page routes, Claims draft CRUD, Leave
 create/edit/withdraw(history retained), Personnel draft CRUD, Attendance correction/
