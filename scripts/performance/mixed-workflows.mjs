@@ -98,7 +98,7 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
   assert.equal(batch.status,'processed');assert.equal(batch.employee_count,50);
   const rows=await db`select employment_id,basic_salary,gross_pay,total_deductions,net_pay from payslip where batch_id=${batchId}::uuid`;
   assert.equal(rows.length,50);assert.equal(new Set(rows.map(row=>row.employment_id)).size,50);
-  for(const row of rows){assert.equal(Number(row.basic_salary),100);assert(Number.isFinite(Number(row.net_pay)));assert.equal(Math.round(Number(row.gross_pay)*100)-Math.round(Number(row.total_deductions)*100),Math.round(Number(row.net_pay)*100));}
+  for(const row of rows){assert.equal(Number(row.basic_salary),5000);assert(Number.isFinite(Number(row.net_pay)));assert.equal(Math.round(Number(row.gross_pay)*100)-Math.round(Number(row.total_deductions)*100),Math.round(Number(row.net_pay)*100));}
  }
  async function exportPayroll(user,batchId,company){
   const response=await request(user,`/payroll/${batchId}/export?format=csv`,undefined,200,true);
