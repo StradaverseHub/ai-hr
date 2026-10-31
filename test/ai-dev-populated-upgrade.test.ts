@@ -1,4 +1,4 @@
-/** CI-only populated historical568→635 aggregate upgrade. Never connects to an installation or replays an installer.
+/** CI-only populated historical568→636 aggregate upgrade. Never connects to an installation or replays an installer.
  * The credential-free witness is metadata only; payroll/review rows below are fictional physical rows.
  * This proves migration preservation, not decryption or native decision behavior (covered separately). */
 import {createHash,randomUUID} from 'node:crypto';
@@ -15,7 +15,7 @@ import witness from './fixtures/ai-dev-applied-ledger-20261030.json';
 
 type Entry={idx:number;when:number;tag:string};
 type Journal={entries:Entry[];[key:string]:unknown};
-// Exact main15 +approved49 source tail +root0861/0863/0864; the568-row observed witness remains unchanged.
+// Exact main15 +approved49 source tail +root0861/0863/0864/0865; the568-row observed witness remains unchanged.
 const TAIL=[
  {"tag":"0696_feedback_menu_operator_switch","idx":683,"when":1793330000031},
  {"tag":"0721_movement_settings_catalog","idx":684,"when":1793330000050},
@@ -84,6 +84,7 @@ const TAIL=[
  {"tag":"0861_assistant_review_body_pending_parent","idx":747,"when":1793330000261},
  {"tag":"0863_assistant_bank_effect_closure","idx":748,"when":1793330000263},
  {"tag":"0864_assistant_catalogue_effect_closure","idx":749,"when":1793330000264},
+ {"tag":"0865_assistant_company_retention_references","idx":750,"when":1793330000265},
 ] as const;
 const PERFORMANCE=['performance.ai_360_enabled','performance.ai_tc_enabled','performance.ai_pm_enabled',
  'performance.ai_review_enabled','performance.ai_idp_enabled','performance.ai_calib_enabled'];
@@ -191,6 +192,8 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
  expect(witness.buildId).toBe('Cvj9_lgd4fATCyUYRwWz_');expect(witness.observedAt).toBe('2026-10-29T21:09:26.134Z');
  expect(journal.entries[prefix-1]).toEqual({idx:682,version:'7',when:1793330000030,tag:'0698_information_only_corrections',breakpoints:true});
  expect(journal.entries.slice(prefix).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL);
+ expect(journal.entries.at(-1)).toEqual({idx:750,version:'7',when:1793330000265,tag:'0865_assistant_company_retention_references',breakpoints:true});
+ expect(hashFile('0865_assistant_company_retention_references')).toBe('088acfed2e8aba43deb012e0baed2d4d88765d115afd19a858ebee53e12141cd');
  // The canonical identity owner recognizes only the two retained historical SQL versions. It reads the
  // archived original bytes; this is not a checksum waiver or replacement of applied source.
  const expected:{tag:string;created_at:string;hash:string;sourceSha256?:string}[]=expectedMigrationLedger(process.cwd());
@@ -280,7 +283,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
    // Preserve ALL original values, including original NULLs; never strip NULLs or ignore old keys.
    expect(Object.fromEntries(oldKeys.map(key=>[key,newRow[key]])),'every original review value').toEqual(oldRow);
   }
-  const after=await ledger();expect(after).toHaveLength(635);expect(after.slice(0,prefix)).toEqual(baseline);
+  const after=await ledger();expect(after).toHaveLength(636);expect(after.slice(0,prefix)).toEqual(baseline);
   expect(after.slice(prefix).map(({hash,created_at})=>({hash,created_at}))).toEqual(TAIL.map(({tag,when})=>({hash:hashFile(tag),created_at:String(when)})));
   const changedDefinitions=await storage.client`select * from setting_definition order by key`;
   expect(definitions.some(row=>row.key==='feedback.menu_enabled')).toBe(false);
