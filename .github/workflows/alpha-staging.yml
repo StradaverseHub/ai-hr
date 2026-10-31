@@ -32,6 +32,11 @@ on:
         required: false
         default: false
         type: boolean
+      repair_impact_base:
+        description: Optional exact original SHA for hosted immutable-Git impact selection in runner diagnostic mode only
+        required: false
+        default: ''
+        type: string
   push:
     branches: [alpha]
   pull_request:
@@ -84,6 +89,15 @@ jobs:
           DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
           CONTROLLER_ONLY: ${{ inputs.controller_only }}
         run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = false && test "$CONTROLLER_ONLY" = false
+      - name: Refuse impact selection outside explicit runner diagnostic mode
+        if: ${{ inputs.repair_impact_base != '' }}
+        env:
+          EVENT: ${{ github.event_name }}
+          DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          CONTROLLER_ONLY: ${{ inputs.controller_only }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+          IMPACT_BASE: ${{ inputs.repair_impact_base }}
+        run: test "$EVENT" = workflow_dispatch && test "$DIAGNOSTICS_ONLY" = true && test "$CONTROLLER_ONLY" = false && test "$BUILD_ONLY" = false && [[ "$IMPACT_BASE" =~ ^[a-f0-9]{40}$ ]]
       - name: CI integrity regression checks
         run: node --experimental-strip-types --test .github/ci/rsync-packet-capability.test.mjs .github/ci/pdf-tool-scope.test.mjs .github/ci/pdf-tools.test.mjs .github/ci/compiler-cache.test.mjs .github/ci/cache-artifact-discovery.test.mjs .github/ci/compiler-wrapper.test.mjs .github/ci/diagnostics/compiler-compatible.test.mjs .github/ci/runner-capacity.test.mjs .github/ci/diagnostics/compiler-cleanup.test.mjs .github/ci/ci.test.mjs .github/ci/release-policy.test.mjs .github/ci/archive-downloads.test.mjs .github/ci/prefetch-ci.test.mjs .github/ci/migration-history.test.mjs .github/ci/manifest.test.mjs .github/ci/db-scheduling.test.mjs .github/ci/duration-order.test.mjs .github/ci/r395-write-split.test.mjs .github/ci/attendance-unclocked-split.test.mjs .github/ci/postgres-evidence.test.mjs .github/ci/report-run-cost.test.mjs .github/ci/resume-assessment.test.mjs .github/ci/resume-source.test.mjs .github/ci/resume-repair.test.mjs .github/ci/repair-impact.test.mjs .github/ci/build-production.test.mjs .github/ci/build-artifact.test.mjs .github/ci/build-transport.test.mjs .github/ci/ci-build-transport-policy.test.mjs .github/ci/next-application-cache.test.mjs .github/ci/next-application-restore.test.mjs .github/ci/staging-transport.test.mjs .github/ci/staging-build-install.test.mjs .github/ci/staging-ci-promotion.test.mjs .github/ci/staging-migration-ledger.test.mjs .github/ci/staging-environment.test.mjs .github/ci/staging-preflight.test.mjs .github/ci/customer-runtime-transition.test.mjs .github/ci/customer-runtime-snapshot.test.mjs .github/ci/staging-cleanup-protocol.test.mjs .github/ci/normal-cleanup-session.test.mjs .github/ci/normal-cleanup-io.test.mjs .github/ci/focused-recovery.test.mjs .github/ci/repair-recovery.test.mjs .github/ci/repair-recovery-adapter.test.mjs
       - name: Build byte transport regression checks
@@ -218,6 +232,10 @@ jobs:
     env:
       AIHR_CI_HEAD: ${{ needs.resolve.outputs.sha }}
       AIHR_SUITE_CAPACITY_PILOT: 'true'
+      AIHR_REPAIR_IMPACT_BASE: ${{ inputs.repair_impact_base }}
+      AIHR_DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+      AIHR_CONTROLLER_ONLY: ${{ inputs.controller_only }}
+      AIHR_BUILD_ONLY: ${{ inputs.build_only }}
       DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       MIGRATION_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
       TEST_DATABASE_URL: postgres://nobody:nothing@127.0.0.1:1/no_database
@@ -250,6 +268,15 @@ jobs:
       - name: Record measured capacity and unused SDK sizes
         run: node ../automation/.github/ci/runner-diagnostics.mjs
         env: {AIHR_CAPACITY_REPORT_PROFILE: "${{ github.run_attempt == 1 && 'bounded-suite-ready' || 'legacy' }}"}
+      - name: Reconstruct repair impact from immutable Git objects on the hosted runner
+        if: ${{ inputs.repair_impact_base != '' }}
+        env:
+          AIHR_REPAIR_IMPACT_BASE: ${{ inputs.repair_impact_base }}
+          AIHR_DIAGNOSTICS_ONLY: ${{ inputs.diagnostics_only }}
+          AIHR_CONTROLLER_ONLY: ${{ inputs.controller_only }}
+          AIHR_BUILD_ONLY: ${{ inputs.build_only }}
+          NODE_PATH: ${{ github.workspace }}/source/node_modules
+        run: pnpm exec tsx ../automation/.github/ci/repair-impact-diagnostic.mjs
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -257,6 +284,7 @@ jobs:
           path: |
             ${{ runner.temp }}/runner-resources.json
             ${{ runner.temp }}/suite-capacity-preparation.log
+            ${{ runner.temp }}/repair-impact-diagnostic.json
           if-no-files-found: error
           retention-days: 3
   controller-tests:

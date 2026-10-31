@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {hash} from './manifest.mjs';
-import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence} from './repair-recovery-policy.mjs';
+import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence,REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {validateRepairDelta,validateRepairArchiveInventory} from './repair-recovery.mjs';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,chmodSync,unlinkSync,symlinkSync,renameSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -97,4 +97,68 @@ test('Failure diagnostics remain their own bounded original namespace and cannot
  const m={run,jobs:[j],artifacts:[a]};assert.doesNotThrow(()=>validateRepairArchiveInventory(m,new Set([a.name]),()=> 'build',now));
  assert.throws(()=>validateRepairArchiveInventory(m,new Set(['production-build-v1','next-application-state-v1']),()=> 'build',now));
  for(const change of [m=>m.artifacts[0].workflow_run.id++,m=>m.artifacts[0].name='unknown',m=>m.artifacts[0].created_at=time(30),m=>m.artifacts.push(structuredClone(m.artifacts[0]))]){const bad=structuredClone(m);change(bad);assert.throws(()=>validateRepairArchiveInventory(bad,new Set([a.name]),()=> 'build',now));}
+});
+
+
+// Source admission only: private Git fixtures, no parser/app/compiler/database execution.
+const closedFixtures=['test/ai-retention-extended-custody.test.ts','test/assistant-own-leave-store.test.ts'];
+function fixtureDeltaRepo(t,{symlinkBase=false,executableBase=false}={}){
+ const root=mkdtempSync(join(tmpdir(),'aihr-fixture-repair-v3-'));t.after(()=>rmSync(root,{recursive:true,force:true}));
+ const environment={...process.env,GIT_AUTHOR_NAME:'Controller fixture',GIT_AUTHOR_EMAIL:'fixture@example.invalid',GIT_COMMITTER_NAME:'Controller fixture',GIT_COMMITTER_EMAIL:'fixture@example.invalid'};
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',env:environment}).trim();
+ const write=(path,text)=>{mkdirSync(join(root,path,'..'),{recursive:true});writeFileSync(join(root,path),text);};
+ const paths=[...closedFixtures,'test/unknown.test.ts','test/view.dom.test.tsx','test/route.browser.test.tsx','test/harness.ts','test/helpers/owner.ts','test/env.ts','test/global-setup.ts','test/dom-setup.ts','test/browser-setup.ts','test/db-names.ts','test/fixtures/sample.json','core/lifecycle/service.ts','lib/permissions.ts','db/migrations/0001.sql','db/migrations/meta/_journal.json','package.json','pnpm-lock.yaml','scripts/helper.ts','.github/workflows/alpha-staging.yml'];
+ git('init','-q');git('config','core.filemode','true');for(const path of paths)write(path,'original '+path+'\n');
+ if(executableBase)chmodSync(join(root,closedFixtures[0]),0o755);
+ if(symlinkBase){unlinkSync(join(root,closedFixtures[0]));symlinkSync('../unknown.test.ts',join(root,closedFixtures[0]));}
+ git('add','.');git('commit','-qm','immutable source');const base=git('rev-parse','HEAD');
+ const commit=()=>{git('add','-A');git('commit','-qm','bounded proposed repair');return git('rev-parse','HEAD');};
+ return{root,git,write,base,commit,paths};
+}
+for(const selected of [[closedFixtures[0]],[closedFixtures[1]],closedFixtures])test('v3 admits only existing regular fixture blobs: '+selected.join(' + '),t=>{
+ const f=fixtureDeltaRepo(t);for(const path of selected)f.write(path,'independently reviewed fixture correction '+path+'\n');const candidate=f.commit();
+ const delta=validateRepairDelta({cwd:f.root,original:f.base,candidate});assert.equal(delta.kind,'fixture-only');assert.deepEqual(delta.changed,selected.slice().sort());
+ assert.equal(delta.baseTree,f.git('rev-parse',f.base+'^{tree}'));assert.equal(delta.headTree,f.git('rev-parse',candidate+'^{tree}'));
+ assert.equal(delta.unchangedTrackedPaths,f.paths.length-selected.length);assert.match(delta.unchangedTreeFingerprint,/^[a-f0-9]{64}$/);assert.match(delta.diffSha256,/^[a-f0-9]{64}$/);
+ for(const fixture of delta.fixtures){assert.equal(fixture.mode,'100644');assert.equal(fixture.beforeBlob,f.git('rev-parse',f.base+':'+fixture.path));assert.equal(fixture.afterBlob,f.git('rev-parse',candidate+':'+fixture.path));assert.notEqual(fixture.beforeBlob,fixture.afterBlob);}
+ assert.equal(f.git('show',candidate+':core/lifecycle/service.ts'),'original core/lifecycle/service.ts');
+});
+for(const path of ['test/unknown.test.ts','test/view.dom.test.tsx','test/route.browser.test.tsx','test/harness.ts','test/helpers/owner.ts','test/env.ts','test/global-setup.ts','test/dom-setup.ts','test/browser-setup.ts','test/db-names.ts','test/fixtures/sample.json','core/lifecycle/service.ts','lib/permissions.ts','db/migrations/0001.sql','db/migrations/meta/_journal.json','package.json','pnpm-lock.yaml','scripts/helper.ts','.github/workflows/alpha-staging.yml'])test('v3 refuses fixture mixed with '+path,t=>{
+ const f=fixtureDeltaRepo(t);f.write(closedFixtures[0],'reviewed correction\n');f.write(path,'unreviewed extra delta\n');const candidate=f.commit();
+ // Posted/extra allowlist fields never become authority.
+ assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate,allowedPaths:[...closedFixtures,path]}));
+});
+for(const [name,change]of [
+ ['addition',f=>f.write('test/new.test.ts','new fixture\n')],
+ ['deletion',f=>unlinkSync(join(f.root,closedFixtures[0]))],
+ ['rename',f=>renameSync(join(f.root,closedFixtures[0]),join(f.root,'test/renamed.test.ts'))],
+ ['mode-only',f=>chmodSync(join(f.root,closedFixtures[0]),0o755)],
+ ['content-and-mode',f=>{f.write(closedFixtures[0],'different body\n');chmodSync(join(f.root,closedFixtures[0]),0o755);} ],
+ ['regular-to-symlink',f=>{unlinkSync(join(f.root,closedFixtures[0]));symlinkSync('../unknown.test.ts',join(f.root,closedFixtures[0]));}],
+])test('v3 refuses fixture '+name,t=>{const f=fixtureDeltaRepo(t);change(f);const candidate=f.commit();assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate}));});
+test('v3 refuses modified existing symlink despite an M name-status record',t=>{
+ const f=fixtureDeltaRepo(t,{symlinkBase:true});unlinkSync(join(f.root,closedFixtures[0]));symlinkSync('../another.test.ts',join(f.root,closedFixtures[0]));const candidate=f.commit();
+ assert.match(f.git('diff','--name-status','--no-renames',f.base,candidate),/^M\s/);assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate}));
+});
+test('v3 refuses existing executable fixture blobs even without a mode change',t=>{
+ const f=fixtureDeltaRepo(t,{executableBase:true});f.write(closedFixtures[0],'new executable fixture content\n');const candidate=f.commit();assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate}));
+});
+test('v3 refuses a third unreviewed file beside both closed fixture edits',t=>{
+ const f=fixtureDeltaRepo(t);for(const path of [...closedFixtures,'test/unknown.test.ts'])f.write(path,'changed\n');const candidate=f.commit();assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate}));
+});
+test('v3 requires clean exact committed candidate and nonempty ancestor delta',t=>{
+ const f=fixtureDeltaRepo(t);assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate:f.base}));f.write(closedFixtures[0],'reviewed correction\n');const candidate=f.commit();
+ for(const original of ['HEAD~1','bad','0'.repeat(40),f.git('rev-parse',f.base+'^{tree}')])assert.throws(()=>validateRepairDelta({cwd:f.root,original,candidate}));
+ assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate:f.base}));
+ f.write('test/untracked.test.ts','not committed\n');assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate}));unlinkSync(join(f.root,'test/untracked.test.ts'));
+ f.write('test/harness.ts','dirty harness\n');assert.throws(()=>validateRepairDelta({cwd:f.root,original:f.base,candidate}));
+});
+test('v3 refuses nonancestor fixture branches',t=>{
+ const f=fixtureDeltaRepo(t);f.write(closedFixtures[0],'first branch\n');const original=f.commit();f.git('checkout','-q','--detach',f.base);f.write(closedFixtures[1],'second branch\n');const candidate=f.commit();
+ assert.throws(()=>validateRepairDelta({cwd:f.root,original,candidate}));
+});
+test('v3 certificate identity cannot relabel a v2 certificate even with a recomputed outer fingerprint',()=>{
+ assert.equal(REPAIR_RECOVERY_POLICY,'aihr-cross-source-recovery/v3');const f=input(),c=verifyRepairRecovery(f);assert.equal(c.recoveryPolicy,REPAIR_RECOVERY_POLICY);
+ const g=installationFixture(),old={...c,recoveryPolicy:'aihr-cross-source-recovery/v2'},e={...g.evidence,...old,recovery:old,fingerprint:hash(old),build:{...g.evidence.build,...f.build}},run={...g.run,id:c.runId,head_sha:c.controller};
+ assert.throws(()=>validateRepairGrantEvidence(e,run),/Cross-source recovery certificate/);
 });
