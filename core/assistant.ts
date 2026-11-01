@@ -38,9 +38,9 @@ import {AiPrivacyGateError} from '../lib/ai/provider-privacy-request';
  */
 import { randomUUID } from 'node:crypto';
 import { assistantSourceDigest, sealAssistantDisclosure, type AssistantSourceRead } from '../lib/ai/assistant-disclosure';
-import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx, assistantClarificationSourceExchangeId } from './assistant-clarification';
-import {ownAssistantConversationContext,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,issueAssistantConversationToken} from './assistant-conversation-context';
-import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantProposal,privateAssistantCatalogue,adjudicatePrivateAssistantTerminal,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards,type PrivateAssistantLocalEmployment} from '../lib/ai/provider-assistant-policy';
+import { ownAssistantClarification, assertOwnAssistantClarificationCurrentTx, assistantClarificationSourceExchangeId,assistantClarificationThreadId } from './assistant-clarification';
+import {ownAssistantConversationContext,assertOwnAssistantConversationContextCurrentTx,assistantConversationSourceExchangeId,issueAssistantConversationToken,assistantConversationScopeDigest,assistantConversationThreadId,assistantConversationContextFromClarification,assistantConversationLocalHistory} from './assistant-conversation-context';
+import {ASSISTANT_PRIVATE_CONTRACT,resolvePrivateAssistantIntent,resolvePrivateAssistantContextualIntent,resolvePrivateAssistantProposal,privateAssistantCatalogue,adjudicatePrivateAssistantTerminal,resolvePrivateAssistantClarifiedIntent,selectPrivateAssistantCards,type PrivateAssistantLocalEmployment} from '../lib/ai/provider-assistant-policy';
 import {preparePrivateAiTask} from './ai-governance';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {resolveEntitlementsTx} from './entitlements';
@@ -174,7 +174,8 @@ export async function askAssistant(
   if((p.previousExchangeId===undefined)!==(p.previousConversationToken===undefined))throw new AssistantError('invalid_question');
   if(p.clarificationExchangeId!==undefined&&p.previousExchangeId!==undefined)throw new AssistantError('invalid_question');
   const conversationContext=p.previousExchangeId===undefined?null:await ownAssistantConversationContext(ctx,p.previousExchangeId,humanQuestion,p.previousConversationToken,p.conversationScope).catch(()=>{throw new AssistantError('invalid_question');});
-  const clarification = p.clarificationExchangeId===undefined?null:await ownAssistantClarification(ctx,p.clarificationExchangeId,humanQuestion);
+  const clarification = p.clarificationExchangeId===undefined?null:await ownAssistantClarification(ctx,p.clarificationExchangeId,humanQuestion,p.conversationScope);
+  const threadId=assistantClarificationThreadId(clarification)??assistantConversationThreadId(conversationContext);
   // 0658: the new row records which own exchange it answered, so a later reply can carry this one too.
   const continuesExchangeId = assistantClarificationSourceExchangeId(clarification)??assistantConversationSourceExchangeId(conversationContext);
   // This private callback closes over the authenticated owner-issued handle, never a posted ID.
@@ -225,8 +226,7 @@ export async function askAssistant(
   const tools = offered.map((t) => t.spec);
   // Own-row context is interpreted only by the closed LOCAL grammar. Human wording, prior
   // answers, tenant labels and provider continuation state never enter a provider request.
-  const localHistory=clarification?[...clarification.earlier.map(step=>step.question),clarification.originalQuestion]:conversationContext?.questions??[];
-  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantIntent(humanQuestion,localHistory);
+  const intent=clarification?resolvePrivateAssistantClarifiedIntent(clarification):resolvePrivateAssistantContextualIntent(humanQuestion,assistantConversationLocalHistory(conversationContext));
   const proposal=resolvePrivateAssistantProposal(humanQuestion);
   const audit: { name: string; input: unknown; rowCount: number | null; refusal?: string }[] = [];
 
@@ -304,27 +304,28 @@ export async function askAssistant(
 
   } catch (e) {
     if (e instanceof AssistantQuestionBudgetError) {
-      await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error:e.budgetCode });
+      await persist(ctx, { threadId,conversationScope:p.conversationScope,continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error:e.budgetCode });
       throw new AssistantError(e.budgetCode);
     }
     if (e instanceof AiAllowanceError) {
-      await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
+      await persist(ctx, { threadId,conversationScope:p.conversationScope,continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: 'ai_control' });
       throw new AssistantError('ai_control');
     }
-    if(e instanceof AiPrivacyGateError){await persist(ctx,{continuationCheck,reservation,strategy:conversationStrategy.capability,continuesExchangeId,appUserId,question,answer:'',audit,turnCount,hitTurnCap,stop,cfg,spend,period,error:'protected_input'});throw new AssistantError('protected_input');}
+    if(e instanceof AiPrivacyGateError){await persist(ctx,{threadId,conversationScope:p.conversationScope,continuationCheck,reservation,strategy:conversationStrategy.capability,continuesExchangeId,appUserId,question,answer:'',audit,turnCount,hitTurnCap,stop,cfg,spend,period,error:'protected_input'});throw new AssistantError('protected_input');}
     if (e instanceof AssistantError) {
       // A budget refusal mid-loop still records what was spent getting there.
       failure = e.code;
-      await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
+      await persist(ctx, { threadId,conversationScope:p.conversationScope,continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: e.code });
       throw e;
     }
     failure = 'provider_error';
-    await persist(ctx, { continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
+    await persist(ctx, { threadId,conversationScope:p.conversationScope,continuationCheck, reservation, strategy:conversationStrategy.capability, continuesExchangeId, appUserId, question, answer: '', audit, turnCount, hitTurnCap, stop, cfg, spend, period, error: failure });
     throw new AssistantError('provider_error');
   }
 
   // From here the question is ADMITTED: it counts against the allowance exactly once whatever happens.
   const recorded = await persist(ctx, {
+    threadId,conversationScope:p.conversationScope,
     continuationCheck,
     reservation,
     strategy:conversationStrategy.capability,
@@ -347,7 +348,7 @@ export async function askAssistant(
   // answer was not. The caller sees the generic, warm failure and nothing that confirms what was erased.
   if (!recorded.retained) throw new AssistantError('provider_error');
 
-  return { exchangeId: recorded.exchangeId, conversationToken:issueAssistantConversationToken(ctx,recorded.exchangeId,conversationContext,p.conversationScope), stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
+  return { exchangeId: recorded.exchangeId, conversationToken:issueAssistantConversationToken(ctx,recorded.exchangeId,clarification?assistantConversationContextFromClarification(ctx,clarification,p.conversationScope):conversationContext,p.conversationScope), stop, turns: turnCount, hitTurnCap, toolsUsed: audit.map((a) => a.name) };
 }
 
 /**
@@ -385,6 +386,8 @@ async function runTools(
 }
 
 type PersistInput = {
+  /** Scope uses the one existing context owner; a genuine parent alone supplies inherited identity. */
+  threadId?:string;conversationScope?:string;
   /** Private same-Tx custody fence; never serialized or stored. Undefined for a genuinely new chat. */
   continuationCheck?: (tx:Tx)=>Promise<void>;
   reservation:AssistantQuestionBudget;
@@ -446,7 +449,7 @@ async function persist(ctx: SessionContext, p: PersistInput): Promise<RecordedEx
  *  never be recorded without the exchange that caused it. */
 async function persistWithContent(ctx: SessionContext, id: string, p: PersistInput): Promise<void> {
   const disclosureReceipt = sealAssistantDisclosure({ tenantId: ctx.tenantId, userId: p.appUserId,
-    exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan);
+    exchangeId: id, question: p.question, answer: p.answer }, p.sourceReads, p.answerPlan,{threadId:p.threadId??id,scopeDigest:assistantConversationScopeDigest(ctx,p.conversationScope)});
   await withTenant(ctx, async (tx) => {
     // Keep the owner Access interval through INSERT + marker completion + accounting COMMIT.
     // A source erased during the sole provider call must never acquire fresh retained content.

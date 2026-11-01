@@ -11,7 +11,7 @@ export const MOVEMENT_PENDING_COMPARISON_FIELDS = [
   ...MOVEMENT_FLAT_FIELDS,
 ] as const;
 export const MOVEMENT_PENDING_INPUT_FIELDS = [...MOVEMENT_PENDING_COMPARISON_FIELDS,
-  'terminationReasonCode','terminationNoticeDays','resignationDate','tenderResignationDate','resignationEffectiveDate',
+  'blacklisted','terminationReasonCode','terminationNoticeDays','resignationDate','tenderResignationDate','resignationEffectiveDate',
 ] as const;
 export type MovementPendingFormValues = Partial<Record<typeof MOVEMENT_PENDING_INPUT_FIELDS[number],string|null>>;
 /** A presentation projection of explicitly recorded scalar values, never current/default facts. */
@@ -21,7 +21,7 @@ export function movementPendingFormValues(raw:unknown):MovementPendingFormValues
   for(const key of MOVEMENT_PENDING_INPUT_FIELDS){
     if(!Object.prototype.hasOwnProperty.call(raw,key))continue;
     const value:unknown=Reflect.get(raw,key);
-    if(value===null||typeof value==='string'||typeof value==='number'&&Number.isFinite(value))values[key]=value===null?null:String(value);
+    if(value===null||typeof value==='string'||typeof value==='boolean'||typeof value==='number'&&Number.isFinite(value))values[key]=value===null?null:String(value);
   }
   return values;
 }

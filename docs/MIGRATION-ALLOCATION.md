@@ -965,6 +965,35 @@ from this candidate; a numeric gap is intentional. Existing SQL bytes and the fu
 are immutable. Root must verify the then-current installation ledger and release evidence before
 any installation; neither source allocation nor focused development checks authorizes deployment.
 
+## Tax recalculation and movement corrections bundle — 1 November 2026
+
+Owner-assigned next release after V9 (Claude release owner). Integrated onto V9 candidate
+`49c3d960da266b62b4f5f8f90b7f80afab6dc9ac`, whose journal is the installed 636-entry prefix through
+`0865_assistant_company_retention_references`, idx750 / when1793330000265. A fresh scan of every local
+and origin ref plus registered worktrees found unapplied foreign claims 0866–0872 (idx751–757,
+when1793330000266–272, performance work) and nothing above.
+
+| Index | Timestamp | Filename | SQL SHA256 | Former unapplied identity |
+| ---: | ---: | --- | --- | --- |
+|751|1793330000273|0873_movement_exit_payroll_preservation|39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440|0729 / when…066|
+|752|1793330000274|0874_payroll_tax_basis_corrections|9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745|0737 / when…074|
+
+The former identities sit below the installed watermark and would be silently skipped, so both bodies
+are renamed byte-identical and appended above every known claim. If this bundle installs first, the
+performance owner's 0866–0872 fall below the new watermark and must be reallocated above when…274
+before their own release. Re-verify the accepted V9 ledger at handback before installation. This
+reservation grants no deployment or acceptance.
+
+## Rewards access-request read policy fix — 1 November 2026
+
+Claude release owner, owner-accepted follow-up to the tax/movement bundle. The installed staging ledger is
+638 rows through `0874_payroll_tax_basis_corrections` (idx752 / when1793330000274). This fix appends
+`0875_reward_access_request_read_role` at idx753 / when1793330000275 (SQL SHA256
+`06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1`). Performance's unapplied 0866–0872
+claims are below the watermark and must be reallocated above the next accepted watermark. Re-verify the
+live ledger before installation; this reservation grants no deployment.
+
+
 ## Performance reconciliation — 31 October 2026
 
 Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` owns the complete immutable prefix. A scan of 293 unique reachable journals found maximum prefix0865, idx750 and timestamp1793330000265. The five unapplied performance drafts are now0866–0870, idx751–755, timestamps1793330000266–270, in existing dependency order. This supersedes their earlier names/indices/timestamps above. No applied SQL was edited and no installation was changed. Final release allocation still requires then-current reconciliation.
@@ -999,3 +1028,28 @@ measures query-plan reuse, never result caching. Exact-file and broad native ide
 grant/tenant qualification remain required. Earlier canonical prefixes/SQL bytes are
 untouched; main/alpha have advanced and final integration must reconcile all foreign
 entries and positions above the actual live ledger. No installation authority.
+
+
+## Performance reconciliation —1 November2026, current main integration
+
+Owned performance branch merges main/alpha `1a74336e68abf0c06067b19857ad68c8aeb93049` normally. Preserve its complete
+639-entry journal and every SQL byte. Fresh audit:2790 refs/301 distinct ref journals,
+411 worktrees/712 raw journals including WIP/conflicts; highest foreign claim0878/
+when1793330000278 and highest index758. The eight never-installed performance
+drafts move above that watermark, with byte-identical SQL bodies. Old allocations
+above are superseded; index gaps754–758 preserve other provisional source claims.
+
+| Previous draft | New tag | idx | when | SQL SHA256 |
+| --- | --- | ---: | ---: | --- |
+|0866_claim_history_order|0879_claim_history_order|759|1793330000279|0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e|
+|0867_visibility_plan_cache|0880_visibility_plan_cache|760|1793330000280|189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2|
+|0868_permission_read_work|0881_permission_read_work|761|1793330000281|f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6|
+|0869_session_read_plans|0882_session_read_plans|762|1793330000282|b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56|
+|0870_home_role_reporting_guard|0883_home_role_reporting_guard|763|1793330000283|1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e|
+|0871_visibility_routing_plans|0884_visibility_routing_plans|764|1793330000284|bb48a1477bdc1d60ec86d21d97ff8deb83ad32074fb85ca6a74c9e5860fb9719|
+|0872_attendance_assignment_work|0885_attendance_assignment_work|765|1793330000285|c662c5501c234ba2af0f6c43c242332edcca4c2938bed5422000fdabc3f14158|
+|0877_principal_query_plan|0886_principal_query_plan|766|1793330000286|134ca805055e6b0a58b573b18ee3c89fce9bd0c9d574467dcd58f1315229f1b4|
+
+No installation, protected branch change or release is authorized. Source reservations
+still require fresh canonical/live-ledger reconciliation and full owning verification
+before a later separately authorized installation.

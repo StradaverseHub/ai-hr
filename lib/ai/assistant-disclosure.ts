@@ -2,6 +2,7 @@
  * A receipt authenticates the trusted command's source binding, not model truth or effect authority.
  */
 import { createHash } from 'node:crypto';
+import {types as nodeTypes} from 'node:util';
 import { captureAssistantAnswerPlan, type AssistantAnswerPlan } from './assistant-answer-plan';
 import { captureAgentReadBatch, serializeAgentReadResult } from './agent-read-batch';
 import { decryptSecret, encryptSecret, isSecretStorable } from './crypto';
@@ -9,6 +10,16 @@ import { decryptSecret, encryptSecret, isSecretStorable } from './crypto';
 export const ASSISTANT_DISCLOSURE_VERSION = 1;
 export const ASSISTANT_DISCLOSURE_LIMITS = Object.freeze({ reads: 128, tokenBytes: 786_432, plainBytes: 524_288 });
 export type AssistantDisclosureBinding = Readonly<{ tenantId: string; userId: string; exchangeId: string; question: string; answer: string }>;
+export type AssistantThreadMetadata=Readonly<{threadId:string;scopeDigest:string}>;
+/** Authenticated local grouping/scope only; no continuation capability or human text is stored here. */
+export function captureAssistantThreadMetadata(value:unknown):AssistantThreadMetadata{
+ if(!value||typeof value!=='object'||Array.isArray(value)||nodeTypes.isProxy(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))throw Error('Assistant thread unavailable.');
+ const fields=Object.getOwnPropertyDescriptors(value),keys=Reflect.ownKeys(fields);
+ if(keys.length!==2||!keys.every(key=>typeof key==='string'&&['threadId','scopeDigest'].includes(key)&&fields[key]?.enumerable&&'value'in fields[key]))throw Error('Assistant thread unavailable.');
+ const threadId=fields.threadId.value,scopeDigest=fields.scopeDigest.value;
+ if(typeof threadId!=='string'||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(threadId)||typeof scopeDigest!=='string'||!/^[a-f0-9]{64}$/.test(scopeDigest))throw Error('Assistant thread unavailable.');
+ return Object.freeze({threadId,scopeDigest});
+}
 export type AssistantSourceRead = Readonly<{ name: string; input: unknown; digest: string;moduleJobId?:string }>;
 const digest = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 export const assistantSourceDigest = (outcome: unknown) => digest(serializeAgentReadResult(outcome));
@@ -39,13 +50,14 @@ export function captureAssistantSourceReads(value: unknown): readonly AssistantS
 /** No secret/configuration or incomplete source evidence means no historical disclosure receipt.
  * It never turns a failed read into an authenticated successful one. The caller retains its audit.
  */
-export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, reads: readonly AssistantSourceRead[] | undefined, answerPlan?: AssistantAnswerPlan): string | null {
+export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, reads: readonly AssistantSourceRead[] | undefined, answerPlan?: AssistantAnswerPlan, thread?:AssistantThreadMetadata): string | null {
   try {
     if (!isSecretStorable() || !binding.answer || reads === undefined) return null;
     const captured = captureAssistantSourceReads(reads);
-    const plaintext = JSON.stringify(answerPlan === undefined
+    const plaintext = JSON.stringify(thread===undefined?(answerPlan === undefined
       ? { v: ASSISTANT_DISCLOSURE_VERSION, body: body(binding), reads: captured }
-      : { v: 2, body: body(binding), reads: captured, plan: captureAssistantAnswerPlan(answerPlan) });
+      : { v: 2, body: body(binding), reads: captured, plan: captureAssistantAnswerPlan(answerPlan) }):
+      {v:3,body:body(binding),reads:captured,plan:answerPlan===undefined?null:captureAssistantAnswerPlan(answerPlan),thread:captureAssistantThreadMetadata(thread)});
     if (bytes(plaintext) > ASSISTANT_DISCLOSURE_LIMITS.plainBytes) return null;
     const sealed = encryptSecret(plaintext, aad(binding));
     return bytes(sealed) <= ASSISTANT_DISCLOSURE_LIMITS.tokenBytes ? sealed : null;
@@ -56,7 +68,7 @@ export function sealAssistantDisclosure(binding: AssistantDisclosureBinding, rea
  * The only outward value is captured lookup inputs and encrypted-at-rest result fingerprints.
  * No decryption error or secret material crosses this boundary.
  */
-export type AssistantAnswerDisclosure = Readonly<{ reads: readonly AssistantSourceRead[]; plan: AssistantAnswerPlan | null }>;
+export type AssistantAnswerDisclosure = Readonly<{ reads: readonly AssistantSourceRead[]; plan: AssistantAnswerPlan | null;thread?:AssistantThreadMetadata }>;
 
 /** Legacy receipts retain their old card-only meaning. A v2 plan is authenticated with the exact
  * question, raw terminal body, principal and source lookup fingerprints, then adjudicated on replay. */
@@ -75,6 +87,8 @@ export function openAssistantAnswerDisclosure(binding: AssistantDisclosureBindin
       return Object.freeze({ reads, plan: null });
     if (proof.v === 2 && exact(proof, ['v', 'body', 'reads', 'plan']))
       return Object.freeze({ reads, plan: captureAssistantAnswerPlan(proof.plan) });
+    if(proof.v===3&&exact(proof,['v','body','reads','plan','thread']))
+      return Object.freeze({reads,plan:proof.plan===null?null:captureAssistantAnswerPlan(proof.plan),thread:captureAssistantThreadMetadata(proof.thread)});
     return null;
   } catch { return null; }
 }

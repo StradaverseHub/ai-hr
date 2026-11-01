@@ -3501,6 +3501,24 @@ export async function setEmploymentBlacklist(
   return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
+/** Movement's inverse reads an immutable event, never caller-supplied before/after values. */
+export async function reverseEmploymentBlacklistTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;eventId:string;reason:string}) {
+  if(!(ctx.roles?.includes('super_admin')||ctx.roles?.includes('hr_admin')))throw new Error('Only an admin can correct blacklist status.');
+  if(!p.reason.trim())throw new Error('A correction reason is required.');
+  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+  await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+  const [event]=await tx.select({type:domainEvent.eventType,payload:domainEvent.payload}).from(domainEvent).where(and(eq(domainEvent.id,p.eventId),eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'employment'),eq(domainEvent.aggregateId,p.employmentId),eq(domainEvent.subjectEmploymentId,p.employmentId))).limit(1);
+  if(!event||!['employment.blacklisted','employment.blacklist.cleared'].includes(event.type))throw new Error('The original blacklist event cannot be verified.');
+  const payload=event.payload as {before?:{blacklistedAt?:unknown;reason?:unknown};after?:{blacklistedAt?:unknown;reason?:unknown}}|null;
+  const valid=(value:{blacklistedAt?:unknown;reason?:unknown}|undefined):value is {blacklistedAt:string|null;reason:string|null}=>!!value&&Object.hasOwn(value,'blacklistedAt')&&Object.hasOwn(value,'reason')&&(value.blacklistedAt===null||typeof value.blacklistedAt==='string'&&isCalendarDate(value.blacklistedAt))&&(value.reason===null||typeof value.reason==='string');
+  const before=payload?.before,after=payload?.after;
+  if(!valid(before)||!valid(after))throw new Error('The original blacklist values require review before correction.');
+  const [current]=await tx.select({blacklistedAt:employment.blacklistedAt,blacklistReason:employment.blacklistReason}).from(employment).where(eq(employment.id,p.employmentId)).for('update');
+  if(!current||current.blacklistedAt!==after.blacklistedAt||current.blacklistReason!==after.reason)throw new Error('A later blacklist change conflicts with this event. Review the latest event first.');
+  await tx.update(employment).set({blacklistedAt:before.blacklistedAt,blacklistReason:before.reason}).where(eq(employment.id,p.employmentId));
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:'employment.blacklist.corrected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{before:after,after:before,reversalOf:p.eventId,reason:p.reason.trim()}});
+}
+
 /** R46 79eb7151 — the disbursement channels an employee can be paid through. r393 (685d2380 step 2) — the
  *  list and the bank rule now live in lib/payment-methods.ts (client-safe), because the draft's Payroll tab
  *  judges the same rule in the browser; re-exported here so every existing importer is unchanged. */

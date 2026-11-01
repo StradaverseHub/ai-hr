@@ -125,13 +125,13 @@ it('compares fresh request-grained routing before, during and after query-plan r
   for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored','migration-metadata-after-decision','migration-metadata-restored','migration-principal-plan','migration-principal-restored','migration-principal-file','migration-possible-assignment','migration-possible-restored']){
    for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
    await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
-   if(phase.startsWith('migration'))for(const file of ['0871_visibility_routing_plans.sql','0872_attendance_assignment_work.sql']){
+   if(phase.startsWith('migration'))for(const file of ['0884_visibility_routing_plans.sql','0885_attendance_assignment_work.sql']){
     const contents=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
     for(const statement of contents.split('--> statement-breakpoint'))await owner.client.unsafe(statement);
    }
    if(phase==='migration-plus-live-guard-plans')for(const d of definitions.slice(5,8))await owner.client.unsafe(d.cached);
    if(phase==='migration-principal-plan')await owner.client.unsafe(definitions[8].cached);
-   if(phase==='migration-principal-file')await owner.client.unsafe(readFileSync(new URL('../../db/migrations/0877_principal_query_plan.sql',import.meta.url),'utf8'));
+   if(phase==='migration-principal-file')await owner.client.unsafe(readFileSync(new URL('../../db/migrations/0886_principal_query_plan.sql',import.meta.url),'utf8'));
    for(const signature of [...signatures,assignmentSignature])expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
    const liveBootstrap=await owner.client`select * from app.principal(${actors[0].ctx.userId!}::uuid)`;
    expect(liveBootstrap).toHaveLength(1);expect(liveBootstrap[0].person_id).toBe(actors[0].personId);

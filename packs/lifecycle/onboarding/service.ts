@@ -677,7 +677,9 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
             M.fail('You cannot edit onboarding settings.', 'forbidden');
         if (!actor.module && actor.master) {
             const a = { ...old, groups: next.groups, access: next.access }, b = { ...next };
-            if (JSON.stringify(a) !== JSON.stringify(b))
+            // PostgreSQL jsonb and schema parsing can produce different object-key order.
+            // Compare values (including ordered arrays), retaining the access/groups-only boundary.
+            if (!isDeepStrictEqual(a, b))
                 M.fail('Grant yourself Onboarding access before editing its settings.', 'forbidden');
         }
         const directory = await directoryTx(tx), users = new Set(directory.map(x => x.id));

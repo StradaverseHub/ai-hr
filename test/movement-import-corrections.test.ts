@@ -56,6 +56,25 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
  });
  afterAll(closeAll);
 
+ it('revision 2 updates an exited employee to another event type after the mistaken exit date',async()=>{
+  await createMovementEvent(a,{employmentId:ac1,kind:'termination',effectiveDate:day(-3),endDate:day(-3),terminationReasonCode:'resignation',resignationDate:day(-10)});
+  const [original]=await live(ac1,'resignation');
+  const {result}=await importRows([['ACME','AC001','',day(-1),'Transfer','departmentId','','Operations','Update',original.id,'Fictional incorrect exit type']]);
+  expect(result).toMatchObject({imported:1,failed:0});
+  expect(await state(ac1)).toMatchObject({departmentId:b.deptB});
+  const [employee]=await owner.db.select({terminatedOn:s.employment.terminatedOn}).from(s.employment).where(eq(s.employment.id,ac1));expect(employee.terminatedOn).toBeNull();
+  expect((await movementHistory(a,ac1)).find(row=>row.id===original.id)?.status).toBe('reversed');
+ });
+ it('revision 2 deletes the exact voluntary exit and reverts it through the recorded termination owner',async()=>{
+  await createMovementEvent(a,{employmentId:ac1,kind:'termination',effectiveDate:day(-3),endDate:day(-3),terminationReasonCode:'resignation',resignationDate:day(-10)});
+  const [original]=await live(ac1,'resignation');
+  const {checked,result}=await importRows([['ACME','AC001','','','','','','','Delete',original.id,'Fictional wrong exit']]);
+  expect(result).toMatchObject({imported:1,failed:0});
+  const preview=await previewImportRevertForAttempt(a,checked.attemptId);expect(preview.blockers).toEqual([]);
+  await revertImportForAttempt(a,checked.attemptId,{previewHash:preview.previewHash,reason:'Fictional restore original exit'});
+  const [employee]=await owner.db.select({terminatedOn:s.employment.terminatedOn}).from(s.employment).where(eq(s.employment.id,ac1));expect(employee.terminatedOn).toBe(day(-3));
+ });
+
  it('Update by Movement Event ID corrects only the filled cell, keeps the rest, and a revert re-applies the original values',async()=>{
   await createMovementEvent(a,{employmentId:ac1,kind:'promotion',effectiveDate:day(-5),gradeId:senior,positionId:seniorExec,basicSalary:3500});
   const[original]=await live(ac1,'promotion');

@@ -375,8 +375,13 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
     it('every bucket (b) writer is still bound to a form of its own', () => {
       // Several are add-vs-edit ternaries (`action={editing ? editX : addX}`), so the binding is matched
       // inside the action expression rather than as a bare `{name}`.
-      const bound = formTags(PAGE())
-        .map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? '')
+      // 646355e5 revision 2 moved the Employment History Roll Back form into MovementHistoryActions; the page
+      // hands it reverseMovementEventAction, and the component binds that prop to its own form.
+      expect(PAGE()).toContain('reverseAction={reverseMovementEventAction}');
+      const history = formTags(stripComments(read('app/admin/personnel/[employmentId]/movement-history-actions.tsx')));
+      expect(history.filter((tag) => /action=\{reverseAction\}/.test(tag))).toHaveLength(1);
+      for (const tag of history) expect(tag).not.toContain('data-save-section');
+      const bound = [...formTags(PAGE()).map((tag) => /action=\{([\s\S]*?)\}/.exec(tag)?.[1] ?? ''), 'reverseMovementEventAction']
         .join(' | ');
       for (const action of BUCKET_B) {
         expect(bound, `${action} must still be bound to a <form action={…}>`).toContain(action);

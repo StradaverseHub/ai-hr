@@ -13,9 +13,10 @@ it('preserves populated Native issuance, private data, identity and every applie
  const journal=JSON.parse(journalBytes.toString());
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
- expect(journal.entries).toHaveLength(636);
+ // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
+ expect(journal.entries).toHaveLength(639);
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(65);
+ expect(journal.entries.slice(boundary)).toHaveLength(68);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -26,7 +27,12 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:697,version:'7',when:1793330000211,tag:'0811_pay_formula_company_retention',breakpoints:true,hash:'b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b'},
  ]);
  // Independently frozen b813 appended identities; never derive this expectation from the live journal.
- expect(journal.entries.slice(583).map(migrationIdentity)).toEqual([
+ expect(journal.entries.slice(636).map(migrationIdentity)).toEqual([
+  {idx:751,version:'7',when:1793330000273,tag:'0873_movement_exit_payroll_preservation',breakpoints:true,hash:'39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440'},
+  {idx:752,version:'7',when:1793330000274,tag:'0874_payroll_tax_basis_corrections',breakpoints:true,hash:'9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745'},
+  {idx:753,version:'7',when:1793330000275,tag:'0875_reward_access_request_read_role',breakpoints:true,hash:'06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1'},
+ ]);
+ expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {
     "idx": 698,
     "version": "7",

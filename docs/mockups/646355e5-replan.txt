@@ -1,0 +1,49 @@
+VERDICT: Partly there already   ·   SIZE: Large
+
+THE SITUATION TODAY
+
+Your CHCE0067 example confirms the problem: an employee's leaving date hides the correction actions on Movement. The event that ended the employment cannot be corrected there, even when entered by mistake. The earlier plan missed this restriction.
+
+WHAT WE'LL CHANGE
+
+- Show authorised HR administrators View, Edit and Delete for active movement records, including after resignation or termination. A leaving date will not hide corrections.
+
+- Edit will show the recorded details and allow corrections to the date, information and wrong Event Type. Check the resulting history before saving; explain conflicting events and save nothing if it is invalid.
+
+- Delete will remove the event's effect after confirmation and a required reason. Keep the original and the correction in audit history. Deleting a mistaken exit restores the status supported by the remaining history.
+
+- Payroll closure alone will not block correction. Name affected months and require confirmation. Issued payslips and finalised figures stay as issued; past-pay adjustments follow a separate authorised process.
+
+- Apply the same rules to Excel Create, Update and Delete using exact Movement Event IDs and reasons. Keep row results, history and guarded Revert.
+
+WHAT YOU'LL GET
+
+HR can correct mistaken exits directly from Movement. Acceptance will cover CHCE0067's 13 October 2026 example, other movement types, earlier events and closed payroll.
+
+GOOD TO KNOW
+
+- New Hire uses Correct hire details. Delete explains controlled employee-removal requirements; it cannot erase employment and payroll history as an ordinary movement deletion.
+
+- Already corrected or replaced entries remain in audit history. Restrictions explain why an action cannot proceed instead of silently hiding it.
+
+- Salary corrections preserve closed months; the confirmation states when corrected salary begins. Revert explains any later-change or closed-payroll restriction.
+
+- The attached sketch illustrates the proposal. This correction has not yet been accepted as delivered.
+
+------------------------------------------------------------
+
+BUILD NOTES (technical - skip this if you are reviewing the request)
+
+Verified baseline: origin/main and origin/alpha both 2ab4f6c120a28692857e93adeed072d463713ab6. Staging deploy-state reports that same ref and built_ref, stale_build=0. This establishes installed identity, not rendered acceptance. Read-only staging query confirmed CHCE0067 terminated_on=2026-10-13; its ledger includes employment.terminated with terminationType voluntary and movement.type termination. Do not assume the reporter's Resignation caption maps to the separate resignation behaviour. Do not mutate this employee for testing without an authorised fixture procedure.
+
+Primary defect: app/admin/personnel/[employmentId]/page.tsx computes canCreateMovement as admin && canMaintainWorkforce && !emp.terminatedOn. It reuses this creation predicate for Edit, reverse, Correct hire details and their forms. Split correction eligibility from creation eligibility. Corrections retain admin, workforce.maintain, tenant/company scope and the per-row service decision even when terminatedOn exists. Keep New Event's lifecycle rule. Server actions already requireAdmin and movement services assertWorkforceEmploymentTx; inspect every writer and derived status after inverse/replay, not just link visibility.
+
+Use the existing editMovementEvent and reverseMovementEvent commands as the only correction owners. Do not introduce direct employment updates or delete domain_event rows. Present Delete consistently on manual active rows, with a confirmation explaining removal from active history and retained audit. Pending Delete cancels the intent; applied Delete compensates the event. Preserve existing audit visibility and terminal row rules. Hired remains the controlled special case under the existing hire correction and employee-removal policy; keep payroll.reset_enabled and removal eligibility.
+
+Remaining full-scope gaps must be verified, not claimed delivered. core/movement.ts correctabilityOf still requires a reversible group and supported behaviour. Applied edits are limited to comparison, resignation and termination behaviours; event-type changes cannot cross several behaviour families. Before offering unsupported conversions, implement an atomic inverse plus replacement through the destination owner's validation, within the employment/leave locks, with complete dependency checks and audit linkage. Extend only after proving a valid inverse. Enumerate configured and built-in types with actions and concrete refusal reasons. Do not simply make every canEdit/canReverse true or remove lifecycle/accounting guards. Unknown or damaged ledger groups refuse explicitly without writes.
+
+Reuse the existing older-event replay and ADR-0164 closed-payroll acknowledgement/snapshot protection. Validate later events, entity transfers, confirmation, information corrections, assignments, reporting lines and lifecycle consequences. Preserve all-or-nothing failure. Preserve finalized payroll documents and numbers; retain the existing salary boundary after closed months and leave historical-review boundary. Missing trustworthy snapshots must explain reconciliation rather than silently fabricate historical metadata.
+
+Import slice C already exists at this baseline: signed template v4 Action, Movement Event ID and Reason; v3 Create compatibility; exact scoped IDs; blank Update cells mean unchanged; per-employee preview/commit; history and guarded revert. Inspect and extend its shared correction paths for exited employees and type changes instead of rebuilding it. Before values remain recorded historical facts: if an entered Before disagrees, report the mismatch; do not forge prior state. Explain that rule in import help. Revert retains its existing closed-payroll refusal unless separately designed and approved.
+
+Verification: run focused development checks on standard GitHub-hosted runners through alpha-focused-checks.yml. Add behaviour coverage for an applied voluntary termination tagged as termination (the CHCE0067 shape), correction visibility on exited employees, unchanged New Event restrictions, correct date/status after Edit/Delete, scheduled exits, older-event conflicts, cross-type replacement and full rollback on refusal. Include missing reason/acknowledgement, denied admin/company/tenant access, import Update/Delete/revert and original-before mismatch. Compare finalized payslip, payroll register and statutory outputs before/after. Render the installed Movement tab with an authorised HR session and prove buttons, form, confirmation, success and refusal states. Use disposable authorised fixtures for writes. Source checks and deploy-state alone are not acceptance. Follow the release queue and authenticated release evidence policy for any later staging release; this re-plan authorises no production deployment.

@@ -186,7 +186,8 @@ describe('install, reactivate, disable', () => {
       scope: 'tenant',
       valueType: 'number',
       defaultValue: 10,
-      defaultOnInstall: 10,
+      // Differs from the default: an install writes only values that change behaviour.
+      defaultOnInstall: 20,
     });
 
     await run(request({ moduleCode: code }));
@@ -232,6 +233,35 @@ describe('install, reactivate, disable', () => {
       .from(schema.tenantSetting)
       .where(eq(schema.tenantSetting.key, key));
     expect(row.value).toBe(true);
+  });
+
+  /**
+   * The install pass once read EVERY definition with an install value, so activating one module wrote
+   * other modules' settings — `payroll.individual_txn_pay_enabled = true` among them — into any tenant
+   * without a row. Only the activated module's keys may be written, and only where the install value
+   * differs from the default: a row equal to its default changes nothing but reads as a decision.
+   */
+  it("writes only the activated module's non-default install values, as platform rows", async () => {
+    const code = uniq('scoped_install');
+    const other = uniq('other_module');
+    await defineModule(code);
+    await defineModule(other);
+    const own = `${code}.enabled`, same = `${code}.same_as_default`, foreign = `${other}.enabled`;
+    createdSettings.push(own, same, foreign);
+    await owner.db.insert(schema.settingDefinition).values([
+      { key: own, moduleCode: code, scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: true },
+      { key: same, moduleCode: code, scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: false },
+      { key: foreign, moduleCode: other, scope: 'tenant', valueType: 'boolean', defaultValue: false, defaultOnInstall: true },
+    ]);
+    const out = await run(request({ moduleCode: code }));
+    expect(out.seeded).toBe(1);
+    const rows = await owner.db
+      .select()
+      .from(schema.tenantSetting)
+      .where(inArray(schema.tenantSetting.key, [own, same, foreign]));
+    expect(rows.map((r) => ({ key: r.key, value: r.value, source: r.source }))).toEqual([
+      { key: own, value: true, source: 'platform' },
+    ]);
   });
 
   // D-6: disabled means writes refused, history readable. Deletion is not disabling.

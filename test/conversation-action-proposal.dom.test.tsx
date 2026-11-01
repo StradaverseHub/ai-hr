@@ -107,7 +107,7 @@ describe('preparation and confirmation stay with the person',()=>{
   expect(packets()[3]).toEqual({action:'attendance.overtime.request',operation:'reopen',actionId});
   expect(packets().filter(packet=>packet.operation==='confirm')).toHaveLength(1);expect(packets().filter(packet=>packet.operation==='prepare')).toHaveLength(1);
   // Confirmed: no longer a suggestion, so the badge and the "nothing prepared" note are gone.
-  expect(document.querySelector('section[data-card-state]')?.getAttribute('data-card-state')).toBe('settled');expect(screen.queryByText('badgeReady')).toBeNull();
+  await waitFor(()=>{expect(document.querySelector('section[data-card-state]')?.getAttribute('data-card-state')).toBe('settled');expect(screen.queryByText('badgeReady')).toBeNull();});
  });
  it('cancels a preselected own leave request only after the person consents and clicks',async()=>{
   fetcher.mockResolvedValueOnce(json({kind:'choices',requests:[leave(own1,'2026-11-03')],truncated:false})).mockRejectedValueOnce(Error('lost'));

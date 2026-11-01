@@ -67,9 +67,13 @@ describe('ADR-0082 slice 4 — the screen exists and is wired', () => {
     expect(page).toContain('CanonicalModuleJob');
     expect(page).toContain("from '@/components/assistant/workspace-conversation'");
     expect(page).toContain('<WorkspaceConversation');
-    expect(page).toContain('initialTurn={history.find(h=>h.id===sp.e)?');
+    expect(page).toContain('fullHeight');
+    expect(page).toContain('lg:grid-cols-[16rem_minmax(0,1fr)]');
+    expect(page).toContain('<aside');
+    expect(page).toContain('initialTurns={initialTurns}');
+    expect(page).toContain('loadOwnAssistantChat');
     expect(page).toContain("from '@/components/assistant/exchange-reply'");
-    expect(page).toContain('answer:<ExchangeReply exchange={history.find(h=>h.id===sp.e)!} ctx={s}/>');
+    expect(page).toContain('answer:<ExchangeReply exchange={exchange} ctx={s}/>');
     const reply=read('components/assistant/exchange-reply.tsx');
     expect(reply).toContain("import {GroundedWorkspaceReply} from './module-jobs'");
     expect(reply).toContain('h.grounded?<GroundedWorkspaceReply reply={h.grounded} ctx={ctx} exchangeId={h.id}/>');

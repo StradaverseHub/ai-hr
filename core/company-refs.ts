@@ -102,6 +102,11 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   {table:'import_attempt_item',column:'company_id',disposition:'other',existsFunction:'app.import_history_company_in_use',note:'Personnel import history (ADR-0155) is append-only audit of what each file changed for this company; it is retained, never cascaded.'},
   {table:'bank_import_row',column:'company_id',disposition:'other',note:'Bank and Statutory import source rows, validation and application outcomes retain their company; deleting a company must not cascade this import history.'},
   {table:'payroll_history_import_record',column:'company_id',disposition:'payroll',note:'An imported payroll identity and every correction or recovery retain their original company permanently.'},
+  // 929ea296 (PR126) — tax-basis corrections are audited payroll tax evidence: previews, batches, events and revisions refuse the delete.
+  {table:'payroll_tax_basis_preview',column:'company_id',disposition:'payroll',note:'A tax-basis recalculation preview over the company\'s closed payroll.'},
+  {table:'payroll_tax_basis_batch',column:'company_id',disposition:'payroll',note:'A confirmed tax-basis correction batch.'},
+  {table:'payroll_tax_basis_event',column:'company_id',disposition:'payroll',note:'The append-only audit trail of a tax-basis correction batch.'},
+  {table:'payroll_tax_basis_revision',column:'company_id',disposition:'payroll',note:'A corrected tax basis for one issued payslip; the payslip itself is unchanged.'},
   { table: 'employment_cost_allocation_set', column: 'company_id', disposition: 'employees', existsFunction: 'app.board3_allocation_company_in_use', note: 'Every retained allocation set, including cleared or superseded sets after a transfer, retains its company without exposing employee rows.' },
   { table: 'job_document', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Job documentation and its approval history are retained records, never company setup to cascade.' },
   { table: 'job_document_form', column: 'company_id', disposition: 'other', existsFunction: 'app.board3_job_company_in_use', note: 'Versioned authored form definitions retain their company and must not be erased by company setup deletion.' },

@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { getBrowserCommandSession } from '@/lib/session';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { askAssistant, AssistantError } from '@/core/assistant';
+import {assistantBrowserConversationScope} from './conversation-scope';
 import { AssistantClarificationError } from '@/core/assistant-clarification';
 
 /**
@@ -27,8 +28,9 @@ export async function askAssistantAction(formData: FormData) {
   try {
     const s = await getBrowserCommandSession();
     if(clarificationExchangeId!==null&&(typeof clarificationExchangeId!=='string'||typeof clarificationAnswer!=='string'))throw new AssistantClarificationError();
-    const res = await askAssistant(s, clarificationExchangeId===null?{question:submittedQuestion}
-      : {question:clarificationAnswer as string,clarificationExchangeId:clarificationExchangeId as string});
+    const conversationScope=await assistantBrowserConversationScope(s);
+    const res = await askAssistant(s, clarificationExchangeId===null?{question:submittedQuestion,conversationScope}
+      : {question:clarificationAnswer as string,clarificationExchangeId:clarificationExchangeId as string,conversationScope});
     exchangeId = res.exchangeId;
   } catch (e) {
     const code = e instanceof AssistantClarificationError ? 'clarification_unavailable' : e instanceof AuthRequiredError ? 'ai_control' : e instanceof AssistantError ? e.code : 'provider_error';

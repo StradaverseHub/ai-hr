@@ -340,10 +340,22 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
    */
   it('the EA financial body and PDF remain byte-identical; Mine only adds its guarded read snapshot', () => {
     const show = (f: string) => execFileSync('git', ['show', `${BASELINE}:${f}`], { cwd: ROOT, encoding: 'utf8', maxBuffer: 1 << 26 });
+    // 929ea296 (PR126) appends ONE helper to ea-routing.ts: the pre-correction EA contribution of an issued
+    // payslip, so a tax-basis correction can be swapped in. Everything before it stays byte-identical.
+    const eaRoutingAddition = `
+/** The exact pre-correction contribution already included in the report's selected routing mode. */
+export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bonus:unknown;allowance:unknown;statutory:unknown},exempt:number,mapping:ReadonlyMap<string,string|null>,targets:Readonly<Record<string,EaField>>,routingActive:boolean):Partial<Record<EaField,number>>{
+ const lines=(source.statutory as {componentLines?:StoredComponentLine[]}|null)?.componentLines??[];
+ const parts:Partial<Record<EaField,number>>={grossSalary:Number(source.basic??0)+Number(source.overtime??0),bonus:Number(source.bonus??0),allowances:Number(source.allowance??0)-exempt};
+ for(const [field,amount]of Object.entries(accumulateEaRouting(lines,mapping,targets,routingActive).deltas))parts[field as EaField]=(parts[field as EaField]??0)+(amount??0);
+ return parts;
+}
+`;
     for (const f of ['localization/my/ea-routing.ts', 'localization/my/ea-noncash.ts', 'localization/my/ea-reporting.ts', 'core/payslip-earning-lines.ts']) {
       const now = fs.readFileSync(path.join(ROOT, f), 'utf8');
       expect(now.length, f).toBeGreaterThan(1000);
-      expect(now === show(f), f).toBe(true);
+      const unchanged = f === 'localization/my/ea-routing.ts' && now.endsWith(eaRoutingAddition) ? now.slice(0, -eaRoutingAddition.length) : now;
+      expect(unchanged === show(f), f).toBe(true);
     }
     const slice = (src: string) => {
       const start = src.indexOf('export async function eaStatement(');
@@ -380,6 +392,46 @@ describe('r415 · CP22A and the EA did not move — the base commit’s own read
     for(const [dated,original] of historicalBindings){expect(withoutMineBoundary.split(dated),dated).toHaveLength(2);withoutMineBoundary=withoutMineBoundary.replace(dated,original);}
     const reportTables=[['employment','employment',1],['person','person',1],['employee_statutory_my','employeeStatutoryMy',1],['assignment','assignment',1],['payslip','payslip',1],['tp1_relief','tp1Relief',1],['ea_override','eaOverride',1]] as const;
     for(const [table,original,count] of reportTables){const wrapper=`informationReportRelation('${table}',p.companyId,p.year)`;expect(withoutMineBoundary.split(wrapper),wrapper).toHaveLength(count+1);withoutMineBoundary=withoutMineBoundary.replaceAll(wrapper,original);}
+    // 929ea296 (PR126) — the tax-basis correction overlay: read each payslip's id, keep the original rows as
+    // routing evidence, swap in the corrected statutory snapshot, re-derive the affected Part B income and
+    // report the correction references. Strip ONLY these exact reviewed additions; nothing else may move.
+    const taxBasisAdditions = [`id: payslip.id,
+        `,
+      `
+    const originalSlips = slips.map(s => ({...s}));
+    const correctedBases = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const taxBasisCorrections = [...correctedBases.values()].map(value => value.correction);
+    for (const slip of slips) {
+      const corrected = correctedBases.get(slip.id);
+      if (corrected) slip.statutory = corrected.statutory;
+    }
+`,
+      `// The original routing stamp remains evidence. Imported display-only lines cannot qualify.
+    if (correctedBases.size) {
+      const catalogue = await tx.select({code:payComponent.code,eaLine:payComponent.eaFormLine}).from(payComponent);
+      const mapping = new Map(catalogue.map(c => [c.code,c.eaLine]));
+      for (const original of originalSlips) {
+        const correction = correctedBases.get(original.id); if (!correction) continue;
+        if (!hasCompleteHistoricalEaProvenance([original],mapping))
+          throw new PayrollTaxBasisError('The corrected income has incomplete original EA routing evidence. Review the source before generating this tax report.');
+        const oldExemption = Object.entries(correction.basis.exemptionUsed).reduce((n,[code,value])=>code.startsWith('PCB_')?n+num(value):n,0);
+        const oldParts=eaIncomePartsForSource(original,oldExemption,mapping,EA_LINE_TO_FIELD,routingActive);
+        for (const field of EA_PART_B_COMPONENTS) derived[field]=round2(derived[field]-(oldParts[field]??0));
+        for (const item of correction.basis.items) {
+          if (item.latestTreatment==='Taxable remuneration deduction') { derived.grossSalary=round2(derived.grossSalary-item.amount);continue; }
+          if (!item.taxable) continue;
+          const classification=mapping.get(item.code)??null;
+          const target: EaField|undefined=classification===null?'grossSalary':(EA_LINE_TO_FIELD as Readonly<Record<string,EaField>>)[classification];
+          if (!target || !(EA_PART_B_COMPONENTS as readonly string[]).includes(target))
+            throw new PayrollTaxBasisError('A corrected taxable Pay Item needs a supported EA income mapping.');
+          derived[target]=round2(derived[target]+item.taxable);
+        }
+      }
+    }
+    `,
+      `,
+      ...(taxBasisCorrections.length ? {taxBasisCorrections} : {})`];
+    for (const addition of taxBasisAdditions) { expect(withoutMineBoundary.split(addition), addition).toHaveLength(2); withoutMineBoundary = withoutMineBoundary.replace(addition, ''); }
     expect(withoutMineBoundary).toBe(slice(show('localization/my/reports.ts')));
     const ea = fs.readFileSync(path.join(ROOT, 'lib/ea-pdf.ts'), 'utf8');
     expect(code(ea).length).toBeGreaterThan(2000);

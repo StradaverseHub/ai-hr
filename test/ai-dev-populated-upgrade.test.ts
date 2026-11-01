@@ -191,8 +191,11 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
  expect(witness.source).toBe('f752ac7f5d0323c5eae2280c3830af05b6da465f');
  expect(witness.buildId).toBe('Cvj9_lgd4fATCyUYRwWz_');expect(witness.observedAt).toBe('2026-10-29T21:09:26.134Z');
  expect(journal.entries[prefix-1]).toEqual({idx:682,version:'7',when:1793330000030,tag:'0698_information_only_corrections',breakpoints:true});
- expect(journal.entries.slice(prefix).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL);
- expect(journal.entries.at(-1)).toEqual({idx:750,version:'7',when:1793330000265,tag:'0865_assistant_company_retention_references',breakpoints:true});
+ // The tax/movement release (1 Nov 2026) appends exactly 0873/0874 after this tail; this fixture upgrades to 0865 only.
+ expect(journal.entries.slice(prefix+TAIL.length).map(({tag,idx,when})=>({tag,idx,when}))).toEqual([{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'}]);
+ const upgradeEntries=journal.entries.slice(0,prefix+TAIL.length);
+ expect(journal.entries.slice(prefix,prefix+TAIL.length).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL);
+ expect(upgradeEntries.at(-1)).toEqual({idx:750,version:'7',when:1793330000265,tag:'0865_assistant_company_retention_references',breakpoints:true});
  expect(hashFile('0865_assistant_company_retention_references')).toBe('088acfed2e8aba43deb012e0baed2d4d88765d115afd19a858ebee53e12141cd');
  // The canonical identity owner recognizes only the two retained historical SQL versions. It reads the
  // archived original bytes; this is not a checksum waiver or replacement of applied source.
@@ -261,7 +264,9 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   expect(priorPerformance).toHaveLength(6);
   for(const row of priorPerformance)expect(row).toMatchObject({default_value:true,default_on_install:true});
   const baseline=await ledger();
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  for(const entry of upgradeEntries.slice(prefix))copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
+  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:upgradeEntries}));
+  await migrate(storage.db,{migrationsFolder:directory});
   const retained=await retainedRows();
   expect(Object.keys(retained).sort()).toEqual(Object.keys(before).sort());
   // Every original non-review table and every opaque sealed-content byte stays exactly unchanged.
@@ -298,7 +303,7 @@ it('upgrades the exact observed populated Board prefix without rewriting applied
   expect(await storage.client`select action_id from app.ai_agent_action_pause`).toEqual([]);
   const [switches]=await storage.client`select count(*)::int as n from app.ai_feature_setting`;expect(switches.n).toBe(15);
   // Ordinary replay is idempotent; it neither re-applies the tail nor rewrites retained rows.
-  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  await migrate(storage.db,{migrationsFolder:directory});
   expect(await ledger()).toEqual(after);expect(await retainedRows()).toEqual(retained);
  }finally{
   await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});

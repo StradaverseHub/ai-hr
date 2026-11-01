@@ -85,3 +85,11 @@ export function hasCompleteHistoricalEaProvenance(
     return [wage, reimburse, additional, exempt, wage + reimburse].every(Number.isSafeInteger) && wage + reimburse === allowance && additional === bonus && exempt <= reimburse;
   });
 }
+
+/** The exact pre-correction contribution already included in the report's selected routing mode. */
+export function eaIncomePartsForSource(source:{basic:unknown;overtime:unknown;bonus:unknown;allowance:unknown;statutory:unknown},exempt:number,mapping:ReadonlyMap<string,string|null>,targets:Readonly<Record<string,EaField>>,routingActive:boolean):Partial<Record<EaField,number>>{
+ const lines=(source.statutory as {componentLines?:StoredComponentLine[]}|null)?.componentLines??[];
+ const parts:Partial<Record<EaField,number>>={grossSalary:Number(source.basic??0)+Number(source.overtime??0),bonus:Number(source.bonus??0),allowances:Number(source.allowance??0)-exempt};
+ for(const [field,amount]of Object.entries(accumulateEaRouting(lines,mapping,targets,routingActive).deltas))parts[field as EaField]=(parts[field as EaField]??0)+(amount??0);
+ return parts;
+}

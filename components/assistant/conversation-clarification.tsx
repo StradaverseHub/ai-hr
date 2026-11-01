@@ -6,6 +6,9 @@ import {askAssistantAction} from '../../app/assistant/actions';
 /** The native owned clarification path is retained; active chats provide only an in-place transport. */
 export function ConversationClarification({exchangeId,replyLabel,continueLabel,choices}:{exchangeId:string;replyLabel:string;continueLabel:string;choices?:readonly {label:string;prompt:string}[]}){
  const chat=useContext(AssistantChatSubmitContext);
+ // In an active chat, the one main composer owns the next answer. Keep the native standalone form
+ // for reopened records outside a chat; optional shortcuts only fill that same composer.
+ if(chat?.setClarificationDraft)return choices&&choices.length>0?<details className="text-xs text-muted-foreground"><summary className="w-fit min-h-11 cursor-pointer py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{replyLabel}</summary><div className="flex flex-wrap gap-2">{choices.map(choice=><button key={choice.prompt} type="button" disabled={chat.pending} onClick={()=>chat.setClarificationDraft?.(exchangeId,choice.prompt)} className="min-h-11 rounded-md border border-border px-3 py-2 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60">{choice.label}</button>)}</div></details>:null;
  return <form action={chat?undefined:askAssistantAction} onSubmit={chat?event=>{event.preventDefault();if(!chat.pending){const data=new FormData(event.currentTarget);void chat.clarify(exchangeId,String(data.get('clarificationAnswer')??''));}}:undefined} className="space-y-3">
   <input type="hidden" name="clarificationExchangeId" value={exchangeId}/>
   <Fields replyLabel={replyLabel} continueLabel={continueLabel} pending={chat?.pending} choices={choices}/>

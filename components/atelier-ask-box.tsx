@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef } from 'react';
 import { useFormStatus } from 'react-dom';
 import { ArrowUp } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -23,7 +23,7 @@ type Props = {
 };
 
 export function AtelierAskBox(props: Props) {
-  return <WorkspaceConversation tasks={[]} fileImport={false} composer={({action,pending})=><form onSubmit={event=>{event.preventDefault();if(!pending)void action(new FormData(event.currentTarget));}} className="atelier-ask-form"><AskFields {...props} pending={pending}/></form>}/>;
+  return <WorkspaceConversation tasks={[]} fileImport={false} composer={({action,pending,question,setQuestion,active})=><form onSubmit={event=>{event.preventDefault();if(!pending)void action(new FormData(event.currentTarget));}} className="atelier-ask-form"><AskFields {...props} suggestions={active?[]:props.suggestions} pending={pending} value={question} setValue={setQuestion}/></form>}/>;
 }
 
 function AskFields({
@@ -32,15 +32,13 @@ function AskFields({
   submitLabel,
   suggestions,
   pending:externalPending,
-}: Props & {pending?:boolean}) {
+  value,setValue,
+}: Props & {pending?:boolean;value:string;setValue:(value:string)=>void}) {
   const status=useFormStatus();
   const pending=externalPending??status.pending;
   const t = useTranslations('assistant.workspace');
   const id = useId();
   const ref = useRef<HTMLTextAreaElement>(null);
-  const [value, setValue] = useState('');
-  const wasPending=useRef(false);
-  useEffect(()=>{if(wasPending.current&&!pending)setValue('');wasPending.current=pending;},[pending]);
   return (
     <>
       <div className="atelier-ask" data-ui-composer>
@@ -65,7 +63,6 @@ function AskFields({
           placeholder={placeholder}
         />
         <div className="atelier-ask-bar">
-          <span role="status" className="mr-3 self-center text-sm text-muted-foreground">{pending ? t('working') : ''}</span>
           <button type="submit" aria-label={pending ? t('working') : submitLabel} title={submitLabel}
             aria-busy={pending} disabled={!value.trim() || pending} className="atelier-send">
             <ArrowUp aria-hidden className="size-4" />

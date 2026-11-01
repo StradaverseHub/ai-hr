@@ -1,4 +1,6 @@
 import 'server-only';
+import { allowedCompanies } from '@/core/read';
+import { getScopeIds } from '@/lib/scope';
 import type { SessionContext } from '@/db/client';
 import { v9Workspace, onboardingContext, onboardingList, onboardingOptions } from '@/packs/lifecycle/service';
 import { viewerIdentity } from '@/lib/viewer';
@@ -13,5 +15,7 @@ export async function readV9Workspace(session: SessionContext) {
     if(context.actor.module||context.actor.master)nativeSettings = { context, options };
     if (context.actor.page||context.actor.records) joiners = { config: context.config, rows, options };
   }
-  return { initial, viewer, joiners, nativeSettings };
+  // The AIHR header owns company selection; this only narrows already-authorized projections.
+  const companyScope = await getScopeIds((await allowedCompanies(session)).map(company => company.id));
+  return { initial, viewer, joiners, nativeSettings, companyScope };
 }

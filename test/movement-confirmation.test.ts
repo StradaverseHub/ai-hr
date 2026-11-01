@@ -38,7 +38,6 @@ import {
   editMovementEvent,
   movementHistory,
   MovementNoChangeError,
-  MovementNotCorrectableError,
   reverseMovementEvent,
 } from '../core/movement';
 import { CONFIGURABLE_BEHAVIOUR_KINDS } from '../core/movement-type';
@@ -332,45 +331,19 @@ describe('3ced1040 — Confirmation behaves like Promotion', () => {
     expect(CONFIGURABLE_BEHAVIOUR_KINDS).not.toContain('confirmation');
   });
 
-  it('a correction cannot cross the Confirmation boundary in either direction', async () => {
-    const hire = await hireOne();
-    await createMovementEvent(adminCtx(b), {
-      employmentId: hire.employmentId,
-      kind: 'confirmation',
-      effectiveDate: PAST,
-    });
-    const conf = (await movementHistory(adminCtx(b), hire.employmentId)).find((r) => r.kind === 'confirmation')!;
-    await expect(
-      editMovementEvent(adminCtx(b), {
-        employmentId: hire.employmentId,
-        movementId: conf.id,
-        kind: 'transfer',
-        effectiveDate: PAST,
-        departmentId: b.deptB,
-        reason: 'Should have been a transfer',
-      }),
-      'a Confirmation must not become a Transfer — the date it exists to record would vanish',
-    ).rejects.toBeInstanceOf(MovementNotCorrectableError);
-
-    const other = await hireOne();
-    await createMovementEvent(adminCtx(b), {
-      employmentId: other.employmentId,
-      kind: 'transfer',
-      effectiveDate: PAST,
-      departmentId: b.deptB,
-    });
-    const transfer = (await movementHistory(adminCtx(b), other.employmentId)).find((r) => r.kind === 'transfer')!;
-    await expect(
-      editMovementEvent(adminCtx(b), {
-        employmentId: other.employmentId,
-        movementId: transfer.id,
-        kind: 'confirmation',
-        effectiveDate: PAST,
-        reason: 'Should have been a confirmation',
-      }),
-      'a Transfer must not become a Confirmation — that would end probation as a side effect of a relabel',
-    ).rejects.toBeInstanceOf(MovementNotCorrectableError);
-    expect((await employmentRow(other.employmentId)).confirmationDate).toBeNull();
+  it('revision 2 replaces across the Confirmation boundary through the actual destination writer', async () => {
+    const hire=await hireOne();
+    await createMovementEvent(adminCtx(b),{employmentId:hire.employmentId,kind:'confirmation',effectiveDate:PAST});
+    const conf=(await movementHistory(adminCtx(b),hire.employmentId)).find(r=>r.kind==='confirmation')!;
+    await editMovementEvent(adminCtx(b),{employmentId:hire.employmentId,movementId:conf.id,kind:'transfer',effectiveDate:PAST,departmentId:b.deptB,reason:'Should have been a transfer'});
+    expect((await employmentRow(hire.employmentId)).confirmationDate).toBeNull();
+    expect((await movementHistory(adminCtx(b),hire.employmentId)).find(r=>r.id===conf.id)?.status).toBe('reversed');
+    const other=await hireOne();
+    await createMovementEvent(adminCtx(b),{employmentId:other.employmentId,kind:'transfer',effectiveDate:PAST,departmentId:b.deptB});
+    const transfer=(await movementHistory(adminCtx(b),other.employmentId)).find(r=>r.kind==='transfer')!;
+    await editMovementEvent(adminCtx(b),{employmentId:other.employmentId,movementId:transfer.id,kind:'confirmation',effectiveDate:PAST,reason:'Should have been a confirmation'});
+    expect((await employmentRow(other.employmentId)).confirmationDate).toBe(PAST);
+    expect((await movementHistory(adminCtx(b),other.employmentId)).find(r=>r.id===transfer.id)?.status).toBe('reversed');
   });
 
   it('the Employment Dates card still writes the date directly, and mints no movement row', async () => {

@@ -3,7 +3,7 @@
  * Every monetary value below is a fictional human input; native engines own all derived figures. */
 import {randomUUID} from 'node:crypto';
 import {and,eq,inArray} from 'drizzle-orm';
-import type {AiDeliveryFixtureContext} from './ai-delivery-fixture-context';
+import {aiDeliveryFixtureCalendar,type AiDeliveryFixtureContext} from './ai-delivery-fixture-context';
 import * as s from '../../db/schema';
 import {withTenant} from '../../db/client';
 import {createBusinessUnit,createJobGrade} from '../../core/admin';
@@ -25,9 +25,8 @@ export type AiDeliveryFinancialFixture={
  standardCycleId:string;onehrCycleId:string;performance:readonly{userId:string;standardReviewId:string;onehrReviewId:string;onehrPlanId:string}[];
  rewardUnitId:string;rewardRevision:number;payComponentId:string;
 };
-function monthBefore(period:string){if(!/^\d{4}-\d{2}$/.test(period))return refuse();const d=new Date(period+'-01T00:00:00Z');d.setUTCMonth(d.getUTCMonth()-1);return d.toISOString().slice(0,7);}
 export async function populateAiDeliveryFinancial(c:AiDeliveryFixtureContext):Promise<AiDeliveryFinancialFixture>{
- const admin=c.bootstrapCtx,actors=[c.actors.operator,c.actors.self,...c.actors.reviewers,c.actors.peer,c.actors.manager],year=Number(c.today.slice(0,4)),effectiveFrom=`${year-1}-01-01`,releasedPeriod=monthBefore(c.period);
+ const admin=c.bootstrapCtx,actors=[c.actors.operator,c.actors.self,...c.actors.reviewers,c.actors.peer,c.actors.manager],year=Number(c.today.slice(0,4)),effectiveFrom=`${year-1}-01-01`,{releasedPeriod}=aiDeliveryFixtureCalendar(c.today);
  if(c.period!==c.today.slice(0,7)||new Set(actors.map(a=>a.employmentId)).size!==actors.length)return refuse();
  const subjects=await c.owner.db.select({id:s.employment.id,personId:s.employment.personId,hiredOn:s.employment.hiredOn,companyId:s.employment.companyId}).from(s.employment).where(eq(s.employment.companyId,c.companyId));
  for(const actor of actors){const actual=subjects.find(e=>e.id===actor.employmentId);if(!actual||actual.personId!==actor.personId||actual.hiredOn>releasedPeriod+'-01')return refuse();}

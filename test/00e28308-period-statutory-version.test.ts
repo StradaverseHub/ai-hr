@@ -131,6 +131,10 @@ const GOLDEN_STATUTORY = {
   socsoEmployee: 24.75,
   socsoEmployer: 86.65,
   socsoSkbbk: 0,
+  // 929ea296 (PR126) — provenance only: the tax-basis opening exemption evidence for this run's year (none
+  // used here). Every monetary figure above is the unchanged golden.
+  taxBasisOpeningExemptionUsed: {},
+  taxBasisOpeningExemptionYear: 2026,
   version: DEFAULT_MY_STATUTORY.version,
   zakat: 0,
   zakatInTotal: true,

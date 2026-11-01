@@ -48,6 +48,10 @@ describe('workspace question composer', () => {
     expect((screen.getByLabelText(p.labels.question) as HTMLTextAreaElement).value).toBe(p.tasks[0].prompt);
     expect(p.action).not.toHaveBeenCalled();
   });
+  it('leaves the pending live announcement to an external chat host',()=>{
+    const p=props();status.pending=true;render(<WorkspaceComposer {...p} pending/>);
+    expect(screen.getByRole('button',{name:p.labels.working})).toBeDisabled();expect(screen.queryByRole('status')).toBeNull();
+  });
   it.each(Object.entries({ en, ms, zh, ta, vi: viMessages, th }))('%s has labeled task and question controls with a resolved calendar date', (_locale, messages) => {
     const p = props(messages); render(<WorkspaceComposer {...p} />);
     expect(screen.getByRole('region', { name: p.labels.tasks })).toBeTruthy();

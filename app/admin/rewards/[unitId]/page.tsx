@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { requireModule } from '@/lib/authz';
-import { getRewardCalendar, getRewardConfiguration, getRewardSeniorMembership, rewardSetupChoices } from '@/packs/rewards/service';
+import { getRewardCalendar, getRewardConfiguration, getRewardSeniorMembership, rewardAccessRequests, rewardSetupChoices } from '@/packs/rewards/service';
 import { RewardCalendarForm } from '@/app/rewards/[unitId]/calendar-form';
 import { rewardRoles } from '@/packs/rewards/model';
 import { Badge, ErrorBanner, Field, PageHeader, inputCls } from '@/components/ui';
@@ -13,22 +13,27 @@ import { SeniorMembership } from '@/app/rewards/[unitId]/senior-membership';
 
 export default async function RewardConfigurationPage({ params, searchParams }: {
   params: Promise<{ unitId: string }>;
-  searchParams: Promise<{ error?: string; mode?: string }>;
+  searchParams: Promise<{ error?: string; mode?: string; notice?: string }>;
 }) {
   await requireModule('rewards');
   // Delegated Group Rewards reviewers retain their existing policy access. The service checks
   // fresh company administration or assigned GR membership, without loading employee pay records.
   const { s, scopeIds } = await scopedSession();
   const { unitId } = await params;
-  const { error,mode } = await searchParams;
+  const { error,mode,notice } = await searchParams;
   const readOnly=mode==='view';
   const t = await getTranslations('rewards');
   const td=await getTranslations('rewardsDeletion'),tc=await getTranslations('rewardsConfig');
+  const ta=await getTranslations('rewardsAccessControl'),tt=await getTranslations('rewardsAdminTabs');
   const v = await getRewardConfiguration(s, unitId);
   const choices = await rewardSetupChoices(s, scopeIds);
   const { unit } = v;
   const senior = !readOnly && v.canConfigure ? await getRewardSeniorMembership(s, unitId) : null;
   const calendar = await getRewardCalendar(s, unitId);
+  // Role changes made here wait for an independent administrator on Rewards access; show this review's
+  // pending ones beside the current roles so an assignment never looks silently ignored.
+  const pendingRoles = !readOnly && v.canManageMembers ? (await rewardAccessRequests(s)).filter(r => r.status === 'pending').flatMap(r => r.changes).filter(c => c.unitId === unitId) : [];
+  const userName = (id: string) => choices.users.find(u => u.id === id)?.name ?? t('assignedUser');
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;
   return <div className="w-full space-y-6">
     {choices.companies.length > 0 && <Link href="/admin/rewards" className="text-sm text-primary hover:underline">← {t('adminTitle')}</Link>}
@@ -39,10 +44,14 @@ export default async function RewardConfigurationPage({ params, searchParams }: 
     <section className="space-y-3">
       <h2 className="font-semibold">{t('access')}</h2>
       <p className="max-w-3xl text-sm text-muted-foreground">{t('accessHelp')}</p>
+      {notice === 'accessPending' && <p role="status" className="max-w-3xl rounded-md border p-3 text-sm">{ta('independent')} <Link className="text-primary hover:underline" href="/admin/rewards/access">{tt('access')}</Link></p>}
       <ul className="divide-y divide-border">{v.members.map(m => <li key={m.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-        <span>{t(`roles.${m.role}`)} · {choices.users.find(u => u.id === m.userId)?.name ?? t('assignedUser')}</span>
+        <span>{t(`roles.${m.role}`)} · {userName(m.userId)}</span>
         {!readOnly && v.canManageMembers && <form action={memberAction}>{fields}<input type="hidden" name="userId" value={m.userId} /><input type="hidden" name="role" value={m.role} /><input type="hidden" name="remove" value="true" /><RewardSubmit variant="ghost" size="sm" type="submit">{t('remove')}</RewardSubmit></form>}
       </li>)}</ul>
+      {pendingRoles.length > 0 && <div className="space-y-1 text-sm"><h3 className="font-medium">{ta('waiting', { count: pendingRoles.length })}</h3>
+        <ul className="space-y-1 text-muted-foreground">{pendingRoles.map((c, i) => { const m = (c.after ?? c.before)!; return <li key={i}>{c.after ? '' : `${t('remove')}: `}{t(`roles.${m.role}`)} · {userName(m.userId)}</li>; })}</ul>
+        <Link className="text-primary hover:underline" href="/admin/rewards/access">{tt('access')}</Link></div>}
       {!readOnly && v.canManageMembers && <form action={memberAction} className="flex flex-wrap items-end gap-3">{fields}
         <Field label={t('user')}><select required name="userId" className={inputCls}>{choices.users.map(u => <option key={u.id} value={u.id}>{u.name ?? u.email ?? t('administrator')}</option>)}</select></Field>
         <Field label={t('role')}><select name="role" className={inputCls}>{rewardRoles.map(role => <option key={role} value={role}>{t(`roles.${role}`)}</option>)}</select></Field>

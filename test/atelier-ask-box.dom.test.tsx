@@ -11,6 +11,14 @@ const props={label:'Your question',placeholder:'Ask about your work',submitLabel
 const content=()=> <NextIntlClientProvider locale="en" messages={en}><AtelierAskBox {...props}/></NextIntlClientProvider>;
 beforeEach(()=>state.ask.mockReset());afterEach(cleanup);
 describe('Dashboard Assistant',()=>{
+ it('expands in place with one composer and submits clarification through that same field',async()=>{
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'choice',clarificationRequired:true,answer:<p>Which leave type?</p>});render(content());
+  const question=screen.getByLabelText(props.label);fireEvent.change(question,{target:{value:'My leave balance'}});fireEvent.click(screen.getByRole('button',{name:props.submitLabel}));await screen.findByText('Which leave type?');
+  expect(screen.getAllByRole('textbox')).toHaveLength(1);expect(screen.getByRole('log')).toHaveTextContent('My leave balance');
+  state.ask.mockResolvedValueOnce({ok:true,exchangeId:'answer',answer:<p>Annual leave: 12 days</p>});fireEvent.change(question,{target:{value:'Annual leave'}});fireEvent.click(screen.getByRole('button',{name:props.submitLabel}));await screen.findByText('Annual leave: 12 days');
+  expect(state.ask).toHaveBeenLastCalledWith({question:'Annual leave',clarificationExchangeId:'choice'});expect(window.location.search).toBe('');
+ });
+
  it('fills a suggestion without sending and submits Enter only after composition has finished',()=>{
   const view=render(content());const question=screen.getByLabelText(props.label) as HTMLTextAreaElement;
   fireEvent.click(screen.getByRole('button',{name:props.suggestions[0]}));expect(question.value).toBe('My leave balance');expect(document.activeElement).toBe(question);expect(state.ask).not.toHaveBeenCalled();
@@ -21,7 +29,7 @@ describe('Dashboard Assistant',()=>{
   let resolve!:(value:unknown)=>void;state.ask.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));render(content());
   const question=screen.getByLabelText(props.label) as HTMLTextAreaElement;fireEvent.change(question,{target:{value:'What is my balance?'}});fireEvent.click(screen.getByRole('button',{name:props.submitLabel}));
   expect(screen.getByRole('log')).toHaveTextContent('What is my balance?');expect(screen.getByRole('log')).toHaveTextContent(en.assistant.workspace.chat.thinking);
-  expect(question.readOnly).toBe(true);expect(screen.getByRole('button',{name:props.suggestions[0]})).toBeDisabled();
+  expect(question.readOnly).toBe(true);expect(screen.queryByRole('button',{name:props.suggestions[0]})).toBeNull();
   await act(async()=>resolve({ok:true,exchangeId:'first',conversationToken:'proof',answer:<p>Annual leave: 12 days</p>}));expect(screen.getByText('Annual leave: 12 days')).toBeInTheDocument();expect(question.readOnly).toBe(false);expect(question.value).toBe('');
   state.ask.mockResolvedValueOnce({ok:true,exchangeId:'second',answer:<p>Pending leave: 2 days</p>});fireEvent.change(question,{target:{value:'And pending?'}});fireEvent.click(screen.getByRole('button',{name:props.submitLabel}));
   await waitFor(()=>expect(screen.getByText('Pending leave: 2 days')).toBeInTheDocument());expect(screen.getByText('Annual leave: 12 days')).toBeInTheDocument();expect(state.ask).toHaveBeenLastCalledWith({question:'And pending?',previousExchangeId:'first',previousConversationToken:'proof'});expect(window.location.search).toBe('');

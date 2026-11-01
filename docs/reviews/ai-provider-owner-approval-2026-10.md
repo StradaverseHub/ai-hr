@@ -214,3 +214,87 @@ Independent technical disposition: `rewards-provider-r1-final-technical-review-2
 SHA256 `9b8dba774b65f36fa5f84cebc043607d71a01fc2d2c1921cc6a651f696cef11b`.
 Fresh exact-source hosted qualification remains required; original failures retain their real
 source/controller identities. Any further covered-byte change requires another exact review.
+
+
+## Technical source binding — 31 October 2026, Reward Desk step 2 and module install defaults
+
+Release integration of PR159 (Reward Desk step 2, board item 5d34d00d) and PR158 (module install
+setting defaults) forward onto accepted staging baseline `30118cc6f242df3129424bd2d44e22445931516e`
+reconstructs the same1133-file provider closure, moving it from
+`1c56bf79e24ee331892ec40e5de84714ecd2c73ba8b220567128cf58d781e534` to
+`211f3bbdec1361521d657a264bf53c37daa0c438d69ccd8c3c91fbe20e41ca1f`.
+Closure membership is unchanged. Seven covered files differ; all other covered files are byte-identical.
+
+- `messages/{en,ms,zh,ta,th,vi}.json`: 18 added or changed leaves per locale, all under
+  `rewards.desk`, `rewards.desk.decide` and `rewards.desk.person` (side-panel and decision-confirmation
+  copy). The closure reaches these dictionaries only through `lib/ai/provider-assistant-policy.ts`,
+  which reads `assistant.workspace.*_prompt`, and `packs/performance/onehr/guide-service.ts`, which
+  reads `onehr.ask.*`. No `assistant.*` or `onehr.*` leaf changed in any locale.
+- `core/module-activation.ts`: covered through `core/admin.ts` (`companyInstallersFor`), which in turn
+  enters via the department/position archive assistant-action sources and the payroll pack service.
+  `companyInstallersFor` is unchanged. The change scopes the tenant-level `seedModuleSettingDefaults`
+  activator to the module being installed, writes only install values that differ from the catalogue
+  default, and records them with `source = 'platform'`. It reads and writes `tenant_setting` only and
+  feeds no provider serializer, descriptor, transport or prompt.
+
+Finite serializers, descriptors, provider transports, replay/one-use dispatch, spend controls,
+current access and literal-review validation remain unchanged. No new protected purpose, raw-data
+variant, contract, model money calculation or autonomous sensitive effect is admitted.
+The SAME24 approved records receive only this sourceDigest; every original human status, reviewer,
+evidence anchor and timestamp is preserved, and both pending blocks remain byte-identical.
+`lib/ai/module-agent-source-manifest.ts` is regenerated mechanically (no approval binds it).
+
+The release owner (human) approved recording this technical re-binding for the PR158/PR159 changes on
+31 October 2026. This is a technical disposition within existing scope, not a new privacy approval,
+certification, runtime PASS or staging acceptance. Fresh exact-source hosted qualification remains
+required; the earlier failed full gate on `85aa94fe` keeps its original identity. Any further
+covered-byte change requires another exact review.
+
+## Technical source binding — 1 November 2026, tax recalculation, movement corrections, Reward Desk notice and AI reminder labels
+
+Integrating PR116 (movement corrections), PR126 (tax recalculation), PR168 (Reward Desk role-request
+notice) and PR173 (AI reminder labels) onto V9 candidate `49c3d960da266b62b4f5f8f90b7f80afab6dc9ac`
+moves the provider closure from 1133 files /
+`211f3bbdec1361521d657a264bf53c37daa0c438d69ccd8c3c91fbe20e41ca1f` to 1139 files /
+`818f55d10b5ecbb61aff60de04c43fa922b84e3b452dc74a633c9c83c59e910d`.
+
+Closure membership grows by six payroll tax-basis sources reached through `core/payroll.ts` and the
+payroll pack service: `core/payroll-tax-basis.ts`, `core/payroll-tax-basis-read.ts`,
+`core/payroll-tax-basis-notices.ts`, `lib/payroll-tax-basis.ts`, `lib/payroll-tax-basis-notices.ts`
+and `localization/my/tax-basis-replay.ts`. Changed covered files: `core/movement.ts`, `core/org.ts`,
+`core/payroll-history-revisions.ts`, `core/payroll.ts`, `db/client.ts`, `db/schema.ts`,
+`lib/movement-pending-input.ts`, `lib/payroll-permissions.ts`, `localization/country-pack.ts`,
+`localization/my/{ea-routing,index,multicycle-worksheet,payroll,reports}.ts`, `packs/payroll/service.ts`
+and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file changed.
+- Dictionaries: 129–130 leaves per locale under `payrollTaxBasis.*`, `payroll.setup.*`, `people.detail`,
+  `people.import` and `aiManagement.privateFeatures`; no `assistant.*` or `onehr.*` leaf changed.
+- `db/client.ts` keeps every existing transaction-local tenant/user/role/grant/agent setting in the
+  single statement and adds only `app.payroll_tax_basis_reader`.
+- The tax-basis correction feeds only the PCB tax-input read; it never owns payslip money, statutory
+  wages, cash paid or issued history, and the model calculates no money.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original
+human status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`782baa45b74cc23c0347dd5ed0df514dcae7a3787edcee5197c1ec2b92275cb1` (no approval binds it).
+
+The release owner (human) approved in advance, on 1 November 2026, combining these four changes and
+recording this technical re-binding for the combined source ("I approve steps 1-2, dont have to wait
+for me later on"). This is a technical disposition within existing scope, not a new privacy approval,
+certification, runtime PASS or staging acceptance. Fresh exact-source hosted qualification remains
+required. Any further covered-byte change requires another exact review.
+
+### Repair addendum — 1 November 2026, after full gate 41273967202
+
+The full gate on `35b4b0bc` failed on registry/pin tests the four PRs predated (original failure retained).
+The repair changes three covered files, all declarative and none on a provider path: `lib/permissions.ts`
+(two income-tax recalculation routes added to the payroll screen column), `lib/ai/agent-capability-inventory.ts`
+(the four tax-basis actions classified: preview `backlog:approve`, confirm/continue/recover
+`handoff:payroll_reversal`, so no agent can drive them) and `core/company-refs.ts` (the four tax-basis
+tables declared as payroll evidence that refuses a company delete). Membership is unchanged at 1139 files;
+the digest moves `818f55d1…` → `bf995db494112a143c0f22b5513f124f04e0e9e5608660956949d305ecaf9d13` and the same
+24 records are rebound under the same advance owner approval. Module-agent manifest regenerated to
+`21338737bf9ccf5d9ad221b59a5609750882fdb77829d5bee775f93f9addbcf6`.

@@ -1,3 +1,4 @@
+import {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';
 /**
  * ADR-0024 §7 — THE ACCOUNTANT SIGN-OFF WORKSHEET, as a read-only replay over real payroll history.
  *
@@ -250,6 +251,9 @@ export type WorksheetIllustration = {
 };
 
 export type MultiCycleWorksheet = {
+  /** Original paid-run comparisons remain original; this separate view explains corrected future inputs. */
+  taxBasisCorrections?: TaxBasisCorrectionRef[];
+  correctedPriorTaxBases?: {employmentId:string;period:string;accumulators:PcbAccumulators}[];
   /** Distinct (company, month) that had more than one payroll run. */
   periodsWithMultipleRuns: number;
   /** Employee-months inside those periods with a payslip in more than one run. */
@@ -411,7 +415,8 @@ export async function multiCycleWorksheetMY(
     const employmentIds = [...new Set(slips.map((s) => s.employmentId))];
     const profiles = await loadProfiles(tx, employmentIds);
     const years = [...new Set(slips.map((s) => s.period.slice(0, 4)))];
-    const priorAcc = await loadPriorAccumulators(tx, employmentIds, years, rules);
+    const correctionEvidence: {refs:TaxBasisCorrectionRef[];prior:{employmentId:string;period:string;accumulators:PcbAccumulators}[]} = {refs:[],prior:[]};
+    const priorAcc = await loadPriorAccumulators(tx, ctx, employmentIds, years, rules, correctionEvidence);
 
     // 2. Group into employee-months and replay each.
     const rows: WorksheetRow[] = [];
@@ -493,6 +498,7 @@ export async function multiCycleWorksheetMY(
       skipCounts,
       illustration: illustrationOf(rules),
       replayVersion: rules.version,
+      ...(correctionEvidence.refs.length ? {taxBasisCorrections:correctionEvidence.refs,correctedPriorTaxBases:correctionEvidence.prior} : {}),
       truncated: rows.length > ROW_CAP || skips.length > ROW_CAP,
     };
   });
@@ -928,15 +934,18 @@ async function loadProfiles(tx: Tx, employmentIds: string[]): Promise<Map<string
  */
 async function loadPriorAccumulators(
   tx: Tx,
+  ctx: SessionContext,
   employmentIds: string[],
   years: string[],
   rules: StatutoryRuleset,
+  evidence: {refs:TaxBasisCorrectionRef[];prior:{employmentId:string;period:string;accumulators:PcbAccumulators}[]},
 ): Promise<Map<string, PcbAccumulators>> {
   const out = new Map<string, PcbAccumulators>();
   if (!employmentIds.length || !years.length) return out;
   const cap = rules.pcb.reliefs.epfReliefCap;
   const rows = await tx
     .select({
+      id:payslip.id,
       employmentId: payslip.employmentId,
       period: payrollBatch.payPeriod,
       gross: payslip.grossPay,
@@ -957,6 +966,8 @@ async function loadPriorAccumulators(
     .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
     .where(inArray(payslip.employmentId, employmentIds));
 
+  const corrections = await readEffectiveTaxBasesTx(tx, ctx, rows.filter(r=>years.includes(r.period.slice(0,4))).map(r=>r.id));
+  evidence.refs.push(...[...corrections.values()].map(value=>value.correction));
   // (employment, tax year) → its months, each month → the slips written in it (a multi-run month has
   // several, and they all belong to the SAME monthly accumulator step).
   const byEmpYear = new Map<string, Map<string, typeof rows>>();
@@ -1003,11 +1014,14 @@ async function loadPriorAccumulators(
       applies && seed ? { netRemuneration: seed.net, epfClaimed: seed.epf, pcbPaid: seed.pcb, zakatPaid: seed.zakat, lpAccumulated: seed.lp } : null,
       cap,
     );
+    const correctedAcc = {...acc};
     for (const period of [...months.keys()].sort()) {
       // Stamp BEFORE folding this month in: what a run in `period` reads is everything before it.
       out.set(`${employmentId}|${period}`, { ...acc });
+      if (corrections.size) evidence.prior.push({employmentId,period,accumulators:{...correctedAcc}});
       for (const slip of months.get(period) ?? []) {
         foldPriorSlipIntoAccumulators(acc, { gross: slip.gross, statutory: slip.statutory }, cap);
+        foldPriorSlipIntoAccumulators(correctedAcc, {gross:slip.gross,statutory:corrections.get(slip.id)?.statutory??slip.statutory},cap);
       }
     }
   }

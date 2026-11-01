@@ -99,8 +99,8 @@ export function resolvePrivateAssistantProposal(question:string):Readonly<{actio
 }
 /** A closed local grammar, NOT regex masking of arbitrary language. Unknown wording stays local and
  * asks for a module; names, free prose and pasted instructions are never sent as an alleged safe intent. */
-export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|null;fromDate?:string;module?:AgentModuleCode}>{
- const social=assistantSocialIntent(question);if(social)return{intent:null,social};
+export function resolvePrivateAssistantIntent(question:string,previous:readonly string[]=[]):Readonly<{intent:PrivateAssistantIntent|null;social:'greeting'|'thanks'|'help'|null;fromDate?:string;module?:AgentModuleCode}>{
+ const social=assistantSocialIntent(question);if(social&&social!=='help')return{intent:null,social};
  const normalized=normalize(question);
  for(const dictionary of dictionaries){const template=dictionary.assistant.workspace.holidays_prompt,[prefix,suffix]=template.split('{date}');if(suffix===undefined)continue;const before=normalize(prefix),after=normalize(suffix);if(normalized.startsWith(before)&&normalized.endsWith(after)){const date=normalized.slice(before.length,after?normalized.length-after.length:undefined).trim();if(isCalendarDate(date))return{intent:'holidays',social:null,fromDate:date,module:'org'};}}
  for(const intent of PRIVATE_ASSISTANT_INTENTS){
@@ -109,6 +109,9 @@ export function resolvePrivateAssistantIntent(question:string,previous:readonly 
  for(const module of AGENT_MODULE_CODES){const names=[module.replaceAll('_',' '),...(moduleNames[module]??[])];if(names.some(name=>normalized===normalize(name))){const map:Partial<Record<AgentModuleCode,PrivateAssistantIntent>>={leave:'leave_available',claims:'claim_statuses',payroll:'payslip',employees:'work_profile',org:'reporting_line',assistant:'module_overview',attendance:'attendance',performance:'performance',notifications:'notifications',approvals:'approvals',toil:'toil',lifecycle:'lifecycle',knowledge_base:'knowledge_base',rewards:'rewards'};return{intent:map[module]??null,social:null,module};}
   if(names.some(name=>normalized===`what can you help me with in ${normalize(name)}`||normalized===`show current capabilities for ${normalize(name)}`))return{intent:'module_overview',social:null,module};
  }
+ // Keep source-owned exact workflow templates/aliases authoritative. Qualified general help
+ // is local only after those complete commands have been resolved; no arbitrary suffix is stripped.
+ if(social==='help')return{intent:null,social};
  const last=previous.length?resolvePrivateAssistantIntent(previous[previous.length-1],previous.slice(0,-1)).intent:null;
  if(last&&['leave_available','leave_pending','leave_taken'].includes(last)){
   if(['and pending','what about pending','and how much is pending'].includes(normalized))return{intent:'leave_pending',social:null,module:'leave'};
@@ -125,14 +128,39 @@ export function privateAssistantModules(intent:PrivateAssistantIntent):readonly 
 /** Values below are LOCAL comparison options only, never disclosure payload or source authority.
  * The caller supplies only freshly read canonical cards and its authenticated clarification chain. */
 export type PrivateAssistantClarification=Readonly<{originalQuestion:string;slot:'employment'|'leave_type'|'period'|'module';answer:string;earlier:readonly Readonly<{question:string;slot:'employment'|'leave_type'|'period'|'module'}>[]} >;
+const isBarePrivateAssistantModule=(text:string)=>AGENT_MODULE_CODES.some(module=>[module.replaceAll('_',' '),...(moduleNames[module]??[])].some(name=>normalize(name)===normalize(text)));
 export function resolvePrivateAssistantClarifiedIntent(clarification:PrivateAssistantClarification):ReturnType<typeof resolvePrivateAssistantIntent>{
+ // A complete source-free reply can leave an earlier chooser without acquiring read authority.
+ const latest=resolvePrivateAssistantIntent(clarification.answer);if(latest.social)return latest;
  const questions=[...clarification.earlier.map(step=>step.question),clarification.originalQuestion];
- const bare=(text:string)=>AGENT_MODULE_CODES.some(module=>[module.replaceAll('_',' '),...(moduleNames[module]??[])].some(name=>normalize(name)===normalize(text)));
- for(let index=0;index<questions.length;index++){const candidate=resolvePrivateAssistantIntent(questions[index]);if(candidate.intent&&(index===0||!bare(questions[index])))return candidate;}
+ for(let index=0;index<questions.length;index++){const candidate=resolvePrivateAssistantIntent(questions[index]);if(candidate.intent&&(index===0||!isBarePrivateAssistantModule(questions[index])))return candidate;}
  // A bare module after an unknown/named request does not turn that request into an own read.
  // Restart only on an explicit complete source-owned own-task phrase, never on a slot label.
  const candidate=resolvePrivateAssistantIntent(clarification.answer);
- return !bare(clarification.answer)&&candidate.intent?candidate:{intent:null,social:null};
+ return !isBarePrivateAssistantModule(clarification.answer)&&candidate.intent?candidate:{intent:null,social:null};
+}
+/** Fold only owner-authenticated typed slot transitions. Ordinary unknown/named turns reset the
+ * task: this never scans past arbitrary prose to recover an older recognized request. */
+export function resolvePrivateAssistantContextualIntent(question:string,history:readonly Readonly<{question:string;slot:PrivateAssistantClarification['slot']|null;completed:boolean}>[]):ReturnType<typeof resolvePrivateAssistantIntent>{
+ let effective:readonly string[]=[],pending:Omit<PrivateAssistantClarification,'answer'>|null=null;
+ const canonical=(intent:PrivateAssistantIntent,fallback:string)=>aliases[intent]?.[0]??fallback;
+ for(const turn of history){
+  if(pending){
+   const candidate=resolvePrivateAssistantClarifiedIntent({...pending,answer:turn.question});
+   if(turn.completed&&candidate.intent){effective=[canonical(candidate.intent,turn.question)];pending=null;continue;}
+   if(turn.slot&&(turn.slot===pending.slot||candidate.intent&&turn.slot!=='module')){pending={originalQuestion:turn.question,slot:turn.slot,earlier:[...pending.earlier,{question:pending.originalQuestion,slot:pending.slot}]};continue;}
+   // A rejected typed reply is consumed here. It must not be reinterpreted as an
+   // ordinary bare-module command on the same leaf after the original request was refused.
+   pending=turn.slot?{originalQuestion:turn.question,slot:turn.slot,earlier:[]}:null;effective=[];continue;
+  }
+  const candidate=resolvePrivateAssistantIntent(turn.question,effective);
+  effective=candidate.intent?[canonical(candidate.intent,turn.question)]:[];
+  if(turn.slot)pending={originalQuestion:turn.question,slot:turn.slot,earlier:[]};
+ }
+ // An unresolved typed slot never supplies authority for an ordinary relative follow-up.
+ // An unresolved typed task cannot turn a current bare module into an own read either.
+ if(pending&&isBarePrivateAssistantModule(question))return{intent:null,social:null};
+ return resolvePrivateAssistantIntent(question,pending?[]:effective);
 }
 export type PrivateAssistantLocalEmployment=Readonly<{read:number;card:number;key:string;labels:readonly string[]}>;
 export function selectPrivateAssistantCards(intent:PrivateAssistantIntent,reads:readonly AssistantAnswerRead[],clarification:PrivateAssistantClarification|null,employments:readonly PrivateAssistantLocalEmployment[]=[]):Readonly<{selection:readonly PrivateAssistantCardSelection[];slot?:'employment'|'leave_type'|'period'}>{

@@ -18,7 +18,7 @@ async function proof(tx:Tx,ctx:SessionContext){
 // contexts are covered by application tests, not represented by this benchmark.
 async function previous(ctx:SessionContext){
  return db.transaction(async tx=>{
-  await tx.execute(sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId??''}, true), set_config('app.roles', ${(ctx.roles??[]).join(',')}, true), set_config('app.grants', ${JSON.stringify(ctx.grants)}, true), set_config('app.agent_principal_id', '', true)`);
+  await tx.execute(sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId??''}, true), set_config('app.roles', ${(ctx.roles??[]).join(',')}, true), set_config('app.grants', ${JSON.stringify(ctx.grants)}, true), set_config('app.agent_principal_id', '', true),set_config('app.payroll_tax_basis_reader','1',true)`);
   await tx.execute(sql`select set_config('app.audit_hash_chain', 'on', true)`);
   await proof(tx,ctx);
  });
@@ -52,7 +52,7 @@ it('compares separate and combined setup for500 actual principals over two alrea
    const elapsedMs=performance.now()-started,errors=results.flatMap(result=>result.status==='rejected'?[String(result.reason)]:[]);times.sort((a,b)=>a-b);
    const statements=await owner.client`select calls,query as normalized_query from pg_stat_statements where query ilike '%set_config%' and query not ilike '%pg_stat_%' order by query`;
    const calls=(setters:number)=>statements.filter(row=>(row.normalized_query.match(/set_config/g)??[]).length===setters).reduce((total,row)=>total+Number(row.calls),0);
-   expect(calls(phase==='combined'?6:5)).toBe(1500);expect(calls(1)).toBe(phase==='combined'?0:1500);
+   expect(calls(phase==='combined'?7:6)).toBe(1500);expect(calls(1)).toBe(phase==='combined'?0:1500);
    phases[phase]={principals:500,readsPerPrincipal:3,elapsedMs,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors,statements};
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'audit-session-setup.json'),JSON.stringify({kind:'NATIVE_WARM_AUDIT_SETUP_COMPARISON',releaseEligible:false,tenants:2,phases},null,2));
    expect(errors).toEqual([]);

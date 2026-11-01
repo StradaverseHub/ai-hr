@@ -86,7 +86,7 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   it('exposes the New Event entry point (hidden once terminated) and the key columns', () => {
     expect(PAGE.includes("t('movement.newEvent')")).toBe(true);
-    expect(PAGE.includes('const canCreateMovement=admin&&canMaintainWorkforce&&!emp.terminatedOn;')).toBe(true);
+    expect(PAGE.includes('const {canCreateMovement, canCorrectMovement} = movementScreenAccess(')).toBe(true);
     for (const col of ['eventType', 'effectiveDate', 'endDate', 'remarks', 'action']) {
       expect(PAGE.includes(`t('movement.columns.${col}')`), `missing column ${col}`).toBe(true);
     }
@@ -170,28 +170,12 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     }
   });
 
-  // 66a63bd6 — Edit + Rollback on each Employment History row. 10fcf6df renamed the second affordance
-  // from Delete: the service has reversed rather than erased since 66a63bd6, and the label was the last
-  // thing still promising a deletion the system never performed.
-  it('offers View / Edit / Roll Back on the Action column, gated by the service flags', () => {
-    expect(PAGE.includes("t('movement.edit')")).toBe(true);
-    expect(PAGE.includes("t('movement.rollback')")).toBe(true);
-    // The affordance reads the SAME flags the service refuses on — no second copy of the rule here.
-    expect(PAGE.includes('m.canEdit')).toBe(true);
-    expect(PAGE.includes('m.canReverse')).toBe(true);
-    expect(PAGE.includes('m.payrollLocked')).toBe(true);
-    // Rollback is confirmed, and collects the optional "reason for the change" the audit trail asks for.
-    expect(PAGE.includes("t('movement.rollbackConfirmTitle')")).toBe(true);
-    expect(PAGE.includes("reasonField={{ name: 'reason'")).toBe(true);
-    expect(PAGE.includes('reverseMovementEventAction')).toBe(true);
-  });
-
-  // 10fcf6df — the word "Delete" is gone from the Employment History affordance. Scoped to the movement
-  // namespace: other cards on this page (emergency contacts, qualifications, documents) genuinely delete
-  // and keep their own delete labels.
-  it('no longer offers a Delete on a movement row', () => {
-    expect(PAGE.includes("t('movement.delete')")).toBe(false);
-    expect(PAGE.includes("t('movement.deleteConfirm")).toBe(false);
+  it('wires the real correction controls with independent correction authority and server action', () => {
+    expect(PAGE).toContain('<MovementHistoryActions employmentId={employmentId} row={m}');
+    expect(PAGE).toContain('canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}');
+    expect(PAGE).toContain("delete:t('movement.delete')");
+    expect(PAGE).toContain("deleteTitle:t('movement.deleteTitle')");
+    expect(PAGE).toContain('m.payrollLocked');
   });
 
   // 95d17761 superseded the second half of this guard. The BADGES stay — a rolled-back movement is still

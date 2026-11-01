@@ -205,7 +205,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/assistant/import-privacy-actions.ts":{"eraseImportPreparationHistoryAction":"internal:assistant_surface"},
  "app/assistant/job-feedback-actions.ts":{"eraseGovernedJobFeedbackAction":"internal:assistant_surface","saveGovernedJobFeedbackAction":"internal:assistant_surface"},
  "app/analytics/ai-actions.ts":{"readProtectedAnalysisAction":"backlog:automatic"},
- "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface"},
+ "app/assistant/launcher-actions.ts":{"askFromLauncherAction":"internal:assistant_surface","askFromWorkspaceAction":"internal:assistant_surface","loadEarlierChatAction":"internal:assistant_surface","loadMoreChatsAction":"internal:assistant_surface"},
  "app/assistant/module-plan-actions.ts":{"eraseModuleProposalsAction":"internal:assistant_surface","evaluateHumanPlannerAction":"internal:assistant_surface","proposeModulePlanAction":"internal:assistant_surface"},
  "app/assistant/native-outcome-actions.ts":{"eraseNativeOutcomesAction":"internal:assistant_surface","recordNativeOutcomeAction":"internal:assistant_surface","reopenNativeOutcomeAction":"internal:assistant_surface"},
  "app/assistant/specialist-review-actions.ts":{"createSpecialistCandidateAction":"internal:assistant_surface","evaluateSpecialistCandidateAction":"internal:assistant_surface","promoteSpecialistCandidateAction":"internal:assistant_surface","rollbackSpecialistCandidateAction":"internal:assistant_surface","runSpecialistJobAction":"internal:assistant_surface"},
@@ -265,6 +265,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/payment-submission/bank-file/route.ts#route":{"POST":"backlog:approve"},
  "app/payroll/history-import/workflow-actions.ts":{"confirmHistoryUploadAction":"backlog:approve","previewHistoryRevertAction":"backlog:automatic","revertHistoryUploadAction":"handoff:payroll_reversal"},
  // Formula configuration remains native-only; these are inventory ceilings, not registered agent effects.
+ // Tax-basis corrections change closed-payroll tax history: the effects stay human, like Payroll Corrections.
+ "app/payroll/income-tax-recalculation/actions.ts":{"previewTaxBasisAction":"backlog:approve","confirmTaxBasisAction":"handoff:payroll_reversal","continueTaxBasisAction":"handoff:payroll_reversal","recoverTaxBasisAction":"handoff:payroll_reversal"},
  "app/payroll/formula-builder/actions.ts":{"saveFormulaAction":"backlog:approve","testFormulaAction":"backlog:approve","formulaStateAction":"backlog:approve","deleteFormulaAction":"backlog:approve","saveAccumulationAction":"backlog:approve","searchFormulaEmployeesAction":"backlog:automatic","listFormulaBatchesAction":"backlog:automatic"},
  "app/payroll/payslip-information/actions.ts":{"copyPayslipInformation":"backlog:approve","savePayslipInformation":"backlog:approve"},
  "app/payroll/pcb-payment-actions.ts":{"recordPcbPaymentAction":"backlog:approve"},

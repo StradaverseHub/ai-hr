@@ -83,10 +83,16 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
   const budget=()=>expect(performance.now()<deadline,'150-second work budget reserves owned cleanup within 180 seconds').toBe(true);
   const sourceJournalBytes=readFileSync('db/migrations/meta/_journal.json');
   const sourceJournal=JSON.parse(sourceJournalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
-  expect(PARITY_SOURCE_TAIL).toHaveLength(53);expect(sourceJournal.entries.length).toBe(583+PARITY_SOURCE_TAIL.length);
-  expect(sourceJournal.entries[sourceJournal.entries.length-1]).toEqual({idx:750,version:'7',when:1793330000265,tag:'0865_assistant_company_retention_references',breakpoints:true});
+  // The tax/movement release (1 Nov 2026) appends 0873/0874, then the Rewards read-policy fix 0875, after the parity tail; frozen here, not derived.
+  const releaseTail=[{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'}];
+  expect(PARITY_SOURCE_TAIL).toHaveLength(53);expect(sourceJournal.entries.length).toBe(583+PARITY_SOURCE_TAIL.length+releaseTail.length);
+  exact(sourceJournal.entries.slice(583+PARITY_SOURCE_TAIL.length).map(({idx,when,tag})=>({idx,when,tag})),releaseTail,'The tax/movement release tail follows the parity tail');
+  expect(sha(readFileSync('db/migrations/0873_movement_exit_payroll_preservation.sql'))).toBe('39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440');
+  expect(sha(readFileSync('db/migrations/0874_payroll_tax_basis_corrections.sql'))).toBe('9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745');
+  expect(sha(readFileSync('db/migrations/0875_reward_access_request_read_role.sql'))).toBe('06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1');
+  expect(sourceJournal.entries[583+PARITY_SOURCE_TAIL.length-1]).toEqual({idx:750,version:'7',when:1793330000265,tag:'0865_assistant_company_retention_references',breakpoints:true});
   expect(sha(readFileSync('db/migrations/0865_assistant_company_retention_references.sql'))).toBe('088acfed2e8aba43deb012e0baed2d4d88765d115afd19a858ebee53e12141cd');
-  exact(sourceJournal.entries.slice(583).map(({idx,when,tag})=>({idx,when,tag})),PARITY_SOURCE_TAIL,'The current source tail must match the explicit ratified parity allocation; it is not executed by the Bank-only fixture');
+  exact(sourceJournal.entries.slice(583,583+PARITY_SOURCE_TAIL.length).map(({idx,when,tag})=>({idx,when,tag})),PARITY_SOURCE_TAIL,'The current source tail must match the explicit ratified parity allocation; it is not executed by the Bank-only fixture');
   exact(sourceJournal.entries.slice(581,583).map(({idx,when,tag})=>({idx,when,tag})),[{idx:696,when:1793330000200,tag:'0800_pay_formula_builder'},{idx:697,when:1793330000211,tag:'0811_pay_formula_company_retention'}],'The exact two ratified Formula successors immediately follow the immutable Bank proof prefix');
   expect(sha(readFileSync('db/migrations/0800_pay_formula_builder.sql'))).toBe('f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322');
   expect(sha(readFileSync('db/migrations/0811_pay_formula_company_retention.sql'))).toBe('b3bea8f1c646e0989ac1cf161cc4950e4956439693961c2d8c00aba1c21aae5b');

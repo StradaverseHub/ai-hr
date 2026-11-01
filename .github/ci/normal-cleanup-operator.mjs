@@ -12,9 +12,14 @@ export function openNormalCleanupChannel(args,{launch=spawn,terminalTimeout=9000
  child.stdin.on('error',()=>{});
  return {frames,stdin:child.stdin,success:async()=>{await completed;assert(errorBytes<=65536,'Cleanup stderr exceeds bound');frames.finish();},stderr:()=>({bytes:errorBytes,capturedSha256:installHash(Buffer.concat(stderr))})};
 }
-export async function driveNormalCleanup({channel,grant,arrival,checksum,frozen,save,now=()=>Date.now()}){
+/** Wait only for real local time to catch a small cross-host READY skew; all validators retain their strict bounds. */
+export async function waitForRealReadyClock(ready,{now=()=>Date.now(),sleep=ms=>new Promise(done=>setTimeout(done,ms))}={}){
+ const at=Date.parse(ready?.readyAt),start=now();assert(Number.isFinite(at)&&at-start<=2000,'Cross-host clock gap exceeds bounded real wait');
+ while(now()<at){assert(now()-start<=2100,'Real clock wait exceeded bound');await sleep(Math.min(10,Math.max(1,at-now())));}
+}
+export async function driveNormalCleanup({channel,grant,arrival,checksum,frozen,save,now=()=>Date.now(),wait=waitForRealReadyClock}){
  try{
-  const ready=validateReady(await channel.frames.next(),grant,{now:now()});save('cleanup-session-ready.json',ready);frozen();
+  const raw=await channel.frames.next();await wait(raw);const ready=validateReady(raw,grant,{now:now()});save('cleanup-session-ready.json',ready);frozen();
   const output=await checksum(),checkedAt=new Date(now()).toISOString();save('cleanup-fresh-source-arrival.json',{source:grant.source,output,checkedAt,checksum:true});frozen();
   const proof=createCleanupRequest(grant,{output,checkedAt,arrival}),commit=createCommit(ready,proof,grant);save('cleanup-session-commit.json',commit);
   channel.stdin.end(installJson(commit)+'\n');

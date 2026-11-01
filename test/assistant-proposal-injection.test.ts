@@ -5,7 +5,7 @@
  * Raw records/history stay local. The adversarial provider is scripted to emit the same forbidden
  * instruction anyway. A separate valid masked-reference positive prevents a no-provider false PASS.
  */
-import {beforeEach,describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {AgentModuleCode} from '../lib/ai/module-agents';
 
 type Row=Record<string,unknown>;
@@ -33,7 +33,8 @@ const h=vi.hoisted(()=>{
  const converse=vi.fn(),prepare=vi.fn(),replay=vi.fn(async(_sources:readonly {name:string}[])=>true),dispose=vi.fn();
  const seal=vi.fn((_binding:unknown,_reads:unknown,_plan?:unknown)=>'sealed-fixture-receipt');
  const run=vi.fn(async()=>({ok:true,rows:[{status:'pending',startDate:'2026-11-03',reason:'' as string,company:'PRIVATE COMPANY',leaveType:'PRIVATE PERSON LEAVE'}]}));
- return {state,fakeTx,converse,seal,run,prepare,replay,dispose};
+ const clarificationSource=vi.fn(()=>{throw Error('No clarification source in injection fixture');}),clarificationCurrent=vi.fn(()=>{throw Error('No clarification current-source check in injection fixture');});
+ return {state,fakeTx,converse,seal,run,prepare,replay,dispose,clarificationSource,clarificationCurrent};
 });
 vi.mock('../db/client',()=>({withTenant:async(_ctx:unknown,fn:(tx:unknown)=>Promise<unknown>)=>fn(h.fakeTx())}));
 vi.mock('../lib/ai',()=>({converse:h.converse}));
@@ -48,7 +49,7 @@ vi.mock('../core/module-agent-releases',()=>({prepareAssistantConversationStrate
 vi.mock('../core/ai-governance',async()=>({preparePrivateAiTask:async(configuration:unknown,contract:string,readSource:(tx:unknown,ctx:unknown)=>Promise<unknown>)=>{const {capturePrivateAssistantTask}=await import('../lib/ai/provider-assistant-policy');const payload=await readSource({},ctx);const prepared=capturePrivateAssistantTask(payload);h.prepare(contract,prepared.local);return{...prepared,configuration,operation:prepared.local.operation,dispose:h.dispose};}}));
 vi.mock('../core/entitlements',()=>({resolveEntitlementsTx:async()=>({})}));
 vi.mock('../core/assistant-disclosure-read',()=>({assistantSourceReplay:()=>h.replay}));
-vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{throw Error('no clarification');},assistantClarificationSourceExchangeId:()=>null}));
+vi.mock('../core/assistant-clarification',()=>({ownAssistantClarification:async()=>{throw Error('no clarification');},assistantClarificationSourceExchangeId:()=>null,assistantClarificationThreadId:()=>undefined,assistantClarificationContextSource:h.clarificationSource,assertOwnAssistantClarificationCurrentTx:h.clarificationCurrent}));
 vi.mock('../core/assistant-tools',()=>{const tool={spec:{name:'my_leave_requests',description:'fixture',inputSchema:{type:'object'}},module:null,run:h.run};return {ASSISTANT_TOOLS:[tool],toolsFor:()=>[tool],specsFor:()=>[tool.spec]};});
 vi.mock('../core/assistant-read-session',()=>({withAssistantRead:async(_ctx:unknown,_module:unknown,consume:(session:unknown)=>Promise<unknown>)=>consume({}),withAssistantAdmissionReadsTx:async(_ctx:unknown,_tx:unknown,consume:(session:unknown)=>Promise<unknown>)=>consume({})}));
 vi.mock('../lib/ai/assistant-disclosure',()=>({sealAssistantDisclosure:h.seal,assistantSourceDigest:()=>'fixture-digest'}));
@@ -80,7 +81,8 @@ function script(terminal:string){
   .mockResolvedValueOnce({text:terminal,toolCalls:[],stop:'end',usage});
 }
 const sealedPlan=()=>{expect(h.seal).toHaveBeenCalledTimes(1);return h.seal.mock.calls[0][2];};
-beforeEach(()=>{Object.assign(h.state,{readable:['leave','claims','attendance'],actors:['self','assigned_approver'],paused:[],writes:[],exchanges:[]});h.seal.mockClear();h.run.mockClear();h.converse.mockReset();h.prepare.mockClear();h.replay.mockReset().mockResolvedValue(true);h.dispose.mockClear();});
+beforeEach(()=>{Object.assign(h.state,{readable:['leave','claims','attendance'],actors:['self','assigned_approver'],paused:[],writes:[],exchanges:[]});h.seal.mockClear();h.run.mockClear();h.converse.mockReset();h.prepare.mockClear();h.replay.mockReset().mockResolvedValue(true);h.dispose.mockClear();h.clarificationSource.mockClear();h.clarificationCurrent.mockClear();});
+afterEach(()=>{expect(h.clarificationSource).not.toHaveBeenCalled();expect(h.clarificationCurrent).not.toHaveBeenCalled();});
 
 /** The REAL presenter must expose useful references while the raw source remains local. */
 function assertMaskedRequest(){

@@ -1170,7 +1170,7 @@ export function Sidebar({
                 <Icon aria-hidden /><span className="truncate">{label}</span>
               </Link>
               <button ref={register} type="button" aria-label={label} aria-expanded={expanded} aria-controls={kidsId} onClick={flip}
-                className="atelier-row w-auto px-1.5">
+                className="atelier-row atelier-module-toggle">
                 <ChevronDown aria-hidden className="atelier-chevron" />
               </button>
             </div>
