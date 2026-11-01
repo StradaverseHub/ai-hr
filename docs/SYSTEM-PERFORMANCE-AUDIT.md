@@ -1,3 +1,11 @@
+## Latest qualified source change
+
+The physical empty overtime-marker UPDATE is eliminated on4431661b7. Native
+run41336968478 passes155 database/8 additional checks plus the whole compiler;
+the original native red control and stale-marker cleanup are retained. No permission
+or financial guard is removed. Full500-user verification of this additional fix is
+still pending; the failed172f workload receipts below are not relabeled.
+
 ## Native administrator write-path work — qualified source
 
 Reversible experiment 41328889779 on `21cdbb270` confirms another global write-path

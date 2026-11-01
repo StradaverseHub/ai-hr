@@ -41,6 +41,12 @@ Exact runs: [1s41332662698](https://github.com/StradaverseHub/ai-hr/actions/runs
 
 The traces show fewer Access-exclusive wait samples, but repeated native visibility checks, Attendance-to-Payroll row protection and audit-chain waits remain. The actual0602 attendance_payroll_protection_rows function locks ALL matching batches, including drafts, before returning processed/closed coverage. Any optimization must preserve that complete membership and ordered FOR UPDATE ownership. A separate native Payroll/Leave write-overlap probe remains red; an actual employee Home identity reader already overlaps Payroll, ruling out a direct Access lock in that reader. No Payroll authority relaxation is promoted on these observations.
 
+## Additional physical no-op write fix
+
+Source4431661b7 conditionally removes an overtime marker only when that JSON key exists. An empty refresh previously performed a physical Attendance UPDATE and fired row/source/financial triggers without changing the stored value. The native regression41336682983 failed precisely on that write while its stale-key cleanup control passed. Corrected run41336968478 passes155 database and8 additional checks plus the whole compiler, including source/financial ownership, workflows, real clock-out replay and actual cleanup. Existing markers still follow every original row guard. No migration or permission predicate changes. This source has not yet repeated the full500-user workloads; the172f results above retain their original source identity.
+
+The subsequent reversible Attendance-to-Payroll candidate-set rewrite passed exact native lock/scope oracles but showed no useful gain (3.87ms original,3.83ms candidate,3.59ms restored). It is rejected and excluded from the application. A separate visibility experiment remains diagnostic only.
+
 ## AI source approval boundary
 
 These core files are in the transitive privacy source closure. Any generated source digest change is source metadata only and does not renew the 24 literal source-bound approvals. Existing purposes, data contracts and two pending approvals must remain unchanged. No provider request or source-binding refresh is authorized by this review. Native non-AI performance tests can proceed without enabling provider access.
