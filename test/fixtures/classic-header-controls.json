@@ -1,0 +1,7 @@
+{
+  "left": "flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground monolith:flex-1 monolith:gap-[22px] monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em]",
+  "search": "flex min-w-0 items-center justify-center monolith:hidden atelier:hidden",
+  "right": "flex min-w-0 items-center justify-end gap-2 2xl:gap-2.5",
+  "divider": "hidden h-5 w-px shrink-0 bg-border md:block",
+  "group": "shrink-0 font-medium text-foreground/80 monolith:hidden"
+}
