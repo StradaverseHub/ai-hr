@@ -44,6 +44,9 @@ export async function buildMatrix():Promise<Matrix>{
  const otherTenant=await actor(b2,b2.companyId,b2.deptA,'Fictional Matrix Other Tenant Administrator',[{role:'hr_admin',companyId:null}]);
  for(const report of [employee.employmentId,colleague.employmentId])
   await setReportingLine(adminCtx(b),{subordinateEmploymentId:report,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+ // The stand-in must hold the delegator's approval level (core/org.ts same-level guard), so it manages a report too.
+ const delegateReport=await actor(b,b.companyId,b.deptA,'Fictional Matrix Delegate Report',[{role:'employee',companyId:null}]);
+ await setReportingLine(adminCtx(b),{subordinateEmploymentId:delegateReport.employmentId,managerEmploymentId:delegate.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
  // Approval delegation is a `delegate` reporting line: subordinate = the delegator, manager = the stand-in.
  await setReportingLine(adminCtx(b),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:delegate.employmentId,lineType:'delegate',
   validFrom:'2020-01-01',validTo:'2099-12-31',reason:'Fictional covering delegation'});

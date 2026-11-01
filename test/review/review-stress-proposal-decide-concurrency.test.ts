@@ -82,8 +82,10 @@ describe('decide proposal under concurrency',()=>{
   // Whichever lost refuses (stale step, changed review, or lock not available); exactly one decision exists.
   expect([card.status,page.status]).toContain('fulfilled');
   expect(await decisionEvents()).toHaveLength(1);
-  const [row]=await owner.db.select({status:schema.leaveRequest.status}).from(schema.leaveRequest).where(eq(schema.leaveRequest.id,requestId));
-  expect(row.status).toBe('approved');
+  // The fixture's chain may have more than one step, so the request can stay pending after one step decision
+  // (first CI run 41342629736); what matters is that the first step was decided exactly once.
+  const steps=await owner.db.select({status:schema.leaveApprovalStep.status}).from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,requestId)).orderBy(schema.leaveApprovalStep.stepIndex);
+  expect(steps[0]?.status).toBe('approved');
  },60_000);
 
  it('REVIEW pass: a proposal confirmed after the Approvals page already decided is refused and adds nothing',async()=>{

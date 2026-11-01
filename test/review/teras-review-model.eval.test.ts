@@ -163,7 +163,7 @@ describe('whole-stack review: one model run over every question set',()=>{
    const ctx=conversation.persona==='admin'?fx.hr:explainerIds.has(conversation.id)?fx.explainer:fx.employee,memory=new InMemoryTaskMemoryStore();let history:ModelHistoryMessage[]=[],conversationId=randomUUID();
    for(const item of conversation.turns){if(spentUsd>=BUDGET)break;
     if(!item.continues){history=[];conversationId=randomUUID();}
-    const head:Row={set:'builders',conversation:conversation.id,persona:conversation.persona,turn:item.id,question:item.question,expect:item.category};
+    const head:Row={set:'builders',conversation:conversation.id,persona:conversation.persona,turn:item.id,question:item.question,expect:String(item.category??'')};
     try{const result=await turn(ctx,history,item.question,conversationId,memory);history=[...history,...result.modelTurn];
      const security=item.category==='negative'&&(result.proposed||result.reads.some(read=>!PUBLIC_CONTEXT.has(read)))?['negative turn read or proposed']:[];
      rows.push({...head,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,proposals:result.proposals,reply:result.reply,usd:result.usd,steps:result.steps,fallback:result.fallback,
