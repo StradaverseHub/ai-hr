@@ -54,7 +54,8 @@
     "switchAccountSubmit": "Sign out and open invitation",
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
-    "signingInHelp": "Taking you to AIHR."
+    "signingInHelp": "Taking you to AIHR.",
+    "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue."
   },
   "ms": {
     "loginTitle": "Log masuk",
@@ -111,7 +112,8 @@
     "switchAccountSubmit": "Log keluar dan buka jemputan",
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
-    "signingInHelp": "Membawa anda ke AIHR."
+    "signingInHelp": "Membawa anda ke AIHR.",
+    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan."
   },
   "zh": {
     "loginTitle": "登录",
@@ -168,7 +170,8 @@
     "switchAccountSubmit": "退出并打开邀请",
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
-    "signingInHelp": "正在进入 AIHR。"
+    "signingInHelp": "正在进入 AIHR。",
+    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。"
   },
   "ta": {
     "loginTitle": "உள்நுழைக",
@@ -225,7 +228,8 @@
     "switchAccountSubmit": "வெளியேறி அழைப்பைத் திறக்கவும்",
     "workplaceLoginHelp": "உங்கள் பணியிடம் தேர்ந்தெடுக்கப்பட்டது. பயனர்பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்.",
     "signingInTitle": "உள்நுழைகிறது…",
-    "signingInHelp": "AIHR-க்கு அழைத்துச் செல்கிறது."
+    "signingInHelp": "AIHR-க்கு அழைத்துச் செல்கிறது.",
+    "idleSignedOut": "சிறிது நேரம் செயலற்று இருந்ததால் நீங்கள் வெளியேற்றப்பட்டீர்கள். தொடர மீண்டும் உள்நுழையவும்."
   },
   "th": {
     "loginTitle": "เข้าสู่ระบบ",
@@ -282,7 +286,8 @@
     "switchAccountSubmit": "ออกจากระบบและเปิดคำเชิญ",
     "workplaceLoginHelp": "เลือกที่ทำงานของคุณแล้ว กรอกชื่อผู้ใช้และรหัสผ่าน",
     "signingInTitle": "กำลังเข้าสู่ระบบ…",
-    "signingInHelp": "กำลังพาคุณไปยัง AIHR"
+    "signingInHelp": "กำลังพาคุณไปยัง AIHR",
+    "idleSignedOut": "คุณถูกออกจากระบบเนื่องจากไม่มีการใช้งานเป็นระยะเวลาหนึ่ง โปรดเข้าสู่ระบบอีกครั้งเพื่อดำเนินการต่อ"
   },
   "vi": {
     "loginTitle": "Đăng nhập",
@@ -339,6 +344,7 @@
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
-    "signingInHelp": "Đang đưa bạn đến AIHR."
+    "signingInHelp": "Đang đưa bạn đến AIHR.",
+    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục."
   }
 }

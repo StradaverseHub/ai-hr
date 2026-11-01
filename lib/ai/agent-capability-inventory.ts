@@ -135,7 +135,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/settings/email/demo-actions.ts":{"testDemoSmtpConnection":"internal:session_and_presentation"},
  "app/admin/settings/employee-id/actions.ts":{"createConfigAction":"backlog:confirm","deleteConfigAction":"backlog:confirm","setStatusAction":"backlog:confirm","updateConfigAction":"backlog:confirm"},
  "app/admin/settings/hiring-defaults/actions.ts":{"saveHiringDefaultsAction":"backlog:confirm"},
- "app/admin/settings/login/actions.ts":{"saveLoginPresentationAction":"handoff:access_and_authentication"},
+ "app/admin/settings/login/actions.ts":{"saveLoginPresentationAction":"handoff:access_and_authentication","saveSessionPolicyAction":"handoff:access_and_authentication"},
  "app/admin/settings/movement/actions.ts":{"deleteMovementEventTypeAction":"backlog:confirm","deleteTerminationReasonAction":"backlog:confirm","saveMovementEventTypeAction":"backlog:confirm","saveTerminationReasonAction":"backlog:confirm","setMovementEventTypeActiveAction":"backlog:confirm","setTerminationReasonActiveAction":"backlog:confirm"},
  "app/admin/settings/notifications/actions.ts":{"retryAccountEmailAction":"backlog:confirm","retryWorkflowEmail":"backlog:confirm","saveWorkflowEmailPolicy":"backlog:confirm"},
  "app/admin/settings/people-general/actions.ts":{"savePeopleGeneralAction":"backlog:confirm"},

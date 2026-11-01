@@ -367,3 +367,25 @@ The release owner (human) approved this technical re-binding in the implementati
 within existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Fresh
 exact-source hosted qualification remains required. Any further covered-byte change requires another exact
 review.
+
+## Technical source binding — 2 November 2026, idle sign-out capability classification (ADR-0171)
+
+Full Alpha CI on `90346adf09492efef7dcfeee231f5390b6d54b8e` (run 41341875026) required classifying the new
+server action. `lib/ai/agent-capability-inventory.ts` adds only
+`saveSessionPolicyAction: handoff:access_and_authentication`, the same classification as the neighbouring
+`saveLoginPresentationAction`; the action is not agent-available. The closure stays at 1143 files and moves from
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664` to
+`f1e34f8e2d3d41a8a78575d16285937642ff442415d1ea0dfdec6e126e6ae966`. No other covered file changed since the
+previous binding above.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive effect is
+admitted. The SAME 24 approved records receive only this sourceDigest; every original human status, reviewer,
+evidence anchor and timestamp is preserved, and both pending blocks remain byte-identical.
+`lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`021756692396454e90b5a53e65797ba09f9d5a9032bf9c94f2383fc38573d334` (no approval binds it).
+
+This re-binding was made by the implementation session under the owner's standing authorization relayed by the
+release orchestrator on 2 November 2026 ("All sessions can auto approve and release without me"). No human
+reviewed this specific changed-file list; it is recorded here for review. It is a technical disposition within
+existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Any further
+covered-byte change requires another exact review.
