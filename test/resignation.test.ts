@@ -67,6 +67,14 @@ describe('#29 resignation self-service (ADR-0042)', () => {
     expect(types).toContain('resignation.accepted');
   });
 
+  it('a reviewed last day is checked under the decision lock and does not affect ordinary withdrawal',async()=>{
+    const a=adminCtx(base),e=await hire(a,'Resi Reviewed Day'),emp=await empCtxFor(e.personId);
+    const {requestId}=await submitResignation(emp,{employmentId:e.employmentId,lastWorkingDay:'2026-09-30',today:'2026-06-23'});
+    await expect(decideResignation(a,{requestId,decision:'accepted',expectedLastWorkingDay:'2026-08-31'})).rejects.toThrow(/changed/);
+    expect((await empRow(e.employmentId)).terminatedOn).toBeNull();expect((await myResignation(emp,e.employmentId))?.status).toBe('pending');
+    expect(await withdrawResignation(emp,{requestId})).toEqual({status:'withdrawn'});expect((await empRow(e.employmentId)).terminatedOn).toBeNull();
+  });
+
   it('reject closes the request without terminating', async () => {
     const a = adminCtx(base);
     const E = await hire(a, 'Resi Two');

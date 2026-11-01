@@ -12,7 +12,7 @@ import {setRewardMember} from './rewards-access-fixture';
  * owner connection or by the services themselves.
  */
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -30,6 +30,14 @@ import { HOME_TASK_KINDS } from '../lib/employee-home';
 import { closeAll, createAppUser, entitledCtx, harnessSnapshot, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
 
+// Bearer authentication is the only route seam; all pack services and RLS remain real.
+let mobileCaller:SessionContext;
+vi.mock('../lib/session',async original=>({...await original<typeof import('../lib/session')>(),getMobileSession:async()=>mobileCaller}));
+const mobileRead=await import('../app/api/mobile/v2/pack-workspaces/[kind]/[id]/route');
+const mobileDecide=await import('../app/api/mobile/v2/pack-workspaces/[kind]/[id]/decision/route');
+async function nativeRead(ctx:SessionContext,kind:string,id:string){mobileCaller=ctx;const r=await mobileRead.GET(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}`));expect(r.status).toBe(200);return r.json();}
+async function nativeDecision(ctx:SessionContext,kind:string,id:string,body:unknown){mobileCaller=ctx;const r=await mobileDecide.POST(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));expect(r.status).toBe(200);return r.json();}
+const nativeValues=(a:{fields:{key:string;value:unknown}[]})=>Object.fromEntries(a.fields.map(f=>[f.key,f.value]));
 const today = todayInKualaLumpur(), year = Number(today.slice(0, 4));
 const ALL: InboxModules = { attendance: false, claims: false, performance: true, rewards: true };
 const packKinds = new Set<string>(PACK_TASK_KINDS);
@@ -69,6 +77,80 @@ describe('performance work in the shared task list', () => {
     await perf.configureOnehrCycle(a, cycleId, null, policy); await perf.openCycle(a, { cycleId });
     const [r] = await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId, cycleId), eq(schema.performanceReview.employmentId, subject.employmentId)));
     reviewId = r.id;
+  });
+
+  it('native scorecard and competency forms use canonical assignment, reject injection/staleness, and replay once',async()=>{
+    const kpiId=randomUUID();
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id:kpiId,title:'Agreed delivery',description:'Full objective description',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.assignAssessmentKpiModerator(a,reviewId,(await view(a)).revision,kpiId,matrix.employmentId);
+    expect(await nativeRead(self,'assessmentWork',reviewId)).toMatchObject({outcome:'refused',code:'not_assigned'});
+    let read=await nativeRead(matrix.ctx,'assessmentWork',reviewId);expect(JSON.stringify(read)).toContain('Full objective description');
+    const cmd={requestId:randomUUID(),action:'setting-approve',values:{remark:'Targets verified'},expected:read.workspace.expected};
+    expect(await nativeDecision(matrix.ctx,'assessmentWork',reviewId,{...cmd,values:{...cmd.values,employmentId:subject.employmentId}})).toMatchObject({outcome:'refused',code:'decision_refused'});
+    expect(await nativeDecision(matrix.ctx,'assessmentWork',reviewId,cmd)).toMatchObject({outcome:'accepted'});
+    expect(await nativeDecision(matrix.ctx,'assessmentWork',reviewId,cmd)).toMatchObject({outcome:'accepted'});
+    expect((await view(self)).kpis[0].settingApprovals).toHaveLength(1);
+    expect(await nativeDecision(matrix.ctx,'assessmentWork',reviewId,{...cmd,values:{remark:'Different intent'}})).toMatchObject({code:'request_conflict'});
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id:kpiId,actual:2,note:'Delivered two units'}],'Delivered agreed outcomes.');
+    read=await nativeRead(matrix.ctx,'assessmentWork',reviewId);const moderation=read.workspace.actions.find((a:any)=>a.id==='moderate');expect(moderation).toBeDefined();
+    const values={...nativeValues(moderation),remark:'Verified the submitted outcomes.'};
+    const moderated={requestId:randomUUID(),action:'moderate',values,expected:read.workspace.expected};
+    expect(await nativeDecision(matrix.ctx,'assessmentWork',reviewId,moderated)).toMatchObject({outcome:'accepted'});
+    expect(await nativeDecision(matrix.ctx,'assessmentWork',reviewId,moderated)).toMatchObject({outcome:'accepted'});
+    expect((await view(self)).kpis[0].approvalChain?.filter(s=>s.at)).toHaveLength(1);
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'no',remark:'Still learning'}},false,'Developing through assigned work.');
+    read=await nativeRead(mgr,'performanceReview',reviewId);const competency=read.workspace.actions.find((a:any)=>a.id==='competencies');expect(competency).toBeDefined();
+    const c={requestId:randomUUID(),action:'competencies',values:{...nativeValues(competency),'answer:0':'yes','explain:0':'Observed successful delivery',remark:'Observed on assigned work.'},expected:read.workspace.expected};
+    expect(await nativeDecision(mgr,'performanceReview',reviewId,{...c,expected:{digest:'0'.repeat(64)}})).toMatchObject({code:'stale_step'});
+    expect(await nativeDecision(mgr,'performanceReview',reviewId,c)).toMatchObject({outcome:'accepted'});
+    expect(await nativeDecision(mgr,'performanceReview',reviewId,c)).toMatchObject({outcome:'accepted'});
+    expect((await view()).competencyStatus).toBe('reviewed');
+    await setModule(b.tenantId,'performance','disabled');
+    expect(await nativeRead({...mgr,entitlements:harnessSnapshot(b.tenantId)},'performanceReview',reviewId)).toMatchObject({code:'not_assigned'});
+  });
+
+  it('native career agreement records the canonical conversation and refuses a forged plan',async()=>{
+    await perf.saveOnehrPlan(self,reviewId,null,{career:{aspiration:'Develop facilitation',mobility:'stay',mobilityNote:'Within current unit',targetProfileId:null},goals:[{id:randomUUID(),area:'Facilitation',dueOn:'',onJob:'Facilitate planning',fromOthers:'',formalLearning:'',status:'not_started'}]},true);
+    const plan=(await view()).plans[0],read=await nativeRead(mgr,'careerPlan',plan.id);
+    expect(JSON.stringify(read)).toContain('Facilitate planning');expect(JSON.stringify(read)).toContain('Within current unit');
+    expect(await nativeRead(self,'careerPlan',plan.id)).toMatchObject({code:'not_assigned'});
+    expect(await nativeRead(mgr,'careerPlan',randomUUID())).toMatchObject({code:'not_assigned'});
+    const a=read.workspace.actions.find((a:any)=>a.id==='agree'),cmd={requestId:randomUUID(),action:'agree',values:{...nativeValues(a),conversation:'Discussed the development plan and agreed next steps.',heldOn:today},expected:read.workspace.expected};
+    expect(await nativeDecision(mgr,'careerPlan',plan.id,cmd)).toMatchObject({outcome:'accepted',status:'closed'});
+    expect(await nativeDecision(mgr,'careerPlan',plan.id,cmd)).toMatchObject({outcome:'accepted',status:'closed'});
+    expect((await view()).plans[0]).toMatchObject({status:'closed',conversation:cmd.values.conversation,conversationHeldOn:today,revision:plan.revision+1});
+  });
+
+  it('native department calibration decisions lock the correct person and replay without another revision',async()=>{
+    const kpi=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id:kpi,title:'Delivery',description:'',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}],true);
+    await perf.approveOnehrScorecard(mgr,reviewId,(await view()).revision,true,'Agreed');
+    await perf.submitOnehrResults(self,reviewId,(await view(self)).revision,[{id:kpi,actual:2,note:'Delivered'}],'Delivered outcomes.');
+    await perf.submitAssessmentModeration(mgr,reviewId,(await view()).revision,[{id:kpi,actual:2,note:'Verified'}],'Verified outcomes.');
+    await perf.submitOnehrCompetencies(self,reviewId,(await view(self)).revision,{'skill-1':{answer:'yes',remark:'Delivered'}},false,'Demonstrated through delivery.');
+    await perf.submitOnehrCompetencies(mgr,reviewId,(await view()).revision,{'skill-1':{answer:'yes',remark:'Observed'}},true,'Observed delivery.');
+    const id=await perf.createOnehrCalibration(a,cycleId,{name:'Mobile department review',companyId:b.companyId,tier:'hod',reviewerUserIds:[mgr.userId!],reviewIds:[reviewId],pbtAchievement:null,mode:'after'});
+    const read=await nativeRead(mgr,'calibration',id);expect(read.outcome).toBe('found');
+    expect(await nativeRead(self,'calibration',id)).toMatchObject({code:'not_assigned'});
+    const action=read.workspace.actions.find((a:any)=>a.id===`save:performance:${reviewId}`);expect(action).toBeDefined();
+    const cmd={requestId:randomUUID(),action:action.id,values:{...nativeValues(action),band:'ME',reason:'Verified department delivery'},expected:read.workspace.expected};
+    expect(await nativeDecision(mgr,'calibration',id,cmd)).toMatchObject({outcome:'accepted'});
+    expect(await nativeDecision(mgr,'calibration',id,cmd)).toMatchObject({outcome:'accepted'});
+    const v=await perf.getOnehrCalibration(mgr,id);expect(v.session.revision).toBe(read.workspace.revision+1);expect(v.rows[0].entry.performanceLockedAt).not.toBeNull();
+  });
+
+  it('native standard performance review preserves ratings and compensation recommendations and replay',async()=>{
+    const {cycleId:standard}=await perf.createCycle(a,{name:'Standard mobile review',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
+    await perf.openCycle(a,{cycleId:standard});
+    const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,standard),eq(schema.performanceReview.employmentId,subject.employmentId)));
+    const read=await nativeRead(mgr,'performanceReview',r.id);expect(read.outcome).toBe('found');
+    expect(await nativeRead(self,'performanceReview',r.id)).toMatchObject({code:'not_assigned'});
+    const form=read.workspace.actions.find((a:any)=>a.id==='manager-submit');expect(form).toBeDefined();
+    const rating=form.fields.find((f:any)=>f.key==='managerRating').options[0].value;
+    const cmd={requestId:randomUUID(),action:form.id,expected:read.workspace.expected,values:{...nativeValues(form),managerRating:rating,overallRating:rating,comments:'Verified delivery with the employee',merit:2.5,bonus:1234}};
+    expect(await nativeDecision(mgr,'performanceReview',r.id,{...cmd,values:{...cmd.values,managerRating:'999'}})).toMatchObject({code:'decision_refused'});
+    expect(await nativeDecision(mgr,'performanceReview',r.id,cmd)).toMatchObject({outcome:'accepted'});
+    expect(await nativeDecision(mgr,'performanceReview',r.id,cmd)).toMatchObject({outcome:'accepted'});
+    const saved=await perf.reviewForViewer(mgr,r.id);expect(saved).toMatchObject({status:'submitted',managerRating:Number(rating),overallRating:Number(rating),recommendedMeritPct:2.5,recommendedBonus:1234});
   });
 
   it('the finding: the manager\'s performanceReview tasks are exactly the /performance "Reviews awaiting you" queue', async () => {
@@ -161,9 +243,10 @@ describe('Rewards work in the shared task list', () => {
     const view = () => getRewardUnit(a, unitId);
     const actors: Record<string, SessionContext> = {};
     for (const role of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) {
-      const [p] = await owner.db.insert(schema.person).values({ tenantId: b.tenantId, fullName: `${role} reviewer`, primaryEmail: `${randomUUID()}@wpa1.test` }).returning();
-      const userId = await createAppUser(b.tenantId, p.id, 'employee');
-      actors[role] = { ...a, userId, personId: p.id, roles: ['employee'], grants: undefined };
+      const p=await hire(`${role} reviewer`);
+      await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,p.employmentId));
+      const userId = await createAppUser(b.tenantId, p.personId, 'employee');
+      actors[role] = { ...a, userId, personId: p.personId, roles: ['employee'], grants: undefined };
       await setRewardMember(a, unitId, (await view()).unit.revision, userId, role);
     }
     await setRewardMember(a, unitId, (await view()).unit.revision, a.userId!, 'payroll');
@@ -186,5 +269,13 @@ describe('Rewards work in the shared task list', () => {
     const [other] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Other Sdn Bhd' }).returning({ id: schema.company.id });
     expect(packItems(await listPendingTasks(actors.bg, [other.id], ALL))).toEqual([]);
     expect(ofKind(await listPendingTasks(actors.bg, [b.companyId], ALL), 'rewardReview').map((t) => t.id)).toEqual([unitId]);
+    const read=await nativeRead(actors.bg,'rewardReview',unitId);expect(read.outcome).toBe('found');expect(JSON.stringify(read)).toContain('Reward Employee');
+    expect(await nativeRead(actors.pbp,'rewardReview',unitId)).toMatchObject({code:'not_assigned'});
+    const cmd={requestId:randomUUID(),action:'approve',values:{reason:'Reviewed recommendations'},expected:read.workspace.expected};
+    expect(await nativeDecision(actors.bg,'rewardReview',unitId,{...cmd,values:{reason:'Reviewed recommendations',salary:0}})).toMatchObject({code:'decision_refused'});
+    expect(await nativeDecision(actors.bg,'rewardReview',unitId,cmd)).toMatchObject({outcome:'accepted'});
+    expect(await nativeDecision(actors.bg,'rewardReview',unitId,cmd)).toMatchObject({outcome:'accepted'});
+    expect((await view()).unit.status).toBe('gr');
+
   });
 });

@@ -817,14 +817,15 @@ export function noticeContentHistory(ctx:SessionContext,id:string){
 export type NoticeAcknowledgementReceipt={id:string;contentVersion:number;acknowledgedAt:Date};
 /** A deliberate action, not a page-load or popup marker. The purpose-bound database command owns the
  * actual principal, immutable timestamp, same-transaction audit and replay/stale-version contract. */
-export async function acknowledgeNotice(ctx:SessionContext,id:string,employmentId:string,contentVersion:number,context:{reportedChannel?:string;reportedUserAgent?:string}={}):Promise<NoticeAcknowledgementReceipt>{
+export async function acknowledgeNotice(ctx:SessionContext,id:string,employmentId:string,contentVersion:number,context:{reportedChannel?:string;reportedUserAgent?:string}={},outerTx?:Tx):Promise<NoticeAcknowledgementReceipt>{
  if(!uuidNotice(id)||!uuidNotice(employmentId)||!Number.isSafeInteger(contentVersion)||contentVersion<1)throw new NoticeError('Notice acknowledgement is unavailable.');
  const requestContext={...(context.reportedChannel?{reportedChannel:context.reportedChannel.slice(0,32)}:{}),...(context.reportedUserAgent?{reportedUserAgent:context.reportedUserAgent.slice(0,256)}:{})};
- return withTenant(ctx,async tx=>{
+ const run=async(tx:Tx)=>{
   const [row]=await tx.execute(sql`SELECT * FROM app.acknowledge_notice(${id}::uuid,${contentVersion}::integer,${employmentId}::uuid,${JSON.stringify(requestContext)}::jsonb)`) as unknown as {receipt_id:string;content_version:number;acknowledged_at:Date|string}[];
   if(!row)throw new NoticeError('Notice acknowledgement is unavailable.');
   return {id:row.receipt_id,contentVersion:row.content_version,acknowledgedAt:new Date(row.acknowledged_at)};
- });
+ };
+ return outerTx?run(outerTx):withTenant(ctx,run);
 }
 export function noticeAcknowledgementHistory(ctx:SessionContext,id:string){
  return withTenant(ctx,tx=>tx.select({id:noticeAcknowledgement.id,revisionId:noticeAcknowledgement.revisionId,contentVersion:noticeAcknowledgement.contentVersion,employmentId:noticeAcknowledgement.employmentId,actorUserId:noticeAcknowledgement.actorUserId,acknowledgedAt:noticeAcknowledgement.acknowledgedAt})
