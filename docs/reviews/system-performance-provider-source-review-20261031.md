@@ -1,3 +1,47 @@
+## Current integrated technical review — 1 November 2026
+
+Reviewed immutable candidate `5a7c830b8bc68952d655495e240f72d092195161` against
+accepted source/main `7fe8f8627f3a5ec0067f7dea777f140dd204ca5b`. This is technical
+analysis, **not renewed human approval, runtime acceptance or deployment authority**.
+The historical31October review below retains its original source identity.
+
+Independent Git-blob import traversal matches both generated manifests: main has
+1,141sources/digest`c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d`;
+candidate1,142sources/digest`9f74efea6ae0ee912f602dc263429bf1e238e13ff4ed0cf9d1d83cd0d1e3f8e8`.
+Exactly1,116members are unchanged,25change,oneis added;noneare removed.
+The24approved literal records remain byte-identical to main and both pending
+contracts remain pending. The native exact-source gate correctly refuses the new closure.
+
+Changed covered files are native read/aggregation/approval implementations
+(`analytics`, `approvals`, `attendance`, `attendance-workflow`, `claims`, `read`,
+`payroll`, `profile`, `employee-master-projection`, `employee-draft`, `leave`,
+`workforce-access`, `access-configuration-lock`), ORM/schema setup, Home projections,
+HR date formatting, ESS visibility, lifecycle legacy-source handling and six locale
+catalogs. The only added dependency is the bounded pool-size parser.
+
+The newest changes retain original decision owners and complete output semantics:
+Attendance transports native proofs in bounded parameter batches without capping tasks;
+standalone Workforce readers share the existing barrier while writers/borrowed
+transactions remain exclusive; Personnel discard joins Access before onboarding's
+audit lock; Claims discovers existing native-visible/delegated subjects and tests
+pending existence through real Claim RLS. Full decisions, fresh principal checks,
+self/company/tenant fences, current grants, audit and original500ms native lock
+bounds remain. Indexes and SQL plan changes have separate migration ownership and
+qualification; this import closure does not itself certify SQL installation.
+
+Provider adapters, gateway, closed descriptors, governance/policy serializers,
+provisional purposes, sensitive action inventory and all model-facing payload shapes
+are byte-identical to the accepted base. No new raw person/document field, external
+provider operation, numerical model authority or sensitive AI effect is introduced.
+These source facts do not substitute for native behavior, release or human approval.
+
+Source-bound positive-provider control41311496352 on earlier integratede45181a80
+remains FAIL;163othercases pass. A future authorized fingerprint refresh must bind
+its exact reviewed final closure and retain original human provenance; changing a
+generated hash or passing unrelated tests does not authorize that refresh.
+
+---
+
 # Performance changes: protected-provider source review
 
 Technical review of `f256f8f34f95673153353aa7303b754fd1d78075`, 31 October2026 MYT.

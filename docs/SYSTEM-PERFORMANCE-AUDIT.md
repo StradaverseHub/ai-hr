@@ -9,7 +9,54 @@ no paid capacity, protected integration, live configuration/data change or deplo
 The owner has no connection details for an isolated production-size environment;
 these small-host development results are not production-equivalent acceptance.
 
-The newest full HTTP/browser attempts ran source
+### Latest full load qualification — 1 November 2026
+
+Frozen source `8bee19faab37d1da8be0657e4f4db18f38fe2f93` includes Attendance
+batching/manager refinement and all five standalone Workforce projection read barriers.
+[One-second41309710718](https://github.com/StradaverseHub/ai-hr/actions/runs/41309710718)
+FAILS: HTTP child exceeded its unchanged600s budget and was killed after610.224s.
+The last saved460s traffic snapshot accounts for500 principals:143completed,
+25failed,332active,621iterations. Completed-response-only partial p95 is37.752s
+read /67.100s write, with0known HTTP request errors. These are **incomplete** metrics;
+25failed journeys remain failures even when requests returned HTTP200. No final
+functional accounting, loaded-browser verdict or post-load audit proof exists.
+App CPU391.63s over460.04s; app RSS2279.3MiB/high-water2409.6MiB includes startup.
+Build402.678s; fixture143.640s. These are separate hosts, not a causal speed ratio.
+
+Bounded advisory observations expose actual opposing waits: one backend holds Access
+while waiting on audit-chain, while another holds audit-chain and waits on Access.
+Personnel delete diagnostics include14generated failure references with55P03;
+two bounded log blocks also contain40P01 (concurrent errors may overlap). Native
+source inspection confirms ordinary discard synchronizes onboarding (audit lock)
+before the native delete port acquires Access, unlike Personnel create/save. New
+native regression source328ca52dd forces the actual pending discard and probes that
+its audit lock remains available; hosted red qualification41311671992 is pending.
+No authorization barrier or500ms native lock ceiling is relaxed.
+
+[Five-second41309713200](https://github.com/StradaverseHub/ai-hr/actions/runs/41309713200)
+FAILS the same unchanged HTTP budget (610.082s termination). Last persisted395s
+traffic snapshot:19completed,478failed,3active,22iterations;477known request
+errors. Incomplete completed-response p95 read61.868s/write88.391s. App CPU305.02s
+in395.04s, RSS1862.0MiB/high-water2081.2MiB including startup. Build513.205s,
+fixture421.760s. No final traffic/accounting/browser/audit proof. Advisory samples
+include429exclusive/151shared Access waits; one native deletion55P03 block.
+Both actual runs pass six baseline workflows and authority/document fences, then
+expose handled Home card failures under load. No final acceptance is inferred from
+baseline success or the unpopulated final functionalErrors array.
+
+The actual lock-order regression
+[41311671992](https://github.com/StradaverseHub/ai-hr/actions/runs/41311671992), source
+328ca52dd, FAILS its precise assertion: queued discard already holds audit-chain.
+Repairb914a6adf acquires the existing exclusive Access barrier before onboarding;
+the native delete port still repeats physical generation/authority checks. No timeout,
+writer exclusion, RLS, audit or native outcome contract is weakened. All252native
+cases in11files pass in
+[41312014828](https://github.com/StradaverseHub/ai-hr/actions/runs/41312014828);
+its whole compiler also PASSes onb914a6adf. This does not certify the later full HTTP target.
+
+### Previous full attempts
+
+The preceding full HTTP/browser attempts ran source
 `16e662e6b15e0d072cdbe02a313b449a1e67d0f8`, including the earlier metadata-reader
 shared locks and unassigned-employee Attendance precheck. Both reached500 active
 HTTP principals and passed all six baseline workflows, including50-person Payroll
@@ -51,7 +98,7 @@ they predate the newer fixes and are not relabelled onto them.
 |cf7f69758 /[41305425007](https://github.com/StradaverseHub/ai-hr/actions/runs/41305425007),[41305427586](https://github.com/StradaverseHub/ai-hr/actions/runs/41305427586) |217 cases in18 files(213DB-classified/4model), zero failures/skips; whole compiler PASS. Exact application batch vs restored-scalar medians:HR50.00/77.04ms,delegate108.08/132.83,manager98.38/119.39. Native decision owners and command guards remain unchanged; transport chunks never cap returned tasks. |
 |804287fa9 /[41306444884](https://github.com/StradaverseHub/ai-hr/actions/runs/41306444884),[41306447168](https://github.com/StradaverseHub/ai-hr/actions/runs/41306447168) |185 affected cases in11 files, zero failures/skips. Exact installed SQL refinement: unassigned manager1.19ms vs restored54.15ms. Real legacy/unrouted administrative assignment, named non-admin actor and valid delegate are preserved. Existing actual application TS/SQL-index bodies match cf7 except the new necessary-only helper replacement; cf7 compiler evidence is retained on its original source. |
 |5008006c1 /[41307278542](https://github.com/StradaverseHub/ai-hr/actions/runs/41307278542) |Native red regression:10PASS/5FAIL. Only five complete standalone Workforce projections fail overlap; writer and borrowed-command controls pass. Original failure retained. |
-|1d0c22968 /[41308108373](https://github.com/StradaverseHub/ai-hr/actions/runs/41308108373),[41308110703](https://github.com/StradaverseHub/ai-hr/actions/runs/41308110703) |Current combined candidate. Five complete owned list/picker/count/page/detail transactions share the configuration read barrier; supplied transactions remain exclusive.220 cases in16 files(139DB-classified/81model) PASS, zero failures/skips. All15 native concurrency cases pass, including the five original failures. Whole compiler PASS on1d0c22968; paired500-principal five-reader comparison pending. |
+|1d0c22968 /[41308108373](https://github.com/StradaverseHub/ai-hr/actions/runs/41308108373),[41308110703](https://github.com/StradaverseHub/ai-hr/actions/runs/41308110703) |Current combined candidate. Five complete owned list/picker/count/page/detail transactions share the configuration read barrier; supplied transactions remain exclusive.220 cases in16 files(139DB-classified/81model) PASS, zero failures/skips. All15 native concurrency cases pass, including the five original failures. Whole compiler PASS on1d0c22968; paired500-principal five-reader comparison PASS: shared p9524,311ms vs restored-exclusive50,712ms, all ordered outputs and live archive refusals identical. This is a composite five-reader burst, not per-request latency. |
 
 The current candidate retains all earlier fixes and adds no permission/result cache.
 Every positive Attendance precheck still uses full native request/decision proofs.
@@ -65,21 +112,87 @@ Load diagnostics now save periodic normalized SQL snapshots, bounded blocker
 pid/state/query IDs and explicitly incomplete latency/accounting snapshots.
 Timeouts retain budget/signal facts even if a child exits normally after termination.
 Request90s limits,5min steady window and p95 targets(read/page<1s,write<500ms) are
-unchanged. These diagnostics are being qualified in the next actual HTTP runs;
-partial data is never an acceptance receipt. Both activity levels rerun only after
-current native/compiler/component qualification.
+unchanged. These diagnostics are exercised by the8bee actual HTTP runs; the one-second run
+saved15periodic SQL snapshots and explicit incomplete CPU/memory/accounting facts.
+Partial data is never an acceptance receipt.
 
-Current integration base is main/alpha1a74336e68abf0c06067b19857ad68c8aeb93049,
-freshly fetched1 November. Preserve its639-entry journal and all SQL bytes.
-Eight never-installed drafts were moved byte-identically to0879–0886;0887 adds
-UUID actor-key indexes/precheck,0892 refines only legacy discovery. Ten drafts
-remain unapplied outside disposable jobs. Foreign claims0888–0891 are not included.
-Allocation source audits and exact mapping live in[MIGRATION-ALLOCATION.md](MIGRATION-ALLOCATION.md).
-Reconcile source/live ledger again before any separately authorized installation.
-Current provider digest70c2f9c4a1f629c3489d5053c5dda506fd1717ea60721831c4120675c06c6bff;
-agent digest412bfabeeded8ef7eb8562db614115e3dd123f282a0aa32093272d4b29548239.
-Human approval literals remain unchanged; earlier exact-source approvals do not
-approve this newer candidate.
+Current development integration normally merges main/alpha
+`7fe8f8627f3a5ec0067f7dea777f140dd204ca5b` at
+`e45181a808c5f5c62fd4b453995860ed14f887cf`. Independent source comparison preserves
+all640canonical journal entries and SQL bytes, including0876, followed by ten
+unchanged, never-installed owned performance drafts0879–0887/0892. Foreign
+claims0888–0891 are not included. No protected branch or installation changed.
+Incoming human approval literals are preserved byte-identically. Latest5a7c830b8 provider
+closure9f74efea6ae0ee912f602dc263429bf1e238e13ff4ed0cf9d1d83cd0d1e3f8e8;
+agentfa72c8a397bd254e23d1f4f608d73171f6631494e8599346678f344421825c6b.
+The existing exact-source approval bindings do not approve this new closure.
+
+### Staging preparation holds
+
+- Combined-main [41311424550](https://github.com/StradaverseHub/ai-hr/actions/runs/41311424550)
+  sourcee45181a80: whole compiler PASS;251cases PASS/5FAIL/0skips. Four populated
+  upgrade fixtures still expect the earlier canonical tail; the client catalog inventory
+  is stale against actual client imports. Recoverya6aa5ef13 explicitly pins all ten
+  added SQL hashes/identities and uses the hosted actual import inventory. Only the
+  five failed/affected fixtures plus relevant catalog/order checks and compiler rerun:
+  [41312273853](https://github.com/StradaverseHub/ai-hr/actions/runs/41312273853):17cases in8files PASS, zero failures/skips; whole compiler PASS on a6aa5ef13.
+- Journal ordering and protected-source policy/review controls:
+  [41311496352](https://github.com/StradaverseHub/ai-hr/actions/runs/41311496352),
+  sourcee45181a80:163cases PASS/1FAIL/0skips. The single failure is the protected
+  provider positive approval check: its literal human approval binds the prior source.
+  Journal ordering, manifest freshness, capability inventory and native review parity
+  remain passing at their original source. Stale exact-source approval must refuse;
+  generated fingerprints alone cannot renew approval.
+- Native plan-only permission comparison on frozen benchmark-onlyb17a440ed:
+  [41311453662](https://github.com/StradaverseHub/ai-hr/actions/runs/41311453662), PASS.
+  Original-before/cached/restored p9522262/20291/21030ms for the500-principal
+  five-reader burst. Exact outputs, archive and live role-change controls pass. Only
+  3.5% below restored control, so no product SQL migration is promoted. Current main's
+  four tested permission bodies are unchanged from the benchmark baseline.
+- Native pending-subject Claims experiment:
+  [41312406993](https://github.com/StradaverseHub/ai-hr/actions/runs/41312406993),
+  sourceb851a42fa,1case PASS.1millionpendingrows/52employments/three reader roles;
+  exact candidate subjects match. Five-read medians original-before/prototype/restored:
+  HR353.115/12.070/345.039ms,manager73.574/25.912/73.035,
+  employee7.951/3.684/8.132. This measures only candidate discovery, not complete
+  summaries/pages,500active actors or500employments. Product5a7c830b8 uses the
+  measured query shape while retaining real Claim RLS, delegated header/organization
+  owners, company narrowing and fresh decision rechecks. Broad native metadata,
+  delegated/company scope,1201-header uncapped queue, Home and compiler qualification:
+  [41312983801](https://github.com/StradaverseHub/ai-hr/actions/runs/41312983801):72cases in11files PASS(59DB/13model), zero failures/skips; whole compiler pending.
+  No SQL migration, authority cache or command shortcut is introduced.
+- Next HTTP diagnostics additionally distinguish completed HTTP error responses from
+  transport errors and retain exact generated public-error SQLSTATE metadata without
+  raw SQL, parameters or stack. Earlier one-second knownRequestErrors0 meant no
+  transport errors; its saved samples do contain one HTTP500, alongside native
+  typed business refusals. These remain failures. Native busy/action failures and
+  Leave dependency refusals remain unaccepted until actual repaired full-load proof.
+- Resolve actual functional/capacity failures, then freeze the candidate for the
+  authenticated complete release gate (compiler, build, migration rehearsal, complete
+  classified tests and Chromium/Firefox/WebKit). Focused results are not a gate receipt.
+- Before separately authorized installation: refresh actual staging source/build,
+  ordered migration ledger/watermark, private prerequisite roles and shared queue
+  ownership. Keep migration-bearing work isolated. Arrival, health and changed
+  authenticated rendered journeys require the eventual installed build and cannot
+  be pre-certified by these disposable tests.
+
+Read-only staging observation at21:51MYT on1November: source and built ref both
+`7fe8f8627f3a5ec0067f7dea777f140dd204ca5b`, build`MBZgEFY3reXj8jehuNZBr`,
+state=ok/stale_build=0/service active. The installed canonical read-only ledger
+checker verifies640rows with complete ordered IDs/timestamps/hashes. Independent
+local immutable-prefix reconstruction matches its expected digest
+`3d66e60735cfd3ab84a067014bbffea275e010b837911264c4397830fd4004d9`;
+latest applied0876/1793330000276 is below first owned performance draft1793330000279.
+This proves the observed ledger prefix, not permission to install the drafts.
+The shared queue status is reachable and reports an existing capturing lease;
+this task neither claims nor changes it. These are snapshots that must be refreshed
+before any separately authorized installation. Customer-runtime preflight and the
+complete exact-candidate release witness remain separate checks.
+
+No staging deployment, queue lease, package publication or live data/configuration
+mutation is authorized or performed. Allocation source audits and exact mapping live
+in[MIGRATION-ALLOCATION.md](MIGRATION-ALLOCATION.md); recheck source/live ledger
+before any separately authorized installation.
 
 Coverage is bounded:30 page routes, Claims draft CRUD, Leave create/edit/withdraw,
 Personnel draft CRUD, Attendance correction/approval, Payroll calculation/export,
