@@ -27,7 +27,7 @@ async function catalog(){const [row]=await owner.client`select pg_get_functionde
 function errorCode(error:unknown){let e=error as {code?:string;cause?:unknown};for(let i=0;e&&i<8;i++){if(e.code)return e.code;e=e.cause as typeof e;}return String(error);}
 it('preserves live exact visibility while bypassing empty recursive branches for ordinary employees',async()=>{
  await resetDb();await owner.client`create extension if not exists pg_stat_statements`;
- const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b),today=todayInKualaLumpur();
+ const b=await seedBase(),foreign=await seedBase(),empty=await seedBase(),base=adminCtx(b),today=todayInKualaLumpur();
  const companies=[b.companyId];for(let i=1;i<5;i++){const [co]=await owner.db.insert(s.company).values({tenantId:b.tenantId,country:'MY',legalName:'Fictional visibility company '+i}).returning();companies.push(co.id);}
  const users=Array.from({length:500},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[i%5],role:(i<2?'hr_admin':i===2?'manager':'employee') as 'hr_admin'|'manager'|'employee'}));
  await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional visibility subject '+i,primaryEmail:u.id+'@example.test'})));
@@ -59,7 +59,7 @@ it('preserves live exact visibility while bypassing empty recursive branches for
  const malformed=async(context:SessionContext,grants:string)=>{try{return {ids:await withTenant(context,async tx=>{await tx.execute(sql`select set_config('app.grants',${grants},true)`);const [row]=await tx.execute(sql`select app.visible_employment_ids() as ids`);return row.ids;})};}catch(error){return {error:errorCode(error)};}};
  const original=await catalog();expect(original.body).toContain('performance_has_admin');expect(original.body.split(boundary)).toHaveLength(2);expect(original.definition.split(boundary)).toHaveLength(2);
  const phases:Record<string,unknown>={};let malformedOracle:unknown;
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'self-visibility-work.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_NECESSARY_ONLY_SELF_VISIBILITY_EXPERIMENT',releaseEligible:false,users:500,employments:501,originalBodySha256:hash(original.body),phases},null,2));
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'self-visibility-work.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_NECESSARY_ONLY_SELF_VISIBILITY_EXPERIMENT',releaseEligible:false,measuredPrincipals:500,fixtureAccounts:501,employments:501,originalBodySha256:hash(original.body),phases},null,2));
  try{
   for(const phase of ['before','candidate','restored']){
    await owner.client.unsafe(phase==='candidate'?original.definition.replace(boundary,prefix+boundary):original.definition);
@@ -71,7 +71,8 @@ it('preserves live exact visibility while bypassing empty recursive branches for
    const elapsedMs=performance.now()-started;times.sort((a,b)=>a-b);
    const roleMedians:Record<string,number>={};
    for(const [label,index]of [['ordinary',11],['multiEmployment',8],['manager',2],['employeeManager',3],['HOD',4],['companyHR',0],['groupHR',1]] as const){const samples=[];for(let j=0;j<5;j++){const start=performance.now();await read(index);samples.push(performance.now()-start);}roleMedians[label]=samples.sort((a,b)=>a-b)[2];}
-   const bad=[];for(const grants of ['{broken','null',JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])]){bad.push(await malformed(ctx(11),grants),await malformed(adminCtx(foreign),grants));}
+   for(const index of [0,1,2,3,4,7,8,11]){const rows=await withTenant(ctx(index),tx=>tx.execute<{id:string}>(sql`select id from employment where tenant_id=${b.tenantId}::uuid order by id`));expect(rows.map(row=>row.id)).toEqual(expected(index));}
+   const bad=[];for(const grants of ['{broken','null',JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])]){bad.push(await malformed(ctx(11),grants),await malformed(adminCtx(foreign),grants),await malformed(adminCtx(empty),grants));}
    if(malformedOracle===undefined)malformedOracle=bad;else expect(bad).toEqual(malformedOracle);
    const statements=await owner.client`select calls,total_exec_time,total_plan_time,left(query,1800) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_exec_time+total_plan_time desc limit 16`;
    phases[phase]={mixed500ElapsedMs:elapsedMs,mixed500P95Ms:times[Math.ceil(times.length*.95)-1],roleMedians,malformedOutcomes:bad,exactAll500Sets:true,attributesIdentical:true,bodySha256:hash(actual.body),statements};save();
