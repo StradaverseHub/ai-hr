@@ -62,12 +62,30 @@ it('compares scalar native decisions with the exact batched application and a re
   const [row]=await owner.client`select p.proowner::regrole::text as owner,p.proacl::text as acl,p.prosecdef,p.provolatile,p.proconfig,p.proparallel,p.proisstrict,p.proleakproof,p.procost,p.prorettype::regtype::text as returns,p.proretset from pg_proc p where p.oid=${signature}::regprocedure`;return row;
  };
  const expectedAttributes=new Map<string,unknown>();for(const signature of signatures)expectedAttributes.set(signature,await attributes(signature));
+ const [gate]=await owner.client`select pg_get_functiondef('app.may_have_attendance_task_metadata()'::regprocedure)as definition`;
+ const marker='WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id) THEN RETURN true; END IF;';
+ expect(gate.definition.split(marker)).toHaveLength(2);
+ const narrowedGate=gate.definition.replace(marker,`WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id
+ AND (
+  r.line_type='delegate' OR (
+   r.line_type='administrative' AND EXISTS(
+    SELECT 1 FROM public.attendance_correction c
+    WHERE c.tenant_id=caller.tenant_id AND c.status='pending'
+    AND NOT EXISTS(
+     SELECT 1 FROM public.attendance_workflow_request w
+     WHERE w.correction_id=c.id AND w.tenant_id=c.tenant_id AND w.routing_version IN(2,3,4)
+    )
+   )
+  )
+ )
+) THEN RETURN true; END IF;`);
  const phases:Record<string,unknown>={},expected=new Map<number,unknown>(),oldAudit=process.env.AUDIT_HASH_CHAIN_ENABLED;
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  for(const phase of ['scalar-before','batched-application','scalar-restored']){
-   const read=phase==='batched-application'?pendingAttendanceTaskMetadata:scalarMetadata;
+  for(const phase of ['batched-before','narrowed-candidate','batched-restored']){
+   await owner.client.unsafe(phase==='narrowed-candidate'?narrowedGate:gate.definition);
+   const read=pendingAttendanceTaskMetadata;
    for(const signature of signatures)expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
    expect(await owner.client`select * from app.principal(${randomUUID()}::uuid)`).toHaveLength(0);
    try{
@@ -95,6 +113,7 @@ it('compares scalar native decisions with the exact batched application and a re
    phases[phase]={measurements,expiredDelegationRefused:true,archivedAssignedActorRefused:true,forgedPersonRefused:true,liveGrantChangesChecked:true,securityAttributesOwnerAndAclUnchanged:true};
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-routing.json'),JSON.stringify({kind:'PAIRED_NATIVE_ATTENDANCE_TASK_TRANSPORT',releaseEligible:false,pendingRequests:32,realLinkedPrincipals:35,auditGucVerified:'on',phases},null,2));
   }
+  await owner.client.unsafe(narrowedGate);
   try{
    for(const a of actors.slice(0,2))await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,a.ctx.userId!));
    for(const a of actors.slice(0,2)){
@@ -104,5 +123,18 @@ it('compares scalar native decisions with the exact batched application and a re
    }
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-possible-assignment.json'),JSON.stringify({namedNonAdminActor:true,nonAdminDelegate:true,orderedMetadataExact:true,nativeApplicationBatch:true},null,2));
   }finally{for(const a of actors.slice(0,2))await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,a.ctx.userId!));}
- }finally{if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;}
+  // Preserve the unrouted administrative fallback with a real additional native request.
+  const prior=new Date(today+'T12:00:00Z');prior.setUTCDate(prior.getUTCDate()-1);const date=prior.toISOString().slice(0,10);
+  await setAttendanceWorkflowEnabled(root,b.companyId,'irregularity',false);
+  await checkIn(root,{employmentId:actors[3].employmentId,date,time:'08:00',manual:true});
+  await checkOut(root,{employmentId:actors[3].employmentId,date,time:'17:00',manual:true});
+  const legacy=await requestAttendanceCorrection(actors[3].ctx,{employmentId:actors[3].employmentId,date,checkIn:'09:00',checkOut:'18:00',reason:'Fictional necessary legacy fallback'});
+  expect(await owner.client`select id from attendance_workflow_request where correction_id=${legacy.correctionId}::uuid`).toHaveLength(0);
+  await owner.client.unsafe(gate.definition);
+  const legacyExpected=await Promise.all(actors.slice(0,4).map(a=>pendingAttendanceTaskMetadata(a.ctx,[b.companyId])));
+  expect(legacyExpected[2].map(row=>row.id)).toEqual([legacy.correctionId]);
+  await owner.client.unsafe(narrowedGate);
+  for(let i=0;i<4;i++)expect(await pendingAttendanceTaskMetadata(actors[i].ctx,[b.companyId])).toEqual(legacyExpected[i]);
+  writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-legacy-candidate.json'),JSON.stringify({nativeUnroutedRequest:true,administrativeManagerPreserved:true,allOrderedMetadataExact:true,versionedNamedAndDelegatedActorsPreserved:true},null,2));
+ }finally{await owner.client.unsafe(gate.definition);if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;}
 },300000);
