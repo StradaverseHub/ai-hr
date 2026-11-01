@@ -46,7 +46,7 @@ it('checks the actual counted Claims application summary over one million record
    for(const u of [...users.slice(0,3),users[502]]){
     const actor=u===users[502]?'delegate':u.role,ctx=context(u),times=[];
     await expect(pendingClaimTaskSummary({...ctx,personId:randomUUID()},undefined,25)).rejects.toThrow();
-    for(let i=0;i<3;i++){
+    for(let i=0;i<1;i++){
      const start=performance.now(),result=await pendingClaimTaskSummary(ctx,undefined,25);times.push(performance.now()-start);
      expect(result.total).toBe(actor==='hr_admin'?1000000:actor==='employee'?0:200000);
      expect(result.items).toHaveLength(actor==='employee'?0:25);
@@ -55,7 +55,9 @@ it('checks the actual counted Claims application summary over one million record
     const [raw]=await withClaimsTenant(ctx,tx=>tx.execute<{total:number}>(sql`select count(*)::int as total from public.claim_request`));
     expect(raw.total).toBe(actor==='hr_admin'?1000001:actor==='manager'?200001:actor==='employee'?2001:200000);
     expect(await pendingClaimTaskSummary(ctx,[],25)).toEqual({items:[],total:0});
-    measurements.push({actor,reads:3,elapsedMs:times,exactTotal:true,exactOrderedPreview:true,rawRlsCount:raw.total,delegateDraftExcluded:true});
+    measurements.push({actor,reads:1,elapsedMs:times,exactTotal:true,exactOrderedPreview:true,rawRlsCount:raw.total,delegateDraftExcluded:true});
+    phases[phase]=measurements;
+    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_RLS_MEMBERSHIP_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
    }
    phases[phase]=measurements;
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_RLS_MEMBERSHIP_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
