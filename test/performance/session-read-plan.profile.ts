@@ -1,11 +1,12 @@
-/** Diagnostic only: bounded prepared SELECT plans; same actual Notice owner and fresh native RLS. */
+/** Diagnostic only: server-resolved own employment prefilter, unchanged native Notice RLS. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq,sql} from 'drizzle-orm';
+import {and,asc,desc,eq,gte,inArray,isNotNull,isNull,lte,sql} from 'drizzle-orm';
+import {todayInKualaLumpur} from '../../lib/hr-date';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {client,withTenant,type SessionContext} from '../../db/client';
+import {client,withTenant,type SessionContext,type Tx} from '../../db/client';
 import * as s from '../../db/schema';
 import {createNotice,publishNotice,pendingNoticeAcknowledgementTasks} from '../../core/notice';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
@@ -36,9 +37,6 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
   connection.unsafe=function(...args:any[]){
    const [query,params,options]=args;
    if(!captured&&typeof query==='string'&&query.includes('"notice_recipient"')&&query.includes('"content_version"')&&Array.isArray(params))captured={query,params:params.slice()};
-   if(enabled&&typeof query==='string'&&/^\s*select\b/i.test(query)&&Array.isArray(params)&&params.length>0&&options?.prepare!==false&&options?.simple!==true&&(templates.has(query)||templates.size<128)){
-    templates.add(query);selectedCalls++;return Reflect.apply(raw,connection,[query,params,{...options,prepare:true}]);
-   }
    return Reflect.apply(raw,connection,args);
   };
   for(const key of ['begin','savepoint'] as const){const original=connection[key];if(typeof original!=='function')continue;
@@ -47,9 +45,25 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
   return connection;
  }
  const reports:Record<string,unknown>={},noticeRows:typeof s.notice.$inferSelect[]=[];
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'prepared-select-work.json'),JSON.stringify({kind:'REVERSIBLE_PARAMETERIZED_SELECT_PLAN_EXPERIMENT',releaseEligible:false,principals:500,tenants:2,templateLimit:128,templateCount:templates.size,capturedQuerySha256:captured?createHash('sha256').update(captured.query).digest('hex'):null,reports},null,2));
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'notice-own-ids-work.json'),JSON.stringify({kind:'REVERSIBLE_NOTICE_OWN_IDS_EXPERIMENT',releaseEligible:false,principals:500,tenants:2,templateLimit:128,templateCount:templates.size,capturedQuerySha256:captured?createHash('sha256').update(captured.query).digest('hex'):null,reports},null,2));
+ const candidateTx=async(tx:Tx,context:SessionContext)=>{
+  const ids=await tx.select({id:s.employment.id}).from(s.employment)
+   .innerJoin(s.appUser,eq(s.appUser.personId,s.employment.personId))
+   .where(and(eq(s.employment.tenantId,context.tenantId),eq(s.appUser.tenantId,s.employment.tenantId),
+    sql`${s.appUser.id}=app.current_user_id()`,sql`app.principal_snapshot_current()`,sql`app.is_self_person(${s.employment.personId})`));
+  if(!ids.length)return [];
+  const today=todayInKualaLumpur();selectedCalls++;
+  return tx.select({noticeId:s.notice.id,employmentId:s.noticeRecipient.employmentId,title:s.notice.title,contentVersion:s.notice.contentVersion,sourceUpdatedAt:s.notice.updatedAt})
+   .from(s.noticeRecipient).innerJoin(s.notice,eq(s.notice.id,s.noticeRecipient.noticeId))
+   .where(and(inArray(s.noticeRecipient.employmentId,ids.map(row=>row.id)),eq(s.noticeRecipient.tenantId,s.notice.tenantId),eq(s.notice.tenantId,context.tenantId),
+    sql`app.principal_snapshot_current()`,isNotNull(s.notice.publishedAt),isNull(s.notice.archivedAt),lte(s.notice.startOn,today),gte(s.notice.endOn,today),eq(s.notice.requiresAcknowledgement,true),
+    sql`EXISTS(SELECT 1 FROM public.employment self_employment WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id AND app.is_self_person(self_employment.person_id))`,
+    sql`NOT EXISTS(SELECT 1 FROM public.notice_acknowledgement a WHERE a.recipient_id=notice_recipient.id AND a.tenant_id=notice_recipient.tenant_id AND a.notice_id=notice.id AND a.content_version=notice.content_version)`))
+   .orderBy(desc(s.notice.updatedAt),asc(s.notice.id),asc(s.noticeRecipient.employmentId));
+ };
+ const candidate=(context:SessionContext)=>withTenant(context,tx=>candidateTx(tx,context));
  const expected=(u:typeof users[number],populated:boolean)=>populated?[{noticeId:noticeRows[u.tenant].id,employmentId:u.employmentId,title:noticeRows[u.tenant].title,contentVersion:noticeRows[u.tenant].contentVersion,sourceUpdatedAt:noticeRows[u.tenant].updatedAt}]:[];
- const read=async(u:typeof users[number],populated:boolean)=>{const rows=await pendingNoticeAcknowledgementTasks(ctx(u));expect(rows).toEqual(expected(u,populated));if(rows.length)expect(rows[0].sourceUpdatedAt).toBeInstanceOf(Date);return rows;};
+ const read=async(u:typeof users[number],populated:boolean)=>{const rows=await (enabled?candidate(ctx(u)):pendingNoticeAcknowledgementTasks(ctx(u)));expect(rows).toEqual(expected(u,populated));if(rows.length)expect(rows[0].sourceUpdatedAt).toBeInstanceOf(Date);return rows;};
  try{
   instrument(pool);
   for(const dataCase of ['empty','populated']){
@@ -59,8 +73,8 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
     expect((await publishNotice(adminCtx(b),id)).recipients).toBe(250);
     const [row]=await owner.db.select().from(s.notice).where(eq(s.notice.id,id));noticeRows.push(row);
    }
-   for(const phase of ['before','prepared','restored']){
-    enabled=phase==='prepared';selectedCalls=0;
+   for(const phase of ['before','own-ids','restored']){
+    enabled=phase==='own-ids';selectedCalls=0;
     await Promise.all(users.slice(0,100).map(u=>read(u,populated)));await owner.client`select pg_stat_statements_reset()`;
     const times:number[]=[],started=performance.now();
     const results=await Promise.allSettled(users.map(async u=>{const before=performance.now();await read(u,populated);times.push(performance.now()-before);}));
@@ -71,7 +85,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
     expect(captured).toBeDefined();
     const freshness=await withTenant(ctx(users[11]),async tx=>{
      const wire=store.getStore();expect(wire).toBeDefined();
-     const ask=async()=>{const rows=await wire!.unsafe(captured!.query,captured!.params).values();return rows.map((row:unknown[])=>row[1]);};
+     const ask=async()=>{if(enabled)return(await candidateTx(tx,ctx(users[11]))).map(row=>row.employmentId);const rows=await wire!.unsafe(captured!.query,captured!.params).values();return rows.map((row:unknown[])=>row[1]);};
      const own=populated?[users[11].employmentId]:[],other=populated?[users[12].employmentId]:[];
      expect(await ask()).toEqual(own);
      await tx.execute(sql`select set_config('app.roles','super_admin',true)`);expect(await ask()).toEqual([]);
@@ -82,7 +96,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
      const named=await wire!.unsafe(`select count(*)::int as n,coalesce(sum(generic_plans),0)::text as generic,coalesce(sum(custom_plans),0)::text as custom from pg_prepared_statements where statement like '%"notice_recipient"%'`);
      return {sameConnectionIdentityChanges:true,liveArchiveObserved:true,preparedNoticeStatements:named[0]};
     });
-    let malformed:string|null=null;try{await pendingNoticeAcknowledgementTasks({...ctx(users[11]),tenantId:'invalid-uuid'});}catch(error){malformed=code(error);}expect(malformed).toBe('22P02');
+    let malformed:string|null=null;try{await (enabled?candidate:pendingNoticeAcknowledgementTasks)({...ctx(users[11]),tenantId:'invalid-uuid'});}catch(error){malformed=code(error);}expect(malformed).toBe('22P02');
     const statements=await owner.client`select calls,total_plan_time,total_exec_time,left(query,2200) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_plan_time+total_exec_time desc limit 24`;
     reports[dataCase+'-'+phase]={elapsedMs,p95Ms:times[474],roleMedians,selectedCalls,templateCount:templates.size,exact500OwnResults:true,freshness,malformed,statements};save();
    }
