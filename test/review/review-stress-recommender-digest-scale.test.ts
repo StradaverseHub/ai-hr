@@ -76,7 +76,7 @@ describe('recommendation at scale',()=>{
 });
 
 describe('large tenant (2000 employments)',()=>{
- it('REVIEW medium: the inbox digest for an administrator stays within a bounded time on 2000 employments (daily-digest.ts:54-80)',async()=>{
+ it('fixed H4: the inbox digest for an administrator stays within a bounded time on 2000 employments (daily-digest.ts:54-80)',async()=>{
   const people=await owner.db.insert(schema.person).values(Array.from({length:2000},(_,i)=>({tenantId:b.tenantId,fullName:`Fictional Bulk Person ${i}`,primaryEmail:`${randomUUID()}@fixture.test`})))
    .returning({id:schema.person.id});
   const employments=await owner.db.insert(schema.employment).values(people.map(row=>({tenantId:b.tenantId,personId:row.id,companyId:b.companyId,hiredOn:'2020-01-01'})))
