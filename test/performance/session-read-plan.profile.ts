@@ -1,4 +1,4 @@
-/** Diagnostic only: server-resolved own employment prefilter, unchanged native Notice RLS. */
+/** Diagnostic only: explicit native own-recipient parent predicate plus resolved own IDs; original policy restored. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
@@ -45,7 +45,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
   return connection;
  }
  const reports:Record<string,unknown>={},noticeRows:typeof s.notice.$inferSelect[]=[];
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'notice-own-ids-work.json'),JSON.stringify({kind:'REVERSIBLE_NOTICE_OWN_IDS_EXPERIMENT',releaseEligible:false,principals:500,tenants:2,templateLimit:128,templateCount:templates.size,capturedQuerySha256:captured?createHash('sha256').update(captured.query).digest('hex'):null,reports},null,2));
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'notice-parent-membership-work.json'),JSON.stringify({kind:'REVERSIBLE_NOTICE_PARENT_MEMBERSHIP_EXPERIMENT',releaseEligible:false,principals:500,tenants:2,templateLimit:128,templateCount:templates.size,capturedQuerySha256:captured?createHash('sha256').update(captured.query).digest('hex'):null,reports},null,2));
  const candidateTx=async(tx:Tx,context:SessionContext)=>{
   const ids=await tx.select({id:s.employment.id}).from(s.employment)
    .innerJoin(s.appUser,eq(s.appUser.personId,s.employment.personId))
@@ -64,6 +64,21 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
  const candidate=(context:SessionContext)=>withTenant(context,tx=>candidateTx(tx,context));
  const expected=(u:typeof users[number],populated:boolean)=>populated?[{noticeId:noticeRows[u.tenant].id,employmentId:u.employmentId,title:noticeRows[u.tenant].title,contentVersion:noticeRows[u.tenant].contentVersion,sourceUpdatedAt:noticeRows[u.tenant].updatedAt}]:[];
  const read=async(u:typeof users[number],populated:boolean)=>{const rows=await (enabled?candidate(ctx(u)):pendingNoticeAcknowledgementTasks(ctx(u)));expect(rows).toEqual(expected(u,populated));if(rows.length)expect(rows[0].sourceUpdatedAt).toBeInstanceOf(Date);return rows;};
+ const [originalPolicy]=await owner.client`select pg_get_expr(polqual,polrelid) as expression from pg_policy where polrelid='public.notice'::regclass and polname='notice_recipient_read_rls'`;
+ expect(originalPolicy.expression).toContain('notice_recipient');
+ let restoredPolicy=true;
+ const restorePolicy=async()=>{await owner.client.unsafe('alter policy notice_recipient_read_rls on public.notice using ('+originalPolicy.expression+')');await owner.client.unsafe('drop function if exists app.perf_notice_self_membership(uuid)');restoredPolicy=true;};
+ const installPolicy=async()=>{
+  await owner.client.unsafe(`create function app.perf_notice_self_membership(wanted_notice uuid) returns boolean language sql stable security definer set search_path=pg_catalog,public,pg_temp as $body$
+   SELECT (SELECT app.principal_snapshot_current()) AND EXISTS(
+    SELECT 1 FROM public.app_user u JOIN public.employment e ON e.person_id=u.person_id AND e.tenant_id=u.tenant_id
+    JOIN public.notice_recipient nr ON nr.employment_id=e.id AND nr.tenant_id=e.tenant_id
+    WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND nr.notice_id=wanted_notice AND app.is_self_person(e.person_id)) $body$;
+   revoke all on function app.perf_notice_self_membership(uuid) from public,ai_hr_app;
+   grant execute on function app.perf_notice_self_membership(uuid) to ai_hr_app;
+   alter policy notice_recipient_read_rls on public.notice using(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current()) AND published_at IS NOT NULL AND archived_at IS NULL AND start_on-1<=current_date AND current_date<=end_on+1 AND app.perf_notice_self_membership(id))`);
+  restoredPolicy=false;
+ };
  try{
   instrument(pool);
   for(const dataCase of ['empty','populated']){
@@ -74,7 +89,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
     const [row]=await owner.db.select().from(s.notice).where(eq(s.notice.id,id));noticeRows.push(row);
    }
    for(const phase of ['before','own-ids','restored']){
-    enabled=phase==='own-ids';selectedCalls=0;
+    enabled=phase==='own-ids';selectedCalls=0;if(enabled)await installPolicy();else await restorePolicy();
     await Promise.all(users.slice(0,100).map(u=>read(u,populated)));await owner.client`select pg_stat_statements_reset()`;
     const times:number[]=[],started=performance.now();
     const results=await Promise.allSettled(users.map(async u=>{const before=performance.now();await read(u,populated);times.push(performance.now()-before);}));
@@ -94,7 +109,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
      await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,users[11].id));expect(await ask()).toEqual([]);
      await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[11].id));expect(await ask()).toEqual(own);
      const named=await wire!.unsafe(`select count(*)::int as n,coalesce(sum(generic_plans),0)::text as generic,coalesce(sum(custom_plans),0)::text as custom from pg_prepared_statements where statement like '%"notice_recipient"%'`);
-     return {sameConnectionIdentityChanges:true,liveArchiveObserved:true,preparedNoticeStatements:named[0]};
+     return {sameConnectionIdentityChanges:true,liveArchiveObserved:true,preparedNoticeStatements:named[0],parentPolicyExperiment:enabled};
     });
     let malformed:string|null=null;try{await (enabled?candidate:pendingNoticeAcknowledgementTasks)({...ctx(users[11]),tenantId:'invalid-uuid'});}catch(error){malformed=code(error);}expect(malformed).toBe('22P02');
     const statements=await owner.client`select calls,total_plan_time,total_exec_time,left(query,2200) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_plan_time+total_exec_time desc limit 24`;
@@ -102,7 +117,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
    }
   }
  }finally{
-  enabled=false;pool.unsafe=originalUnsafe;pool.begin=originalBegin;
+  enabled=false;await restorePolicy();pool.unsafe=originalUnsafe;pool.begin=originalBegin;
   await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[11].id));save();
  }
 },240000);
