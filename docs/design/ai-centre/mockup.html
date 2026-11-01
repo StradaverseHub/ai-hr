@@ -270,12 +270,12 @@ tr:last-child td{border-bottom:0}
 .stage.spatial{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr)}
 .slab{position:absolute;inset:0;border-radius:18px;transform-style:preserve-3d;transform:translateZ(var(--z));background:color-mix(in srgb,var(--card) 86%,transparent);border:1px solid var(--line-strong);transition:transform .55s var(--ease),opacity .3s,border-color .3s,background-color .3s}
 .slab::after{content:"";position:absolute;inset:0;border-radius:inherit;transform:translateZ(-9px);background:color-mix(in srgb,var(--line-strong) 70%,transparent)}
-.slab.on{transform:translateZ(calc(var(--z) + 26px));border-color:var(--primary);background:color-mix(in srgb,var(--accent-wash) 92%,transparent);box-shadow:0 0 0 1px var(--primary),0 0 40px -6px color-mix(in srgb,var(--primary) 45%,transparent)}
+.slab.on{transform:translateZ(calc(var(--z) + 26px));border-color:var(--primary);background:color-mix(in srgb,var(--accent-wash) 92%,transparent);box-shadow:0 0 0 1px var(--primary),0 18px 32px -14px rgb(20 20 30/.28)}
 .space.focus .slab:not(.on):not(.base){opacity:.6}
 .slab.base{inset:-40px;border-radius:24px;background:repeating-linear-gradient(135deg,var(--muted) 0 7px,var(--card) 7px 14px);border-color:var(--input)}
 .slab.base.on{border-color:var(--primary);background:repeating-linear-gradient(135deg,var(--accent-wash) 0 7px,var(--card) 7px 14px)}
 .mslab{position:absolute;inset:30%;border-radius:12px;transform:translateZ(18px);border:1.5px dashed var(--llm);background:color-mix(in srgb,var(--llm-wash) 85%,transparent)}
-.slab.on .mslab{box-shadow:0 0 0 6px color-mix(in srgb,var(--llm) 18%,transparent)}
+.slab.on .mslab{border-width:2px}
 .anchor{position:absolute;width:2px;height:2px}
 .pillar{position:absolute;right:-56px;top:-56px;width:30px;height:450px;transform-origin:top center;transform:rotateX(90deg);border-radius:10px;background:linear-gradient(to bottom,color-mix(in srgb,var(--tan) 34%,var(--card)),color-mix(in srgb,var(--tan) 14%,var(--card)));border:1px solid color-mix(in srgb,var(--tan) 60%,transparent)}
 .station{position:absolute;left:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;background:var(--card);border:2px solid var(--tan);transition:background .3s,box-shadow .3s}
