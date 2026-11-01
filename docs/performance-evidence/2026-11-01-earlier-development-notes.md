@@ -313,4 +313,3 @@ journal is preserved, followed by the four unchanged performance SQL drafts rena
 0812–0815 at sequences1793330000212–215. They remain development reservations;
 the installed ledger and final allocation must be verified before release.
 See [migration allocation](MIGRATION-ALLOCATION.md). Applied SQL was not rewritten.
-
