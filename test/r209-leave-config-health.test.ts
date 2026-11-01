@@ -473,8 +473,12 @@ describe('r209 · the findings actually reach a screen, in every locale', () => 
    */
   it('the loader supplies the three facts the derivation cannot compute for itself', () => {
     const block = read('app/admin/leave/entitlements/templates/entitlement-tables-block.tsx');
-    expect(block).toContain('accrualMethod: x.accrualMethod ?? null');
-    expect(block).toContain('accrualUnconfigured: x.accrualUnconfigured != null');
+    // The two leave-type facts are set by the one health projection the loader and the Assistant's
+    // setup readiness share (core/leave-config-health-input.ts); the loader must use it.
+    expect(block).toContain('...healthLeaveType(x, leaveCreditLive),');
+    const projection = read('core/leave-config-health-input.ts');
+    expect(projection).toContain('accrualMethod:x.accrualMethod??null');
+    expect(projection).toContain('accrualUnconfigured:x.accrualUnconfigured!=null');
     expect(block).toContain('activeGrades: activeGrades.map((g) => ({ id: g.id, name: g.name }))');
     // …and the leave-type read really does project them, or the two lines above read `undefined` forever
     // and every type reports "no earning method chosen". `listLeaveTypes` gets them by spreading
