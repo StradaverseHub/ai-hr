@@ -1,3 +1,16 @@
+## Current qualification and installation hold — 2 November 2026
+
+The historical reservations and ledger observations below retain their original dates.
+Sourcee200 qualifies0903/0904 with233 native database and13 additional observations;
+test-only76bd passes the eight affected cases and fresh compiler. Both500-user runs
+41353805538/41353808057 FAIL; no release admission follows. Entra's owner now reports
+0898/0899 APPLIED while its final ledger/build acceptance remains in progress. Those
+SQL bytes are immutable. After verified handback, independently refresh the installed
+ledger/watermark, released source and all peer claims, then reallocate every overtaken
+owned UNAPPLIED append above the actual maximum. The old640-row baseline is no longer
+an admission witness. Preserve original frozen receipts; no performance installation
+or staging lease is authorized by this record.
+
 ## Native incoming payslip parent ownership — 2 November 2026 (unapplied)
 
 Owned candidate reserves0904_attendance_draft_parent_lock,idx774/when1793330000304,

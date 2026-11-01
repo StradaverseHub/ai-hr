@@ -2,6 +2,31 @@
 
 Development candidate only. No protected-branch integration, installation or deployment.
 
+## Current Notice and financial draft qualification
+
+Frozen runtime/controller `e200750381eb93f438d6fecb5e6ba1206579d2b8` includes the canonical29393c2a5 password baseline, bounded Notice membership and the native incoming-payslip parent protocol. Both unchanged-resource500-user reruns FAIL: [1s41353805538](https://github.com/StradaverseHub/ai-hr/actions/runs/41353805538), [5s41353808057](https://github.com/StradaverseHub/ai-hr/actions/runs/41353808057). **0/2 targets accepted; no deployment.** Earlier failed runs remain below with their original identities.
+
+The reversible Notice experiment [41349751244](https://github.com/StradaverseHub/ai-hr/actions/runs/41349751244) reduces one populated500-principal reader burst from46.50s to1.31s; restoring the original gives45.08s. Empty reads remain approximately flat. This is a reader experiment, not a whole-system speed claim. Unapplied0903 retains native principal/tenant/publication/window checks and restricts its new privileged membership primitive to the current user's own recipients. Native controls cover colleague/foreign denial, live archive changes, acknowledgement versions, same-connection identity changes and malformed principals. All three populated-tail upgrades pass [41350834957](https://github.com/StradaverseHub/ai-hr/actions/runs/41350834957).
+
+Unapplied0904 permits concurrent Attendance guards on relevant draft Payroll parents while preserving exclusive processed/closed ownership. A private payslip trigger locks only the incoming parent before membership changes. Real first-payslip insertion and status changes still exclude Attendance; two status-change waiters reacquire the stronger lock and return correct coverage. An advisory-barrier alternative produces a native40P01 cycle in its negative control and is rejected. The promoted parent-row protocol passes that same raw insert-plus-status scenario, incoming membership moves, actual distinct Attendance inserts and foreign-tenant/correction denials. No surfaced SQL/business retry, timeout increase or financial-authority relaxation is introduced.
+
+The frozen source passes233 database and13 additional cases across19 distinct selected files: [41353064627](https://github.com/StradaverseHub/ai-hr/actions/runs/41353064627), [41353132051](https://github.com/StradaverseHub/ai-hr/actions/runs/41353132051). The first workflow's compiler fails solely on an untyped array in the new test. Test-only source `76bde6531e17d77eb2e7d0444c616c5ffc1b4530` adds the array annotation; its eight affected native checks and fresh whole compiler pass [41353940893](https://github.com/StradaverseHub/ai-hr/actions/runs/41353940893). Runtime, SQL, controller and load budgets are identical to e200. Neither original failures nor load source identities are relabeled.
+
+These completed workflows retain one worker, total pool10, heap4GiB, the approximately2GiB durable PostgreSQL cap, a standard four-CPU public runner, two million retained Claims/Attendance rows,500 HTTP identities,30 routes, six mixed workflows and six hydrated browser contexts. They do not establish production-equivalent capacity,500 concurrent browsers or millions of rows in every table. Later Entra installation/source and the actual ledger require fresh reconciliation and allocation of every owned unapplied migration before release admission. The current combined AI source binding remains unapproved and provider access remains blocked.
+
+### Frozen e200 whole-system outcome
+
+|Activity|Accounting|Final read/write p95|Other outcome|
+|---|---|---|---|
+|1s|Incomplete: last snapshot206 completed,0 failed,294 active;631 iterations at485.03s|Unavailable|Original600s HTTP parent kills the child at610.16s; browser/audit completion unavailable; three loaded Home-card failures|
+|5s|Complete:437 completed/63 failed;448 iterations over443.54s|58.75s/87.94s|5/6 browser journeys; three loaded Home-card failures; both audit chains valid; parent609.05s exceeds original600s limit|
+
+The five-second failures are59 aborted journeys and four Personnel draft-delete lock timeouts (native55P03), with no captured deadlock or permission-denied error. Its audit chains check2217/2165 records with no interior unchained entries; no browser runtime errors are recorded. A browser journey closes before completing. The one-second empty failure list is a partial snapshot, not proof of zero failures for all500 users.
+
+The comparable previous da336 five-second run reads/writes at58.63s/85.46s, so this source does not improve final whole-system p95 (approximately0.2%/2.9% worse). The unchanged workload manifest, activity assumptions, application topology and runtime are checked from original receipts. The newer password baseline and public-runner variation prevent attributing the complete delta solely to0903/0904. No final one-second speedup percentage is valid. This comparison concerns development candidates, not installed staging.
+
+Both traces still show tenant Access shared/exclusive and audit-chain waits. Overtime assignment discovery is the most frequently sampled blocking-session query (24/23 root samples at1s/5s), which identifies a profiling lead rather than proving every holder is exclusive. Diagnostic source3b713f5dd/run41356048102 now measures that actual reader with target-only prepared-plan reuse. No runtime driver change or permission shortcut is promoted. Original artifacts are preserved in `/private/tmp/aihr-draft-parent-one-e200-attempt1` and `/private/tmp/aihr-draft-parent-five-e200-attempt1`.
+
 ## Reproduced defect
 
 Hosted run 41331746162, source 07951dae7, executes two real employee Leave submissions. A fixture-only native BEFORE INSERT gate pauses the first before its request or audit append. Both requests persist successfully, but the second cannot commit while the first is paused. The exact overlap assertion fails. This isolates the tenant Access lock independently of the audit-chain append lock.
