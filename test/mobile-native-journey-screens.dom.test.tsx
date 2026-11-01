@@ -70,7 +70,7 @@ describe('native clock job',()=>{
     const f=fixture();f.session.employmentId=null;render(<f.App kind="clock"/>);
     fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
     expect(f.capture).toHaveBeenCalledOnce();expect(f.post).not.toHaveBeenCalled();
-    f.post.mockResolvedValueOnce({outcome:'recorded',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T08:00:00.000Z',photoAvailable:false});
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T08:00:00.000Z',photoAvailable:false})});
     fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('clockRecorded');
     expect(f.post).toHaveBeenCalledOnce();expect(f.session.employmentId).toBeNull();
   });
@@ -84,6 +84,22 @@ describe('native clock job',()=>{
     expect(f.capture).not.toHaveBeenCalled();expect(f.preview).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
   });
 
+  it('does not submit an already-reviewed draft after the server default changes',async()=>{
+    const f=fixture();f.session.employmentId=null;const ui=render(<f.App kind="clock"/>);
+    fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    f.clockState.employmentId='different-employment';ui.rerender(<f.App kind="clock"/>);
+    await screen.findByText('slidePrepare');expect(screen.queryByText('slideRecord')).toBeNull();
+    expect(f.stage).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  });
+  it('retains the actionable preparation error when the same unsent attempt is restored after a screen remount',async()=>{
+    const f=fixture();f.capture.mockRejectedValueOnce(new Error('Synthetic location unavailable'));
+    const ui=render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));
+    await screen.findByText('Synthetic location unavailable');const prior=f.drafts().clock;
+    f.restoreClock({entry:{stage:'preparation',requestId:prior.requestId},command:JSON.stringify({action:prior.action,requestId:prior.requestId,claimedAt:prior.attemptStartedAt})});
+    ui.rerender(<f.App kind="clock" visible={false}/>);ui.rerender(<f.App kind="clock"/>);
+    await screen.findByText('Synthetic location unavailable');expect(screen.queryByText('attemptSavedNotSent')).toBeNull();
+    expect(f.reportAttempt).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  });
   it('a widget only selects a direction; it does not capture location, photos, prepare or submit',async()=>{
     const f=fixture();render(<f.App kind="clock" widgetAction="out" widgetIntent="launch-1"/>);
     await waitFor(()=>expect(f.drafts().clock).toMatchObject({action:'out',phase:'idle'}));

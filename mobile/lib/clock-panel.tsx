@@ -45,22 +45,30 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   useEffect(()=>{if(refreshToken){clock.reload();attempts.reload();}},[refreshToken,clock.reload,attempts.reload]);
   // D8: every fresh clock answer (after a punch, a refresh or a return) re-plans the shift reminders.
   useEffect(()=>{if(clock.data)requestShiftReminderRefresh();},[clock.data]);
-  const {clock:draft,putClock}=useJourneyDrafts();
+  const {clock:retainedDraft,putClock}=useJourneyDrafts();
   const {palette,design}=useTenantDesign();
   const flight=useRef(false),offlineRoute=useRef<string|null>(null);
-  const mounted=useRef(true),session=useRef({employmentId,status:sessionStatus});session.current={employmentId,status:sessionStatus};
+  const mounted=useRef(true),session=useRef({employmentId,status:sessionStatus,resolvedEmploymentId:clock.data?.employmentId});
+  session.current={employmentId,status:sessionStatus,resolvedEmploymentId:clock.data?.employmentId};
   /** Switch on only: a session that has not picked an employment acts as the employment on screen (an offline cold start
    * has no `me` to pick from). Switch off: exactly the session's own employment, as before. */
-  function sessionHolds(selected:string|null|undefined){const value=session.current.employmentId;return value===selected||offlineClocking&&value===null&&!!selected;}
+  function sessionHolds(selected:string|null|undefined){
+    const value=session.current.employmentId;
+    // A null selection uses this screen's server-authorized default; it is not an unlocked session failure.
+    // Read the latest answer so an old operation cannot continue after the server default changes.
+    return value===selected||value===null&&!!selected&&(session.current.resolvedEmploymentId===selected||offlineClocking&&!session.current.resolvedEmploymentId);
+  }
   const offline=useOfflineClock({employmentId:clock.data?.employmentId??employmentId??null,
     connected:clock.error?isNoConnectivity(clock.error)?false:null:clock.data&&!clock.loading?true:null,
-    paused:!!draft&&['preparing','review','submitting','uncertain'].includes(draft.phase),
+    paused:!!retainedDraft&&['preparing','review','submitting','uncertain'].includes(retainedDraft.phase),
     isUnlocked:selected=>mounted.current&&session.current.status==='signedIn'&&sessionHolds(selected),onSignInRequired:()=>void signOut(),onRecorded:clock.reload});
   const current=clock.data?.state;
   /** Offline cold start: no server clock read, and the driver holds a ready offline context for this employment. */
   const coldStart=!current&&offline.mode==='offline';
-  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??((offline.clockedIn??current?.clockedIn)?'out':'in');
   const identity=clock.data?.employmentId??(coldStart?offline.employmentId:undefined);
+  // Pending journals stay with their original employment. Never display or submit another subject's draft.
+  const draft=retainedDraft?.employmentId&&identity&&retainedDraft.employmentId!==identity?null:retainedDraft;
+  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??((offline.clockedIn??current?.clockedIn)?'out':'in');
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [signedStatus,setSignedStatus]=useState<SignedClockStatus|null>(null);
   const [registrationNeeded,setRegistrationNeeded]=useState(false);
@@ -77,7 +85,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     if(entry.stage==='preparation'){
       const saved=ClockPreparation.parse(JSON.parse(command));
       const prior=latestDraft.current;
-      if(prior?.requestId===saved.requestId&&prior.action===saved.action&&prior.geo&&prior.phase==='review'){
+      if(prior?.requestId===saved.requestId&&prior.action===saved.action&&((prior.geo&&prior.phase==='review')||(prior.phase==='idle'&&prior.message))){
         putClock({...prior,attemptStartedAt:saved.claimedAt,attemptReceiptTime:entry.attemptReceipt?.receivedAt});return;
       }
       putClock({employmentId:identity??undefined,action:saved.action,requestId:saved.requestId,attemptStartedAt:saved.claimedAt,
