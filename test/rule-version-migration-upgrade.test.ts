@@ -72,6 +72,8 @@ it('applies the Teras tail from 0890/0891 on over populated leave policy and app
    {table:'teras_outcome_followup',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_outcome_record',rls:true,s:true,i:true,u:false,d:false,t:false},
    {table:'teras_task_memory',rls:true,s:true,i:true,u:true,d:true,t:false},
+   // 0895: the registry's worker switches (GRANT SELECT, INSERT, UPDATE).
+   {table:'teras_worker_control',rls:true,s:true,i:true,u:true,d:false,t:false},
   ]);
   await migrate(target.db,{migrationsFolder:'db/migrations'});
   expect(await target.db.execute(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`)).toEqual(afterLedger);

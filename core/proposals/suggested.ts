@@ -7,8 +7,8 @@
  *    only one, when no date is given). Ambiguity issues nothing; the review page asks.
  *  - approvals.leave.decide: the one request currently assigned to the caller, and only when the person's own
  *    words ask to approve it (a negation such as "do not approve" or "jangan lulus" never does). The requests
- *    come from the native assigned-choice owner (core/leave.ts pendingLeaveDecisionChoiceMetadataTx, through
- *    assignedLeaveDecisionChoices below), never from what the caller can merely see. With several assigned (or
+ *    come from the native assigned-choice owner (core/leave.ts pendingLeaveDecisionChoiceMetadataTx, read through
+ *    core/assistant-actions/module-action-server.ts readAssignedLeaveModuleActionChoices and assignedLeaveDecisionChoices below), never from what the caller can merely see. With several assigned (or
  *    several on the nominated date), nothing is prepared: they are returned, numbered in a fixed order, for the
  *    model to list, and it asks which one (ADR-0170 §3.15). It never picks one. The person answers with a number
  *    (`request` in details), which picks the request at that place in the same order now. A number or date the
@@ -20,7 +20,7 @@
 import {and,eq,inArray} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {leaveRequest,leaveType} from '../../db/schema';
-import {pendingLeaveDecisionChoiceMetadataTx} from '../../packs/leave/service';
+import {readAssignedLeaveModuleActionChoices} from '../assistant-actions/module-action-server';
 import {listLeaveRequests} from '../read';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {prepareLeaveCancelProposal} from './leave-cancel';
@@ -66,8 +66,11 @@ export type AssignedLeaveChoice=Readonly<{id:string;currentStepId:string|null;ap
  * `truncated` is the owner's own flag: more were assigned than it lists. Shared with the harness so the queue
  * read and the chooser use one set. */
 export async function assignedLeaveDecisionChoices(ctx:SessionContext):Promise<Readonly<{choices:readonly AssignedLeaveChoice[];truncated:boolean}>>{
+ // The assigned-leave action's own read-only owner (it reaches pendingLeaveDecisionChoiceMetadataTx after the reviewed
+ // decision actor check); a proposal module never imports the leave service with its write paths. Unavailable is empty.
+ const assigned=await readAssignedLeaveModuleActionChoices(ctx);
+ const tasks=assigned.kind==='choices'?assigned.tasks:[],truncated=assigned.kind==='choices'&&assigned.truncated;
  return withTenant(ctx,async tx=>{
-  const {tasks,truncated}=await pendingLeaveDecisionChoiceMetadataTx(tx,ctx);
   if(!tasks.length)return Object.freeze({choices:Object.freeze([]),truncated});
   const rows=await tx.select({id:leaveRequest.id,startDate:leaveRequest.startDate,endDate:leaveRequest.endDate,days:leaveRequest.days,leaveType:leaveType.name})
    .from(leaveRequest).innerJoin(leaveType,eq(leaveType.id,leaveRequest.leaveTypeId))
