@@ -44,8 +44,10 @@ reversible experiment41296321846 passed, but the added three guard plans improve
 only the unrelated employee materially (63.1→40.3ms); HR/delegate/manager medians
 were not convincingly better. That bundle is not promoted. Follow-up experiment
 41296762228 on source94353cade instead measures delaying subject metadata until
-after the unchanged request decision proof; it is running, with no application
-change or passing claim.
+after the unchanged request decision proof; it passed exact task/refusal checks but has uneven performance (manager137.9→113.9ms,
+employee88.7→91.8ms, HR86.1→86.3ms, delegate164.7→162.9ms versus its restored
+baseline). It is not promoted. The next reversible experiment targets repeated
+principal/grant query planning, with no authorization-result cache.
 No later speed pass is claimed. These new fixtures derive their business dates from
 the native date owner; the current-month boundary differs from31 October tests,
 so cross-run performance changes must not be treated as controlled causal ratios.
