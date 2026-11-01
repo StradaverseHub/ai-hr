@@ -20,7 +20,7 @@ import { Card, LoadState, Muted, Screen, SectionLabel, Title } from '../../lib/u
 type Item = { icon: IconName; label: MessageKey; href: Href };
 
 export default function Me() {
-  const { palette } = useTenantDesign();
+  const { palette, design } = useTenantDesign();
   const { signOut, employmentId, setEmploymentId } = useSession();
   const me = useApi('me', {}, signOut);
   const employments = me.data?.employments ?? [];
@@ -43,12 +43,19 @@ export default function Me() {
   return (
     <Screen atmospheric refreshing={me.loading && me.data != null} onRefresh={me.reload}>
       <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}><Title>{t('tabMe')}</Title><Pressable accessibilityRole="button" accessibilityLabel={t('qaSettings')} onPress={()=>router.push('/settings')} style={{width:44,height:44,alignItems:'center',justifyContent:'center',borderRadius:22,backgroundColor:alpha(palette.text,.08)}}><Icon name="settings" color={palette.text} size={21}/></Pressable></View>
-      <View style={{ alignItems: 'center', gap: 12, paddingTop: 12, paddingBottom: 20 }}>
+      {design.schemaVersion === 2 ? <View style={{ alignItems: 'center', gap: 12, paddingTop: 12, paddingBottom: 20 }}>
         <Material style={{width:94,height:94,borderRadius:34,alignItems:'center',justifyContent:'center',experimental_backgroundImage:`linear-gradient(145deg, ${alpha(palette.accent,.25)} 0%, transparent 75%)`}}><Text style={{color:palette.text,fontSize:34,fontWeight:'500'}}>{initials(me.data?.person.name)}</Text></Material>
         <Text accessibilityRole="header" style={{color:palette.text,fontSize:28,fontWeight:'600',letterSpacing:-.6,textAlign:'center'}}>{me.data?.person.name??t('tabMe')}</Text>
         {current&&<Text style={{color:palette.muted,fontSize:14,lineHeight:21,textAlign:'center'}}>{[current.position,current.company].filter(Boolean).join(' · ')}</Text>}
         {me.data?.person.email&&<Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{me.data.person.email}</Text>}
-      </View>
+      </View> : <Material style={{ padding: 20, gap: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <View style={{ width: 64, minHeight: 64, padding: 8, borderRadius: 18, backgroundColor: palette.button, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: palette.onButton, fontSize: 24, fontWeight: '700' }}>{initials(me.data?.person.name)}</Text></View>
+          <View style={{ flex: 1, gap: 5 }}><Text accessibilityRole="header" style={{ color: palette.text, fontSize: 24, fontWeight: '700' }}>{me.data?.person.name ?? t('tabMe')}</Text>
+          {current && <Text style={{ color: palette.muted, fontSize: 14, lineHeight: 21 }}>{[current.position, current.company].filter(Boolean).join(' · ')}</Text>}</View>
+        </View>
+        {me.data?.person.email && <Text style={{ color: palette.muted, fontSize: 14 }}>{me.data.person.email}</Text>}
+      </Material>}
       <LoadState loading={me.loading} hasData={me.data != null} error={me.error} onRetry={me.reload} />
 
       {employments.length > 1 && <>

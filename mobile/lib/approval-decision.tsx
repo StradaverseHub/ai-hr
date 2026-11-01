@@ -110,15 +110,15 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
 }
 
 /** Every pending task, the web inbox's order. Offline: the rows already shown stay, labelled stale. */
-export function ApprovalsScreen() {
+export function ApprovalsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
   const list = usePagedResource(TASKS, { native: 'expanded' }, keyOf, signOut);
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <Atmosphere strong />
-    <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
+    <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: embedded ? 130 : 40 }}
       header={<View style={{ gap: 12 }}>
-        <HeaderBack />
+        {!embedded && <HeaderBack />}
         <Title>{t('approvalsTitle')}</Title>
         <View style={{flexDirection:'row',gap:8,paddingBottom:12}}><StatusPill label={t('pending')}/></View>
       </View>}

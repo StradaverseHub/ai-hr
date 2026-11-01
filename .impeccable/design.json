@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-25T15:49:05.310Z",
+  "generatedAt": "2026-11-01T16:12:15.440312+00:00",
   "title": "Design System: AIHR",
   "extensions": {
     "colorMeta": {
@@ -339,6 +339,216 @@
           "oklch(83.57% 0.1578 48.14)",
           "oklch(95.00% 0.1578 48.14)"
         ]
+      },
+      "mobile-switch-face": {
+        "role": "primary",
+        "displayName": "Native Switch Face",
+        "tonalRamp": [
+          "oklch(15.00% 0.2162 122.54)",
+          "oklch(26.43% 0.2162 122.54)",
+          "oklch(37.86% 0.2162 122.54)",
+          "oklch(49.29% 0.2162 122.54)",
+          "oklch(60.71% 0.2162 122.54)",
+          "oklch(72.14% 0.2162 122.54)",
+          "oklch(83.57% 0.2162 122.54)",
+          "oklch(95.00% 0.2162 122.54)"
+        ]
+      },
+      "mobile-switch-ink": {
+        "role": "neutral",
+        "displayName": "Native Switch Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.0446 119.87)",
+          "oklch(26.43% 0.0446 119.87)",
+          "oklch(37.86% 0.0446 119.87)",
+          "oklch(49.29% 0.0446 119.87)",
+          "oklch(60.71% 0.0446 119.87)",
+          "oklch(72.14% 0.0446 119.87)",
+          "oklch(83.57% 0.0446 119.87)",
+          "oklch(95.00% 0.0446 119.87)"
+        ]
+      },
+      "mobile-lcd": {
+        "role": "neutral",
+        "displayName": "Native Lcd",
+        "tonalRamp": [
+          "oklch(15.00% 0.0047 196.75)",
+          "oklch(26.43% 0.0047 196.75)",
+          "oklch(37.86% 0.0047 196.75)",
+          "oklch(49.29% 0.0047 196.75)",
+          "oklch(60.71% 0.0047 196.75)",
+          "oklch(72.14% 0.0047 196.75)",
+          "oklch(83.57% 0.0047 196.75)",
+          "oklch(95.00% 0.0047 196.75)"
+        ]
+      },
+      "mobile-key-edge": {
+        "role": "neutral",
+        "displayName": "Native Key Edge",
+        "tonalRamp": [
+          "oklch(15.00% 0.0222 129.26)",
+          "oklch(26.43% 0.0222 129.26)",
+          "oklch(37.86% 0.0222 129.26)",
+          "oklch(49.29% 0.0222 129.26)",
+          "oklch(60.71% 0.0222 129.26)",
+          "oklch(72.14% 0.0222 129.26)",
+          "oklch(83.57% 0.0222 129.26)",
+          "oklch(95.00% 0.0222 129.26)"
+        ]
+      },
+      "mobile-light-bg": {
+        "role": "neutral",
+        "displayName": "Native Light Bg",
+        "tonalRamp": [
+          "oklch(15.00% 0.0017 247.84)",
+          "oklch(26.43% 0.0017 247.84)",
+          "oklch(37.86% 0.0017 247.84)",
+          "oklch(49.29% 0.0017 247.84)",
+          "oklch(60.71% 0.0017 247.84)",
+          "oklch(72.14% 0.0017 247.84)",
+          "oklch(83.57% 0.0017 247.84)",
+          "oklch(95.00% 0.0017 247.84)"
+        ]
+      },
+      "mobile-light-card": {
+        "role": "neutral",
+        "displayName": "Native Light Card",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 89.88)",
+          "oklch(26.43% 0.0000 89.88)",
+          "oklch(37.86% 0.0000 89.88)",
+          "oklch(49.29% 0.0000 89.88)",
+          "oklch(60.71% 0.0000 89.88)",
+          "oklch(72.14% 0.0000 89.88)",
+          "oklch(83.57% 0.0000 89.88)",
+          "oklch(95.00% 0.0000 89.88)"
+        ]
+      },
+      "mobile-light-ink": {
+        "role": "neutral",
+        "displayName": "Native Light Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.0052 248.12)",
+          "oklch(26.43% 0.0052 248.12)",
+          "oklch(37.86% 0.0052 248.12)",
+          "oklch(49.29% 0.0052 248.12)",
+          "oklch(60.71% 0.0052 248.12)",
+          "oklch(72.14% 0.0052 248.12)",
+          "oklch(83.57% 0.0052 248.12)",
+          "oklch(95.00% 0.0052 248.12)"
+        ]
+      },
+      "mobile-light-muted": {
+        "role": "neutral",
+        "displayName": "Native Light Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.0239 264.33)",
+          "oklch(26.43% 0.0239 264.33)",
+          "oklch(37.86% 0.0239 264.33)",
+          "oklch(49.29% 0.0239 264.33)",
+          "oklch(60.71% 0.0239 264.33)",
+          "oklch(72.14% 0.0239 264.33)",
+          "oklch(83.57% 0.0239 264.33)",
+          "oklch(95.00% 0.0239 264.33)"
+        ]
+      },
+      "mobile-light-border": {
+        "role": "neutral",
+        "displayName": "Native Light Border",
+        "tonalRamp": [
+          "oklch(15.00% 0.0093 258.34)",
+          "oklch(26.43% 0.0093 258.34)",
+          "oklch(37.86% 0.0093 258.34)",
+          "oklch(49.29% 0.0093 258.34)",
+          "oklch(60.71% 0.0093 258.34)",
+          "oklch(72.14% 0.0093 258.34)",
+          "oklch(83.57% 0.0093 258.34)",
+          "oklch(95.00% 0.0093 258.34)"
+        ]
+      },
+      "mobile-light-accent": {
+        "role": "neutral",
+        "displayName": "Native Light Accent",
+        "tonalRamp": [
+          "oklch(15.00% 0.1027 123.95)",
+          "oklch(26.43% 0.1027 123.95)",
+          "oklch(37.86% 0.1027 123.95)",
+          "oklch(49.29% 0.1027 123.95)",
+          "oklch(60.71% 0.1027 123.95)",
+          "oklch(72.14% 0.1027 123.95)",
+          "oklch(83.57% 0.1027 123.95)",
+          "oklch(95.00% 0.1027 123.95)"
+        ]
+      },
+      "mobile-dark-bg": {
+        "role": "neutral",
+        "displayName": "Native Dark Bg",
+        "tonalRamp": [
+          "oklch(15.00% 0.0052 248.11)",
+          "oklch(26.43% 0.0052 248.11)",
+          "oklch(37.86% 0.0052 248.11)",
+          "oklch(49.29% 0.0052 248.11)",
+          "oklch(60.71% 0.0052 248.11)",
+          "oklch(72.14% 0.0052 248.11)",
+          "oklch(83.57% 0.0052 248.11)",
+          "oklch(95.00% 0.0052 248.11)"
+        ]
+      },
+      "mobile-dark-card": {
+        "role": "neutral",
+        "displayName": "Native Dark Card",
+        "tonalRamp": [
+          "oklch(15.00% 0.0070 229.13)",
+          "oklch(26.43% 0.0070 229.13)",
+          "oklch(37.86% 0.0070 229.13)",
+          "oklch(49.29% 0.0070 229.13)",
+          "oklch(60.71% 0.0070 229.13)",
+          "oklch(72.14% 0.0070 229.13)",
+          "oklch(83.57% 0.0070 229.13)",
+          "oklch(95.00% 0.0070 229.13)"
+        ]
+      },
+      "mobile-dark-ink": {
+        "role": "neutral",
+        "displayName": "Native Dark Ink",
+        "tonalRamp": [
+          "oklch(15.00% 0.0041 271.37)",
+          "oklch(26.43% 0.0041 271.37)",
+          "oklch(37.86% 0.0041 271.37)",
+          "oklch(49.29% 0.0041 271.37)",
+          "oklch(60.71% 0.0041 271.37)",
+          "oklch(72.14% 0.0041 271.37)",
+          "oklch(83.57% 0.0041 271.37)",
+          "oklch(95.00% 0.0041 271.37)"
+        ]
+      },
+      "mobile-dark-muted": {
+        "role": "neutral",
+        "displayName": "Native Dark Muted",
+        "tonalRamp": [
+          "oklch(15.00% 0.0228 263.17)",
+          "oklch(26.43% 0.0228 263.17)",
+          "oklch(37.86% 0.0228 263.17)",
+          "oklch(49.29% 0.0228 263.17)",
+          "oklch(60.71% 0.0228 263.17)",
+          "oklch(72.14% 0.0228 263.17)",
+          "oklch(83.57% 0.0228 263.17)",
+          "oklch(95.00% 0.0228 263.17)"
+        ]
+      },
+      "mobile-dark-border": {
+        "role": "neutral",
+        "displayName": "Native Dark Border",
+        "tonalRamp": [
+          "oklch(15.00% 0.0117 243.13)",
+          "oklch(26.43% 0.0117 243.13)",
+          "oklch(37.86% 0.0117 243.13)",
+          "oklch(49.29% 0.0117 243.13)",
+          "oklch(60.71% 0.0117 243.13)",
+          "oklch(72.14% 0.0117 243.13)",
+          "oklch(83.57% 0.0117 243.13)",
+          "oklch(95.00% 0.0117 243.13)"
+        ]
       }
     },
     "typographyMeta": {
@@ -388,6 +598,21 @@
         "name": "field-focus",
         "value": "0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent)",
         "purpose": "Operational field focus halo."
+      },
+      {
+        "name": "mobile-dock-light",
+        "value": "0px 7px 16px rgba(16,18,20,0.12)",
+        "purpose": "Native light physical attendance dock only."
+      },
+      {
+        "name": "mobile-dock-dark",
+        "value": "0px 7px 16px rgba(0,0,0,0.28)",
+        "purpose": "Native dark physical attendance dock only."
+      },
+      {
+        "name": "mobile-pass",
+        "value": "0px 8px 28px rgba(0,0,0,0.14)",
+        "purpose": "Opaque native sign-in Access Pass."
       }
     ],
     "motion": [
@@ -465,16 +690,49 @@
       "description": "Flat card with the shared sentence-case header strip.",
       "html": "<section class=\"ds-card\"><header class=\"ds-card-head\">Welcome media</header><div class=\"ds-card-body\">Choose the image, GIF or video shown before sign-in.</div></section>",
       "css": ".ds-card{font-family:var(--font-sans,system-ui,sans-serif);border:1px solid var(--border,#e8e8eb);border-radius:.75rem;background:var(--card,#fff);color:var(--foreground,#1c1c1f);box-shadow:none}.ds-card-head{padding:.75rem 1rem;border-bottom:1px solid var(--border,#e8e8eb);border-radius:.6875rem .6875rem 0 0;background:var(--sidebar,#f8f8f9);font-size:.8125rem;font-weight:600}.ds-card-body{padding:1rem;font-size:.875rem;line-height:1.25rem}"
+    },
+    {
+      "name": "Native primary action",
+      "kind": "button",
+      "refersTo": "mobile-primary",
+      "description": "Native default colors and touch size; the carried hard shadow is intentionally not canonized. Browser snippet is a palette/shape preview, not native runtime evidence.",
+      "html": "<button class=\"ds-mobile-primary\">Continue</button>",
+      "css": ".ds-mobile-primary{min-height:52px;padding:14px 16px;border:0;border-radius:14px;background:#c7f51c;color:#111600;font:600 16px system-ui}.ds-mobile-primary:hover{opacity:.85}.ds-mobile-primary:active{opacity:.7}.ds-mobile-primary:focus-visible{outline:2px solid #405400;outline-offset:3px}.ds-mobile-primary:disabled{opacity:.7}"
+    },
+    {
+      "name": "Native Access Pass",
+      "kind": "input",
+      "refersTo": "mobile-pass",
+      "description": "One opaque group with underlined native input rows. Browser preview omits original mountain artwork; no native screenshot claim.",
+      "html": "<section class=\"ds-mobile-pass\"><label>Username<input autocomplete=\"username\"></label><label>Password<input type=\"password\" autocomplete=\"current-password\"></label><button aria-label=\"Sign in\"><svg width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" aria-hidden=\"true\"><path d=\"M4 12h16m-6-6 6 6-6 6\"/></svg></button></section>",
+      "css": ".ds-mobile-pass{padding:22px;border-radius:26px;background:#fff;color:#101214;box-shadow:0 8px 28px rgba(0,0,0,.14);font:15px system-ui;display:grid;gap:14px}.ds-mobile-pass label{display:grid;gap:2px;font-size:14px}.ds-mobile-pass input{min-height:48px;border:0;border-bottom:1px solid #d8dce2;color:#101214;background:transparent;font:19px system-ui}.ds-mobile-pass button{justify-self:end;width:60px;height:60px;border:0;border-radius:30px;background:#c7f51c;color:#111600}.ds-mobile-pass button:hover{opacity:.85}.ds-mobile-pass button:active{opacity:.75}.ds-mobile-pass :focus-visible{outline:2px solid #405400;outline-offset:3px}"
+    },
+    {
+      "name": "Native five-destination dock",
+      "kind": "nav",
+      "refersTo": "mobile-navigation",
+      "description": "Five flexible labeled destinations. Browser text-only shape preview; native implementation supplies platform symbols.",
+      "html": "<nav class=\"ds-mobile-nav\"><button aria-current=\"page\">Home</button><button>Clock</button><button>Leave</button><button>Approvals</button><button>Me</button></nav>",
+      "css": ".ds-mobile-nav{display:flex;max-width:560px;padding:5px;border:1px solid #d8dce2;border-radius:27px;background:#fff;box-shadow:0 4px 16px rgba(0,0,0,.1)}.ds-mobile-nav button{flex:1;min-height:52px;border:0;border-radius:22px;background:transparent;color:#5d6472;font:11px system-ui}.ds-mobile-nav [aria-current]{font-weight:700;color:#101214}.ds-mobile-nav button:hover{opacity:.85}.ds-mobile-nav button:active{opacity:.65}.ds-mobile-nav button:focus-visible{outline:2px solid #405400;outline-offset:1px}"
+    },
+    {
+      "name": "Native attendance instrument dock",
+      "kind": "custom",
+      "refersTo": "mobile-clock-dock",
+      "description": "Source-derived material preview. The functional native component obtains all time/state/actions from ClockPanel.",
+      "html": "<section class=\"ds-mobile-dock\"><button aria-label=\"Clock in\"><svg width=\"36\" height=\"36\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 6v6l4 2\"/></svg><span aria-hidden=\"true\">IN</span></button></section>",
+      "css": ".ds-mobile-dock{padding:10px;border-radius:30px;border:1px solid #d7dbe0;background:linear-gradient(145deg,#f7f8f9,#dfe2e5);box-shadow:0 7px 16px rgba(16,18,20,.12)}.ds-mobile-dock button{display:flex;align-items:center;justify-content:center;gap:16px;width:100%;min-height:164px;border:1px solid #9db915;border-radius:22px;background:#c7f51c;color:#111600;box-shadow:inset 0 2px 2px rgba(255,255,255,.7);font:800 76px system-ui}.ds-mobile-dock button:hover{filter:brightness(.97)}.ds-mobile-dock button:active{transform:translateY(2px);box-shadow:inset 0 2px 5px rgba(0,0,0,.16)}.ds-mobile-dock button:focus-visible{outline:2px solid #405400;outline-offset:3px}@media(prefers-reduced-motion:reduce){.ds-mobile-dock button:active{transform:none}}"
     }
   ],
   "narrative": {
     "northStar": "Atelier / Maker's Mark",
-    "overview": "Atelier is the default authenticated workspace: neutral surfaces, compact controls, a quiet navigation rail and fire-orange actions. The existing Maker's Mark supplies its signature. This records the implemented system alongside the supported Classic and Monolith choices; light/dark remains an independent setting.\n\nPublic sign-in is a distinct, owner-specified indigo-and-white surface with AIHR identity. Its palette is scoped locally and remains light across app themes. Its typography resolves the existing font variable. The login composition belongs to its surface brief, not to every future screen.",
+    "overview": "Atelier is the default authenticated workspace: neutral surfaces, compact controls, a quiet navigation rail and fire-orange actions. The existing Maker's Mark supplies its signature. This records the implemented system alongside the supported Classic and Monolith choices; light/dark remains an independent setting.\n\nPublic sign-in is a distinct, owner-specified indigo-and-white surface with AIHR identity. Its palette is scoped locally and remains light across app themes. Its typography resolves the existing font variable. The login composition belongs to its surface brief, not to every future screen.\n\nThe native OneHR+ default has its own approved **Daily Switch** world: porcelain/graphite surfaces, a chartreuse physical attendance key and dark LCD worked-time display. It applies to schema-1 native screens, replacing their prior default city/Opal presentation. Published schema-2 compositions retain their own theme, typography, artwork and navigation; explicit cobalt/coral schema-1 accents survive. Web Atelier, public web sign-in, Performance & Talent and lifecycle styling retain their existing scope.\n\nThe native Access Pass uses the original paired Opal mountain artwork, restored by the owner specifically for sign-in. Username and password share one opaque panel and one submit action; continuation states retain existing MFA, enrollment and recovery behavior. Evidence is source inspection of `mobile/lib/{daily-switch-theme,daily-switch,daily-navigation,sign-in-background,internal-sign-in,visual,design,ui}.tsx` (the theme module is `.ts`) and tab routes. Native rendered acceptance remains pending: no iOS/Android screenshot or contrast-verification claim follows from this documentation.",
     "keyCharacteristics": [
       "Flat shell and cards with hairline boundaries.",
       "Compact sentence-case operational hierarchy.",
       "Orange action/focus accent in Atelier; independent indigo sign-in.",
-      "Human-confirmation signature and semantic status labels."
+      "Human-confirmation signature and semantic status labels.",
+      "Native Daily Switch default: porcelain/graphite, chartreuse physical key, LCD and original mountain Access Pass; published tenant compositions remain authoritative."
     ],
     "rules": [
       {
@@ -486,13 +744,20 @@
         "name": "The Flat Surface Rule",
         "body": "Keep the shell and cards flat; use the existing small control shadow, ask-box lift and overlay shadow for their established roles.",
         "section": "elevation"
+      },
+      {
+        "name": "The Published Theme Rule",
+        "body": "Daily Switch defaults never override a published schema-2 tenant composition.",
+        "section": "colors"
       }
     ],
     "dos": [
       "Do reuse the shared card, field, button and table hooks so Atelier styling reaches new operational screens.",
       "Do keep status text alongside its color and preserve tabular figures in tables.",
       "Do preserve supported saved theme choices; Atelier supplies the fallback.",
-      "Do retain visible keyboard focus and the reduced-motion path."
+      "Do retain visible keyboard focus and the reduced-motion path.",
+      "Do use the native `mobile-*` roles only within the Daily Switch default, preserving tenant composition authority.",
+      "Do keep the original mountain artwork scoped to native sign-in and announce instrument values as complete text."
     ],
     "donts": [
       "Don't apply the public login split or indigo palette to authenticated screens by default.",

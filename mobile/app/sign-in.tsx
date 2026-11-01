@@ -16,7 +16,8 @@ import { verifyCompanyServer } from '../lib/connection-probe';
 import { config, configProblem, identityClientId } from '../lib/config';
 import { t } from '../lib/i18n';
 import { useSession } from '../lib/session';
-import { Atmosphere, useTenantDesign } from '../lib/design';
+import { useTenantDesign } from '../lib/design';
+import { SignInBackground } from '../lib/sign-in-background';
 import { Button, colors } from '../lib/ui';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -76,7 +77,7 @@ function ProviderSignIn() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: palette.bg }}><Atmosphere strong /><ScrollView contentContainerStyle={styles.wrap}>
+    <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><ScrollView contentContainerStyle={styles.wrap}>
       <Text style={styles.brand}>{t('appName')}</Text>
       <Text style={styles.title}>{t('signInTitle')}</Text>
       <Text style={styles.body}>{t('signInBody')}</Text>

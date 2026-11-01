@@ -30,13 +30,12 @@ export type HomeClockView={
   current:ClockResponse['state'];loading:boolean;error:Error|null;reload:()=>void;
   action:'in'|'out';busy:boolean;disabled:boolean;doneAt:string|null;message:string|null;
   /** Something here needs the Clock tab's full screen (a review left open there, an unresolved submission, registration, location settings). */
-  finishOnClockTab:boolean;clock:()=>void;
+  finishOnClockTab:boolean;clock:()=>void;phase:ClockDraft['phase']|null;
 };
 /**
  * The clock journey. `variant: 'home'` (Mobile WOW round, owner request) runs the SAME journey from Home's card in one
- * tap: prepare (saved attempt, signed-clock checks, location, the server's location assessment, a required photo) and,
- * when it reaches review with nothing left to decide, submit at once instead of waiting for the slide. Every refusal,
- * uncertainty and recovery path is the Clock tab's own; anything that needs a decision is finished there.
+ * tap: prepare (saved attempt, signed-clock checks, location assessment and required photo), then show the same
+ * explicit review and receipt recovery controls on Home. No Home tap automatically submits a punch.
  */
 export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent}:{initialAction?:'in'|'out';widgetIntent?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const {employmentId,status:sessionStatus,signOut}=useSession();
@@ -60,7 +59,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const current=clock.data?.state;
   /** Offline cold start: no server clock read, and the driver holds a ready offline context for this employment. */
   const coldStart=!current&&offline.mode==='offline';
-  const action=draft?.action??((offline.clockedIn??current?.clockedIn)?'out':'in');
+  const action=(draft&&draft.phase!=='done'?draft.action:undefined)??((offline.clockedIn??current?.clockedIn)?'out':'in');
   const identity=clock.data?.employmentId??(coldStart?offline.employmentId:undefined);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [signedStatus,setSignedStatus]=useState<SignedClockStatus|null>(null);
@@ -108,8 +107,6 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     putClock({employmentId:identity,action:initialAction,phase:'idle'});
   },[initialAction,widgetIntent,recovery.ready,identity,sessionStatus,draft,signedStatus,putClock]);
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
-  /** Home asked for a one-tap clock: submit as soon as the journey reaches review with nothing left to decide. */
-  const quick=useRef(false);
   const label=action==='in'?t('clockIn'):t('clockOut');
   function needsRegistration(e:unknown){return e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable&&e.reason==='registration_required';}
   function errorMessage(e:unknown){
@@ -324,29 +321,21 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       attemptStartedAt:draft.attemptStartedAt,attemptReceiptTime:draft.attemptReceiptTime,phase:'idle',message:t('attemptSavedNotSent')});
     else putClock(null);
   }
-  useEffect(()=>{
-    if(variant!=='home'||!quick.current||!draft)return;
-    if(draft.phase==='review'){
-      quick.current=false;
-      // A phone that must be registered first is a decision for the Clock tab, never skipped.
-      if(current?.deviceRequired&&!draft.deviceToken&&draft.clockProtocol!=='signed'){putClock({...draft,message:t('registrationNotice')},draft.requestId);return;}
-      void submit();
-    }else if(draft.phase!=='preparing')quick.current=false;
-  },[variant,draft?.phase,draft?.requestId]);
-  function quickClock(){
-    // An offline-capable build keeps its local route and banners on the Clock tab.
-    if(offlineClocking){router.navigate('/clock');return;}
-    quick.current=true;void prepare();
-  }
-  if(variant==='home'){
-    if(clock.data&&!clock.data.enabled)return null;
-    const disabled=!current||pending||!recovery.ready||(signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending');
-    const finishOnClockTab=!!draft&&(draft.phase==='uncertain'||draft.phase==='review'&&!quick.current)||registrationNeeded||!!draft?.locationIssue||!!recovery.error;
-    return <>{renderHome?.({current:current??null,loading:clock.loading,error:clock.error,reload:clock.reload,action,busy:pending||(draft?.phase==='review'&&quick.current),
-      disabled,doneAt:draft?.phase==='done'?draft.receiptTime??null:null,message:draft?.message??null,finishOnClockTab,clock:quickClock})}</>;
-  }
+  const home=variant==='home';
+  const homeDisabled=!(current||coldStart)||pending||!recovery.ready||clock.loading||
+    !!draft&&['review','uncertain','submitting','preparing'].includes(draft.phase)||
+    signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
+  const homeContent=home?renderHome?.({current:current??null,loading:clock.loading,error:clock.error,reload:clock.reload,action,
+    busy:pending,disabled:homeDisabled,doneAt:draft?.phase==='done'?draft.receiptTime??null:null,
+    message:draft?.message??null,finishOnClockTab:false,clock:()=>void prepare(),phase:draft?.phase??null}):null;
+  // The same review, evidence, registration and receipt controls remain on Home.
+  // A primary Home tap prepares only; submission still requires explicit human confirmation.
+  const showHomeJourney=!!draft&&(draft.phase!=='done'&&(draft.phase!=='idle'||!!draft.message))||registrationNeeded||!!recovery.error||offline.mode==='offline'||signedStatus?.status==='other_pending'||signedStatus?.status==='offline_pending';
+  if(home&&clock.data&&!clock.data.enabled)return null;
   if(clock.data&&!clock.data.enabled)return <Muted>{t('attendanceOff')}</Muted>;
   return <View style={{gap:16}}>
+    {homeContent}
+    {(!home||showHomeJourney)&&<>
     <OfflineClockBanner offline={offline} server={offline.mode==='offline'&&current?{clockedIn:current.clockedIn,openSince:current.openSince,lastOutAt:[...current.captures].reverse().find(c=>c.direction==='out')?.recordedAt??null}:null}/>
     {!coldStart&&<LoadState loading={clock.loading} hasData={current!=null} error={clock.error} onRetry={clock.reload}/>}
     {!!recovery.error&&<><Muted>{t('genericError')}</Muted><Button title={t('retry')} onPress={recovery.reload}/></>}
@@ -354,13 +343,13 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     {signedStatus?.status==='offline_pending'&&!offlineClocking&&<Muted>{t('signedClockOfflinePending')}</Muted>}
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
-      {current&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
+      {!home&&current&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
         <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13,flexShrink:1,textAlign:'right'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
         <TimeDisplay seconds={current.workedSeconds} label={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}/>
         <Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Text>
       </View>}
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
-        {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:26,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
+        {!home&&(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:26,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
         {!!draft?.attemptStartedAt&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
@@ -395,7 +384,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
       </>}
       <SavedOfflinePunches offline={offline}/>
       {afterControls}
-      {current&&<><View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
+      {!home&&current&&<><View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
         {current.legacy.map((c,i)=><Row key={`${c.direction}-${c.time}-${i}`} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={c.time.slice(0,5)}/>)}
         {current.captures.map(c=><Row key={c.id} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}
         {!current.captures.length&&!current.legacy.length&&<Muted>{t('noClockHistory')}</Muted>}
@@ -412,6 +401,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
         </Card>)}
         {attempts.data&&!attempts.data.items.length&&<Muted>{t('noReportedAttempts')}</Muted>}
       </View></>}
+    </>}
     </>}
   </View>;
 }

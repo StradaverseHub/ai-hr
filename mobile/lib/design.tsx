@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { AccessibilityInfo, AppState, Image, Text as NativeText, StyleSheet, Platform, type TextProps, useColorScheme, View } from 'react-native';
 import { DEFAULT_MOBILE_DESIGN, mobileSurfaceIsDark, mobilePalette, parseMobileDesign, type MobileDesign, type MobileBackgrounds } from '../../lib/mobile-design';
 import { useApi } from './api';
+import { nativeMobilePalette } from './daily-switch-theme';
 import { useDisplayPrefs } from './preferences';
 import { useSession } from './session';
 
@@ -13,7 +14,7 @@ export function PublicDesignProvider({ children }: { children: ReactNode }) {
   const scheme = useColorScheme();
   const { appearance } = useDisplayPrefs();
   const chosen = appearance === 'auto' ? scheme === 'light' ? 'light' : 'dark' : appearance;
-  return <Ctx.Provider value={{ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, chosen), appearance: chosen, reload: () => {}, reduceMotion: true }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ design: DEFAULT_MOBILE_DESIGN, palette: nativeMobilePalette(DEFAULT_MOBILE_DESIGN, chosen), appearance: chosen, reload: () => {}, reduceMotion: true }}>{children}</Ctx.Provider>;
 }
 export function TenantDesignProvider({ children }: { children: ReactNode }) {
   const { signOut } = useSession();
@@ -28,11 +29,11 @@ export function TenantDesignProvider({ children }: { children: ReactNode }) {
   const { appearance: chosen } = useDisplayPrefs();
   const companyAppearance = design.appearance === 'system' ? scheme === 'light' ? 'light' : 'dark' : design.appearance;
   const appearance = chosen === 'auto' ? companyAppearance : chosen;
-  const palette = mobilePalette(design, appearance);
+  const palette = nativeMobilePalette(design, appearance);
   return <Ctx.Provider value={{ design, palette, reload: response.reload, artwork: response.data?.artwork, appearance, reduceMotion: deviceReduced || design.motion === 'reduced' }}>{children}</Ctx.Provider>;
 }
 export function useTenantDesign() {
-  return useContext(Ctx) ?? { design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'light'), reload: () => {}, reduceMotion: true, artwork: undefined, appearance: 'light' as const };
+  return useContext(Ctx) ?? { design: DEFAULT_MOBILE_DESIGN, palette: nativeMobilePalette(DEFAULT_MOBILE_DESIGN, 'light'), reload: () => {}, reduceMotion: true, artwork: undefined, appearance: 'light' as const };
 }
 export function DesignText({ style, ...props }: TextProps) {
   const { design } = useTenantDesign(), align = useContext(Align);
@@ -53,17 +54,18 @@ export function TenantBrand() {
   const brandName = design.brandName === 'AIHR' || design.brandName === 'AI HR' ? 'OneHR+' : design.brandName;
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 }}>
     {design.logo && <Image source={{ uri: design.logo }} style={{ width: 28, height: 28 }} resizeMode="contain" />}
-    <DesignText style={{ color: palette.text, fontSize: 14, fontWeight: '600', flexShrink: 1 }}>{brandName}{brandName === 'OneHR+' ? null : <DesignText style={{ color: palette.accent }}>.</DesignText>}</DesignText>
+    <DesignText style={{ color: palette.text, fontSize: design.schemaVersion === 1 ? 28 : 14, fontWeight: '700', flexShrink: 1 }}>{brandName}{brandName === 'OneHR+' ? null : <DesignText style={{ color: palette.accent }}>.</DesignText>}</DesignText>
   </View>;
 }
 
 /** Bundled artwork is decorative: no network request, focus stop or company information. */
 export function Atmosphere({ strong = false }: { strong?: boolean }) {
-  const { palette, artwork, appearance } = useTenantDesign();
+  const { palette, artwork, appearance, design } = useTenantDesign();
   const [failed, setFailed] = useState<string | null>(null);
   const dark = appearance ? appearance === 'dark' : mobileSurfaceIsDark(palette);
   const uploaded = artwork?.[dark ? 'dark' : 'light'];
   const source = uploaded && uploaded !== failed ? { uri: uploaded } : dark ? require('../assets/atmosphere/onehr-dark.png') : require('../assets/atmosphere/onehr-light.png');
+  if (design.schemaVersion !== 2) return null;
   return <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
     <Image source={source} onError={() => setFailed(uploaded ?? null)} resizeMode="cover" accessible={false} style={{ position: 'absolute', top: 0, width: '100%', height: strong ? 660 : 480, opacity: strong ? dark ? .66 : .72 : .16 }} />
     <View pointerEvents="none" style={{ position: 'absolute', top: 0, width: '100%', height: strong ? 660 : 480, experimental_backgroundImage: `linear-gradient(180deg, ${palette.bg}00 10%, ${palette.bg}55 38%, ${palette.bg} 92%)` }} />
