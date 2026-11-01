@@ -28,6 +28,7 @@
       "ownLeaveChange",
       "pageStyleRecovery",
       "scheduledActions",
+      "sessionTimeout",
       "topbar"
     ],
     "unknown": []
@@ -148,6 +149,7 @@
         "roster",
         "runnerControl",
         "scheduleDrafts",
+        "sessionTimeout",
         "systemTestingWorkspace"
       ],
       "unknown": []
