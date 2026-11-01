@@ -53,7 +53,7 @@ export function TenantBrand() {
   // Older servers can still publish the former default product name. Company branding stays intact.
   const brandName = design.brandName === 'AIHR' || design.brandName === 'AI HR' ? 'OneHR+' : design.brandName;
   return <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 }}>
-    {design.logo && <Image source={{ uri: design.logo }} style={{ width: 28, height: 28 }} resizeMode="contain" />}
+    <Image accessible={false} source={design.logo ? { uri: design.logo } : require('../assets/onehr-icon.png')} style={{ width: design.logo ? 28 : 44, height: design.logo ? 28 : 44, borderRadius: design.logo ? 0 : 12 }} resizeMode="contain" />
     <DesignText style={{ color: palette.text, fontSize: design.schemaVersion === 1 ? 28 : 14, fontWeight: '700', flexShrink: 1 }}>{brandName}{brandName === 'OneHR+' ? null : <DesignText style={{ color: palette.accent }}>.</DesignText>}</DesignText>
   </View>;
 }

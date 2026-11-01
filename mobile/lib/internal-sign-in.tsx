@@ -61,7 +61,7 @@ export function InternalSignIn() {
   const loginDisabled = busy || !(workplaceOrganization || organization) || !username || !password;
   if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
     <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
-      <View style={styles.entryHeader}><Text style={styles.wordmark}>{t('appName').endsWith('+') ? <>{t('appName').slice(0, -1)}<Text style={{ color: palette.accent }}>+</Text></> : t('appName')}</Text>
+      <View style={styles.entryHeader}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Image accessible={false} source={require('../assets/onehr-icon.png')} style={{ width: 44, height: 44, borderRadius: 12 }}/><Text style={styles.wordmark}>{t('appName').endsWith('+') ? <>{t('appName').slice(0, -1)}<Text style={{ color: palette.accent }}>+</Text></> : t('appName')}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={styles.workplace}>
           <Text style={styles.workplaceText}>{company?.name || companyCopy().change}</Text><Icon name="chevronDown" color={palette.text} size={14}/>
         </Pressable>
