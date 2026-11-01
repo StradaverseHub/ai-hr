@@ -32,6 +32,7 @@ import {pendingLeaveTaskMetadata} from '../../packs/leave/service';
 import {workerRunGateTx} from '../agent-registry/controls';
 import {newRunId,recordOutcomeFollowup,writeOutcomeRecordTx,type OutcomeCheck} from '../outcome-record/record';
 import {leavePolicyVersionTx} from '../outcome-record/rule-versions';
+import {sameRecommendationTodayTx} from './recommendation-dedupe';
 import {listLeaveRequests,plannedAbsences} from '../read';
 import {RECOMMENDATION_CHECKS,type RECOMMENDATION_RESULTS,type RECOMMENDATION_VERDICTS} from '../semantic-model/entities-recommend';
 
@@ -150,6 +151,10 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
  // The record is written only while the worker may still run: a switch-off or stop in between ends it unrecorded.
  const recordId=await withTenant(ctx,async tx=>{
   if(!(await workerRunGateTx(tx,ctx,RECOMMENDER_WORKER)).run)return null;
+  // A reload of the same recommendation reuses today's record for this request and step (recommendation-dedupe.ts).
+  const same=await sameRecommendationTodayTx(tx,ctx,{agentIdentity:RECOMMENDER_AGENT_IDENTITY,instructionSet:RECOMMENDER_VERSION,leaveRequestId:request.id,today,verdict,
+   checks:checks.map(check=>`${check.check}:${check.result}`),failedRules:failed.map(rule=>`${rule.check}:${rule.blocking?'blocking':'non_blocking'}`),ruleVersions:checks.map(check=>check.ruleVersion)});
+  if(same)return same;
   const record=await writeOutcomeRecordTx(tx,ctx,{runId:newRunId(),runKind:'turn',startedAt,finishedAt:new Date(Math.max(Date.now(),startedAt.getTime())),
    authority:{kind:'person',askedByUserId:ctx.userId!},agentIdentity:RECOMMENDER_AGENT_IDENTITY,reads,
    checks:checks.map((check):OutcomeCheck=>({check:check.check,owner:check.owner,ruleVersion:check.ruleVersion,
