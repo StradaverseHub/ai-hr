@@ -105,23 +105,16 @@ export function InternalSignIn() {
         void finish(step!).catch(() => setError('unavailable')).finally(() => { pending.current = false; setBusy(false); });
       }} disabled={busy}/>
     </View> : <View style={styles.fields}>
-      {state === 'login' && <>
-        <Text style={styles.body}>{workplaceOrganization ? copy.workplaceLoginHelp : copy.loginHelp}</Text>
-        {workplaceOrganization ? <Text style={styles.body}>{copy.organization}: {workplaceOrganization}</Text> :
-          <><Text style={styles.label}>{copy.organization}</Text><TextInput accessibilityLabel={copy.organization} autoCapitalize="none" autoCorrect={false} maxLength={64} value={organization} onChangeText={setOrganization} style={styles.input} editable={!busy}/></>}
-        <Text style={styles.label}>{copy.username}</Text><TextInput accessibilityLabel={copy.username} autoCapitalize="none" autoCorrect={false} autoComplete="username" maxLength={64} value={username} onChangeText={setUsername} style={styles.input} editable={!busy}/>
-      </>}
-      {(state === 'login' || state === 'password') && <>
-        <Text style={styles.label}>{state === 'login' ? copy.password : copy.newPassword}</Text><TextInput accessibilityLabel={state === 'login' ? copy.password : copy.newPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={128} autoComplete={state === 'login' ? 'current-password' : 'new-password'} value={password} onChangeText={setPassword} style={styles.input} editable={!busy}/>
-        {state === 'password' && <><Text style={styles.body}>{copy.passwordHelp}</Text><Text style={styles.label}>{copy.confirmation}</Text><TextInput accessibilityLabel={copy.confirmation} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={128} value={confirmation} onChangeText={setConfirmation} style={styles.input} editable={!busy}/></>}
+      {state === 'password' && <>
+        <Text style={styles.label}>{copy.newPassword}</Text><TextInput accessibilityLabel={copy.newPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={128} autoComplete="new-password" value={password} onChangeText={setPassword} style={styles.input} editable={!busy}/>
+        <Text style={styles.body}>{copy.passwordHelp}</Text><Text style={styles.label}>{copy.confirmation}</Text><TextInput accessibilityLabel={copy.confirmation} secureTextEntry autoCapitalize="none" autoCorrect={false} maxLength={128} value={confirmation} onChangeText={setConfirmation} style={styles.input} editable={!busy}/>
       </>}
       {state === 'enroll' && <>
         <Text style={styles.body}>{copy.enrollHelp}</Text>{step?.qr && <Image accessibilityLabel={copy.qrAlt} source={{ uri: step.qr }} style={styles.qr}/>}
         <Text style={styles.label}>{copy.manualKey}</Text><Text selectable style={styles.key}>{step?.secret}</Text>
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text style={styles.label}>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={styles.input} editable={!busy}/></>}
-      <Button title={busy ? copy.working : state === 'login' ? copy.signIn : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'login' && (!(workplaceOrganization || organization) || !username || !password)) || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
-      {state === 'login' && <Button title={copy.forgot} kind="quiet" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')}/>}
+      <Button title={busy ? copy.working : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
       {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
     </View>}
     <Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={() => router.push('/company')}/>

@@ -109,7 +109,7 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
       </View>
       <DailySwitch working={today.clockedIn} seconds={worked} busy={view.busy} disabled={view.disabled||uncertain||reviewing} onPress={view.clock}/>
       {view.doneAt&&<Text accessibilityRole="alert" style={{color:palette.text,fontSize:15,textAlign:'center'}}>{t('clockRecorded')} · {clockTime(view.doneAt)}</Text>}
-      {!view.doneAt&&!view.busy&&!reviewing&&!uncertain&&<Text style={{color:palette.muted,fontSize:14,textAlign:'center'}}>{today.clockedIn&&today.openSince?t('onClockSince',{time:clockTime(today.openSince)??''}):t('noClockHistory')}</Text>}
+      {!view.doneAt&&!view.busy&&!reviewing&&!uncertain&&<Text style={{color:palette.muted,fontSize:14,textAlign:'center'}}>{today.clockedIn&&today.openSince?t('onClockSince',{time:clockTime(today.openSince)??''}):today.captures.length===0?t('noClockHistory'):t('offTheClock')}</Text>}
     </>}
   </View>;
 }
