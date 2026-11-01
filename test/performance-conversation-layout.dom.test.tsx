@@ -65,8 +65,10 @@ it.each(['response','throw'])('restores the exact original draft after a %s fail
  else ports.send.mockRejectedValueOnce(new Error('Please try again.'));
  render(<NextIntlClientProvider locale="en" messages={en}><ReviewConversation reviewId="review" stage="results" initial={{revision:7,messages:[]}} aiEnabled labels={en.onehr.conversation}/></NextIntlClientProvider>);
  const box=screen.getByLabelText(en.onehr.conversation.message);fireEvent.change(box,{target:{value:original}});fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
- await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('Please try again.'));
- expect(box).toHaveValue(original);expect(box).not.toBeDisabled();expect(screen.queryByRole('status')).toBeNull();expect(ports.refresh).not.toHaveBeenCalled();
+ await waitFor(()=>{
+  expect(screen.getByRole('alert')).toHaveTextContent('Please try again.');
+  expect(box).toHaveValue(original);expect(box).not.toBeDisabled();expect(screen.queryByRole('status')).toBeNull();expect(ports.refresh).not.toHaveBeenCalled();
+ });
  expect(ports.send.mock.calls[0][2]).toBe(7);expect(ports.send.mock.calls[0][4]).toBe(original.trim());
  fireEvent.click(screen.getByRole('button',{name:en.onehr.conversation.send}));
  await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());

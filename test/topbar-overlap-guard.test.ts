@@ -241,6 +241,7 @@ describe('topbar — the right cluster has a budget and it is full', () => {
     // The Monolith rail is NOT hidden at tablet widths (nothing else opens navigation there): no Monolith-only hide.
     expect(SIDEBAR).not.toMatch(/monolith:max-\[\d+px\]:hidden/);
     expect(BELL).toContain(`className="${replicaConst('BELL_CLS')}"`);
+    expect(SWITCHER).toContain(`className="${replicaConst('COMPANY_WRAPPER_CLS')}"`);
     expect(SIDEBAR, 'the measured route-specific breakpoint must match the actual rail').toContain(
       `pathname === '/manage/my-team' ? '${replicaConst('RAIL_TEAM_BREAKPOINT_CLS')}' : '${replicaConst('RAIL_DEFAULT_BREAKPOINT_CLS')}'`,
     );
