@@ -2,7 +2,9 @@
  *
  * One turn, in order, every rule read from HARNESS_SPEC (./spec.ts):
  *  1. switch: refuses unless a test enables it (no production entry point imports this module);
- *  2. pre-read gate (lib/product-context/request-gate.ts gateTurn) on the person's own words;
+ *  2. pre-read gate (lib/product-context/request-gate.ts gateTurn) on the person's own words, with the spec's
+ *     sensitive topics: a workplace-harms request ends here with the spec's fixed refusal, and a crisis turn
+ *     with the spec's fixed safe message, both without a model call;
  *  3. offer: the caller's candidate tools (./tools.ts), filtered by the gate, the spec's offer policy and the
  *     caller's own narrowing; fixed for the turn, so nothing a tool returns can widen it;
  *  4. task memory loaded and re-authorised for the current caller (./memory.ts);
@@ -11,7 +13,8 @@
  *  6. each call: offered? arguments valid? handles issued to this caller this turn? then run by its owner
  *     AS THE CALLER, disclosed under the semantic model (./disclosure.ts) and fenced as untrusted (./fence.ts);
  *  7. reply checks (./reply-checks.ts), one corrective retry, then the spec's fixed fallback: never blank;
- *  8. exact figures restored only for values this caller may see (./restore.ts);
+ *  8. exact figures restored only for values this caller may see (./restore.ts); a sensitive-topic turn then
+ *     gets the spec's contact route after the reply and keeps its words out of task memory;
  *  9. a trace (./trace.ts) for the outcome record.
  * It returns a reply, an optional suggestion (a pointer to a review page) and the caller's still-valid open
  * proposals (core/proposals objects), including any a native preparer issued for this turn's suggestion. It
@@ -20,7 +23,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
-import {gateTurn,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
+import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
 import {canonicalJson,type Proposal} from '../proposals/proposal';
 import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disclosure';
 import {fenceNonce,fenceUntrusted} from './fence';
@@ -74,12 +77,22 @@ export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof 
  });
 }
 
+/** The spec's contact route for a sensitive-topic turn. */
+export function routeReply():string{
+ const {contact,routeReply:template,caseClause}=S.sensitive,route:string|null=contact.caseRoute;
+ return template.replace('{contact}',contact.label).replace('{case}',route?caseClause.replace('{route}',route):'');
+}
+
 export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(options.enabled!==HARNESS_TEST_ONLY||!testProcess())throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
- const callerKey=authorityKey(ctx),gate=gateTurn(options.question),admin=isAdmin(ctx);
+ const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics}),admin=isAdmin(ctx);
+ const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);
+ // Crisis turns never reach the model: in run 41307457954 the provider answered every one with a bare refusal.
+ const fixed=refused||crisis;
  const candidates=await (options.tools??nativeToolProvider)(ctx,{...options.scope,personWords:options.question},gate.actions);
- const offered=offerFor(candidates.bindings,gate,options.allowTools),offeredNames=new Set(offered.map(binding=>binding.name));
+ // A fixed turn offers nothing: the model is never called.
+ const offered=fixed?[]:offerFor(candidates.bindings,gate,options.allowTools),offeredNames=new Set(offered.map(binding=>binding.name));
 
  // Task memory: loaded for this tenant and user only, then re-authorised against what the caller is offered now.
  const stored=await options.memory.load(ctx.tenantId,ctx.userId??'',options.conversationId)??emptyMemory(ctx,options.conversationId,started);
@@ -108,7 +121,10 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
   reply=S.replyChecks.fallbackReply;mode=null;slot=null;fallback=true;return true;
  };
 
- for(;;){
+ // Workplace-harms rule (principle 8) and crisis: decided from the wording alone, before any model call.
+ if(refused){reply=S.sensitive.workplaceHarmReply;mode='refuse';}
+ else if(crisis)reply=S.sensitive.crisisReply;
+ else for(;;){
   const wallMs=Date.now()-startedMs;
   exhausted=steps>=S.budgets.maxSteps?'steps':inputTokens+outputTokens>=S.budgets.maxTotalTokens?'tokens':wallMs>=S.budgets.maxWallMs?'time':spendUsd>=S.budgets.maxSpendUsd?'spend':null;
   if(exhausted){reply=S.replyChecks.budgetReply;fallback=true;break;}
@@ -160,18 +176,22 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  }
 
  const shown=reply??S.replyChecks.fallbackReply;
- const restoration=fallback?{reply:shown,restored:0,refused:[]}:restoreFigures(shown,ledger,callerKey,offeredNames);
+ const restoration=fallback||fixed?{reply:shown,restored:0,refused:[]}:restoreFigures(shown,ledger,callerKey,offeredNames);
+ // A routed turn always ends with the contact route, whatever the model wrote (a crisis turn: the safe message, then the route).
+ const shownReply=routed?[restoration.reply,routeReply()].join('\n\n'):restoration.reply;
  const finished=clock();
  // Proposals issued this turn join the open ones, newest first; each is re-verified at the next turn's start.
- const next=advanceMemory({...current,openProposals:[...issued.reverse(),...current.openProposals]},{question:options.question,reads,slot,mode},finished);
+ // The person's words on a routed or refused turn never become the conversation goal in task memory.
+ const advanced=advanceMemory({...current,openProposals:[...issued.reverse(),...current.openProposals]},{question:options.question,reads,slot,mode},finished);
+ const next=routed||refused?{...advanced,goal:current.goal}:advanced;
  await options.memory.save(next);
  const trace:TurnTrace=Object.freeze({kind:'teras.turn-trace',version:1,turnId:randomUUID(),conversationId:options.conversationId,startedAt:started.toISOString(),finishedAt:finished.toISOString(),
   spec:{version:S.version,digest:harnessSpecDigest()},model:{id:model.modelId},
   caller:{tenantId:ctx.tenantId,userId:ctx.userId??null,personId:ctx.personId??null,roles:[...(ctx.roles??[])],authorityKey:callerKey},
-  gate:{privateReads:gate.privateReads,actions:gate.actions,reason:gate.privateReads?null:gate.reason},
+  gate:{privateReads:gate.privateReads,actions:gate.actions,reason},
   offered:[...offeredNames],calls,disclosure,checks,retries,
   budgets:{steps,inputTokens,outputTokens,spendUsd:Number(spendUsd.toFixed(6)),wallMs:Date.now()-startedMs,exhausted},
   restoration:{restored:restoration.restored,refused:restoration.refused},memory:memoryResult,
   outcome:{mode,slot,suggestion:suggestion?.action??null,openProposals:next.openProposals.length,fallback}});
- return Object.freeze({reply:restoration.reply,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next});
+ return Object.freeze({reply:shownReply,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next});
 }
