@@ -205,3 +205,44 @@ it('compares fresh request-grained routing before, during and after query-plan r
   if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;
  }
 },300000);
+
+it('measures indexed frozen-actor lookups over one million synthetic workflow documents',async()=>{
+ const tenant=randomUUID(),foreign=randomUUID(),user=randomUUID(),person=randomUUID();
+ const userToken=[{approvers:[{userId:user}]}],personToken=[{approvers:[{personId:person}]}];
+ const phases:Record<string,unknown>={};
+ await owner.client.begin(async tx=>{
+  await tx.unsafe('CREATE TEMP TABLE perf_possible_history(id bigint,tenant_id uuid,routing_version integer,stages jsonb) ON COMMIT DROP');
+  const started=performance.now();
+  await tx`insert into perf_possible_history select n,case when n%2=0 then ${tenant}::uuid else ${foreign}::uuid end,4,
+   jsonb_build_array(jsonb_build_object('approvers',jsonb_build_array(jsonb_build_object('userId',gen_random_uuid()::text,'personId',gen_random_uuid()::text)))) from generate_series(1,1000000)n`;
+  await tx`insert into perf_possible_history values(1000001,${tenant}::uuid,4,${tx.json([{approvers:[{userId:user.toUpperCase(),personId:person.toUpperCase()}]}])})`;
+  await tx.unsafe('ANALYZE perf_possible_history');
+  const setupMs=performance.now()-started;
+  for(const phase of ['scan-before','indexed','scan-restored']){
+   let indexBuildMs:number|undefined;
+   if(phase==='indexed'){
+    const started=performance.now();await tx.unsafe('CREATE INDEX perf_possible_history_gin ON perf_possible_history USING gin ((lower(stages::text)::jsonb) jsonb_path_ops)');indexBuildMs=performance.now()-started;
+   }
+   if(phase==='scan-restored')await tx.unsafe('DROP INDEX perf_possible_history_gin');
+   const cases=[];
+   for(const match of ['present','absent']){
+    const wantedUser=match==='present'?userToken:[{approvers:[{userId:randomUUID()}]}];
+    const wantedPerson=match==='present'?personToken:[{approvers:[{personId:randomUUID()}]}];
+    const times=[];
+    for(let i=0;i<3;i++){
+     const started=performance.now();
+     const rows=await tx`select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
+      and(lower(stages::text)::jsonb @> ${tx.json(wantedUser)} or lower(stages::text)::jsonb @> ${tx.json(wantedPerson)})limit 1`;
+     times.push(performance.now()-started);expect(rows.map(row=>Number(row.id))).toEqual(match==='present'?[1000001]:[]);
+    }
+    const [explained]=await tx`explain(analyze,buffers,format json)select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
+     and(lower(stages::text)::jsonb @> ${tx.json(wantedUser)} or lower(stages::text)::jsonb @> ${tx.json(wantedPerson)})limit 1`;
+    const plan=explained['QUERY PLAN'];
+    if(phase==='indexed')expect(JSON.stringify(plan)).toContain('perf_possible_history_gin');
+    cases.push({match,elapsedMs:times,exactIdAndTenant:true,uppercaseStoredIdentityMatched:match==='present',plan});
+   }
+   phases[phase]={indexBuildMs,cases};
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-assignment-index-scale.json'),JSON.stringify({kind:'SYNTHETIC_QUERY_ACCESS_PATH_ONLY',releaseEligible:false,rows:1000001,tenants:2,setupMs,scope:'Native authorization is tested separately; this measures the same actor-containment expression on a temporary synthetic table, not native request creation or HTTP capacity.',phases},null,2));
+  }
+ });
+},300000);
