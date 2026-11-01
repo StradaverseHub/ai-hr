@@ -1,3 +1,63 @@
+## Native permission work and retained CPU evidence — 1 November,23:42MYT
+
+The500-user target remains **0/2 accepted**; no deployment is authorized. Two
+independent paired native experiments now justify the guarded0896 append:
+
+- Regular Claims membership only:41319755872 PASS, exactHR/manager/employee/delegate
+  outputs and rawRLS counts. HR2733ms before→456ms candidate→2696ms restored;
+  other actors do not materially regress. Delegated policy bytes stay unchanged.
+- Delegation candidate-user fence only:41320558900 PASS. Delegate37598ms before→
+  1190ms candidate→37438ms restored; manager5439→788ms. Original summaries execute
+  403,506login-status checks because unrelated accounts are scanned. The fence retains
+  the identical person/tenant/archive/login predicates and every function attribute.
+  Full ordered outputs/counts and all RLS policy bytes match. No result cache.
+
+Actual combined migrated application41321527723 on02c5bab59 PASS over1millionClaims,
+503employments/500pending subjects, four real reader principals and three reads each.
+Independent ordered/count oracles and raw nativeRLS counts pass. Medians:HR363.68ms,
+manager324.96ms,employee3.67ms,delegate819.18ms. Delegate login-status work is3318calls
+across all three reads. These are single-reader service results, **not500-user HTTP
+acceptance**, and are not causal speed ratios across different hosted runners.
+
+Application source8ce8d358f passes92/93selected native cases; one old V9 fixture
+expects650rather than651journal rows and stops before its ordinary populated rehearsal.
+All other selected privacy/delegation/Claims/mobile/hierarchy and three populated
+upgrade checks pass, including the new multiple-account/live-archive/tenant regression.
+The fixture retains all frozen expected SQL hashes and is corrected to651/80rows;
+failed-area recovery41322278228 is pending. Whole compiler41321442525 is pending.
+No successful original is relabeled or discarded.
+
+The0896guard matches the installed native helper's exact predecessor body SHA256,
+rewrites only its candidate-user predicate through its own function definition and
+asserts all other pg_proc attributes unchanged. Its regular Claims policy update also
+asserts the exact prior qualifier and retains all command/role/WITH CHECK attributes.
+Canonicalc7036d829's640journal entries and SQL bytes remain exact, followed by eleven
+unapplied performance drafts. Fresh15:26:37UTC allocation audit reads1,704heads,
+302journals/382migration trees/421registered worktrees, including both sides of one
+conflicted foreign journal; no foreign WIP is changed. Highest other claim is0895/
+when295.0896reservesidx769/when296; SQLSHAa45f6362d2a10b66c14d2be0a4f8199337c7f180bf1d487290cf8ce31fea412e.
+Read-only staging verifies the exact640-row ordered ledger15:20UTC and native
+predecessor body/Claims qualifier15:26UTC. Installation remains held.
+
+Short diagnostic41318363060 onf362b04ff FAILS with complete accounting:164completed,
+336failed,0active,405s measured traffic;2/6loaded browsers complete. Partial complete
+response p95 read66.40s/write88.84s, three handled Home-card failures and two Personnel
+delete55P03timeouts; no captured deadlock. All six mixed workflow kinds execute and
+both final audit chains verify(1703/1794entries,no inside-chain gaps). This30ssteady
+profile cannot replace either required five-minute activity test.
+
+The CPU capture fix works in actual Next:oneprofile/533,840samples, controlled exit0,
+no forced kill. PostgreSQL consumes911.61CPU seconds over405.14traffic seconds, versus
+335.02for app processes; hostI/Owait is0.24s. Counters overlap and are not summed.
+Database permission CPU and Access-lock waits remain priority; more app workers or
+storage are not justified by these figures. Existing top35SQL snapshots omit several
+rare root lock holders, so the next load harness additionally records up to128sampled
+root normalized query texts without parameters. Original profiles/log identities remain.
+Both full activity tests and exact-source release qualification are still outstanding.
+Provider/agent source digests remain1841f158f/bad042734; the owner's approvals stay valid.
+
+---
+
 ## Current recovery and profiling checkpoint — 1 November,22:57 MYT
 
 The500-user speed target remains **0/2 accepted**. No deployment is authorized.
