@@ -275,6 +275,52 @@ Data stays in the native owners; the record holds references and versions, and f
 
 This view is the evidence for rule 8 above, and for audits.
 
+### 3.12 Improvement engine: how every layer keeps getting better (owner request, 1 November 2026)
+
+**Goal.** Improving Teras should be routine, not a project. The system finds its own gaps, proposes the fix, scaffolds it and proves it. People approve what changes behaviour. The Guard never changes itself.
+
+**Foundations that already exist:**
+- the feedback improvement loop (`scripts/improve/`: feedback item → plain-language plan → approved build);
+- the Control Tower agreement and reversal view (`core/control-tower.ts`), which already refuses to report a flattering acceptance rate before outcomes are tested;
+- ADR-0114 impact-aware release and learning;
+- the GitHub Actions evaluation probe, reviewed corpus and holdouts;
+- drift tests that fail when the sidebar gains a page the navigation registry lacks.
+
+**The loop:**
+1. **Signals.** Outcome records (§3.11) collect:
+   - suggestions accepted, rejected or reversed;
+   - "no tool or action for this" replies;
+   - "no guide found" replies;
+   - fallbacks to "needs review";
+   - guard blocks;
+   - ratings and feedback board items.
+2. **Triage (automated).** Signals are clustered and classified as a missing piece of context, a missing capability, a harness defect, a guard gap or an interface gap. They are ranked by how many people and which roles they affect. This is the usage data the capability review lacked.
+3. **Proposal (automated, human-approved).** Each cluster becomes a feedback board item with a drafted plan through the existing improve loop. A person approves or rejects it.
+4. **Build (scaffolded).** Kits make the common fixes cheap (below).
+5. **Verify (automated).** The evaluation suites run on GitHub Actions: corpus, holdouts, conformance, hard gates. A change that fails a hard gate cannot ship.
+6. **Release and measure.** Release goes through the staging queue. Acceptance is measured again, closing the loop.
+
+**What each layer gets:**
+
+| Layer | Automated | People decide |
+| --- | --- | --- |
+| **Context and knowledge** | Registries generated from source with drift tests, so a new page, action or setting cannot ship without its AI metadata. A **definition of done** for every product feature: registry entry, guide section, readiness check if it needs setup, and corpus turns, enforced in CI. "No guide found" clusters produce a drafted guide. Stale-article detection when the rule behind it changes | Approving drafted guides; HR marking articles verified |
+| **Capabilities** | A **capability kit**: declaring a native owner, its permission and its projection generates the tool spec, card, review link and corpus turns. Every capability **inherits the standard contract tests** (acts as the person, no identifiers, other-person refusal, no overclaim, minimum fields). Unmet-request clusters ranked by role | Which capability to build; each new delegable job type (§3.10) |
+| **Harness** | Every instruction or model change is versioned and runs the full suite. A **model upgrade is a comparison report**: new model against current, same suites, cost and latency. Shadow runs on fictional data | Switching models or instructions, from the report |
+| **Interfaces** | A new channel is an adapter onto the same Guard and Harness, and reuses the Connect conformance suite | Opening a channel to a tenant |
+| **Guards** | The attack library grows: holdouts, injection corpora, and patterns seen in log-only screening. Ratchet tests fail any change that loosens a rule without a recorded review, the way the repository's import allowlists only shrink | **Every** guard change; disclosure changes need fresh approval (ADR-0169 §5.1) |
+
+**Privacy of the loop itself.** Improvement signals contain personal data.
+- What leaves a tenant for product improvement is counts, categories and tool names, never question text or records, unless the tenant opts in.
+- Even then, a real question becomes a test case only after it is rewritten as fictional and a person approves it.
+- The test corpus stays fictional.
+
+**What the engine never does:**
+- change a guard;
+- widen a permission or a disclosure contract;
+- enable a delegable job type;
+- release without the evaluation suites passing.
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
@@ -318,6 +364,7 @@ Every step is built on fictional data behind a switch that stays off until the A
 | 4 | "Why?" explainers; go-live setup co-pilot on readiness | No |
 | 5 | Approver recommendations; daily digest; agent registry | No |
 | 5a | Outcome record, then **work-job mandates** (prepare, chase, summarise; nothing completed) | No |
+| 5c | Improvement engine: signal triage onto the feedback board, capability kit with inherited contract tests, definition-of-done CI check, model comparison report | No |
 | 5b | **Decision-job mandates**, per job type, once acceptance data qualifies it | Legal review of automated decisions |
 | 6 | Governed metrics, receipts, letter drafting, spreadsheet intake, verified KB, policy-versus-configuration | **Yes** |
 | 6a | Teras Connect, read and prepare only, behind the tenant and app allowlist, after the Guard and capability registry are product code | Its own legal review (§3.9), and the conformance suite |
