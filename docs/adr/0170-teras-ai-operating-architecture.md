@@ -39,7 +39,7 @@ Every one of those is a place a privacy or security defect can enter. **Teras is
 
 ## 2. Principles (invariants)
 
-1. **Native owners are the truth.** The model never computes money, entitlements, dates or eligibility, never decides permissions, and is never a record of HR fact.
+1. **Native owners are the truth.** Whatever computes money, entitlements, dates or eligibility must be deterministic, versioned and replayable; a model may propose, never compute the figure of record. The model never decides permissions and is never a record of HR fact.
 2. **Acts as the person, never wider.** Every read runs as the caller under tenant row-level security. There is no chat "service account". Automation runs as the explicit agent principal with its own grants and audit.
 3. **People decide, unless they delegate.** Changes complete on their own review pages. **By default nothing is delegated.** An AI agent completes work only under a mandate a person has explicitly granted, within that person's own authority (§3.10). Pay, employment status and access are never delegable.
 4. **Minimum necessary to the provider.** Each tool's fields are disclosed under a reviewed contract. Identifiers never leave. Figures go out as bands or placeholders and are restored locally. Small groups are suppressed **only** where the person could not read every row behind the figure, and **always** for what leaves to the provider.
@@ -418,3 +418,59 @@ Before adopting either:
 - a MyIPO and international trademark search in the software classes;
 - a domain and app-store check;
 - a native-speaker check of meaning and connotation in all six interface languages.
+
+## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)
+
+**Honest answer.** The capability review (§4 of that document) benchmarked today's products, and the five-layer presentation mirrors current vendor pages. Mandates (§3.10), the outcome record (§3.11) and the improvement engine (§3.12) look further ahead. This section records the scenarios considered and the moves that hold under all of them. Scenarios are analysis, not forecasts: confidence is medium on direction and low on timing.
+
+### 10.1 The premise: "no system, direct AI to database"
+
+Delete the application and keep a database and a model. Four things are missing on day one, and they are the system:
+1. **Rules.** Statutory and entitlement rules live in code, not tables. Payroll must be reproducible, so they must stay deterministic and versioned.
+2. **Permissions** enforced where a model cannot argue past them (row-level security, service checks).
+3. **Record integrity:** effective dates, audit history, one owner per fact.
+4. **Accountability:** who authorised, on what basis, verifiable afterwards.
+
+So the future is not "no system"; it is **no application shell**. The system of record with rules, policy and audit is the product; AI is how people reach it. The layers have different half-lives:
+
+| Layer | Outlook | Design consequence |
+| --- | --- | --- |
+| Interfaces | Perishable: customers' own agents and generated UI take over much of it | Headless first: every surface is a renderer of the same objects |
+| Harness | Commoditising: model vendors ship harnesses (managed agents, agent SDKs) | Keep ours thin and swappable; invest in the contracts around it, not the loop |
+| Context and knowledge | Durable content, changing form | Keep it as data the product generates, not hand-written prompts |
+| Capabilities | Hand-written tools give way to governed views and actions | Build the governed query layer, not twelve more tools |
+| Guards, trust and governance | Gains value as intelligence gets cheap | The moat |
+| System of record and rules | The product itself | Make rules readable, citable and versioned |
+
+### 10.2 Scenarios (1 to 3 years)
+
+| Scenario | What changes | What we would regret | No-regret move |
+| --- | --- | --- | --- |
+| **A. Agent-first enterprise.** Employees use one company agent (Copilot, Claude, ChatGPT, Glean); vertical products become governed services behind MCP | Our chat and cards become secondary; our value is governed HR tools and the record | Building a rich proprietary chat UI that nobody opens | **Proposal objects** (§10.3) confirmable from any surface; Connect becomes a primary interface, not a bolt-on |
+| **B. Direct AI to data.** Models write queries and code on the fly; schema plus policy is the product | Hand-written tools look like a bottleneck | Twelve bespoke tools and nothing underneath | **Governed query layer:** views with field-level disclosure and RLS, which any model may query; rules as code the model can read and cite |
+| **C. Generated software per tenant.** Each customer gets generated screens on a shared trusted kernel | The pack kernel matters more; screens matter less | Hard-coding screens as the only way to confirm | Kernel and packs stay the owners; confirmation is an API, not a page |
+| **D. Regulation bites.** AI-in-employment rules, automated-decision rules, PDPA enforcement | Verifiability becomes mandatory, not a feature | Shipping delegation without an outcome record | Outcome record first, mandates second; in-boundary model path (ADR-0169 option 3) as cost falls |
+| **E. Slow enterprise.** HR buys suites; AI stays a feature for years | Nothing dissolves soon | Betting the product on AI | Product works fully without AI; AI off is a supported state |
+
+What holds across all five: the system of record, rules as code, authorisation, audit, the outcome record, mandates, and governed tools and Connect. What varies: interfaces and the harness. Invest in the first set; keep the second thin.
+
+### 10.3 Design-for-change moves (added to the delivery order)
+
+1. **Proposal objects.** A prepared change is a durable, signed object (what, for whom, by which authority, with which checks and rule versions). Chat cards, review pages, the mobile app and a customer's agent are all renderers of it; confirmation is an API call under the person's login. Cards (step 2) are built this way from the start.
+2. **Governed query layer.** Capabilities are governed views and actions with per-field disclosure contracts and RLS, not hand-written tools. The capability kit (§3.12) generates tools from them. This is the safe version of "direct AI to database": AI to governed views, never raw tables.
+3. **Rules as readable code.** Statutory, entitlement and policy rules become declarative, versioned and citable where they are not already (the bounded pay formula builder, ADR-0168, is a start), so the AI explains by citing the rule, and the outcome record names its version.
+4. **Thin, swappable harness.** The loop is small; the contracts (gate, budgets, fencing, exact-value restoration, trace) are the investment. A model or vendor-harness swap is a comparison report, not a rewrite.
+5. **Headless first.** Every surface, including our own, goes through the same Guard and the same proposal objects. Connect is designed with chat, not after it.
+6. **In-boundary model path.** Keep the ability to run a model inside the deployment boundary. It dissolves the provider-egress question that no HR vendor surveyed answers for Malaysia, and it keeps option 3 of ADR-0169 open.
+7. **AI-off is a supported state.** Every journey remains possible without AI, so scenario E costs nothing and failures degrade safely.
+
+### 10.4 Second pass: challenging the plan above
+
+- **Who is the customer in scenario A?** If the company agent is the interface, we may be selling to an agent platform, and seat-based pricing may not survive. Not decided here; flagged for the owner.
+- **If statutory rules become open, machine-readable data**, the domain-knowledge moat shrinks. What remains is the trusted ledger, the outcome record, mandates and each customer's own history. Those compound; plan to make them the product.
+- **"The model never computes money" is a reproducibility rule, not a capability claim.** If models become reliable enough to compute, the rule survives as: whatever computes must be deterministic, versioned and replayable. A model may propose a figure; a deterministic engine verifies it. Restated in §2 principle 1 in those terms.
+- **Guards may use models, but never as the sole gate.** Classification (sensitive topics, injection) can use a model in log-first mode; authorisation and disclosure remain deterministic.
+- **Disclosure changes shape with in-boundary models.** Then the question becomes model memory and logs rather than egress. The disclosure contract should be written to cover both.
+- **This review has a shelf life.** Re-run it every six months, or when any trigger fires: a customer asks to connect their own agent; a model vendor ships an HR-specific agent; in-boundary model cost falls below provider cost; an employment-AI regulation is announced in a target market.
+
+Nothing in this section authorises a disclosure change, deployment or production contact.
