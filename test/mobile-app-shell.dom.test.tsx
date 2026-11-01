@@ -9,6 +9,7 @@ import { dailyDestinationForPath } from '../mobile/lib/navigation-routes';
 
 function fixture() {
   let path = '/approvals/profile/synthetic-task';
+  let design: any = { schemaVersion: 1 };
   const navigate = vi.fn();
   const View = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
   const Pressable = (p: any) => <button role={p.accessibilityRole} aria-label={p.accessibilityLabel} aria-selected={p.accessibilityState?.selected} onClick={p.onPress}>{p.children}</button>;
@@ -17,7 +18,7 @@ function fixture() {
     'react-native': { View, Pressable }, 'react-native-safe-area-context': { SafeAreaView: View },
     'expo-router': { router: { navigate }, usePathname: () => path },
     'expo-symbols': { SymbolView: () => null }, './icon': { Icon: () => null },
-    './design': { TenantBrand: () => <span>OneHR+</span>, DesignText: View, useTenantDesign: () => ({ appearance: 'dark', palette: {}, design: { schemaVersion: 1 } }) },
+    './design': { TenantBrand: () => <span>OneHR+</span>, DesignText: View, useTenantDesign: () => ({ appearance: 'dark', palette: {}, design }) },
     './i18n': { t: (key: string) => key }, './navigation-routes': { dailyDestinationForPath },
     './tenant-navigation': { TenantNavigation: () => <div>Published destinations</div> },
   };
@@ -28,7 +29,7 @@ function fixture() {
     return output.exports;
   }
   ports['./daily-navigation'] = load('mobile/lib/daily-navigation.tsx');
-  return { ...load('mobile/lib/app-shell.tsx'), navigate, setPath: (value: string) => { path = value; } };
+  return { ...load('mobile/lib/app-shell.tsx'), navigate, setPath: (value: string) => { path = value; }, setDesign: (value: unknown) => { design = value; } };
 }
 afterEach(cleanup);
 it('keeps a single header and five destinations around a pushed approval form, and navigation never approves it', () => {
@@ -52,3 +53,11 @@ it.each([
   ['/leave/history', '/leave'], ['/leave/request', '/leave'], ['/approvals/claim/task', '/work'], ['/work', '/work'],
   ['/profile/edit', '/me'], ['/pay/ea', '/me'], ['/settings', '/me'], ['/pending-submissions', '/me'], ['/integrity-keys', '/me'],
 ])('retains the parent destination for %s', (path, parent) => { expect(dailyDestinationForPath(path)).toBe(parent); });
+
+it('preserves a published company top navigation above page content while keeping the global bottom destinations', () => {
+  const f = fixture(); f.setDesign({ schemaVersion: 2, composition: { navigation: { style: 'top' } } });
+  render(<f.SignedInShell><p>Company detail</p></f.SignedInShell>);
+  expect(screen.getAllByText('Published destinations')).toHaveLength(1);
+  expect(screen.getAllByRole('tab')).toHaveLength(5);
+  expect(screen.getByText('Published destinations').compareDocumentPosition(screen.getByText('Company detail')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});

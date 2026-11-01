@@ -21,8 +21,9 @@ export function SignedInShell({ children }: { children: ReactNode }) {
         </Pressable>
       </View>
     </SafeAreaView>
+    {design.schemaVersion === 2 && design.composition.navigation.style === 'top' && <TenantNavigation design={design} inline />}
     <View style={{ flex: 1, minHeight: 0 }}>{children}</View>
     {/* In normal flow: fixed page actions end above navigation instead of underneath it. */}
-    {design.schemaVersion === 2 ? <TenantNavigation design={design} inline /> : <DailyNavigation inline />}
+    {design.schemaVersion === 2 && design.composition.navigation.style !== 'top' ? <TenantNavigation design={design} inline /> : <DailyNavigation inline />}
   </View>;
 }
