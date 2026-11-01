@@ -4,11 +4,12 @@ import { getTranslations } from 'next-intl/server';
 import { sql } from 'drizzle-orm';
 import { withTenant } from '@/db/client';
 import { scopedAdmin } from '@/lib/scope';
-import { connector, requireEntraAdmin } from '@/lib/entra/store';
+import { connector, requireEntraAdmin, registeredOrganization } from '@/lib/entra/store';
 import { PageHeader, Card, Field, inputCls, btnPrimary, btnGhost } from '@/components/ui';
 import { saveEntra, testEntra, bindEntra, retryEntra, reconcileEntra } from './actions';
 export default async function EntraPage({searchParams}:{searchParams:Promise<{error?:string;saved?:string;tested?:string;linked?:string}>}) {
   const {s:ctx}=await scopedAdmin();await requireEntraAdmin(ctx);
+  const organization=await registeredOrganization(ctx.tenantId);
   const t=await getTranslations('entra'),config=await connector(ctx.tenantId),query=await searchParams;
   const records=await withTenant(ctx,async tx=>await tx.execute(sql`select * from app.entra_status()`) as unknown as {person_id:string;status:string;object_id:string|null;attempts:number}[]);
   const accounts=await withTenant(ctx,async tx=>await tx.execute(sql`select u.id user_id,p.id person_id,p.full_name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId} and u.archived_at is null order by p.full_name,u.id limit 500`) as unknown as {user_id:string;person_id:string;full_name:string}[]);
@@ -22,7 +23,7 @@ export default async function EntraPage({searchParams}:{searchParams:Promise<{er
       <form action={saveEntra} className="space-y-5">
         <input type="hidden" name="revision" value={config?.revision||''}/>
         <div className="grid gap-4 sm:grid-cols-2">
-          {identifiers.map(key=><Field key={key} label={t(key)}><input name={key} className={inputCls} required={['organization','directoryTenantId'].includes(key)} defaultValue={config?.[key]||''} maxLength={key==='jobId'?200:253}/></Field>)}
+          {identifiers.map(key=><Field key={key} label={t(key)}><input name={key} className={inputCls} required={['organization','directoryTenantId'].includes(key)} readOnly={key==='organization'} defaultValue={config?.[key]||(key==='organization'?organization.code:'')} maxLength={key==='jobId'?200:253}/></Field>)}
           <Field label={t('mode')}><select name="mode" className={inputCls} defaultValue={config?.mode||'cloud'}><option value="cloud">{t('cloud')}</option><option value="hybrid">{t('hybrid')}</option></select></Field>
           <Field label={t('clientSecret')}><input type="password" name="clientSecret" className={inputCls} autoComplete="new-password" maxLength={4096}/></Field>
           <Field label={t('provisioningSecret')}><input type="password" name="provisioningClientSecret" className={inputCls} autoComplete="new-password" maxLength={4096}/></Field>

@@ -69,7 +69,7 @@ export async function confirmedDirectoryObject(config: EntraConfig, record: Work
   let response:Response;
   try{response=await fetcher(url.href,{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(15000),cache:'no-store'});}catch{throw new EntraError('unavailable');}
   if(response.status===404){void response.body?.cancel().catch(()=>{});return null;}
-  if(!response.ok){void response.body?.cancel().catch(()=>{});throw new EntraError('forbidden');}
+  if(!response.ok){void response.body?.cancel().catch(()=>{});const retry=Math.min(3600,Math.max(30,Number(response.headers.get('retry-after'))||60));throw new EntraError(response.status===429?'throttled':response.status>=500?'unavailable':'forbidden',retry);}
   const object=await json(response),parts=config.sourceAnchorAttribute.split('.');
   const marker=parts.length===1?object[parts[0]]:(object[parts[0]] as Record<string,unknown>|undefined)?.[parts[1]];
   if(marker!==record.source_key||typeof object.id!=='string'||!(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(object.id)))throw new EntraError('conflict');

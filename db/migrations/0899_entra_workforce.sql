@@ -16,6 +16,8 @@ CREATE TABLE entra_workforce (
  CHECK(status IN ('pending','processing','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','rejected','uncertain'))
 );
 --> statement-breakpoint
+CREATE INDEX entra_workforce_due_idx ON entra_workforce(next_at,tenant_id,person_id) WHERE status NOT IN ('ready','disabled','failed','rejected','awaiting-link');
+--> statement-breakpoint
 ALTER TABLE entra_connector ENABLE ROW LEVEL SECURITY;
 ALTER TABLE entra_workforce ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON entra_connector,entra_workforce FROM PUBLIC,ai_hr_app;
@@ -44,7 +46,7 @@ BEGIN
  INSERT INTO public.entra_connector VALUES(t,p_org,p_directory,p_mode,p_enabled,p_provision,p_revision)
  ON CONFLICT(tenant_id) DO UPDATE SET enabled=p_enabled,provisioning_enabled=p_provision,revision=p_revision;
  INSERT INTO public.entra_workforce(tenant_id,person_id) SELECT t,p.id FROM public.person p WHERE p.tenant_id=t AND EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p.id AND e.tenant_id=t)
- ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
+ ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.lease IS NOT NULL THEN 'processing' WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
  PERFORM app.append_auth_event(t,'entra-connector',t,'entra.configured','user',app.current_user_id(),jsonb_build_object('revision',p_revision,'enabled',p_enabled,'provisioning',p_provision));
 END;
 $$;
@@ -55,7 +57,7 @@ BEGIN
  IF TG_TABLE_NAME='person' THEN t:=NEW.tenant_id; p:=NEW.id; ELSE t:=NEW.tenant_id; p:=NEW.person_id; END IF;
  IF EXISTS(SELECT 1 FROM public.entra_connector WHERE tenant_id=t AND provisioning_enabled) THEN
  INSERT INTO public.entra_workforce(tenant_id,person_id) VALUES(t,p)
- ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
+ ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.lease IS NOT NULL THEN 'processing' WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
  END IF;
  RETURN NEW;
 END;
@@ -78,7 +80,7 @@ BEGIN
  FROM public.entra_connector c WHERE c.tenant_id=w.tenant_id AND c.provisioning_enabled
  AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=c.tenant_id AND t.status IN ('active','trial'))
  AND w.last_day IS DISTINCT FROM p_day AND w.lease_until IS NULL
- AND w.status IN ('ready','disabled','awaiting-sync')
+ AND w.status IN ('ready','disabled','awaiting-sync','awaiting-link')
  AND w.last_active IS DISTINCT FROM app.entra_active(w.tenant_id,w.person_id,p_day);
  RETURN QUERY WITH chosen AS (
  SELECT w.tenant_id,w.person_id FROM public.entra_workforce w JOIN public.entra_connector c USING(tenant_id)
@@ -87,7 +89,7 @@ BEGIN
  ORDER BY w.next_at,w.tenant_id,w.person_id FOR UPDATE OF w SKIP LOCKED LIMIT 1
  ), claimed AS (
  UPDATE public.entra_workforce w SET submission_started_at=CASE WHEN w.last_location IS NULL AND w.status='pending' THEN now() ELSE w.submission_started_at END,lease=gen_random_uuid(),lease_until=now()+interval '2 minutes',
- last_status=CASE WHEN w.status='processing' OR (w.status='uncertain' AND w.last_location IS NULL) THEN 'uncertain' WHEN w.last_location IS NOT NULL THEN 'submitted' ELSE w.status END,status='processing',attempts=w.attempts+1,last_day=p_day
+ last_status=CASE WHEN w.status='processing' AND w.last_status='awaiting-sync' AND w.submitted_revision=w.revision THEN 'awaiting-sync' WHEN w.status='processing' AND w.last_status='awaiting-sync' THEN 'pending' WHEN w.status='processing' OR (w.status='uncertain' AND w.last_location IS NULL) THEN 'uncertain' WHEN w.last_location IS NOT NULL THEN 'submitted' ELSE w.status END,status='processing',attempts=w.attempts+1,last_day=p_day
  FROM chosen s WHERE w.tenant_id=s.tenant_id AND w.person_id=s.person_id RETURNING w.*)
  SELECT w.tenant_id,w.person_id,p.full_name,app.entra_active(w.tenant_id,w.person_id,p_day),w.revision,w.lease,c.mode,w.last_location,w.last_status,'aihr:'||w.tenant_id||':'||w.person_id,w.submitted_revision,w.last_active,w.submission_started_at
  FROM claimed w JOIN public.person p ON p.id=w.person_id AND p.tenant_id=w.tenant_id JOIN public.entra_connector c ON c.tenant_id=w.tenant_id;
@@ -100,7 +102,7 @@ BEGIN
  IF p_status NOT IN ('pending','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','rejected','uncertain') THEN RAISE EXCEPTION 'entra_invalid'; END IF;
  UPDATE public.entra_workforce SET status=p_status,last_location=p_location,last_active=CASE WHEN p_status='submitted' THEN p_active ELSE last_active END,
  submitted_revision=CASE WHEN p_status='submitted' AND last_location IS NULL THEN p_revision ELSE submitted_revision END,
- confirmed_active=CASE WHEN p_status IN ('ready','disabled','awaiting-sync') THEN p_active ELSE confirmed_active END,
+ confirmed_active=CASE WHEN p_status IN ('ready','disabled','awaiting-sync','awaiting-link') THEN p_active ELSE confirmed_active END,
  next_at=now()+make_interval(secs=>LEAST(3600,GREATEST(30,p_delay))),lease=NULL,lease_until=NULL
  WHERE tenant_id=p_tenant AND person_id=p_person AND revision=p_revision AND lease=p_lease AND lease_until>now();
  IF NOT FOUND THEN
@@ -109,7 +111,7 @@ BEGIN
  last_location=CASE WHEN p_status='submitted' THEN p_location ELSE last_location END,
  submitted_revision=CASE WHEN p_status='submitted' AND last_location IS NULL THEN p_revision ELSE submitted_revision END,
  last_active=CASE WHEN p_status='submitted' THEN p_active ELSE last_active END,
- status=CASE WHEN p_status='uncertain' AND p_location IS NULL THEN 'uncertain' ELSE status END
+ status=CASE WHEN p_status='uncertain' AND p_location IS NULL THEN 'uncertain' ELSE 'pending' END
  WHERE tenant_id=p_tenant AND person_id=p_person AND lease=p_lease;
  RETURN false;
  END IF;
@@ -136,6 +138,7 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.issuer=iss AND i.subject=p_object::text AND (i.app_user_id<>u.id OR i.revoked_at IS NOT NULL))
  OR EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.issuer=iss AND i.app_user_id=u.id AND i.subject<>p_object::text) THEN RAISE EXCEPTION 'entra_conflict'; END IF;
  INSERT INTO public.app_external_identity(issuer,subject,app_user_id) VALUES(iss,p_object::text,u.id) ON CONFLICT DO NOTHING;
+ IF NOT EXISTS(SELECT 1 FROM public.app_external_identity i WHERE i.issuer=iss AND i.subject=p_object::text AND i.app_user_id=u.id AND i.revoked_at IS NULL) THEN RAISE EXCEPTION 'entra_conflict'; END IF;
  UPDATE public.entra_workforce SET object_id=p_object,status=CASE WHEN status='awaiting-link' THEN 'ready' ELSE status END WHERE tenant_id=c.tenant_id AND person_id=p_person;
  PERFORM app.append_auth_event(c.tenant_id,'app-user',u.id,'entra.identity-linked','user',app.current_user_id(),jsonb_build_object('objectId',p_object));
 END;
@@ -158,7 +161,7 @@ CREATE FUNCTION app.entra_retry(p_person uuid) RETURNS void LANGUAGE plpgsql SEC
 BEGIN
  IF NOT app.entra_admin() THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  -- Uncertain creates have no safe receipt: do not blindly replay them. IT reconciles upstream first.
- UPDATE public.entra_workforce SET status=CASE WHEN status='rejected' OR last_location IS NULL THEN 'pending' ELSE 'submitted' END,
+ UPDATE public.entra_workforce SET status=CASE WHEN last_status='awaiting-sync' AND submitted_revision=revision THEN 'awaiting-sync' WHEN status='rejected' OR last_location IS NULL THEN 'pending' ELSE 'submitted' END,
  last_location=CASE WHEN status='rejected' THEN NULL ELSE last_location END,next_at=now(),attempts=0
  WHERE tenant_id=app.current_tenant_id() AND person_id=p_person AND status IN ('failed','rejected') AND lease_until IS NULL;
  IF NOT FOUND THEN RAISE EXCEPTION 'entra_conflict'; END IF;

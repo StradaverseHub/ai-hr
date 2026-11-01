@@ -13,7 +13,7 @@ async function allowed(tx: AuthSql, value:Identity) {
     const credential=await readRecord<{version:string}>(tx,`credential:${reference.subject}`);
     if((credential?.version??null)!==reference.version)throw new EntraError('forbidden');
   }
-  const config = await connector(value.tenantId);
+  const config = await connector(value.tenantId,tx);
   if (!config?.enabled || config.revision!==value.revision || value.expiry<=Date.now()) throw new EntraError('forbidden');
   const principal = await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[issuerFor(config.directoryTenantId),value.objectId]);
   const permitted = await tx.unsafe('select app.entra_login_allowed($1::uuid,$2::uuid,$3::uuid,$4::date) allowed',[value.tenantId,value.userId,value.revision,todayInKualaLumpur()]);

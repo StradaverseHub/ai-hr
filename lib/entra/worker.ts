@@ -23,7 +23,7 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
           if(result.state==='complete'){
             location=null;
             if(Number(record.submitted_revision)!==Number(record.revision))status='pending';
-            else directoryComplete=true;
+            else status='awaiting-sync';
           }else status=result.state==='pending'?'submitted':'rejected';
         }else if(!directoryComplete){
           await assertProvisioning(config);location=await upload(config,record,token,fetcher);status='submitted';
@@ -42,7 +42,7 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
         }
       }
     }catch(e){
-      status=e instanceof EntraError&&e.code==='unavailable'?(record.last_status==='awaiting-sync'?'awaiting-sync':record.last_location?'submitted':'pending'):e instanceof EntraError&&e.code==='throttled'?(record.last_location?'submitted':'pending'):e instanceof EntraError&&e.code==='uncertain'?'uncertain':'failed';
+      status=e instanceof EntraError&&e.code==='unavailable'?(record.last_status==='awaiting-sync'?'awaiting-sync':record.last_location?'submitted':'pending'):e instanceof EntraError&&e.code==='throttled'?(record.last_status==='awaiting-sync'?'awaiting-sync':record.last_location?'submitted':'pending'):e instanceof EntraError&&e.code==='uncertain'?'uncertain':'failed';
       delay=e instanceof EntraError?e.retryAfter:60;
     }
     const active=record.last_location?record.last_active:record.active;

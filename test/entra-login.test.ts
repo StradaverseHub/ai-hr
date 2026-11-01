@@ -1,3 +1,4 @@
+import { provisionEntraTestOrganization } from './entra-fixture';
 import { randomUUID,createHash } from 'node:crypto';
 import { generateKeyPair,exportJWK,SignJWT } from 'jose';
 import { afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi } from 'vitest';
@@ -13,6 +14,7 @@ beforeEach(async()=>{
  await resetDb();base=await seedBase();nonce='';wrongTenant=false;
  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://hr.test');vi.stubEnv('AUTH_SESSION_KEY','8'.repeat(64));
  config={tenantId:base.tenantId,organization:'acme',directoryTenantId:randomUUID(),clientId:randomUUID(),clientSecret:'secret',provisioningClientId:randomUUID(),provisioningClientSecret:'secret',servicePrincipalId:randomUUID(),jobId:'job-1',mode:'cloud',domain:'acme.test',sourceAnchorAttribute:'extension_'+'a'.repeat(32)+'_hrSourceId',enabled:true,provisioningEnabled:false,immutableMatchingConfirmed:true,revision:randomUUID()};
+ await provisionEntraTestOrganization(base,config.organization);
  await saveConnector(adminCtx(base),config,null);
  const object='11111111-1111-4111-8111-111111111111';
  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${issuerFor(config.directoryTenantId)},${object},${base.adminUserId})`;

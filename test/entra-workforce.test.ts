@@ -1,3 +1,4 @@
+import { provisionEntraTestOrganization } from './entra-fixture';
 import { randomUUID } from 'node:crypto';
 import { afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi } from 'vitest';
 import { sql } from 'drizzle-orm';
@@ -14,6 +15,7 @@ beforeEach(async()=>{
  await resetDb();base=await seedBase();
  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://hr.test');vi.stubEnv('AUTH_SESSION_KEY','8'.repeat(64));
  config={tenantId:base.tenantId,organization:'acme',directoryTenantId:randomUUID(),clientId:randomUUID(),clientSecret:'Secret-unique-782',provisioningClientId:randomUUID(),provisioningClientSecret:'Secret-unique-823',servicePrincipalId:randomUUID(),jobId:'job-1',mode:'cloud',domain:'acme.test',sourceAnchorAttribute:'extension_'+'a'.repeat(32)+'_hrSourceId',enabled:true,provisioningEnabled:true,immutableMatchingConfirmed:true,revision:randomUUID()};
+ await provisionEntraTestOrganization(base,config.organization);
  await saveConnector(adminCtx(base),config,null);
 });
 afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
@@ -64,6 +66,17 @@ describe('Entra actual app-role and durable lifecycle',()=>{
   await writeRecord(client,`credential:${local}`,{version:'before-recovery'},local);
   const session=await createEntraSession(config,object,false);expect(await readEntraSession(session.access_token)).not.toBeNull();
   await writeRecord(client,`credential:${local}`,{version:'after-recovery'},local);expect(await readEntraSession(session.access_token)).toBeNull();
+ });
+
+ it('does not exhaust the shared pool during concurrent same-user Microsoft logins',async()=>{
+  const hire=await employee(),work=await claim(),object=randomUUID();
+  await client.unsafe('select app.entra_auto_bind($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5::uuid)',[base.tenantId,hire.personId,work.revision,work.lease,object]);
+  const sessions=await Promise.all(Array.from({length:12},()=>createEntraSession(config,object,true)));
+  expect(new Set(sessions.map(value=>value.access_token)).size).toBe(12);
+ });
+ it('refuses an Entra organization alias different from the canonical HR organization',async()=>{
+  await expect(saveConnector(adminCtx(base),{...config,organization:'another-organization',revision:randomUUID()},config.revision)).rejects.toMatchObject({code:'conflict'});
+  expect((await connector(base.tenantId))?.organization).toBe('acme');
  });
 
 });
