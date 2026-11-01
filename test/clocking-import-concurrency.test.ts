@@ -24,7 +24,7 @@ it('commits an unrelated native import while the first holds its pre-insert gate
  const [year,month,day]=date.toISOString().slice(0,10).split('-');
  const submit=(card:string,fileName:string)=>{
   const text=`${card},${day},${month},${year},09,00,IN\n${card},${day},${month},${year},17,00,OUT`;
-  return commitClockingImport(ctx,{mappingId:m.id,text,fileName,fileBytes:Buffer.byteLength(text)});
+  return commitClockingImport(ctx,{mappingId:m,text,fileName,fileBytes:Buffer.byteLength(text)});
  };
  const gate='test-import-command:'+randomUUID(),connection=await owner.client.reserve();
  await owner.client.unsafe(`create function public.perf_import_pause() returns trigger language plpgsql as $body$ begin if new.file_name='held.csv' then perform pg_advisory_xact_lock(hashtextextended('${gate}',0)); end if; return new; end $body$; create trigger a_perf_import_pause before insert on clocking_import_run for each row execute function public.perf_import_pause()`);
