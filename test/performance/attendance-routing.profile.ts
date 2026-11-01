@@ -6,9 +6,8 @@ import {and,desc,eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import type {SessionContext} from '../../db/client';
 import {withAttendanceTenant as withTenant} from '../../core/module-gate';
-import {assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal} from '../../core/approvals';
+import {assertAssignedWorkPrincipalTx,decisionEmploymentAuthorityTx} from '../../core/approvals';
 import {AttendanceWorkflowError} from '../../lib/attendance-workflow';
-import {assertCanDecideAttendanceApplicationTx} from '../../core/attendance-workflow';
 import * as s from '../../db/schema';
 import {hireEmployee,setReportingLine} from '../../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata} from '../../core/attendance';
@@ -17,31 +16,36 @@ import {todayInKualaLumpur} from '../../lib/hr-date';
 import {actorIdentityKeysSql} from './attendance-assignment-sql';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-// Candidate query shape only: keep real request RLS and every per-request canonical decision proof.
-// Resolve names only after decision authority succeeds, avoiding repeated delegated subject projection
-// for broadly readable requests that are not assigned to this principal.
-async function metadataAfterDecision(ctx:SessionContext,companyIds:string[]){
+// Disposable experiment: batch transport of the same native decision owners; no command change.
+async function metadataBatchDecision(ctx:SessionContext,companyIds:string[]){
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
-  const headers=await tx.select({id:s.attendanceCorrection.id,employmentId:s.attendanceCorrection.employmentId})
-   .from(s.attendanceCorrection).where(and(eq(s.attendanceCorrection.tenantId,ctx.tenantId),eq(s.attendanceCorrection.status,'pending')))
-   .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
-  const allowed=[];
-  for(const row of headers){
-   try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);allowed.push(row.id);}
-   catch(error){
-    if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
-    if(isApprovalDecisionRefusal(error,'attendance application'))continue;
-    throw error;
-   }
-  }
-  if(!allowed.length)return [];
-  return tx.select({id:s.attendanceCorrection.id,employmentId:s.attendanceCorrection.employmentId,
+  const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata()as possible`);
+  if(candidate?.possible===false)return [];
+  const rows=await tx.select({id:s.attendanceCorrection.id,employmentId:s.attendanceCorrection.employmentId,
    personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:s.attendanceCorrection.createdAt})
-   .from(s.attendanceCorrection).innerJoin(sql`LATERAL app.attendance_application_subject(${s.attendanceCorrection.id}) AS subject`,sql`true`)
-   .where(and(eq(s.attendanceCorrection.tenantId,ctx.tenantId),eq(s.attendanceCorrection.status,'pending'),inArray(s.attendanceCorrection.id,allowed),
-    sql`NOT app.is_self_person(subject.person_id)`,companyIds.length?sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,` )}) OR app.attendance_workflow_v3_decision_slot(${s.attendanceCorrection.id}) IS NOT NULL)`:sql`false`))
+   .from(s.attendanceCorrection).innerJoin(sql`LATERAL app.attendance_application_subject(${s.attendanceCorrection.id})AS subject`,sql`true`)
+   .where(and(eq(s.attendanceCorrection.tenantId,ctx.tenantId),eq(s.attendanceCorrection.status,'pending'),
+    sql`NOT app.is_self_person(subject.person_id)`,companyIds.length?sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${s.attendanceCorrection.id}) IS NOT NULL)`:sql`false`))
    .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
+  if(!rows.length)return [];
+  const flows=await tx.select({correctionId:s.attendanceWorkflowRequest.correctionId,employmentId:s.attendanceWorkflowRequest.employmentId,version:s.attendanceWorkflowRequest.routingVersion})
+   .from(s.attendanceWorkflowRequest).where(inArray(s.attendanceWorkflowRequest.correctionId,rows.map(row=>row.id)));
+  const byId=new Map(flows.map(flow=>[flow.correctionId,flow])),allowed=new Set<string>();
+  const versioned=rows.filter(row=>{const flow=byId.get(row.id);return flow&&[2,3,4].includes(flow.version);});
+  for(const row of versioned)if(byId.get(row.id)!.employmentId!==row.employmentId)throw new AttendanceWorkflowError('scope','The application subject does not match its frozen workflow.');
+  for(const version of [2,3]){
+   const ids=versioned.filter(row=>version===2?byId.get(row.id)!.version===2:byId.get(row.id)!.version!==2).map(row=>row.id);
+   if(!ids.length)continue;
+   const proof=version===2?sql`app.attendance_workflow_v2_decide(q.id)`:sql`app.attendance_workflow_v3_decision_slot(q.id) IS NOT NULL`;
+   const proofs=await tx.execute<{id:string;ok:boolean}>(sql`select q.id,${proof}as ok from(values ${sql.join(ids.map(id=>sql`(${id}::uuid)`),sql`,`)})q(id)`);
+   for(const row of proofs)if(row.ok)allowed.add(row.id);
+  }
+  const versionedIds=new Set(versioned.map(row=>row.id)),legacy=rows.filter(row=>!versionedIds.has(row.id));
+  if(legacy.length){const authority=await decisionEmploymentAuthorityTx(tx,ctx,legacy.map(row=>row.employmentId),{module:'attendance',taskType:'attendance.correction'});
+   for(const row of legacy)if(authority.allowed.has(row.employmentId)&&!authority.self.has(row.employmentId))allowed.add(row.id);
+  }
+  return rows.filter(row=>allowed.has(row.id));
  });
 }
 it('compares fresh request-grained routing before, during and after query-plan reuse and necessary denial gates',async()=>{
@@ -117,7 +121,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
   nativeGateDefinition=nativeGate.definition;
   const baselineGate=nativeGate.definition.replace(/AS (\$[^$]*\$)[\s\S]*\1/,(_all:string,delimiter:string)=>'AS '+delimiter+' BEGIN RETURN true; END; '+delimiter);
   expect(baselineGate).not.toBe(nativeGate.definition);
-  for(const phase of ['migration-principal-file','migration-possible-assignment','migration-possible-restored']){
+  for(const phase of ['migration-principal-file','migration-possible-assignment','migration-possible-restored','migration-batch-decision','migration-batch-restored']){
    for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
    await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
    if(phase.startsWith('migration'))for(const file of ['0884_visibility_routing_plans.sql','0885_attendance_assignment_work.sql']){
@@ -138,8 +142,8 @@ it('compares fresh request-grained routing before, during and after query-plan r
     expect(changed.grants).toEqual([{role:'employee',companyId:null}]);
     await expect(pendingAttendanceTaskMetadata(actors[0].ctx,[b.companyId])).rejects.toThrow();
    }finally{await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,actors[0].ctx.userId!));}
-   await owner.client.unsafe(phase==='migration-possible-assignment'?nativeGate.definition:baselineGate);
-   const read=phase==='migration-metadata-after-decision'?metadataAfterDecision:pendingAttendanceTaskMetadata;
+   await owner.client.unsafe(['migration-possible-assignment','migration-batch-decision','migration-batch-restored'].includes(phase)?nativeGate.definition:baselineGate);
+   const read=phase==='migration-batch-decision'?metadataBatchDecision:pendingAttendanceTaskMetadata;
    const measurements=[];
    for(let i=0;i<4;i++){
     const times=[];
@@ -171,6 +175,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
     const ctx:SessionContext={...a.ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]};
     const original=await pendingAttendanceTaskMetadata(ctx,[b.companyId]);expect(original).toHaveLength(32);
     expect(await pendingAttendanceTaskMetadata(ctx,[b.companyId])).toEqual(original);
+    expect(await metadataBatchDecision(ctx,[b.companyId])).toEqual(original);
    }
    expect(await pendingAttendanceTaskMetadata({...actors[3].ctx,personId:randomUUID()},[b.companyId]).then(()=>false,()=>true)).toBe(true);
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-possible-assignment.json'),JSON.stringify({namedNonAdminActor:true,nonAdminDelegate:true,orderedMetadataExact:true,forgedPersonRefused:true,nativeApplicationGate:true},null,2));

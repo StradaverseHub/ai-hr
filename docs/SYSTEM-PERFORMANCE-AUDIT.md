@@ -115,7 +115,7 @@ No permission/result caching, command changes or production settings are added.
 Native assigned non-admin/delegate/ordered-refusal behavior and a reversible
 scan-required control are tested through the real application entry point.
 Qualification41303017578:208 cases in16 affected files PASS (204DB-classified,4model),
-zero failures/skips; the independent whole compiler is pending. The real scan-required
+zero failures/skips; the independent whole compiler PASS. The real scan-required
 control fails without the gate, then the same native employee call avoids correction
 SELECT while HR retains the complete reader. Exact application paired comparison
 and million-document index profile41303020809 are queued.
