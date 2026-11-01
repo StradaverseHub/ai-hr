@@ -6,6 +6,9 @@ import * as integrity from '../lib/mobile-integrity-contract';
 import * as contract from '../lib/mobile-api/contract';
 import {readBoundedBody} from '../lib/bounded-body';
 import {createReadCoordinator,retryAfterSeconds} from '../mobile/lib/read-coordinator';
+import {createAuthState} from '../mobile/lib/auth-state';
+import {createSessionState} from '../mobile/lib/session-state';
+import * as jsx from 'react/jsx-runtime';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiOriginProblem } from '../mobile/lib/config';
@@ -18,17 +21,19 @@ import {androidEnrollmentFixture} from './helpers/mobile-android-enrollment-fixt
 
 /** Execute the shipped client/hook. Only the native ports are replaced, not the request logic. */
 const employee = (name:string) => ({apiVersion:'v1',person:{name,email:null},employments:[],roles:[],modules:{payroll:false,notifications:false}});
-function clientFixture() {
+function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
   let generation = 0;
   let namespace='company-one',monotonic=0,locale='en';
   const appState={currentState:'active'};
   const config = { apiUrl: 'https://hr.example.com' };
   const response = vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url) => Response.json(new URL(url).pathname.endsWith('/clock') ? {outcome:'refused',code:'clock_conflict'} : employee('Employment one')));
-  const auth = { authGeneration: () => generation,
-    assertAuthGeneration(owner: number) { if (owner !== generation) throw new SessionChangedError(); },
-    getAccessToken: vi.fn(async () => 'access-token'), refresh: vi.fn(async () => 'rotated-token') };
+  const auth = { authGeneration: () => credentialState?.generation() ?? generation,
+    assertAuthGeneration(owner: number) { if (credentialState) credentialState.assertCurrent(owner); else if (owner !== generation) throw new SessionChangedError(); },
+    getAccessToken: vi.fn(async () => credentialState ? credentialState.getAccessToken() : 'access-token'),
+    refresh: vi.fn(async () => credentialState ? credentialState.refresh() : 'rotated-token') };
   const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
-    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null };
+    useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null; loading: boolean };
+    useApiV2: (path: string, schema: z.ZodType, params: Record<string, string>, onSignInRequired: () => void) => { data: unknown; loading: boolean };
     v2Page: (path:string,item:z.ZodType)=>unknown; v2Download: (path:string,maxBytes?:number)=>unknown;
     apiGetPage: (resource:unknown,cursor:string|null,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{items:unknown[];nextCursor:string|null}>;
     apiDownload: (resource:unknown,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{outcome:string;code?:string;document?:{uri:string}}> } };
@@ -419,5 +424,58 @@ describe('v2 cursor pages and protected downloads', () => {
     f.response.mockImplementationOnce(async () => { f.changeSession(); return pdf(); });
     await expect(f.api.apiDownload(f.api.v2Download('v2/test-pdf'))).rejects.toBeInstanceOf(SessionChangedError);
     expect(f.written).not.toHaveBeenCalled();
+  });
+});
+
+
+/** The actual credential controller, API hook and SessionProvider together: a rejected refresh
+ * must close the visible session even though the credential generation has already advanced. */
+describe('profile loading after current credential revocation', () => {
+  it.each(['v1', 'v2'] as const)('%s leaves loading for sign-in when the current refresh is refused', async (version) => {
+    const credentials = createAuthState({
+      read: async () => 'stored-refresh', write: async () => {}, remove: async () => {},
+      authenticate: async () => { throw new SignInRequiredError(); },
+    });
+    const f = clientFixture(credentials);
+    type RevokingState = typeof credentials & { subscribeRevocation?: (listener: (generation: number) => void) => () => void };
+    const authPort = {
+      ...f.auth, hasStoredSession: credentials.hasStoredSession,
+      signOut: credentials.signOut, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback',
+      subscribeAuthRevocation: (listener: (generation: number) => void) =>
+        (credentials as RevokingState).subscribeRevocation?.(listener) ?? (() => {}),
+    };
+    const module = { exports: {} as { SessionProvider: React.ComponentType<React.PropsWithChildren>;
+      useSession: () => { status: string; signOut: () => Promise<void> } } };
+    const ports: Record<string, unknown> = {
+      react: React, 'react/jsx-runtime': jsx,
+      'expo-local-authentication': { SecurityLevel: { SECRET: 1 }, getEnrolledLevelAsync: async () => 1,
+        authenticateAsync: async () => ({ success: true }) },
+      'expo-screen-capture': { preventScreenCaptureAsync: async () => {}, enableAppSwitcherProtectionAsync: async () => {} },
+      'expo-web-browser': { openAuthSessionAsync: vi.fn() },
+      'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
+      './auth': authPort, './session-state': { createSessionState }, './i18n': { t: (key: string) => key },
+      './protected-document': { sweepProtectedDocuments: () => {} },
+      './push-core': { releasePushOnExit: async () => {} },
+    };
+    runInNewContext(transpileModule(readFileSync('mobile/lib/session.tsx', 'utf8'), {
+      compilerOptions: { module: ModuleKind.CommonJS, jsx: 4 },
+    }).outputText, { module, exports: module.exports, require: (name: string) => {
+      if (name in ports) return ports[name]; throw new Error('Missing session port ' + name);
+    } });
+    const Session = module.exports;
+    function Profile() {
+      const { signOut } = Session.useSession();
+      const result = version === 'v1' ? f.api.useApi('me', {}, signOut) :
+        f.api.useApiV2('v2/profile', z.object({ outcome: z.literal('found') }), {}, signOut);
+      return <span>{result.loading ? 'Profile loading' : 'Profile settled'}</span>;
+    }
+    function Gate() {
+      const { status } = Session.useSession();
+      return status === 'signedOut' ? <span>Sign in</span> : status === 'signedIn' ? <Profile /> : <span>Unlocking</span>;
+    }
+    render(<Session.SessionProvider><Gate /></Session.SessionProvider>);
+    await screen.findByText('Sign in');
+    expect(screen.queryByText('Profile loading')).toBeNull();
+    expect(f.response).not.toHaveBeenCalled();
   });
 });
