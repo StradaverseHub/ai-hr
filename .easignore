@@ -59,3 +59,7 @@
 /mobile/builds
 **/*.tsbuildinfo
 **/.DS_Store
+
+# Firebase app registration is supplied through an EAS file variable.
+**/google-services.json
+**/*service-account*.json

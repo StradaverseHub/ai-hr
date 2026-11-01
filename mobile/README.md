@@ -412,3 +412,18 @@ actor checks do not replace the hardware integrity work under M04.
 Pending claims are not accepted attendance or approved leave. Offline punch capture and cold-offline
 identity restoration remain disabled. Real-device kill/upload/relaunch, OS-protected key and backup/restore
 acceptance remain release work; model/adapter tests do not replace those checks.
+
+### Android native push registration
+
+Set `GOOGLE_SERVICES_JSON` as an EAS **file** variable in each Android build environment
+(preview and production). Its value is the Firebase Android app's `google-services.json`
+registered for `ai.stradaverse.aihr.test`. The build config verifies the package and required
+registration fields, and refuses cloud Android builds without registration. Do not commit
+this file or place its contents in `extra` or an `EXPO_PUBLIC_*` variable.
+
+The registration file is distinct from a Google service-account private key. This app uses
+native FCM tokens and the HR backend's direct FCM transport; the server's sender credential
+stays on the backend, not in the app or EAS app archive. Verify the Firebase project matches
+the backend sender. After provisioning, rebuild and inspect generated Firebase resources,
+then verify token enrollment and actual delivery. Restricted client API keys must permit
+Firebase Installations and FCM Registration for the final app signing certificate.
