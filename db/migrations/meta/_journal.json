@@ -4467,6 +4467,20 @@
       "when": 1793330000274,
       "tag": "0874_payroll_tax_basis_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1793330000290,
+      "tag": "0890_teras_outcome_record_mandates",
+      "breakpoints": true
+    },
+    {
+      "idx": 754,
+      "version": "7",
+      "when": 1793330000291,
+      "tag": "0891_teras_rule_version_labels",
+      "breakpoints": true
     }
   ]
 }
