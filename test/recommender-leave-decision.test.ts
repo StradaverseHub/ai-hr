@@ -158,7 +158,11 @@ describe('approver recommendations on fictional data',()=>{
   await owner.db.delete(schema.leaveRequestDate).where(eq(schema.leaveRequestDate.leaveRequestId,away.id));
   await owner.db.delete(schema.leaveRequest).where(eq(schema.leaveRequest.id,away.id));
   await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:applicant.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'adjustment',days:'-10',effectiveOn:todayInKualaLumpur()});
+  // The fixture type must not permit a negative balance, so the floor is zero.
+  await owner.db.update(schema.leaveType).set({allowNegativeBalance:false,maxNegativeBalance:null}).where(eq(schema.leaveType.id,b.annualLeaveTypeId));
   const reject=await recommend(manager);
+  expect(reject.kind==='recommendation'&&Object.fromEntries(reject.recommendation.checks.map(check=>[check.check,check.result])))
+   .toEqual({balance_covers:'fail',own_overlap:'pass',team_coverage:'pass',policy_limits:'pass'});
   expect(reject.kind==='recommendation'&&reject.recommendation.verdict).toBe('recommend_reject');
   expect(reject.kind==='recommendation'&&reject.recommendation.checks.find(check=>check.check==='balance_covers')).toMatchObject({result:'fail',blocking:true});
  });

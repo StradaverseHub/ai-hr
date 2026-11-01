@@ -92,7 +92,7 @@ export type GrantMandateInput=Readonly<{jobType:unknown;scope:unknown;limits:unk
 function parseGrant(jobType:WorkJobType,input:GrantMandateInput):Readonly<{scope:MandateScope;limits:MandateLimits;schedule:MandateSchedule;notify:'each_action'|'daily_summary';validDays:number}>{
  const job=WORK_JOB_TYPES[jobType];
  const scope=input.scope as Partial<MandateScope>|null,limits=input.limits as Partial<MandateLimits>|null,schedule=input.schedule as Record<string,unknown>|null;
- if(!scope||typeof scope!=='object'||Object.keys(scope).length!==1||!job.scopes.includes(scope.team as MandateScope['team']))throw new MandateRefused('invalid');
+ if(!scope||typeof scope!=='object'||Object.keys(scope).length!==1||!(job.scopes as readonly string[]).includes(scope.team as string))throw new MandateRefused('invalid');
  if(!limits||typeof limits!=='object'||Object.keys(limits).length!==2||!intIn(limits.maxRunsPerDay,1,24)||!intIn(limits.maxPeople,1,job.limits.maxPeople))throw new MandateRefused('invalid');
  if(!schedule||typeof schedule!=='object'||Object.keys(schedule).length!==1)throw new MandateRefused('invalid');
  const weekly=job.cadence==='weekly';
