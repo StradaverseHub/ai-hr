@@ -7812,7 +7812,8 @@ export async function editLeaveRequest(
     today?: string;
   },
 ): Promise<{ leaveRequestId: string; days: number }> {
-  const { leaveRequestId, days } = await withTenant(ctx, (tx) => editLeaveRequestTx(tx, ctx, p));
+  p=structuredClone(p);ctx=captureLeaveDecisionContext(ctx);
+  const { leaveRequestId, days } = await withDataCommand(ctx, (tx) => editLeaveRequestTx(tx, ctx, p));
   return { leaveRequestId, days };
 }
 

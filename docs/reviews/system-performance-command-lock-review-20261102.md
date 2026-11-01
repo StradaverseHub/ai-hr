@@ -10,9 +10,9 @@ The previous complete 500-user runs on 32c2332fb failed at both activity levels:
 
 ## Candidate ownership model
 
-Only opted-in outer USER commands share Access authority in an actual READ COMMITTED READ WRITE transaction. They repeat the existing native current-carrier proof after ownership. This ownership state is per transaction, not a permission cache. Original RLS, scope checks, workflow authority and per-employment dependency locks remain active.
+Only opted-in outer USER commands share Access authority in an actual READ COMMITTED READ WRITE transaction. They repeat the existing native current-carrier proof after ownership, including after an exclusive replay. This ownership state is per transaction, not a permission cache. Original RLS, scope checks, workflow authority and per-employment dependency locks remain active.
 
-The audited roots are ordinary Leave submission and decision/cancellation owners; Attendance check-in/out, correction submission/decision and own pending correction cancellation. Existing transactions, SYSTEM and agent owners retain the original exclusive interval. Configuration, Personnel identity, grants, reporting and other Access writers retain their existing native exclusive locks. A configuration writer therefore still conflicts with every shared command.
+The audited roots are ordinary Leave submission/edit and decision/cancellation owners; Attendance check-in/out, correction submission/decision and own pending correction cancellation. Existing transactions, SYSTEM and agent owners retain the original exclusive interval. Configuration, Personnel identity, grants, reporting and other Access writers retain their existing native exclusive locks. A configuration writer therefore still conflicts with every shared command.
 
 Attendance shares Leave configuration while owning affected employments. Creating a missing replacement-leave catalogue is a configuration change. A precise internal sentinel rolls back the entire shared attempt before one replay under the original exclusive Access/configuration path. External effects cannot participate. SQL failures, busy dependency refusals, deadlocks and business validation errors are not automatically retried. Existing transactions never partially replay. No PostgreSQL timeout or resource budget is raised; no native migration changes.
 

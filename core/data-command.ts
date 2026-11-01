@@ -19,6 +19,10 @@ export async function withDataCommand<T>(supplied:SessionContext,run:(tx:Tx)=>Pr
   });
  }catch(error){
   if(!(error instanceof DataCommandRequiresExclusive))throw error;
-  return owner(ctx,async tx=>{await lockAccessConfigurationTx(tx,ctx.tenantId);return run(tx);});
+  return owner(ctx,async tx=>{
+   await lockAccessConfigurationTx(tx,ctx.tenantId);
+   if(!(await isCarrierPrincipalCurrentTx(tx,ctx)))throw new Error('Current command principal required.');
+   return run(tx);
+  });
  }
 }

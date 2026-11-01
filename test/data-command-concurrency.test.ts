@@ -3,17 +3,19 @@ import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withDataCommand} from '../core/data-command';
+import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from '../core/leave-dependency-lock';
 import {withTenant} from '../db/client';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {requestLeave} from '../packs/leave/service';
+import {editLeaveRequest,requestLeave} from '../packs/leave/service';
 import type {SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 beforeAll(migrateTestDb);afterAll(closeAll);
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
-it.each([false,true])('keeps native subject exclusion while unrelated requests overlap (same subject: %s)',async sameSubject=>{
+it.each(['create','edit','same-subject'] as const)('keeps native subject exclusion while unrelated requests overlap (%s)',async operation=>{
+ const sameSubject=operation==='same-subject';
  await resetDb();const b=await seedBase(),today=todayInKualaLumpur();
  const worker=async(name:string)=>{
   const hired=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today});
@@ -27,11 +29,12 @@ it.each([false,true])('keeps native subject exclusion while unrelated requests o
  }
  let date=new Date(Date.parse(today+'T12:00:00Z')+3*86400000).toISOString().slice(0,10);
  while([0,6].includes(new Date(date+'T12:00:00Z').getUTCDay()))date=new Date(Date.parse(date+'T12:00:00Z')+86400000).toISOString().slice(0,10);
+ const editable=operation==='edit'?await requestLeave(c.ctx,{employmentId:c.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date}):undefined;
  const gate='test-data-command:'+randomUUID(),connection=await owner.client.reserve();
  await owner.client.unsafe(`create function public.perf_request_pause() returns trigger language plpgsql as $body$ begin if new.employment_id='${a.employmentId}'::uuid then perform pg_advisory_xact_lock(hashtextextended('${gate}',0)); end if; return new; end $body$; create trigger a_perf_request_pause before insert on leave_request for each row execute function public.perf_request_pause()`);
  const submit=(employee:typeof a)=>requestLeave(employee.ctx,{employmentId:employee.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date});
  type Outcome={ok:true;id:string}|{ok:false;error:unknown};
- const settle=(promise:ReturnType<typeof submit>):Promise<Outcome>=>promise.then(result=>({ok:true,id:result.leaveRequestId}),error=>({ok:false,error}));
+ const settle=(promise:Promise<{leaveRequestId:string}>):Promise<Outcome>=>promise.then(result=>({ok:true,id:result.leaveRequestId}),error=>({ok:false,error}));
  let first:Promise<Outcome>|undefined,second:Promise<Outcome>|undefined,overlapped=false,reached=false;
  try{
   await connection`select pg_advisory_lock(hashtextextended(${gate},0))`;
@@ -41,7 +44,7 @@ it.each([false,true])('keeps native subject exclusion while unrelated requests o
    const [row]=await owner.client`select exists(select 1 from pg_locks where locktype='advisory' and not granted and classid=((hashtextextended(${gate},0)>>32)&4294967295)::oid and objid=(hashtextextended(${gate},0)&4294967295)::oid) as waiting`;
    if(row.waiting){reached=true;break;}await delay(3);
   }
-  if(reached){second=settle(submit(sameSubject?a:c));overlapped=await Promise.race([second.then(result=>result.ok),delay(200).then(()=>false)]);}
+  if(reached){second=settle(editable?editLeaveRequest(c.ctx,{leaveRequestId:editable.leaveRequestId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date,reason:'Fictional concurrent edit'}):submit(sameSubject?a:c));overlapped=await Promise.race([second.then(result=>result.ok),delay(200).then(()=>false)]);}
  }finally{
   await connection`select pg_advisory_unlock(hashtextextended(${gate},0))`;connection.release();
  }
@@ -92,4 +95,15 @@ it('does not turn a real read-only snapshot into an ordinary write transaction',
  await resetDb();const b=await seedBase();
  const {beginDataCommandAuthorityTx}=await import('../core/access-configuration-lock');
  await expect(withTenant(adminCtx(b),tx=>beginDataCommandAuthorityTx(tx,b.tenantId),{readOnlySnapshot:true})).rejects.toThrow('Writable current tenant transaction required');
+});
+
+it('uses the same native Access key for PostgreSQL UUID spelling aliases',async()=>{
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b);
+ for(const tenantId of [b.tenantId.toUpperCase(),'{'+b.tenantId+'}',b.tenantId.replaceAll('-','')]){
+  await withTenant(ctx,async tx=>{
+   await lockAccessConfigurationTx(tx,tenantId);
+   const [row]=await tx.execute<{owned:boolean}>(sql`select exists(select 1 from pg_locks where pid=pg_backend_pid() and locktype='advisory' and mode='ExclusiveLock' and granted and classid=((hashtextextended(${'access-configuration:'+b.tenantId},0)>>32)&4294967295)::oid and objid=(hashtextextended(${'access-configuration:'+b.tenantId},0)&4294967295)::oid) as owned`);
+   expect(row.owned).toBe(true);
+  });
+ }
 });
