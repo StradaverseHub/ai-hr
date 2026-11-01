@@ -60,3 +60,14 @@ its raster boards are design references, not native runtime evidence.
 
 Native visual acceptance remains pending until this exact candidate is rendered on iOS
 and Android. Hosted compiler/bundle and behavior checks establish separate claims.
+
+## Approved mountain Access Pass mockup
+
+Owner approved the light/dark mountain sign-in board on 2 November 2026 and instructed
+application to the app. Reference: generated_images/01a19772-0d38-76f1-a1cf-a9141aff5daa/
+exec-e8d3220a-6b70-4676-8795-0485adf1f1a4.png (local design reference, not native evidence).
+Use a full-bleed original mountain background, colored plus in the OneHR+ wordmark,
+plain workplace control with a downward chevron, regular-weight 48-point Sign in heading,
+opaque Access Pass, underlined password recovery, and chartreuse circular submit arrow.
+Example organization and credentials in the board remain illustrative only; live fields
+continue to show actual workplace context and the user's own input.

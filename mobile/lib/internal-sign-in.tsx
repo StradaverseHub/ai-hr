@@ -9,7 +9,7 @@ import { verifyCompanyServer } from './connection-probe';
 import { config, runtimeConnections } from './config';
 import { internalAuthRequest, InternalSignInError, type InternalReply } from './internal-auth';
 import { useSession } from './session';
-import { Button, colors } from './ui';
+import { Button } from './ui';
 import { useTenantDesign } from './design';
 import { SignInBackground } from './sign-in-background';
 import { Icon } from './icon';
@@ -61,9 +61,9 @@ export function InternalSignIn() {
   const loginDisabled = busy || !(workplaceOrganization || organization) || !username || !password;
   if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
     <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
-      <View style={styles.entryHeader}><Text style={styles.wordmark}>{t('appName')}</Text>
+      <View style={styles.entryHeader}><Text style={styles.wordmark}>{t('appName').endsWith('+') ? <>{t('appName').slice(0, -1)}<Text style={{ color: palette.accent }}>+</Text></> : t('appName')}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={styles.workplace}>
-          <Text style={styles.workplaceText}>{company?.name || companyCopy().change}</Text><Icon name="chevron" color={palette.text} size={14}/>
+          <Text style={styles.workplaceText}>{company?.name || companyCopy().change}</Text><Icon name="chevronDown" color={palette.text} size={14}/>
         </Pressable>
       </View>
       <View style={{ flex: 1, minHeight: 120 }}/>
@@ -85,7 +85,7 @@ export function InternalSignIn() {
           </View>
         </View>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
-        <View style={styles.passFooter}><Text style={[styles.body, { flex: 1 }]}>{busy ? copy.working : copy.signIn}</Text>
+        <View style={styles.passFooter}><Text style={styles.submitLabel}>{busy ? copy.working : copy.signIn}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel={copy.signIn} accessibilityState={{ disabled: !!loginDisabled, busy }} disabled={!!loginDisabled} onPress={() => void submit()} style={({ pressed }) => [styles.enter, { backgroundColor: palette.button, opacity: loginDisabled ? .55 : pressed ? .75 : 1 }]}>
             {busy ? <ActivityIndicator color={palette.onButton}/> : <Icon name="arrowRight" color={palette.onButton} size={28}/>}
           </Pressable>
@@ -124,14 +124,15 @@ const signInStyles = (palette: { bg: string; card: string; text: string; muted: 
   entry: { flexGrow: 1, paddingHorizontal: 24, gap: 20, width: '100%', maxWidth: 520, alignSelf: 'center' },
   entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' },
   wordmark: { color: palette.text, fontSize: 28, fontWeight: '700', letterSpacing: -.7 },
-  workplace: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: palette.card, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
+  workplace: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
   workplaceText: { color: palette.text, fontSize: 13, flexShrink: 1 },
-  entryTitle: { color: palette.text, fontSize: 48, fontWeight: '700', letterSpacing: -1.4 },
+  entryTitle: { color: palette.text, fontSize: 48, fontWeight: '400', letterSpacing: -1.4 },
   pass: { backgroundColor: palette.card, padding: 22, gap: 14, borderRadius: 26, borderCurve: 'continuous', boxShadow: '0px 8px 28px rgba(0,0,0,0.14)' },
   passField: { borderBottomWidth: 1, borderColor: palette.border, gap: 2 },
   fieldHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
   passInput: { minHeight: 48, fontSize: 19, color: palette.text, paddingVertical: 10, paddingHorizontal: 0 },
-  recovery: { color: palette.accent, fontSize: 13, fontWeight: '500' },
+  recovery: { color: palette.accent, fontSize: 13, fontWeight: '500', textDecorationLine: 'underline' },
+  submitLabel: { flex: 1, color: palette.text, fontSize: 16, fontWeight: '500' },
   passFooter: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingTop: 4 },
   enter: { minWidth: 60, minHeight: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0px 1px 2px rgba(255,255,255,0.45), 0px 3px 5px rgba(0,0,0,0.18)' },
   wrap: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingTop: 72, paddingBottom: 40, gap: 24, width: '100%', maxWidth: 520, alignSelf: 'center' },

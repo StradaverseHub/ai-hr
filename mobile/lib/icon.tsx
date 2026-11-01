@@ -18,6 +18,7 @@ export const ICONS = {
   arrowRight: { ios: 'arrow.right', android: 'arrow_forward' },
   eye: { ios: 'eye', android: 'visibility' },
   eyeOff: { ios: 'eye.slash', android: 'visibility_off' },
+  chevronDown: { ios: 'chevron.down', android: 'keyboard_arrow_down' },
   chevron: { ios: 'chevron.right', android: 'chevron_right' },
   bell: { ios: 'bell', android: 'notifications' },
   search: { ios: 'magnifyingglass', android: 'search' },
