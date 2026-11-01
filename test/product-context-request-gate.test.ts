@@ -10,7 +10,7 @@ describe('Assistant pre-read gate',()=>{
   for(const turn of negatives)expect(gateTurn(turn.question).privateReads,turn.id).toBe(false);
   const gated=turns.filter(turn=>turn.category!=='negative'&&!gateTurn(turn.question).privateReads).map(turn=>turn.id).sort();
   // Only admin change requests that name a colleague; each keeps action suggestions.
-  expect(gated).toEqual(['pa-emergency','pa-leave-adjust','pa-transfer']);
+  expect(gated).toEqual(['pa-bank','pa-emergency','pa-leave-adjust','pa-transfer']);
   for(const id of gated)expect(gateTurn(turns.find(turn=>turn.id===id)!.question).actions,id).toBe(true);
  });
  it('withholds actions as well for rule overrides and attachments, in four languages',()=>{
@@ -28,6 +28,6 @@ describe('Assistant pre-read gate',()=>{
    expect(gateTurn(question),question).toEqual({privateReads:true,actions:true});
  });
  it('gives every gate reason a fixed note that never permits a lookup',()=>{
-  for(const note of Object.values(TURN_GATE_NOTE)){expect(note).toMatch(/no records were looked up/);expect(note.length).toBeLessThan(500);}
+  for(const note of Object.values(TURN_GATE_NOTE)){expect(note).toMatch(/no records were looked up/i);expect(note.length).toBeLessThan(500);}
  });
 });

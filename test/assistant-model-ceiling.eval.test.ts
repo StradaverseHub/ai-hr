@@ -131,7 +131,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
   expect(Boolean(KEY&&MODEL)).toBe(false);expect(calls).toBe(0);
  });
  else it('runs both corpora with a question-aware tool-using model under a hard spend cap',async()=>{
-  const {employee,hr}=await fixtures(),catalogues={employee:(await actionCatalogueFor(employee)).map(row=>row.id),admin:(await actionCatalogueFor(hr)).map(row=>row.id)},breaches:{turn:string;plan:string|null;reads:string[]}[]=[],scores:BaselineScore[]=[],runs:Record<string,ReturnType<typeof conversationRun>>={};
+  const {employee,hr}=await fixtures(),catalogues={employee:(await actionCatalogueFor(employee)).map(row=>row.id),admin:(await actionCatalogueFor(hr)).map(row=>row.id)},breaches:{turn:string;plan:string|null;reads:readonly string[]}[]=[],scores:BaselineScore[]=[],runs:Record<string,ReturnType<typeof conversationRun>>={};
   for(const conversation of [...ASSISTANT_PRODUCTION_BASELINE,...ASSISTANT_COMPLEX_BASELINE,...ASSISTANT_PARITY_ACTIONS]){
    const ctx=conversation.persona==='admin'?hr:employee,rows:BaselineScore[]=[];let history:Message[]=[];
    for(const item of conversation.turns){
