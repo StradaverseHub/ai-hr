@@ -853,3 +853,20 @@ are renamed byte-identical and appended above every known claim. If this bundle 
 performance owner's 0866–0872 fall below the new watermark and must be reallocated above when…274
 before their own release. Re-verify the accepted V9 ledger at handback before installation. This
 reservation grants no deployment or acceptance.
+
+## ADR-0170 step 5a (Teras outcome record and work-job mandates) — 1 November 2026 (provisional source claim)
+
+Branch `claude/teras-step5a-outcome-mandates` (cut from `claude/teras-step1-harness` a87dc418, journal ending
+`0874_payroll_tax_basis_corrections` idx752 / when1793330000274). A scan of every local and origin ref plus
+registered worktree journals found the highest claim at `0887_attendance_task_candidate_access`
+(when1793330000287, performance work) and no Teras sibling migration; this claim starts above it with a
+small gap. Development source only: no installation priority, no deployment. The idx values below are this
+branch's own journal positions and must be re-frozen above the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|753|1793330000290|0890_teras_outcome_record_mandates|f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4|
+|754|1793330000291|0891_teras_rule_version_labels|2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b|
+
+Existing populated-upgrade tests pin their own tails (`test/payroll-tax-basis-upgrade.test.ts` and peers) and
+will need the integrator's usual tail update when these entries land.
