@@ -1,63 +1,41 @@
-/** Reversible query-plan experiment: current login and grants are evaluated on every statement. */
-import {randomUUID} from 'node:crypto';
-import {readFileSync,writeFileSync} from 'node:fs';
+/** Diagnostic component only: original Inbox/bell owner on a H4-shaped fictional large tenant. */
+import {randomUUID,createHash} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {sql,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../../db/client';
+import type {SessionContext} from '../../db/client';
 import * as s from '../../db/schema';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
+import {hireEmployee,setReportingLine} from '../../core/org';
+import {todayInKualaLumpur} from '../../lib/hr-date';
+import {listPendingTasks} from '../../core/approvals-inbox';
+import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../../packs/leave/service';
+import {pendingProfileTaskMetadata} from '../../core/profile';
+import {pendingResignationTaskMetadata} from '../../core/offboarding';
+import {pendingReviewTaskGroups} from '../../core/employment-review';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('compares repeated live session guards and revocation outcomes before, during and after plan reuse',async()=>{
- await resetDb();const b=await seedBase(),base=adminCtx(b);
- const users=Array.from({length:500},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),name:'Fictional session plan '+i}));
- await owner.db.insert(s.person).values(users.map(u=>({id:u.personId,tenantId:b.tenantId,fullName:u.name,primaryEmail:u.id+'@example.invalid'})));
- await owner.db.insert(s.employment).values(users.map(u=>({id:u.employmentId,tenantId:b.tenantId,personId:u.personId,companyId:b.companyId,hiredOn:'2025-01-01'})));
- await owner.db.insert(s.appUser).values(users.map(u=>({id:u.id,tenantId:b.tenantId,personId:u.personId,workosUserId:'session_plan_'+u.id})));
- await owner.db.insert(s.roleAssignment).values(users.map(u=>({tenantId:b.tenantId,appUserId:u.id,role:'employee' as const,companyId:b.companyId})));
- const definitions=[];
- for(const signature of ['app.principal_snapshot_current()','app.login_blocked_on(uuid,date)']){
-  const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure) as original,prosrc as body from pg_proc where oid=${signature}::regprocedure`;
-  const name=signature.slice(4,signature.indexOf('(')),file=name==='principal_snapshot_current'?'0576_principal_snapshot_current.sql':'0579_configurable_access.sql';
-  const source=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
-  const start=source.indexOf('CREATE FUNCTION app.'+name+'('),end=source.indexOf('$$;',start)+3;
-  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
-  const original=source.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION');
-  const body=original.slice(original.indexOf('AS $$')+5,original.lastIndexOf('$$;'));
-  const cached=original.replace('LANGUAGE sql','LANGUAGE plpgsql').replace(/AS (\$[^$]*\$)[\s\S]*\1/,(_all:string,delimiter:string)=>'AS '+delimiter+'\nBEGIN RETURN ('+body.trim().replace(/;$/,'')+'); END;\n'+delimiter);
-  definitions.push({original,cached,installed:row.original});
- }
- const ctx=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]});
- const probe=async()=>withTenant(ctx(users[0]),async tx=>{
-  const first=await tx.execute(sql`select app.principal_snapshot_current() as current,app.login_blocked(${users[0].id}::uuid) as blocked`);
-  await tx.execute(sql`select set_config('app.roles','super_admin',true)`);
-  const forged=await tx.execute(sql`select app.principal_snapshot_current() as current`);
-  return {current:first[0].current,blocked:first[0].blocked,forged:forged[0].current};
- });
- const phases:Record<string,unknown>={};
- try{
-  for(const phase of ['baseline','candidate','baseline-after']){
-   for(const definition of definitions)await owner.client.unsafe(phase==='candidate'?definition.cached:definition.original);
-   const times:number[]=[],started=performance.now();
-   const results=await Promise.allSettled(users.map(async u=>{
-    const before=performance.now();
-    const rows=await withTenant(ctx(u),tx=>tx.execute(sql`select app.principal_snapshot_current() as current,app.login_blocked(${u.id}::uuid) as blocked from generate_series(1,20)`));
-    expect(rows).toHaveLength(20);expect(rows.every(row=>row.current===true&&row.blocked===false)).toBe(true);times.push(performance.now()-before);
-   }));
-   const elapsedMs=performance.now()-started,errors=results.flatMap(result=>result.status==='rejected'?[String(result.reason)]:[]);times.sort((a,b)=>a-b);
-   expect(await probe()).toEqual({current:true,blocked:false,forged:false});
-   try{
-    await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,users[0].id));
-    expect(await probe()).toEqual({current:false,blocked:true,forged:false});
-   }finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,users[0].id));}
-   try{
-    await owner.db.update(s.employment).set({terminatedOn:'2025-01-02'}).where(eq(s.employment.id,users[0].employmentId));
-    expect(await probe()).toEqual({current:false,blocked:true,forged:false});
-   }finally{await owner.db.update(s.employment).set({terminatedOn:null}).where(eq(s.employment.id,users[0].employmentId));}
-   expect(await probe()).toEqual({current:true,blocked:false,forged:false});
-   phases[phase]={principals:500,guardPairsPerPrincipal:20,elapsedMs,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors,liveRevocationAndForgedRoleChecks:true};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'session-read-plan.json'),JSON.stringify({kind:'REVERSIBLE_SESSION_PLAN_EXPERIMENT',releaseEligible:false,phases},null,2));
-   expect(errors).toEqual([]);
-  }
- }finally{for(const definition of definitions)await owner.client.unsafe(definition.installed);}
+it('profiles the complete cold assigned-approvals component without warming it with an Inbox list first',async()=>{
+ expect(process.env.GITHUB_ACTIONS).toBe('true');expect(new URL(process.env.TEST_DATABASE_URL!).hostname).toBe('127.0.0.1');
+ await resetDb();await owner.client`create extension if not exists pg_stat_statements`;const b=await seedBase();
+ const login=async(role:'employee'|'manager'|'hr_admin')=>{
+  const hired=await hireEmployee(adminCtx(b),{person:{fullName:'Fictional Inbox '+role,primaryEmail:randomUUID()+'@example.invalid'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+  const userId=await createAppUser(b.tenantId,hired.personId,role);
+  const ctx:SessionContext={...await entitledCtx(b,[role]),userId,personId:hired.personId,roles:[role],grants:[{role,companyId:null}]};return {...hired,ctx};
+ };
+ const hr=await login('hr_admin'),boss=await login('manager'),applicant=await login('employee'),colleague=await login('employee');
+ for(const employee of [applicant,colleague])await setReportingLine(adminCtx(b),{subordinateEmploymentId:employee.employmentId,managerEmploymentId:boss.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+ const people=await owner.db.insert(s.person).values(Array.from({length:2000},(_,i)=>({tenantId:b.tenantId,fullName:'Fictional Inbox Bulk '+i,primaryEmail:randomUUID()+'@example.invalid'}))).returning({id:s.person.id});
+ const employments=await owner.db.insert(s.employment).values(people.map(p=>({tenantId:b.tenantId,personId:p.id,companyId:b.companyId,hiredOn:'2020-01-01'}))).returning({id:s.employment.id});
+ const next=new Date(todayInKualaLumpur()+'T00:00:00Z');do{next.setUTCDate(next.getUTCDate()+1);}while([0,6].includes(next.getUTCDay()));const day=next.toISOString().slice(0,10);
+ const requests=await owner.db.insert(s.leaveRequest).values(employments.filter((_,i)=>i%10===0).map(e=>({tenantId:b.tenantId,employmentId:e.id,leaveTypeId:b.annualLeaveTypeId,startDate:day,endDate:day,days:'1',status:'pending' as const}))).returning({id:s.leaveRequest.id});expect(requests).toHaveLength(200);
+ const modules={attendance:false,claims:false,performance:false,rewards:false};
+ await owner.client`select pg_stat_statements_reset()`;const started=performance.now();
+ const tasks=await listPendingTasks(hr.ctx,undefined,modules,{noticeAcknowledgements:false});const elapsedMs=performance.now()-started;
+ expect(tasks.filter(t=>t.kind==='leave').map(t=>t.id).sort()).toEqual(requests.map(r=>r.id).sort());
+ const statements=await owner.client`select queryid::text,calls,plans,total_plan_time,total_exec_time,left(query,4000) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_plan_time+total_exec_time desc limit 60`;
+ const report:Record<string,unknown>={kind:'COLD_ASSIGNED_APPROVAL_COMPONENT_NOT_FULL_H4',releaseEligible:false,fixture:'2000 bulk employments + four real users,200 no-step pending Leave requests; optional modules and notices excluded as in H4. Omits its one additional real request and digest worker; does not replace its enforcing end-to-end10s assertion.',elapsedMs,targetMs:10000,taskCount:tasks.length,taskKinds:tasks.reduce<Record<string,number>>((a,t)=>({...a,[t.kind]:(a[t.kind]??0)+1}),{}),exact200PendingIds:true,taskIdsSha256:createHash('sha256').update(tasks.map(t=>t.id).sort().join('\n')).digest('hex'),statements};
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'assigned-approvals-work.json'),JSON.stringify(report,null,2));save();
+ const readers:Record<string,()=>Promise<unknown>>={leave:()=>pendingLeaveTaskMetadata(hr.ctx),cancellations:()=>pendingLeaveCancellationTaskMetadata(hr.ctx),replacement:()=>listPendingReplacementLeaveTasks(hr.ctx,{}),profile:()=>pendingProfileTaskMetadata(hr.ctx),resignation:()=>pendingResignationTaskMetadata(hr.ctx),reviews:()=>pendingReviewTaskGroups(hr.ctx)};
+ const warm:Record<string,{elapsedMs:number}>={};for(const [name,read]of Object.entries(readers)){const before=performance.now();await read();warm[name]={elapsedMs:performance.now()-before};}report.warmOwnerDiagnostics=warm;save();
+ expect(elapsedMs,'standalone cold assigned-approvals component, not the full H4 digest').toBeLessThan(10000);
 },180000);
