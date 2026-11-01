@@ -9,4 +9,4 @@ import { mobileLocale } from '@/lib/mobile-api/request';
 import { pageRequest } from '@/lib/mobile-api/v2/common';
 import { TASKS_CURSOR, TasksCursor, TasksPageV2 } from '@/lib/mobile-api/v2/tasks';
 
-export const GET = mobileRoute(TasksPageV2, async (s, req) => tasksPageV2(s, pageRequest(new URL(req.url), TASKS_CURSOR, TasksCursor), mobileLocale(req)));
+export const GET = mobileRoute(TasksPageV2, async (s, req) => tasksPageV2(s, {...pageRequest(new URL(req.url), TASKS_CURSOR, TasksCursor),expandedNative:new URL(req.url).searchParams.get('native')==='expanded'}, mobileLocale(req)));

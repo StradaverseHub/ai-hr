@@ -36,7 +36,7 @@
  */
 import { and, eq } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { attendanceCorrection, claimRequest, employment, leaveCancellationRequest, leaveRequest, leaveRequestDate } from '../db/schema';
+import { attendanceCorrection, claimRequest, employment, leaveCancellationRequest, leaveRequest, leaveRequestDate, replacementLeaveRequest } from '../db/schema';
 import { listPendingTasks } from './approvals-inbox';
 import { isCurrentAssignedApproval } from './assigned-approval-focus';
 import { isApprovalDecisionRefusal } from './approvals';
@@ -47,8 +47,11 @@ import { MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-c
 import * as leave from '../packs/leave/service';
 import * as claims from '../packs/claims/service';
 import { claimAnswers, currenciesOfClaims, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
+import {isPackWorkspaceKind} from '../lib/mobile-api/v2/pack-workspaces';
+import { isRequestWorkspaceKind } from '../lib/mobile-api/v2/request-workspaces';
+import { isReviewWorkspaceKind } from '../lib/mobile-api/v2/review-workspaces';
 import { moneyText } from '../lib/mobile-api/money-text';
-import { dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
+import { getAttendanceCorrectionAttachment, dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
 import { LeavePayrollBusyError, LeavePayrollClosedError } from '../packs/payroll/service';
 import { AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { AttendanceLevelError } from '../lib/attendance-workflow-v3';
@@ -119,7 +122,7 @@ async function summariesFor(ctx: SessionContext, rows: readonly Pending[], local
 }
 
 /** Every pending task for the caller (replacement leave and notice acknowledgements included), one page. */
-export async function tasksPageV2(ctx: SessionContext, q: { limit: number; cursor: readonly [string, TaskKind, string] | null }, locale = 'en'): Promise<TasksPageV2> {
+export async function tasksPageV2(ctx: SessionContext, q: { limit: number; cursor: readonly [string, TaskKind, string] | null; expandedNative?: boolean }, locale = 'en'): Promise<TasksPageV2> {
   const all = await listPendingTasks(ctx, undefined, modulesOf(ctx));
   const at = q.cursor ? { createdAt: q.cursor[0], kind: q.cursor[1], id: q.cursor[2] } : null;
   const after = (at ? all.filter((t) => order(t, at) > 0) : all).slice(0, q.limit + 1);
@@ -127,7 +130,7 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
   const summaries = await summariesFor(ctx, rows, locale);
   return {
     items: rows.map((t: Pending) => {
-      const native = isNativeTaskKind(t.kind);
+      const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) || isRequestWorkspaceKind(t.kind) || isPackWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
       return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath,
         summary: native ? summaries.get(`${t.kind}:${t.id}`) ?? null : null };
     }),
@@ -148,6 +151,8 @@ async function rawRowTx(tx: Tx, kind: NativeTaskKind, id: string): Promise<{ emp
     ? await tx.select({ employmentId: leaveRequest.employmentId, status: leaveRequest.status }).from(leaveRequest).where(eq(leaveRequest.id, id)).limit(1)
     : kind === 'leaveCancellation'
       ? await tx.select({ employmentId: leaveCancellationRequest.employmentId, status: leaveCancellationRequest.status }).from(leaveCancellationRequest).where(eq(leaveCancellationRequest.id, id)).limit(1)
+      : kind === 'replacementLeave'
+        ? await tx.select({ employmentId: replacementLeaveRequest.employmentId, status: replacementLeaveRequest.status }).from(replacementLeaveRequest).where(eq(replacementLeaveRequest.id, id)).limit(1)
       : kind === 'claim'
         ? await tx.select({ employmentId: claimRequest.employmentId, status: claimRequest.status }).from(claimRequest).where(eq(claimRequest.id, id)).limit(1)
         : await tx.select({ employmentId: attendanceCorrection.employmentId, status: attendanceCorrection.status }).from(attendanceCorrection).where(eq(attendanceCorrection.id, id)).limit(1);
@@ -233,6 +238,11 @@ export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id
       teamCover: await teamCover(ctx, r.employmentId, r.startDate, r.endDate),
     } };
   }
+  if (kind === 'replacementLeave') {
+    const [r] = await leave.listPendingReplacementLeaveRequests(ctx, { requestId:id });
+    if (!r) return gone();
+    return {outcome:'found',task:{kind,id:r.id,subject:{name:r.employee,code:r.employeeCode},createdAt:iso(r.createdAt),reasonRequiredToReject:false,unit:r.unit,totalDays:r.totalDays,totalHours:r.totalHours,submittedOn:r.submittedOn,employeeReason:r.reason?.slice(0,2000)??null,dates:r.dates.map(d=>({...d,fromTime:hhmm(d.fromTime),toTime:hhmm(d.toTime),shiftEnd:hhmm(d.shiftEnd),actualClockOut:hhmm(d.actualClockOut)})),expected:{status:'pending'}}};
+  }
   if (kind === 'claim') {
     const [c] = await claims.listPendingClaims(ctx, { requestId: id });
     if (!c) return gone();
@@ -285,6 +295,16 @@ export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id
 // ── Document ───────────────────────────────────────────────────────────────────────────────────────────────
 
 export type TaskDocument = { outcome: 'file'; contentType: MobileBinaryType; fileName: string; bytes: Uint8Array };
+/** The attachment remains protected by current task assignment, not merely row visibility. */
+export async function taskAttendanceDocumentV2(ctx:SessionContext,id:string):Promise<TaskDocument|TaskDocumentRefusal>{
+ const refusal=await admission(ctx,'attendance',id);if(refusal)return refused(refusal);
+ const [r]=await listAttendanceCorrections(ctx,{status:'pending',requestId:id});
+ if(!r||!r.canDecide)return refused('not_assigned');
+ const file=await getAttendanceCorrectionAttachment(ctx,id);if(!file)return refused('no_document');
+ const type=file.mimeType.toLowerCase(),bytes=new Uint8Array(file.content);
+ if(!isMobileBinaryType(type,MOBILE_ATTACHMENT_TYPES)||!hasMobileBinarySignature(type,bytes))return refused('unsupported_document');
+ return {outcome:'file',contentType:type,fileName:file.fileName,bytes};
+}
 /** The leave request's supporting document for an admitted approver: PDF, JPEG or PNG with a matching signature. */
 export async function taskDocumentV2(ctx: SessionContext, id: string): Promise<TaskDocument | TaskDocumentRefusal> {
   const refusal = await admission(ctx, 'leave', id);
@@ -349,6 +369,9 @@ export function decisionRefusal(e: unknown): TaskDecisionRefusal {
     if (e.message === CLAIM_NOT_FOUND) return refused('not_assigned');
     return { ...refused('decision_refused'), message: publicErrorMessage(e).slice(0, 4000) };
   }
+  if (e instanceof leave.ToilDisabledError || e instanceof leave.ToilNotEligibleError || e instanceof leave.ToilNoOvertimeError || e instanceof leave.ToilAlreadyAccruedError) return {...refused('decision_refused'),message:publicErrorMessage(e).slice(0,4000)};
+  if (e instanceof leave.ReplacementRequestNotPendingError) return refused('already_decided');
+  if (e instanceof leave.ReplacementRequestInvalidError) return {...refused('decision_refused'),message:publicErrorMessage(e).slice(0,4000)};
   const sentence = e instanceof AttendanceWorkflowError || e instanceof LeavePayrollBusyError || e instanceof LeavePayrollClosedError || isLeaveDomainError(e)
     || (e instanceof Error && e.constructor === Error && !isDatabaseError(e));
   if (sentence) return { ...refused('decision_refused'), message: publicErrorMessage(e).slice(0, 4000) };
@@ -400,6 +423,12 @@ export async function decideTaskV2(ctx: SessionContext, kind: NativeTaskKind, id
       if (kind === 'leaveCancellation') {
         const out = await leave.decideLeaveCancellation(ctx, { cancellationRequestId: id, decision, deciderEmploymentId: me.employmentId, expectedStepIndex: expected.stepIndex ?? null }, tx);
         return { outcome: 'accepted' as const, status: statusOf(out.status) };
+      }
+      if (kind === 'replacementLeave') {
+        if (row.status !== 'pending') throw new TaskRefused('already_decided');
+        const out = await leave.decideReplacementLeaveRequestTx(tx,ctx,{requestId:id,decision,note:reason});
+        if(out.status!==decision)throw new TaskRefused('decision_refused');
+        return {outcome:'accepted' as const,status:decision};
       }
       if (kind === 'claim') {
         // One step, no chain: the only state the approver can have seen is `pending` (the expected state); a reason is
