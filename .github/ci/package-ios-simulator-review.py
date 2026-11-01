@@ -1,7 +1,8 @@
 """Bind an already compiled simulator bundle to its normal ad-hoc app identity.
 
-This is neither device signing nor authentication bypass. The working EAS simulator uses the same
-bundle identifiers, no team and an empty entitlement dictionary. No private key or account is used.
+This is neither device signing nor authentication bypass. Each target gets only its own keychain
+identity, plus the already source-declared widget display-snapshot group. No private key or account
+is used. The extension never receives the main application credential group.
 """
 import hashlib
 import json
@@ -58,20 +59,32 @@ for extension in extensions:
 # Only signing metadata may change. Independently retain the exact native instruction-section hashes.
 texts = {p: hashlib.sha256(run('otool', '-s', '__TEXT', '__text', str(p)).encode()).hexdigest()
          for p in [executable, *[e / plistlib.loads((e / 'Info.plist').read_bytes())['CFBundleExecutable'] for e in extensions]]}
-entitlements = Path(os.environ['RUNNER_TEMP']) / 'onehr-empty-simulator-entitlements.plist'
-entitlements.write_bytes(plistlib.dumps({}))
+group_id = 'group.ai.stradaverse.aihr.test'
+# The existing Expo Widgets configuration declares this exact group by bundle identifier.
+config = json.loads(Path('mobile/app.json').read_text())['expo']
+assert config['ios']['bundleIdentifier'] == 'ai.stradaverse.aihr.test'
+widgets = next(p[1] for p in config['plugins'] if isinstance(p, list) and p[0] == 'expo-widgets')
+assert widgets.get('groupIdentifier', 'group.' + config['ios']['bundleIdentifier']) == group_id
+signing_scopes = []
 for framework in sorted(app.rglob('*.framework'), key=lambda p: len(p.parts), reverse=True):
     subprocess.run(['codesign', '--force', '--sign', '-', str(framework)], check=True)
 for target in [*extensions, app]:
     target_info = plistlib.loads((target / 'Info.plist').read_bytes())
-    subprocess.run(['codesign', '--force', '--sign', '-', '--identifier', target_info['CFBundleIdentifier'],
+    identifier = target_info['CFBundleIdentifier']
+    scope = {'application-identifier': identifier, 'keychain-access-groups': [identifier],
+             'com.apple.security.application-groups': [group_id]}
+    entitlements = Path(os.environ['RUNNER_TEMP']) / (identifier + '.simulator-entitlements.plist')
+    entitlements.write_bytes(plistlib.dumps(scope))
+    subprocess.run(['codesign', '--force', '--sign', '-', '--identifier', identifier,
                     '--entitlements', str(entitlements), str(target)], check=True)
+    signing_scopes.append(scope)
 for path, expected in texts.items():
     assert hashlib.sha256(run('otool', '-s', '__TEXT', '__text', str(path)).encode()).hexdigest() == expected
 assert sha(app / 'main.jsbundle') == original_bundle
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
 manifest = {'source': source, 'packagingSource': os.environ['EXPECTED_SOURCE'],
-            'route': 'standard macos-26; ad-hoc simulator bundle identity; no new entitlements',
+            'route': 'standard macos-26; ad-hoc simulator identity; per-app keychain and existing widget snapshot group',
+            'simulatorSigningScopes': signing_scopes,
             'build': '12', 'bundleIdentifier': info['CFBundleIdentifier'], 'executable': info['CFBundleExecutable'],
             'originalExecutableSha256': original_executable, 'executableSha256': sha(executable),
             'bundleSha256': original_bundle, 'nativeInstructionSectionsUnchanged': True,
