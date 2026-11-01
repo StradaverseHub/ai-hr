@@ -15,7 +15,7 @@ SOURCE='1'*40
 class WorkerPackageTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
-        self.payload={'package.json':b'{"name":"fixture"}','pnpm-lock.yaml':b'fixture-lock','tsconfig.json':b'{}','scripts/bank-import-runner.ts':b'// fixture only','node_modules/.pnpm/tsx/node_modules/tsx/package.json':b'{"name":"tsx"}'}
+        self.payload={'i18n/config.ts':b'// fixture','localization/registry.ts':b'// fixture','package.json':b'{"name":"fixture"}','pnpm-lock.yaml':b'fixture-lock','tsconfig.json':b'{}','scripts/bank-import-runner.ts':b'// fixture only','node_modules/.pnpm/tsx/node_modules/tsx/package.json':b'{"name":"tsx"}'}
         entries={}
         for path,data in self.payload.items():
             entries[path]={'path':path,'type':'file','size':len(data),'sha256':fmt.digest(data),'mode':0o644}
@@ -40,6 +40,10 @@ class WorkerPackageTests(unittest.TestCase):
         self.assertEqual(actual,self.manifest)
         for path,data in self.payload.items(): self.assertEqual((target/path).read_bytes(),data)
         self.assertEqual((target/'node_modules/tsx/package.json').read_bytes(),self.payload['node_modules/.pnpm/tsx/node_modules/tsx/package.json'])
+    def test_refuses_missing_localization_runtime_inputs(self):
+        for path in ['i18n/config.ts','localization/registry.ts']:
+            manifest=self.changed(lambda m:m.update(entries=[r for r in m['entries'] if r['path']!=path]))
+            with self.assertRaises(ValueError): fmt.validate_manifest(manifest,SOURCE)
     def test_refuses_file_content_change_even_with_matching_size(self):
         payload=self.payload.copy();payload['tsconfig.json']=b'[]';packet=self.packet(payload=payload);target=self.root/'out';target.mkdir()
         with self.assertRaisesRegex(ValueError,'bytes differ'): fmt.extract_archive(packet,target,SOURCE)

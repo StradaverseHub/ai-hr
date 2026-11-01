@@ -389,3 +389,21 @@ release orchestrator on 2 November 2026 ("All sessions can auto approve and rele
 reviewed this specific changed-file list; it is recorded here for review. It is a technical disposition within
 existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Any further
 covered-byte change requires another exact review.
+
+## Technical source binding — 2 November 2026, idle sign-out merged with Runner Operator (PR188)
+
+Merging main `438bfae3d9f5b71f54f7fc258959e91249c4f597` (PR188, Runner Operator, bound on main to
+`5bd1ea76f2fd1ac7610d12422b492eb2d54d0a774581ee8c0f4225803b1215f8`) into the idle sign-out branch combines both
+closures: 1145 files / `f52ec0333649aaede27b12406e1f7467f50cab6eac2f0ab47e82f187dec9d5bf`. The idle sign-out
+contribution is exactly the changed covered files listed in the two entries above; nothing in PR188's covered
+bytes was edited, and the dictionaries were merged key-by-key (main's catalogue plus `sessionTimeout.*` and
+`internalAuth.idleSignedOut`).
+
+The SAME 24 approved records receive only this sourceDigest; every original human status, reviewer, evidence
+anchor and timestamp is preserved, and both pending blocks remain byte-identical.
+`lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`f130d5996e8b4fa5f353b2a81fa63da2087ff1350fba24f975e4807570a4d3c5` (no approval binds it).
+
+Made by the implementation session under the owner's standing authorization relayed on 2 November 2026 ("All
+sessions can auto approve and release without me"); no human reviewed this combined list. Technical disposition
+within existing scope only, not a new privacy approval, certification, runtime PASS or staging acceptance.

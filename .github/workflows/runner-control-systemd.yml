@@ -1,0 +1,31 @@
+name: runner-control-systemd
+run-name: Disposable scheduler proof · ${{ github.sha }}
+on:
+  push:
+    branches: ['codex/runner-control-systemd-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  systemd-fixture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Verify real scheduler controls with harmless dedicated fixture workers
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          if ! command -v crontab >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y cron
+          fi
+          sudo --preserve-env=GITHUB_ACTIONS,GITHUB_SHA,GITHUB_RUN_ID,RUNNER_TEMP python3 -I -B test/fixtures/runner-control-systemd.py "$(id -un)"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runner-control-systemd-proof
+          path: ${{ runner.temp }}/runner-control-systemd-proof.json
+          if-no-files-found: error
+          retention-days: 14

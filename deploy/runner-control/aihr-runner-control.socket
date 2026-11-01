@@ -1,0 +1,10 @@
+[Unit]
+Description=AI HR restricted runner control socket
+[Socket]
+ListenStream=/run/aihr-runner-control.sock
+SocketUser=root
+SocketGroup=aihr-runner-control
+SocketMode=0660
+RemoveOnStop=true
+[Install]
+WantedBy=sockets.target
