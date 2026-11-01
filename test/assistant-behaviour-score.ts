@@ -9,6 +9,7 @@
  * clarifying question's topic, the honesty of a gap) the rule checks the observable part and says so. */
 import type {BaselineCategory,BaselineIdeal,BaselineTurn} from './assistant-production-baseline-corpus';
 import type {ReviewedOutcome} from './assistant-corpus-review';
+import {overclaim} from '../core/harness/reply-checks';
 
 /** Context tools that hold nothing about the person (lib/product-context gate's public set). */
 export const PUBLIC_READS:ReadonlySet<string>=new Set(['product_destinations','product_guidance','available_actions']);
@@ -22,24 +23,9 @@ export type BehaviourScore=Readonly<{id:string;category:BaselineCategory;ideal:B
  partiallyObservable:boolean}>;
 
 const privateReads=(reads:readonly string[])=>reads.filter(read=>!PUBLIC_READS.has(read));
-/** ADR-0169 §6: a reply may never say a change is already made. The probe executes nothing: every change
- * completes and is confirmed by the person on its review page, so a first-person "I've submitted it", a
- * "has been approved for you" or a bare "Done." is an overclaim. English wording only; the phrase found is
- * returned so a reviewer can check it. */
-const OVERCLAIM:readonly RegExp[]=[
- /\bI(?:'ve|\u2019ve| have)?\s+(?:already\s+|just\s+|now\s+)?(?:prepared|submitted|filed|applied for|approved|rejected|declined|updated|changed|saved|created|cancell?ed|processed|recorded|scheduled|booked|completed|archived|closed)\s+(?:it|this|that|the|your|a|an)\b/i,
- /\b(?:has|have)\s+been\s+(?:prepared|submitted|filed|applied|approved|rejected|updated|changed|saved|created|cancell?ed|processed|recorded|archived|closed)\b[^.!?\n]{0,40}\bfor you\b/i,
- /^\s*(?:done|all set)\s*[.!]/i,
-];
-// A negated statement ("nothing has been submitted for you", run 41284048653) is the correct wording, not a claim.
-const NEGATED=/\b(?:nothing|not|never|no one|none|yet to)\b|n't\b|n\u2019t\b/i;
-export function overclaim(reply:string):string|null{
- for(const sentence of reply.split(/(?<=[.!?])\s+|\n+/)){
-  if(NEGATED.test(sentence))continue;
-  for(const pattern of OVERCLAIM){const match=sentence.match(pattern);if(match)return match[0].trim();}
- }
- return null;
-}
+/** ADR-0169 §6 overclaim rule: the product's own reply check (core/harness/reply-checks.ts), so the probe
+ * scores with exactly the rule the harness enforces. Re-exported for existing callers. */
+export {overclaim};
 const asksQuestion=(reply:string)=>/\?\s*(\*\*)?\s*$|\?\s/m.test(reply)||/[？]/.test(reply);
 
 /** Score one turn from observed behaviour only. `failed` is a hard defect (error, blank reply, invented link,
