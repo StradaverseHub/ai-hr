@@ -591,6 +591,13 @@ Clean candidates across all passes that can stand alone: **Atoll, Fram, Keelson,
 
 **Recommendation on this brief:** **Noveri** first (mind plus truth, and "new"; the meaning holds without a tagline), **Sofida** second (wisdom plus trust, the most exact fit to the brief), **Prudia** third (the strongest meaning, but the closest live competitor). Each still needs the trademark screen below.
 
+**Owner choice (2 November 2026): Noveri.** Earlier proposals considered and set aside by the owner after screening: "Nous OS" (Nous Research, a well-known open-source AI lab), "Medha OS" (MedhaHR, an AI recruitment platform; "Medha K", an AI HR assistant at CSM Technologies; a common first name), "Animus OS" (in English "animus" means hostility and, in employment law, discriminatory intent; strongly associated with Assassin's Creed's Animus).
+
+- **Name:** Noveri (no-VAIR-ee), from *nous* (mind) and *veritas* (truth); it also reads as "new".
+- **Use:** the name stands alone; the tagline carries the category: "Noveri, the AI operating system for HR". Features take the name as a prefix (Noveri Connect, Noveri mandates, Ask Noveri).
+- **Status:** chosen, **not yet cleared**. Adoption needs the checks below; the nearest names found are Novera A.i. (an early-stage B2B AI company) and Noveo.ai.
+- **In code:** the working label "Teras" remains in identifiers and file names; user-facing copy reads one product-name constant, so the switch to Noveri is one change once clearance passes.
+
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
 ## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)
