@@ -6,9 +6,11 @@ on:
     paths:
       - .github/workflows/mobile-ios-simulator-review.yml
       - .github/ci/native-ios-simulator-review.sh
+      - .github/ci/package-ios-simulator-review.py
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: mobile-ios-simulator-review-${{ github.ref }}
   cancel-in-progress: false
@@ -25,6 +27,9 @@ jobs:
       EXPO_PUBLIC_AUTH_PROVIDER: internal
       NODE_OPTIONS: --max-old-space-size=4096
       EXPECTED_SOURCE: ${{ github.sha }}
+      REUSE_IOS_RUN: '41346237677'
+      REUSE_IOS_SOURCE: eeffeab830c32b928e4be2a1ced70cc1bb904849
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -35,7 +40,7 @@ jobs:
           node-version: '22.23.3'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
-      - name: Build only an unsigned arm64 simulator app
+      - name: Package the verified simulator build with its normal ad-hoc identity
         run: bash .github/ci/native-ios-simulator-review.sh
       - name: Retain review artifact and source manifest briefly
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
