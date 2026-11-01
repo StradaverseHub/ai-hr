@@ -4,7 +4,7 @@ const path = require('node:path');
 /** Build-time only. Never put the registration JSON or server credentials in extra/public env. */
 function configureFirebase(config, env = process.env, projectRoot = path.resolve(__dirname, '..')) {
   const file = env.GOOGLE_SERVICES_JSON;
-  const androidBuild = env.EAS_BUILD === 'true' && env.EAS_BUILD_PLATFORM === 'android';
+  const androidBuild = env.EAS_BUILD === 'true' && env.EAS_BUILD_PLATFORM === 'android' && env.EAS_BUILD_PROFILE === 'production';
   if (!file) {
     if (androidBuild) throw new Error('Android push requires the GOOGLE_SERVICES_JSON EAS file variable.');
     return config;

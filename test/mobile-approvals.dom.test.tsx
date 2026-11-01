@@ -74,6 +74,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
   // M11 (D12): the claim pieces are exercised in test/mobile-claims.dom.test.tsx; inert here.
   const claimParts = { ClaimAnswers: () => null, ReceiptLink: () => null, claimMoney: (a: string | null, c: string | null) => [c, a].filter(Boolean).join(' ') };
   const screens = load('mobile/lib/approval-decision.tsx', {
+    './approval-document':{ApprovalDocument:({name}:any)=><span>{name}</span>},
     ...base, './api': api, './paged-list': paged, '../../lib/mobile-api/v2/tasks': v2tasks,
     './claim-parts': claimParts, '../../lib/mobile-api/v2/claims': v2claims,
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
@@ -109,7 +110,7 @@ describe('approvals list', () => {
     expect(f.apiPostV2).not.toHaveBeenCalled();
   });
 
-  it('a claim approval is listed with its summary but opens on the web — no native detail, even though the server marks it native', async () => {
+  it('a claim approval opens its native detail with the recorded amount summary', async () => {
     const f = fixture();
     const sum = { label: 'Meals', from: '2026-10-20', to: '2026-10-20', days: null, amount: '42.50', currency: 'MYR' };
     // The server still sends claims as native (older installed apps decide them), so it sends no web path.
@@ -118,11 +119,9 @@ describe('approvals list', () => {
     f.apiGetPage.mockResolvedValueOnce({ items: [claim], nextCursor: null });
     render(<f.ApprovalsScreen />);
     await screen.findByText('Meals · 2026-10-20 · MYR 42.50');
-    expect(screen.queryByRole('button', { name: /^task_claim/ })).toBeNull();
-    fireEvent.click(screen.getByRole('link', { name: 'openOnWeb: task_claim · Aisyah · Meals · 2026-10-20 · MYR 42.50' }));
-    expect(f.openURL).toHaveBeenCalledWith('https://hr.test/approvals');
-    expect(f.push).not.toHaveBeenCalled();
-    expect(f.apiGetV2).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'task_claim · Aisyah · Meals · 2026-10-20 · MYR 42.50' }));
+    expect(f.push).toHaveBeenCalledWith({pathname:'/approvals/[kind]/[id]',params:{kind:'claim',id:claim.id}});
+    expect(f.openURL).not.toHaveBeenCalled();
   });
 
   it('never builds a path or a web URL from anything but a native kind, a UUID and a relative path', () => {
@@ -130,7 +129,7 @@ describe('approvals list', () => {
     expect(() => f.taskPath('profile', ID)).toThrow();
     // Claims left the app (declutter round): no native claim detail or receipt path is ever built.
     expect(() => f.taskPath('claim', ID)).toThrow();
-    expect(() => f.taskPath('claim', ID, 'document')).toThrow();
+    expect(f.taskPath('claim', ID, 'document')).toBe(`v2/tasks/claim/${ID}/document`);
     expect(f.taskPath('leave', ID, 'decision')).toBe(`v2/tasks/leave/${ID}/decision`);
     expect(() => f.taskPath('leave', '../me')).toThrow();
     expect(f.taskPath('attendance', ID.toUpperCase(), 'decision')).toBe(`v2/tasks/attendance/${ID}/decision`);

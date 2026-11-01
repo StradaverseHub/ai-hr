@@ -418,7 +418,7 @@ acceptance remain release work; model/adapter tests do not replace those checks.
 Set `GOOGLE_SERVICES_JSON` as an EAS **file** variable in each Android build environment
 (preview and production). Its value is the Firebase Android app's `google-services.json`
 registered for `ai.stradaverse.aihr.test`. The build config verifies the package and required
-registration fields, and refuses cloud Android builds without registration. Do not commit
+registration fields, and refuses production cloud Android builds without registration. Review APKs may be built without it while push provisioning is explicitly deferred. Do not commit
 this file or place its contents in `extra` or an `EXPO_PUBLIC_*` variable.
 
 The registration file is distinct from a Google service-account private key. This app uses

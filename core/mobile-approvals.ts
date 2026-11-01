@@ -49,7 +49,7 @@ import * as claims from '../packs/claims/service';
 import { claimAnswers, currenciesOfClaims, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
 import { isReviewWorkspaceKind } from '../lib/mobile-api/v2/review-workspaces';
 import { moneyText } from '../lib/mobile-api/money-text';
-import { dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
+import { getAttendanceCorrectionAttachment, dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
 import { LeavePayrollBusyError, LeavePayrollClosedError } from '../packs/payroll/service';
 import { AttendanceWorkflowError } from '../lib/attendance-workflow';
 import { AttendanceLevelError } from '../lib/attendance-workflow-v3';
@@ -293,6 +293,16 @@ export async function taskDetailV2(ctx: SessionContext, kind: NativeTaskKind, id
 // ── Document ───────────────────────────────────────────────────────────────────────────────────────────────
 
 export type TaskDocument = { outcome: 'file'; contentType: MobileBinaryType; fileName: string; bytes: Uint8Array };
+/** The attachment remains protected by current task assignment, not merely row visibility. */
+export async function taskAttendanceDocumentV2(ctx:SessionContext,id:string):Promise<TaskDocument|TaskDocumentRefusal>{
+ const refusal=await admission(ctx,'attendance',id);if(refusal)return refused(refusal);
+ const [r]=await listAttendanceCorrections(ctx,{status:'pending',requestId:id});
+ if(!r||!r.canDecide)return refused('not_assigned');
+ const file=await getAttendanceCorrectionAttachment(ctx,id);if(!file)return refused('no_document');
+ const type=file.mimeType.toLowerCase(),bytes=new Uint8Array(file.content);
+ if(!isMobileBinaryType(type,MOBILE_ATTACHMENT_TYPES)||!hasMobileBinarySignature(type,bytes))return refused('unsupported_document');
+ return {outcome:'file',contentType:type,fileName:file.fileName,bytes};
+}
 /** The leave request's supporting document for an admitted approver: PDF, JPEG or PNG with a matching signature. */
 export async function taskDocumentV2(ctx: SessionContext, id: string): Promise<TaskDocument | TaskDocumentRefusal> {
   const refusal = await admission(ctx, 'leave', id);

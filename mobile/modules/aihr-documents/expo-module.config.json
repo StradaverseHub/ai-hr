@@ -1,0 +1,1 @@
+{"platforms":["ios","android"],"apple":{"modules":["AihrDocumentsModule"]},"android":{"modules":["ai.stradaverse.documents.AihrDocumentsModule"]}}

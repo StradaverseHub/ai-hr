@@ -354,7 +354,7 @@ describe('leave decisions', () => {
     caller = colleague.ctx;
     expect(await (await fetchDoc(id)).json()).toEqual({ outcome: 'refused', code: 'not_assigned' });
     caller = manager.ctx;
-    expect((await document.GET(new Request(`${URL0}/attendance/${id}/document`))).status).toBe(400);
+    expect(await (await document.GET(new Request(`${URL0}/attendance/${id}/document`))).json()).toEqual({outcome:'refused',code:'not_assigned'});
   });
 });
 

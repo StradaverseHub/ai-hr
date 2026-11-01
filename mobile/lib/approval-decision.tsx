@@ -9,10 +9,7 @@
  * when the answer is lost, "Try again" resends the SAME reference, so it is never applied twice. A refusal reloads
  * the task and says why (a moved step/stage is `stale_step`). Nothing is queued or persisted.
  *
- * Expense claims left the app (mobile declutter round): a claim approval is still LISTED, with its server summary
- * line, but behaves like every other web-only kind — an "Open on web" chip, no native detail and no receipt download.
- * The server still marks claims `nativeDecision` (older installed apps decide them natively); this build decides
- * natively only the kinds in NATIVE below.
+ * Claims include recorded amounts, custom fields and protected receipt review.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Pressable, TextInput, View } from 'react-native';
@@ -20,7 +17,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { randomUUID } from 'expo-crypto';
 import { DesignText as Text, useTenantDesign } from './design';
-import { apiGetV2, apiPostV2, v2Page } from './api';
+import { ApprovalDocument } from './approval-document';
+import { apiDownload, v2Download, apiGetV2, apiPostV2, v2Page } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { config, identityNamespace } from './config';
 import { RequestRejectedError, SignInRequiredError } from './errors';
@@ -30,7 +28,7 @@ import { Atmosphere } from './design';
 import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
-import { Button, Card, HeaderBack, LoadState, Muted, Screen, Title, fmtDays, fmtMoney } from './ui';
+import { Button, Card, HeaderBack, LoadState, Muted, Screen, Title, Row, fmtDays, fmtMoney } from './ui';
 import {
   TaskDecisionResult, TaskDetailResult, TaskItemV2,
   type TaskDecisionRefusal, type TaskDecisionRefusalCode, type TaskDetailV2, type TaskKind,
@@ -38,7 +36,7 @@ import {
 
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'replacementLeave', 'managerReview', 'hrReview'] as const;
+const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'claim', 'replacementLeave', 'managerReview', 'hrReview'] as const;
 /** Decided in this app: the server says it may be, AND this build has the screen for it (claims no longer do). */
 export const decidesNatively = (item: Pick<TaskItemV2, 'kind' | 'nativeDecision'>) => item.nativeDecision && (NATIVE as readonly string[]).includes(item.kind);
 /** Where a web-only row opens: the server's path, or — for a kind the server still marks native (a claim) and so sends
@@ -161,7 +159,7 @@ type Sent = { body: Body; phase: 'sending' | 'uncertain' };
 export function taskLine(task: TaskDetailV2): string {
   // Never loaded here (taskPath refuses a claim); kept so the server's union stays exhaustively handled.
   if (task.kind === 'replacementLeave') return t('approvalToilSummary',{days:fmtDays(task.totalDays),hours:String(task.totalHours)});
-  if (task.kind === 'claim') return t('task_claim');
+  if (task.kind === 'claim') return [task.claimType,task.currency,fmtMoney(task.amount),task.incurredOn].filter(Boolean).join(' · ');
   // fmtDays already carries its unit ("5 days"); the summary templates add none (a "{days} days" template doubled it).
   if (task.kind === 'leave') return t('approvalLeaveSummary', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
     + (task.durationType === 'half_day_am' || task.durationType === 'half_day_pm' ? ` · ${t(HALF_DAY[task.durationType])}` : '')
@@ -250,7 +248,13 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       <Title>{titleOf(task)}</Title>
       <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24 }}>{taskLine(task)}</Text>
       {task.employeeReason && <Muted>{t('approvalEmployeeNote', { note: task.employeeReason })}</Muted>}
-      {((task.kind === 'leave' && task.hasDocument) || (task.kind === 'attendance' && task.hasAttachment)) && <Muted>{t('approvalDocumentOnWeb')}</Muted>}
+      {((task.kind === 'leave' && task.hasDocument) || (task.kind === 'attendance' && task.hasAttachment)) && <ApprovalDocument name={t('supportingDocument')} onSignInRequired={signOut} open={()=>apiDownload(v2Download(taskPath(kind,id,'document'),10*1024*1024,['application/pdf','image/jpeg','image/png']))}/>}
+      {task.kind === 'claim' && <>
+        {task.claimItem && <Muted>{task.claimItem}</Muted>}
+        {task.quantityKm && <Muted>{task.quantityKm} km</Muted>}
+        {task.fields.map(field=><Row key={field.key} label={field.label} value={typeof field.value==='boolean' ? ({en:['No','Yes'],ms:['Tidak','Ya'],zh:['否','是'],ta:['இல்லை','ஆம்'],th:['ไม่','ใช่'],vi:['Không','Có']}[appLocale()][Number(field.value)]) : field.value??'—'}/>)}
+        {task.receipts.map(receipt=><ApprovalDocument key={receipt.id} name={receipt.fileName} onSignInRequired={signOut} open={()=>apiDownload(v2Download(taskPath(kind,id,'document'),10*1024*1024,['application/pdf','image/jpeg','image/png']),{attachment:receipt.id})}/>)}
+      </>}
       {task.kind === 'replacementLeave' && <>
         <Muted>{t('approvalToilRecalculate')}</Muted>
         {task.dates.map((d,i) => <Card key={`${d.workedDate}:${i}`}>
