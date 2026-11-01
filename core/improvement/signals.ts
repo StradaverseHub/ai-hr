@@ -61,7 +61,7 @@ const OTHER='other';
 export const HARNESS_VOCABULARY=Object.freeze({
  publicContextTools:Object.freeze(['product_destinations','product_guidance','available_actions']),
  actionTools:Object.freeze(['available_actions','suggest_action']),
- replyChecks:Object.freeze(['non_blank','destination_links','overclaim','identifiers']),
+ replyChecks:Object.freeze(['non_blank','destination_links','workplace_channel','overclaim','identifiers']),
  retryReasons:Object.freeze(['truncated','blank']),
  budgets:Object.freeze(['steps','tokens','time','spend']),
 });

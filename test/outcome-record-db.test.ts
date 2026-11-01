@@ -56,7 +56,7 @@ describe('outcome record',()=>{
    effectiveHumanInvolvement:'none',effectiveNotice:'not_applicable',decision:null});
   expect(record.reads).toEqual([{tool:'my_leave_balances',status:'ok',argumentsDigest:turn.trace.calls[0].argumentsDigest}]);
   const specLabel=`harness_spec:v${turn.trace.spec.version}#${turn.trace.spec.digest.slice(0,16)}`;
-  expect(record.checks.map(check=>check.check)).toEqual(['turn_gate','non_blank','destination_links','overclaim','identifiers']);
+  expect(record.checks.map(check=>check.check)).toEqual(['turn_gate','non_blank','destination_links','workplace_channel','overclaim','identifiers']);
   expect(record.checks.every(check=>check.ruleVersion===specLabel)).toBe(true);
   expect(record.replay).toEqual({model:'fictional/scripted-model',provider:'fictional',instructionSet:specLabel,specVersion:String(turn.trace.spec.version),
    specDigest:turn.trace.spec.digest,toolCatalogue:expect.stringMatching(/^offered:[a-f0-9]{16}$/)});
