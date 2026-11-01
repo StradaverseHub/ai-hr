@@ -20,7 +20,7 @@ it('physically locks current and next-month drafts but leaves an unrelated older
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),today=todayInKualaLumpur();
  const subject=await hireEmployee(ctx,{person:{fullName:'Fictional draft lock subject',primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const shifted=(delta:number)=>{const date=new Date(today+'T12:00:00Z');date.setUTCMonth(date.getUTCMonth()+delta,15);return date.toISOString().slice(0,7);};
- const batches=[];
+ const batches:{id:string}[]=[];
  for(const delta of [-6,0,1]){
   const month=shifted(delta),[period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:month}).returning();
   const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:month,batchDate:month+'-15'}).returning();batches.push(batch);
@@ -41,9 +41,9 @@ it('retains native correction authority, tenant isolation and private-owner exec
  const employee={...ctx,userId:await createAppUser(b.tenantId,null,'employee'),personId:undefined,roles:['employee'],grants:[]};
  const guarded=(context:typeof ctx)=>withTenant(context,tx=>tx.execute(sql`select * from app.attendance_payroll_protection(${subject.employmentId}::uuid,ARRAY[${today}::date])`));
  await expect(guarded(ctx)).resolves.toHaveLength(0);
- await expect(guarded(employee)).rejects.toThrow(/Attendance correction authority required/);
- await expect(guarded(adminCtx(foreign))).rejects.toThrow(/Attendance correction authority required/);
- await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_payroll_protection_rows(${subject.employmentId}::uuid,ARRAY[${today}::date])`))).rejects.toThrow(/permission denied/);
+ await expect(guarded(employee)).rejects.toMatchObject({cause:{message:expect.stringMatching(/Attendance correction authority required/)}});
+ await expect(guarded(adminCtx(foreign))).rejects.toMatchObject({cause:{message:expect.stringMatching(/Attendance correction authority required/)}});
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_payroll_protection_rows(${subject.employmentId}::uuid,ARRAY[${today}::date])`))).rejects.toMatchObject({cause:{code:'42501',message:expect.stringMatching(/permission denied/)}});
 });
 afterAll(closeAll);
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
@@ -51,7 +51,7 @@ const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 it.each([false,true])('keeps same-period exclusion while unrelated Attendance commands overlap (same period: %s)',async samePeriod=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),today=todayInKualaLumpur();
  const oldDate=new Date(today+'T12:00:00Z');oldDate.setUTCMonth(oldDate.getUTCMonth()-6,15);const oldMonth=oldDate.toISOString().slice(0,7);
- const employees=[];
+ const employees:{employmentId:string}[]=[];
  for(const name of ['A','B'])employees.push(await hireEmployee(ctx,{person:{fullName:'Fictional period subject '+name,primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}));
  const [period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:oldMonth}).returning();
  await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:oldMonth,batchDate:oldMonth+'-15'});
