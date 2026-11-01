@@ -113,7 +113,12 @@ export function Button({ title, onPress, kind = 'primary', disabled = false,acce
 export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {
   const { palette } = useTenantDesign();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={t('back')} hitSlop={8} onPress={onPress ?? (() => router.back())}
+    <Pressable accessibilityRole="button" accessibilityLabel={t('back')} hitSlop={8} onPress={onPress ?? (() => {
+      // A restored/deep-linked detail can be the first route in the stack.
+      // Back must still offer a way out while its request is loading or failed.
+      if (router.canGoBack()) router.back();
+      else router.replace('/');
+    })}
       style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}>
       <Text style={{ color: palette.accent, fontSize: 30, lineHeight: 32 }}>‹</Text>
     </Pressable>
