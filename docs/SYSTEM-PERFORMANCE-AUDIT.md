@@ -2,6 +2,13 @@
 
 ## Outcome and limits
 
+Owner direction,1 November2026: prioritize the fastest system with the least
+practical resources. Use existing standard hosted runners and focused component
+comparisons before expensive full-load repeats; do not provision paid or larger
+infrastructure. The owner has no connection details for an isolated production-size
+environment. Continue development qualification on the available small topology;
+production-equivalent acceptance remains unavailable and is not inferred.
+
 **The 500-concurrent-user speed target is not met.** This is development evidence,
 not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/pull/113)
 is held; this work has not deployed to staging or production.
@@ -33,7 +40,12 @@ metadata reader fix was absent from these frozen runs and is qualified separatel
 
 The next frozen workload source is `baef664fc` (application/SQL matches verified
 metadata fix1be4d2d26); runs41296295314(1s)/41296304113(5s) are pending. A separate
-reversible experiment41296321846 profiles three remaining live guard query plans.
+reversible experiment41296321846 passed, but the added three guard plans improved
+only the unrelated employee materially (63.1→40.3ms); HR/delegate/manager medians
+were not convincingly better. That bundle is not promoted. Follow-up experiment
+41296762228 on source94353cade instead measures delaying subject metadata until
+after the unchanged request decision proof; it is running, with no application
+change or passing claim.
 No later speed pass is claimed. These new fixtures derive their business dates from
 the native date owner; the current-month boundary differs from31 October tests,
 so cross-run performance changes must not be treated as controlled causal ratios.
