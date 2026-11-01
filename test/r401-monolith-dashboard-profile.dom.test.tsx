@@ -1,3 +1,4 @@
+import {resolveRouteServerTree} from './helpers/resolve-route-server-tree';
 /**
  * r401 — Monolith rollout STEP 4, first slice: the Dashboard (app/page.tsx) and My Profile (app/me/page.tsx),
  * rendered for real in jsdom from the PAGE FUNCTIONS themselves, with every read mocked to a fixture.
@@ -72,6 +73,7 @@ vi.mock('next-intl/server', async () => {
   return {
     getTranslations: vi.fn(async (namespace?: string) => ct({ locale: 'en', messages: msgs, namespace: namespace as never })),
     getLocale: vi.fn(async () => 'en'),
+    getMessages: vi.fn(async () => msgs),
   };
 });
 vi.mock('next/navigation', () => ({
@@ -233,7 +235,7 @@ const ADMIN_LAYOUT = [
   'recentActivity',
   'noticeBoard',
 ];
-const renderDashboard = async () => wrap(await DashboardPage({ searchParams: Promise.resolve({}) }));
+const renderDashboard = async () => wrap(await resolveRouteServerTree(DashboardPage({ searchParams: Promise.resolve({}) })));
 const renderMe = async () => wrap(await MePage({ searchParams: Promise.resolve({}) }));
 
 /** Every number printed in `el`, normalised (commas dropped, leading zeros dropped). */

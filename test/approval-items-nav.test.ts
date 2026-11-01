@@ -145,7 +145,7 @@ describe('accessible count label: nav.approvalsCount', () => {
 
 describe('the count is the viewer\'s own pending queue, computed once', () => {
   it('the layout derives the matching inbox destinations from the same canonical task read — no second query', () => {
-    expect(layout).toContain("const legacyApprovalCount = approvalTasks.filter(task => task.linkPath.split(/[?#]/, 1)[0] === '/approvals').length;");
+    expect(layout).toContain("const legacyApprovalCount = approvalSummary.approvalCount;");
     expect(layout).toContain('approvalCount={legacyApprovalCount}');
     expect(layout).not.toContain('approvalCount={pendingTasks.length}');
     // The value it reuses is still the same single call already made for the bell.
@@ -156,19 +156,20 @@ describe('the count is the viewer\'s own pending queue, computed once', () => {
     // always "exactly ONE call, and the count reuses it". That is now asserted directly by counting CALL
     // sites rather than matching one argument list, which is both stronger and immune to the next
     // argument change. Do not weaken this to "contains listPendingTasks".
-    expect(layout).toContain('const approvalTasks = await listPendingTasks(session, scopeIds,');
-    const callSites = layout.split('await listPendingTasks(').length - 1;
+    expect(layout).toContain('const approvalSummary = await pendingTaskSummary(session, scopeIds,');
+    const callSites = layout.split('await pendingTaskSummary(').length - 1;
     expect(callSites, 'exactly one listPendingTasks call in the root layout').toBe(1);
   });
 
   it('it is NOT the bell\'s taskCount (which also folds in action notifications)', () => {
     // Deliberate divergence: the bell counts unread action-severity notifications too, which are not
     // approval records. The nav badge is strictly approval items.
-    expect(layout).toContain('taskCount={pendingTasks.length + taskNotifCount}');
+    expect(layout).toContain('taskCount={approvalSummary.total+onboardingQueue.length+taskNotifCount}');
     expect(layout).not.toContain('approvalCount={pendingTasks.length + taskNotifCount}');
     // Onboarding work joins My tasks/the bell, never the legacy Approval Items count.
     expect(layout).toContain('const pendingTasks:NotificationTaskItem[]=[...approvalTasks,...onboardingQueue.map(onboardingNotificationTask)];');
-    expect(layout).toContain('taskCount={pendingTasks.length}');
+    expect(layout).toContain('taskCount={approvalSummary.total+onboardingQueue.length}');
+    expect(layout).toContain('const approvalTasks=approvalSummary.items;');
   });
 
   it('each work row renders its own count only when positive', () => {

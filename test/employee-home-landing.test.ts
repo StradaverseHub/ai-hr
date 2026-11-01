@@ -1,5 +1,8 @@
 import * as React from 'react';
-import {renderToStaticMarkup} from 'react-dom/server';
+import {renderToStaticMarkup as renderMarkup} from 'react-dom/server';
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
+import {resolveRouteServerTree} from './helpers/resolve-route-server-tree';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 const state=vi.hoisted(()=>({
  session:{tenantId:'fictional-tenant',personId:'fictional-person',userId:'fictional-login',roles:['employee'] as string[],entitlements:{tenantId:'fictional-tenant',enabledModules:[] as string[],scopedModules:{},settings:{},tenantStatus:'active'}},
@@ -7,7 +10,7 @@ const state=vi.hoisted(()=>({
 }));
 vi.mock('@/lib/scope',()=>({scopedSession:async()=>({s:state.session,scopeIds:['fictional-company'],allowedCount:1})}));
 vi.mock('@/lib/authz',()=>({isAdmin:()=>state.session.roles.includes('hr_admin')}));
-vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async()=>(key:string)=>key}));
+vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getMessages:async()=>messages,getTranslations:async()=>(key:string)=>key}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw Error('not-found');}}));
 vi.mock('@/components/employee-home/personal-home',()=>({EmployeePersonalHome:({employmentId,greetingsEnabled}:{employmentId?:string;greetingsEnabled:boolean})=>React.createElement('main',{'data-selected':employmentId,'data-greetings':String(greetingsEnabled)},'Personal Home')}));
 vi.mock('@/core/employee-home',()=>({readEmployeeHomeIdentity:state.identity,HomeAccessError:class extends Error{constructor(readonly code:string){super(code);}}}));
@@ -17,7 +20,9 @@ vi.mock('@/core/read',()=>({
  recentHires:state.aggregate,upcomingHolidays:state.aggregate,awayTodayCount:state.aggregate,leaveBalances:state.aggregate,listApprovalHistory:state.aggregate,
 }));
 vi.mock('@/core/assistant-grant',()=>({mayUseAssistant:state.assistant}));
-import DashboardPage from '../app/page';
+import DashboardRoute from '../app/page';
+const DashboardPage=async(props:Parameters<typeof DashboardRoute>[0])=>resolveRouteServerTree(DashboardRoute(props));
+const renderToStaticMarkup=(children:React.ReactNode)=>renderMarkup(React.createElement(NextIntlClientProvider,{locale:'en',timeZone:'Asia/Kuala_Lumpur',messages,children}));
 import {HomeAccessError} from '../core/employee-home';
 beforeEach(()=>{
  vi.clearAllMocks();state.session.roles=['employee'];state.session.entitlements.enabledModules=[];state.reports=[];

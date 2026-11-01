@@ -25,6 +25,16 @@ const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readines
 // 929ea296 (PR126): web transactions declare the correction-aware income-tax reader. Without it a reader fails
 // closed only on payslips that carry a tax-basis correction; the old worker's owners never read payslip.
 const WEB_TAX_BASIS_READER = ", set_config('app.payroll_tax_basis_reader', '1', true)";
+// Owner-reviewed performance closure9f74efea6 (1 Nov): the web pool/lazy ORM/audit setup changed.
+// Keep the old comparison against its immutable pre-performance baseline, then pin every new byte.
+// The process under test below ALWAYS executes the complete original968 worker client.
+const PRE_PERFORMANCE_WEB='7fe8f8627f3a5ec0067f7dea777f140dd204ca5b';
+const REVIEWED_PERFORMANCE_WEB='5a7c830b8bc68952d655495e240f72d092195161';
+const REVIEWED_PERFORMANCE_INPUTS=[
+ {path:'db/client.ts',sha256:'742ec59834babb88e48ca9a5962edd837ec67bcf2d1a3713cbfc70fc0fcfd772'},
+ {path:'lib/db-pool-size.ts',sha256:'4c1925044686dc787ce30da9643e3d8456e34e6eb59e6722197fa6ae83e4aa3e'},
+] as const;
+
 
 // Only the exact independently reviewed Bank changes may differ in the new web source.
 // The executed old worker still receives its own immutable original bytes below.
@@ -47,7 +57,13 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  expect(webClient.split(WEB_AGENT_ENABLEMENT)).toHaveLength(2);
  // No arbitrary type/comment stripping: ANY other runtime, import, context, transaction or type delta fails.
  expect(webClient.split(WEB_TAX_BASIS_READER)).toHaveLength(2);
- expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
+ const baselineClient=execFileSync('git',['show',PRE_PERFORMANCE_WEB+':db/client.ts'],{encoding:'utf8'});
+ expect(baselineClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
+ for(const input of REVIEWED_PERFORMANCE_INPUTS){
+  const reviewed=execFileSync('git',['show',REVIEWED_PERFORMANCE_WEB+':'+input.path]);
+  expect(createHash('sha256').update(reviewed).digest('hex')).toBe(input.sha256);
+  expect(readFileSync(input.path).equals(reviewed),'Only exact reviewed performance bytes permitted: '+input.path).toBe(true);
+ }
  for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
  expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
@@ -119,7 +135,7 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
   if(evidence){mkdirSync(evidence,{recursive:true});writeFileSync(join(evidence,'worker-cross-version.json'),JSON.stringify({
    kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',workerSource:WORKER_SOURCE,webSource:process.env.AIHR_CI_HEAD,
    correctedRootPolicy:PACKET_POLICY,actualPacketExecuted:false,authenticatedCorrectedPacketProofRequired:true,
-   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedWebTypeOnlyChange:{path:'db/client.ts',workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
+   schemaEntries:schema.ledger,unchangedSourcePaths:unchanged.filter(path=>path!=='db/client.ts'),reviewedBaselineTypeChange:{path:'db/client.ts',baseline:PRE_PERFORMANCE_WEB,workerDeclaration:WORKER_AGENT_ENABLEMENT,webDeclaration:WEB_AGENT_ENABLEMENT,allOtherBytesIdentical:true},reviewedWebPerformanceClientChange:{source:REVIEWED_PERFORMANCE_WEB,inputs:REVIEWED_PERFORMANCE_INPUTS,executedArchivedBytes:WORKER_SOURCE},reviewedChangedPathContracts:{source:REVIEWED_BANK_SOURCE,paths:reviewedChanges,executedWorkerBytes:WORKER_SOURCE},reviewedWebMigrationEntryChange:{workerCommand:WORKER_MIGRATION_COMMAND,webCommand:WEB_MIGRATION_COMMAND,inputs:REVIEWED_MIGRATION_INPUTS,executedArchivedPackageAndLock:WORKER_SOURCE,workerTickUsesPackageMigrationCommand:false},sourceArchiveSha256:createHash('sha256').update(archive).digest('hex'),
    newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:history.length,
    protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,
   },null,2)+'\n');}
