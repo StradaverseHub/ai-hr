@@ -2,6 +2,8 @@ import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
+import scopes from '../i18n/client-message-scopes.json';
+import {pickClientMessages} from '../lib/client-message-tree';
 import {OperatorShell} from '../components/operator-shell';
 import {CustomerCreateForm,CustomerModuleForm,CustomerNameForm} from '../app/operator/customer-forms';
 import type {ReactNode} from 'react';
@@ -15,6 +17,12 @@ const show=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages
 const modules=[{code:'payroll',name:'Payroll',description:'Payroll processing.',dependsOn:['employees'],billable:true},
  {code:'multi_cycle_payroll',name:'Multi-Cycle Payroll',description:'Multiple cycles.',dependsOn:['payroll'],billable:true}];
 describe('operator tasks and controls',()=>{
+ it('renders scheduled navigation using the actual bounded shell catalog',()=>{
+  render(<NextIntlClientProvider locale="en" messages={pickClientMessages(messages,scopes.shared.prefixes)} onError={error=>{throw error;}}>
+   <OperatorShell name="Test Operator"><p>Customer content</p></OperatorShell>
+  </NextIntlClientProvider>);
+  expect(screen.getByRole('link',{name:messages.scheduledActions.title})).toHaveAttribute('href','/admin/scheduled-actions');
+ });
  it('offers only installation navigation and logout, with no employee destinations',()=>{
   show(<OperatorShell name="Test Operator"><p>Customer content</p></OperatorShell>);
   const nav=screen.getByRole('navigation',{name:'Operator workspace'});
