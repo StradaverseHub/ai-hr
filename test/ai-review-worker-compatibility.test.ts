@@ -18,7 +18,7 @@ const WORKER_SOURCE='968354c00a71df7baccd499eb60757a3307ed61e';
 const PACKET_POLICY={controller:'567ec0908a24e21078e458ec1e93e696cafeb0a8',formatSha256:'07fa30e623f192ed8231ed42de4a606ed8251539db95389ec7ad6b50ff166369',
  roots:['package.json','pnpm-lock.yaml','tsconfig.json','app','assets','components','content','core','data','db','deploy','i18n','lib','localization','messages','packs','public','scripts','types','node_modules']};
 const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-import-job.ts','lib/bank-import-source.server.ts','lib/bank-import-job.ts'];
-// Current web db/client differs only in this reviewed erased type union. The child process below
+// The immutable pre-performance web baseline differs only in this reviewed erased type union. The child process below
 // still receives and verifies the COMPLETE immutable 968 db/client, including its original type.
 const WORKER_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };";
 const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage' | 'approval_chasers' | 'review_chasers' | 'clock_reminders' | 'document_reminders' | 'lifecycle_chasers'; userId: string; eventId: string };";
@@ -41,12 +41,14 @@ const REVIEWED_PERFORMANCE_INPUTS=[
 const REVIEWED_BANK_SOURCE='9a1b613d8f7208e59ca389b0f72a67970a023a36';
 const reviewedChanges=['core/bank-import-worker.ts','core/import-sections.ts','core/import-history.ts'];
 // The web package migration entry changed for guarded CI provisioning, not for the worker tick.
-// Pin all three reviewed owners byte-for-byte; no arbitrary command omission or script allowlist.
+// Pin every reviewed owner byte-for-byte, including finite performance admission; no command omission.
 const WORKER_MIGRATION_COMMAND='drizzle-kit migrate';
 const WEB_MIGRATION_COMMAND='node --import tsx scripts/migrate-with-focused-prerequisites.ts';
 const REVIEWED_MIGRATION_INPUTS=[
+ // The reviewed pure performance admission adds only exact hosted job/database names.
+ {path:'scripts/lib/performance-role-fixture.ts',sha256:'fc249f2c1269be5af0cc5305a74d0e1083adf9ba1946ff23e5cb3e7256b49e9b'},
  {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
- {path:'scripts/lib/discard-premigration.ts',sha256:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'},
+ {path:'scripts/lib/discard-premigration.ts',sha256:'55810773c7ad96955d0877b240fb59ce07c2ed17759110768ddafa2273b81019'},
  {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
 ] as const;
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
