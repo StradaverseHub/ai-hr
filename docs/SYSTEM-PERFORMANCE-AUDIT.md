@@ -55,7 +55,7 @@ PL/pgSQL query plan; no result is cached. Frozen candidate7b93d22e4 undergoes
 exact-file/whole-compiler41297609428 and12 affected identity/tenant/RLS files
 41297616183. Exact-file41297609428 PASS: identical task results and owner/ACL/security attributes,
 unknown user returns no row, actual grant changes appear immediately and stale
-claimed HR grants refuse. The whole compiler is still running. All220 affected
+claimed HR grants refuse. The whole compiler PASS. All220 affected
 cases in12 files41297616183 PASS, zero failures/skips.
 
 The two metadata-source workloads41296295314/41296304113 failed before load at
@@ -68,8 +68,12 @@ The real100-line native validation is checked for both tenant fixtures before
 building, to fail cheaply on dates/mapping/permissions. A workflow-only diagnostic
 uses100k Claims/90k Attendance instead of2m records, with the same500 identities,
 50-person Payroll batches and all workflow assertions. Full-load fixtures retain
-one million Claims plus requested Attendance volume. Single preflight recovery
-precedes any further full-load run.
+one million Claims plus requested Attendance volume. All61 focused calendar/native clocking cases41298348436 PASS on sourcee53d2298f.
+The first smaller preflight41298355480 was canceled deliberately after source
+review caught a positional validator call instead of its canonical input object;
+that original canceled run is retained. Corrected sourcee27e97cbc runs single
+preflight41298406747. It is running and precedes any further full-load run.
+Application and SQL source remain unchanged from verified7b93d22e4.
 No later speed pass is claimed. These new fixtures derive their business dates from
 the native date owner; the current-month boundary differs from31 October tests,
 so cross-run performance changes must not be treated as controlled causal ratios.
