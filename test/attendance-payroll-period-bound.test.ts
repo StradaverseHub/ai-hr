@@ -9,7 +9,7 @@ it('keeps every canonical Attendance cutoff date in the statutory month or its p
   const latest=new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
   const check=(config:ReturnType<typeof cleanPayrollPolicyConfig>,company:number|null)=>{
    const window=cutOffWindowFor('attendance',config,{attendanceCutOffDay:company},period);
-   expect(window.start>=earliest && window.end<=latest && window.start<=window.end,{period,window,config,company}.toString()).toBe(true);
+   expect(window.start>=earliest && window.end<=latest && window.start<=window.end,JSON.stringify({period,window,config,company})).toBe(true);
   };
   check(null,null);
   for(let anchor=1;anchor<=28;anchor++){

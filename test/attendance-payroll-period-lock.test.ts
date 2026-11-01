@@ -2,13 +2,15 @@
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {withDataCommand} from '../core/data-command';
+import {withTenant} from '../db/client';
 import {lockPayrollForAttendanceChange} from '../core/payroll-closed-runs';
 import {hireEmployee} from '../core/org';
 import * as s from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(async()=>{
  await migrateTestDb();
  const rows=await owner.client`select p.oid::regprocedure::text as identity,p.prosrc,pg_get_functiondef(p.oid) as definition,to_jsonb(p) as attributes from pg_proc p where p.oid in ('app.attendance_payroll_protection(uuid)'::regprocedure,'app.attendance_payroll_protection_rows(uuid)'::regprocedure)`;
@@ -32,6 +34,16 @@ it('physically locks current and next-month drafts but leaves an unrelated older
   }
   expect(blocked,'drafts are locked before any payslip exists; obsolete months do not serialize Attendance').toEqual([false,true,true]);
  });
+});
+it('retains native correction authority, tenant isolation and private-owner execution denial',async()=>{
+ await resetDb();const b=await seedBase(),foreign=await seedBase(),ctx=adminCtx(b),today=todayInKualaLumpur();
+ const subject=await hireEmployee(ctx,{person:{fullName:'Fictional authority subject',primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const employee={...ctx,userId:await createAppUser(b.tenantId,null,'employee'),personId:undefined,roles:['employee'],grants:[]};
+ const guarded=(context:typeof ctx)=>withTenant(context,tx=>tx.execute(sql`select * from app.attendance_payroll_protection(${subject.employmentId}::uuid,ARRAY[${today}::date])`));
+ await expect(guarded(ctx)).resolves.toHaveLength(0);
+ await expect(guarded(employee)).rejects.toThrow(/Attendance correction authority required/);
+ await expect(guarded(adminCtx(foreign))).rejects.toThrow(/Attendance correction authority required/);
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.attendance_payroll_protection_rows(${subject.employmentId}::uuid,ARRAY[${today}::date])`))).rejects.toThrow(/permission denied/);
 });
 afterAll(closeAll);
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}

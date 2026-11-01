@@ -95,5 +95,13 @@ export const PERFORMANCE_MIGRATION_TAIL = [
   "tag": "0897_administrator_candidate_work",
   "breakpoints": true,
   "hash": "312266b1bf13ca69295776d9bed3beb08ad98a0b8c858da6c213c10919dfb2ae"
+},
+{
+  "idx": 771,
+  "version": "7",
+  "when": 1793330000300,
+  "tag": "0900_attendance_payroll_period_locks",
+  "breakpoints": true,
+  "hash": "018d4bbfdc1fc0d1b0a4957918e07e206f5a6fca1337d196c0c63fb8940b3fdb"
 }
 ] as const;
