@@ -207,7 +207,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis
   if(!Array.isArray(raw))fail('statement','A statement list is required');let returned=false;
   for(const entry of raw){const loc=location(object(entry)?entry.loc:null);tick(depth,loc);if(++statements>PAY_FORMULA_LIMITS.statements)fail('limit','Too many formula statements',loc);if(!object(entry))fail('statement','A statement is required',loc);const statement=entry as unknown as FormulaStatement;
    if(returned&&statement.kind!=='comment')guard(()=>fail('unreachable','This statement follows an unconditional return',loc),()=>undefined);
-   const declared=statement.kind==='declare'&&typeof statement.name==='string'&&['decimal','string','boolean','date'].includes(statement.type)?statement.name.toLowerCase():null;
+   const declared=statement.kind==='declare'&&typeof statement.name==='string'&&['decimal','string','boolean','date'].includes(statement.type)?{name:statement.name.toLowerCase(),type:statement.type}:null;
    guard(()=>{switch(statement.kind){
     case 'comment':if(typeof statement.text!=='string'||statement.text.length>PAY_FORMULA_LIMITS.string||/[\r\n]/.test(statement.text))fail('comment','A comment must fit on one bounded line',loc);break;
     case 'declare':{const name=validName(statement.name,loc).toLowerCase();if(scope.has(name))fail('identifier','Variable is already declared in this scope',loc);if(!['decimal','string','boolean','date'].includes(statement.type))fail('type','Unknown declaration type',loc);if(infer(statement.value,scope,depth+1)!==statement.type)fail('type','Declaration value does not match its type',loc);scope.set(name,statement.type);break;}
@@ -218,7 +218,7 @@ function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis
      for(const branch of statement.branches){if(!object(branch))fail('condition','A condition branch is required',loc);guard(()=>{if(infer(branch.condition,scope,depth+1)!=='boolean')fail('type','If/ElseIf needs a Boolean condition',loc);},()=>undefined);if(!block(branch.body,new Map(scope),depth+1))all=false;}
      const elseReturns=block(statement.otherwise,new Map(scope),depth+1);returned=all&&elseReturns;break;}
     default:fail('statement','Unknown formula statement',loc);
-   }},()=>{if(declared&&!scope.has(declared))scope.set(declared,statement.type as FormulaType);if(statement.kind==='return')returned=true;});
+   }},()=>{if(declared&&!scope.has(declared.name))scope.set(declared.name,declared.type);if(statement.kind==='return')returned=true;});
   }return returned;
  };
  if(!block(program.statements,new Map(),0)){const last=[...(program.statements as unknown as FormulaStatement[])].reverse().find(s=>object(s)&&s.kind!=='comment');guard(()=>fail('return','Every formula path must return a Decimal amount',sink&&last?location(last.loc):start),()=>undefined);}

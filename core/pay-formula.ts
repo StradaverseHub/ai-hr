@@ -48,9 +48,11 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
  const analysis=analyzePayFormula(program),groups=await loadFormulaAccumulationGroupsTx(tx,ctx),codes=new Set(analysis.dependencies.filter(d=>d.kind!=='accumulation').map(d=>d.code.toUpperCase()));
  const selectedGroups=groups.filter(g=>analysis.dependencies.some(d=>d.kind==='accumulation'&&d.code.toUpperCase()===g.code));for(const g of selectedGroups)for(const member of g.members)codes.add(member);
  const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;orpOvertime:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,orp_overtime as "orpOvertime",formula_context as "formulaContext",rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
- // 02472802 — a formula reading {#FixedAllowances} depends on the membership of that aggregate; formulas
- // that do not read it keep exactly their previous snapshot.
- if(analysis.functions.includes('FixedAllowances'))for(const r of rows)if(!r.archivedAt&&payItemFeedsOvertimeOrp(r.code,r.kind,r.rule as PayRule|null,r.orpOvertime))codes.add(r.code.toUpperCase());
+ // 02472802 — a formula reading {#FixedAllowances} depends on the aggregate's membership POLICY (the
+ // overtime-rate tick box and kind, evaluated without the rule). Rule-driven rows never count at run time,
+ // and the rule is left out so linking the reader's own Pay Item is not a dependency change. Formulas
+ // that do not read it get no extra key, so their snapshot and fingerprint are unchanged.
+ const fixedAllowanceBasis=analysis.functions.includes('FixedAllowances')?rows.filter(r=>!r.archivedAt&&payItemFeedsOvertimeOrp(r.code,r.kind,null,r.orpOvertime)).map(r=>({code:r.code.toUpperCase(),kind:r.kind,orpOvertime:r.orpOvertime})).sort((a,b)=>a.code.localeCompare(b.code)):undefined;
  const outputCodes=new Set(analysis.dependencies.filter(d=>['calculated','unprorated'].includes(d.kind)).map(d=>d.code.toUpperCase()));for(const g of selectedGroups)for(const member of g.members)outputCodes.add(member);
  const relevantFormulas=new Set<string>(),queue=[...outputCodes];
  for(let i=0;i<queue.length;i++){
@@ -61,7 +63,7 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
  }
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
  const active=await tx.execute<{code:string;revisionId:string;hash:string}>(sql`select f.formula_id as code,r.id as "revisionId",r.content_hash as hash from pay_formula f join lateral(select * from pay_formula_event e where e.formula_id=f.id and e.kind in ('activated','deactivated','deleted') order by sequence desc limit 1)e on e.kind='activated' join pay_formula_revision r on r.id=e.revision_id where f.tenant_id=${ctx.tenantId}::uuid and f.formula_id<>${selfId??''} order by f.formula_id`);
- return {catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION};
+ return {catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION,...(fixedAllowanceBasis?{fixedAllowanceBasis}:{})};
 }
 export async function formulaDependencyFingerprintTx(tx:Tx,ctx:SessionContext,program:FormulaProgram,selfId?:string){return digest(await dependencySnapshotTx(tx,ctx,program,selfId));}
 async function graph(tx:Tx,ctx:SessionContext,formulaId:string,dependencies:string[]){

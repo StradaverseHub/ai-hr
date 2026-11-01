@@ -85,8 +85,9 @@ period length the payroll scope already carries (`calendarDays`). FixedAllowance
 `fixed_allowances` aggregate: one row test, `countsTowardFixedAllowances` (which delegates to
 `payItemFeedsOvertimeOrp`), the same all-rows-of-a-code group rule and the same stored amounts. Members
 are rule-free or fixed, so the reader cannot join a cycle. A reader's dependency snapshot adds the
-member rows, so changing the overtime-rate tick boxes requires a retest. Formulas that do not read the
-new names keep their previous snapshot.
+membership policy: each row's overtime-rate tick box and kind, evaluated without its rule. Changing a
+tick box therefore requires a retest, but linking the reader's own Pay Item does not. Formulas that do
+not read the new names keep their previous snapshot.
 
 `PAY_FORMULA_REGISTRY_VERSION` and `PAY_FORMULA_EVALUATOR_VERSION` are not bumped. Active revisions
 are loaded only when their stored versions equal the current ones, and the provider version is part
