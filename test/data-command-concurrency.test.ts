@@ -2,6 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
+import {actorOf,appendEvent} from '../db/events';
 import {withDataCommand} from '../core/data-command';
 import {lockAccessConfigurationTx} from '../core/access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from '../core/leave-dependency-lock';
@@ -9,7 +10,7 @@ import {withTenant} from '../db/client';
 import {adminCtx,closeAll,createAppUser,harnessSnapshot,migrateTestDb,owner,resetDb,seedBase} from './harness';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {editLeaveRequest,requestLeave} from '../packs/leave/service';
-import type {SessionContext} from '../db/client';
+import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -79,17 +80,18 @@ it('holds real native account revocation out until the shared command commits, t
  await expect(withDataCommand(ctx,async()=>true)).rejects.toThrow('Current command principal required');
 });
 it('rolls back the entire shared attempt before exactly one exclusive configuration replay',async()=>{
- await resetDb();const b=await seedBase(),name='Fictional replay '+randomUUID();let attempts=0;
- await withDataCommand(adminCtx(b),async tx=>{
-  attempts++;await tx.insert(s.person).values({tenantId:b.tenantId,fullName:name});
+ await resetDb();const b=await seedBase(),ctx=adminCtx(b),aggregateId=randomUUID(),refusedId=randomUUID();let attempts=0;
+ const append=(tx:Tx,id:string)=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'test',aggregateId:id,eventType:'test.command-replay',actor:actorOf(ctx),payload:{fictional:true}});
+ await withDataCommand(ctx,async tx=>{
+  attempts++;await append(tx,aggregateId);
   await lockLeaveDependencyConfigurationTx(tx,b.tenantId);
  });
  expect(attempts).toBe(2);
- expect(await owner.db.select({id:s.person.id}).from(s.person).where(eq(s.person.fullName,name))).toHaveLength(1);
+ expect(await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,aggregateId))).toHaveLength(1);
  let failures=0;
- await expect(withDataCommand(adminCtx(b),async tx=>{failures++;await tx.insert(s.person).values({tenantId:b.tenantId,fullName:name+' refused'});throw new Error('Fictional business refusal');})).rejects.toThrow('Fictional business refusal');
+ await expect(withDataCommand(ctx,async tx=>{failures++;await append(tx,refusedId);throw new Error('Fictional business refusal');})).rejects.toThrow('Fictional business refusal');
  expect(failures).toBe(1);
- expect(await owner.db.select({id:s.person.id}).from(s.person).where(eq(s.person.fullName,name+' refused'))).toHaveLength(0);
+ expect(await owner.db.select({id:s.domainEvent.id}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,refusedId))).toHaveLength(0);
 });
 it('does not turn a real read-only snapshot into an ordinary write transaction',async()=>{
  await resetDb();const b=await seedBase();
