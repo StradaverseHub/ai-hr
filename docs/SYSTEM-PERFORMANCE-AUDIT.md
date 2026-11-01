@@ -38,8 +38,8 @@ waiter was seen in that bounded sample. Reusable plans improve component costs b
 do not by themselves resolve the whole-system workload. The newer standalone
 metadata reader fix was absent from these frozen runs and is qualified separately.
 
-The next frozen workload source is `baef664fc` (application/SQL matches verified
-metadata fix1be4d2d26); runs41296295314(1s)/41296304113(5s) are pending. A separate
+The subsequent frozen workload source is `baef664fc` (application/SQL matches verified
+metadata fix1be4d2d26); runs41296295314(1s)/41296304113(5s) failed before traffic, as detailed below. A separate
 reversible experiment41296321846 passed, but the added three guard plans improved
 only the unrelated employee materially (63.1→40.3ms); HR/delegate/manager medians
 were not convincingly better. That bundle is not promoted. Follow-up experiment
@@ -72,8 +72,8 @@ one million Claims plus requested Attendance volume. All61 focused calendar/nati
 The first smaller preflight41298355480 was canceled deliberately after source
 review caught a positional validator call instead of its canonical input object;
 that original canceled run is retained. Corrected sourcee27e97cbc runs single
-preflight41298406747. It is running and precedes any further full-load run.
-Application and SQL source remain unchanged from verified7b93d22e4.
+preflight41298406747, whose process-completion failure and focused recovery are retained below.
+That preflight's application and SQL source were unchanged from verified7b93d22e4.
 
 Preflight41298406747 FAILS process completion: all six native/browser workflows,
 PDF/foreign boundaries and both native audits completed, withpreflightPassed:true,
@@ -92,10 +92,33 @@ A separate necessary-only Attendance experiment41300133755 on source6d2d95466
 passes: no-assignment employee median45.0→1.4ms versus its restored original,
 with exact tasks/refusals and real named non-admin/delegated actors preserved.
 Positive paths still invoke the complete original reader with fresh authority.
-This is benchmark-only, no application gate has been added. Million-document
-access-path experiment41300741520 on source255e1850c is running before any
-production-source index/precheck promotion. The synthetic scale test is not a
-native request-creation or HTTP throughput certificate.
+Original scale41300741520 failed on benchmark JSON-array serialization, then
+41301231393 and41301899447 failed because the generic EXISTS/LIMIT plan still
+chose a full scan after adding an index. Those failures are retained. The corrected
+materialized candidate access path41302458111 on source514b77485 PASS:2/2 native
+and scale cases, zero failures/skips. On1,000,002 synthetic workflow documents,
+three real prepared reads per present/absent/foreign-only case took0.176–0.542ms,
+versus7.19–7.30s full scans before/after. The indexed EXPLAIN ANALYZE uses the GIN
+index even under disposable forced generic plans. Heap215,580,672bytes;
+index99,074,048bytes; index build+ANALYZE21.23s. This is query-access evidence,
+not a native million-request creation or HTTP throughput certificate.
+
+Current application candidate `16e662e6b15e0d072cdbe02a313b449a1e67d0f8` normally
+merges main/alpha1a74336e68abf0c06067b19857ad68c8aeb93049. All639 canonical journal
+entries and SQL bytes are preserved. Eight never-installed performance drafts
+move byte-identically to0879–0886 above observed competing reservations; new0887
+adds the exact UUID-native actor-key parser, three expression indexes, statistics,
+and a necessary-only precheck in the existing Attendance task transaction after
+real principal validation. Historical lines/assignments deliberately fall through;
+positive paths retain complete original request RLS and current decision guards.
+No permission/result caching, command changes or production settings are added.
+Native assigned non-admin/delegate/ordered-refusal behavior and a reversible
+scan-required control are tested through the real application entry point.
+Qualification41303017578 (16 affected files + whole compiler) and41303020809
+(exact application paired comparison + million-document index profile) are pending.
+The canonical payroll-tax-reader session flag and both Personnel integration imports
+are preserved. Current source fingerprints regenerate without editing human approval
+literals; exact-source approval remains held before any later integration/release.
 No later speed pass is claimed. These new fixtures derive their business dates from
 the native date owner; the current-month boundary differs from31 October tests,
 so cross-run performance changes must not be treated as controlled causal ratios.
