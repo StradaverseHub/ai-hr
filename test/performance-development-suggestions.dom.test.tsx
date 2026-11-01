@@ -14,7 +14,7 @@ it('previews suggestions without writing and carries unsaved form words when the
  ports.suggest.mockResolvedValue({goals:[goal('Planning'),goal('Facilitation')],pool:[{id:'tc:0',label:'Planning',note:'not demonstrated',kind:'technical'}],sourceDigest:'digest',remaining:4,limit:5,empty:false,stretchOnly:false});ports.apply.mockResolvedValue({ok:true});show();
  fireEvent.change(screen.getByLabelText('Aspiration'),{target:{value:'My unsaved aspiration'}});fireEvent.click(screen.getByRole('button',{name:en.onehr.developmentSuggestions.generate}));
  expect(await screen.findByRole('checkbox',{name:'Planning'})).toBeTruthy();expect(ports.apply).not.toHaveBeenCalled();expect(ports.refresh).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('checkbox',{name:'Facilitation'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Add selected to draft (1)'})).not.toBeDisabled());fireEvent.click(screen.getByRole('button',{name:'Add selected to draft (1)'}));
+ await waitFor(()=>expect(screen.getByRole('checkbox',{name:'Facilitation'})).not.toBeDisabled());fireEvent.click(screen.getByRole('checkbox',{name:'Facilitation'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Add selected to draft (1)'})).not.toBeDisabled());fireEvent.click(screen.getByRole('button',{name:'Add selected to draft (1)'}));
  await waitFor(()=>expect(ports.apply).toHaveBeenCalledOnce());const [form,selected,digest]=ports.apply.mock.calls[0];expect(form.get('aspiration')).toBe('My unsaved aspiration');expect(selected).toEqual([goal('Planning')]);expect(digest).toBe('digest');await waitFor(()=>expect(ports.refresh).toHaveBeenCalledOnce());
 });
 it('keeps proposals on an apply error, can discard without a write and explains the empty source',async()=>{
