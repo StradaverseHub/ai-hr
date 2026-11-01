@@ -31,11 +31,18 @@ waiter was seen in that bounded sample. Reusable plans improve component costs b
 do not by themselves resolve the whole-system workload. The newer standalone
 metadata reader fix was absent from these frozen runs and is qualified separately.
 
+The next frozen workload source is `baef664fc` (application/SQL matches verified
+metadata fix1be4d2d26); runs41296295314(1s)/41296304113(5s) are pending. A separate
+reversible experiment41296321846 profiles three remaining live guard query plans.
+No later speed pass is claimed. These new fixtures derive their business dates from
+the native date owner; the current-month boundary differs from31 October tests,
+so cross-run performance changes must not be treated as controlled causal ratios.
+
 The preceding expanded source1a0ed296a also failed:1s0/500 journeys, read p9569.6s,
 no completed writes;5s226/500 journeys, read38.2s/write88.5s. It had narrower
 publication coverage; neither difference establishes a causal speed ratio.
 
-Both passed all expanded preflight workflows: Leave create/edit/withdraw, Personnel
+Those preceding1a0ed296a runs passed the then-expanded preflights: Leave create/edit/withdraw, Personnel
 draft create/edit/delete, Attendance correction/approval/applied punches, native
 50-person Payroll calculation/scoped CSV and100-line clocking import. Actual own
 payslip browser downloads passed, with no unsolicited PDF requests, parsed one-page
@@ -46,7 +53,7 @@ all500 one-second journeys aborted; the five-second failures include265 aborts,
 five Personnel deletion state mismatches and four business refusals whose causes
 remain unresolved. These failures are retained, not retried or suppressed.
 
-PostgreSQL consumed983.4 CPU seconds over355.5 wall seconds in the one-second run,
+On that preceding1a0ed296a source, PostgreSQL consumed983.4 CPU seconds over355.5 wall seconds in the one-second run,
 and1084.1 over399.2 in the five-second run. Application CPU was252.7 and258.6 seconds
 respectively. Host counters overlap these components; they must not be summed.
 Timed SQL identifies Attendance approval metadata as the largest recorded query

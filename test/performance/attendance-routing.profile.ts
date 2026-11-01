@@ -2,9 +2,13 @@
 import {randomUUID} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {eq,sql} from 'drizzle-orm';
+import {and,desc,eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../../db/client';
+import type {SessionContext} from '../../db/client';
+import {withAttendanceTenant as withTenant} from '../../core/module-gate';
+import {assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal} from '../../core/approvals';
+import {AttendanceWorkflowError} from '../../lib/attendance-workflow';
+import {assertCanDecideAttendanceApplicationTx} from '../../core/attendance-workflow';
 import * as s from '../../db/schema';
 import {hireEmployee,setReportingLine} from '../../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata} from '../../core/attendance';
@@ -12,6 +16,33 @@ import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../core/at
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
+// Candidate query shape only: keep real request RLS and every per-request canonical decision proof.
+// Resolve names only after decision authority succeeds, avoiding repeated delegated subject projection
+// for broadly readable requests that are not assigned to this principal.
+async function metadataAfterDecision(ctx:SessionContext,companyIds:string[]){
+ return withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const headers=await tx.select({id:s.attendanceCorrection.id,employmentId:s.attendanceCorrection.employmentId})
+   .from(s.attendanceCorrection).where(and(eq(s.attendanceCorrection.tenantId,ctx.tenantId),eq(s.attendanceCorrection.status,'pending')))
+   .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
+  const allowed=[];
+  for(const row of headers){
+   try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);allowed.push(row.id);}
+   catch(error){
+    if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
+    if(isApprovalDecisionRefusal(error,'attendance application'))continue;
+    throw error;
+   }
+  }
+  if(!allowed.length)return [];
+  return tx.select({id:s.attendanceCorrection.id,employmentId:s.attendanceCorrection.employmentId,
+   personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:s.attendanceCorrection.createdAt})
+   .from(s.attendanceCorrection).innerJoin(sql`LATERAL app.attendance_application_subject(${s.attendanceCorrection.id}) AS subject`,sql`true`)
+   .where(and(eq(s.attendanceCorrection.tenantId,ctx.tenantId),eq(s.attendanceCorrection.status,'pending'),inArray(s.attendanceCorrection.id,allowed),
+    sql`NOT app.is_self_person(subject.person_id)`,companyIds.length?sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,` )}) OR app.attendance_workflow_v3_decision_slot(${s.attendanceCorrection.id}) IS NOT NULL)`:sql`false`))
+   .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
+ });
+}
 it('compares fresh request-grained routing before, during and after query-plan reuse and necessary denial gates',async()=>{
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'attendance','active');
  const root=adminCtx(b),today=todayInKualaLumpur();
@@ -72,7 +103,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored']){
+  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored','migration-metadata-after-decision','migration-metadata-restored']){
    for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
    await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
    if(phase.startsWith('migration'))for(const file of ['0871_visibility_routing_plans.sql','0872_attendance_assignment_work.sql']){
@@ -81,27 +112,28 @@ it('compares fresh request-grained routing before, during and after query-plan r
    }
    if(phase==='migration-plus-live-guard-plans')for(const d of definitions.slice(5))await owner.client.unsafe(d.cached);
    for(const signature of [...signatures,assignmentSignature])expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
+   const read=phase==='migration-metadata-after-decision'?metadataAfterDecision:pendingAttendanceTaskMetadata;
    const measurements=[];
    for(let i=0;i<4;i++){
     const times=[];
     for(let j=0;j<3;j++){
-     const start=performance.now(),rows=await pendingAttendanceTaskMetadata(actors[i].ctx,[b.companyId]);times.push(performance.now()-start);
+     const start=performance.now(),rows=await read(actors[i].ctx,[b.companyId]);times.push(performance.now()-start);
      expect(rows).toHaveLength(i<2?32:0);
      if(!expected.has(i))expected.set(i,rows);else expect(rows).toEqual(expected.get(i));
     }
     measurements.push({principal:i,role:actors[i].role,elapsedMs:times,exactOrderedMetadata:true});
    }
-   await expect(pendingAttendanceTaskMetadata({...actors[0].ctx,personId:randomUUID()},[b.companyId])).rejects.toThrow();
+   await expect(read({...actors[0].ctx,personId:randomUUID()},[b.companyId])).rejects.toThrow();
    try{
     await owner.db.update(s.reportingLine).set({validTo:today}).where(eq(s.reportingLine.id,delegation.reportingLineId));
-    expect(await pendingAttendanceTaskMetadata(actors[1].ctx,[b.companyId])).toEqual([]);
+    expect(await read(actors[1].ctx,[b.companyId])).toEqual([]);
    }finally{await owner.db.update(s.reportingLine).set({validTo:null}).where(eq(s.reportingLine.id,delegation.reportingLineId));}
-   expect(await pendingAttendanceTaskMetadata(actors[1].ctx,[b.companyId])).toEqual(expected.get(1));
+   expect(await read(actors[1].ctx,[b.companyId])).toEqual(expected.get(1));
    try{
     await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,actors[0].ctx.userId!));
-    expect(await pendingAttendanceTaskMetadata(actors[1].ctx,[b.companyId])).toEqual([]);
+    expect(await read(actors[1].ctx,[b.companyId])).toEqual([]);
    }finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,actors[0].ctx.userId!));}
-   expect(await pendingAttendanceTaskMetadata(actors[0].ctx,[b.companyId])).toEqual(expected.get(0));
+   expect(await read(actors[0].ctx,[b.companyId])).toEqual(expected.get(0));
    phases[phase]={measurements,expiredDelegationRefused:true,archivedAssignedActorRefused:true,forgedPersonRefused:true,securityAttributesOwnerAndAclUnchanged:true};
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-routing.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_ATTENDANCE_ROUTING',releaseEligible:false,pendingRequests:32,realLinkedPrincipals:35,auditGucVerified:'on',phases},null,2));
   }
