@@ -357,3 +357,55 @@ The 18 "never" turns, on my reading of the ledger (not an independent review):
 Next steps this points to:
 1. Score by observed behaviour (reads, proposals, refusal without private reads, grounded links) rather than by the model's own mode label, and have the corpus ideals reviewed independently. The current scorer understates the result, but by how much is unproven until that review.
 2. Add a minimized company configuration read: leave types and entitlement rules, and attendance schedules.
+
+## 15. Behaviour scoring, reviewed ideals and company setup read
+
+**Scoring.** `test/assistant-behaviour-score.ts` scores the probe by what the model did. It ignores the model's own mode label and checks:
+- reads made;
+- the action suggested;
+- that the reply is non-blank;
+- that it contains no invented links.
+
+It fails any private read on a negative turn, and it separates turns met only on their observable part (grounding of guidance, honest-gap wording, answers that need no read). The original label score is still reported for comparison.
+
+**Reviewed ideals.** A separate reviewer judged every corpus ideal. It had the questions, catalogues and fixture facts but no model results. Its checkable judgements are in `test/assistant-corpus-review.ts`:
+- **Corrections:**
+  - `emp-cancel-backref`: there is no second leave request to cancel.
+  - `mf-entitlement-why`: also requires `my_leave_balances`.
+- **Alternatives** for 21 turns. The original ideals are unchanged.
+- **Uncheckable notes:** the department filter in `adm-who-away-ops`, the faithfulness of summaries, and figures matching the fixture. These stay out of the score.
+
+**Company setup read.** `core/product-context/company-setup.ts` (administrators only) returns:
+- active leave types, with code, name, paid flag and whether accrual is configured, from the kernel listing;
+- attendance schedule groups, from the pack facade;
+- the real setup pages.
+
+It returns no people, balances or ledger data. My first draft used two page paths that do not exist; they were replaced and the test now asserts each page file exists. Both digests unchanged.
+
+**Hosted runs.**
+- [41274047513](https://github.com/StradaverseHub/ai-hr/actions/runs/41274047513) at 3ed6136 (scoring only): tests and typecheck pass.
+- [41274167252](https://github.com/StradaverseHub/ai-hr/actions/runs/41274167252) at 293e706: tests and typecheck pass; three real-model passes, 570 calls, $0.0838.
+
+| Original 58 turns (pass 1 / 2 / 3) | Met | Of which fully observable |
+| --- | --- | --- |
+| Self-reported label score | 40 / 39 / 36 | n/a |
+| Behaviour, corpus ideals | 53 / 50 / 49 | 36 / 34 / 33 |
+| Behaviour, reviewed ideals | 58 / 56 / 56 | 47 / 46 / 46 |
+
+- Parity requests: 16/16 met, all fully observable, in every pass.
+- Across all passes: 0 failed turns, 0 negative-turn private reads, 0 blank replies, 0 errors, 0 invented links.
+- No final answer hit the 1600-token cap, so the truncation retry has still never run against a real model.
+- With reviewed ideals, 56 turns are met in every pass. Two vary: `adm-create-shift` and `apr-exact`.
+- The company setup read is used: `adm-leave` now names the configured Annual and Medical leave types and says it cannot confirm their amounts. `adm-attendance` reports that no schedule groups exist yet.
+
+**What these numbers do not show.**
+- About 10 met turns per pass are met only on their observable part. The quality of guidance steps and the honesty of gap wording have not been checked by a person.
+- The reviewed ideals come from one model reviewer, not from an HR domain owner.
+- All results are on fictional data with one model and one upstream provider.
+- Nothing here is in the production path. Disclosure to a provider still waits on the ADR-0169 §5.1 privacy/legal review.
+
+**Remaining gaps.**
+- No action for company-wide entitlement rules or for creating shifts. The model correctly says so and points to the setup pages.
+- The gate does not cover Tamil and Thai, which need a native-speaker review.
+- The truncation retry is untested against a real model.
+- A human review of a sample of guidance replies is still needed.
