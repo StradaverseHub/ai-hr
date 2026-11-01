@@ -104,7 +104,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored','migration-metadata-after-decision','migration-metadata-restored','migration-principal-plan','migration-principal-restored']){
+  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored','migration-metadata-after-decision','migration-metadata-restored','migration-principal-plan','migration-principal-restored','migration-principal-file']){
    for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
    await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
    if(phase.startsWith('migration'))for(const file of ['0871_visibility_routing_plans.sql','0872_attendance_assignment_work.sql']){
@@ -113,7 +113,18 @@ it('compares fresh request-grained routing before, during and after query-plan r
    }
    if(phase==='migration-plus-live-guard-plans')for(const d of definitions.slice(5,8))await owner.client.unsafe(d.cached);
    if(phase==='migration-principal-plan')await owner.client.unsafe(definitions[8].cached);
+   if(phase==='migration-principal-file')await owner.client.unsafe(readFileSync(new URL('../../db/migrations/0877_principal_query_plan.sql',import.meta.url),'utf8'));
    for(const signature of [...signatures,assignmentSignature])expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
+   const liveBootstrap=await owner.client`select * from app.principal(${actors[0].ctx.userId!}::uuid)`;
+   expect(liveBootstrap).toHaveLength(1);expect(liveBootstrap[0].person_id).toBe(actors[0].personId);
+   expect(liveBootstrap[0].tenant_id).toBe(b.tenantId);expect(liveBootstrap[0].grants).toEqual([{role:'hr_admin',companyId:null}]);
+   expect(await owner.client`select * from app.principal(${randomUUID()}::uuid)`).toHaveLength(0);
+   try{
+    await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,actors[0].ctx.userId!));
+    const [changed]=await owner.client`select * from app.principal(${actors[0].ctx.userId!}::uuid)`;
+    expect(changed.grants).toEqual([{role:'employee',companyId:null}]);
+    await expect(pendingAttendanceTaskMetadata(actors[0].ctx,[b.companyId])).rejects.toThrow();
+   }finally{await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,actors[0].ctx.userId!));}
    const read=phase==='migration-metadata-after-decision'?metadataAfterDecision:pendingAttendanceTaskMetadata;
    const measurements=[];
    for(let i=0;i<4;i++){

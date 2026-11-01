@@ -986,3 +986,16 @@ experiment41191787745 preserves exact ordered tasks and live refusal behavior.
 No prior SQL or journal entry is rewritten. These reservations have no live-installation
 authority; exact-file native/regression/load qualification remains required, followed
 by fresh canonical and installed-ledger reconciliation before any later release.
+
+
+## Principal planning performance —1 November2026 (unapplied reservation)
+
+Fresh main2f6e5abe6/alpha1a74336e6 retain the identical0016 principal query. The
+claim audit inspected2783 refs/299 distinct ref journals and409 worktrees/707
+journals including WIP; maxima0876, idx757 and when1793330000276. Reserve
+0877_principal_query_plan atidx758/when1793330000277, version7/breakpoints:true,
+after this branch's seven unapplied performance drafts. Native experiment41297191155
+measures query-plan reuse, never result caching. Exact-file and broad native identity/
+grant/tenant qualification remain required. Earlier canonical prefixes/SQL bytes are
+untouched; main/alpha have advanced and final integration must reconcile all foreign
+entries and positions above the actual live ledger. No installation authority.

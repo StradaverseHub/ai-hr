@@ -4502,6 +4502,13 @@
       "when": 1793330000272,
       "tag": "0872_attendance_assignment_work",
       "breakpoints": true
+    },
+    {
+      "idx": 758,
+      "version": "7",
+      "when": 1793330000277,
+      "tag": "0877_principal_query_plan",
+      "breakpoints": true
     }
   ]
 }
