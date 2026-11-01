@@ -24,7 +24,7 @@ import {registryGates,setWorkerSwitch,workerRunGate} from '../core/agent-registr
 import {listWorkers,workerDetail} from '../core/agent-registry/views';
 import {exportAgentRegistry,outcomeSummary} from '../core/agent-registry/export';
 import {recommendLeaveDecision} from '../core/recommenders/leave-decision';
-import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 
 const root=new URL('../',import.meta.url).pathname;
 const IDS=['payroll_anomaly_narrator','claims_triage','readiness_nudges','approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers',
@@ -82,6 +82,8 @@ const TEAM={jobType:'team_absence_weekly_summary',scope:{team:'direct'},limits:{
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  await resetDb();b=await seedBase();
+ // The explainers switch checks the assistant module (core/agent-registry/controls.ts).
+ await setModule(b.tenantId,'assistant','active');
  hr=(await login(b,'Fictional Registry Administrator','hr_admin')).ctx;
  const top=await login(b,'Fictional Senior Manager','manager');manager=top.ctx;
  const middle=await login(b,'Fictional Middle Manager','manager');peerManager=(await login(b,'Fictional Peer Manager','manager')).ctx;

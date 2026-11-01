@@ -351,7 +351,7 @@
         "tenant_setting": "Change on the feature switches",
         "ai_provider": "Change on the feature switches",
         "job_type": "Change in delegated jobs",
-        "worker_control": "Shown here; switching from this page awaits approval"
+        "worker_control": "Switched here, for every company in the group"
       },
       "never": "Never",
       "accepted": "{rate} accepted",
@@ -412,7 +412,10 @@
         "explainers": "Explainers",
         "team_absence_weekly_summary": "Weekly team absence summary",
         "daily_digest": "Daily digest"
-      }
+      },
+      "switchInvalid": "That switch cannot be changed here.",
+      "switchRefused": "Only a group administrator can change this switch.",
+      "switchModuleOff": "The module this worker belongs to is not enabled."
     },
     "recommendation": {
       "show": "Show the recommendation",

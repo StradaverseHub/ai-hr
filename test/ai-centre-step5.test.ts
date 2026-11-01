@@ -5,7 +5,9 @@
  *    check; the Inbox render never calls it.
  *  - There is no reject verdict anywhere on screen; failed rules are named; a rule version is shown as its
  *    kind and number only, never the internal reference, and nothing is shown when none is published.
- *  - The switch action changes only through the registry service. */
+ *  - The two registry-controlled switches post to the existing AI-feature action's closed worker branch, which
+ *    checks the group-administrator role before the registry service checks it again with the module; no new
+ *    server action export is added, so the ADR-0151 inventory (inside the approved digest) is unchanged. */
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,11 +34,36 @@ describe('worker registry gate', () => {
     expect(page).toMatch(/isGroupAdmin\(session\) \? await Promise\.all\(\[\s*listWorkers\(session\)/);
     expect(read('core/agent-registry/views.ts')).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerRegistryRefused('not_administrator')");
   });
-  it('adds no server action: every action must be in the ADR-0151 inventory, which is inside the approved digest', () => {
+  it('adds no server action export: every export must be in the ADR-0151 inventory, which is inside the approved digest', () => {
     for (const file of ['app/control-tower/agents/worker-registry.tsx', 'app/assistant/centre/recommendation.ts', 'app/assistant/centre/inbox.tsx', 'components/ai-centre/leave-recommendation.tsx'])
       expect(read(file), file).not.toMatch(/^['"]use server['"]/m);
     expect(fs.existsSync(path.join(ROOT, 'app/control-tower/agents/registry-actions.ts'))).toBe(false);
-    expect(read('app/control-tower/agents/worker-registry.tsx')).toContain("if (row.switch.owner === 'worker_control') return <p");
+    const actions = read('app/control-tower/agents/actions.ts');
+    expect(actions).not.toMatch(/export async function setRegistryWorkerSwitch|export const REGISTRY_SWITCHES/);
+    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers']);");
+    expect(actions).toContain("if (formData.has('worker')) return setRegistryWorkerSwitch(formData);");
+    expect(actions).toContain('if (!s.userId || s.agent || !isGroupAdmin(s)) throw');
+    expect(read('app/control-tower/agents/worker-registry.tsx')).toContain('<form action={setAiFeatureAction} data-worker-switch={row.id}>');
+  });
+  it('keeps the existing AI-feature path after the worker branch exactly as it was', () => {
+    const actions = read('app/control-tower/agents/actions.ts');
+    const body = actions.slice(actions.indexOf("if (formData.has('worker'))"), actions.indexOf('export async function setAiAllowanceAction'));
+    expect(body).toContain(`  const t = await getTranslations('aiManagement');
+  try {
+    const s = await getBrowserCommandSession();
+    const feature = formData.get('feature');
+    const enabled = formData.get('enabled');
+    if (!isAiFeature(feature) || !['true','false'].includes(String(enabled))) throw new AiControlError(t('invalid'));
+    await setAiFeature(s, feature, enabled === 'true');
+  } catch (e) { redirect(failedAt('features', await commandError(e))); }`);
+  });
+  it('checks the group administrator, the module, and audits and records every change in the service', () => {
+    const controls = read('core/agent-registry/controls.ts');
+    expect(controls).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator')");
+    expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant'})");
+    expect(controls).toContain("if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled')");
+    expect(controls).toContain('payload:{workerId,from,to:enabled,version:row.version}');
+    expect(controls).toContain('agentIdentity:WORKER_SWITCH_IDENTITY');
   });
 });
 

@@ -351,7 +351,7 @@
         "tenant_setting": "Thay đổi ở công tắc tính năng",
         "ai_provider": "Thay đổi ở công tắc tính năng",
         "job_type": "Thay đổi trong công việc ủy quyền",
-        "worker_control": "Chỉ hiển thị ở đây; việc bật tắt từ trang này đang chờ phê duyệt"
+        "worker_control": "Chuyển tại đây, cho mọi công ty trong tập đoàn"
       },
       "never": "Chưa bao giờ",
       "accepted": "{rate} được chấp nhận",
@@ -412,7 +412,10 @@
         "explainers": "Bộ diễn giải",
         "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
         "daily_digest": "Bản tóm tắt hằng ngày"
-      }
+      },
+      "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
+      "switchRefused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
+      "switchModuleOff": "Mô-đun của tác tử này chưa được bật."
     },
     "recommendation": {
       "show": "Xem gợi ý",

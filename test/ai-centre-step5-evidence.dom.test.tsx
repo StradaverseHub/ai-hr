@@ -3,8 +3,10 @@
  *  - employee: Inbox digest, no findings, no recommendations, no administrator tabs;
  *  - manager or approver: a leave decision card whose recommendation opens on request and names the failed
  *    rule with its version label, never a reject verdict;
- *  - company HR administrator: Workers without the registry (the registry is group administrators' only);
- *  - group administrator: the worker registry, a worker's detail and the outcome summary.
+ *  - company HR administrator: Workers without the registry or any worker switch (the registry is group
+ *    administrators' only), and the refusal shown if a worker switch is posted anyway;
+ *  - group administrator: the worker registry with the two registry-controlled switches, a worker's detail and
+ *    the outcome summary.
  * Screenshots are written only on the selected GitHub Actions runner. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
@@ -69,6 +71,8 @@ const ROWS: WorkerRow[] = [
   worker('approver_recommendation', { family: 'explainer', trigger: { kind: 'request', detail: 'fixture' }, effect: 'none', authority: { kind: 'tenant_switch', actsAs: 'requester' },
     switch: { on: true, owner: 'worker_control', detail: 'on' }, gate: { run: true, reasons: [] }, lastRunAt: new Date('2026-11-02T02:15:00Z'),
     metrics: { measured: true, acceptanceRate: 0.82, reversalRate: 0.04, decided: 50, reason: null } }),
+  worker('explainers', { family: 'explainer', trigger: { kind: 'request', detail: 'fixture' }, effect: 'none', authority: { kind: 'tenant_switch', actsAs: 'requester' },
+    switch: { on: false, owner: 'worker_control', detail: 'off' } }),
   worker('claims_triage', { family: 'watcher' }),
   worker('payroll_anomaly_narrator', { family: 'explainer', trigger: { kind: 'request', detail: 'fixture' }, effect: 'none', switch: { on: true, owner: 'ai_provider', detail: 'on' }, gate: { run: true, reasons: [] }, stopHonoured: false, stopPending: 'fixture' }),
   worker('daily_digest', { family: 'preparer', effect: 'prepare', authority: { kind: 'mandate', jobType: 'daily_digest' } as never, switch: { on: true, owner: 'job_type', detail: 'on' }, gate: { run: true, reasons: [] }, mandates: { active: 3, total: 4 } }),
@@ -107,12 +111,24 @@ describe('AI centre step 5, rendered per role', () => {
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-approver-inbox', FICTION, 'atelier');
   }, 120000);
 
-  it('company HR administrator: Workers without the registry', async () => {
+  it('company HR administrator: Workers without the registry or a worker switch', async () => {
     Object.assign(state, { admin: true, group: false });
     const view = wrap(await AiManagementScreen({ session, section: 'features', searchParams: Promise.resolve({}), builtInChecks: [], registry: null }));
     expect(view.container.querySelector('#ai-registry')).toBeNull();
+    expect(view.container.querySelector('[data-worker-switch], input[name="worker"]')).toBeNull();
     expect(view.container.querySelector('#ai-features')).not.toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-company-admin-workers', FICTION, 'atelier');
+  }, 120000);
+
+  it('company HR administrator: a worker switch posted anyway is refused, beside the error banner', async () => {
+    Object.assign(state, { admin: true, group: false });
+    const refusal = enWithAiCentre.aiCentre.registry.switchRefused;
+    // The action redirects a refused post here with the translated refusal (test/ai-centre-worker-switch-action.test.ts).
+    const view = wrap(await AiManagementScreen({ session, section: 'features', searchParams: Promise.resolve({ error: refusal }), builtInChecks: [], registry: null }));
+    expect(screen.getByText(refusal)).toBeInTheDocument();
+    expect(view.container.querySelector('#ai-registry')).toBeNull();
+    expect(view.container.querySelector('[data-worker-switch]')).toBeNull();
+    await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-company-admin-switch-refused', FICTION, 'atelier');
   }, 120000);
 
   it('group administrator: the registry, a worker detail and the outcome summary', async () => {
@@ -129,10 +145,17 @@ describe('AI centre step 5, rendered per role', () => {
     expect(within(registry).getByText('82% accepted')).toBeInTheDocument();
     expect(within(registry).getAllByText(copy.notMeasured.replace('{count}', '0')).length).toBeGreaterThan(0);
     expect(within(registry).queryByText('0% accepted')).toBeNull();
-    // No switch is changed from the registry yet: the registry-controlled one is shown read-only (its action
-    // needs an ADR-0151 inventory entry inside the approved digest); the others link to where theirs lives.
-    expect(registry.querySelectorAll('form, button')).toHaveLength(0);
+    // Only the two registry-controlled workers are switched here, each with one form posting its own worker id
+    // and the opposite state; every other worker links to where its switch lives.
+    const forms = [...registry.querySelectorAll('form')];
+    expect(forms.map(form => form.getAttribute('data-worker-switch'))).toEqual(['approver_recommendation', 'explainers']);
+    expect(forms.map(form => [(form.querySelector('input[name="worker"]') as HTMLInputElement).value, (form.querySelector('input[name="enabled"]') as HTMLInputElement).value]))
+      .toEqual([['approver_recommendation', 'false'], ['explainers', 'true']]);
+    expect(registry.querySelectorAll('button')).toHaveLength(2);
+    expect(within(registry).getByRole('button', { name: `${copy.turnOff} · ${copy.workers.approver_recommendation}` })).toBeInTheDocument();
+    expect(within(registry).getByRole('button', { name: `${copy.turnOn} · ${copy.workers.explainers}` })).toBeInTheDocument();
     expect(registry.querySelector('#worker-approver_recommendation')).toHaveTextContent(copy.switchOwner.worker_control);
+    for (const id of ['claims_triage', 'payroll_anomaly_narrator', 'daily_digest']) expect(registry.querySelector(`#worker-${id} form`), id).toBeNull();
     expect(within(registry).getByText(copy.stopPending)).toBeInTheDocument();
     expect(view.container.querySelector('#worker-detail')).toHaveTextContent(copy.mandateState.active);
     expect(view.container.querySelector('#ai-outcomes')).toHaveTextContent('128');

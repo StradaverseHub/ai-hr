@@ -5,20 +5,27 @@ import type { OutcomeSummary } from '@/core/agent-registry/export';
 import { Card, SectionHeader, btnGhost } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { aiManagementHref } from './sections';
+import { setAiFeatureAction } from './actions';
 
 /** AI centre › Workers for a group administrator: the registered workers (ADR-0170 §3.13) as the step 5
  * registry reports them (core/agent-registry/views.ts listWorkers). Every value is read from the system;
  * an unmeasured rate is shown with its reason, never as 0. Every worker links to where its existing switch lives; the two
- * registry-controlled switches are shown read-only until their action is approved (see switchControl). Company administrators never
+ * registry-controlled switches (approver recommendations, explainers) are changed here (see switchControl). Company administrators never
  * receive these rows: the service refuses them and the page shows the feature table only. */
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const known = (t: ReturnType<typeof useTranslations>, key: string, fallback: string) => (t.has(key) ? t(key) : fallback);
 
 function switchControl(t: ReturnType<typeof useTranslations>, row: WorkerRow) {
-  // A registry-controlled switch needs a new server action, and every server action must be classified in
-  // the ADR-0151 capability inventory, which sits inside the approved module-agent digest. Until that change
-  // is approved the switch is shown, not changed, here.
-  if (row.switch.owner === 'worker_control') return <p className="text-xs text-muted-foreground">{t('switchOwner.worker_control')}</p>;
+  // A registry-controlled switch posts to the existing AI-feature switch action, whose closed worker branch
+  // re-checks the group-administrator role; the step 5 service checks it again with the worker's module.
+  if (row.switch.owner === 'worker_control') return (
+    <form action={setAiFeatureAction} data-worker-switch={row.id}>
+      <input type="hidden" name="worker" value={row.id} />
+      <input type="hidden" name="enabled" value={String(!row.switch.on)} />
+      <button type="submit" className={btnGhost} aria-label={`${t(row.switch.on ? 'turnOff' : 'turnOn')} · ${known(t, `workers.${row.id}`, row.label)}`}>{t(row.switch.on ? 'turnOff' : 'turnOn')}</button>
+      <p className="mt-1 text-xs text-muted-foreground">{t('switchOwner.worker_control')}</p>
+    </form>
+  );
   const href = row.switch.owner === 'ai_provider' ? aiManagementHref('features', { anchor: '#ai-features' })
     : row.switch.owner === 'job_type' ? '/assistant?view=jobs' : aiManagementHref('features', { anchor: '#ai-features' });
   return <Link href={href} className="text-sm font-medium text-primary hover:underline">{t(`switchOwner.${row.switch.owner}`)}</Link>;

@@ -351,7 +351,7 @@
         "tenant_setting": "Tukar pada suis ciri",
         "ai_provider": "Tukar pada suis ciri",
         "job_type": "Tukar dalam tugas diwakilkan",
-        "worker_control": "Ditunjukkan di sini; penukaran dari halaman ini menunggu kelulusan"
+        "worker_control": "Ditukar di sini, untuk setiap syarikat dalam kumpulan"
       },
       "never": "Tidak pernah",
       "accepted": "{rate} diterima",
@@ -412,7 +412,10 @@
         "explainers": "Penerang",
         "team_absence_weekly_summary": "Ringkasan mingguan ketidakhadiran pasukan",
         "daily_digest": "Ringkasan harian"
-      }
+      },
+      "switchInvalid": "Suis itu tidak boleh ditukar di sini.",
+      "switchRefused": "Hanya pentadbir kumpulan boleh menukar suis ini.",
+      "switchModuleOff": "Modul bagi ejen ini tidak didayakan."
     },
     "recommendation": {
       "show": "Tunjukkan cadangan",

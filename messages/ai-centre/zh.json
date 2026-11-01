@@ -351,7 +351,7 @@
         "tenant_setting": "在功能开关中更改",
         "ai_provider": "在功能开关中更改",
         "job_type": "在委托任务中更改",
-        "worker_control": "仅在此显示；在此页面切换尚待批准"
+        "worker_control": "在此切换，适用于集团内所有公司"
       },
       "never": "从未",
       "accepted": "{rate} 已接受",
@@ -412,7 +412,10 @@
         "explainers": "说明者",
         "team_absence_weekly_summary": "团队缺勤周报",
         "daily_digest": "每日摘要"
-      }
+      },
+      "switchInvalid": "此开关无法在这里更改。",
+      "switchRefused": "只有集团管理员可以更改此开关。",
+      "switchModuleOff": "此代理所属的模块未启用。"
     },
     "recommendation": {
       "show": "显示建议",
