@@ -336,3 +336,34 @@ disposition within existing scope, not a new privacy approval, certification, ru
 acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
 requires another exact review.
 
+
+## Technical source binding — 2 November 2026, configurable idle sign-out (ADR-0171)
+
+Branch `claude/idle-session-timeout` (configurable idle sign-out for the web app) moves the provider closure
+from 1141 files / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d` to 1143 files /
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664`.
+
+Closure membership grows by two policy sources reached through `db/schema.ts` and the embedded sign-in
+service: `lib/session-policy.ts` (bounds and defaults) and `lib/session-policy-server.ts` (reads only the
+idle limit through `app.session_idle_timeout_minutes`). Changed covered files: `db/schema.ts`,
+`lib/internal-auth/service.ts`, the two new files above and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file
+  changed.
+- Dictionaries: 16 new leaves per locale under `sessionTimeout.*` plus `internalAuth.idleSignedOut`; no
+  `assistant.*`, `onehr.*` or `aiManagement.*` leaf changed.
+- `db/schema.ts` only adds the `session_policy` table (tenant, idle minutes 5–480, revision, timestamp).
+- `lib/internal-auth/service.ts` records last reported activity on web sessions, revokes and audits a session
+  idle past its organization's limit, and adds `touchSession`; it reads no employee or HR data.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original human
+status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`670c4af684ef5bbf240c93e9f7930925618941fbb71bb09e7cf013cb4c712979` (no approval binds it).
+
+The release owner (human) approved this technical re-binding in the implementation session on 2 November
+2026 ("Yes, approve rebind") after reviewing the changed-file list above. This is a technical disposition
+within existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Fresh
+exact-source hosted qualification remains required. Any further covered-byte change requires another exact
+review.
