@@ -83,8 +83,13 @@ describe('AI centre step 5, rendered per role', () => {
     Object.assign(state, { admin: false, group: false, tasks: [] });
     const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session })}</div>);
     const digest = view.container.querySelector('[data-inbox-digest]') as HTMLElement;
-    expect(within(digest).getByText(enWithAiCentre.aiCentre.digest.approvals)).toBeInTheDocument();
+    // Nothing waits: "Your day" says so once, with no zero tile, no second empty box and no zero summary (review L9).
+    expect(within(digest).getByText(enWithAiCentre.aiCentre.inbox.empty)).toBeInTheDocument();
+    expect(view.container.querySelectorAll('[data-inbox-empty]')).toHaveLength(1);
+    expect(within(digest).queryByText(enWithAiCentre.aiCentre.digest.approvals)).toBeNull();
+    expect(view.container.querySelector('section[aria-labelledby="inbox-summary"]')).toBeNull();
     expect(within(digest).queryByText(enWithAiCentre.aiCentre.digest.setup)).toBeNull();
+    expect(digest.querySelector('a[href="/approvals"]')).toBeNull();
     expect(view.container.querySelector('[data-recommendation-loader]')).toBeNull();
     expect(screen.queryByRole('link', { name: enWithAiCentre.aiCentre.tabs.workers })).toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-step5-employee-inbox', FICTION, 'atelier');
@@ -95,6 +100,11 @@ describe('AI centre step 5, rendered per role', () => {
       recommendation: { kind: 'recommendation', verdict: 'needs_review', failedRules: [{ check: 'balance_covers', blocking: true, version: { kind: 'leave_type', version: 3 } }, { check: 'team_coverage', blocking: false, version: null }] } });
     // Before the approver opens it: a link, never a recommendation run.
     const closed = wrap(await AiCentreInbox({ session }));
+    // "Your day" counts the list below and links to it on this page (review M9, M10).
+    const tile = closed.container.querySelector('[data-inbox-digest] a') as HTMLElement;
+    expect(tile).toHaveAttribute('href', '#inbox-decide');
+    expect(tile).toHaveTextContent(enWithAiCentre.aiCentre.digest.approvals);
+    expect(tile.querySelector('.text-lg')).toHaveTextContent('1');
     expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}#recommendation-${LEAVE_ID}`);
     expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
     closed.unmount();

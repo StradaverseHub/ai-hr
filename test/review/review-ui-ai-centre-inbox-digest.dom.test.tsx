@@ -15,7 +15,7 @@
  *
  * Only listPendingTasks and the session plumbing are mocked; digestPreview, the Inbox and the cards are real.
  * Non-admin sessions, so digestPreview never opens a database transaction.
- * FAILS on 7d57fc6a4. */
+ * FAILED on 7d57fc6a4 and on cdfcf53f (run 41353460111); passes on claude/teras-fix-ui. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
@@ -63,7 +63,7 @@ async function renderInbox() {
 }
 
 describe('Inbox digest agrees with the Inbox', () => {
-  it('REVIEW medium: a notice acknowledgement is counted the same in "Your day" and "Needs your decision"', async () => {
+  it('fixed M9: a notice acknowledgement is counted the same in "Your day" and "Needs your decision"', async () => {
     listPendingTasks.mockImplementation(async (_ctx: unknown, _scope: unknown, _modules: unknown, options: { noticeAcknowledgements?: boolean } = {}) =>
       options.noticeAcknowledgements === false ? [LEAVE] : [LEAVE, NOTICE]);
     const { digestCount, decisions } = await renderInbox();
@@ -71,14 +71,14 @@ describe('Inbox digest agrees with the Inbox', () => {
     expect(digestCount).toBe(decisions);
   });
 
-  it('REVIEW medium: with a company selected, "Your day" counts the same scope as the list below it', async () => {
+  it('fixed M9: with a company selected, "Your day" counts the same scope as the list below it', async () => {
     listPendingTasks.mockImplementation(async (_ctx: unknown, scope: string[] | undefined) => (scope === undefined ? [LEAVE, OTHER_COMPANY] : [LEAVE]));
     const { digestCount, decisions } = await renderInbox();
     expect(decisions).toBe(1);
     expect(digestCount).toBe(decisions);
   });
 
-  it('REVIEW medium: an employee with nothing to approve is not sent to /approvals (which redirects them home)', async () => {
+  it('fixed M10: an employee with nothing to approve is not sent to /approvals (which redirects them home)', async () => {
     listPendingTasks.mockResolvedValue([]);
     const { digest } = await renderInbox();
     expect(digest.querySelector('a[href="/approvals"]')).toBeNull();
