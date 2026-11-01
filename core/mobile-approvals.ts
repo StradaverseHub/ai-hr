@@ -47,6 +47,7 @@ import { MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-c
 import * as leave from '../packs/leave/service';
 import * as claims from '../packs/claims/service';
 import { claimAnswers, currenciesOfClaims, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
+import {isPackWorkspaceKind} from '../lib/mobile-api/v2/pack-workspaces';
 import { isRequestWorkspaceKind } from '../lib/mobile-api/v2/request-workspaces';
 import { isReviewWorkspaceKind } from '../lib/mobile-api/v2/review-workspaces';
 import { moneyText } from '../lib/mobile-api/money-text';
@@ -129,7 +130,7 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
   const summaries = await summariesFor(ctx, rows, locale);
   return {
     items: rows.map((t: Pending) => {
-      const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) || isRequestWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
+      const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) || isRequestWorkspaceKind(t.kind) || isPackWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
       return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath,
         summary: native ? summaries.get(`${t.kind}:${t.id}`) ?? null : null };
     }),

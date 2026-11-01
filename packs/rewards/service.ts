@@ -1,3 +1,4 @@
+import {mobileRewardPersonBlock} from './mobile-review-projection';
 import type { Tx as AiReadTx } from '../../db/client';
 import { withCanonicalAiReadTx } from '../../core/ai-read-transaction';
 import { isDeepStrictEqual } from 'node:util';
@@ -1620,4 +1621,40 @@ export async function rewardsAnalysisSourceTx(tx:Tx,ctx:SessionContext,companyId
   .where(and(inArray(rewardEntry.unitId,units.map(unit=>unit.id)),inArray(employment.companyId,[...companyIds])));
  for(const unit of units)if(rows.filter(row=>row.unitId===unit.id).length!==Number(unit.people))throw Error('Incomplete rewards population.');
  return {selection:units.map(unit=>unit.id).sort().join(','),rows:rows.map(row=>({personId:row.personId,conditions:{facts_verification_share:row.reviewed}}))};
+}
+
+/** Mobile review is an explicit outbound projection. Senior amounts never enter the payload. */
+export async function prepareMobileRewardReview(ctx:SessionContext,unitId:string,tx?:Tx):Promise<import('../../lib/mobile-api/pack-form').PreparedPackReview>{
+ const {block,action,textField,boolField}=await import('../../lib/mobile-api/pack-form');
+ if(tx)await tx.select({id:rewardUnit.id}).from(rewardUnit).where(eq(rewardUnit.id,unitId)).for('update');
+ const v=tx?await reviewProjectionTx(tx,ctx,unitId):await getRewardUnit(ctx,unitId),u=v.unit;
+ const blocks=[block('scope',`${v.companyName} · ${v.name}`,[['Cycle',v.cycle?.name],['Review',u.kind],['Stage',u.status],['Next due',v.due]])];
+ for(const r of v.rows){
+  const hidden=isSeniorPlanMember(u.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible;
+  const person=mobileRewardPersonBlock(r,hidden);
+  person.rows.push(...v.flags.filter(f=>f.entryId===r.id).map(f=>({label:f.severity,value:f.message})));
+  blocks.push(person);
+ }
+ const privatePopulation=v.hiddenCount>0||v.rows.some(r=>isSeniorPlanMember(u.policy,r.facts,r.source.grade)&&!v.seniorAmountsVisible);
+ if(privatePopulation)blocks.push(block('budget-privacy','Unit budgets',[['Visibility','Restricted population totals remain with the authorized reward reviewer.']]));
+ else for(const plan of ['standard','h'] as const){const b=v.budgets[plan],money=(n:number)=>new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(n/100);blocks.push(block(`budget-${plan}`,`${plan==='h'?'JG H':'Standard'} budgets`,[['Payroll base',money(b.payrollCents)],...b.pools.map((p,i)=>[`${['Merit','Promotion','Special'][i]} pool`,money(p)] as [string,unknown]),...b.used.map((p,i)=>[`${['Merit','Promotion','Special'][i]} used`,money(p)] as [string,unknown]),['Bonus pool',money(b.bonusPoolCents)],['Bonus used',money(b.bonusUsedCents)],['Lump sum',money(b.lumpCents)],['Balance',money(b.balanceCents)]]));}
+ blocks.push(block('checks','Review checks',v.flags.filter(f=>!f.entryId).map(f=>[f.severity,f.message])));
+ for(const [i,d] of v.decisions.entries())blocks.push(block(`decision-${i}`,'Decision history',[['From',d.fromStage],['To',d.toStage],['Reason',d.reason],['Date',d.createdAt]]));
+ const editable=u.status==='draft'&&v.canEdit,canSubmit=editable&&v.roles.includes(v.route[0]),canApprove=['bg','gr','ctro','ec'].some(r=>r===u.status&&v.roles.includes(r as RewardRole));
+ const candidates:( 'submit'|'approve'|'return'|'reject'|'withdraw')[]=u.kind==='annual'?['submit','approve','return']:['submit','approve','return','reject','withdraw'];
+ const actions=candidates.flatMap(a=>{
+  const allowed=a==='submit'?canSubmit:a==='withdraw'?editable&&(canSubmit||v.roles.includes('gr')):a==='return'?canApprove||u.status==='approved'&&v.roles.some(r=>['gr','ctro','ec'].includes(r)):canApprove;
+  if(!allowed)return [];
+  try{
+   const next=u.kind==='annual'?transition(u.status,v.roles,a as 'submit'|'approve'|'return'):offcycleTransition(u.status,v.roles,a,v.route);
+   const required=['return','reject','withdraw'].includes(a)||['submit','approve'].includes(a)&&v.flags.some(f=>['warning','exception'].includes(f.severity));
+   const reason={...textField('reason','Decision reason','',required),...(required?{minLength:10}:{})};
+   const fields=[reason];
+   if(u.kind!=='annual'&&a==='approve'&&v.rows.some(r=>r.recommendation.promotionGrade))fields.push(boolField('acknowledged','I reviewed the current and proposed role summaries',true));
+   return [action(a,a[0].toUpperCase()+a.slice(1),`Move this ${v.companyName} / ${v.name} review from ${u.status} to ${next}. The canonical reward checks still apply.`,fields)];
+  }catch{return [];}
+ });
+ return {view:{title:`${v.companyName} · ${v.name}`,revision:u.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
+  await decideRewardUnitTx(tx,ctx,unitId,u.revision,z.enum(['submit','approve','return','reject','withdraw']).parse(a),String(values.reason??''),values.acknowledged===true);return 'recorded';
+ }};
 }

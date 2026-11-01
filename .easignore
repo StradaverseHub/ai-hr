@@ -33,6 +33,7 @@
 !/lib/mobile-api/v2/tasks.ts
 !/lib/mobile-api/v2/review-workspaces.ts
 !/lib/mobile-api/v2/request-workspaces.ts
+!/lib/mobile-api/v2/pack-workspaces.ts
 !/lib/mobile-api/v2/team.ts
 !/lib/mobile-android-clock-policy.ts
 !/lib/mobile-offline-clock.ts
