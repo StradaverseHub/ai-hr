@@ -8,7 +8,8 @@ import {SETUP_STAGES} from '../core/semantic-model/entities-setup';
 import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
 
 const ALL={leave:true,attendance:true,lifecycle:true,claims:true,payroll:true};
-const check=(key:string,status:'ok'|'warning'|'blocker',detail:Record<string,number>={},href='/admin/payroll-cycle')=>({key,status,detail,href}) as SetupReadiness extends {payroll:infer P}?NonNullable<P>['checks'][number]:never;
+type PayrollCheck=NonNullable<SetupReadiness['payroll']>['checks'][number];
+const check=(key:string,status:'ok'|'warning'|'blocker',detail:Record<string,number>={},href='/admin/payroll-cycle')=>({key,status,detail,href}) as PayrollCheck;
 const EMPTY:SetupReadiness={
  payroll:{payPeriod:'2026-11',ready:false,blockers:3,warnings:0,checks:[check('payrollItems','blocker',{activeComponents:0},'/admin/pay-components'),check('payrollCycle','blocker',{active:0}),
   check('masterData','blocker',{total:4,missingCompensation:3,missingStatutory:1},'/admin/personnel'),check('transactions','warning',{entered:0},'/payroll/transactions')]},

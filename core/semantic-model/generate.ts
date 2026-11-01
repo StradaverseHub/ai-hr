@@ -94,7 +94,7 @@ export const referencedPages=():readonly string[]=>Object.freeze([...new Set([..
 
 /** ADR-0170 step 4 — the model as the Teras harness reads it: the declared entities with their step 4 field
  * extensions applied (./entities-explain.ts ENTITY_FIELD_EXTENSIONS), plus the explainer and setup co-pilot
- * entities. The production catalogue outputs above are unchanged; core/harness/disclosure.ts discloses by these. */
+ * entities. The production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
 function extended(entity:SemanticEntity):SemanticEntity{
  const extension=ENTITY_FIELD_EXTENSIONS[entity.id];if(!extension)return entity;
  const replaced=new Map((extension.replace??[]).map(field=>[field.name,field]));

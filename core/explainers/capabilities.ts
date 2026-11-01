@@ -3,7 +3,7 @@
  * Each entry runs its owner AS THE CALLER and returns the declared shape (core/semantic-model/entities-explain.ts,
  * entities-setup.ts); the harness discloses it under those declarations before the model sees it. Offered only
  * where the caller's module is enabled (and, for the co-pilot, to administrators): an offer is never authority,
- * each owner re-checks its own. Not imported by the production Assistant; core/harness/tools.ts binds these. */
+ * each owner re-checks its own. Not imported by the production Assistant; the Teras harness tool provider binds these. */
 import type {SessionContext} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
 import {isModuleEnabled} from '../entitlements';

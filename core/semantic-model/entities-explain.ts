@@ -10,7 +10,7 @@
  *
  * PAY FIGURES ARE BANDS EVEN IN THE PERSON'S OWN PAYSLIP EXPLANATION. Principle 4 has no own-data exception
  * for what leaves to the provider, and none is needed: the model writes the placeholder and the person sees
- * the exact figure after restoration (core/harness/restore.ts). Exact figures would only let the model do
+ * the exact figure after restoration (the Teras harness restoration step). Exact figures would only let the model do
  * arithmetic, which it must not do. Effective rates are reported by the owner as fractions of the recorded
  * wage, so with the wage they disclose it; they are banded too.
  *
