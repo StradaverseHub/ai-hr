@@ -37,12 +37,17 @@ BEGIN
  -- Include historical, inactive and every line kind. False positives are deliberately harmless.
  IF EXISTS(SELECT 1 FROM public.reporting_line r JOIN public.employment e ON e.id=r.manager_employment_id AND e.tenant_id=r.tenant_id
   WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id) THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.tenant_id=caller.tenant_id AND w.routing_version IN (2,3,4)
-  AND app.perf_actor_identity_keys(w.stages,'stages') && ARRAY[caller.id,caller.person_id]) THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.attendance_workflow_reassignment r WHERE r.tenant_id=caller.tenant_id
-  AND app.perf_actor_identity_keys(r.approvers,'actors') && ARRAY[caller.id,caller.person_id]) THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.attendance_workflow_participant_reassignment r WHERE r.tenant_id=caller.tenant_id
-  AND app.perf_actor_identity_keys(r.assigned,'actor') && ARRAY[caller.id,caller.person_id]) THEN RETURN true; END IF;
+ -- Materialize the candidate access path within this statement. Otherwise EXISTS/LIMIT can
+ -- prefer an assumed early sequential match and scan all history when no actor is assigned.
+ IF EXISTS(WITH matches AS MATERIALIZED(
+  SELECT 1 FROM public.attendance_workflow_request w WHERE w.tenant_id=caller.tenant_id AND w.routing_version IN (2,3,4)
+   AND app.perf_actor_identity_keys(w.stages,'stages') && ARRAY[caller.id,caller.person_id]) SELECT 1 FROM matches) THEN RETURN true; END IF;
+ IF EXISTS(WITH matches AS MATERIALIZED(
+  SELECT 1 FROM public.attendance_workflow_reassignment r WHERE r.tenant_id=caller.tenant_id
+   AND app.perf_actor_identity_keys(r.approvers,'actors') && ARRAY[caller.id,caller.person_id]) SELECT 1 FROM matches) THEN RETURN true; END IF;
+ IF EXISTS(WITH matches AS MATERIALIZED(
+  SELECT 1 FROM public.attendance_workflow_participant_reassignment r WHERE r.tenant_id=caller.tenant_id
+   AND app.perf_actor_identity_keys(r.assigned,'actor') && ARRAY[caller.id,caller.person_id]) SELECT 1 FROM matches) THEN RETURN true; END IF;
  RETURN false;
 END;
 $possible$;

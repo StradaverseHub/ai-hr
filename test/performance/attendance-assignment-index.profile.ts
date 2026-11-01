@@ -33,15 +33,15 @@ it('measures indexed frozen-actor lookups over one million synthetic workflow do
     const times=[];
     for(let i=0;i<(phase==='indexed'?3:1);i++){
      const started=performance.now();
-     const rows=await tx`select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
-      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid]limit 1`;
+     const rows=await tx`with matches as materialized(select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
+      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid])select id from matches limit 1`;
      times.push(performance.now()-started);expect(rows.map(row=>Number(row.id))).toEqual(match==='present'?[1000001]:[]);
     }
     const [explained]=phase==='indexed'?
-     await tx`explain(analyze,buffers,format json)select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
-      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid]limit 1`:
-     await tx`explain(format json)select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
-      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid]limit 1`;
+     await tx`explain(analyze,buffers,format json)with matches as materialized(select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
+      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid])select id from matches limit 1`:
+     await tx`explain(format json)with matches as materialized(select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
+      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid])select id from matches limit 1`;
     const plan=explained['QUERY PLAN'];
     cases.push({match,elapsedMs:times,exactIdAndTenant:true,normalizedStoredIdentityMatched:match==='present',plan});
     phases[phase]={indexBuildAndAnalyzeMs:indexBuildMs,planCacheMode:phase==='indexed'?'force_generic_plan':'auto',cases};
