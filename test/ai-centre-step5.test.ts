@@ -62,7 +62,7 @@ describe('worker registry gate', () => {
     expect(controls).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator')");
     expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant'})");
     expect(controls).toContain("if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled')");
-    expect(controls).toContain('payload:{workerId,from,to:enabled,version:row.version}');
+    expect(controls).toContain("payload:{workerId,from,to:enabled,version:row.version,...(workerId==='conversation'?{attestedProvider}:{})}");
     expect(controls).toContain('agentIdentity:WORKER_SWITCH_IDENTITY');
   });
 });
