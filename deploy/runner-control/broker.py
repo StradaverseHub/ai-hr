@@ -57,7 +57,12 @@ def command(*args,allow_missing=False):
 def properties(unit):
     keys=['LoadState','ActiveState','UnitFileState','Result','ExecMainStatus','ExecMainExitTimestamp','NextElapseUSecRealtime','LastTriggerUSec','TimersCalendar','TimersMonotonic','ExecMainExitTimestampMonotonic','NextElapseUSecMonotonic']
     output=command('show',unit,'--no-pager',*['--property='+key for key in keys],allow_missing=True)
-    return dict(line.split('=',1) for line in output.splitlines() if '=' in line)
+    result={}
+    for line in output.splitlines():
+        if '=' not in line:continue
+        key,value=line.split('=',1)
+        result[key]=(result[key]+' '+value) if key in ('TimersCalendar','TimersMonotonic') and key in result else value
+    return result
 
 def held(policy,key):
     return policy['environment']=='production' and key in ('replacement-holidays','backups')
@@ -104,6 +109,7 @@ def row_status(policy,row):
     # Configuration-only revision: execution timestamps advance independently of operator edits.
     configuration={key:result[key] for key in ('id','managed','hold','installed','enabled','schedule')}
     configuration['environment']=policy['environment']
+    configuration['timerSettings']=sorted(part.strip() for key in ('TimersCalendar','TimersMonotonic') for part in re.findall(r'On\w+(?:USec|Calendar)=[^;}]+',timer.get(key,'')))
     result['revision']=hashlib.sha256(json.dumps(configuration,sort_keys=True).encode()).hexdigest()
     return result
 

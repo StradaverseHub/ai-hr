@@ -67,6 +67,12 @@ class RunnerControlTests(unittest.TestCase):
         self.assertEqual(b.monotonic_seconds('1min 2.5s'),62.5)
         self.assertEqual(b.monotonic_seconds('62500000'),62.5)
         self.assertIsNone(b.next_run({'NextElapseUSecRealtime':'n/a','NextElapseUSecMonotonic':'infinity'}))
+    def test_repeated_native_timer_fields_retain_every_schedule(self):
+        output='TimersMonotonic={ OnUnitInactiveUSec=2min ; next_elapse=0 }\nTimersMonotonic={ OnBootUSec=1s ; next_elapse=0 }\nLoadState=loaded\n'
+        with patch.object(b,'command',return_value=output):values=b.properties('aihr-ai-alerts.timer')
+        self.assertIn('OnUnitInactiveUSec=2min',values['TimersMonotonic'])
+        self.assertIn('OnBootUSec=1s',values['TimersMonotonic'])
+        self.assertEqual(b.displayed_schedule(values),'2min after completion')
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:
