@@ -30,7 +30,7 @@ it.each(['dark', 'light'] as const)('keeps the complete action carousel reachabl
   const actions = ['leave', 'attendance', 'approvals', 'pay', 'directory', 'profile'].map(key => ({ key, icon: 'clock', label: key, href: '/' + key }));
   render(<QuickActions actions={actions} />);
   for (const action of actions) {
-    fireEvent.click(screen.getByRole('button', { name: action.label, exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: action.label }));
     expect(push).toHaveBeenLastCalledWith(action.href);
   }
   expect(push).toHaveBeenCalledTimes(actions.length);
