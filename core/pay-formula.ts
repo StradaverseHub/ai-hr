@@ -15,6 +15,8 @@ import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type PayFormul
 import {planResolutionOrder,isStatutoryComponent,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp,type PayRule,type PayRuleCatalogNode} from './pay-rule';
 import {markRunsAffectedByPayComponentTx} from './payroll';
 import {simulatePayFormulaTx,formulaReadRequirementsAllowedTx} from './pay-formula-runtime';
+import {runPayFormulaSample,type PayFormulaSampleResult,type PayFormulaSampleValues} from '../lib/pay-formula-sample';
+import {diagnosePayFormula} from '../lib/pay-formula-diagnostics';
 const uuid=/^[a-f\d]{8}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{4}-[a-f\d]{12}$/i;
 const code=(v:string)=>{const n=v?.trim().toUpperCase();if(!n||!/^[A-Z][A-Z0-9_]{0,63}$/.test(n))throw new PayFormulaError('Enter an ID starting with a letter, using up to 64 letters, digits or underscores.');return n;};
 const itemCode=(v:string)=>{const n=v?.trim().toUpperCase();if(!n||!/^[A-Z0-9][A-Z0-9_.-]{0,79}$/.test(n))throw new PayFormulaError('Choose an exact configured Pay Item code.');return n;};
@@ -46,6 +48,15 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
  const analysis=analyzePayFormula(program),groups=await loadFormulaAccumulationGroupsTx(tx,ctx),codes=new Set(analysis.dependencies.filter(d=>d.kind!=='accumulation').map(d=>d.code.toUpperCase()));
  const selectedGroups=groups.filter(g=>analysis.dependencies.some(d=>d.kind==='accumulation'&&d.code.toUpperCase()===g.code));for(const g of selectedGroups)for(const member of g.members)codes.add(member);
  const rows=await tx.execute<{id:string;code:string;kind:string;rule:Record<string,unknown>|null;prorates:boolean;orpOvertime:boolean;roundingMode:string;archivedAt:unknown}>(sql`select id,code,kind,rule as rule,prorates,orp_overtime as "orpOvertime",formula_context as "formulaContext",rounding_method as "roundingMode",archived_at as "archivedAt" from pay_component where tenant_id=${ctx.tenantId}::uuid order by code`);
+ // 02472802 — a formula reading {#FixedAllowances} depends on the aggregate's membership POLICY (the
+ // overtime-rate tick box and kind, evaluated without the rule). Rule-driven rows never count at run time,
+ // and the rule is left out so linking the reader's own Pay Item is not a dependency change. Formulas
+ // that do not read it get no extra key, so their snapshot and fingerprint are unchanged.
+ // Non-payable rows never count at run time (countsTowardFixedAllowances), so marking a member non-payable
+ // must also change this basis. Read separately: adding the column to `rows` would change every formula's
+ // catalog snapshot and block existing active formulas.
+ const nonPayable=analysis.functions.includes('FixedAllowances')?new Set((await tx.execute<{code:string}>(sql`select code from pay_component where tenant_id=${ctx.tenantId}::uuid and is_non_payable`)).map(r=>r.code.toUpperCase())):new Set<string>();
+ const fixedAllowanceBasis=analysis.functions.includes('FixedAllowances')?rows.filter(r=>!r.archivedAt&&!nonPayable.has(r.code.toUpperCase())&&payItemFeedsOvertimeOrp(r.code,r.kind,null,r.orpOvertime)).map(r=>({code:r.code.toUpperCase(),kind:r.kind,orpOvertime:r.orpOvertime})).sort((a,b)=>a.code.localeCompare(b.code)):undefined;
  const outputCodes=new Set(analysis.dependencies.filter(d=>['calculated','unprorated'].includes(d.kind)).map(d=>d.code.toUpperCase()));for(const g of selectedGroups)for(const member of g.members)outputCodes.add(member);
  const relevantFormulas=new Set<string>(),queue=[...outputCodes];
  for(let i=0;i<queue.length;i++){
@@ -56,7 +67,7 @@ async function dependencySnapshotTx(tx:Tx,ctx:SessionContext,program:FormulaProg
  }
  const catalog=rows.filter(r=>codes.has(r.code.toUpperCase())).map(r=>({...r,rule:r.rule?.kind==='formula_builder'&&r.rule.formulaId===selfId?{...r.rule,dependencies:undefined}:r.rule}));
  const active=await tx.execute<{code:string;revisionId:string;hash:string}>(sql`select f.formula_id as code,r.id as "revisionId",r.content_hash as hash from pay_formula f join lateral(select * from pay_formula_event e where e.formula_id=f.id and e.kind in ('activated','deactivated','deleted') order by sequence desc limit 1)e on e.kind='activated' join pay_formula_revision r on r.id=e.revision_id where f.tenant_id=${ctx.tenantId}::uuid and f.formula_id<>${selfId??''} order by f.formula_id`);
- return {catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION};
+ return {catalog,groups:selectedGroups,active:active.filter(r=>relevantFormulas.has(r.code)),registry:PAY_FORMULA_REGISTRY_VERSION,provider:PAY_FORMULA_PROVIDER_VERSION,evaluator:PAY_FORMULA_EVALUATOR_VERSION,...(fixedAllowanceBasis?{fixedAllowanceBasis}:{})};
 }
 export async function formulaDependencyFingerprintTx(tx:Tx,ctx:SessionContext,program:FormulaProgram,selfId?:string){return digest(await dependencySnapshotTx(tx,ctx,program,selfId));}
 async function graph(tx:Tx,ctx:SessionContext,formulaId:string,dependencies:string[]){
@@ -76,12 +87,24 @@ async function latest(tx:Tx,id:string){const [r]=await tx.execute<PayFormulaRevi
 export async function savePayFormula(ctx:SessionContext,input:{id?:string;expectedRevisionId?:string;formulaId:string;description:string;method:'write'|'conditions';source:string;program?:FormulaProgram}){
  input=structuredClone(input);return locked(ctx,async tx=>{
  const formulaId=code(input.formulaId),description=input.description?.trim();if(!description||description.length>10000||!['write','conditions'].includes(input.method))throw new PayFormulaError('Enter a description and supported formula method.');
- const source=input.method==='conditions'&&input.program?printPayFormula(input.program):input.source,program=parsePayFormula(source),analysis=analyzePayFormula(program),dependencies=await dependenciesTx(tx,ctx,program);let id=input.id;
- if(id){const f=await identity(tx,ctx,id),before=await latest(tx,id);if(!before||before.id!==input.expectedRevisionId)throw new PayFormulaError('The saved formula changed. Reopen it before saving.');if(f.formulaId!==formulaId)await tx.execute(sql`update pay_formula set formula_id=${formulaId} where id=${id}::uuid`);}else{id=randomUUID();await tx.execute(sql`insert into pay_formula(id,tenant_id,formula_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${formulaId},${ctx.userId!}::uuid)`);await event(tx,ctx,{id,kind:'created'});}
+ const source=input.method==='conditions'&&input.program?printPayFormula(input.program):input.source,program=parsePayFormula(source),analysis=analyzePayFormula(program);
+ // 02472802 — a divisor that is a plain 0 (or a constant expression equal to 0) is refused at save time
+ // when the formula text is new or changed. Re-saving an existing revision's unchanged text (for example a
+ // description-only edit) is not refused; existing evaluation is unchanged either way.
+ const refuseConstantZeroDivisor=()=>{const blocking=diagnosePayFormula(source).find(d=>d.severity==='error');if(blocking)throw new PayFormulaError(`${blocking.message} (line ${blocking.line}, column ${blocking.column})`);};
+ const dependencies=await dependenciesTx(tx,ctx,program);let id=input.id;
+ if(!id)refuseConstantZeroDivisor();
+ if(id){const f=await identity(tx,ctx,id),before=await latest(tx,id);if(!before||before.id!==input.expectedRevisionId)throw new PayFormulaError('The saved formula changed. Reopen it before saving.');if(before.source!==source)refuseConstantZeroDivisor();if(f.formulaId!==formulaId)await tx.execute(sql`update pay_formula set formula_id=${formulaId} where id=${id}::uuid`);}else{id=randomUUID();await tx.execute(sql`insert into pay_formula(id,tenant_id,formula_id,created_by) values(${id}::uuid,${ctx.tenantId}::uuid,${formulaId},${ctx.userId!}::uuid)`);await event(tx,ctx,{id,kind:'created'});}
  await graph(tx,ctx,formulaId,dependencies);const dependencySnapshot=await dependencySnapshotTx(tx,ctx,program,formulaId),old=await latest(tx,id),revisionId=randomUUID(),contentHash=digest({source,program,description,method:input.method,dependencySnapshot,registry:analysis.registryVersion,evaluator:analysis.evaluatorVersion});
  if(old?.contentHash===contentHash)return {id,revisionId:old.id};
  await tx.execute(sql`insert into pay_formula_revision(id,tenant_id,formula_id,ordinal,description,method,source,program,content_hash,dependencies,dependency_snapshot,created_by) values(${revisionId}::uuid,${ctx.tenantId}::uuid,${id}::uuid,${(old?.ordinal??0)+1},${description},${input.method},${source},${JSON.stringify(program)}::jsonb,${contentHash},${JSON.stringify(dependencies)}::jsonb,${JSON.stringify(dependencySnapshot)}::jsonb,${ctx.userId!}::uuid)`);await event(tx,ctx,{id,kind:'saved',revisionId});return {id,revisionId};
  });
+}
+/** 02472802 — sample-value test of unsaved source. Formula catalogue access only (the same authority as
+ * opening the builder); no employee subject, no lock, no row, no event. Never activation evidence. */
+export async function samplePayFormula(ctx:SessionContext,input:{source:string;values:PayFormulaSampleValues}):Promise<PayFormulaSampleResult>{
+ if(typeof input?.source!=='string')throw new PayFormulaError('Enter a formula.');
+ return withTenant(ctx,async tx=>{await authority(tx,ctx);return runPayFormulaSample(input.source,input.values??{});});
 }
 export async function testPayFormula(ctx:SessionContext,p:{id:string;revisionId:string;context:PayFormulaContext}):Promise<PayFormulaTest>{return locked(ctx,async tx=>{
  const f=await identity(tx,ctx,p.id),r=await latest(tx,p.id);if(!r||r.id!==p.revisionId)throw new PayFormulaError('Save the current formula before testing.');const dependencyFingerprint=await formulaDependencyFingerprintTx(tx,ctx,r.program,f.formulaId);if(digest(r.dependencySnapshot)!==dependencyFingerprint)throw new PayFormulaError('Dependencies changed. Save a new formula revision before testing.');

@@ -2,7 +2,8 @@
 import {revalidatePath} from 'next/cache';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
-import {getPayFormula,savePayFormula,testPayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
+import {getPayFormula,savePayFormula,testPayFormula,samplePayFormula,setPayFormulaActive,deletePayFormula,saveFormulaAccumulationGroup} from '@/packs/payroll/service';
+import {PAY_FORMULA_SAMPLE_VARIABLES,type PayFormulaSampleValues} from '@/lib/pay-formula-sample';
 import {PayFormulaError,type PayFormulaContext,type PayFormulaMethod} from '@/lib/pay-formula-model';
 import {PayFormulaError as FormulaLanguageError} from '@/lib/pay-formula-language';
 const PAGE='/payroll/formula-builder';
@@ -18,6 +19,11 @@ export async function saveFormulaAction(input:{id?:string;expectedRevisionId?:st
 }
 export async function testFormulaAction(input:{id:string;revisionId:string;context:PayFormulaContext}){
  return execute(async()=>{const ctx=await getSession();const context={companyId:input.context.companyId,employmentId:input.context.employmentId,period:input.context.period,cycleId:input.context.cycleId,asOf:input.context.asOf,currentCode:input.context.currentCode,input:input.context.input,...(input.context.batchId?{batchId:input.context.batchId}:{})};const test=await testPayFormula(ctx,{id:input.id,revisionId:input.revisionId,context});const formula=await getPayFormula(ctx,input.id);revalidatePath(PAGE);return {test,formula};});
+}
+/** Sample-value test of the unsaved source: formula catalogue access only; reads no employee data and
+ * writes nothing (core samplePayFormula). Only the known sample variables are forwarded. */
+export async function sampleFormulaAction(input:{source:string;values:PayFormulaSampleValues}){
+ return execute(async()=>{const values:PayFormulaSampleValues={};for(const name of PAY_FORMULA_SAMPLE_VARIABLES){const value=input?.values?.[name];if(typeof value==='string')values[name]=value.slice(0,40);}return samplePayFormula(await getSession(),{source:String(input?.source??''),values});});
 }
 export async function formulaStateAction(input:{id:string;revisionId?:string;testId?:string;active:boolean}){
  return execute(async()=>{const ctx=await getSession();await setPayFormulaActive(ctx,{id:input.id,revisionId:input.revisionId,testId:input.testId,active:input.active});revalidatePath(PAGE);revalidatePath(PAGE+'/'+input.id);return await getPayFormula(ctx,input.id);});
