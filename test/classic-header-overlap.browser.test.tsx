@@ -83,7 +83,15 @@ async function mount(theme:UiTheme,width:number,dark:boolean,longLabels=false){
  </NavIndexProvider></UiThemeProvider></NextIntlClientProvider>);
  view.container.style.height='100%';
  await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
- return document.querySelector<HTMLElement>('[data-app-header]')!;
+ const header=document.querySelector<HTMLElement>('[data-app-header]')!;
+ // Flush layout, then await the real finite header reveal; the descendant live-dot loop is unrelated.
+ const before=box(header).toJSON();
+ const animations=header.getAnimations().filter(animation=>Number.isFinite(animation.effect?.getComputedTiming().endTime));
+ if(animations.length)console.info('SYNTHETIC_HEADER_ANIMATION_BEFORE',JSON.stringify({theme,width,before,animations:animations.map(animation=>({playState:animation.playState,currentTime:animation.currentTime,timing:animation.effect?.getComputedTiming()}))}));
+ await Promise.all(animations.map(animation=>animation.finished));
+ await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+ if(animations.length)console.info('SYNTHETIC_HEADER_ANIMATION_SETTLED',JSON.stringify({theme,width,box:box(header).toJSON(),animations:animations.map(animation=>({playState:animation.playState,currentTime:animation.currentTime}))}));
+ return header;
 }
 function assertReachableHeader(header:HTMLElement,width:number){
  const company=header.querySelector<HTMLButtonElement>('[data-company-switcher]')!;
