@@ -1,3 +1,11 @@
+## Clocking import authority — native red reproduced; fix under qualification
+
+The real import service on test-only5f5f6073d reproduces an independent tenant lock interval in41363690098. A native pre-run-insert advisory gate pauses import A before its run/audit append. Both distinct-employment imports eventually persist two punches each, but B cannot commit before A releases; the exact overlap assertion fails. Original1523/41363470321 was a mapping-ID fixture error and is not bottleneck evidence. Both failures are preserved.
+
+Candidate3c15767e0 opts only the outer database-only USER import into existing ordinary-command ownership, passing the original Attendance module-gated transaction owner. SYSTEM/agent behavior, fresh carrier checks, actual per-employment exclusion, canonical policy epoch, financial parents and RLS remain with their original owners. Only a precise configuration demand can roll back the entire transaction before one exclusive replay; busy, SQL and business failures never automatically retry. Attempt-local failure metadata resets before each callback, and a failed-run log remains outside the complete transaction boundary.
+
+Frozen focused qualification41364156884 covers12 files and the whole compiler, including real import overlap, same-subject refusal, native account revocation and a labeled injected configuration demand after real batch writes with late SQL rollback. Results are pending. The still-unstarted queued41363975011 was cancelled only to move the identical candidate to a frozen alias; no full gate or500-user run was cancelled. Original baseline compiler remains running. Source metadata is refreshed without changing canonical provider approvals; combined source remains unapproved and egress blocked. No deployment is authorized.
+
 ## Completed d91 whole-system pair — targets still unmet
 
 Frozen application/controller `d91ce204deae2f8ff77ae8f28987944c218430ce` completes both unchanged-resource workloads within their original600s HTTP parent budgets. Both FAIL; **0/2 targets accepted; no deployment**.
