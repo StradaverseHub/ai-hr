@@ -18,7 +18,7 @@ import {exportAgentRegistry,outcomeSummary} from '../../core/agent-registry/expo
 import {recommendLeaveDecision} from '../../core/recommenders/leave-decision';
 import {setupCopilot,SetupCopilotRefused} from '../../core/setup-copilot/copilot';
 import {setupReadiness} from '../../core/product-context/setup-readiness';
-import {digestPreview} from '../../core/digest/daily-digest';
+import {digestPreview,prepareDailyDigest} from '../../core/digest/daily-digest';
 import {PostgresTaskMemoryStore,TaskMemoryRefused} from '../../core/harness/task-memory-store';
 import {TASK_MEMORY_VERSION,type TaskMemory} from '../../core/harness/memory';
 import {pendingLeaveTaskMetadata,requestLeave} from '../../packs/leave/service';
@@ -149,8 +149,10 @@ describe('REVIEW pass: setup co-pilot, setup readiness and the digest stay insid
  it('REVIEW pass: the digest counts only the caller\'s own inbox and administered companies',async()=>{
   const forEmployee=await digestPreview(m.employee.ctx);
   expect(forEmployee.setup).toBeNull();expect(forEmployee.approvals.total).toBe(0);
-  const forCompanyAdmin=await digestPreview(m.companyAdmin.ctx);
+  // H4 (claude/teras-review-fixes): setup counts are computed by the prepared digest only, so the scope is checked there.
+  const forCompanyAdmin=await prepareDailyDigest(m.companyAdmin.ctx);
   expect(forCompanyAdmin.setup!.companies+forCompanyAdmin.setup!.unknown).toBeLessThanOrEqual(2);// one company, two owner reads
+  expect((await digestPreview(m.companyAdmin.ctx)).setup).toBeNull();
   const forOther=await digestPreview(m.otherTenant.ctx);
   expect(forOther.approvals.total).toBe(0);
   const forManager=await digestPreview(m.manager.ctx);
