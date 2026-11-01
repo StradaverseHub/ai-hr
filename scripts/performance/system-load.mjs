@@ -142,7 +142,7 @@ const managerRoutes=['/','/approvals','/approvals/history','/performance/home','
 const routePool=user=>user.role==='employee'?employeeRoutes:user.role==='manager'?managerRoutes:[...hrRoutes,'/claims'];
 const roleCounts=new Map(),roleOrdinals=new Map(fixture.users.map(user=>{const ordinal=roleCounts.get(user.role)??0;roleCounts.set(user.role,ordinal+1);return [user.index,ordinal];}));
 const pendingBrowserRequests=new WeakMap();
-let browser,sampling,progressTimer,browserDiagnosticTimer,contextTemplates,lastPage,runMixedWorkflow;
+let browser,sampling,progressTimer,sqlSnapshotTimer,browserDiagnosticTimer,contextTemplates,lastPage,runMixedWorkflow;
 async function main(){
 try{
  save();await db`select pg_stat_statements_reset()`;
@@ -363,13 +363,30 @@ try{
   try{
    const rows=await db`select coalesce(wait_event_type,'CPU-or-ready')as kind,count(*)::int as connections from pg_stat_activity where datname=current_database()and state='active'group by 1`;
    const locks=await db`select a.pid,pg_blocking_pids(a.pid)as blockers,l.mode,l.classid::text,l.objid::text,l.objsubid from pg_locks l join pg_stat_activity a on a.pid=l.pid where a.datname=current_database()and l.database=(select oid from pg_database where datname=current_database())and l.locktype='advisory'and not l.granted order by a.pid limit 20`;
-   waits.push({at:Date.now(),rows,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
+   const pids=[...new Set(locks.flatMap(row=>row.blockers??[]))].filter(pid=>Number.isSafeInteger(pid)&&pid>0).slice(0,20);
+   // Native holder state and normalized query IDs only; never capture statement parameters.
+   const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
+   waits.push({at:Date.now(),rows,blockingSessions:holders,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
   }catch{}finally{samplingBusy=false;}
  },1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
  const offset=samples.length,started=performance.now(),steadyStart=started+10000,steadyUntil=steadyStart+steadyHoldMs;
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
- progressTimer=setInterval(()=>{report.progress={...progress,elapsedMs:performance.now()-started};save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));},5000);
+ report.trafficSettled=false;report.functionalAccountingComplete=false;
+ report.measurementWindow={startPerformanceMs:started,steadyStartPerformanceMs:steadyStart,steadyUntilPerformanceMs:steadyUntil};
+ report.telemetry={querySnapshotIntervalMs:30000,holderQueries:'bounded native pid/state/query-id only',partialSamplesAreAcceptance:false};
+ let sqlSnapshotBusy=false;
+ sqlSnapshotTimer=setInterval(async()=>{
+  if(sqlSnapshotBusy)return;sqlSnapshotBusy=true;
+  try{await databaseSnapshot('loaded-progress');report.sqlProgressSnapshots=(report.sqlProgressSnapshots??0)+1;}
+  catch{report.sqlProgressSnapshotFailures=(report.sqlProgressSnapshotFailures??0)+1;}
+  finally{sqlSnapshotBusy=false;}
+ },30000);
+ progressTimer=setInterval(()=>{
+  const loaded=samples.slice(offset);report.progress={...progress,elapsedMs:performance.now()-started};
+  report.partialTiming={kind:'INCOMPLETE_PROGRESS_SNAPSHOT',complete:false,read:summary(loaded.filter(v=>v.method==='GET').map(v=>v.durationMs)),write:summary(loaded.filter(v=>v.method==='POST').map(v=>v.durationMs)),knownRequestErrors:report.requestErrors?.length??0};
+  save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
+ },5000);
  // Representative hydrated browsers share the load interval with all 500 HTTP principals.
  const browserLoad=Promise.allSettled([employee,manager,hr,group,fixture.users[254],fixture.users[251]].map(async user=>{
   await pause(10000);
@@ -412,10 +429,10 @@ try{
   progress.completed++;
   }catch(error){progress.failed++;throw error;}finally{progress.active--;}
  }));
- const browserResults=await browserLoad;
+ const browserResults=await browserLoad;report.trafficSettled=true;
  report.browserLoad={contexts:browserResults.length,completed:browserResults.filter(v=>v.status==='fulfilled').length,errors:browserResults.flatMap((v,index)=>v.status==='rejected'?[{index,error:String(v.reason.message).slice(0,180)}]:[])};
- clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
- report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);
+ clearInterval(sampling);sampling=null;clearInterval(progressTimer);progressTimer=null;if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);sqlSnapshotTimer=null;report.progress={...progress,elapsedMs:performance.now()-started};
+ report.functionalErrors=results.flatMap((value,index)=>value.status==='rejected'?[{user:index,error:String(value.reason.message).slice(0,180)}]:[]);report.functionalAccountingComplete=true;
  const appCpuAfter=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore),resourceCpuAfter=resourceCpu();
  const resourceDelta=Object.fromEntries(Object.keys(resourceCpuBefore).map(key=>{
   const before=resourceCpuBefore[key],after=resourceCpuAfter[key];
@@ -442,7 +459,7 @@ try{
  await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'loaded Home card/summary failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
 finally{
- if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
+ if(sqlSnapshotTimer)clearInterval(sqlSnapshotTimer);if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
  report.shutdown={browserClosed:false,nativeAuditPoolClosed:nativeAuditClient===undefined,driverPoolClosed:false};
  if(browser)await browser.close();report.shutdown.browserClosed=true;agent.destroy();save();
  // verifyTenantChain imports the canonical application pool as well as this driver's observer pool.

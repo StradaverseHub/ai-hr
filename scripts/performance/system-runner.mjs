@@ -34,11 +34,12 @@ async function run(label,command,args,childEnv=env,timeout=900000){
  console.log('[system-perf] '+label+' started');const start=Date.now();
  const fd=openSync(join(privateDir,label+'.log'),'w',0o600);
  const child=spawn(command,args,{env:childEnv,stdio:['ignore',fd,fd]});
- let killTimer;const timer=setTimeout(()=>{child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},timeout);let code;
- try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',resolve);});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
- report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code});save();
+ let killTimer,timedOut=false,exitSignal;const timer=setTimeout(()=>{timedOut=true;child.kill('SIGTERM');killTimer=setTimeout(()=>child.kill('SIGKILL'),10000);},timeout);let code;
+ try{code=await new Promise((resolve,reject)=>{child.once('error',reject);child.once('exit',(value,signal)=>{exitSignal=signal;resolve(value);});});}finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+ report.phases.push({label,elapsedMs:Date.now()-start,exitCode:code,timeoutMs:timeout,timedOut,exitSignal});save();
  console.log('[system-perf] '+JSON.stringify(report.phases.at(-1)));
  if(code!==0){const text=readFileSync(join(privateDir,label+'.log'),'utf8').slice(-12000).replace(/[A-Za-z0-9_-]{32,}/g,'<REDACTED>');writeFileSync(join(out,label+'-failure.txt'),text);}
+ assert.equal(timedOut,false,label+' exceeded its unchanged process budget; retain incomplete evidence');
  assert.equal(code,0,label+' failed; private process logs contain no published credentials');
 }
 function summarizeCpu(){
