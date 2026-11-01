@@ -1,0 +1,8 @@
+[Unit]
+Description=Reconcile AI HR Entra workforce accounts
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+Persistent=true
+[Install]
+WantedBy=timers.target

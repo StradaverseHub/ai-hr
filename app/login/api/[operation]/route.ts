@@ -1,3 +1,5 @@
+import { rotateEntraRefresh, revokeEntraSession } from '@/lib/entra/sessions';
+import { EntraError } from '@/lib/entra/model';
 import {getLocale} from 'next-intl/server';
 import {emailLocale} from '@/lib/email-design/model';
 import { after, NextRequest, NextResponse } from 'next/server';
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     if (operation === 'login') result = await startLogin({ organization: text(body, 'organization', 64), username: text(body, 'username', 64), password: text(body, 'password', 128), native, sourceBudgeted:source!==null });
     else if (operation === 'password') result = await changeInitialPassword(text(body, 'challenge', 43), text(body, 'password', 128), native);
     else if (operation === 'mfa') result = await verifyMfa(text(body, 'challenge', 43), text(body, 'code', 64), native);
-    else if (operation === 'refresh' && native) result = await rotateRefresh(text(body, 'refresh_token', 80));
+    else if (operation === 'refresh' && native) result = await rotateEntraRefresh(text(body, 'refresh_token', 80)) || await rotateRefresh(text(body, 'refresh_token', 80));
     else if (operation === 'invite') result = await startInvitation(text(body, 'token', 43), text(body, 'username', 64), text(body, 'password', 128), native, source!==null);
     else if (operation === 'accept-invite' && !native) {
       const identity = await (await import('@/lib/internal-auth/web-session')).currentInternalIdentity();
@@ -65,6 +67,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     } else if (operation === 'logout') {
       const bearer = /^Bearer (aihr_[A-Za-z0-9_-]{43})$/i.exec(request.headers.get('authorization') || '')?.[1];
       await revokeSession(native ? bearer : request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, native, native ? text(body, 'refresh_token', 80) : undefined);
+      await revokeEntraSession(native ? bearer : request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, native, native ? text(body, 'refresh_token', 80) : undefined);
       result = { step: 'signedOut' };
     } else return NextResponse.json({ error: 'unavailable' }, { status: 404, headers: responseHeaders });
     const reply: Record<string, unknown> = { ...result };
@@ -85,7 +88,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
   } catch (error) {
     if (error instanceof RequestBudgetExceeded) return NextResponse.json({ error: 'rateLimited' }, { status: 429,
       headers: { ...responseHeaders, 'retry-after': String(error.retryAfter) } });
-    const code = error instanceof InternalAuthError ? error.code : error instanceof AuthBusyError ? 'unavailable' : 'unavailable';
+    const code = error instanceof EntraError ? (error.code === 'forbidden' ? 'invalidLogin' : 'unavailable') : error instanceof InternalAuthError ? error.code : error instanceof AuthBusyError ? 'unavailable' : 'unavailable';
     if (!(error instanceof InternalAuthError) && !(error instanceof AuthBusyError)) console.error('Internal authentication operation unavailable.');
     const response = NextResponse.json({ error: code }, { status: code === 'rateLimited' ? 429 : code === 'unavailable' ? 503 : code === 'invalidLogin' ? 401 : 400,
       headers: { ...responseHeaders, ...(code === 'rateLimited' ? { 'retry-after': '900' } : {}) } });

@@ -1,3 +1,4 @@
+import { signInWithMicrosoft } from './entra-auth';
 import { useRef, useState } from 'react';
 import { fetch as nativeFetch } from 'expo/fetch';
 import { Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -20,6 +21,7 @@ export function InternalSignIn() {
   const [step, setStep] = useState<InternalReply | null>(null), [organization, setOrganization] = useState('');
   const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState(''), [code, setCode] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [microsoftFailed,setMicrosoftFailed]=useState(false);
   const pending = useRef(false), owner = useRef<number | null>(null);
   async function finish(result: InternalReply) {
     if (owner.current === null || !result.access_token || !result.refresh_token) return;
@@ -53,6 +55,7 @@ export function InternalSignIn() {
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.wrap}>
     <Text style={styles.brand}>AI HR</Text><Text accessibilityRole="header" style={styles.title}>{state === 'complete' && hasRecoveryCodes ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
     {company && <Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text>}
+    {microsoftFailed&&<Text accessibilityRole="alert" style={styles.error}>{copy.microsoftError}</Text>}
     {error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
     {state === 'complete' ? <View style={styles.fields}>
       {hasRecoveryCodes && <><Text style={styles.body}>{copy.codesHelp}</Text><Text selectable style={styles.codes}>{step?.recoveryCodes?.join('\n')}</Text></>}
@@ -78,6 +81,13 @@ export function InternalSignIn() {
       </>}
       {(state === 'enroll' || state === 'mfa') && <><Text>{state === 'enroll' ? copy.code : copy.codeOrRecovery}</Text><TextInput accessibilityLabel={state === 'enroll' ? copy.code : copy.codeOrRecovery} autoCapitalize="characters" autoCorrect={false} autoComplete="one-time-code" maxLength={64} value={code} onChangeText={setCode} style={styles.input} editable={!busy}/></>}
       <Button title={busy ? copy.working : state === 'login' ? copy.signIn : copy.continue} onPress={() => void submit()} disabled={busy || (state === 'login' && (!(workplaceOrganization || organization) || !username || !password)) || (state === 'password' && (!password || !confirmation)) || ((state === 'enroll' || state === 'mfa') && !code)}/>
+      {state==='login'&&<Button title={copy.microsoft} disabled={busy||!(workplaceOrganization||organization)} onPress={()=>{
+        if(pending.current)return;pending.current=true;setBusy(true);setMicrosoftFailed(false);setError('');
+        const generation=beginSignIn();owner.current=generation;
+        void(async()=>{if(runtimeConnections&&!company)throw Error();if(company)await verifyCompanyServer(company,nativeFetch);
+          assertAuthGeneration(generation);if(await signInWithMicrosoft(workplaceOrganization||organization,generation)){await session.markSignedIn(generation);router.replace('/');}
+        })().catch(()=>setMicrosoftFailed(true)).finally(()=>{pending.current=false;setBusy(false);});
+      }}/>}
       {state === 'login' && <Button title={copy.forgot} kind="quiet" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')}/>}
       {step && <Button title={copy.back} kind="quiet" disabled={busy} onPress={() => { beginSignIn(); owner.current = null; setStep(null); setPassword(''); setCode(''); setError(''); }}/>}
     </View>}

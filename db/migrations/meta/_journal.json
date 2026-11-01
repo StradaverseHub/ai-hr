@@ -4481,6 +4481,13 @@
       "when": 1793330000276,
       "tag": "0876_epf_manual_percentage_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1793330000299,
+      "tag": "0899_entra_workforce",
+      "breakpoints": true
     }
   ]
 }

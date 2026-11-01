@@ -877,3 +877,13 @@ The source branch first appended it at idx753 on main; integration renumbers onl
 Rewards. Timestamp and SQL bytes are unchanged. The SQL only replaces 0682's CHECK with a looser one
 (0–1 instead of 0.01–1, both rates still NOT NULL), so every existing row satisfies it and no data
 script is needed. No table, grant or RLS change. Grants no installation or acceptance.
+
+## Entra workforce connector — 2 November 2026 (provisional)
+
+`codex/entra-integration-design-20261102` appends `0899_entra_workforce` at
+when1793330000299, with the next index on its own source journal. A scan of all local/origin
+committed journals (306 unique contents) found claims through0897/…297; registered worktree
+journals additionally include foreign0898/…298 (auto-logout). Those foreign claims remain excluded.
+Recheck competing reservations, the accepted journal and the live installation watermark before
+integration; adjust the unapplied index to the aggregate journal. This is source allocation only,
+not installation or release evidence.
