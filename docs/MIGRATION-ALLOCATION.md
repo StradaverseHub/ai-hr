@@ -834,3 +834,22 @@ Both append strictly after0861. Foreign0862/when1793330000262 remains preserved 
 from this candidate; a numeric gap is intentional. Existing SQL bytes and the full journal prefix
 are immutable. Root must verify the then-current installation ledger and release evidence before
 any installation; neither source allocation nor focused development checks authorizes deployment.
+
+## Tax recalculation and movement corrections bundle — 1 November 2026
+
+Owner-assigned next release after V9 (Claude release owner). Integrated onto V9 candidate
+`49c3d960da266b62b4f5f8f90b7f80afab6dc9ac`, whose journal is the installed 636-entry prefix through
+`0865_assistant_company_retention_references`, idx750 / when1793330000265. A fresh scan of every local
+and origin ref plus registered worktrees found unapplied foreign claims 0866–0872 (idx751–757,
+when1793330000266–272, performance work) and nothing above.
+
+| Index | Timestamp | Filename | SQL SHA256 | Former unapplied identity |
+| ---: | ---: | --- | --- | --- |
+|751|1793330000273|0873_movement_exit_payroll_preservation|39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440|0729 / when…066|
+|752|1793330000274|0874_payroll_tax_basis_corrections|9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745|0737 / when…074|
+
+The former identities sit below the installed watermark and would be silently skipped, so both bodies
+are renamed byte-identical and appended above every known claim. If this bundle installs first, the
+performance owner's 0866–0872 fall below the new watermark and must be reallocated above when…274
+before their own release. Re-verify the accepted V9 ledger at handback before installation. This
+reservation grants no deployment or acceptance.

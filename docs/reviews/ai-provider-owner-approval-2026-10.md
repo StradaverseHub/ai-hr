@@ -249,3 +249,40 @@ The release owner (human) approved recording this technical re-binding for the P
 certification, runtime PASS or staging acceptance. Fresh exact-source hosted qualification remains
 required; the earlier failed full gate on `85aa94fe` keeps its original identity. Any further
 covered-byte change requires another exact review.
+
+## Technical source binding — 1 November 2026, tax recalculation, movement corrections, Reward Desk notice and AI reminder labels
+
+Integrating PR116 (movement corrections), PR126 (tax recalculation), PR168 (Reward Desk role-request
+notice) and PR173 (AI reminder labels) onto V9 candidate `49c3d960da266b62b4f5f8f90b7f80afab6dc9ac`
+moves the provider closure from 1133 files /
+`211f3bbdec1361521d657a264bf53c37daa0c438d69ccd8c3c91fbe20e41ca1f` to 1139 files /
+`818f55d10b5ecbb61aff60de04c43fa922b84e3b452dc74a633c9c83c59e910d`.
+
+Closure membership grows by six payroll tax-basis sources reached through `core/payroll.ts` and the
+payroll pack service: `core/payroll-tax-basis.ts`, `core/payroll-tax-basis-read.ts`,
+`core/payroll-tax-basis-notices.ts`, `lib/payroll-tax-basis.ts`, `lib/payroll-tax-basis-notices.ts`
+and `localization/my/tax-basis-replay.ts`. Changed covered files: `core/movement.ts`, `core/org.ts`,
+`core/payroll-history-revisions.ts`, `core/payroll.ts`, `db/client.ts`, `db/schema.ts`,
+`lib/movement-pending-input.ts`, `lib/payroll-permissions.ts`, `localization/country-pack.ts`,
+`localization/my/{ea-routing,index,multicycle-worksheet,payroll,reports}.ts`, `packs/payroll/service.ts`
+and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file changed.
+- Dictionaries: 129–130 leaves per locale under `payrollTaxBasis.*`, `payroll.setup.*`, `people.detail`,
+  `people.import` and `aiManagement.privateFeatures`; no `assistant.*` or `onehr.*` leaf changed.
+- `db/client.ts` keeps every existing transaction-local tenant/user/role/grant/agent setting in the
+  single statement and adds only `app.payroll_tax_basis_reader`.
+- The tax-basis correction feeds only the PCB tax-input read; it never owns payslip money, statutory
+  wages, cash paid or issued history, and the model calculates no money.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original
+human status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`782baa45b74cc23c0347dd5ed0df514dcae7a3787edcee5197c1ec2b92275cb1` (no approval binds it).
+
+The release owner (human) approved in advance, on 1 November 2026, combining these four changes and
+recording this technical re-binding for the combined source ("I approve steps 1-2, dont have to wait
+for me later on"). This is a technical disposition within existing scope, not a new privacy approval,
+certification, runtime PASS or staging acceptance. Fresh exact-source hosted qualification remains
+required. Any further covered-byte change requires another exact review.
