@@ -1,4 +1,4 @@
-## Native administrator write-path work — pending qualification
+## Native administrator write-path work — qualified source
 
 Reversible experiment 41328889779 on `21cdbb270` confirms another global write-path
 bottleneck over 500 users/502 memberships/one usable administrator. The unchanged
@@ -10,37 +10,48 @@ Every non-body pg_proc attribute and denied direct app execution remain exact.
 This is about 65× faster for this one check, not a whole-system/500-user speed claim.
 The original setup failure 41328365059 is retained separately; it produced no timing.
 
-Prepared `0897_administrator_candidate_work` applies exactly that measured body
-change, guarded by the read-only verified predecessor fingerprint. It adds no cache,
-index or permission path and leaves all locks, live eligibility and recovery checks
-intact. The candidate incorporates canonical `e1585acba` through a normal owned-branch
-merge and preserves all 640 applied SQL identities plus eleven prior performance
-appends. Its 652-entry ordinary upgrades and added native tests still require hosted
-qualification. The two five-minute 500-user runs 41327543192/41327546364 remain
-frozen on earlier `32c2332fb`; they do not contain 0897. No deployment is authorized.
+Guarded `0897_administrator_candidate_work` applies exactly that measured body
+change and preserves640 applied SQL identities plus eleven earlier performance
+appends. Source29441db04 passed161 database/45 additional checks and a whole compiler
+in41330043716, and all three populated-upgrade rehearsals in41330047235. No
+migration is installed. Canonical main/alpha remain at freshly fetchede1585acba.
 
 ## Current verification status — 2 November 2026
 
 The 500-user target remains **0/2 accepted**. No performance changes have been
-deployed. Both full five-minute activity runs on frozen `11f964d3f` stopped during
-Home replay preflight, before concurrent traffic launched: runs 41322607819 (1s)
-and 41322610322 (5s). All six baseline mutation/processing workflows and eleven
-authority/document fences passed in each. These are failed preflights, not capacity
-measurements. The actual replay regression on `c57b0249d`, run 41327021751,
-reproduces five date failures: valid live Home data is refused after KL midnight,
-and stale fixture-day data is incorrectly accepted. The repair binds live dates to
-the bounded request interval and retains exact explicit date/month queries and
-native response validators. Its expanded regression is awaiting green verification.
+deployed. The [current command-lock review](reviews/system-performance-command-lock-review-20261102.md)
+owns the latest exact receipts and limitations. Frozen172f78860 passed205 database
+and20 additional checks plus a whole compiler in41332635520. A test-only source
+with identical application files passed the47-case Plan OT suite in41333481368,
+including real first-use catalogue replay and a late SQL failure with no partial
+clock-out, credit or catalogue. Ordinary Leave/Attendance now share stable authority
+while retaining native current-principal, scope, per-employment and configuration
+exclusion. Existing transactions, SYSTEM/agent owners and true configuration writers
+retain original ownership.
 
-Published-controller full run 41323325332 on `11f964d3f` completed before repairs:
-68/70 Node/DOM units passed; build, whole compiler, migrations, Firefox and WebKit
-passed. Chromium passed 434/435 cases; the real PDF parser was still processing
-when a default one-second DOM wait expired. Two native units passed 476/477 and
-455/456 cases respectively: the historical exact Claims policy assertion needs
-the reviewed 0896 predicate, and a before-LWD waiting-run fixture had an expired
-1 November anchor. Prepared repairs retain original assertion identities,
-historical SQL fixtures, real PDF extraction and production scheduling rules.
-Original failures remain failed; only affected checks are being recovered.
+Both unchanged-resource five-minute500-user reruns failed. At1s,41332662698 has
+complete accounting:386 completed/114 failed versus234/266 on32c; read p9567.76s,
+write p9587.25s and loaded browsers1/6. Both audit chains are valid. At5s,
+41332665509 exceeded the original600s HTTP parent budget; its last traffic snapshot
+has131 completed,2 failed and367 active. Its accounting, browser and final audit
+results are incomplete. More work completed, but no whole-system speed acceptance
+or material p95 improvement is established. Preserve both failures and resource limits.
+
+Earlier replay/policy/lifecycle repairs on32c passed15 date cases and compiler,
+477-case and456-case affected database units, and435 Chromium/435 WebKit cases.
+One Firefox Lifecycle keyboard poll failed unchanged code; isolated12-case and
+instrumented435-case diagnostics subsequently passed without reproducing it. Those
+diagnostics are not release admission. The complete published-controller gate on
+11f remains a recorded failure, despite valid build/compiler/migration and unaffected
+unit results. A final authenticated release witness is still outstanding.
+
+The remaining traces show repeated native visibility work, Attendance-to-Payroll
+row protection and audit waits. The native protection locks all relevant batches,
+including drafts, before returning processed/closed coverage. A reversible candidate-
+query experiment preserves exact membership and ordered FOR UPDATE locks; it is
+not a migration or a promoted fix. Generated provider source metadata is current,
+but the24 literal approval bindings remain on their earlier approved source and
+correctly block changed-source provider access. No fingerprint refresh is applied.
 
 Read-only staging inspection observed a separate release and package capture on a
 2-CPU/~4-GiB host, load averages above four, swapping and substantial system CPU.
