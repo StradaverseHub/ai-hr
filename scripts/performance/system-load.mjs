@@ -357,7 +357,7 @@ try{
   lockLabels.set(row.classid+':'+row.objid+':1','audit-chain:fixture-tenant-'+index);
  }
  await db`select pg_stat_statements_reset()`;
- const waits=[];let samplingBusy=false;
+ const waits=[],rootStatements=new Map();let samplingBusy=false;
  sampling=setInterval(async()=>{
   if(samplingBusy)return;samplingBusy=true;
   try{
@@ -367,6 +367,16 @@ try{
    // Native holder state and normalized query IDs only; never capture statement parameters.
    const holders=pids.length?await db.unsafe('select pid,state,wait_event_type,wait_event,query_id::text,extract(epoch from(clock_timestamp()-xact_start))as transaction_age_seconds from pg_stat_activity where datname=current_database()and pid in('+pids.map((_,i)=>'$'+(i+1)).join(',')+')',pids):[];
    waits.push({at:Date.now(),rows,blockingSessions:holders,advisoryWaiters:locks.map(row=>({pid:row.pid,blockers:row.blockers,mode:row.mode,namespace:lockLabels.get(row.classid+':'+row.objid+':'+row.objsubid)??'unclassified'}))});
+   // The top-statement summary can omit rare root holders. Resolve only sampled root IDs,
+   // never queued waiters or parameters; all data belongs to the fictional runner fixture.
+   const queued=new Set(locks.map(row=>row.pid));
+   const missing=[...new Set(holders.filter(row=>!queued.has(row.pid)&&/^-?[0-9]+$/.test(row.query_id??'')&&!rootStatements.has(row.query_id)).map(row=>row.query_id))].slice(0,128-rootStatements.size);
+   if(missing.length)try{
+    const statements=await db`select queryid::text,left(query,2400) as normalized_query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and queryid=ANY(${missing}::bigint[])`;
+    for(const row of statements)rootStatements.set(row.queryid,{...row,firstSeenAt:Date.now()});
+    writeFileSync(join(out,'blocking-statements.json'),JSON.stringify({scope:'Normalized sampled root advisory-lock-holder queries only; no parameters; correlation is not exclusive causal attribution',maxQueries:128,statements:[...rootStatements.values()]},null,2));
+   }catch{report.blockingStatementCaptureUnavailable=true;}
+
   }catch{}finally{samplingBusy=false;}
  },1000);
  const resourceCpuBefore=resourceCpu(),appCpuBefore=appCpu(),driverCpuBefore=process.cpuUsage();
@@ -374,7 +384,7 @@ try{
  const progress={launched:0,active:0,peakActive:0,completed:0,failed:0,iterations:0};
  report.trafficSettled=false;report.functionalAccountingComplete=false;
  report.measurementWindow={startPerformanceMs:started,steadyStartPerformanceMs:steadyStart,steadyUntilPerformanceMs:steadyUntil};
- report.telemetry={querySnapshotIntervalMs:30000,holderQueries:'bounded native pid/state/query-id only',partialSamplesAreAcceptance:false};
+ report.telemetry={querySnapshotIntervalMs:30000,holderQueries:'bounded native pid/state/query-id; up to128normalizedrootquerytexts withoutparameters',partialSamplesAreAcceptance:false};
  let sqlSnapshotBusy=false;
  sqlSnapshotTimer=setInterval(async()=>{
   if(sqlSnapshotBusy)return;sqlSnapshotBusy=true;

@@ -1,6 +1,6 @@
 import {PERFORMANCE_MIGRATION_TAIL} from './fixtures/performance-migration-tail';
 /** Ordinary journal upgrade over a populated, trigger-protected database at the installed 636-entry prefix,
- *  through the four canonical successors and ten frozen performance appends. Hosted only. */
+ *  through the four canonical successors and eleven frozen performance appends. Hosted only. */
 import {randomUUID,createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
