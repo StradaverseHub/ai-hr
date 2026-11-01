@@ -23,7 +23,7 @@ async function login(base:Base,name:string,role:'employee'|'manager'|'hr_admin',
  const userId=await createAppUser(base.tenantId,hired.personId,role);
  return{...await entitledCtx(base,[role]),userId,personId:hired.personId,roles:[role],grants:[{role,companyId}]} as SessionContext;
 }
-const controlRow=(tenantId:string,workerId:string)=>owner.db.select().from(terasWorkerControl).where(and(eq(terasWorkerControl.tenantId,tenantId),eq(terasWorkerControl.workerId,workerId)));
+const controlRow=(tenantId:string,workerId:'approver_recommendation'|'explainers')=>owner.db.select().from(terasWorkerControl).where(and(eq(terasWorkerControl.tenantId,tenantId),eq(terasWorkerControl.workerId,workerId)));
 const auditOf=(tenantId:string)=>owner.db.select().from(domainEvent).where(and(eq(domainEvent.tenantId,tenantId),eq(domainEvent.aggregateType,'teras-worker'))).orderBy(domainEvent.occurredAt);
 const recordsOf=(tenantId:string)=>owner.db.select().from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,tenantId),eq(terasOutcomeRecord.agentIdentity,WORKER_SWITCH_IDENTITY)));
 

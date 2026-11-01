@@ -53,7 +53,7 @@ describe('registry worker switches',()=>{
     expect(owners.worker).not.toHaveBeenCalled();
   });
   it('refuses an unknown worker or value before reading the session, and never falls through to a feature',async()=>{
-    for(const values of [{worker:'invented',enabled:'true'},{worker:'approval_chasers',enabled:'true'},{worker:'daily_digest',enabled:'false'},{worker:'',enabled:'true'},
+    for(const values of <Record<string,string>[]>[{worker:'invented',enabled:'true'},{worker:'approval_chasers',enabled:'true'},{worker:'daily_digest',enabled:'false'},{worker:'',enabled:'true'},
       {worker:'explainers',enabled:'yes'},{worker:'explainers',feature:'hr_assistant'}]){
       const url=await target(()=>setAiFeatureAction(form(values)));
       expect(url.searchParams.get('error'),JSON.stringify(values)).toBe('aiCentre.registry.switchInvalid');
