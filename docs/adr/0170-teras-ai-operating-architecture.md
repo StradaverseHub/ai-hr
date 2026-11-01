@@ -2,7 +2,7 @@
 
 > Decision record at its recorded date. Implementation and status notes are historical; verify current source and later amendments. The [branch and release policy](../REPOSITORY-AND-ENVIRONMENTS.md) governs operations.
 
-- **Status:** **Proposed draft for the owner (1 November 2026).** Not accepted. Nothing here authorises a disclosure change, deployment or production contact.
+- **Status:** **Proposed; the §11.3 changes and revised delivery order were accepted by the owner on 1 November 2026 ("Accept all").** The name (§9) and formal acceptance of the record as a whole remain open. Nothing here authorises a disclosure change, deployment or production contact; the ADR-0169 §5.1 privacy/legal review still gates any real data reaching a model.
 - **Number:** provisional. Reconcile at merge: PR126 holds 0167, and ADR-0169 is also provisional.
 - **Name:** "Teras" is a working name, pending the owner's choice and a trademark search (§9).
 - **Builds on and keeps:**
@@ -353,6 +353,8 @@ This view is the evidence for rule 8 above, and for audits.
 
 ## 6. Delivery order
 
+> Superseded in part by the accepted order in §11.3 (1 November 2026). Steps below keep their numbers; §11.3 inserts 0b, amends 1, 2, 5a and 7, and moves Connect alongside 5a.
+
 Every step is built on fictional data behind a switch that stays off until the ADR-0169 §5.1 review passes. Release order stays with the Orchestrator.
 
 | Step | Content | Needs the review? |
@@ -503,7 +505,7 @@ A research pass over US and China platforms, standards, HR vendors, regulation, 
 - the harness is still probe code;
 - no tested in-boundary model.
 
-### 11.3 Changes adopted into this draft (ranked by the report; accepted here as proposals for the owner)
+### 11.3 Changes adopted (ranked by the report; **accepted by the owner, 1 November 2026**)
 
 | # | Change | Where | Review needed |
 | --- | --- | --- | --- |
@@ -520,7 +522,7 @@ A research pass over US and China platforms, standards, HR vendors, regulation, 
 | 11 | **Stated non-goals:** computer-use agents over our own UI, and free-form SQL; GUI-automation requests go to Connect | Interfaces | No |
 | 12 | Rules as readable code stays, ranked after 1–3 (no external validation either way) | System of record | No |
 
-**Revised delivery order (replaces §6 where they differ):**
+**Revised delivery order (accepted; supersedes §6 where they differ):**
 - 0: usage data; **0b: semantic model over the twelve existing reads and three cards; proposal objects**.
 - 1: harness as product code **with its spec file and ratchet**, behind a switch that stays off.
 - 2: the three leave cards **as proposal objects**.
