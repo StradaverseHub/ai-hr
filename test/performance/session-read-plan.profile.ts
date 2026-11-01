@@ -84,14 +84,21 @@ it('independently compares native concurrency and first-slip/status exclusion be
    if(phase==='candidate'){
     await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:people[0].employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'});
     const nonDraft=[];
-    for(const state of ['processed','closed'] as const){
-     await owner.db.update(s.payrollBatch).set({status:state}).where(eq(s.payrollBatch.id,batch.id));
-     await withDataCommand(ctx,async tx=>{
-      const rows=await lockPayrollForAttendanceChange(tx,people[0].employmentId,phaseDate);expect(rows).toEqual([{batchId:batch.id,status:state}]);
-      let denied=false;try{await owner.client.begin(connection=>connection`select id from payroll_batch where id=${batch.id}::uuid for share nowait`);}catch(error){expect((error as {code:string}).code).toBe('55P03');denied=true;}expect(denied).toBe(true);nonDraft.push({state,exclusive:true});
-     });
-    }
+    await owner.db.update(s.payrollBatch).set({status:'processed'}).where(eq(s.payrollBatch.id,batch.id));
+    await withDataCommand(ctx,async tx=>{
+     expect(await lockPayrollForAttendanceChange(tx,people[0].employmentId,phaseDate)).toEqual([{batchId:batch.id,status:'processed'}]);
+     let denied=false;try{await owner.client.begin(connection=>connection`select id from payroll_batch where id=${batch.id}::uuid for share nowait`);}catch(error){expect((error as {code:string}).code).toBe('55P03');denied=true;}expect(denied).toBe(true);nonDraft.push({state:'processed',exclusive:true});
+    });
     await owner.db.update(s.payrollBatch).set({status:'draft'}).where(eq(s.payrollBatch.id,batch.id));
+    const oldMonth=new Date(Date.parse(month+'-01T12:00:00Z')-180*86400000).toISOString().slice(0,7),oldDate=oldMonth+'-15';
+    const [oldPeriod]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:oldMonth}).returning();
+    const [closed]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:oldPeriod.id,payPeriod:oldMonth,batchDate:oldDate}).returning();
+    await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:closed.id,employmentId:people[0].employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'});
+    await owner.db.update(s.payrollBatch).set({status:'closed'}).where(eq(s.payrollBatch.id,closed.id));
+    await withDataCommand(ctx,async tx=>{
+     expect(await lockPayrollForAttendanceChange(tx,people[0].employmentId,oldDate)).toEqual([{batchId:closed.id,status:'closed'}]);
+     let denied=false;try{await owner.client.begin(connection=>connection`select id from payroll_batch where id=${closed.id}::uuid for share nowait`);}catch(error){expect((error as {code:string}).code).toBe('55P03');denied=true;}expect(denied).toBe(true);nonDraft.push({state:'closed',exclusive:true});
+    });
     const changed=barrier(),commit=barrier();
     const writer=owner.client.begin(async connection=>{await connection`update payroll_batch set status='processed' where id=${batch.id}::uuid`;changed.resolve();await commit.promise;});
     await changed.promise;
