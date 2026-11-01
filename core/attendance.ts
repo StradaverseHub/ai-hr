@@ -7182,6 +7182,10 @@ export async function rawScheduleDaysTx(tx:Tx,employmentId:string,from:string,to
 export function pendingAttendanceTaskMetadata(ctx:SessionContext,companyIds?:string[]):Promise<AssignedApprovalMetadata[]>{
   return withTenant(ctx,async tx=>{
     await assertAssignedWorkPrincipalTx(tx,ctx);
+    // A negative result proves there is no possible assignment source. A positive result
+    // retains the complete request RLS and per-request decision proofs below; never cache it.
+    const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata() as possible`);
+    if(candidate?.possible===false)return [];
     const rows=await tx.select({id:attendanceCorrection.id,employmentId:attendanceCorrection.employmentId,
       personId:sql<string>`subject.person_id`,employee:sql<string|null>`subject.employee`,createdAt:attendanceCorrection.createdAt})
       .from(attendanceCorrection)

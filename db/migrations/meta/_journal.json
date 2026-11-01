@@ -4530,6 +4530,13 @@
       "when": 1793330000286,
       "tag": "0886_principal_query_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 767,
+      "version": "7",
+      "when": 1793330000287,
+      "tag": "0887_attendance_task_candidate_access",
+      "breakpoints": true
     }
   ]
 }

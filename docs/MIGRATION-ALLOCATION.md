@@ -1053,3 +1053,13 @@ above are superseded; index gaps754–758 preserve other provisional source clai
 No installation, protected branch change or release is authorized. Source reservations
 still require fresh canonical/live-ledger reconciliation and full owning verification
 before a later separately authorized installation.
+
+## Attendance task candidate access — 1 November 2026 (unapplied)
+
+Owned performance branch reserves `0887_attendance_task_candidate_access`, idx767 /
+when1793330000287. Fresh source audit:2790 refs,302 distinct ref journals,411
+worktrees/713 raw journals including WIP/conflicts; previous maximum filename0886,
+idx766/when1793330000286. The canonical639-entry prefix remains unchanged.
+This adds pure actor-key expression indexes and a necessary-only task precheck;
+positive results retain the original authoritative reader. No live ledger queried,
+installation performed, or deployment authorized. Reconcile again before installation.
