@@ -42,8 +42,8 @@ describe('sensitive-topic routing and workplace-harms rule',()=>{
   // The harms rule is not a topic: it applies whatever the list says.
   expect(gateTurn('Is Siti Fictional likely to quit?',{sensitive:[]})).toEqual({privateReads:false,actions:false,reason:'workplace_harm'});
  });
- it('gives every new reason a fixed note that never permits a lookup and never invents a contact',()=>{
+ it('gives every new reason a fixed note that never permits a lookup and never names a contact',()=>{
   for(const [reason,note] of Object.entries(TURN_GATE_NOTE)){expect(note,reason).toMatch(/no records were looked up/i);expect(note.length,reason).toBeLessThan(500);}
-  for(const topic of SENSITIVE_TOPICS)expect(TURN_GATE_NOTE[`sensitive_${topic}`]).toMatch(/never invent a contact/);
+  for(const topic of SENSITIVE_TOPICS)expect(TURN_GATE_NOTE[`sensitive_${topic}`]).toMatch(/never name a contact/i);for(const topic of SENSITIVE_TOPICS)expect(TURN_GATE_NOTE[`sensitive_${topic}`]).not.toMatch(/added after|contact route/i);
  });
 });

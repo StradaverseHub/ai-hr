@@ -12,8 +12,9 @@
  * ADR-0170 step 3 adds two decisions on the same words, also before any read:
  *  - sensitive-topic routing (§3.2): harassment or bullying, a grievance about a person, a medical or health
  *    disclosure, self-harm or crisis, and a threat of dismissal get no private reads and no action
- *    suggestions; the harness adds the HR contact route (and, for crisis, a fixed safe message) to the reply.
- *    A false positive removes reads only: the model still answers from product context;
+ *    suggestions; the harness adds the HR contact route to the reply. A false positive removes reads only:
+ *    the model still answers from product context. A crisis turn is answered by the harness alone with a
+ *    fixed safe message and the route (no model call), so crisis patterns stay narrow;
  *  - the workplace-harms rule (§2 principle 8, §5): a request to infer someone's attitude, sentiment,
  *    loyalty, likelihood of leaving, or performance from their messages or behaviour is refused by the
  *    harness with a fixed reply, and the model is never called. It needs a subject other than the person.
@@ -156,10 +157,12 @@ export function gateTurn(question:string,options:Readonly<{sensitive?:readonly S
  if(named&&!FIRST_PERSON.test(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});
  return Object.freeze({privateReads:true,actions:true});
 }
-const SENSITIVE_NOTE='No records were looked up and no change can be suggested. The HR contact route is added after your reply: never invent a contact, number or page. In two or three calm sentences, acknowledge what was said without judging, diagnosing, advising on the merits or promising an outcome. Answer a product question only from product_guidance.';
+// Run 41307457954: when the note said the route "is added after your reply", 14 of 75 replies repeated that to the person.
+const SENSITIVE_NOTE='No records were looked up and no change can be suggested. Never name a contact, phone number or page yourself. In two or three calm sentences, acknowledge what was said without judging, diagnosing, advising on the merits or promising an outcome. Answer a product question only from product_guidance.';
 /** The fixed instruction added to a gated turn; it states what the system removed, never why it might be allowed. */
 export const TURN_GATE_NOTE:Readonly<Record<TurnGateReason,string>>=Object.freeze({
- sensitive_crisis:'This message may describe a personal crisis. The harness shows a fixed safe message first. '+SENSITIVE_NOTE,
+ // Never sent: the harness answers a crisis turn itself with the fixed safe message and the route.
+ sensitive_crisis:'This message may describe a personal crisis. '+SENSITIVE_NOTE,
  sensitive_harassment:'This message may describe harassment or bullying at work. '+SENSITIVE_NOTE,
  sensitive_termination_threat:'This message may describe a threat of dismissal. '+SENSITIVE_NOTE,
  sensitive_grievance:'This message may be a grievance or complaint about a person. '+SENSITIVE_NOTE,

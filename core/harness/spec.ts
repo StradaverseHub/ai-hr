@@ -15,7 +15,7 @@ const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child
 
 export const HARNESS_SPEC=freeze({
  kind:'teras.harness-spec',
- version:2,
+ version:3,
  budgets:{
   /** Model calls per turn, retries included. The last permitted call offers only final_answer. */
   maxSteps:7,
@@ -95,8 +95,9 @@ export const HARNESS_SPEC=freeze({
  /** ADR-0170 step 3 (§3.2): sensitive-topic routing and the workplace-harms rule, decided by the pre-read gate
   * (lib/product-context/request-gate.ts) from the person's words. A routed turn gets no private reads and no
   * action suggestions; the model may still answer from product context, and the harness then adds the
-  * contact route (and, first, the crisis message). A workplace-harms request is refused here without a model
-  * call. Fixed for every tenant in v2: whether a tenant may switch a topic off is an open owner question
+  * contact route. A crisis turn gets the crisis message and the route, and a workplace-harms request the fixed
+  * refusal, both without a model call (v3: in run 41307457954 the provider answered every crisis turn with a
+  * bare refusal). Fixed for every tenant in v2: whether a tenant may switch a topic off is an open owner question
   * (proposal: never crisis; the others only through an audited override), and no setting exists. */
  sensitive:{
   topics:['crisis','harassment','termination_threat','grievance','medical'],
@@ -105,7 +106,7 @@ export const HARNESS_SPEC=freeze({
   contact:{label:'your HR team',caseRoute:null},
   routeReply:'For this, please contact {contact} directly{case}. A person there can take it forward under your company\'s procedures; the Assistant cannot open a case or act on it.',
   caseClause:', or open {route}',
-  /** Shown before anything else on a crisis turn. Country lines need owner and local review before adding more. */
+  /** The whole reply on a crisis turn, before the route. Country lines need owner and local review before adding more. */
   crisisReply:'If you are in danger or thinking about harming yourself, please contact emergency services now (999 in Malaysia) or someone you trust nearby. You do not have to deal with this alone.',
   workplaceHarmReply:'I can\'t help with that. The Assistant never judges a person\'s attitude, sentiment, loyalty, likelihood of leaving or performance from their messages or behaviour. For a concern about someone\'s work, please use your company\'s performance or HR process.',
  },
@@ -135,4 +136,5 @@ export const harnessSpecDigest=(spec:unknown=HARNESS_SPEC)=>createHash('sha256')
 export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze({
  1:'0589cb3e4beec5214c8b00b7869b06ae9065d387733c004820b2a66a25da0616',
  2:'57fd6ad641945084c2b8c4eb40af07cc99f3e24e2f8521631bd6230d12596ee0',
+ 3:'282df659d6d19d26efcdfddadec1c83369c9f98814ee8b15b0a05ed8401d7fb2',
 });
