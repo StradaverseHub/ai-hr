@@ -185,6 +185,23 @@ describe('request-bound delegated approval effects',()=>{
   const rows=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,subject.employmentId));
   expect(rows.find(r=>r.id===first)?.status).toBe('approved');expect(rows.find(r=>r.id===second)?.status).toBe('pending');
  });
+ it('requires an active login for the stand-in’s own person and retains multiple-account semantics',async()=>{
+  const covers=(ctx:SessionContext=root)=>withTenant(ctx,async tx=>{
+   const [row]=await tx.execute<{covers:boolean}>(sql`select app.delegation_line_covers(${lineId}::uuid,${subject.employmentId}::uuid,'claims','claims.claim') as covers`);
+   return row.covers;
+  });
+  expect(await covers()).toBe(true);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,delegate.userId!));
+  // The active subject/manager/root logins must never keep an archived stand-in eligible.
+  expect(await covers()).toBe(false);
+  const second=await createAppUser(b.tenantId,stand.personId,'manager');
+  expect(await covers()).toBe(true);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,second));
+  expect(await covers()).toBe(false);
+  await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,delegate.userId!));
+  expect(await covers()).toBe(true);
+  expect(await covers(adminCtx(await seedBase()))).toBe(false);
+ });
  it('reads non-draft receipts without exposing drafts or their receipts',async()=>{
   const id=await claim(),[q]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,id));
   const draft=randomUUID();await owner.db.insert(schema.claimRequest).values({...q,id:draft,status:'draft'});

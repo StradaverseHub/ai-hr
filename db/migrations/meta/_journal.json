@@ -4551,6 +4551,13 @@
       "when": 1793330000292,
       "tag": "0892_attendance_legacy_candidate_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 769,
+      "version": "7",
+      "when": 1793330000296,
+      "tag": "0896_native_permission_work",
+      "breakpoints": true
     }
   ]
 }

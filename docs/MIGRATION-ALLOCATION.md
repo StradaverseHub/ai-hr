@@ -1,3 +1,25 @@
+## Performance native permission work — 1 November2026 (unapplied)
+
+Owned source appends `0896_native_permission_work`, idx769 / when1793330000296,
+SQL SHA256 `a45f6362d2a10b66c14d2be0a4f8199337c7f180bf1d487290cf8ce31fea412e`. Fresh all-ref/worktree audit15:26:37UTC inspected1,704
+unique heads,302journal blobs,382migration trees and421registered worktrees,
+including both sides of a foreign conflicted journal without editing it. Source
+claims end at0895/when295; the existing ten owned performance drafts remain exact.
+Fresh canonical main/alpha are c7036d829; staging's complete640-row ordered ledger
+was independently verified15:20:05UTC and the installed native helper hash/policy
+qualifier were read-only verified before preparing this append. All640 canonical
+SQL files/journal entries remain unchanged. Other unapplied reservations are excluded.
+
+The guarded append narrows identical candidate-user work before live login checks
+and changes only regular Claims membership representation. It retains native helper
+owner/ACL/volatility/config and policy command/role/WITH CHECK attributes. Separate
+paired native prototypes pass exact outputs and restored controls. Ordinary populated
+upgrade, combined native behavior/scale and full release/load qualification remain
+required. This is a provisional source reservation, not installation permission:
+refresh all competing claims and the live ledger before admission. Do not deploy.
+
+---
+
 # Coordinated migration reservations
 
 This record owns **unapplied reservations**, not the deployed database. Refresh canonical branch

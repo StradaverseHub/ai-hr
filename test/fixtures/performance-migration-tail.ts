@@ -79,5 +79,13 @@ export const PERFORMANCE_MIGRATION_TAIL = [
     "tag": "0892_attendance_legacy_candidate_gate",
     "breakpoints": true,
     "hash": "7e667f242c7d7075d4394301ccc43dfe201ecee86ee6e7e046676149df56ca83"
-  }
+  },
+{
+  "idx": 769,
+  "version": "7",
+  "when": 1793330000296,
+  "tag": "0896_native_permission_work",
+  "breakpoints": true,
+  "hash": "a45f6362d2a10b66c14d2be0a4f8199337c7f180bf1d487290cf8ce31fea412e"
+}
 ] as const;
