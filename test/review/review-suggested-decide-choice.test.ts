@@ -52,25 +52,36 @@ beforeEach(async()=>{
 
 describe('the person, not the model, chooses which request is prepared',()=>{
  const words='Please approve the leave request waiting for me.';
- it('REVIEW medium: a request number the person never said prepares nothing',async()=>{
+ it('fixed M3: a request number the person never said prepares nothing',async()=>{
   const me=await login(manager);
   const outcome=await prepareSuggestedProposal(me,'approvals.leave.decide',{request:'2'},words);
   expect(outcome?.kind).not.toBe('proposal');
  });
- it('REVIEW medium: a start date the person never said prepares nothing',async()=>{
+ it('fixed M3: a start date the person never said prepares nothing',async()=>{
   const me=await login(manager);
   const outcome=await prepareSuggestedProposal(me,'approvals.leave.decide',{startDate:laterDate},words);
   expect(outcome?.kind).not.toBe('proposal');
  });
- it('REVIEW medium: through the harness, a model that picks a number itself gets no proposal',async()=>{
+ it('fixed M3: through the harness, a model that picks a number itself gets no proposal',async()=>{
   const me=await login(manager);
   const model=scriptedModel([{calls:[{name:'suggest_action',args:{action:'approvals.leave.decide',details:{request:'2'}}}]},{final:{reply:'Open the review page to confirm.',mode:'propose'}}]);
   const turn=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:me,conversationId:randomUUID(),question:words,scope:{companyId:base.companyId,locale:'en'},model,memory:new InMemoryTaskMemoryStore()});
   expect(turn.proposals).toEqual([]);
  });
- it('REVIEW low: "do not approve" is not read as asking to approve',()=>{
+ it('fixed M3: "do not approve" is not read as asking to approve',()=>{
   expect(asksToApprove('Do not approve anything yet, just list them.')).toBe(false);
+  for(const words of ["Don't approve it.",'dont approve that one','Never approve leave on Fridays.','Please do not yet approve number 2.','jangan lulus, saya nak tengok dulu','Tak approve lagi.'])
+   expect(asksToApprove(words),words).toBe(false);
+  for(const words of ['Approve number 2.','Please approve the leave request waiting for me.','ok approve the first one'])expect(asksToApprove(words),words).toBe(true);
  });
+ it('fixed M3: a date the person did say, in their own wording, still selects that request',async()=>{
+  const me=await login(manager);
+  const [,month,day]=laterDate.split('-').map(Number);
+  const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const chosen=await prepareSuggestedProposal(me,'approvals.leave.decide',{startDate:laterDate},`Approve the one starting ${day} ${months[month-1]}.`);
+  expect(chosen?.kind).toBe('proposal');
+  if(chosen?.kind==='proposal')expect(chosen.proposal.body).toMatchObject({forWhom:{subjectId:secondId}});
+ },60000);
 });
 
 describe('REVIEW pass: the native gate still bounds the choice',()=>{

@@ -52,7 +52,7 @@ describe('explainers worker switch',()=>{
 });
 
 describe('approvals chooser from a model suggestion',()=>{
- it('REVIEW medium: the "choose" list names only requests the caller is assigned to decide, never a visible-but-unassigned one',async()=>{
+ it('fixed M2: the "choose" list names only requests the caller is assigned to decide, never a visible-but-unassigned one',async()=>{
   vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-proposal-signing-secret-0123456789abcdef');
   // Two pending requests from the manager's reports. The colleague's current step is re-pointed to an HR
   // administrator, so the manager still SEES it (RLS: own report) but may not decide it.
