@@ -227,7 +227,7 @@ arbitrary JWKS or an untrusted key embedded in a file.
 
 ### Preparing company setup files
 
-The current `AI HR Test` binary embeds a **test-only** public signing key. Its private key is stored
+The current OneHR+ review binary embeds a **test-only** public signing key. Its private key is stored
 outside the repository and every build/upload input, in the operator's protected local key directory.
 It must not be used for customer production distribution. A production operator must provision and
 back up its signing key, embed the reviewed public anchors in the shared production binary, and sign
@@ -315,7 +315,7 @@ QR scanning uses the phone’s camera and the HTTPS setup page; there is no in-a
 
 `eas.json` defines a standalone preview APK and an ad hoc iPhone build, an Android cloud-compilation
 profile without signing credentials, and an iOS simulator profile.
-The preview app is `AI HR Test` / `ai.stradaverse.aihr.test`; it bundles JavaScript and does not need a
+The preview app is `OneHR+` / `ai.stradaverse.aihr.test`; it bundles JavaScript and does not need a
 Metro server to run. Its existing `aihr://auth/callback` must be registered by the deployment operator.
 Do not install another AI HR binary using that same custom scheme alongside it during callback tests.
 Preserve a locally signed Android build's operator keystore outside source/build inputs and reuse its
