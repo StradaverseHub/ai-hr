@@ -1,3 +1,9 @@
+## Clocking import follow-up — native checks pass, load results pending
+
+Candidate3c15767e0 removes exclusive tenant authority from ordinary USER clocking imports while retaining native employee, policy, financial and configuration protection. The actual pre-audit import concurrency reproduction fails on5f5f6073d/41363690098 with both imports otherwise valid; the fixed source passes212 database and23 additional checks in41364156884. Same-employee refusal, native account revocation and complete rollback before one configuration replay remain enforced. The compiler is still running.
+
+Both unchanged500-user tests are active on immutable3c aliases: [one-second41364525515](https://github.com/StradaverseHub/ai-hr/actions/runs/41364525515), [five-second41364527963](https://github.com/StradaverseHub/ai-hr/actions/runs/41364527963). The previous d91 pair below remains the original failed comparator. **No speedup or acceptance is claimed before complete evidence. No deployment.**
+
 ## Completed d91 whole-system pair — targets still unmet
 
 Frozen application/controller `d91ce204deae2f8ff77ae8f28987944c218430ce` completes both unchanged-resource workloads within their original600s HTTP parent budgets. Both FAIL; **0/2 targets accepted; no deployment**.
