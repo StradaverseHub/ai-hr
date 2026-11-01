@@ -214,9 +214,14 @@ jobs:
       - uses: ./automation/.github/actions/setup-alpha
         with:
           node: '20'
-      - run: pnpm build
+      # DIAGNOSTIC BRANCH ONLY (claude/teras-build-diag, never merged): measure the production type program instead of
+      # building. The 12000 MB heap is for measurement only; the release build policy stays 6144.
+      - run: pnpm exec next typegen
+      - run: pnpm exec tsc -p tsconfig.build.json --noEmit --extendedDiagnostics --generateTrace /tmp/tstrace || true
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=12000
+      - run: node -e "const f=require('fs');const t=JSON.parse(f.readFileSync('/tmp/tstrace/trace.json'));const by={};for(const e of t){if(e.name==='checkSourceFile'&&e.dur){const p=e.args&&e.args.path||'';const k=p.replace(/^.*?source\//,'').split('/').slice(0,2).join('/');by[k]=(by[k]||0)+e.dur/1000;}}console.log(Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,25).map(([k,v])=>k+' '+v.toFixed(0)+'ms').join('\n'))" || true
+      - run: node -e "const f=require('fs');const t=JSON.parse(f.readFileSync('/tmp/tstrace/trace.json'));const r=t.filter(e=>e.name==='checkSourceFile'&&e.dur).sort((a,b)=>b.dur-a.dur).slice(0,30);console.log(r.map(e=>(e.dur/1000).toFixed(0)+'ms '+(e.args.path||'').replace(/^.*?source\//,'')).join('\n'))" || true
 
   native-typecheck:
     if: ${{ inputs.run_native_typecheck }}
