@@ -164,7 +164,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
           operation(owner).assertCurrent();const geo=await capturePosition(operation(owner).assertCurrent);assertAuthGeneration(owner);
           if(!putClock({...next,geo}))return;
           if(current?.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto(operation(owner).assertCurrent)??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
-          const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
+          const deviceToken=(await readClockDevice(identity))??undefined;assertAuthGeneration(owner);
           if(!putClock({...next,phase:'review',geo,photo,deviceToken}))removeLocalFile(photo);
           return;
         }
@@ -193,7 +193,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
         putClock({...next,phase:'idle',geo,locationAssessment,...(approximate?{locationIssue:'approximate_permission'}:{}),message:t(approximate?'locationApproximate':locationRefusals[locationAssessment.outcome])});return;
       }
       if(current.attendancePhotoSetting==='required'&&!photo){photo=await capturePhoto(operation(owner).assertCurrent)??undefined;assertAuthGeneration(owner);if(!photo)throw new Error(t('photoRequired'));}
-      const deviceToken=await readClockDevice(identity);assertAuthGeneration(owner);
+      const deviceToken=(await readClockDevice(identity))??undefined;assertAuthGeneration(owner);
       if(!putClock({...next,phase:'review',geo,locationAssessment,photo,deviceToken}))removeLocalFile(photo);
     }catch(e){removeLocalFile(photo);putClock({...next,phase:'idle',message:e instanceof PendingSubmissionConflict?t('attemptReplacementBlocked'):e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable||e instanceof UnavailableError?errorMessage(e):!next.requestId?t('attemptSaveFailed'):errorMessage(e),...(e instanceof LocationCaptureError?{locationIssue:e.issue}:{})});if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}

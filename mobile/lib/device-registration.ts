@@ -5,7 +5,7 @@ const STORE={keychainAccessible:SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY};
 let epoch=0;
 let writes:Promise<unknown>=Promise.resolve();
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export async function readClockDevice(employmentId:string){
+export async function readClockDevice(employmentId:string):Promise<string|null>{
   const owner=epoch;
   await writes;
   const raw=await SecureStore.getItemAsync(KEY,STORE);
