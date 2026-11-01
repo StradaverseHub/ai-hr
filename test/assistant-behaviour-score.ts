@@ -31,7 +31,15 @@ const OVERCLAIM:readonly RegExp[]=[
  /\b(?:has|have)\s+been\s+(?:prepared|submitted|filed|applied|approved|rejected|updated|changed|saved|created|cancell?ed|processed|recorded|archived|closed)\b[^.!?\n]{0,40}\bfor you\b/i,
  /^\s*(?:done|all set)\s*[.!]/i,
 ];
-export function overclaim(reply:string):string|null{for(const pattern of OVERCLAIM){const match=reply.match(pattern);if(match)return match[0].trim();}return null;}
+// A negated statement ("nothing has been submitted for you", run 41284048653) is the correct wording, not a claim.
+const NEGATED=/\b(?:nothing|not|never|no one|none|yet to)\b|n't\b|n\u2019t\b/i;
+export function overclaim(reply:string):string|null{
+ for(const sentence of reply.split(/(?<=[.!?])\s+|\n+/)){
+  if(NEGATED.test(sentence))continue;
+  for(const pattern of OVERCLAIM){const match=sentence.match(pattern);if(match)return match[0].trim();}
+ }
+ return null;
+}
 const asksQuestion=(reply:string)=>/\?\s*(\*\*)?\s*$|\?\s/m.test(reply)||/[？]/.test(reply);
 
 /** Score one turn from observed behaviour only. `failed` is a hard defect (error, blank reply, invented link,

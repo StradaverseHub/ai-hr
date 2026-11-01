@@ -49,10 +49,10 @@ describe('Assistant context layer tools',()=>{
  it('lists configured leave types and schedule groups with real setup pages, and no people',async()=>{
   const {hr}=await people(),result=await runContextTool(hr,'company_setup',{},scope());
   expect(result.ok).toBe(true);if(!result.ok)return;
-  const content=result.content as {leaveTypes:{code:string;name:string;paid:boolean;accrualConfigured:boolean}[];attendance:{scheduleGroups:{name:string;isDefault:boolean}[]}|null;pages:{leaveTypes:string;scheduleGroups:string|null}};
+  const content=result.content as {leaveTypes:{code:string;name:string;paid:boolean}[];attendance:{scheduleGroups:{name:string;isDefault:boolean}[]}|null;pages:{leaveTypes:string;scheduleGroups:string|null}};
   const [annual]=await owner.db.select({code:schema.leaveType.code}).from(schema.leaveType).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
   expect(content.leaveTypes.map(row=>row.code)).toContain(annual.code);
-  for(const row of content.leaveTypes){expect(typeof row.paid).toBe('boolean');expect(typeof row.accrualConfigured).toBe('boolean');}
+  for(const row of content.leaveTypes){expect(Object.keys(row).sort()).toEqual(['code','name','paid']);expect(typeof row.paid).toBe('boolean');}
   for(const page of [content.pages.leaveTypes,content.pages.scheduleGroups].filter((page):page is string=>Boolean(page)))expect(existsSync(join(process.cwd(),'app',page,'page.tsx')),page).toBe(true);
   const body=JSON.stringify(content);for(const name of NAMES)expect(body.includes(name),name).toBe(false);
  });
