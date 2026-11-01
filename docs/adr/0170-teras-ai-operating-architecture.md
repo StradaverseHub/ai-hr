@@ -64,6 +64,7 @@ flowchart TB
   subgraph S[1 · Surfaces]
     chat[Chat] --- cards[Inline cards] --- review[Review pages] --- why[Why? explanations] --- digest[Digests & notifications] --- console[Admin console]
   end
+  ext[Customer AI tools via Teras Connect / MCP]
   subgraph G[2 · Guard]
     gate[Pre-read gate] --- sens[Sensitive-topic routing] --- inj[Injection screening] --- disc[Disclosure contracts & egress digest] --- budget[Budgets & tenant switch]
   end
@@ -86,6 +87,7 @@ flowchart TB
     audit[Audit] --- evals[Evaluation & holdouts] --- ladder[Autonomy ladder] --- models[Model & provider registry] --- agree[Agreement metrics]
   end
   S --> G --> H --> C
+  ext --> G
   H --> K --> N
   P --> K
   P --> S
@@ -179,6 +181,30 @@ These are the kernel and packs (`packs/<pack>/service`), under RLS, with effecti
 | **Agreement metrics**: how often people accept Teras' suggestions and recommendations, from audit data with no new disclosure | Build (ADR-0084 learn) |
 | Model and provider registry, zero retention, residency | Prod for configuration; provider terms and residency are **Review** |
 
+### 3.9 Connect: customers' own AI tools (proposed, owner interest 1 November 2026)
+
+**What it is.** An MCP (Model Context Protocol) server, *Teras Connect*. A customer's own AI tool could ask the HR system questions and prepare changes **as the signed-in person**, through the same Guard, capabilities and audit. Examples of such tools: Microsoft Copilot, Claude, ChatGPT Enterprise, Glean. Surveyed products ship this pattern (Glean MCP; Darwinbox claims an HCM MCP server; vendor statements, capability review §4).
+
+**Facts today:**
+- No MCP server or third-party API token flow exists.
+- ADR-0082 deferred outbound MCP to a later "governed tool gateway".
+- The mobile API verifies bearer tokens from the legacy WorkOS adapter (`lib/mobile-api/jwt.ts`), while the authentication direction is embedded HR login (ADR-0117).
+
+**The key difference from chat.** Through MCP, Teras sees **tool calls, not the person's question**. The question-based pre-read gate cannot run. The customer's model plans the turn, and its answers go to the customer's own AI provider. So Connect must be safe **per tool call**, whatever the question was.
+
+| Concern | Design |
+| --- | --- |
+| Who is calling | OAuth authorisation on the embedded HR login with MFA (ADR-0117), per person, short-lived and revocable tokens bound to one tenant and one registered client. No shared API keys; no service-account reads. The MCP specification's OAuth-based authorisation profile is to be verified against its current version at design time |
+| Who allows it | Off by default. A group administrator enables Connect per tenant and per **named client app** (allowlist), chooses which tool groups each app gets, and can revoke at once. Each person can see and revoke their own connections |
+| What it can do | The same capability registry, filtered by the person's access: own-scope reads, context, explainers and change **preparation**. Preparation returns a link to the product's review page. **Connect never completes a change**: confirmation happens in the HR system under its own login and MFA, so an outside model cannot approve, submit or pay anything |
+| What it returns | Minimum fields per tool, under a published per-tool, per-field contract the customer can assess. Identifiers (IC, passport, bank, tax numbers) never leave. Sensitive groups are **off by default** and need an explicit tenant switch per app: pay, medical and leave reasons, other people's records, analytics |
+| Untrusted text | Employee-entered text (claim descriptions, notes) is returned as clearly marked data, never as instructions, so it cannot steer the customer's model. Teras treats every incoming argument as untrusted |
+| Abuse | Per-person, per-tool rate limits; no bulk or list-everyone tools; scraping-pattern detection; every call audited with the client app, tool, arguments' shape and result size |
+| Responsibility | The customer chooses to send its employees' data to its own AI vendor. Under PDPA the employer is the data user. Teras' terms, the data processing addendum and the per-tool contract must say so, and this needs **its own legal review** (separate from ADR-0169 §5.1, which covers Teras' own provider) |
+| Quality and safety tests | A conformance suite runs the adversarial and conversation holdouts, injection attempts in returned data, and cross-tenant and cross-person attempts through Connect before any tenant can enable it |
+
+**Not exposed through Connect:** configuration writes, bulk exports, payroll runs, other people's records (until a separate decision), and governed metrics (until the §5.1 review).
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
@@ -222,6 +248,7 @@ Every step is built on fictional data behind a switch that stays off until the A
 | 4 | "Why?" explainers; go-live setup co-pilot on readiness | No |
 | 5 | Approver recommendations; daily digest; agent registry | No |
 | 6 | Governed metrics, receipts, letter drafting, spreadsheet intake, verified KB, policy-versus-configuration | **Yes** |
+| 6a | Teras Connect, read and prepare only, behind the tenant and app allowlist, after the Guard and capability registry are product code | Its own legal review (§3.9), and the conformance suite |
 | 7 | Pilot with one consenting tenant (ADR-0169 phase D) | **Yes**, plus legal sign-off |
 
 Acceptance for each step follows ADR-0169 §6. In addition, every new capability ships with hard-gate tests, and with corpus turns for each access type it serves.
@@ -243,14 +270,31 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 
 ## 9. Name
 
-**Working name: Teras** (Malay: *core*, the heartwood of a tree). It says what the architecture is: the one core every AI feature runs through, rooted in the system's own truth. It is short, reads naturally in Malay and English, and is easy to say in the other interface languages.
+**What the name must do:**
+1. Say what the system is: the trusted core every AI feature runs through, with people in control.
+2. Read naturally in Malay and English, and be pronounceable in the other interface languages.
+3. Not be a person's name. A human persona encourages over-trust (ADR-0169 §4), and it invites assumptions about the assistant's gender.
+4. Have no clash with an AI, HR or Malaysian technology product.
+5. Work for both the platform ("built on Teras") and the features ("Teras Connect", "Ask Teras").
 
-| Candidate | Finding (quick web search, 1 November 2026; not a trademark search) |
-| --- | --- |
-| **Teras** | No AI or HR product found under this name |
-| Nadi (Malay: pulse) | No exact match; close to "Nadia", an AI work coach (Valence) used in HR |
-| Akal (Malay: reason) | Used by a Malaysia-listed AI solutions company |
-| Onyx (current branch codename) | An established open-source enterprise AI search product (onyx.app); avoid as a public name |
-| Amanah (trust) | Strong meaning, but it is also the name of a Malaysian political party; avoid |
+**Shortlist** (quick web searches on 1 November 2026; **not a trademark search**):
 
-Before adopting a name: a MyIPO and international trademark search, a domain check, and a native-speaker check of meaning in each interface language.
+| Name | Meaning and fit | Clash found |
+| --- | --- | --- |
+| **Teras** | Malay: *core*, the heartwood of a tree. The one core every AI feature runs through, rooted in the system's own records. Works as a platform name | None found for an AI or HR product. Near names are different words (Tera AI, robotics; TeraGen, marketing) |
+| **Kemudi** | Malay: *rudder*. The rudder steers, but the helmsman decides, which matches "models propose, people decide". Strong metaphor | None found |
+| **Suluh** | Malay: *torch*. Lights the way: guidance, "Why?" explanations. Better for an assistant than for a platform | None found (Sulu.ai is a near-miss) |
+| Nadi | Malay: *pulse* | Close to Nadia, an AI work coach used in HR (Valence) |
+| Rakan | Malay: *companion, colleague* | Used by the National AI Office's agriculture AI (Rakan Tani) and RakanMET |
+| Nakhoda | Malay: *ship's captain* | Nakhoda AI, a Malaysian compliance AI (Otonoco) |
+| Akal | Malay: *reason* | A Malaysia-listed AI solutions company |
+| Keel | English | Close to Keelzo, an AI recruiting product |
+| Onyx | Current branch codename | Onyx, an open-source enterprise AI search product |
+| Amanah | Trust | Also the name of a Malaysian political party |
+
+**Recommendation.** **Teras** for the AI operating architecture and brand ("Teras Connect", "Ask Teras"). Kemudi is a close second if the owner prefers the steering metaphor over the core metaphor.
+
+Before adopting either:
+- a MyIPO and international trademark search in the software classes;
+- a domain and app-store check;
+- a native-speaker check of meaning and connotation in all six interface languages.
