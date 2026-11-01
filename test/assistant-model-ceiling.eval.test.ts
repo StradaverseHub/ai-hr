@@ -191,5 +191,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
   process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+JSON.stringify({variant:'phase_b_repeated',stability,context,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
    summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger})+'\n');
   expect(passes.every(row=>row.scores.length>0)).toBe(true);expect(breaches).toEqual([]);
+  // A run whose model calls mostly failed measured nothing; it must not read as a pass (run 41283142733: 222 provider_400, $0).
+  const failedTurns=ledger.filter(row=>row.error).length;expect(failedTurns,'turns that errored').toBeLessThanOrEqual(Math.floor(ledger.length*0.05));
  },1_800_000);
 });
