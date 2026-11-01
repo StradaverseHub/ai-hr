@@ -125,6 +125,8 @@ describe('AI centre screens', () => {
     const figure = view.container.querySelector('[data-clockwork-figure]')!;
     expect(figure.querySelector('[data-part="model"]')).not.toBeNull();
     expect(within(figure as HTMLElement).getByText(how.parts.model)).toBeInTheDocument();
+    expect(figure.querySelector('[data-face-label]')).toHaveTextContent('Noveri OS');
+    expect(screen.getByText(how.titleNamed.replace('{name}', 'Noveri'))).toBeInTheDocument();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), locale, 'ai-centre-how', FICTION, 'atelier');
   }, 120000);
 
@@ -143,7 +145,7 @@ describe('AI centre screens', () => {
   it('the floating chat links to the Inbox with the decision count', async () => {
     state.locale = 'en';
     const view = wrap('en', <AssistantLauncher position="bottom-right" hiddenAreas={[]} inboxCount={2} />);
-    fireEvent.click(screen.getByRole('button', { name: en.assistant.launcher.open }));
+    fireEvent.click(screen.getByRole('button', { name: messagesFor('en').aiCentre.launcher.open.replace('{name}', 'Noveri') }));
     const link = screen.getByRole('link', { name: new RegExp(messagesFor('en').aiCentre.launcher.inbox) });
     expect(link).toHaveAttribute('href', '/assistant?view=inbox');
     expect(link).toHaveTextContent('2');

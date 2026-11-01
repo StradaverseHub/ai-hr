@@ -293,13 +293,16 @@
         "foundation": "表壳 · 防护层 · 结果记录 · 审计",
         "guard": "表冠 · 任何改动前先检查",
         "outcome": "后盖刻字 · 谁 · 什么 · 何时"
-      }
+      },
+      "titleNamed": "{name} 如何运作",
+      "taglineNamed": "{osName}：面向人力资源的 AI 操作系统，围绕你的员工与你的规则而构建。"
     },
     "launcher": {
       "inbox": "您的收件箱",
       "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
       "earlier": "之前，在{area}页面",
-      "continue": "在{name}中继续"
+      "continue": "在{name}中继续",
+      "open": "询问 {name}"
     },
     "review": {
       "back": "返回收件箱",

@@ -3,7 +3,7 @@ import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Ban, Bell, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, HelpCircle, Pause, Play, Scale, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { aiCentreName } from '@/lib/ai-centre/brand';
+import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
 import { ClockworkFigure, type ClockworkLabels, type ClockworkTarget } from './clockwork-figure';
 
 /** The nine steps of one request (ADR-0170 §4), and which layer each lights. `guard` and `outcome` are parts
@@ -151,7 +151,7 @@ function RequestJourney() {
           layers show as the stacked list. Either way the step text below carries the meaning. */}
       <div className="hidden xl:block">
         <ClockworkFigure active={target} labels={labels} reduced={reduced} label={t('mapLabel')}
-          title={t('title')} caption={t('figureCaption')} mark={aiCentreName(tc('genericName'))} />
+          title={AI_PRODUCT_NAME ? t('titleNamed', { name: AI_PRODUCT_NAME }) : t('title')} caption={t('figureCaption')} mark={aiCentreName(tc('genericName'))} faceLabel={AI_ARCHITECTURE_LABEL ?? undefined} />
       </div>
       <div ref={map} role="img" aria-label={t('mapLabel')} className="relative rounded-2xl border border-border bg-card p-4 sm:p-5 xl:hidden">
         <span aria-hidden data-how-token className={cn('pointer-events-none absolute left-0 top-0 z-10 size-3.5 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_srgb,var(--primary)_22%,transparent),0_2px_6px_rgb(0_0_0/0.18)]',

@@ -293,13 +293,16 @@
         "foundation": "the case · guard · outcome record · audit",
         "guard": "the crown · checked before anything moves",
         "outcome": "the engraved caseback · who · what · when"
-      }
+      },
+      "titleNamed": "How {name} works",
+      "taglineNamed": "{osName}: the AI operating system for HR, built around your people and your rules."
     },
     "launcher": {
       "inbox": "Your Inbox",
       "inboxCount": "{count, plural, one {# waiting} other {# waiting}}",
       "earlier": "Earlier, on the {area} page",
-      "continue": "Continue in the {name}"
+      "continue": "Continue in the {name}",
+      "open": "Ask {name}"
     },
     "review": {
       "back": "Back to Inbox",

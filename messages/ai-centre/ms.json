@@ -293,13 +293,16 @@
         "foundation": "bekas jam · pengawal · rekod hasil · audit",
         "guard": "mahkota · disemak sebelum apa-apa bergerak",
         "outcome": "ukiran penutup belakang · siapa · apa · bila"
-      }
+      },
+      "titleNamed": "Cara {name} berfungsi",
+      "taglineNamed": "{osName}: sistem pengendalian AI untuk HR, dibina di sekitar pekerja dan peraturan anda."
     },
     "launcher": {
       "inbox": "Peti masuk anda",
       "inboxCount": "{count, plural, one {# menunggu} other {# menunggu}}",
       "earlier": "Sebelum ini, di halaman {area}",
-      "continue": "Teruskan dalam {name}"
+      "continue": "Teruskan dalam {name}",
+      "open": "Tanya {name}"
     },
     "review": {
       "back": "Kembali ke Peti masuk",

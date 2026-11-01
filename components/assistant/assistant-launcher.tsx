@@ -8,6 +8,7 @@ import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
+import { AI_PRODUCT_NAME, aiCentreName } from '@/lib/ai-centre/brand';
 
 type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
 
@@ -19,7 +20,7 @@ type Turn = { id: number; question: string; area: PageArea | null; stale?: true;
  * launcher links to the Inbox and never reads anything itself. */
 export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inboxCount?: number }) {
  const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
-  const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas');
+  const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas'), tCentre = useTranslations('aiCentre.launcher');
   const pathname = usePathname() ?? '/';
   const context = resolvePageContext(pathname);
   const [open, setOpen] = React.useState(false), [docked, setDocked] = React.useState(false);
@@ -82,7 +83,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
   }
   const side = position === 'bottom-left' ? 'left-4' : 'right-4';
   return <AssistantChatBoundary value={{pending:pending||uncertain,setQuestionDraft:answer=>{if(inFlight.current||uncertain)return;awaitingClarification.current=null;setQuestion(answer);box.current?.focus();},clarify:async(id,answer)=>{await send({id,answer});},setClarificationDraft:(id,answer)=>{if(inFlight.current||uncertain)return;awaitingClarification.current=id;setQuestion(answer);box.current?.focus();}}}>
-    {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={t('open')} aria-haspopup="dialog"
+    {!open && <button ref={button} type="button" onClick={() => { followLatest.current = true; setOpen(true); }} aria-label={AI_PRODUCT_NAME ? tCentre('open', { name: AI_PRODUCT_NAME }) : t('open')} aria-haspopup="dialog"
       className={`fixed bottom-4 ${side} z-40 inline-flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none`}>
       <Sparkles aria-hidden className="size-5"/>
     </button>}
@@ -95,7 +96,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
         <div className="flex min-w-0 items-center gap-3">
           <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Sparkles aria-hidden className="size-5"/></span>
           <div className="min-w-0">
-            <h2 id={titleId} className="text-sm font-semibold">{t('title')}</h2>
+            <h2 id={titleId} className="text-sm font-semibold">{aiCentreName(t('title'))}</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">{t('identity')}</p>
             {context && <p className="mt-1 text-xs text-muted-foreground">{t('about', { area: areas(context.area) })}</p>}
           </div>
@@ -108,7 +109,7 @@ export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { posit
         </div>
       </header>
       {inboxCount !== undefined && <InboxLink count={inboxCount}/>}
-      <div ref={log} role="log" aria-label={t('title')} aria-live="polite" aria-relevant="additions text" onScroll={event => {
+      <div ref={log} role="log" aria-label={aiCentreName(t('title'))} aria-live="polite" aria-relevant="additions text" onScroll={event => {
         const element = event.currentTarget;
         followLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop <= 64;
       }} className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-5 text-sm">

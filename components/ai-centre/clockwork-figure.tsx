@@ -97,8 +97,9 @@ export type ClockworkLabels = Readonly<Record<ClockworkLayer | 'model' | 'founda
 
 /** `active` is the part the current step explains (null for the overview). `reduced` shows the watch open
  * and still: no opening and no travel. */
-export function ClockworkFigure({ active, labels, title, caption, mark, reduced, label }: {
-  active: ClockworkTarget | null; labels: ClockworkLabels; title: string; caption: string; mark: string; reduced: boolean; label: string;
+/** `faceLabel` is printed on the dial, the way a maker's name sits on a watch face (the architecture label). */
+export function ClockworkFigure({ active, labels, title, caption, mark, reduced, label, faceLabel }: {
+  active: ClockworkTarget | null; labels: ClockworkLabels; title: string; caption: string; mark: string; reduced: boolean; label: string; faceLabel?: string;
 }) {
   const [open, setOpen] = React.useState(reduced ? 1 : 0);
   const figure = React.useRef<HTMLDivElement>(null);
@@ -160,6 +161,12 @@ export function ClockworkFigure({ active, labels, title, caption, mark, reduced,
               <g className="group" data-on={lit('guard') ? '' : undefined} data-part="guard"><Shapes shapes={[...d.solid(disc(150, 326, 16, 24), Z.found - 6, 22), ...d.box(140, 308, 20, 10, Z.found - 10, 12)]} /></g>
               <g className="group" data-on={lit('outcome') ? '' : undefined} data-part="outcome"><Shapes shapes={[d.outline(disc(150, 150, 40), Z.found), ...[134, 146, 158, 170].map((y, i) => d.line([[124 + i * 2, y], [176 - i * 2, y]], Z.found))]} /></g>
             </>}
+            {key === 'interfaces' && faceLabel && (() => {
+              // Lies flat on the dial: the plane's x and y axes as the text's own axes.
+              const [tx, ty] = d.P(150, 196, Z.interfaces);
+              return <text transform={`matrix(${0.866 * S} ${0.5 * S} ${-0.866 * S} ${0.5 * S} ${tx} ${ty})`} textAnchor="middle" data-face-label
+                className="fill-[#9aa0a8] text-[15px] font-semibold tracking-[0.18em] [font-variant:small-caps]">{faceLabel}</text>;
+            })()}
             {key === 'harness' && <g className="group" data-on={lit('harness') ? '' : undefined} data-part="model">
               <Shapes model shapes={[...d.solid(disc(150, 150, 46), modelZ, 6), d.outline(disc(150, 150, 34), modelZ), ...[0, 1, 2].map(i => d.line([at(8, i * 2.09), at(34, i * 2.09)], modelZ)), d.line(spiral(150, 150, 6, 26, 2.6), modelZ + 2)]} />
             </g>}

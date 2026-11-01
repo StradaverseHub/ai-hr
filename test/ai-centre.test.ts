@@ -17,7 +17,7 @@ import { BUILT_IN_PLACEMENT, BUILT_IN_SHOWN_AS_FEATURE, FEATURE_PLACEMENT, WORKE
 import { AI_FEATURES } from '../lib/ai/features';
 import { AI_MANAGEMENT_SECTIONS } from '../app/control-tower/agents/sections';
 import { isAiSourceFile } from '../scripts/ai-agent-source-scope.mjs';
-import { aiCentreName } from '../lib/ai-centre/brand';
+import { AI_ARCHITECTURE_LABEL, AI_PRODUCT_NAME, aiCentreName } from '../lib/ai-centre/brand';
 
 const ROOT = path.resolve(__dirname, '..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -142,9 +142,15 @@ describe('AI centre messages', () => {
     expect(request).toContain('import(`../messages/ai-centre/${locale}.json`)');
   });
 
-  it('names the product through one constant, never in copy', () => {
-    expect(aiCentreName('AI centre')).toBe('AI centre');
-    for (const [, text] of en) expect(text).not.toMatch(/\bTeras\b/);
+  it('names the product through one constant, never in copy, and derives the OS label from it', () => {
+    expect(AI_PRODUCT_NAME).toBe('Noveri');
+    expect(aiCentreName('AI centre')).toBe('Noveri');
+    expect(AI_ARCHITECTURE_LABEL).toBe(`${AI_PRODUCT_NAME} OS`);
+    expect(read('lib/ai-centre/brand.ts')).not.toMatch(/'Noveri OS'/);
+    for (const locale of ['en', 'ms', 'zh', 'vi', 'ta', 'th'])
+      for (const [key, text] of catalogue(locale)) expect(text, `${locale} ${key}`).not.toMatch(/\b(Teras|Noveri)\b/);
+    for (const file of ['components/ai-centre/how-it-works.tsx', 'components/ai-centre/clockwork-figure.tsx', 'components/ai-centre/centre-tabs.tsx', 'components/assistant/assistant-launcher.tsx', 'components/sidebar.tsx', 'app/assistant/page.tsx'])
+      expect(read(file), file).not.toMatch(/['"`]Noveri/);
   });
 });
 
