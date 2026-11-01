@@ -27169,7 +27169,12 @@
       "performance_idp": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
       "performance_calib": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
       "performance_assistant": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
-      "feedback_planning": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn."
+      "feedback_planning": "Câu hỏi và giá trị hồ sơ được giữ trong ứng dụng. AI chỉ nhận tham chiếu được bảo vệ hoặc thông tin tổng hợp được hỗ trợ. Đầu vào không được hỗ trợ sẽ bị chặn.",
+      "approval_chasers": "Được gửi từ mẫu tin nhắn cố định theo lịch đã định. Không sử dụng mô hình AI và không gửi bất kỳ dữ liệu nào đến nhà cung cấp AI.",
+      "review_chasers": "Được gửi từ mẫu tin nhắn cố định theo lịch đã định. Không sử dụng mô hình AI và không gửi bất kỳ dữ liệu nào đến nhà cung cấp AI.",
+      "clock_reminders": "Được gửi từ mẫu tin nhắn cố định theo lịch đã định. Không sử dụng mô hình AI và không gửi bất kỳ dữ liệu nào đến nhà cung cấp AI.",
+      "document_reminders": "Được gửi từ mẫu tin nhắn cố định theo lịch đã định. Không sử dụng mô hình AI và không gửi bất kỳ dữ liệu nào đến nhà cung cấp AI.",
+      "lifecycle_chasers": "Được gửi từ mẫu tin nhắn cố định theo lịch đã định. Không sử dụng mô hình AI và không gửi bất kỳ dữ liệu nào đến nhà cung cấp AI."
     },
     "staleOverrideOn": "Công tắc cũ đã lưu cho tính năng này bị bỏ qua. Tính năng chỉ tuân theo cài đặt của nó.",
     "staleOverrideOff": "Lệnh tạm dừng cũ đã lưu cho tính năng này bị bỏ qua. Tính năng chỉ tuân theo cài đặt của nó.",

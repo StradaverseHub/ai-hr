@@ -27169,7 +27169,12 @@
       "performance_idp": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
       "performance_calib": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
       "performance_assistant": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
-      "feedback_planning": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked."
+      "feedback_planning": "Your wording and record values stay in the application. The AI receives only supported protected references or grouped facts. Unsupported input is blocked.",
+      "approval_chasers": "Sent from fixed message templates on a set schedule. No AI model is used and nothing is sent to an AI provider.",
+      "review_chasers": "Sent from fixed message templates on a set schedule. No AI model is used and nothing is sent to an AI provider.",
+      "clock_reminders": "Sent from fixed message templates on a set schedule. No AI model is used and nothing is sent to an AI provider.",
+      "document_reminders": "Sent from fixed message templates on a set schedule. No AI model is used and nothing is sent to an AI provider.",
+      "lifecycle_chasers": "Sent from fixed message templates on a set schedule. No AI model is used and nothing is sent to an AI provider."
     },
     "staleOverrideOn": "An older switch stored for this feature is ignored. It follows its setting only.",
     "staleOverrideOff": "An older pause stored for this feature is ignored. It follows its setting only.",

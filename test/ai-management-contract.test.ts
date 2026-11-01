@@ -261,6 +261,8 @@ describe('complete AI management inventory and boundary',()=>{
   for(const locale of ['en','ms','zh','vi','th','ta']){
    const data=JSON.parse(read(`messages/${locale}.json`)).aiManagement;
    for(const feature of AI_FEATURES)expect(data.features[feature.id],`${locale}:${feature.id}`).toBeTruthy();
+   // The features screen prints each feature's privacy line; a missing one renders the raw key on staging.
+   for(const feature of AI_FEATURES)expect(data.privateFeatures[feature.id],`${locale}:privateFeatures.${feature.id}`).toBeTruthy();
    for(const [section,keys] of Object.entries({states:['ready','paused','module','provider','restricted'],runStates:['pending','completed','failed','blocked'],kinds:['assistant','agent','feature','platform'],operations:['draft','conversation','image'],reasons:['paused','daily_limit','monthly_limit'],levels:['near','at']}))for(const key of keys)expect(data[section][key],`${locale}:${section}.${key}`).toBeTruthy();
    expect(data.reservationHelp.length).toBeGreaterThan(30);expect(data.attribution.length).toBeGreaterThan(30);
   }
