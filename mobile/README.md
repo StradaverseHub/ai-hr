@@ -1,7 +1,10 @@
 # Native app foundation
 
+Store preparation and remaining release requirements: [OneHR+ store readiness](../docs/MOBILE-STORE-READINESS.md).
+
+
 Run EAS commands from `mobile/`. EAS uploads from the Git root; the root `.easignore`
-admits only this app and its six shared contracts/helpers. The mobile `.easignore` also protects
+admits only this app and its explicitly allowlisted shared contracts/helpers. The mobile `.easignore` also protects
 standalone copies. Inspect the EAS archive before a cloud build; deployment settings,
 server code, local credentials and generated native/build folders must be absent.
 The backend release filter also excludes native build folders and signing inputs; mobile binaries
