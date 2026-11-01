@@ -26,7 +26,7 @@ const OutWidget=(p:WidgetPresentation,e:WidgetEnvironment)=>{
   <Text modifiers={[font({size:11}),foregroundStyle(muted),lineLimit(2),privacySensitive()]}>{p.status}</Text>
   <Text modifiers={[font({size:30,weight:'light'}),foregroundStyle(ink),privacySensitive()]}>{p.active?p.inTime:p.outTime}</Text>
   <Text modifiers={[font({size:10}),foregroundStyle(muted),lineLimit(1)]}>{p.active?p.clockIn:p.clockOut}</Text>
-  <HStack spacing={6} modifiers={[frame({maxWidth:999,minHeight:36}),background('#A6F2D5',shapes.capsule())]}><Image systemName="arrow.right.from.line" size={14} color="#102E25"/><Text modifiers={[font({size:13,weight:'semibold'}),foregroundStyle('#102E25'),lineLimit(1),minimumScaleFactor(.75)]}>{p.clockOut}</Text></HStack>
+  <HStack spacing={6} modifiers={[frame({maxWidth:999,minHeight:36}),background('#A6F2D5',shapes.capsule())]}><Image systemName="arrow.up.right" size={14} color="#102E25"/><Text modifiers={[font({size:13,weight:'semibold'}),foregroundStyle('#102E25'),lineLimit(1),minimumScaleFactor(.75)]}>{p.clockOut}</Text></HStack>
   <Text modifiers={[font({size:8}),foregroundStyle(muted),lineLimit(2),privacySensitive()]}>{p.updated}</Text>
  </VStack>;
 };
@@ -41,7 +41,7 @@ const ActionsWidget=(p:WidgetPresentation,e:WidgetEnvironment)=>{
   </HStack>
   <HStack spacing={10}>
    <Link destination="aihr://clock?action=in" modifiers={[frame({maxWidth:999,minHeight:44}),background(p.active?(dark?'#29483B':'#C6E1D2'):'#A6F2D5',shapes.capsule()),accessibilityLabel(p.clockIn)]}><HStack spacing={6}><Image systemName="arrow.right.to.line" size={15} color={p.active?ink:'#102E25'}/><Text modifiers={[font({size:14,weight:'semibold'}),foregroundStyle(p.active?ink:'#102E25'),lineLimit(1),minimumScaleFactor(.65)]}>{p.clockIn}</Text></HStack></Link>
-   <Link destination="aihr://clock?action=out" modifiers={[frame({maxWidth:999,minHeight:44}),background(p.active?'#A6F2D5':(dark?'#29483B':'#C6E1D2'),shapes.capsule()),accessibilityLabel(p.clockOut)]}><HStack spacing={6}><Image systemName="arrow.right.from.line" size={15} color={p.active?'#102E25':ink}/><Text modifiers={[font({size:14,weight:'semibold'}),foregroundStyle(p.active?'#102E25':ink),lineLimit(1),minimumScaleFactor(.65)]}>{p.clockOut}</Text></HStack></Link>
+   <Link destination="aihr://clock?action=out" modifiers={[frame({maxWidth:999,minHeight:44}),background(p.active?'#A6F2D5':(dark?'#29483B':'#C6E1D2'),shapes.capsule()),accessibilityLabel(p.clockOut)]}><HStack spacing={6}><Image systemName="arrow.up.right" size={15} color={p.active?'#102E25':ink}/><Text modifiers={[font({size:14,weight:'semibold'}),foregroundStyle(p.active?'#102E25':ink),lineLimit(1),minimumScaleFactor(.65)]}>{p.clockOut}</Text></HStack></Link>
   </HStack>
   <Text modifiers={[font({size:9}),foregroundStyle(muted),lineLimit(1),minimumScaleFactor(.7),privacySensitive()]}>{p.updated}</Text>
  </VStack>;

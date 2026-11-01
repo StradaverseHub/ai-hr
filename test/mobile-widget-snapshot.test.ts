@@ -15,6 +15,16 @@ describe('minimal confirmed attendance widget snapshot',()=>{
   r.state!.captures=[capture('out','2026-11-02T04:00:00Z'),capture('in','2026-11-02T05:00:00Z'),capture('in','2026-11-02T01:02:00Z'),capture('in','2026-11-01T01:00:00Z','2026-11-01')];
   expect(projectAttendanceWidget(r,employment,now)).toMatchObject({status:'out',inTime:'09:02',outTime:'12:00'});
  });
+ it('includes confirmed imported/corrected times and combines legacy clock-in with a mobile clock-out',()=>{
+  const r=reply();r.state!.clockedIn=false;r.state!.openSince=null;r.state!.legacy=[{direction:'in',time:'08:55:00'},{direction:'out',time:'11:00:00'}];
+  expect(projectAttendanceWidget(r,employment,now)).toMatchObject({inTime:'08:55',outTime:'11:00'});
+  r.state!.captures=[capture('out','2026-11-02T04:00:00Z')];expect(projectAttendanceWidget(r,employment,now)).toMatchObject({inTime:'08:55',outTime:'12:00'});
+ });
+ it('orders confirmed overnight legacy times with the server shift and refuses malformed/future rows',()=>{
+  const r=reply();r.state!.clockedIn=false;r.state!.openSince=null;r.state!.serverNow='2026-11-02T23:00:00Z';r.state!.shift={code:'NIGHT',start:'22:00',end:'06:00'};
+  r.state!.legacy=[{direction:'in',time:'22:05'},{direction:'out',time:'06:01'},{direction:'out',time:'99:99'},{direction:'in',time:'07:30'}];
+  expect(projectAttendanceWidget(r,employment,Date.parse(r.state!.serverNow))).toMatchObject({inTime:'22:05',outTime:'06:01'});
+ });
  it('does not display a previous clock-out beside a new open visit',()=>{const r=reply();r.state!.captures=[capture('out','2026-11-02T00:01:00Z')];expect(projectAttendanceWidget(r,employment,now)?.outTime).toBe('—');});
  it('represents absent receipts with dashes instead of fabricated hours',()=>{const r=reply();r.state!.clockedIn=false;r.state!.openSince=null;expect(projectAttendanceWidget(r,employment,now)).toMatchObject({inTime:'—',outTime:'—'});});
  it.each(['wrong-scope','disabled','missing','stale','future','invalid'] as const)('refuses %s data',kind=>{
