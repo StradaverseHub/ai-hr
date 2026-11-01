@@ -7,7 +7,8 @@
  *    toolsFor(ctx) offers this caller (module enablement), each run by its existing owner AS THE CALLER;
  *  - context tools: the phase-B owners (core/product-context/tools.ts) for this caller;
  *  - step 4 capabilities: the "Why?" explainers and the setup co-pilot (core/explainers/capabilities.ts), as
- *    reads with their own semantic entities, for callers whose module (or administrator role) they need;
+ *    reads with their own semantic entities, for callers whose module (or administrator role) they need, the
+ *    explainers only while the tenant's explainers worker gate is open (switch on, tenant not stopped);
  *  - suggest_action: the caller's current action catalogue (core/product-context/actions.ts). A suggestion
  *    is a pointer to the review page where the person completes and confirms. For the leave cards (step 2)
  *    the native preparer may also issue a signed proposal (core/proposals/suggested.ts) from the caller's own
@@ -55,7 +56,7 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
   return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:declared.input.filter(input=>input.identifier).map(input=>input.name),
    async run(input){const outcome=await owner.run(ctx,input);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
  });
- const teras=terasCapabilitiesFor(ctx).map((capability):ToolBinding=>{
+ const teras=(await terasCapabilitiesFor(ctx)).map((capability):ToolBinding=>{
   const spec=terasToolSpecs().find(row=>row.name===capability.name)!,declared=TERAS_READS.find(read=>read.name===capability.name)!;
   return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:[],
    async run(input){const outcome=await capability.run(ctx,input,scope);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};

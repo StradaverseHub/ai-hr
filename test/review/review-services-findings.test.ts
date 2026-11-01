@@ -10,11 +10,12 @@ import {terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
 import {nativeToolProvider} from '../../core/harness/tools';
 import {setWorkerSwitch,workerRunGate} from '../../core/agent-registry/controls';
 import {listWorkers} from '../../core/agent-registry/views';
+import {setMandateStopSwitch} from '../../core/mandates/mandates';
 import {recommendLeaveDecision,recordRecommendationDecision} from '../../core/recommenders/leave-decision';
 import {newRunId,writeOutcomeRecord} from '../../core/outcome-record/record';
 import {prepareSuggestedProposal} from '../../core/proposals/suggested';
 import {requestLeave} from '../../packs/leave/service';
-import {closeAll,migrateTestDb,owner,resetDb,setModule} from '../harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,setModule} from '../harness';
 import {buildMatrix,nextWorkday,type Matrix} from './review-actors';
 
 let m:Matrix;
@@ -23,14 +24,30 @@ beforeEach(async()=>{await resetDb();m=await buildMatrix();});
 afterEach(()=>vi.unstubAllEnvs());
 
 describe('explainers worker switch',()=>{
- it('REVIEW high: with the explainers worker switched off (the default), the harness does not offer the explainer tools',async()=>{
+ it('fixed H1: with the explainers worker switched off (the default), the harness does not offer the explainer tools',async()=>{
   // The registry reports the switch off and the gate closed...
   expect(await workerRunGate(m.groupAdmin.ctx,'explainers')).toMatchObject({run:false});
   const row=(await listWorkers(m.groupAdmin.ctx)).find(worker=>worker.id==='explainers')!;
   expect(row.switch.on).toBe(false);
-  // ...yet core/explainers/capabilities.ts terasCapabilitiesFor never reads it, so core/harness/tools.ts binds them.
+  // ...and core/explainers/capabilities.ts terasCapabilitiesFor reads that gate, so core/harness/tools.ts binds none of them.
   const offered=(await nativeToolProvider(m.employee.ctx,{companyId:m.b.companyId},false)).bindings.map(binding=>binding.name);
   for(const name of ['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day'])expect(offered,name).not.toContain(name);
+ });
+ it('fixed H1: switched on, the explainers are offered; the tenant stop switch withdraws them again',async()=>{
+  const names=['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day'];
+  // The explainers switch belongs to the assistant module: enable it and re-resolve both callers' entitlements.
+  await setModule(m.b.tenantId,'assistant','active');
+  const entitlements=(await entitledCtx(m.b)).entitlements;
+  const admin={...m.groupAdmin.ctx,entitlements},employee={...m.employee.ctx,entitlements};
+  const offered=async()=>(await nativeToolProvider(employee,{companyId:m.b.companyId},false)).bindings.map(binding=>binding.name);
+  await setWorkerSwitch(admin,{workerId:'explainers',enabled:true});
+  const on=await offered();
+  // Each explainer is offered where its module is enabled for the employee; at least the leave one is.
+  expect(on).toContain('explain_leave_entitlement');
+  await setMandateStopSwitch(admin,true);
+  expect(await workerRunGate(admin,'explainers')).toMatchObject({run:false,reasons:['stopped']});
+  const stopped=await offered();
+  for(const name of names)expect(stopped,name).not.toContain(name);
  });
 });
 

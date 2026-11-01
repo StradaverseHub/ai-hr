@@ -24,6 +24,7 @@ import {explainOwnPayslipStatutory} from '../core/explainers/statutory';
 import {explainOwnLeaveEntitlement} from '../core/explainers/entitlement';
 import {explainOwnAttendanceDay} from '../core/explainers/attendance';
 import {TERAS_CAPABILITIES} from '../core/explainers/capabilities';
+import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {setupCopilot,SetupCopilotRefused} from '../core/setup-copilot/copilot';
 import {coverageReadiness} from '../core/product-context/coverage-readiness';
 import {SETUP_STAGES} from '../core/semantic-model/entities-setup';
@@ -57,6 +58,8 @@ async function people(){
  const person=await hire('Fictional Explainer Admin');
  const adminUser=await createAppUser(base.tenantId,person.personId,'hr_admin');await grantAssistant(admin,{appUserId:adminUser});
  const hr:SessionContext={...await entitledCtx(base,['hr_admin']),userId:adminUser,personId:person.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+ // The explainers worker is off by default; the group administrator switches it on so the turns below are offered it.
+ await setWorkerSwitch(hr,{workerId:'explainers',enabled:true});
  return{employee,hr,mine,colleague,releasedBatch:released.batchId};
 }
 const turn=(ctx:SessionContext,question:string,script:readonly ScriptStep[])=>{const model=scriptedModel(script);
