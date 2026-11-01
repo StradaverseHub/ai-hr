@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
+import android.view.View
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
@@ -75,18 +76,26 @@ class AttendanceWidget : AppWidgetProvider() {
           Triple("clockIn", R.id.onehr_in_label, R.string.onehr_widget_clock_in),
           Triple("clockOut", R.id.onehr_out_label, R.string.onehr_widget_clock_out),
           Triple("clockIn", R.id.onehr_clock_in, R.string.onehr_widget_clock_in),
+          Triple("clockIn", R.id.onehr_clock_in_secondary, R.string.onehr_widget_clock_in),
           Triple("clockOut", R.id.onehr_clock_out, R.string.onehr_widget_clock_out),
+          Triple("clockOut", R.id.onehr_clock_out_primary, R.string.onehr_widget_clock_out),
           Triple("updated", R.id.onehr_updated, R.string.onehr_widget_description)
         )
         for ((field, target, fallback) in text) view.setTextViewText(target, if (fresh) prefs.getString(field, context.getString(fallback)) else context.getString(fallback))
         view.setTextViewText(R.id.onehr_in_time, if (fresh) prefs.getString("inTime", "—") else "—")
         view.setTextViewText(R.id.onehr_out_time, if (fresh) prefs.getString("outTime", "—") else "—")
         val active = fresh && prefs.getBoolean("active", false)
-        view.setInt(R.id.onehr_clock_in, "setBackgroundResource", if (active) R.drawable.onehr_widget_secondary else R.drawable.onehr_widget_action)
-        view.setInt(R.id.onehr_clock_out, "setBackgroundResource", if (active) R.drawable.onehr_widget_action else R.drawable.onehr_widget_secondary)
-        view.setTextColor(R.id.onehr_clock_in, context.getColor(if (active) R.color.onehr_widget_text else R.color.onehr_widget_action_text))
-        view.setTextColor(R.id.onehr_clock_out, context.getColor(if (active) R.color.onehr_widget_action_text else R.color.onehr_widget_text))
-        for ((direction, button, code) in listOf(Triple("in", R.id.onehr_clock_in, 8301), Triple("out", R.id.onehr_clock_out, 8302))) {
+        // Keep semantic colors as XML resources so the launcher can resolve night-mode changes
+        // even while this process is stopped. Resolved color ints in cached RemoteViews go stale.
+        // Only one role per direction is visible; both retain the same immutable launch intent.
+        view.setViewVisibility(R.id.onehr_clock_in, if (active) View.GONE else View.VISIBLE)
+        view.setViewVisibility(R.id.onehr_clock_in_secondary, if (active) View.VISIBLE else View.GONE)
+        view.setViewVisibility(R.id.onehr_clock_out, if (active) View.GONE else View.VISIBLE)
+        view.setViewVisibility(R.id.onehr_clock_out_primary, if (active) View.VISIBLE else View.GONE)
+        for ((direction, button, code) in listOf(
+          Triple("in", R.id.onehr_clock_in, 8301), Triple("in", R.id.onehr_clock_in_secondary, 8301),
+          Triple("out", R.id.onehr_clock_out, 8302), Triple("out", R.id.onehr_clock_out_primary, 8302)
+        )) {
           val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: continue
           launch.action = Intent.ACTION_VIEW
           launch.data = Uri.parse("aihr://clock?action=$direction")
