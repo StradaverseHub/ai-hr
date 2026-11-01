@@ -21,6 +21,8 @@ import {seedGuides} from '../db/seed-guides';
 import {contextToolSpecsFor,runContextTool,suggestAction} from '../core/product-context/tools';
 import {actionCatalogueFor} from '../core/product-context/actions';
 import {gateTurn,TURN_GATE_NOTE} from '../lib/product-context/request-gate';
+import {scoreBehaviour,summarizeBehaviour,type BehaviourScore} from './assistant-behaviour-score';
+import {REVIEWED_OUTCOMES} from './assistant-corpus-review';
 import {setReportingLine} from '../core/org';
 import {requestLeave} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -172,7 +174,16 @@ describe('real-model redesign ceiling on fictional data',()=>{
    return{turns:rows.length,perPass:totals,always:rows.filter(row=>row.understood===REPEATS).length,sometimes:rows.filter(row=>row.understood>0&&row.understood<REPEATS).length,never:rows.filter(row=>row.understood===0).length,
     flaky:rows.filter(row=>row.understood>0&&row.understood<REPEATS).map(row=>row.id),never_ids:rows.filter(row=>row.understood===0).map(row=>row.id)};};
   const parity=new Set(ASSISTANT_PARITY_ACTIONS.flatMap(conversation=>conversation.turns.map(item=>item.id)));
-  const stability={repeats:REPEATS,original:group(id=>!parity.has(id)),parity:group(id=>parity.has(id)),
+  // Behaviour scoring ignores the model's own mode label (test/assistant-behaviour-score.ts); the baseline label
+  // score above is kept for comparison with earlier runs.
+  const turnById=new Map(conversations.flatMap(conversation=>conversation.turns).map(item=>[item.id,item]));
+  const behaviourOf=(reviewed:boolean):BehaviourScore[][]=>passes.map((_,index)=>ledger.filter(row=>row.pass===index).map(row=>scoreBehaviour(turnById.get(row.turn)!,{reads:row.reads,proposed:row.proposed,reply:row.reply,inventedLinks:row.inventedLinks??[],error:row.error},reviewed?REVIEWED_OUTCOMES[row.turn]:undefined)));
+  const behaviourGroup=(behaviour:BehaviourScore[][],filter:(id:string)=>boolean)=>{const rows=behaviour.map(scores=>scores.filter(score=>filter(score.id)));
+   const met=(id:string)=>rows.filter(scores=>scores.find(score=>score.id===id)?.verdict==='met').length,ids=[...new Set(rows.flat().map(score=>score.id))];
+   return{perPass:rows.map(scores=>summarizeBehaviour(scores)),always:ids.filter(id=>met(id)===REPEATS).length,sometimes:ids.filter(id=>met(id)>0&&met(id)<REPEATS),
+    never:ids.filter(id=>met(id)===0).map(id=>id+': '+rows[0].find(score=>score.id===id)?.reason),failed:rows.flat().filter(score=>score.verdict==='failed').map(score=>score.id+': '+score.reason)};};
+  const stability={repeats:REPEATS,behaviour:{corpusIdeals:{original:behaviourGroup(behaviourOf(false),id=>!parity.has(id)),parity:behaviourGroup(behaviourOf(false),id=>parity.has(id))},
+   reviewedIdeals:{original:behaviourGroup(behaviourOf(true),id=>!parity.has(id)),parity:behaviourGroup(behaviourOf(true),id=>parity.has(id))}},original:group(id=>!parity.has(id)),parity:group(id=>parity.has(id)),
    blankReplies:ledger.filter(row=>!row.reply).length,truncationRetries:ledger.reduce((sum,row)=>sum+(row.truncated??0),0),errors:ledger.filter(row=>row.error).map(row=>row.pass+':'+row.turn+':'+row.error)};
   const guidance=ledger.filter(row=>passes[row.pass].scores.find(score=>score.id===row.turn)?.ideal.mode==='guide');
   const context={inventedLinks:ledger.flatMap(row=>row.inventedLinks??[]),guidanceTurns:guidance.length,
