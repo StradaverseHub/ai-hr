@@ -125,7 +125,7 @@ try{
   const hr=users.find(user=>user.tenant===tenantIndex&&user.role==='companyHR');
   const entitlements=(await entitledCtx({tenantId:tenant.tenantId,adminUserId:hr.userId})).entitlements;
   const context={tenantId:tenant.tenantId,userId:hr.userId,personId:hr.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:hr.companyId}],entitlements};
-  const preview=await validateClockingImport(context,tenant.clockingMappingId,clockingFixtureText(users,tenantIndex,hr.company,importDate(2)));
+  const preview=await validateClockingImport(context,{mappingId:tenant.clockingMappingId,text:clockingFixtureText(users,tenantIndex,hr.company,importDate(2))});
   const result={tenant:tenantIndex,date:importDate(2),counts:preview.counts,refusalKinds:[...new Set(preview.errorRows.map(row=>row.result))]};
   importPreflights.push(result);writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture-import-preflight.json'),JSON.stringify(importPreflights,null,2));
   assert.equal(preview.counts.total,100);assert.equal(preview.counts.valid,100,'native clocking fixture preview refused: '+result.refusalKinds.join(','));
