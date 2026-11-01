@@ -182,6 +182,12 @@ The other items (disclosure contract, identifier denylist, data register, threat
 - The whole-stack security and attack review was still to run at sign-off. No tenant switch is turned on until it passes.
 - The approval binds to the exact source at the time the harness is wired; a later change needs fresh approval, as for existing provider approvals. Nothing is enabled by this record alone: every tenant stays off until it opts in.
 
+**Staging exception (owner, 2 November 2026).** The owner confirmed that staging holds only fictional data ("Its all fictional data") and asked that the AI be switched on for every staging company, to test multi-company behaviour ("Can switch on for every company in staging"). This is consistent with §5.1, which already permits fictional data, so the counsel condition does not apply to staging. Terms:
+- **Staging only:** every staging tenant may be switched on. Production and any environment holding real people's data stay off, and the counsel condition still applies to them.
+- **Staging must stay fictional:** if real personal data is ever loaded into staging, switch the AI off there first.
+- **Order:** switching on follows the wiring step, the whole-stack security review and the fixes, as the owner instructed for staging deployment.
+- **Provider settings:** zero data retention and no training, as in all test runs.
+
 ## 6. Sequencing and acceptance
 
 This work queues behind the current release order; recheck the order with the Orchestrator. As of 1 November: PR167 merged on 31 October; the V9 audit status is held by its own chat; PR126 and PR116 are open; PR166 follows.
