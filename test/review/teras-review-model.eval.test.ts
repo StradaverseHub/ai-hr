@@ -21,6 +21,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import * as schema from '../../db/schema';
 import type {SessionContext} from '../../db/client';
 import {grantAssistant} from '../../core/assistant-grant';
+import {setWorkerSwitch} from '../../core/agent-registry/controls';
 import {hireEmployee,setReportingLine} from '../../core/org';
 import {seedGuides} from '../../db/seed-guides';
 import {HARNESS_TEST_ONLY,routeReply,runTurn,type ModelHistoryMessage} from '../../core/harness/runner';
@@ -113,6 +114,8 @@ async function fixtures(){
  };
  const employee=await login(mine.personId,'employee',null),hr=await login(newAdmin.personId,'hr_admin',null);
  const identifiers=[mine,aina,ravi,siti,wei,nur,newAdmin,partner,sisterAdmin].flatMap(row=>[row.personId,row.employmentId]).concat([base.tenantId,base.companyId,sister.id]);
+ // H1 (claude/teras-review-fixes): explainer tools are offered only while the explainers worker is switched on.
+ await setWorkerSwitch(hr,{workerId:'explainers',enabled:true});
  return{employee,hr,explainer,personas,identifiers};
 }
 

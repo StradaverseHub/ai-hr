@@ -18,7 +18,7 @@ import {adminCtx,closeAll,owner,resetDb,seedBase} from './harness';
 beforeAll(async()=>{await resetDb();});afterAll(closeAll);
 
 const TAIL=[['0890_teras_outcome_record_mandates','1793330000290'],['0891_teras_rule_version_labels','1793330000291']] as const;
-it('applies only the 0890/0891 tail over populated leave policy and approval rows, versioning them at 1 without changing them',async()=>{
+it('applies the Teras tail from 0890/0891 on over populated leave policy and approval rows, versioning them at 1 without changing them',async()=>{
  const sourceUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(sourceUrl.hostname);expect(sourceUrl.pathname).toMatch(/^\/ai_hr_test/);
  const name='ai_hr_teras_upgrade_'+randomUUID().replaceAll('-','');
@@ -26,8 +26,11 @@ it('applies only the 0890/0891 tail over populated leave policy and approval row
  const destinationUrl=new URL(sourceUrl);destinationUrl.pathname='/'+name;
  const preDirectory=mkdtempSync(join(tmpdir(),'aihr-teras-pre0890-'));
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- expect(journal.entries.slice(-TAIL.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(TAIL);
- const installed=journal.entries.slice(0,-TAIL.length);
+ // The tail starts at 0890/0891; later appended Teras migrations (0895, 0901, 0905, 0906) are applied with it.
+ const start=journal.entries.findIndex((entry:{tag:string})=>entry.tag===TAIL[0][0]);
+ const tail=journal.entries.slice(start) as {tag:string;when:number}[];
+ expect(start).toBeGreaterThan(0);expect(tail.slice(0,TAIL.length).map(entry=>[entry.tag,String(entry.when)])).toEqual(TAIL);
+ const installed=journal.entries.slice(0,start);
  mkdirSync(join(preDirectory,'meta'));writeFileSync(join(preDirectory,'meta','_journal.json'),JSON.stringify({...journal,entries:installed}));
  for(const entry of installed)copyFileSync(join('db/migrations',entry.tag+'.sql'),join(preDirectory,entry.tag+'.sql'));
  let target:ReturnType<typeof createDb>|undefined;
@@ -51,8 +54,8 @@ it('applies only the 0890/0891 tail over populated leave policy and approval row
   await migrate(target.db,{migrationsFolder:'db/migrations'});
   expect(await snapshot()).toEqual(old);
   const afterLedger=await target.db.execute<{hash:string;created_at:string}>(sql`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`);
-  expect(afterLedger.slice(0,-TAIL.length)).toEqual(beforeLedger);
-  expect(afterLedger.slice(-TAIL.length)).toEqual(TAIL.map(([tag,when])=>({hash:createHash('sha256').update(readFileSync(`db/migrations/${tag}.sql`)).digest('hex'),created_at:when})));
+  expect(afterLedger.slice(0,installed.length)).toEqual(beforeLedger);
+  expect(afterLedger.slice(installed.length)).toEqual(tail.map(({tag,when})=>({hash:createHash('sha256').update(readFileSync(`db/migrations/${tag}.sql`)).digest('hex'),created_at:String(when)})));
   for(const table of ['leave_type','leave_approval_policy','leave_approval_template']){
    expect(await target.client.unsafe(`select distinct rule_version from public.${table}`)).toEqual([{rule_version:1}]);
   }
