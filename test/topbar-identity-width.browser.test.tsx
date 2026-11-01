@@ -382,7 +382,7 @@ export const MONO_ROW_CLS = 'monolith:gap-0!';
 export const MONO_COL_CLS =
   'monolith:gap-5! monolith:px-4 monolith:pt-4 min-[900px]:monolith:pr-12 min-[900px]:monolith:pl-11 min-[900px]:monolith:pt-[22px]';
 export const MONO_HEADER_CLS =
-  'monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:max-sm:flex-col monolith:max-sm:items-stretch monolith:max-sm:gap-2 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv';
+  'monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:max-lg:flex-col monolith:max-lg:items-stretch monolith:max-lg:gap-2 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv';
 export const LEFT_CLUSTER_CLS = 'flex min-w-0 items-center gap-2.5 text-sm text-muted-foreground';
 export const MONO_LEFT_CLS =
   'monolith:flex-1 monolith:gap-[22px] monolith:font-mono monolith:text-[11px] monolith:uppercase monolith:tracking-[0.12em]';
@@ -507,7 +507,7 @@ describe('Monolith top line: the identity is visible and nothing scrolls sideway
 // notification count must not share overlapping pixels on a phone. No controls are hidden.
 describe('Monolith phone header keeps company and notifications independently reachable', () => {
   afterEach(() => { cleanup(); document.documentElement.removeAttribute('data-ui-theme'); document.documentElement.classList.remove('dark'); });
-  it.each([false,true].flatMap(dark => [320,390,639,640,1280].map(width => ({dark,width}))))('separates controls at $width px (dark=$dark)', async ({dark,width}) => {
+  it.each([false,true].flatMap(dark => [320,390,639,640,768,899,900,1023,1024,1280,1440].map(width => ({dark,width}))))('separates controls at $width px (dark=$dark)', async ({dark,width}) => {
     await page.viewport(width,844);
     document.documentElement.setAttribute('data-ui-theme','monolith');
     document.documentElement.classList.toggle('dark',dark);
@@ -517,22 +517,25 @@ describe('Monolith phone header keeps company and notifications independently re
     const actions=document.querySelector<HTMLElement>('[data-testid="right-cluster"]')!;
     const bell=actions.querySelector<HTMLButtonElement>('button[aria-label="Notifications"]')!;
     const c=company.getBoundingClientRect(), b=bell.getBoundingClientRect(), a=actions.getBoundingClientRect(), h=header.getBoundingClientRect();
-    expect(c.width).toBeGreaterThanOrEqual(88);
+    const geometry=JSON.stringify({width,dark,header:h.toJSON(),company:c.toJSON(),bell:b.toJSON(),actions:a.toJSON(),direction:getComputedStyle(header).flexDirection,actionScrollWidth:actions.scrollWidth,actionClientWidth:actions.clientWidth});
+    // Compiled-CSS fixture measurements, not an authenticated staging screenshot.
+    console.info('SYNTHETIC_HEADER_GEOMETRY',geometry);
+    expect(c.width,geometry).toBeGreaterThanOrEqual(88);
     expect(c.height).toBeGreaterThanOrEqual(44);
     expect(b.width).toBeGreaterThanOrEqual(width<640?44:36);
     expect(b.height).toBeGreaterThanOrEqual(44);
-    expect(c.right<=b.left+.5 || c.bottom<=b.top+.5 || b.bottom<=c.top+.5).toBe(true);
+    expect(c.right<=b.left+.5 || c.bottom<=b.top+.5 || b.bottom<=c.top+.5,'company and bell must not intersect: '+geometry).toBe(true);
     expect(a.left).toBeGreaterThanOrEqual(h.left-.5);
     expect(a.right).toBeLessThanOrEqual(h.right+.5);
     expect(actions.scrollWidth).toBeLessThanOrEqual(actions.clientWidth);
     expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
     // A nonempty actual cluster: bell, language, theme and account, plus the responsive divider.
     expect(actions.children).toHaveLength(5);
-    if(width<640) expect(a.top).toBeGreaterThanOrEqual(c.bottom-.5);
+    if(width<1024) expect(a.top,'context and actions occupy separate rows: '+geometry).toBeGreaterThanOrEqual(c.bottom-.5);
     else expect(getComputedStyle(header).flexDirection).toBe('row');
     for(const control of [company,bell]) {
       const r=control.getBoundingClientRect();
-      expect(control.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))).toBe(true);
+      expect(control.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)),'control centre remains reachable: '+geometry).toBe(true);
     }
   });
 });
