@@ -109,7 +109,7 @@ def row_status(policy,row):
     # Configuration-only revision: execution timestamps advance independently of operator edits.
     configuration={key:result[key] for key in ('id','managed','hold','installed','enabled','schedule')}
     configuration['environment']=policy['environment']
-    configuration['timerSettings']=sorted(part.strip() for key in ('TimersCalendar','TimersMonotonic') for part in re.findall(r'On\w+(?:USec|Calendar)=[^;}]+',timer.get(key,'')))
+    configuration['timerSettings']=sorted(part.strip() for key in ('TimersCalendar','TimersMonotonic') for part in re.findall(r'On(?:\w*USec|Calendar)=[^;}]+',timer.get(key,'')))
     result['revision']=hashlib.sha256(json.dumps(configuration,sort_keys=True).encode()).hexdigest()
     return result
 
