@@ -21,7 +21,7 @@ describe('protected approval document lifecycle',()=>{
   const f=fixture(),doc=document(),open=vi.fn().mockResolvedValue({outcome:'file',document:doc});
   render(<f.ApprovalDocument name="Receipt" open={open} onSignInRequired={()=>{}}/>);fireEvent.click(screen.getByRole('button',{name:'View: Receipt'}));
   await screen.findByText(`PDF:${doc.uri}:0`);expect(doc.delete).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button',{name:'Next page'}));expect(screen.getByText(`PDF:${doc.uri}:1`)).toBeTruthy();
+  fireEvent.click(await screen.findByRole('button',{name:'Next page'}));expect(screen.getByText(`PDF:${doc.uri}:1`)).toBeTruthy();
   fireEvent.click(screen.getByRole('button',{name:'Close'}));expect(doc.delete).toHaveBeenCalledTimes(1);expect(screen.queryByText(/^PDF:/)).toBeNull();
  });
  it('deletes an open document when backgrounded and never restores its stale URI',async()=>{

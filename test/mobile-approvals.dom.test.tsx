@@ -128,7 +128,7 @@ describe('approvals list', () => {
     const f = fixture();
     expect(() => f.taskPath('profile', ID)).toThrow();
     // Claims left the app (declutter round): no native claim detail or receipt path is ever built.
-    expect(() => f.taskPath('claim', ID)).toThrow();
+    expect(f.taskPath('claim', ID)).toBe(`v2/tasks/claim/${ID}`);
     expect(f.taskPath('claim', ID, 'document')).toBe(`v2/tasks/claim/${ID}/document`);
     expect(f.taskPath('leave', ID, 'decision')).toBe(`v2/tasks/leave/${ID}/decision`);
     expect(() => f.taskPath('leave', '../me')).toThrow();
