@@ -14,7 +14,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
-      "buildNumber": "11"
+      "buildNumber": "12"
     },
     "android": {
       "allowBackup": false,
