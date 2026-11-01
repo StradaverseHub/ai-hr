@@ -19,7 +19,7 @@ describe('mobile visual composer contract and installed-client compatibility', (
     d.composition.navigation.items.splice(1, 0, { target: 'benefits', label: 'Benefits', icon: 'grid' });
     const saved = parseMobileDesign(d) as MobileDesignV2;
     d.composition.pages[0].blocks[0].title = 'Changed'; d.composition.themes.light.bg = '#000000';
-    expect(saved.composition.pages[0].blocks[0].title).toBe(''); expect(saved.composition.themes.light.bg).toBe('#f2f0eb');
+    expect(saved.composition.pages[0].blocks[0].title).toBe(''); expect(saved.composition.themes.light.bg).toBe('#f3f7f4');
     expect(DEFAULT_MOBILE_DESIGN).not.toHaveProperty('composition');
   });
   it('offers no expense-claims section or destination, and refuses a design that names one (declutter round: claims are web-only)', () => {

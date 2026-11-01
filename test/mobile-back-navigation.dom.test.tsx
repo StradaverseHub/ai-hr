@@ -18,6 +18,7 @@ function fixture(hasHistory: boolean) {
       Pressable: ({ children, onPress, accessibilityLabel }: any) => <button aria-label={accessibilityLabel} onClick={onPress}>{children}</button> },
     './design': { DesignText: Container, TenantBrand: () => null,
       useTenantDesign: () => ({ palette: { accent: 'blue' } }) },
+    './session': { useSession: () => ({ status: 'signedIn' }) },
     './errors': {}, './i18n': { t: (key: string) => key },
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/ui.tsx', 'utf8'), {

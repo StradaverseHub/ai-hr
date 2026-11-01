@@ -15,6 +15,7 @@ function fixture(){
       ActivityIndicator:()=> <span role="progressbar"/>,Pressable:({children,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{children}</button>},
     './design':{DesignText:({children}:React.PropsWithChildren)=><span>{children}</span>,TenantBrand:()=>null,
       useTenantDesign:()=>({design:{schemaVersion:1,corners:'soft'},palette:{text:'black',muted:'gray',accent:'blue'}})},
+    './session':{useSession:()=>({status:'signedIn'})},
     './errors':{UnavailableError},'./i18n':{t:(key:string,values?:{seconds?:number;id?:string})=>key+(values?.seconds?' '+values.seconds:values?.id?' '+values.id:'')},
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/ui.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX}}).outputText,

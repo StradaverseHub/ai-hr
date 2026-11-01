@@ -7,7 +7,8 @@ import { Atmosphere, DesignText as Text, TenantBrand, useTenantDesign } from './
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
+import { useSession } from './session';
 import { UnavailableError } from './errors';
 import { t } from './i18n';
 
@@ -40,6 +41,8 @@ export function Screen({
   footer?: ReactNode;
 }) {
   const { palette, reload, design } = useTenantDesign();
+  const { status } = useSession();
+  if (status !== 'signedIn') return <Redirect href="/sign-in" />;
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={design.schemaVersion === 2 && design.composition.navigation.style === 'top' ? [] : ['top']}>
       <Atmosphere strong={atmospheric} />
