@@ -26,23 +26,26 @@ it('checks the actual counted Claims application summary over one million record
  await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:users[502].employmentId,subordinateEmploymentId:users[1].employmentId,lineType:'delegate',validFrom:'2020-01-01'});
  await owner.db.insert(s.claimRequest).values({tenantId:b.tenantId,employmentId:users[2].employmentId,claimTypeId:type.id,amount:'1',incurredOn:'2026-01-01',status:'draft'});
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.role==='hr_admin'?null:b.companyId}]});
- const policies=await owner.client`select polname,polcmd,polpermissive,polroles::text,pg_get_expr(polqual,polrelid) as qual,pg_get_expr(polwithcheck,polrelid) as check_expr from pg_policy where polrelid='public.claim_request'::regclass order by polname`;
- const modified=['claim_request_rls'];
- for(const name of modified)expect(policies.find(row=>row.polname===name)).toBeDefined();
- const enumOperators=await owner.client`select proname,proleakproof from pg_proc where proname in ('enum_eq','uuid_eq') order by proname`;
- const original=async()=>{for(const name of modified){const policy=policies.find(row=>row.polname===name)!;await owner.client.unsafe('ALTER POLICY '+name+' ON public.claim_request USING ('+policy.qual+')');}};
+ const [originalFunction]=await owner.client`select pg_get_functiondef(oid) as definition,prosrc as body,proowner::text,proacl::text,prosecdef,provolatile,proconfig,proparallel,proleakproof from pg_proc where oid='app.delegation_line_covers(uuid,uuid,text,text)'::regprocedure`;
+ const predicate='EXISTS(SELECT 1 FROM public.app_user u WHERE u.person_id=delegate.person_id AND u.tenant_id=d.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))';
+ const fenced='EXISTS(WITH candidate_users AS MATERIALIZED (SELECT u.id FROM public.app_user u WHERE u.person_id=delegate.person_id AND u.tenant_id=d.tenant_id AND u.archived_at IS NULL) SELECT 1 FROM candidate_users u WHERE NOT app.login_blocked(u.id))';
+ expect(originalFunction.body.split(predicate)).toHaveLength(2);
+ const policySnapshot=await owner.client`select polname,polcmd,polpermissive,polroles::text,pg_get_expr(polqual,polrelid) as qual,pg_get_expr(polwithcheck,polrelid) as check_expr from pg_policy where polrelid='public.claim_request'::regclass order by polname`;
+ const original=()=>owner.client.unsafe(originalFunction.definition);
  const expected=new Map<string,Awaited<ReturnType<typeof pendingClaimTaskSummary>>>(),phases:Record<string,unknown>={};
  try{
-  for(const phase of ['original-before','hashed-membership','original-restored']){
-   if(phase==='hashed-membership'){
-    await owner.client.unsafe("ALTER POLICY claim_request_rls ON public.claim_request USING (tenant_id=app.current_tenant_id() AND employment_id IN (SELECT unnest(app.visible_employment_ids())))");
-   }
+  for(const phase of ['original-before','candidate-user-fence','original-restored']){
+   if(phase==='candidate-user-fence')await owner.client.unsafe(originalFunction.definition.replace(predicate,fenced));
    if(phase==='original-restored')await original();
-   const actualPolicies=await owner.client`select polname,polcmd,polpermissive,polroles::text,pg_get_expr(polqual,polrelid) as qual,pg_get_expr(polwithcheck,polrelid) as check_expr from pg_policy where polrelid='public.claim_request'::regclass order by polname`;
-   expect(actualPolicies.map(({qual,...attrs})=>attrs)).toEqual(policies.map(({qual,...attrs})=>attrs));
-   if(phase!=='hashed-membership')expect(actualPolicies).toEqual(policies);
+   const [observed]=await owner.client`select pg_get_functiondef(oid) as definition,prosrc as body,proowner::text,proacl::text,prosecdef,provolatile,proconfig,proparallel,proleakproof from pg_proc where oid='app.delegation_line_covers(uuid,uuid,text,text)'::regprocedure`;
+   const {definition:oldDefinition,body:oldBody,...oldAttributes}=originalFunction;
+   const {definition:currentDefinition,body:currentBody,...currentAttributes}=observed;
+   expect(currentAttributes).toEqual(oldAttributes);
+   expect(currentDefinition).toBe(phase==='candidate-user-fence'?oldDefinition.replace(predicate,fenced):oldDefinition);
+   expect(currentBody).toBe(phase==='candidate-user-fence'?oldBody.replace(predicate,fenced):oldBody);
+   expect(await owner.client`select polname,polcmd,polpermissive,polroles::text,pg_get_expr(polqual,polrelid) as qual,pg_get_expr(polwithcheck,polrelid) as check_expr from pg_policy where polrelid='public.claim_request'::regclass order by polname`).toEqual(policySnapshot);
    const measurements=[];
-   for(const u of phase==='original-restored'?[users[0]]:[...users.slice(0,3),users[502]]){
+   for(const u of phase==='original-restored'?[users[502]]:[...users.slice(0,3),users[502]]){
     const actor=u===users[502]?'delegate':u.role,ctx=context(u),times=[];
     await expect(pendingClaimTaskSummary({...ctx,personId:randomUUID()},undefined,25)).rejects.toThrow();
     await owner.client`select pg_stat_statements_reset()`;
@@ -58,10 +61,10 @@ it('checks the actual counted Claims application summary over one million record
     expect(await pendingClaimTaskSummary(ctx,[],25)).toEqual({items:[],total:0});
     measurements.push({actor,reads:1,elapsedMs:times,exactTotal:true,exactOrderedPreview:true,rawRlsCount:raw.total,delegateDraftExcluded:true,statements});
     phases[phase]=measurements;
-    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_REGULAR_RLS_MEMBERSHIP_ONLY_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
+    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_DELEGATION_USER_FENCE_ONLY_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,functionAttributesPreserved:true,policiesUnchanged:true,phases},null,2));
    }
    phases[phase]=measurements;
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_REGULAR_RLS_MEMBERSHIP_ONLY_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_DELEGATION_USER_FENCE_ONLY_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,functionAttributesPreserved:true,policiesUnchanged:true,phases},null,2));
   }
  }finally{await original();}
 },300000);
