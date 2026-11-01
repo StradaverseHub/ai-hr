@@ -1,4 +1,4 @@
-import {afterEach,expect,it,vi} from 'vitest';
+import {afterEach,expect,it,onTestFailed,vi} from 'vitest';
 import {page,userEvent} from 'vitest/browser';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
@@ -27,6 +27,11 @@ function contrast(a:string,b:string) {
 }
 for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [false,true])for(const mobile of [false,true]) {
  it(`repairs reference details, keyboard sections, notice and duplicate chrome in ${theme} ${dark?'dark':'light'} ${mobile?'mobile':'desktop'}`,async()=>{
+  let phase='viewport',currentRoute='leavers';
+  onTestFailed(()=>console.info('[DEBUG-firefox-lifecycle-20261102] '+JSON.stringify({theme,dark,mobile,phase,currentRoute,
+   active:{tag:document.activeElement?.tagName,text:document.activeElement?.textContent?.slice(0,120)},
+   controls:[...document.querySelectorAll('button')].filter(button=>['Assignment rules','Tasks'].includes(button.textContent?.trim()??'')).map(button=>({text:button.textContent,expanded:button.getAttribute('aria-expanded'),connected:button.isConnected,focused:button===document.activeElement})),
+   bodyWidth:document.documentElement.scrollWidth,viewportWidth:window.innerWidth})));
   await page.viewport(mobile?390:1512,mobile?844:805);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);
   const view=render(workspace(theme,'leavers'));
   const notice=screen.getByText('Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.');
@@ -34,6 +39,7 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
   console.info('V9_NOTICE_CONTRAST '+JSON.stringify({theme,dark,mobile,foreground:getComputedStyle(notice).color,background:getComputedStyle(notice).backgroundColor,ratio:contrast(getComputedStyle(notice).color,getComputedStyle(notice).backgroundColor)}));
   for(const route of ['joiners','leavers','onbChecklists','offChecklists','templates','workflows','settings','groups','access'] as const){view.rerender(workspace(theme,route));expect(document.querySelector('.v9-toolbar')).toBeNull();expect(screen.queryByRole('combobox',{name:'Company'})).toBeNull();expect(screen.queryByRole('button',{name:'Account menu'})).toBeNull();expect(document.documentElement.scrollWidth).toBeLessThanOrEqual((mobile?390:1512)+1);}
   for(const route of ['onbChecklists','offChecklists'] as const){
+   currentRoute=route;phase='render checklist';
    view.rerender(workspace(theme,route));const details=screen.getByRole('region',{name:'Checklist details'}),name=within(details).getByRole('textbox',{name:'Checklist name'}),duplicate=within(details).getByRole('button',{name:'Duplicate'}),owner=within(details).getByRole('button',{name:'Change owner'});
    const n=name.getBoundingClientRect(),d=duplicate.getBoundingClientRect(),o=owner.getBoundingClientRect();
    expect(contrast(getComputedStyle(owner).color,getComputedStyle(details).backgroundColor)).toBeGreaterThanOrEqual(4.5);
@@ -42,12 +48,12 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
    else {for(const rect of [n,d,o]){expect(rect.left).toBeGreaterThanOrEqual(0);expect(rect.right).toBeLessThanOrEqual(391);}expect(d.top).toBeGreaterThan(n.bottom);}
    const rules=screen.getByRole('button',{name:'Assignment rules'}),tasks=screen.getByRole('button',{name:'Tasks'});
    expect(rules.getAttribute('aria-expanded')).toBe('false');expect(tasks.getAttribute('aria-expanded')).toBe('true');
-   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');
+   phase='focus rules';rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);phase='rules Enter';await userEvent.keyboard('{Enter}');phase='rules expanded';
    const rulesAtKeyReturn=rules.getAttribute('aria-expanded');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('true');expect(screen.getByText(/Population preview/)).toBeVisible();
    console.info('V9_KEYBOARD_COMMIT '+JSON.stringify({theme,dark,mobile,route,atKeyReturn:rulesAtKeyReturn,committed:rules.getAttribute('aria-expanded'),focused:document.activeElement===rules}));
-   tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);await userEvent.keyboard(' ');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
-   await userEvent.keyboard('{Enter}');await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
-   rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);await userEvent.keyboard('{Enter}');await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('false');
+   phase='focus tasks';tasks.focus();await expect.poll(()=>document.activeElement).toBe(tasks);phase='tasks Space';await userEvent.keyboard(' ');phase='tasks collapsed';await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('false');expect(screen.queryAllByRole('textbox',{name:'Task name'})).toHaveLength(0);
+   phase='tasks Enter';await userEvent.keyboard('{Enter}');phase='tasks expanded';await expect.poll(()=>tasks.getAttribute('aria-expanded')).toBe('true');expect(screen.getAllByRole('textbox',{name:'Task name'}).length).toBeGreaterThan(0);
+   phase='refocus rules';rules.focus();await expect.poll(()=>document.activeElement).toBe(rules);phase='rules closing Enter';await userEvent.keyboard('{Enter}');phase='rules collapsed';await expect.poll(()=>rules.getAttribute('aria-expanded')).toBe('false');
    console.info('V9_CHECKLIST_GEOMETRY '+JSON.stringify({theme,dark,mobile,route,name:n.toJSON(),duplicate:d.toJSON(),owner:o.toJSON()}));
    // Fictional derived fixture only, never labelled as staging or the reference artifact.
    name.focus();const shot=await page.screenshot({base64:true,path:`../.vitest-attachments/v9-html-gaps-${theme}-${dark?'dark':'light'}-${mobile?'mobile':'desktop'}-${route}.png`,animations:'disabled',scale:'css'});console.info('V9_HTML_GAPS_SCREENSHOT '+JSON.stringify({theme,dark,mobile,route,fixture:'fictional-derived-not-staging',base64:shot.base64}));

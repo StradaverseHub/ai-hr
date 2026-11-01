@@ -167,6 +167,16 @@ jobs:
         if: ${{ inputs.probe_scope == 'browser-image-suite' }}
         run: node ../automation/.github/ci/run-unit.mjs "browser-$ENGINE" "$RUNNER_TEMP/aihr-ci"
         env: {HOME: /root}
+      - name: Diagnostic only - original Lifecycle keyboard file in Firefox
+        if: ${{ inputs.probe_scope == 'browser-image-firefox' }}
+        env: {HOME: /root, AIHR_BROWSER_ENGINE: firefox}
+        run: |
+          mkdir -p .vitest-attachments
+          cat > .vitest-attachments/firefox-lifecycle-repro.config.mts <<'CONFIG'
+          import base from '../vitest.browser.config';
+          export default {...base,test:{...base.test,browser:{...base.test.browser,instances:[{browser:'firefox'}]}}};
+          CONFIG
+          pnpm exec vitest run test/lifecycle-v9-html-gaps.browser.test.tsx --config .vitest-attachments/firefox-lifecycle-repro.config.mts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/browser-image/lifecycle-keyboard.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ always() && inputs.probe_scope == 'browser-image-suite' }}
         with:
