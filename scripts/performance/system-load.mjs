@@ -12,6 +12,7 @@ import {performance} from 'node:perf_hooks';
 import {setTimeout as pause} from 'node:timers/promises';
 import {chromium} from 'playwright';
 import postgres from 'postgres';
+import {closePerformanceDbPools} from './driver-shutdown.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_system_perf');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -446,8 +447,7 @@ finally{
  if(browser)await browser.close();report.shutdown.browserClosed=true;agent.destroy();save();
  // verifyTenantChain imports the canonical application pool as well as this driver's observer pool.
  // Both belong only to this isolated child. Leave no live native pool after a successful preflight.
- if(nativeAuditClient)await nativeAuditClient.end({timeout:5});report.shutdown.nativeAuditPoolClosed=true;save();
- await db.end({timeout:5});report.shutdown.driverPoolClosed=true;save();
+ await closePerformanceDbPools(nativeAuditClient,db,key=>{report.shutdown[key]=true;save();});
 }
 }
 await main();
