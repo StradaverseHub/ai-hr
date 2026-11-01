@@ -646,9 +646,9 @@ leave(){
 
 
 /* ---- Exploded view of the AI core (SVG line art, isometric). Plane coords: x 0..300, y 0..200; z up. ---- */
-const XV={cx:410,cy:360,s:.74,open:0};
-const XV_Z={closed:{found:0,sor:2,capabilities:4,context:6,harness:8,interfaces:16},open:{found:0,sor:82,capabilities:154,context:226,harness:298,interfaces:372}};
-const XV_SUB={interfaces:'the screen · chat · inbox · review pages',harness:'the logic board · limits · plan · tool calls',model:'the AI chip · proposes, never decides',context:'the memory · guides · pages · your role',capabilities:'the modules · reads · explainers · preparers',sor:'the storage · leave · payroll · people · claims',found:'the frame · guard · outcome record · audit',guard:'the secure chip · checks first',outcome:'the log · who · what was read · decision'};
+const XV={cx:450,cy:368,s:.72,open:0};
+const XV_Z={closed:{found:0,sor:2,capabilities:4,context:6,harness:8,interfaces:16},open:{found:0,sor:74,capabilities:148,context:222,harness:296,interfaces:378}};
+const XV_SUB={interfaces:'the dial · chat · inbox · review pages',harness:'the escapement · one step at a time',model:'the balance wheel · decides nothing',context:'the calendar ring · guides · pages · your role',capabilities:'the gear train · reads · explainers · preparers',sor:'the mainspring · leave · payroll · people',found:'the case · guard · outcome record · audit',guard:'the crown · checked before anything moves',outcome:'the engraved caseback · who · what · when'};
 const xvP=(x,y,z)=>[XV.cx+(x-y)*0.866*XV.s,XV.cy+((x+y)*0.5-z)*XV.s];
 const xvPts=a=>a.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ');
 const xvCh=(x0,y0,x1,y1,r)=>[[x0+r,y0],[x1-r,y0],[x1,y0+r],[x1,y1-r],[x1-r,y1],[x0+r,y1],[x0,y1-r],[x0,y0+r]];
@@ -666,27 +666,34 @@ const xvRound=(x0,y0,x1,y1,r,n=5)=>{const pts=[],c=[[x1-r,y0+r,-90],[x1-r,y1-r,0
 const xvCircle=(cx,cy,r,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(Array.from({length:24},(_,i)=>{const t=i/24*2*Math.PI;return xvP(cx+r*Math.cos(t),cy+r*Math.sin(t),z)}))}"/>`;
 const xvRoundOutline=(x0,y0,x1,y1,r,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(xvRound(x0,y0,x1,y1,r).map(([x,y])=>xvP(x,y,z)))}"/>`;
 const xvRoundBox=(x0,y0,x1,y1,r,z,t)=>xvPlate(xvRound(x0,y0,x1,y1,r),z,t);
-/* A phone, taken apart. Plane coords: x 0..340 along the phone, y 0..170 across it. */
+/* A watch movement, taken apart. Plane coords centred on (150,150). */
+const WC=[150,150];
+const xvDisc=(cx,cy,r,n=56)=>Array.from({length:n},(_,i)=>{const t=i/n*2*Math.PI;return [cx+r*Math.cos(t),cy+r*Math.sin(t)]});
+const xvGear=(cx,cy,r,teeth,depth)=>{const pts=[];for(let i=0;i<teeth;i++){const a=i/teeth*2*Math.PI,w=Math.PI/teeth;
+  for(const [da,rr] of [[-w*.55,r-depth],[-w*.3,r],[w*.3,r],[w*.55,r-depth]])pts.push([cx+rr*Math.cos(a+da),cy+rr*Math.sin(a+da)])}return pts;};
+const xvSpiral=(cx,cy,r0,r1,turns,z)=>xvLine(Array.from({length:Math.round(turns*36)+1},(_,i)=>{const t=i/36*2*Math.PI,r=r0+(r1-r0)*i/(turns*36);return [cx+r*Math.cos(t),cy+r*Math.sin(t)]}),z);
+const xvOutline=(poly,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(poly.map(([x,y])=>xvP(x,y,z)))}"/>`;
+const xvAt=(r,ang)=>[WC[0]+r*Math.cos(ang),WC[1]+r*Math.sin(ang)];
 function xvLayer(k,z){
-  if(k==='found')return xvRoundBox(-10,-10,350,180,36,z,26)+xvRoundOutline(4,4,336,166,26,z)+               // frame and case
-    xvBox(96,180,44,5,z-8,8,2)+xvBox(160,180,26,5,z-8,8,2);                                                    // side buttons
-  if(k==='sor')return xvRoundBox(28,22,312,148,20,z,8)+xvBox(70,44,150,82,z+6,6,6)+                          // storage
-    [62,78,94,110].map(y=>xvLine([[86,y],[204,y]],z+6)).join('')+xvBox(236,60,52,46,z+5,5,4);
-  if(k==='capabilities')return xvRoundBox(28,22,312,148,20,z,6)+xvRoundBox(236,34,300,98,14,z+12,12)+        // modules: camera, speaker, port
-    xvCircle(254,52,10,z+12)+xvCircle(280,78,10,z+12)+xvCircle(282,50,4,z+12)+
-    [52,62,72,82,92].map(x=>xvLine([[x,40],[x,70]],z)).join('')+xvBox(140,118,52,16,z+6,6,4)+xvCircle(214,126,6,z);
-  if(k==='context')return xvRoundBox(48,32,292,138,16,z,5)+xvBox(76,50,74,66,z+7,7,4)+xvBox(166,50,74,66,z+7,7,4)+ // memory chips
-    [62,76,90,104].map(y=>xvLine([[88,y],[138,y]],z+7)+xvLine([[178,y],[228,y]],z+7)).join('');
-  if(k==='harness')return xvRoundBox(10,10,330,160,26,z,7)+                                                   // logic board
-    xvLine([[40,40],[120,40],[120,70]],z)+xvLine([[40,130],[120,130],[120,100]],z)+xvLine([[230,85],[300,85]],z)+xvLine([[230,50],[270,50],[270,30]],z)+
-    xvBox(30,60,30,24,z+5,5,3)+xvBox(250,100,40,30,z+6,6,4)+xvBox(270,40,30,20,z+4,4,3);
-  if(k==='interfaces')return xvRoundBox(0,0,340,170,32,z,6)+xvRoundOutline(12,10,328,160,24,z)+               // the screen
-    xvRoundOutline(306,68,318,102,6,z)+xvRoundOutline(40,26,176,56,12,z)+xvRoundOutline(118,70,282,100,12,z)+xvRoundOutline(40,114,250,146,10,z)+
-    xvLine([[58,41],[150,41]],z)+xvLine([[136,85],[262,85]],z)+xvLine([[58,130],[200,130]],z);
+  const [cx,cy]=WC;
+  if(k==='found')return xvPlate(xvDisc(cx,cy,158),z,28)+xvOutline(xvDisc(cx,cy,142),z)+                         // the case
+    [[-.62],[.62],[Math.PI-.62],[Math.PI+.62]].map(([a])=>{const [x,y]=xvAt(166,a-Math.PI/4);return xvBox(x-14,y-14,28,28,z-6,10,6)}).join('');
+  if(k==='sor')return xvPlate(xvDisc(cx,cy,124),z,6)+xvPlate(xvDisc(102,190,46),z+16,16)+xvSpiral(102,190,8,40,3.2,z+16)+  // mainspring barrel
+    xvOutline(xvDisc(102,190,10),z+16)+[0,1,2].map(i=>{const [x,y]=xvAt(96,i*2.1+.4);return xvOutline(xvDisc(x,y,5,16),z)}).join('');
+  if(k==='capabilities')return xvPlate(xvDisc(cx,cy,120),z,4)+xvPlate(xvGear(196,118,54,28,6),z+10,8)+xvOutline(xvDisc(196,118,10),z+10)+  // the gear train
+    xvPlate(xvGear(112,196,36,20,5),z+10,8)+xvOutline(xvDisc(112,196,8),z+10)+xvPlate(xvGear(204,206,22,12,4),z+10,8)+xvOutline(xvDisc(204,206,5),z+10)+
+    [0,1,2].map(i=>xvLine([xvAt(10,i*2.1),xvAt(48,i*2.1)],z+10)).join('');
+  if(k==='context'){const outer=xvDisc(cx,cy,130),inner=xvDisc(cx,cy,100);                                       // the calendar ring
+    return xvPlate(outer,z,5)+xvOutline(inner,z)+Array.from({length:31},(_,i)=>{const a=i/31*2*Math.PI;return xvLine([xvAt(106,a),xvAt(i%5===0?122:114,a)],z)}).join('');}
+  if(k==='harness')return xvPlate(xvDisc(cx,cy,118),z,6)+xvOutline(xvDisc(cx,cy,64),z)+                           // the escapement bridge
+    xvPlate(xvGear(232,96,22,15,4),z+8,6)+xvLine([[214,110],[196,132],[176,128]],z+8)+xvLine([[196,132],[206,146]],z+8);
+  if(k==='interfaces')return xvPlate(xvDisc(cx,cy,134),z,5)+xvOutline(xvDisc(cx,cy,124),z)+                       // the dial
+    Array.from({length:12},(_,i)=>{const a=i/12*2*Math.PI;return xvLine([xvAt(i%3===0?96:104,a),xvAt(116,a)],z)}).join('')+
+    xvLine([[cx,cy],xvAt(62,-2.2)],z)+xvLine([[cx,cy],xvAt(96,-.6)],z)+xvOutline(xvDisc(cx,cy,6,16),z)+xvOutline(xvDisc(cx,cy,142),z+10,'xv-w');  // hands, crystal
   return '';
 }
 function spatial(T){
-  return `<div class="space" id="space"><div class="xt"><b>${T.title}</b><span>Exploded view · like a phone</span></div>
+  return `<div class="space" id="space"><div class="xt"><b>${T.title}</b><span>Exploded view · like a watch movement</span></div>
    <svg id="xv" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${T.L.interfaces[0]}, ${T.L.harness[0]}, ${T.L.context[0]}, ${T.L.capabilities[0]}, ${T.L.sor[0]}; ${T.L.found[0]}"><g id="xvg"></g><circle id="xvtok" r="5.5" cx="0" cy="0" fill="#fb8a4a" stroke="#0c0d0f" stroke-width="2.5" opacity="0"/></svg>
    <span class="xm">${PRODUCT.centre}</span></div>`;
 }
@@ -694,31 +701,31 @@ const xvLerp=(a,b,e)=>a+(b-a)*e;
 function placeSpatial(){
   const g=document.getElementById('xvg');if(!g)return;
   const T=HW[state.lang]||HW.en,L=T.L,tgt=STEP_TARGET[state.step],[k,part]=tgt?tgt.split(':'):[null,undefined];
-  const e=XV.open,Z={};XV.cy=360-(1-e)*130;for(const key in XV_Z.open)Z[key]=xvLerp(XV_Z.closed[key],XV_Z.open[key],e);
+  const e=XV.open,Z={};XV.cy=368-(1-e)*130;for(const key in XV_Z.open)Z[key]=xvLerp(XV_Z.closed[key],XV_Z.open[key],e);
   const order=['found','sor','capabilities','context','harness','interfaces'];
   const on=key=>key===k&&k!=='found';
   let svg='';
   // dashed alignment wires at the three outer corners, as in a teardown drawing
-  if(e>.05)for(const [x,y] of [[0,170],[340,170],[340,0]])svg+=`<line class="xv-w" x1="${xvP(x,y,Z.found)[0]}" y1="${xvP(x,y,Z.found)[1]}" x2="${xvP(x,y,Z.interfaces)[0]}" y2="${xvP(x,y,Z.interfaces)[1]}"/>`;
+  if(e>.05)for(const [x,y] of [xvAt(158,Math.PI*.75),xvAt(158,Math.PI*.25),xvAt(158,-Math.PI*.25)])svg+=`<line class="xv-w" x1="${xvP(x,y,Z.found)[0]}" y1="${xvP(x,y,Z.found)[1]}" x2="${xvP(x,y,Z.interfaces)[0]}" y2="${xvP(x,y,Z.interfaces)[1]}"/>`;
   for(const key of order){
     svg+=`<g class="${on(key)?'on':''} ${key==='interfaces'&&e>.8?'xv-glass':''}">${xvLayer(key,Z[key])}</g>`;
     if(key==='found'){
-      svg+=`<g class="${k==='found'&&part==='0'?'on':''}">${xvBox(30,60,36,36,Z.found+8,8,5)}${xvLine([[42,74],[54,74],[54,86],[42,86],[42,74]],Z.found+8)}</g>`;   // guard: the secure chip in the frame
-      svg+=`<g class="${k==='found'&&part==='2'?'on':''}">${xvBox(282,112,38,30,Z.found+8,8,4)}${[120,128,136].map(y=>xvLine([[290,y],[312,y]],Z.found+8)).join('')}</g>`; // outcome record: the log
+      svg+=`<g class="${k==='found'&&part==='0'?'on':''}">${xvPlate(xvDisc(150,326,16,24),Z.found-6,22)}${xvBox(140,308,20,10,Z.found-10,12,3)}</g>`;   // guard: the crown
+      svg+=`<g class="${k==='found'&&part==='2'?'on':''}">${xvOutline(xvDisc(150,150,40),Z.found)}${[134,146,158,170].map((y,i)=>xvLine([[124+i*2,y],[176-i*2,y]],Z.found)).join('')}</g>`; // outcome record: the caseback engraving
     }
-    if(key==='harness')svg+=`<g class="xv-m ${k==='harness'?'on':''}">${xvBox(140,50,76,70,Z.harness+10+e*14,10,8)}${xvRoundOutline(156,64,200,106,6,Z.harness+10+e*14)}</g>`;
+    if(key==='harness'){const mz=Z.harness+12+e*16;svg+=`<g class="xv-m ${k==='harness'?'on':''}">${xvPlate(xvDisc(150,150,46),mz,6)}${xvOutline(xvDisc(150,150,34),mz)}${[0,1,2].map(i=>xvLine([xvAt(8,i*2.09),xvAt(34,i*2.09)],mz)).join('')}${xvSpiral(150,150,6,26,2.6,mz+2)}</g>`;}
   }
   // labels: layers on the right, model / guard / outcome on the left
-  const LX=690,rows=[];
-  for(const key of [...order].reverse()){const anchor=key==='found'?xvP(350,-10,Z.found):xvP(340,0,Z[key]);rows.push({key,side:'r',a:anchor,name:key==='found'?L.found[0]:L[key][0],sub:XV_SUB[key],on:on(key)});}
-  rows.push({key:'model',side:'l',a:xvP(140,120,Z.harness+10+e*14),name:L.model[0],sub:XV_SUB.model,on:k==='harness'});
-  rows.push({key:'guard',side:'l',a:xvP(30,96,Z.found+8),name:L.found[1][0],sub:XV_SUB.guard,on:k==='found'&&part==='0'});
-  rows.push({key:'outcome',side:'r',a:xvP(320,112,Z.found+8),name:L.found[1][2],sub:XV_SUB.outcome,on:k==='found'&&part==='2'});
+  const LX=700,rows=[];
+  for(const key of [...order].reverse()){const R={found:158,sor:124,capabilities:120,context:130,harness:118,interfaces:134}[key];const anchor=xvP(...xvAt(R,-Math.PI/4),Z[key]);rows.push({key,side:'r',a:anchor,name:key==='found'?L.found[0]:L[key][0],sub:XV_SUB[key],on:on(key)});}
+  rows.push({key:'model',side:'l',a:xvP(...xvAt(46,Math.PI*.75),Z.harness+12+e*16),name:L.model[0],sub:XV_SUB.model,on:k==='harness'});
+  rows.push({key:'guard',side:'l',a:xvP(134,326,Z.found-6),name:L.found[1][0],sub:XV_SUB.guard,on:k==='found'&&part==='0'});
+  rows.push({key:'outcome',side:'r',a:xvP(...xvAt(40,-Math.PI/4),Z.found),name:L.found[1][2],sub:XV_SUB.outcome,on:k==='found'&&part==='2'});
   const r=rows.filter(x=>x.side==='r').sort((p,q)=>p.a[1]-q.a[1]);let last=-1e9;r.forEach(x=>{x.y=Math.max(x.a[1],last+38);last=x.y});
   rows.filter(x=>x.side==='l').forEach(x=>x.y=x.a[1]);
   const sub=state.lang==='en';
   if(e>.6)for(const x of rows){const dim=tgt&&!x.on?' dim':'',cls=x.on?' on':'';
-    const lx=x.side==='r'?LX:250,tx=x.side==='r'?LX+8:242,anchor=x.side==='r'?'start':'end';
+    const lx=x.side==='r'?LX:300,tx=x.side==='r'?LX+8:292,anchor=x.side==='r'?'start':'end';
     svg+=`<polyline class="xv-l${cls}" points="${x.a[0].toFixed(1)},${x.a[1].toFixed(1)} ${(x.side==='r'?lx-24:lx+24)},${x.y.toFixed(1)} ${lx},${x.y.toFixed(1)}"/>`;
     svg+=`<text class="xv-lab${cls}${dim}" x="${tx}" y="${(x.y-3).toFixed(1)}" text-anchor="${anchor}">${x.name}</text>`;
     if(sub)svg+=`<text class="xv-sub${cls}${dim}" x="${tx}" y="${(x.y+12).toFixed(1)}" text-anchor="${anchor}">${x.sub}</text>`;}
@@ -726,7 +733,7 @@ function placeSpatial(){
   // the request rides the left wire to each layer's corner, or sits on the guard / outcome part
   const tok=document.getElementById('xvtok');
   if(!tgt||e<.95){tok.setAttribute('opacity',0);return}
-  const pt=k==='found'?(part==='0'?xvP(48,78,Z.found+8):xvP(301,127,Z.found+8)):xvP(0,170,Z[k]);
+  const pt=k==='found'?(part==='0'?xvP(150,326,Z.found-6):xvP(150,150,Z.found)):xvP(...xvAt(158,Math.PI*.75),Z[k]);
   tok.setAttribute('opacity',1);tok.style.transform=`translate(${pt[0]}px,${pt[1]}px)`;
 }
 /* The unit opens once, the first time it is shown; reduced motion shows it open. */
