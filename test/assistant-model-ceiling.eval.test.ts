@@ -34,8 +34,10 @@ import {ASSISTANT_COMPLEX_BASELINE,ASSISTANT_PARITY_ACTIONS,ASSISTANT_PRODUCTION
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 const KEY=process.env.AIHR_EVAL_OPENROUTER_KEY?.trim(),MODEL=process.env.AIHR_EVAL_MODEL?.trim();
 const BUDGET=Math.min(50,Number(process.env.AIHR_EVAL_BUDGET_USD??'20')||20),REPEATS=Math.max(1,Math.min(5,Math.trunc(Number(process.env.AIHR_EVAL_REPEATS??'3'))||3));
-// About 200 calls per pass; the dollar cap still governs.
-const MAX_CALLS=Math.min(1500,Number(process.env.AIHR_EVAL_MAX_CALLS??String(250*REPEATS))||250*REPEATS);
+// About 200 calls per pass, plus up to two per sensitive-corpus turn (run 41305344388 hit the old cap of 250 a pass);
+// the dollar cap still governs.
+const PASS_CALLS=250+2*SENSITIVE_CORPUS.length;
+const MAX_CALLS=Math.min(1500,Number(process.env.AIHR_EVAL_MAX_CALLS??String(PASS_CALLS*REPEATS))||PASS_CALLS*REPEATS);
 const ALLOWED=(process.env.AIHR_EVAL_ALLOWED_PROVIDERS??'').split(',').map(value=>value.trim()).filter(Boolean);
 /** PRODUCT CONTEXT comes from the phase-B owners (core/product-context): the destination registry, the
  * tenant's published guides and the minimized setup-readiness summary, all run as the caller. */
