@@ -1,6 +1,7 @@
 import { withCanonicalAiReadTx } from './ai-read-transaction';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
-import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
+import {withDataCommand} from './data-command';
+import {hasDataCommandAuthorityTx,lockDataCommandAuthorityTx, lockAccessConfigurationTx } from './access-configuration-lock';
+import {lockLeaveDependencyReadConfigurationTx, lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import {attendancePolicyAttestedRawTrace} from '../lib/attendance-policy-attested-trace';
 import {assessGeofence,type GeofenceAssessment} from '../lib/geofence-assessment';
 import {attendancePolicyUnclockedWorkDates,validateAttendancePolicyUnclockedWork,type AttendancePolicyUnclockedWork} from '../lib/attendance-policy-unclocked-work';
@@ -2052,13 +2053,15 @@ function deriveDayFromPunchList(
   };
 }
 
-/** Attendance can bank TOIL and ensure its replacement catalogue. Own exclusive configuration
- * BEFORE any schedule/credit/legacy Attendance lock; callers must roll back the WHOLE Tx on refusal.
+/** Ordinary Attendance shares stable authority/configuration, then owns affected employments.
+ * A missing TOIL catalogue demands whole-transaction replay under original exclusive ownership.
+ * Enclosing owners keep their original exclusive interval; every refusal rolls back the WHOLE Tx.
  * This is dependency protection, not authority: original self/admin/device/workflow gates still run. */
 export async function lockAttendanceLeaveDependenciesTx(tx: Tx, ctx: SessionContext, employmentIds: readonly string[]) {
   const tenantId = ctx.tenantId, ids = [...new Set(employmentIds)].sort();
-  await lockAccessConfigurationTx(tx, tenantId);
-  await lockLeaveDependencyConfigurationTx(tx, tenantId);
+  await lockDataCommandAuthorityTx(tx, tenantId);
+  if(hasDataCommandAuthorityTx(tx,tenantId))await lockLeaveDependencyReadConfigurationTx(tx,tenantId);
+  else await lockLeaveDependencyConfigurationTx(tx, tenantId);
   if (ids.length) await lockLeaveDependenciesTx(tx, tenantId, ids);
 }
 function captureAttendanceContext(ctx: SessionContext): SessionContext {
@@ -2191,7 +2194,7 @@ export async function checkInTx(
     });
     return { attendanceId, status: derived.status, dayType };
   };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+  return existingTx ? perform(existingTx) : withDataCommand(ctx, perform, withTenant);
 }
 
 /** Check in. `geo` is optional — omitted/undefined when the browser gave no coordinates (allowed only
@@ -2397,7 +2400,7 @@ export async function checkOutTx(
     });
     return { status: derived.status, dayType, workedMinutes: derived.workedMinutes, otMinutes };
   };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+  return existingTx ? perform(existingTx) : withDataCommand(ctx, perform, withTenant);
 }
 
 /** Check out. Same optional-geo / blocked-event contract as checkIn (ADR-0070 §3). */
@@ -3603,7 +3606,7 @@ function normalizeAttendanceCorrectionRequest(input:AttendanceCorrectionRequestI
 export async function prepareAttendanceCorrectionRequestTx(tx:Tx,ctx:SessionContext,input:AttendanceCorrectionRequestInput){
  ctx=captureAttendanceContext(ctx);assertModuleGate(ctx,'attendance');
  const {p,hasOt,clockChanges,checkIn,checkOut,requestedOtMinutes,reason,plannedStartTime,plannedEndTime,otReasonCategory,remark,requestKind,unclockedWork}=normalizeAttendanceCorrectionRequest(input);
- await lockAccessConfigurationTx(tx,ctx.tenantId);
+ await lockDataCommandAuthorityTx(tx,ctx.tenantId);
  const [subject]=await tx.select({id:employment.id}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).limit(1);if(!subject)throw Error('Attendance subject is unavailable.');
  p.employmentId=subject.id; // Canonical UUID spelling owns every shared source/credit lock key.
  await lockLeaveDependenciesTx(tx,ctx.tenantId,[p.employmentId]);
@@ -3745,7 +3748,7 @@ function attendanceCorrectionSubmissionFailure(error:unknown):never{
 export async function requestAttendanceCorrection(ctx:SessionContext,p:AttendanceCorrectionRequestInput,existingTx?:Tx){
  const current=captureAttendanceContext(ctx),captured=structuredClone(p);normalizeAttendanceCorrectionRequest(captured);
  const run=async(tx:Tx)=>{const result=await requestAttendanceCorrectionTx(tx,current,captured);return {correctionId:result.correctionId};};
- return (existingTx?run(existingTx):withTenant(current,run)).catch(attendanceCorrectionSubmissionFailure);
+ return (existingTx?run(existingTx):withDataCommand(current,run,withTenant)).catch(attendanceCorrectionSubmissionFailure);
 }
 
 /**
@@ -4558,7 +4561,7 @@ export async function decideAttendanceCorrection(
     });
     return { status: p.decision, deferred: deferredApproval };
   };
-  return existingTx?decide(existingTx):withTenant(ctx,decide);
+  return existingTx?decide(existingTx):withDataCommand(ctx,decide,withTenant);
 }
 
 /** Correction inbox — RLS trims to what the viewer may see (admin all in scope, manager
@@ -6169,7 +6172,7 @@ export async function cancelOwnAttendanceCorrection(
     });
     return { status: 'cancelled' as const };
   };
-  return existingTx ? run(existingTx) : withTenant(ctx, run);
+  return existingTx ? run(existingTx) : withDataCommand(ctx, run, withTenant);
 }
 
 /** SUBJECT-ONLY. Enforced in code rather than by RLS, because RLS makes an employee's own rows writable AND

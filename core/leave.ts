@@ -9,7 +9,8 @@ import { aliasedTable, and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, l
 import { randomUUID, createHash } from 'node:crypto';
 import {cancellationSplitGroupSql} from './leave-group-origin-sql';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
-import { lockAccessConfigurationTx } from './access-configuration-lock';
+import {withDataCommand} from './data-command';
+import { lockDataCommandAuthorityTx, lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import { appendEvent, actorOf, type Actor } from '../db/events';
 import { assertCanDecide, assertAssignedWorkPrincipalTx, isApprovalDecisionRefusal } from './approvals';
@@ -3420,7 +3421,7 @@ export async function requestLeave(
   const perform = async (tx: Tx) => {
     // Rights first, then shared source configuration. An unauthorized subject is refused by the
     // original gate before acquiring any employment lock or reading leave policy/balance facts.
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockDataCommandAuthorityTx(tx, ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     if (p.document) p = { ...p, hasDocument: true };
     // ── On-behalf gate (5206539f) — THE FIRST THING THIS FUNCTION DOES, and deliberately ────────────────
@@ -4253,7 +4254,7 @@ export async function requestLeave(
       ...(holidayWarnings.length ? { holidayWarnings } : {}),
     };
   };
-  return existingTx ? perform(existingTx) : withTenant(ctx, perform);
+  return existingTx ? perform(existingTx) : withDataCommand(ctx, perform);
 }
 
 /** Feedback 31474452 (Step 5): pre-submission preview — "this will deduct X day(s), balance before/after" —
@@ -5953,7 +5954,7 @@ function assertExpectedLeaveStep(
 }
 /** D5(a) — run in the caller's transaction when one is passed (a mobile command receipt), else in a new one. */
 function withLeaveTx<T>(ctx: SessionContext, existingTx: Tx | undefined, run: (tx: Tx) => Promise<T>): Promise<T> {
-  return existingTx ? run(existingTx) : withTenant(ctx, run);
+  return existingTx ? run(existingTx) : withDataCommand(ctx, run);
 }
 
 /** Information-only corrections apply to future processing. Earlier leave runs require an
@@ -5997,7 +5998,7 @@ async function lockLeaveCohortDependenciesTx(tx: Tx, ctx: SessionContext, scope:
 /** Exported for the Assistant's leave-change review (ADR-0151), which takes this same lock before comparing
  *  the reviewed values, so the comparison and the native write see one state. */
 export async function lockLeaveRequestDependenciesTx(tx: Tx, ctx: SessionContext, requestId: string): Promise<void> {
-  await lockAccessConfigurationTx(tx, ctx.tenantId);
+  await lockDataCommandAuthorityTx(tx, ctx.tenantId);
   await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
   const read = () => tx.select({ employmentId: leaveRequest.employmentId }).from(leaveRequest)
     .where(eq(leaveRequest.id, requestId)).limit(1);
@@ -7070,7 +7071,7 @@ export async function decideLeaveCancellation(
   existingTx?: Tx,
 ) {
   return withLeaveTx(ctx, existingTx, async (tx) => {
-    await lockAccessConfigurationTx(tx, ctx.tenantId);
+    await lockDataCommandAuthorityTx(tx, ctx.tenantId);
     await lockLeaveDependencyReadConfigurationTx(tx, ctx.tenantId);
     // r301 hand-fix (verifier defect 1) — LOCKS, leave row first, then the cancellation: the order
     // requestLeaveCancellation and adminCancelLeave take them in, so the three cannot deadlock. Two approvers
