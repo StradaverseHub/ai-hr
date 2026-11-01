@@ -6,7 +6,8 @@
  */
 import { useCallback } from 'react';
 import { router,useFocusEffect } from 'expo-router';
-import { Pressable,ScrollView,View } from 'react-native';
+import { Pressable,View } from 'react-native';
+import { MotionCarousel } from '../../lib/motion';
 import { DesignText as Text } from '../../lib/design';
 import { useTenantDesign } from '../../lib/design';
 import { useApi } from '../../lib/api';
@@ -31,11 +32,11 @@ export default function Leave(){
   return <Screen atmospheric onRefresh={reload}>
     <Title>{t('tabLeave')}</Title>
     <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload}/>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={design.schemaVersion === 2 ? 186 : 272} decelerationRate="fast" contentContainerStyle={{gap:12,paddingBottom:8,paddingRight:20}}>{leave.data?.cards.map(c=><Material key={c.leaveTypeId} style={{width:design.schemaVersion === 2 ? 174 : 260,minHeight:design.schemaVersion === 2 ? 184 : 220,padding:18,justifyContent:'space-between',gap:16}}>
+    <MotionCarousel itemWidth={design.schemaVersion === 2 ? 174 : 260}>{leave.data?.cards.map(c=><Material key={c.leaveTypeId} style={{width:design.schemaVersion === 2 ? 174 : 260,minHeight:design.schemaVersion === 2 ? 184 : 220,padding:18,justifyContent:'space-between',gap:16}}>
       <View pointerEvents="none" style={{position:'absolute',inset:0,experimental_backgroundImage:`linear-gradient(145deg, ${alpha(c.color && /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : palette.accent,.20)} 0%, transparent 80%)`}}/>
       <Text style={{color:palette.text,fontSize:15,fontWeight:'500'}}>{c.leaveType}</Text>
       <View accessible accessibilityLabel={`${c.leaveType}. ${fmtDays(cardFigure(c))}. ${c.takenOnly?t('taken'):c.isCurrentCycle?t('canApplyFor'):t('balance')}`} style={{gap:6}}><Text style={{color:palette.text,fontSize:design.schemaVersion === 2 ? 38 : 64,fontWeight:'500',fontVariant:['tabular-nums'],letterSpacing:-1}}>{cardFigure(c)==null?'—':String(cardFigure(c))}</Text><Text style={{color:palette.muted,fontSize:12}}>{[c.takenOnly?t('taken'):c.isCurrentCycle?t('canApplyFor'):t('balance'),c.sharedPool?t('sharedPool'):null].filter(Boolean).join(' · ')}</Text></View>
-    </Material>)}</ScrollView>
+    </Material>)}</MotionCarousel>
     {leave.data?.cards.length===0&&<Muted>{t('noLeaveTypes')}</Muted>}
     <LoadState loading={options.loading} hasData={options.data!=null} error={options.error} onRetry={options.reload}/>
     {options.data&&leave.data&&<LeaveRequestForm options={options.data} cards={leave.data.cards} today={leave.data.today} onSubmitted={reload} notices={notices}/>}

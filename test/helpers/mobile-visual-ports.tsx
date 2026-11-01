@@ -6,3 +6,8 @@ export const mobileVisualPorts = {
   StatusPill: ({ label }: { label: string }) => <span>{label}</span>,
   alpha: (color: string) => color,
 };
+
+export const mobileMotionPorts = {
+  PressSurface: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+  MotionCarousel: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+};

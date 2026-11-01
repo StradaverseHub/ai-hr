@@ -23,9 +23,9 @@ function ThemedStatusBar() {
 }
 
 function ThemedStack() {
-  const { palette } = useTenantDesign();
+  const { palette, reduceMotion } = useTenantDesign();
   useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, []);
-  return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false }} /></>;
+  return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false, animation: reduceMotion ? 'fade' : 'default' }} /></>;
 }
 
 function Gate() {

@@ -1,4 +1,4 @@
-import { mobileVisualPorts } from './helpers/mobile-visual-ports';
+import { mobileVisualPorts, mobileMotionPorts } from './helpers/mobile-visual-ports';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { JsxEmit, ModuleKind, transpileModule } from 'typescript';
@@ -17,7 +17,7 @@ function fixture(hasHistory: boolean) {
     'react-native': { View: Container, ScrollView: Container, RefreshControl: () => null,
       StyleSheet: { create: (value: unknown) => value },
       Pressable: ({ children, onPress, accessibilityLabel }: any) => <button aria-label={accessibilityLabel} onClick={onPress}>{children}</button> },
-    './visual': mobileVisualPorts, './design': { DesignText: Container, TenantBrand: () => null,
+    './motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design': { DesignText: Container, TenantBrand: () => null,
       useTenantDesign: () => ({ palette: { accent: 'blue' } }) },
     './session': { useSession: () => ({ status: 'signedIn' }) },
     './errors': {}, './i18n': { t: (key: string) => key },

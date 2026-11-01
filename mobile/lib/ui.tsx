@@ -12,6 +12,7 @@ import { useSession } from './session';
 import { UnavailableError } from './errors';
 import { t } from './i18n';
 import { Material, alpha } from './visual';
+import { PressSurface } from './motion';
 
 export const colors = {
   bg: '#f3f7f4',
@@ -107,9 +108,11 @@ export function Button({ title, onPress, kind = 'primary', disabled = false,acce
       accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, experimental_backgroundImage: kind === 'primary' && design.schemaVersion !== 2 ? `linear-gradient(155deg, ${palette.button} 0%, ${palette.button} 100%)` : undefined, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 14 : 6, ...(kind === 'primary' && design.schemaVersion === 1 ? {boxShadow:'inset 0px 1px 1px rgba(255,255,255,0.55), 0px 4px 0px #30362a',borderWidth:1,borderColor:'#657a0b'} : {}) }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
+      style={{ minHeight: 52, minWidth: 48, marginTop: 4 }}
     >
+      {({ pressed }) => <PressSurface pressed={pressed} disabled={disabled} style={[styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, experimental_backgroundImage: kind === 'primary' && design.schemaVersion !== 2 ? `linear-gradient(155deg, ${palette.button} 0%, ${palette.button} 100%)` : undefined, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 14 : 6, ...(kind === 'primary' && design.schemaVersion === 1 ? {boxShadow:'inset 0px 1px 1px rgba(255,255,255,0.55), 0px 4px 0px #30362a',borderWidth:1,borderColor:'#657a0b'} : {}) }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]} >
       <Text style={[styles.buttonText, { color: design.schemaVersion !== 2 || design.composition.layout.button === 'solid' ? palette.onButton : palette.text }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
+      </PressSurface>}
     </Pressable>
   );
 }
@@ -240,7 +243,7 @@ const styles = StyleSheet.create({
   strong: { fontSize: 17, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.muted },
   body: { fontSize: 15, color: colors.text },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 52, minWidth: 48, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 52, minWidth: 48, alignItems: 'center', justifyContent: 'center' },
   buttonQuiet: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },

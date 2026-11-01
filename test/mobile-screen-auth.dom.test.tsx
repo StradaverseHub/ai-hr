@@ -1,4 +1,4 @@
-import { mobileVisualPorts } from './helpers/mobile-visual-ports';
+import { mobileVisualPorts, mobileMotionPorts } from './helpers/mobile-visual-ports';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { JsxEmit, ModuleKind, transpileModule } from 'typescript';
@@ -17,7 +17,7 @@ function fixture(initial: string) {
     'react-native': { View: Container, ScrollView: Container, Pressable: Container, ActivityIndicator: Container, RefreshControl: () => null, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: Container },
     'expo-router': { Redirect: ({ href }: { href: string }) => <p>Sign in required: {href}</p>, router: { canGoBack: vi.fn(), back: vi.fn(), replace: vi.fn() } },
-    './visual': mobileVisualPorts, './design': { Atmosphere: () => null, DesignText: Text, TenantBrand: () => <span>OneHR+</span>, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'light'), reload: vi.fn() }) },
+    './motion': mobileMotionPorts, '../../lib/motion': mobileMotionPorts, './visual': mobileVisualPorts, './design': { Atmosphere: () => null, DesignText: Text, TenantBrand: () => <span>OneHR+</span>, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'light'), reload: vi.fn() }) },
     './session': { useSession: () => ({ status }) }, './i18n': { t: (key: string) => key }, './errors': { UnavailableError: class extends Error {} },
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/ui.tsx', 'utf8'), { compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX } }).outputText,
