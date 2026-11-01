@@ -339,6 +339,19 @@ The Assistant is the visible part. Behind it run detectors, chasers, narrators a
 
 **One surface.** The Control Tower (`/control-tower/agents/*`) becomes that page: every registered worker with its family, owner, switch, last run, what it read and did, and its acceptance and reversal rates (the existing agreement view, extended). Mandates appear there as rows with their grantor. The exportable agent registry for customers' own control towers (§11.3 change 6) is generated from the same list.
 
+### 3.14 Owner decisions on signing and rule versions (1 November 2026)
+
+**Proposal signing secret.** A new, dedicated secret used only to sign proposal objects (`TERAS_PROPOSAL_SECRET`, as built in step 0b), never derived from another secret:
+- a separate secret per environment, so a staging proposal can never verify in production;
+- stored in the existing private secret store as configuration, never in source or the repository;
+- rotatable without downtime: verification accepts the current and the previous key for a short overlap, and issuing uses only the current one.
+
+**Rule versions.** Two owners, one convention:
+- **Statutory rules** (EPF, SOCSO, EIS, PCB, holiday minimums) are maintained by the product team as code in the country packs, and each release publishes their version. Customers never upload them.
+- **Company policy** (leave types, entitlement tables, eligibility, approval chains, claim limits) is configured by the customer's administrators on the existing setup screens. Every edit creates a new dated version automatically; entitlement tables already do, and the other owners gain the same label.
+- Native checks return the version they used, and the outcome record (§3.11) stores it, so a result can say which company rule and which statutory schedule applied. Delivered with step 5a.
+- A company handbook upload is only ever compared against the configuration (§3.5 policy versus configuration), never applied.
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
