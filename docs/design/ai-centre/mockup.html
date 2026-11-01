@@ -689,7 +689,7 @@ function render(scrollTop=true){
   floating();
   /* wiring */
   document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{state.filter=b.dataset.filter;render(false)});
-  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{location.hash=b.dataset.go});
+  document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
   document.querySelectorAll('[data-chapter]').forEach(b=>b.onclick=()=>{state.chapter=b.dataset.chapter;stopPlay();render(false)});
   document.querySelectorAll('.switch').forEach(b=>b.onclick=()=>b.setAttribute('aria-checked',b.getAttribute('aria-checked')!=='true'));
   const ap=$('#approve');if(ap)ap.onclick=()=>{state.signed=true;render(false)};
@@ -705,9 +705,12 @@ $('#fab').onclick=()=>{state.fwOpen=true;floating();$('#fw textarea')?.focus()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.fwOpen&&state.view==='leave'&&!state.docked){state.fwOpen=false;floating();$('#fab').focus()}});
 $('#rvRole').onchange=e=>{state.role=e.target.value;state.filter='all';render()};
 $('#rvTheme').onchange=e=>{e.target.value?document.documentElement.dataset.theme=e.target.value:delete document.documentElement.dataset.theme;render(false)};
-$('#rvLang').onchange=e=>{state.lang=e.target.value;if(state.view!=='how')location.hash='how';else render(false)};
+$('#rvLang').onchange=e=>{state.lang=e.target.value;if(state.view!=='how')go('how');else render(false)};
 addEventListener('resize',()=>placeToken());
-function route(){const h=location.hash.slice(1);const p=new URLSearchParams(h.split('?')[1]||'');state.view=(h.split('?')[0])||'inbox';
+/* Navigation works from clicks alone, so the mockup also runs as a static snapshot (data: URL) where the hash cannot change. */
+function go(h){route(h);try{history.replaceState(null,'','#'+h)}catch(e){}}
+document.addEventListener('click',e=>{const a=e.target.closest('a[href^="#"]');if(!a)return;e.preventDefault();go(a.getAttribute('href').slice(1))});
+function route(h0){const h=typeof h0==='string'?h0:location.hash.slice(1);const p=new URLSearchParams(h.split('?')[1]||'');state.view=(h.split('?')[0])||'inbox';
   if(p.get('step'))state.step=+p.get('step');if(p.get('lang'))state.lang=p.get('lang'),$('#rvLang').value=state.lang;if(p.get('role'))state.role=p.get('role'),$('#rvRole').value=state.role;
   if(p.get('theme'))document.documentElement.dataset.theme=p.get('theme'),$('#rvTheme').value=p.get('theme');if(p.get('chapter'))state.chapter=p.get('chapter');
   if(p.get('docked'))state.docked=true;state.filter='all';stopPlay();render()}
