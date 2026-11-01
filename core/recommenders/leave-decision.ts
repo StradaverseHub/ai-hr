@@ -27,7 +27,7 @@
  * Assistant. */
 import {and,desc,eq,gte,inArray,lte,ne} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {employment,leaveApprovalStep,leaveRequest as leaveRequestTable,leaveType as leaveTypeTable} from '../../db/schema';
+import {domainEvent,employment,leaveRequest as leaveRequestTable,leaveType as leaveTypeTable} from '../../db/schema';
 import {terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {pendingLeaveTaskMetadata} from '../../packs/leave/service';
@@ -104,6 +104,8 @@ export type RecommendLeaveDecisionResult=Readonly<{kind:'recommendation';recomme
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 const overlaps=(a:{startDate:string;endDate:string},b:{startDate:string;endDate:string})=>a.startDate<=b.endDate&&a.endDate>=b.startDate;
 const READ_CAP=200;
+/** The leave engine's decision events (core/leave.ts) that settle an approver's choice on a request. */
+const LEAVE_DECISION_EVENTS=Object.freeze(['leave-request.approved','leave-request.step.approved','leave-request.rejected'] as const);
 /** How many other people on leave are enough to know team coverage is unusual; plannedAbsences loads only these. */
 const AWAY_CANDIDATES=50;
 
@@ -203,8 +205,9 @@ export function recommendationText(recommendation:Pick<LeaveDecisionRecommendati
  * record, never taken from the caller, and so is the decision:
  *  - only the approver the recommendation was computed for (the record's asker) appends, never a group
  *    administrator or anyone else who can read the record;
- *  - the decision is the native one: an approval step of the recommended request that this person decided
- *    after the recommendation was computed. A supplied decision that differs from it records nothing;
+ *  - the decision is the native one: the leave engine's decision event on the recommended request (approved,
+ *    step approved or rejected), attributed to this login, after the recommendation was computed. A supplied
+ *    decision that differs from it records nothing;
  *  - one decision per record (migration 0906 unique index): a repeat records nothing. */
 export async function recordRecommendationDecision(supplied:SessionContext,input:Readonly<{recordId:string;decision:'approved'|'rejected'}>):Promise<Readonly<{id:string}>|null>{
  const ctx=capture(supplied);
@@ -217,17 +220,18 @@ export async function recordRecommendationDecision(supplied:SessionContext,input
   if(!record||record.agentIdentity!==RECOMMENDER_AGENT_IDENTITY||record.askedByUserId!==ctx.userId)return null;
   const outcome=record.outcome as {verdict?:unknown;leaveRequestId?:unknown};
   if(outcome.verdict!=='recommend_approve'||typeof outcome.leaveRequestId!=='string')return null;
-  // The native decision: a step of that request decided by one of this person's employments since the recommendation.
-  const [step]=await tx.select({status:leaveApprovalStep.status}).from(leaveApprovalStep)
-   .innerJoin(employment,eq(employment.id,leaveApprovalStep.decidedByEmploymentId))
-   .where(and(eq(leaveApprovalStep.tenantId,ctx.tenantId),eq(leaveApprovalStep.leaveRequestId,outcome.leaveRequestId),
-    inArray(leaveApprovalStep.status,['approved','rejected']),eq(employment.personId,ctx.personId!),gte(leaveApprovalStep.decidedAt,record.startedAt)))
-   .orderBy(desc(leaveApprovalStep.decidedAt)).limit(1);
-  if(!step||(step.status!=='approved'&&step.status!=='rejected'))return null;
+  // The native decision: the leave engine's own decision event on that request (approved, a step approved, or
+  // rejected), attributed to this login, after the recommendation was computed.
+  const [event]=await tx.select({eventType:domainEvent.eventType}).from(domainEvent)
+   .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.aggregateType,'leave-request'),eq(domainEvent.aggregateId,outcome.leaveRequestId),
+    inArray(domainEvent.eventType,[...LEAVE_DECISION_EVENTS]),eq(domainEvent.actorType,'user'),eq(domainEvent.actorId,ctx.userId!),gte(domainEvent.occurredAt,record.startedAt)))
+   .orderBy(desc(domainEvent.occurredAt),desc(domainEvent.sequence)).limit(1);
+  if(!event)return null;
+  const decision:'approved'|'rejected'=event.eventType==='leave-request.rejected'?'rejected':'approved';
   const [existing]=await tx.select({id:terasOutcomeFollowup.id}).from(terasOutcomeFollowup)
    .where(and(eq(terasOutcomeFollowup.tenantId,ctx.tenantId),eq(terasOutcomeFollowup.recordId,input.recordId),eq(terasOutcomeFollowup.kind,'decision'))).limit(1);
   if(existing)return null;
-  return{decision:step.status as 'approved'|'rejected',leaveRequestId:outcome.leaveRequestId};
+  return{decision,leaveRequestId:outcome.leaveRequestId};
  });
  if(!bound||bound.decision!==input.decision)return null;
  const followed=bound.decision==='approved';

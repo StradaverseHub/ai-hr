@@ -38,7 +38,7 @@ const Authority=z.discriminatedUnion('kind',[
  z.object({kind:z.literal('person'),askedByUserId:uuid}).strict(),
  z.object({kind:z.literal('mandate'),mandateId:uuid,mandateVersion:z.number().int().min(1),grantorUserId:uuid}).strict(),
 ]);
-/** The stored harness trace (core/harness/trace-persistence.ts storedTrace) keeps kinds and counts only. Its top-level
+/** The stored turn trace (storedTrace, written with the live-chat turn's record) keeps kinds and counts only. Its top-level
  * groups are a closed list; below them the shape is left to the trace (budgets and gate gain keys over time), but every
  * value is bounded: short single-line strings, finite numbers, booleans, null, short lists and small objects, a few
  * levels deep and at most 64 KiB in all. So a question, a reply or a record's contents cannot be stored as trace. */

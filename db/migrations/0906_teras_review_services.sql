@@ -19,10 +19,11 @@
 CREATE UNIQUE INDEX teras_outcome_followup_one_decision_idx ON public.teras_outcome_followup(tenant_id,record_id) WHERE kind='decision';
 --> statement-breakpoint
 -- 2. M4: a decision follow-up is appended only by the person the record answered (its asker), never by a group
---    administrator or the grantor. On an approver recommendation it must also match the native decision: an approval
---    step of the recommended request, decided by one of the caller's own employments after the recommendation was
---    computed, approving for 'accepted' and rejecting for 'rejected'. Undo and notice keep the 0890 readers' rule.
---    The step and employment are read under the caller's own RLS.
+--    administrator or the grantor. On an approver recommendation it must also match the native decision: the leave
+--    engine's decision event on the recommended request (core/leave.ts: approved, step approved or rejected),
+--    attributed to the caller's login, after the recommendation was computed; 'accepted' for an approval and
+--    'rejected' for a rejection. (leave_approval_step.decided_by_employment_id is optional for callers, so it is not
+--    used.) Undo and notice keep the 0890 readers' rule. The event is read under the caller's own RLS.
 DROP POLICY teras_outcome_followup_insert ON public.teras_outcome_followup;
 --> statement-breakpoint
 CREATE POLICY teras_outcome_followup_insert ON public.teras_outcome_followup FOR INSERT TO ai_hr_app
@@ -33,10 +34,12 @@ CREATE POLICY teras_outcome_followup_insert ON public.teras_outcome_followup FOR
   AND (kind<>'decision' OR EXISTS (SELECT 1 FROM public.teras_outcome_record r
    WHERE r.tenant_id=app.current_tenant_id() AND r.id=teras_outcome_followup.record_id AND r.asked_by_user_id=app.current_user_id()
     AND (r.agent_identity<>'worker.approver_recommendation' OR EXISTS (
-     SELECT 1 FROM public.leave_approval_step s JOIN public.employment e ON e.id=s.decided_by_employment_id
-     WHERE s.tenant_id=r.tenant_id AND s.leave_request_id::text=(r.outcome->>'leaveRequestId')
-      AND s.status IN ('approved','rejected') AND s.decided_at>=r.started_at AND app.is_self_person(e.person_id)
-      AND ((teras_outcome_followup.decision='accepted')=(s.status='approved')))))));
+     SELECT 1 FROM public.domain_event d
+     WHERE d.tenant_id=r.tenant_id AND d.aggregate_type='leave-request' AND d.aggregate_id=(CASE WHEN r.outcome->>'leaveRequestId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+       THEN (r.outcome->>'leaveRequestId')::uuid END)
+      AND d.event_type IN ('leave-request.approved','leave-request.step.approved','leave-request.rejected')
+      AND d.actor_type='user' AND d.actor_id=app.current_user_id() AND d.occurred_at>=r.started_at
+      AND ((teras_outcome_followup.decision='accepted')=(d.event_type<>'leave-request.rejected')))))));
 --> statement-breakpoint
 -- 3. M17: the inbox digest reads a grantor's latest prepared run; the registry reads each agent identity's last run.
 CREATE INDEX teras_outcome_record_grantor_idx ON public.teras_outcome_record(tenant_id,grantor_user_id,started_at) WHERE grantor_user_id IS NOT NULL;
