@@ -17,7 +17,9 @@
   - **Run 41343676782** (ec737590): 22 review files plus the single model run, `openai/gpt-6-luna` on Azure.
     - Cost: **$0.09** for 211 turns. The cap was $9 and the review budget is $10.
     - The full transcript is in `model-run-41343676782.json`.
-  - **Final run:** see the PR. It re-runs everything after the last test fixes.
+  - **Final run 41346307497** (85d4e1b7): whole-repository typecheck green; 146 assertions, 94 pass and 52 fail.
+    - Every `REVIEW pass` test passes.
+    - Every finding test fails for its stated reason, with one exception: stress claim L4 (overlapping turns lose a task-memory update) passed, so it was not reproduced. It was renamed to a pass test and left out of this report.
 - **Test naming:**
   - `REVIEW <severity>: …` tests **fail on the reviewed code** and should pass once the finding is fixed.
   - `REVIEW pass: …` tests pin what already holds.
