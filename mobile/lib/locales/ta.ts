@@ -3,6 +3,17 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  approvalToilSummary: "விடுப்பு வரவு · {days} · {hours} மணிநேரம்",
+  approvalToilRecalculate: "ஒப்புதல் அளிக்கும்போது தற்போதைய வருகை மற்றும் கொள்கையுடன் வரவு மீண்டும் சரிபார்க்கப்படும்.",
+  approvalToilExtended: "நீட்டிக்கப்பட்ட வேலை நேரம்",
+  approvalToilWorkedDay: "ஓய்வு நாள் அல்லது விடுமுறை நாளில் வேலை",
+  approvalToilRequested: "கோரியது: {days} · {hours} மணிநேரம் · {from}–{to}",
+  approvalToilClock: "பணி முடிவு: {shift} · வெளியேறியது: {out} · தகுதியானது: {minutes} நிமிடங்கள்",
+  approvalToilLegacy: "தற்போதைய விடுப்பு வரவு விதிகள் பொருந்தும்.",
+  approvalToilCalculation: "கோரியது: {claimed} நிமி · வரம்பு: {bound} நிமி · தகுதி: {eligible} நிமி · வரவு: {days}",
+  approvalToilDated: "{date}: மூல நேரம் {source} நிமி · தகுதியானது {qualifying} · கணக்கிட்டது {counted} · {days}",
+  approvalToilUnavailable: "வரவு மதிப்பாய்வு கிடைக்கவில்லை அல்லது முழுமையடையவில்லை. ஒப்புதலுக்கு முன் புதுப்பிக்கவும்.",
+
   signedClockUnavailable: "சாதனச் சரிபார்ப்புகள் தற்காலிகமாகக் கிடைக்கவில்லை. பின்னர் மீண்டும் முயலவும். சேமிக்கப்பட்ட முயற்சிகள் ரசீது மீட்புக்குக் கிடைக்கும்.",
   signedClockUnsupported: "தேவையான வருகைச் சரிபார்ப்பை இந்தச் செயலியோ சாதனமோ ஆதரிக்கவில்லை. செயலியைப் புதுப்பிக்கவும் அல்லது HR-ஐத் தொடர்புகொள்ளவும்.",
   signedClockEvidenceRefused: "சாதனச் சான்று ஏற்கப்படவில்லை. இந்த முயற்சியின் ரசீதைச் சரிபார்க்கவும், சாதனப் பதிவை மறுபரிசீலனை செய்யவும் அல்லது HR-ஐத் தொடர்புகொள்ளவும்.",

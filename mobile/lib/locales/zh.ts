@@ -3,6 +3,17 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  approvalToilSummary: "假期积分 · {days} · {hours} 小时",
+  approvalToilRecalculate: "批准时将根据当前考勤和政策重新核实积分。",
+  approvalToilExtended: "延长工作时间",
+  approvalToilWorkedDay: "休息日或假日工作",
+  approvalToilRequested: "申请：{days} · {hours} 小时 · {from}–{to}",
+  approvalToilClock: "班次结束：{shift} · 签退：{out} · 合资格：{minutes} 分钟",
+  approvalToilLegacy: "适用现有假期积分规则。",
+  approvalToilCalculation: "申请：{claimed} 分钟 · 上限：{bound} 分钟 · 合资格：{eligible} 分钟 · 积分：{days}",
+  approvalToilDated: "{date}：来源 {source} 分钟 · 合资格 {qualifying} · 计入 {counted} · {days}",
+  approvalToilUnavailable: "积分审核不可用或不完整。请刷新后再批准。",
+
   signedClockUnavailable: "设备检查暂时不可用。请稍后重试。已保存的尝试仍可用于找回回执。",
   signedClockUnsupported: "此应用或设备不支持所需的考勤检查。请更新应用或联系 HR。",
   signedClockEvidenceRefused: "设备凭证未被接受。请查看此次尝试的回执、检查设备注册，或联系 HR。",

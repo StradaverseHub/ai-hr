@@ -15,9 +15,10 @@ import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
+import { setCompensation } from '../core/comp';
 import { endReportingLine, hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
-import { decideLeave, requestLeave, requestLeaveCancellation } from '../packs/leave/service';
+import { decideLeave, requestLeave, requestLeaveCancellation, setToilPolicy } from '../packs/leave/service';
 import { listLeaveRequests } from '../core/read';
 import {
   checkIn, checkOut, decideAttendanceCorrection, listAttendanceCorrections, reassignAttendanceWorkflowStageToHr, requestAttendanceCorrection,
@@ -29,7 +30,7 @@ import { listPendingTasks } from '../core/approvals-inbox';
 import { isModuleEnabled } from '../core/entitlements';
 import { AuthRequiredError } from '../lib/auth-errors';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, createAppUser, harnessSnapshot, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let caller: SessionContext;
 let blocked = false;
@@ -40,7 +41,7 @@ const decision = await import('../app/api/mobile/v2/tasks/[kind]/[id]/decision/r
 const document = await import('../app/api/mobile/v2/tasks/[kind]/[id]/document/route');
 
 type Role = 'employee' | 'manager' | 'hr_admin' | 'super_admin';
-type Kind = 'leave' | 'leaveCancellation' | 'attendance';
+type Kind = 'leave' | 'leaveCancellation' | 'attendance' | 'replacementLeave';
 let base: Base;
 const TODAY = todayInKualaLumpur();
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
@@ -445,5 +446,51 @@ describe('attendance decisions (clock corrections and overtime share one decider
     expect(seen.body).toMatchObject({ outcome: 'found', task: { application: 'overtime', requestedOtMinutes: 60, original: null, proposedPunches: null } });
     expect(['workday', 'rest_day', 'holiday']).toContain(seen.body.task.dayType);
     expect((await post(manager, 'attendance', id, { requestId: randomUUID(), decision: 'reject', reason: 'Not planned', expected: seen.body.task.expected })).body).toEqual({ outcome: 'accepted', status: 'rejected' });
+  });
+});
+
+
+describe('native replacement leave', () => {
+  async function request() {
+    await setModule(base.tenantId,'toil','active');
+    for (const who of [employee,manager,colleague,hr]) who.ctx = {...who.ctx,entitlements:harnessSnapshot(base.tenantId)};
+    const [r] = await owner.db.insert(schema.replacementLeaveRequest).values({tenantId:base.tenantId,employmentId:employee.employmentId,unit:'day',totalDays:'1',totalHours:'8',submittedOn:TODAY,reason:'Worked a rest day'}).returning({id:schema.replacementLeaveRequest.id});
+    await owner.db.insert(schema.replacementLeaveRequestDate).values({tenantId:base.tenantId,requestId:r.id,subjectEmploymentId:employee.employmentId,workedDate:WORKED,days:'1',sourceType:'non_working_day'});
+    return r.id;
+  }
+  it('keeps old clients on web and exposes full review to opted-in assigned managers', async () => {
+    const id=await request(); caller=manager.ctx;
+    const old=await get(''); expect(old.body.items.find((x:any)=>x.id===id).nativeDecision).toBe(false);
+    const current=await get('?native=expanded'); expect(current.body.items.find((x:any)=>x.id===id).nativeDecision).toBe(true);
+    const d=await detail(manager,'replacementLeave',id);
+    expect(d.body.outcome).toBe('found');expect(d.body.task.totalDays).toBe(1);expect(d.body.task.employeeReason).toBe('Worked a rest day');
+    expect(d.body.task.dates[0]).toMatchObject({workedDate:WORKED,days:1,sourceType:'non_working_day'});
+    expect(d.body.task.dates[0].claimReview).toBeTruthy();
+  });
+  it('rejects atomically and replays the same receipt without a second decision',async()=>{
+    const id=await request(),requestId=randomUUID();
+    const first=await decide(manager,'replacementLeave',id,{requestId,decision:'reject'});
+    expect(first.body).toEqual({outcome:'accepted',status:'rejected'});
+    const replay=await post(manager,'replacementLeave',id,{requestId,decision:'reject',expected:{status:'pending'}});
+    expect(replay.body).toEqual(first.body);
+    const conflict=await post(manager,'replacementLeave',id,{requestId,decision:'approve',expected:{status:'pending'}});
+    expect(conflict.body.code).toBe('request_conflict');
+    expect((await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId)))).toHaveLength(0);
+  });
+  it('approval invokes the credit owner and a retry cannot mint twice',async()=>{
+    const id=await request();
+    await setCompensation(adminCtx(base),{employmentId:employee.employmentId,basicSalary:8000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
+    await setToilPolicy(adminCtx(base),{companyId:base.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true});
+    const requestId=randomUUID();const answer=await decide(manager,'replacementLeave',id,{requestId});
+    expect(answer.body).toEqual({outcome:'accepted',status:'approved'});
+    const replay=await post(manager,'replacementLeave',id,{requestId,decision:'approve',expected:{status:'pending'}});expect(replay.body).toEqual(answer.body);
+    const credits=await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId));expect(credits).toHaveLength(1);
+  });
+  it('refuses self, unassigned and guessed requests; revoked bearer cannot decide',async()=>{
+    const id=await request();
+    expect((await detail(employee,'replacementLeave',id)).body.code).toBe('self_approval');
+    expect((await detail(colleague,'replacementLeave',id)).body.code).toBe('not_assigned');
+    expect((await detail(manager,'replacementLeave',randomUUID())).body.code).toBe('not_assigned');
+    blocked=true;expect((await post(manager,'replacementLeave',id,{requestId:randomUUID(),decision:'approve',expected:{status:'pending'}})).status).toBe(401);
   });
 });

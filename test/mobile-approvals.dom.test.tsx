@@ -382,3 +382,22 @@ describe('list rows say which request', () => {
     expect(new Set(names).size).toBe(names.length);
   });
 });
+
+
+describe('replacement leave review',()=>{
+  const toil=(review:Record<string,unknown>={basis:'legacy'})=>({outcome:'found',task:{kind:'replacementLeave',id:ID,subject:{name:'Aisyah',code:'E001'},createdAt:'2026-11-01T01:00:00.000Z',reasonRequiredToReject:false,unit:'hour',totalDays:1,totalHours:8,submittedOn:'2026-11-01',employeeReason:'Rest day worked',expected:{status:'pending'},dates:[{workedDate:'2026-10-31',days:1,hours:8,fromTime:'09:00',toTime:'17:00',sourceType:'non_working_day',workedDayKind:'rest_day',shiftEnd:null,actualClockOut:null,eligibleMinutes:480,claimReview:review}]}});
+  it('renders the requested source and attendance facts before an explicitly confirmed decision',async()=>{
+    const f=fixture();f.apiGetV2.mockResolvedValue(toil());f.apiPostV2.mockResolvedValue({outcome:'accepted',status:'approved'});
+    render(<f.ApprovalDetailScreen kind="replacementLeave" id={ID}/>);
+    await screen.findByText('2026-10-31');expect(screen.getByText(/approvalToilRequested/)).toBeTruthy();expect(screen.getByText(/approvalToilClock/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button',{name:'approvalApprove'}));expect(f.apiPostV2).not.toHaveBeenCalled();await f.confirm();
+    expect(f.apiPostV2.mock.calls[0][0]).toBe(`v2/tasks/replacementLeave/${ID}/decision`);
+    expect(f.apiPostV2.mock.calls[0][2]).toMatchObject({decision:'approve',expected:{status:'pending'}});
+  });
+  it('blocks approval of unavailable credits without preventing rejection',async()=>{
+    const f=fixture();f.apiGetV2.mockResolvedValue(toil({basis:'unavailable',reason:'stale'}));
+    render(<f.ApprovalDetailScreen kind="replacementLeave" id={ID}/>);await screen.findByText('approvalToilUnavailable');
+    expect((screen.getByRole('button',{name:'approvalApprove'}) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button',{name:'approvalReject'}) as HTMLButtonElement).disabled).toBe(false);
+  });
+});

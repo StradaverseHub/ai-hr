@@ -3,6 +3,17 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  approvalToilSummary: "เครดิตวันลา · {days} · {hours} ชั่วโมง",
+  approvalToilRecalculate: "ระบบจะตรวจสอบเครดิตกับการลงเวลาและนโยบายปัจจุบันอีกครั้งเมื่ออนุมัติ",
+  approvalToilExtended: "ชั่วโมงทำงานเพิ่มเติม",
+  approvalToilWorkedDay: "ทำงานในวันพักหรือวันหยุด",
+  approvalToilRequested: "ขอ: {days} · {hours} ชั่วโมง · {from}–{to}",
+  approvalToilClock: "สิ้นสุดกะ: {shift} · ออกงาน: {out} · มีสิทธิ์: {minutes} นาที",
+  approvalToilLegacy: "ใช้กฎเครดิตวันลาเดิม",
+  approvalToilCalculation: "ขอ: {claimed} นาที · ขอบเขต: {bound} นาที · มีสิทธิ์: {eligible} นาที · เครดิต: {days}",
+  approvalToilDated: "{date}: เวลาต้นทาง {source} นาที · ผ่านเกณฑ์ {qualifying} · นับ {counted} · {days}",
+  approvalToilUnavailable: "การตรวจสอบเครดิตไม่พร้อมหรือไม่สมบูรณ์ โปรดรีเฟรชก่อนอนุมัติ",
+
   signedClockUnavailable: "การตรวจสอบอุปกรณ์ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ภายหลัง ความพยายามที่บันทึกไว้ยังคงใช้กู้คืนใบรับได้",
   signedClockUnsupported: "แอปหรืออุปกรณ์นี้ไม่รองรับการตรวจสอบการเข้างานที่กำหนด กรุณาอัปเดตแอปหรือติดต่อ HR",
   signedClockEvidenceRefused: "หลักฐานจากอุปกรณ์ไม่ได้รับการยอมรับ กรุณาตรวจสอบใบรับของความพยายามนี้ ตรวจสอบการลงทะเบียนอุปกรณ์ หรือติดต่อ HR",

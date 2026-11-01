@@ -20,6 +20,17 @@ import th from './locales/th';
 import vi from './locales/vi';
 
 const en = {
+  approvalToilSummary: "Leave credit · {days} · {hours} hours",
+  approvalToilRecalculate: "Credits are rechecked against current attendance and policy when approved.",
+  approvalToilExtended: "Extended working hours",
+  approvalToilWorkedDay: "Worked rest day or holiday",
+  approvalToilRequested: "Requested: {days} · {hours} hours · {from}–{to}",
+  approvalToilClock: "Shift end: {shift} · Clock out: {out} · Eligible: {minutes} minutes",
+  approvalToilLegacy: "Existing leave credit rules apply.",
+  approvalToilCalculation: "Claimed: {claimed} min · Bound: {bound} min · Eligible: {eligible} min · Credit: {days}",
+  approvalToilDated: "{date}: {source} source minutes · {qualifying} qualifying · {counted} counted · {days}",
+  approvalToilUnavailable: "Credit review is unavailable or incomplete. Refresh before approving.",
+
   signedClockUnavailable: "Device checks are temporarily unavailable. Try again later. Saved attempts remain available for receipt recovery.",
   signedClockUnsupported: "This app or device does not support the required attendance check. Update the app or contact HR.",
   signedClockEvidenceRefused: "The device evidence was not accepted. Check this attempt's receipt, review device registration, or contact HR.",
@@ -870,6 +881,17 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  approvalToilSummary: "Kredit cuti · {days} · {hours} jam",
+  approvalToilRecalculate: "Kredit disemak semula dengan kehadiran dan polisi semasa apabila diluluskan.",
+  approvalToilExtended: "Waktu kerja lanjutan",
+  approvalToilWorkedDay: "Bekerja pada hari rehat atau cuti",
+  approvalToilRequested: "Dimohon: {days} · {hours} jam · {from}–{to}",
+  approvalToilClock: "Tamat syif: {shift} · Keluar: {out} · Layak: {minutes} minit",
+  approvalToilLegacy: "Peraturan kredit cuti sedia ada digunakan.",
+  approvalToilCalculation: "Dituntut: {claimed} min · Had: {bound} min · Layak: {eligible} min · Kredit: {days}",
+  approvalToilDated: "{date}: {source} minit sumber · {qualifying} layak · {counted} dikira · {days}",
+  approvalToilUnavailable: "Semakan kredit tidak tersedia atau belum lengkap. Muat semula sebelum meluluskan.",
+
   signedClockUnavailable: "Semakan peranti tidak tersedia buat sementara. Cuba lagi kemudian. Resit cubaan tersimpan masih boleh disemak.",
   signedClockUnsupported: "Aplikasi atau peranti ini tidak menyokong semakan kehadiran yang diperlukan. Kemas kini aplikasi atau hubungi HR.",
   signedClockEvidenceRefused: "Bukti peranti tidak diterima. Semak resit cubaan ini, semak pendaftaran peranti, atau hubungi HR.",

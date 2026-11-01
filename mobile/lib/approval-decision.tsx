@@ -38,7 +38,7 @@ import {
 
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NATIVE = ['leave', 'leaveCancellation', 'attendance'] as const;
+const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'replacementLeave'] as const;
 /** Decided in this app: the server says it may be, AND this build has the screen for it (claims no longer do). */
 export const decidesNatively = (item: Pick<TaskItemV2, 'kind' | 'nativeDecision'>) => item.nativeDecision && (NATIVE as readonly string[]).includes(item.kind);
 /** Where a web-only row opens: the server's path, or — for a kind the server still marks native (a claim) and so sends
@@ -115,7 +115,7 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
 export function ApprovalsScreen() {
   const { palette } = useTenantDesign();
   const { signOut } = useSession();
-  const list = usePagedResource(TASKS, {}, keyOf, signOut);
+  const list = usePagedResource(TASKS, { native: 'expanded' }, keyOf, signOut);
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
     <Atmosphere strong />
     <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
@@ -160,6 +160,7 @@ type Sent = { body: Body; phase: 'sending' | 'uncertain' };
 /** What the task asks, in one line: type · dates · days, or the attendance application's own facts. */
 export function taskLine(task: TaskDetailV2): string {
   // Never loaded here (taskPath refuses a claim); kept so the server's union stays exhaustively handled.
+  if (task.kind === 'replacementLeave') return t('approvalToilSummary',{days:fmtDays(task.totalDays),hours:String(task.totalHours)});
   if (task.kind === 'claim') return t('task_claim');
   // fmtDays already carries its unit ("5 days"); the summary templates add none (a "{days} days" template doubled it).
   if (task.kind === 'leave') return t('approvalLeaveSummary', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
@@ -186,6 +187,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
   const task = detail.data?.outcome === 'found' ? detail.data.task : null;
   // Online only: a decision needs a fresh answer from the server, never a stale copy.
   const online = !!task && !detail.error && !detail.loading;
+  const creditBlocked = task?.kind === 'replacementLeave' && task.dates.some(d => !d.claimReview || d.claimReview.basis === 'unavailable' || (d.claimReview.basis === 'formula' && (d.claimReview.status !== 'ready' || d.claimReview.creditDays == null || d.claimReview.eligibleMinutes == null)));
   const busy = sent?.phase === 'sending';
   const pendingDates = task?.kind === 'leave' ? task.dates.filter((d) => d.status === 'pending').map((d) => d.date) : [];
   const perDate = pendingDates.length > 0;
@@ -238,7 +240,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
   </Screen>;
 
   return <Screen back onRefresh={detail.reload} footer={task && !sent ? <Material style={{marginHorizontal:16,marginBottom:20,padding:14,gap:8}}>
-    <View style={{flexDirection:'row',gap:12}}><View style={{flex:1}}><Button title={t('approvalReject')} kind="quiet" disabled={!online || (needsReasonToReject && !trimmed)} onPress={() => confirm('reject')} /></View><View style={{flex:1}}><Button title={t('approvalApprove')} disabled={!online || (perDate && approving.length === 0) || (partial && !trimmed)} onPress={() => confirm('approve')} /></View></View>
+    <View style={{flexDirection:'row',gap:12}}><View style={{flex:1}}><Button title={t('approvalReject')} kind="quiet" disabled={!online || (needsReasonToReject && !trimmed)} onPress={() => confirm('reject')} /></View><View style={{flex:1}}><Button title={t('approvalApprove')} disabled={!online || creditBlocked || (perDate && approving.length === 0) || (partial && !trimmed)} onPress={() => confirm('approve')} /></View></View>
     <Text style={{color:palette.muted,fontSize:12,lineHeight:17,textAlign:'center'}}>{t('approvalConfirmHint')}</Text>
   </Material> : undefined}>
     <LoadState loading={detail.loading} hasData={detail.data != null} error={detail.error} onRetry={detail.reload} />
@@ -249,6 +251,20 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       <Text style={{ color: palette.text, fontSize: 17, lineHeight: 24 }}>{taskLine(task)}</Text>
       {task.employeeReason && <Muted>{t('approvalEmployeeNote', { note: task.employeeReason })}</Muted>}
       {((task.kind === 'leave' && task.hasDocument) || (task.kind === 'attendance' && task.hasAttachment)) && <Muted>{t('approvalDocumentOnWeb')}</Muted>}
+      {task.kind === 'replacementLeave' && <>
+        <Muted>{t('approvalToilRecalculate')}</Muted>
+        {task.dates.map((d,i) => <Card key={`${d.workedDate}:${i}`}>
+          {heading(d.workedDate)}
+          <Muted>{t(d.sourceType === 'extended_hours' ? 'approvalToilExtended' : 'approvalToilWorkedDay')}</Muted>
+          <Muted>{t('approvalToilRequested',{days:d.days == null?'—':fmtDays(d.days),hours:d.hours == null?'—':String(d.hours),from:d.fromTime??'—',to:d.toTime??'—'})}</Muted>
+          <Muted>{t('approvalToilClock',{shift:d.shiftEnd??'—',out:d.actualClockOut??'—',minutes:d.eligibleMinutes==null?'—':String(d.eligibleMinutes)})}</Muted>
+          {d.claimReview?.basis === 'legacy' ? <Muted>{t('approvalToilLegacy')}</Muted> : d.claimReview?.basis === 'formula' ? <>
+            <Muted>{t('approvalToilCalculation',{claimed:d.claimReview.claimedMinutes==null?'—':String(d.claimReview.claimedMinutes),bound:String(d.claimReview.boundMinutes),eligible:d.claimReview.eligibleMinutes==null?'—':String(d.claimReview.eligibleMinutes),days:d.claimReview.creditDays==null?'—':fmtDays(d.claimReview.creditDays)})}</Muted>
+            {d.claimReview.datedParts?.map(part=><Muted key={part.sequence}>{t('approvalToilDated',{date:part.date,source:String(part.sourceMinutes),qualifying:String(part.qualifyingMinutes),counted:String(part.countedMinutes),days:fmtDays(part.days)})}</Muted>)}
+          </> : null}
+        </Card>)}
+        {creditBlocked && <Muted>{t('approvalToilUnavailable')}</Muted>}
+      </>}
       {task.kind === 'attendance' && task.original && <Card>
         {heading(t('approvalOriginalHeading'))}
         <Muted>{task.original.state === 'not_captured' ? t('approvalOriginalNotCaptured') : task.original.state === 'no_record' ? t('approvalOriginalNoRecord')

@@ -3,6 +3,17 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  approvalToilSummary: "Tín dụng nghỉ phép · {days} · {hours} giờ",
+  approvalToilRecalculate: "Tín dụng được kiểm tra lại theo chấm công và chính sách hiện tại khi phê duyệt.",
+  approvalToilExtended: "Giờ làm việc kéo dài",
+  approvalToilWorkedDay: "Làm ngày nghỉ hoặc ngày lễ",
+  approvalToilRequested: "Yêu cầu: {days} · {hours} giờ · {from}–{to}",
+  approvalToilClock: "Kết thúc ca: {shift} · Ra: {out} · Đủ điều kiện: {minutes} phút",
+  approvalToilLegacy: "Áp dụng quy tắc tín dụng nghỉ phép hiện có.",
+  approvalToilCalculation: "Yêu cầu: {claimed} phút · Giới hạn: {bound} phút · Đủ điều kiện: {eligible} phút · Tín dụng: {days}",
+  approvalToilDated: "{date}: {source} phút nguồn · {qualifying} đủ điều kiện · {counted} được tính · {days}",
+  approvalToilUnavailable: "Đánh giá tín dụng chưa sẵn sàng hoặc chưa đầy đủ. Làm mới trước khi phê duyệt.",
+
   signedClockUnavailable: "Tính năng kiểm tra thiết bị tạm thời không khả dụng. Vui lòng thử lại sau. Các lần thử đã lưu vẫn có thể dùng để khôi phục biên nhận.",
   signedClockUnsupported: "Ứng dụng hoặc thiết bị này không hỗ trợ bước kiểm tra chấm công bắt buộc. Hãy cập nhật ứng dụng hoặc liên hệ HR.",
   signedClockEvidenceRefused: "Bằng chứng từ thiết bị không được chấp nhận. Hãy kiểm tra biên nhận của lần thử này, xem lại đăng ký thiết bị hoặc liên hệ HR.",
