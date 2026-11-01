@@ -49,7 +49,7 @@ const REVIEWED_MIGRATION_INPUTS=[
  {path:'scripts/lib/performance-role-fixture.ts',sha256:'fc249f2c1269be5af0cc5305a74d0e1083adf9ba1946ff23e5cb3e7256b49e9b'},
  {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
  {path:'scripts/lib/discard-premigration.ts',sha256:'55810773c7ad96955d0877b240fb59ce07c2ed17759110768ddafa2273b81019'},
- {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
+ {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'8bb2bdea351d0c81f52fcc2941eb4120a928c415d64ac79c233aac388dac092f'},
 ] as const;
 beforeAll(migrateTestDb);beforeEach(resetDb);afterAll(closeAll);
 it('runs immutable 968 worker Git source under the corrected V2 root policy against the AI schema and web contract',async()=>{
