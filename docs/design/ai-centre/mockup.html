@@ -392,18 +392,33 @@ const ITEMS=[
 ];
 const GROUPS=[['decide','Needs your decision','Decide on the review page. Nothing completes from this list.'],['prep','Prepared for you','Ready to check. You confirm before anything changes.'],['fyi','For your information','Findings and reminders the workers sent.']];
 
+/* Real inventory from lib/ai/features.ts, core/control-domains.ts agentStatuses and the mandates on PR 182.
+   [name, family, trigger, effect, authority, switch, last run, response, where it exists today, source id] */
 const WORKERS=[
- ['Payroll anomalies','watcher','Each payroll run','Notify','Company switch','on','Today 08:12','71% accepted · 0 reversed'],
- ['Setup readiness','watcher','Daily 02:00','Notify','Company switch','on','Today 02:00','Not enough cases yet'],
- ['Holiday minimum','watcher','Weekly','Notify','Company switch','on','Sun 02:00','Not enough cases yet'],
- ['Approval chaser','chaser','Daily 09:00','Remind','Company switch','off','Never','—'],
- ['Claims documents chaser','chaser','Daily 09:00','Remind','Company switch','on','Today 09:00','4 sent · 1 completed'],
- ['Monthly payroll inputs','preparer','Monthly, day 20','Prepare','Delegated job D-0142 · Siti Aminah','on','20 Oct','2 of 2 confirmed'],
- ['Monday team absence summary','preparer','Mondays 08:00','Summarise','Delegated job D-0157 · Lee Mei Ling','on','Mon 27 Oct','—'],
- ['Small leave approvals','decider','On request','Complete under delegation','Not available: legal review pending','locked','Never','Needs acceptance evidence'],
- ['Payslip and deduction explainer','explainer','On request','None','The person asking','on','Today 11:40','88% helpful · 25 cases'],
- ['Payroll anomaly narrator','explainer','On finding','None','Company switch','on','Today 08:13','—'],
+ ['Payroll anomaly checks','watcher','Each payroll run','Raise findings','Company switch','on','Today 08:12','71% accepted · 0 reversed','Main','detectors'],
+ ['Nightly payroll exception sweep','watcher','Nightly','Raise findings','Agent principal','on','Today 02:10','—','Main','sweep · anomaly-sweep'],
+ ['Record readiness','watcher','On change','Raise findings','Company switch','on','Today 02:00','Not enough cases yet','Main','readiness'],
+ ['Claims input triage','watcher','On claim submit','Flag for review','Company switch','off','Never','—','Main · default off','claims_triage'],
+ ['Approval chaser','chaser','Daily','Remind (template, no model)','Company switch','off','Never','—','Main · default off','approval_chasers'],
+ ['Review chaser','chaser','Daily','Remind (template, no model)','Company switch','on','Today 09:00','6 sent · 4 completed','Main · default off','review_chasers'],
+ ['Missing clock-in reminder','chaser','Daily','Remind (template, no model)','Company switch','off','Never','—','Main · default off','clock_reminders'],
+ ['Document expiry reminder','chaser','Daily','Remind (template, no model)','Company switch','on','Today 09:00','2 sent','Main · default off','document_reminders'],
+ ['Lifecycle step chaser','chaser','Daily','Remind (template, no model)','Company switch','off','Never','—','Main · default off','lifecycle_chasers'],
+ ['Readiness reminders','chaser','Weekly','Remind','Company switch','off','Never','—','Main · default off','readiness_reminders · nudge'],
+ ['Proposed actions','preparer','After each sweep','Prepare (an administrator approves)','Company switch','on','Today 02:15','12 approved · 1 reversed','Main','actions'],
+ ['Pay-rule drafter','preparer','On request','Draft a pay rule','The person asking','on','Yesterday','3 of 4 kept','Main','pay_rule_draft'],
+ ['Personnel import mapping','preparer','On request','Suggest column mapping','The person asking','on','28 Oct','—','Main','personnel_import_mapping'],
+ ['Performance drafting (6 switches)','preparer','On request','Draft review text','The person asking','off','Never','—','Main · default off','performance_*'],
+ ['Monday team absence summary','preparer','Mondays 08:00','Summarise','Delegated job · Lee Mei Ling','on','Mon 27 Oct','—','PR 182 (not on main)','team_absence_weekly_summary'],
+ ['Autonomous decisions','decider','—','Complete on its own','None granted, by design','locked','Never','—','Main · off by design','autonomy'],
+ ['Small leave approvals','decider','On request','Complete under a delegated job','Legal review pending','locked','Never','Needs acceptance evidence','Planned (ADR-0170 5b)','—'],
+ ['Payroll anomaly narrator','explainer','On finding','Explain in plain words','Company switch','on','Today 08:13','—','Main','narrator · payroll_explanation'],
+ ['Payroll hypotheses ("Look again")','explainer','Nightly and on request','Suggest possible causes','Company switch','off','Never','—','Main · default off','payroll_hypotheses'],
+ ['Protected analysis','explainer','On request','Banded patterns','The person asking','on','Today 10:05','—','Main','report_insight'],
+ ['Payslip, entitlement and attendance "Why?"','explainer','On request','Explain from the system’s calculation','The person asking','on','Today 11:40','88% helpful · 25 cases','PR 183 (not on main)','explainers'],
 ];
+/* Overnight housekeeping from /admin/scheduled-actions. Business rules, not AI: shown read-only, group administrators only. */
+const SYSTEM_JOBS=[['Earned leave top-up','leave-accrue'],['Probation and contract reviews','review-sweep'],['Brought-forward leave expiry','leave-expire-carry'],['Usage capture','usage-capture'],['Payroll exception check','anomaly-sweep'],['Leave entitlement cover check','entitlement-alarm'],['Replacement public holidays','replacement-holidays-reconcile'],['Employee Master report delivery','reports-employee-master-deliver'],['AI alert check','ai-alerts']];
 const FAM={watcher:['Watchers','eye','Detect and raise findings'],chaser:['Chasers','bell','Send reminders a person could send'],preparer:['Preparers','clip','Prepare and draft, complete nothing'],decider:['Deciders','scale','Complete within conditions, under delegation'],explainer:['Explainers','help','Explain a result from the system’s own calculation']};
 
 /* ---------- How it works: text in six languages (non-English is DRAFT, native review required) ---------- */
@@ -543,7 +558,7 @@ delegations(){
   const admin=state.role==='admin';
   return `${centreTop()}<p style="margin:0 0 16px;max-width:70ch"><b>Nothing is delegated unless you choose to.</b> A delegated job lets an AI worker do one named job for you, within your own authority, until the end date. You can stop it at any time.</p>
   <div class="dg">
-   ${admin?`<article class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><div><h3>Monthly payroll inputs</h3><p class="muted small" style="margin:4px 0 0">Preparer · prepares, never completes</p></div><span class="pill ok">Active</span></div>
+   ${admin?`<article class="card"><div style="display:flex;justify-content:space-between;gap:8px;align-items:start"><div><h3>Monthly payroll inputs</h3><p class="muted small" style="margin:4px 0 0">Preparer · prepares, never completes · example job type, not built yet</p></div><span class="pill ok">Active</span></div>
     <dl class="facts"><dt>For whom</dt><dd>Teratai Fictional Sdn Bhd</dd><dt>Limits</dt><dd>Once a month · reads attendance, claims, overtime</dd><dt>Valid until</dt><dd>3 Jan 2027, then renew</dd><dt>Tell me</dt><dd>Each time it runs</dd><dt>Last run</dt><dd>20 Oct · you confirmed it</dd></dl>
     <div style="display:flex;gap:8px"><button class="btn o">Stop now</button><button class="btn g">See what it did</button></div></article>`:''}
    <article class="card" style="border-style:dashed"><h3>Delegate a job</h3><p class="muted small" style="margin:4px 0 10px">Only jobs your company has allowed, and only within what you can already do.</p>
@@ -556,9 +571,12 @@ workers(){
   const f=state.filter in FAM?state.filter:'all';
   return `${centreTop()}<div class="card stop"><span style="color:var(--destructive)">${ic('shield')}</span><div style="flex:1"><h3>All AI workers for this company</h3><p class="muted small" style="margin:2px 0 0">Stops every worker and delegation at once. People can still use Ask.</p></div><button class="btn o">Stop all workers</button></div>
   <div class="filters" role="group" aria-label="Family">${[['all','All',WORKERS.length],...Object.entries(FAM).map(([k,v])=>[k,v[0],counts[k]||0])].map(([k,l,n])=>`<button class="chip" aria-pressed="${f===k}" data-filter="${k}">${l} <span class="num muted">${n}</span></button>`).join('')}</div>
-  <div class="card tbl"><table><thead><tr><th>Worker</th><th>Family</th><th>Runs</th><th>Effect</th><th>Runs under</th><th>Switch</th><th>Last run</th><th>How people respond</th></tr></thead><tbody>
-  ${WORKERS.filter(w=>f==='all'||w[1]===f).map(w=>`<tr><td>${w[0]}</td><td><span class="fam"><i>${ic(FAM[w[1]][1])}</i>${FAM[w[1]][0].replace(/s$/,'')}</span></td><td>${w[2]}</td><td>${w[3]}</td><td class="small">${w[4]}</td><td>${w[5]==='locked'?'<span class="pill off">Locked</span>':`<button class="switch" role="switch" aria-checked="${w[5]==='on'}" aria-label="${w[0]}"></button>`}</td><td class="num">${w[6]}</td><td class="small">${w[7]}</td></tr>`).join('')}
-  </tbody></table></div><p class="muted small">Every worker states its trigger, what it may read, its effect and its authority, or it cannot run. New workers start switched off.</p></div>`;
+  <div class="card tbl"><table><thead><tr><th>Worker</th><th>Family</th><th>Runs</th><th>Effect</th><th>Runs under</th><th>Switch</th><th>Last run</th><th>How people respond</th><th>Today</th></tr></thead><tbody>
+  ${WORKERS.filter(w=>f==='all'||w[1]===f).map(w=>`<tr><td title="${w[9]}">${w[0]}</td><td><span class="fam"><i>${ic(FAM[w[1]][1])}</i>${FAM[w[1]][0].replace(/s$/,'')}</span></td><td>${w[2]}</td><td class="small">${w[3]}</td><td class="small">${w[4]}</td><td>${w[5]==='locked'?'<span class="pill off">Locked</span>':`<button class="switch" role="switch" aria-checked="${w[5]==='on'}" aria-label="${w[0]}"></button>`}</td><td class="num">${w[6]}</td><td class="small">${w[7]}</td><td><span class="pill ${w[8].startsWith('Main')?(w[8]==='Main'?'ok':'off'):'info'}">${w[8]}</span></td></tr>`).join('')}
+  </tbody></table></div><p class="muted small">Every worker states its trigger, what it may read, its effect and its authority, or it cannot run. New workers start switched off. The “Today” column is for this review only: it shows where each worker exists in the code now.</p>
+  <section class="card sec" style="margin-top:16px"><div style="display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap"><h2>Scheduled system jobs</h2><a class="small" href="#workers">Open scheduled actions</a></div>
+   <p class="muted small" style="margin:4px 0 10px">Overnight business rules, not AI. They run on the server schedule and cannot be switched here. Group administrators only, read-only, as today.</p>
+   <div class="never">${SYSTEM_JOBS.map(([n,id])=>`<span class="pill off" title="${id}">${n}</span>`).join('')}</div></section></div>`;
 },
 setup(){
   const rows=[['ok','AI switched on for this company','Group administrator, 12 Oct'],['ok','Model provider connected','Zero retention · Singapore region'],['warn','Sensitive-topic routing','HR contact not set for Teratai Fictional'],['ok','Which pages show the floating chat','All except Payroll'],['off','Delegable jobs','1 of 3 job types allowed'],['warn','Readiness: holiday calendar 2027','1 public holiday missing']];

@@ -55,9 +55,22 @@ The name is a single config constant (`PRODUCT.centre`), because the final name 
 | `/control-tower/agents/allowances`, `/spending` | `/assistant/spend#allowances`, `#spend` | Spending only renders when a policy exists (no bounce) |
 | `/control-tower/how-it-works` | `/assistant/how-it-works` | Control Tower links to it |
 | `/control-tower`, `/readiness`, `/exceptions`, `/opportunities` | unchanged | Nav labels aligned with page titles |
+| `/admin/scheduled-actions` (9 overnight system jobs, not AI) | unchanged, group administrators only, read-only | Linked from Workers as "Scheduled system jobs" |
 | `/control-tower/actions` ("Approvals" in nav) | unchanged route, nav label "Proposed actions" | Its proposals also appear in the Inbox |
 
 **Removed or merged:** 9 AI-management nav rows become 4 tabs; the duplicate work queue on `/control-tower/agents/orchestrator` goes; the second "what is on" reader (`agentStatuses` on How it works) is replaced by the Workers registry; the chat "tools" drawer is folded into Ask and Setup; the Analytics AI panel copy inside chat is removed (the Analytics one stays).
+
+### Workers inventory (from `lib/ai/features.ts` and `core/control-domains.ts`)
+
+The Workers page lists every existing scheduled or on-request AI worker, so none of the earlier agents is lost:
+
+- **Watchers:** payroll anomaly checks, nightly payroll exception sweep, record readiness, claims input triage.
+- **Chasers:** approval, review, missing clock-in, document expiry and lifecycle chasers (template only, no model), plus readiness reminders.
+- **Preparers:** proposed actions, pay-rule drafter, personnel import mapping, performance drafting (6 switches), and the Monday team absence summary (PR 182).
+- **Deciders:** autonomy, off by design; small leave approvals, planned.
+- **Explainers:** anomaly narrator, payroll hypotheses, protected analysis, and the "Why?" explainers (PR 183).
+
+Internal switches (provider and module evaluations, module planning, feedback planning) stay platform-only and are not shown to customers. The 9 overnight system jobs (leave accrual, probation and contract reviews, brought-forward leave expiry, usage capture, payroll exception check, entitlement cover check, replacement holidays, Employee Master report delivery, AI alert check) are business rules, not AI. They stay read-only on `/admin/scheduled-actions` and are linked from Workers.
 
 ## 3. What users see
 
