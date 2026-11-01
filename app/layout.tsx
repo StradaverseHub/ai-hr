@@ -144,7 +144,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     throw e;
   }
   if (isOperator(session) && !isDemoDeployment()) {
-    if (pathname !== '/operator' && !pathname.startsWith('/operator/')) redirect('/operator');
+    if (pathname !== '/operator' && !pathname.startsWith('/operator/') && pathname !== '/admin/scheduled-actions') redirect('/operator');
     const viewer = await viewerIdentity(session);
     return <html lang={locale} data-ui-theme={uiTheme} className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="h-dvh overflow-hidden font-sans">

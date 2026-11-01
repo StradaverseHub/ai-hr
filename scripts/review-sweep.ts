@@ -41,7 +41,7 @@ import { sweepLeaveApprovalEscalations } from '../core/leave-escalation';
 import { sweepDueMovements } from '../core/movement-apply';
 import { runAutomaticChasers, runHrOrchestrator } from '../core/hr-orchestrator';
 import { engineWorkingDayCalendar } from '../core/automatic-chasers';
-import { maintainModuleAgentReleasesAsScheduledAgent } from '../core/module-agent-releases';
+import { maintainModuleAgentReleasesAsScheduledAgent } from '../core/module-agent-maintenance';
 import { agentContext, agentSwitchStatesTx, attributedEnablements, ensureAgentPrincipal } from '../core/agent-principal';
 import { drainNotificationProjection } from '../core/orchestrator-harness';
 import { dispatchNotificationsFromSweep } from '../core/notifications';
