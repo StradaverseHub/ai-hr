@@ -53,6 +53,11 @@ export function verifyCustodyReceipt(directory,cert,reconciled,reconciliationByt
  boundPrivateFile(join(root,'original-normal-cleanup.lock'),binding.lock);boundPrivateFile(join(directory,'normal-cleanup-ready.json'),binding.ready);
  assert(!existsSync('/proc/'+binding.pid)&&digest(readFileSync('/proc/sys/kernel/random/boot_id'))===binding.bootSha256,'Dead PID/boot changed after custody');return name;
 }
+/** Import-only process port for isolated FD-chain controls; the production CLI has no override. */
+export function assertInheritedExclusiveLease(run=execFileSync){
+ const fd=Number(process.env.AIHR_CLEANUP_EXCLUSIVE_FD);assert(Number.isSafeInteger(fd)&&fd>=3,'Inherited exclusive descriptor required');
+ run('python3',[new URL('cleanup-only-recovery-custody.py',import.meta.url).pathname,'assert-exclusive'],{stdio:['ignore','ignore','pipe',fd],env:{...process.env,AIHR_CLEANUP_EXCLUSIVE_FD:'3'},timeout:15000,maxBuffer:1024**2});
+}
 export async function serve({mode,source,controller,reconciliationPath,reconciliationSha256,attemptName,certificatePath}){
  assert(['inspect','cleanup','custody-check'].includes(mode)&&source==='/opt/ai-hr'&&realpathSync(source)===source&&process.cwd()===source&&process.platform==='linux','Canonical staging server only');
  assert(/^[a-f0-9]{40}$/.test(controller)&&/^[a-f0-9]{64}$/.test(reconciliationSha256)&&/^cleanup-only-v1-[a-z0-9_-]{3,60}$/.test(attemptName),'Exact reviewed controller/reconciliation/attempt required');
@@ -63,7 +68,7 @@ export async function serve({mode,source,controller,reconciliationPath,reconcili
  const {captureNormalCleanupFences,canonicalSourceExclusions}=await load('normal-cleanup-fences.mjs');
  const {fingerprintStagingEnvironment}=await load('staging-environment.mjs');const {collectMigrationLedger}=await load('staging-migration-ledger.mjs');
  const {installJson,validateInstallGrant}=await load('ci-install-grant.mjs');
- const currentLease=()=>{if(mode==='custody-check'){const fd=Number(process.env.AIHR_CLEANUP_EXCLUSIVE_FD);assert(Number.isSafeInteger(fd)&&fd>=3,'Inherited exclusive descriptor required');execFileSync('python3',[new URL('cleanup-only-recovery-custody.py',import.meta.url).pathname,'assert-exclusive'],{stdio:['ignore','ignore','pipe',fd],env:{...process.env,AIHR_CLEANUP_EXCLUSIVE_FD:'3'}});}else guardServerCli(SELECTION.source);assert(process.env.AIHR_STAGING_BATCH===SELECTION.batch&&process.env.AIHR_STAGING_EPOCH===String(SELECTION.epoch),'Exact active original lease required');};
+ const currentLease=()=>{if(mode==='custody-check')assertInheritedExclusiveLease();else guardServerCli(SELECTION.source);assert(process.env.AIHR_STAGING_BATCH===SELECTION.batch&&process.env.AIHR_STAGING_EPOCH===String(SELECTION.epoch),'Exact active original lease required');};
  currentLease();const reconciliationBytes=privateBytes(reconciliationPath),reconciled=JSON.parse(reconciliationBytes);assert(digest(reconciliationBytes)===reconciliationSha256&&reconciled.originalInstallerProcessPresent===false&&reconciled.ownedTrees.next===true&&reconciled.ownedTrees.packet===true,'Reviewed reconciliation required');
  const certificate=mode!=='inspect'?JSON.parse(privateBytes(certificatePath)):null,context=()=>({controller,toolSha256:toolDigest()});
  const permission=async()=>{currentLease();if(certificate)validateCustodyBinding(certificate,reconciled,reconciliationBytes,context());};await permission();

@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -226,6 +227,105 @@ class CustodyControls(unittest.TestCase):
             tool.no_competing_finalizer(proc)
         (process / 'cmdline').write_bytes(b'node\0/opt/ai-hr/.next/standalone/server.js\0')
         tool.no_competing_finalizer(proc)
+
+    def actual_fd_chain(self, fault=None):
+        """Real queue SQLite/EX -> Node actual remap export -> Python actual lease validator.
+
+        Only the import-only Node execution port selects a temporary readonly wrapper. Production
+        CLI paths, coordinator bootstrap and canonical checks have no environment/path override.
+        """
+        repository = Path(__file__).resolve().parents[1]
+        module_spec = importlib.util.spec_from_file_location('fixture_actual_coordinator', repository / 'scripts/staging/coordinator.py')
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        queue = self.root / 'queue'
+        queue.mkdir(mode=0o700)
+        c = module.Coordinator(queue)
+        source, batch, token = 'a' * 40, '11111111-1111-4111-8111-111111111111', 'f' * 64
+        c.db.execute('INSERT INTO batches(id,plan,state) VALUES(?,?,?)', (batch, json.dumps({'candidate': source}), 'prepared'))
+        c.db.execute('UPDATE lease SET epoch=13,batch=?,token_hash=?,phase=?', (batch, hashlib.sha256(token.encode()).hexdigest(), 'arrived'))
+        wrapper = self.root / 'readonly-fd-validator.py'
+        wrapper.write_text('''import importlib.util,sys
+from pathlib import Path
+sys.dont_write_bytecode=True
+def load(name,path):
+ s=importlib.util.spec_from_file_location(name,path);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
+tool=load('actual_custody',%s)
+module=load('actual_coordinator',%s)
+tool.OPERATIONS=Path(%s)/'operations.lock'
+c=module.Coordinator(Path(%s))
+tool.assert_exclusive_lease(module,c)
+''' % (repr(str(repository / '.github/ci/cleanup-only-recovery-custody.py')), repr(str(repository / 'scripts/staging/coordinator.py')), repr(str(queue)), repr(str(queue))))
+        node_program = '''import {execFileSync} from 'node:child_process';
+import {assertInheritedExclusiveLease} from %s;
+try {assertInheritedExclusiveLease((command,args,options)=>{
+ if(command!=='python3'||args[1]!=='assert-exclusive')throw Error('Unexpected production validator invocation');
+ const altered=%s==='remapped-fd'?{...options,stdio:options.stdio.slice(0,3)}:options;
+ return execFileSync(command,%s==='child-failure'?['-c','raise RuntimeError("bounded fixture failure")']:[%s],altered);
+});process.stdout.write('CHAIN_OK\\n');}catch{process.stderr.write('CHAIN_REFUSED\\n');process.exitCode=1;}
+''' % (json.dumps((repository / '.github/ci/cleanup-only-recovery-server.mjs').as_uri()), json.dumps(fault), json.dumps(fault), json.dumps(str(wrapper)))
+        environment = {**os.environ, 'AIHR_STAGING_BATCH': batch, 'AIHR_STAGING_EPOCH': '13', 'AIHR_STAGING_TOKEN': token,
+                       'AIHR_STAGING_CANDIDATE': source, 'PYTHONDONTWRITEBYTECODE': '1'}
+        try:
+            with c.operations(exclusive=fault != 'shared-other-description') as fd:
+                with c.transaction():
+                    c.lease({**module.environment_request(), 'batch': batch, 'epoch': 13, 'candidate': source, 'token': token})
+                extra = None
+                if fault in ['wrong-inode', 'shared-other-description']:
+                    chosen = self.root / 'unrelated.lock' if fault == 'wrong-inode' else queue / 'operations.lock'
+                    if fault == 'wrong-inode':
+                        chosen.write_bytes(b'')
+                        chosen.chmod(0o600)
+                    extra = os.open(chosen, os.O_RDWR)
+                forwarded = fd if extra is None else extra
+                environment['AIHR_CLEANUP_EXCLUSIVE_FD'] = str(forwarded)
+                if fault == 'missing-fd':
+                    environment.pop('AIHR_CLEANUP_EXCLUSIVE_FD')
+                if fault == 'wrong-token':
+                    environment['AIHR_STAGING_TOKEN'] = 'e' * 64
+                if fault == 'wrong-epoch':
+                    environment['AIHR_STAGING_EPOCH'] = '14'
+                if fault == 'wrong-source':
+                    environment['AIHR_STAGING_CANDIDATE'] = 'b' * 40
+                try:
+                    result = subprocess.run(['node', '--input-type=module', '--eval', node_program], env=environment,
+                                            pass_fds=(forwarded,), capture_output=True, timeout=20)
+                    if fault is None:
+                        self.assertEqual(result.returncode, 0, result.stderr.decode())
+                        self.assertEqual(result.stdout, b'CHAIN_OK\n')
+                    else:
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn(b'CHAIN_REFUSED', result.stderr)
+                    self.assertNotIn(token.encode(), result.stdout + result.stderr)
+                    # Children cannot release the parent's still-held actual coordinator lock.
+                    with self.assertRaises(BlockingIOError):
+                        with c.operations(exclusive=True):
+                            self.fail('Parent operation lock was lost during the child chain')
+                finally:
+                    if extra is not None:
+                        os.close(extra)
+            # Parent and child descriptors are all closed: the real kernel lock is now available.
+            with c.operations(exclusive=True):
+                pass
+        finally:
+            c.db.close()
+
+    def test_actual_coordinator_node_python_fd_chain_retains_then_releases_exclusive_lock(self):
+        self.actual_fd_chain()
+
+    def test_actual_fd_chain_refuses_missing_wrong_inode_remap_and_shared_description(self):
+        for fault in ['missing-fd', 'wrong-inode', 'remapped-fd', 'shared-other-description']:
+            with self.subTest(fault=fault):
+                self.tearDown()
+                self.setUp()
+                self.actual_fd_chain(fault)
+
+    def test_actual_fd_chain_refuses_changed_lease_and_bounded_child_failure(self):
+        for fault in ['wrong-token', 'wrong-epoch', 'wrong-source', 'child-failure']:
+            with self.subTest(fault=fault):
+                self.tearDown()
+                self.setUp()
+                self.actual_fd_chain(fault)
 
 
 if __name__ == '__main__':

@@ -174,6 +174,13 @@ def inherited_exclusive(c):
     return fd
 
 
+def assert_exclusive_lease(module, c):
+    """The production child and isolated real-coordinator FD-chain controls share this exact operation."""
+    inherited_exclusive(c)
+    with c.transaction():
+        c.lease(module.environment_request())
+
+
 def run_json(command, **kwargs):
     out = subprocess.check_output(command, timeout=120, **kwargs)
     require(0 < len(out) <= 16 * 1024 ** 2, 'Bounded complete control response required')
@@ -185,9 +192,7 @@ def main():
     require(sys.platform == 'linux' and Path.cwd() == Path('/opt/ai-hr'), 'Canonical staging only')
     module, c = coordinator()
     if sys.argv[1:] == ['assert-exclusive']:
-        inherited_exclusive(c)
-        with c.transaction():
-            c.lease(module.environment_request())
+        assert_exclusive_lease(module, c)
         return
     require(len(sys.argv) == 7 and sys.argv[1] == 'custody', 'Exact selected custody invocation required')
     _, _, controller, reconciliation, reconciliation_sha, attempt, certificate = sys.argv

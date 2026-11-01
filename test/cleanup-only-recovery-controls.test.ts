@@ -93,6 +93,7 @@ describe('V9 exact dead-lock custody authority',()=>{
   const script=new URL('./cleanup-only-recovery-custody-controls.py',import.meta.url);
   const child=spawnSync('python3',[script.pathname],{encoding:'utf8',timeout:30000,maxBuffer:1024*1024,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
   expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status,child.stderr).toBe(0);expect(child.stderr).toContain('OK');expect(child.stderr).toMatch(/Ran \d+ tests/);
+  console.info('V9_CUSTODY_PYTHON_CONTROLS '+JSON.stringify({kind:'ISOLATED_FILESYSTEM_AND_FD_CHAIN_NOT_STAGING',output:child.stderr.trim()}));
  });
 });
 
