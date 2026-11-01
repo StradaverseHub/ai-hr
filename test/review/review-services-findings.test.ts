@@ -114,7 +114,7 @@ describe('recommendation agreement follow-ups',()=>{
 });
 
 describe('outcome record free text',()=>{
- it('REVIEW low: the outcome record refuses free text in `trace`, as it does in `outcome`',async()=>{
+ it('fixed L-trace: the outcome record refuses free text in `trace`, as it does in `outcome`',async()=>{
   const now=new Date(),free='Fictional question text about a named colleague\'s medical leave and salary';
   const attempt=writeOutcomeRecord(m.employee.ctx,{runId:newRunId(),runKind:'turn',startedAt:now,finishedAt:now,authority:{kind:'person',askedByUserId:m.employee.ctx.userId!},
    agentIdentity:'teras.assistant',reads:[],checks:[],replay:{model:null,provider:null,instructionSet:null,specVersion:null,specDigest:null,toolCatalogue:null},
