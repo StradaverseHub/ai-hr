@@ -62,12 +62,13 @@ function fixture() {
     'expo/fetch':{fetch:vi.fn()},
     'expo-auth-session': { ...types, ...requests, ...hooks }, 'expo-crypto': crypto, 'expo-web-browser': browser,
     'expo-router': { router, Redirect: () => null }, react: React, 'react/jsx-runtime': jsx,
-    'react-native': { View: Container, Text: Container, StyleSheet: { create: (value: unknown) => value } },
+    'react-native': { ScrollView: Container, View: Container, Text: Container, StyleSheet: { create: (value: unknown) => value } },
     '../lib/internal-sign-in': { InternalSignIn: () => null },
     '../lib/auth': auth, '../lib/config': { config: { workosClientId: 'public-client' }, configProblem: () => null, identityClientId: () => 'public-client' },
     '../lib/company-connection': { useCompanyConnection: () => null, companyCopy: () => ({ change: 'Change company' }) },
     '../lib/connection-probe': { verifyCompanyServer: vi.fn() },
     '../lib/i18n': { t: (key: string) => key }, '../lib/session': { useSession: () => session },
+    '../lib/design': { Atmosphere: () => null, useTenantDesign: () => ({ palette: {} }) },
     '../lib/ui': { colors: {}, Button: ({ title, disabled, onPress }: any) => <button disabled={disabled} onClick={onPress}>{title}</button> },
   });
   return { View: view.default as React.ComponentType, queued, browser, auth, session, router, crypto };

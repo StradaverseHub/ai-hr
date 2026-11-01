@@ -26856,7 +26856,7 @@
     "resetDoneTitle": "Password changed",
     "resetDoneHelp": "Your previous sessions have ended. Sign in again with your new password and MFA.",
     "back": "Back to sign in",
-    "inviteTitle": "Set up your AI HR login",
+    "inviteTitle": "Set up your OneHR+ login",
     "existingLogin": "Already have a login? Sign in instead.",
     "acceptTitle": "Accept your invitation",
     "acceptHelp": "Accept this invitation using your signed-in, verified account.",
@@ -26876,7 +26876,7 @@
     "switchAccountSubmit": "Sign out and open invitation",
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
-    "signingInHelp": "Taking you to AIHR."
+    "signingInHelp": "Taking you to OneHR+."
   },
   "aiManagement": {
     "title": "AI management",

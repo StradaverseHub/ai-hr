@@ -197,7 +197,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshTo
   }
   async function register(){
     if(flight.current||!identity||!draft||pending)return;flight.current=true;const owner=authGeneration();putClock({...draft,phase:'preparing'});
-    try{const registered=await apiPost('clock-device',{label:`AI HR · ${Platform.OS}`},{employmentId:identity},operation(owner));assertAuthGeneration(owner);
+    try{const registered=await apiPost('clock-device',{label:`OneHR+ · ${Platform.OS}`},{employmentId:identity},operation(owner));assertAuthGeneration(owner);
       if(!putClock({...draft,deviceToken:registered.deviceToken,message:undefined},draft.requestId))return;
       await writeClockDevice(identity,registered.deviceToken,()=>assertAuthGeneration(owner));
     }catch(e){putClock({...draft,message:errorMessage(e)},draft.requestId);if(e instanceof SignInRequiredError)void signOut();}finally{flight.current=false;}
@@ -345,16 +345,16 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshTo
     {signedStatus?.status==='offline_pending'&&!offlineClocking&&<Muted>{t('signedClockOfflinePending')}</Muted>}
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
-      {current&&<View style={{borderBottomWidth:1,borderColor:palette.border,paddingBottom:18,gap:10}}>
+      {current&&<View style={{borderWidth:1,borderRadius:28,borderColor:palette.border,backgroundColor:palette.card,padding:24,gap:16}}>
         <Text style={{color:palette.muted,fontSize:14}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text>
-        <Text style={{color:palette.text,fontSize:32,fontWeight:'700'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text>
-        <View style={{flexDirection:design.clockLayout==='rail'?'column':'row',justifyContent:'space-between',gap:8}}>
+        <Text style={{color:palette.text,fontSize:22,fontWeight:'600',textAlign:'center'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text>
+        <View style={{gap:8,alignItems:'center'}}>
           <Muted>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Muted>
-          <Text style={{color:palette.accent,fontVariant:['tabular-nums']}}>{t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}</Text>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} accessibilityLabel={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})} style={{color:palette.text,fontSize:60,fontWeight:'500',letterSpacing:-1.8,textAlign:'center',fontVariant:['tabular-nums'],paddingVertical:16}}>{`${Math.floor(current.workedSeconds/3600).toString().padStart(2,'0')}:${Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')}`}</Text>
         </View>
       </View>}
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
-        {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:48,justifyContent:'center',borderBottomWidth:2,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.accent:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
+        {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:52,justifyContent:'center',borderRadius:26,backgroundColor:a===action?palette.button:palette.card,borderWidth:1,borderColor:a===action?palette.button:palette.border}}><Text style={{color:a===action?palette.onButton:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
         {!!draft?.attemptStartedAt&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>

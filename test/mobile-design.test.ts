@@ -23,7 +23,7 @@ describe('tenant mobile builder, published snapshots and RLS', () => {
     await changeMobileDesign(admin, 'save', 0, config('Tenant A draft'));
     await changeMobileDesign(groupAdmin(b), 'save', 0, config('Tenant B'));
     await changeMobileDesign(groupAdmin(b), 'publish', 1);
-    expect((await publishedMobileDesign(employee(a))).config.brandName).toBe('AIHR');
+    expect((await publishedMobileDesign(employee(a))).config.brandName).toBe('OneHR+');
     await changeMobileDesign(admin, 'publish', 1);
     expect((await publishedMobileDesign(employee(a))).config.brandName).toBe('Tenant A draft');
     expect((await publishedMobileDesign(employee(b))).config.brandName).toBe('Tenant B');

@@ -4,13 +4,13 @@
     "slug": "ai-hr-test",
     "version": "1.0.3",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/onehr-icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Unlock AI HR with Face ID instead of signing in again.",
-        "NSLocalNetworkUsageDescription": "Connect to your company's AI HR server when it is on your local network.",
+        "NSFaceIDUsageDescription": "Unlock OneHR+ with Face ID instead of signing in again.",
+        "NSLocalNetworkUsageDescription": "Connect to your company's OneHR+ server when it is on your local network.",
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
@@ -27,10 +27,8 @@
         "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#080b09",
+        "foregroundImage": "./assets/onehr-icon.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "ai.stradaverse.aihr.test",

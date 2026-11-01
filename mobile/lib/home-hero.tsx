@@ -12,7 +12,7 @@ import { ActivityIndicator, Animated, Pressable, ScrollView, View, type ColorVal
 import { ClockPanel, type HomeClockView } from './clock-panel';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DesignText as Text, TenantBrand, TenantSurface, useTenantDesign } from './design';
+import { Atmosphere, DesignText as Text, TenantBrand, TenantSurface, useTenantDesign } from './design';
 import { useApi } from './api';
 import { fmtCalendarDate } from './attendance-format';
 import { cardFigure, homeBalances } from './home-cards';
@@ -66,10 +66,11 @@ export function HomeHero({ name, unread, refreshToken }: { name: string | null; 
   const insets = useSafeAreaInsets();
   const radius = design.schemaVersion === 2 ? Math.max(design.composition.layout.radius, 12) : design.corners === 'soft' ? 28 : 6;
   const greeting: MessageKey = { morning: 'greetMorning', afternoon: 'greetAfternoon', evening: 'greetEvening' }[partOfDay(Date.now())] as MessageKey;
-  const on = palette.onButton;
+  const on = palette.text;
   const first = name?.trim().split(/\s+/)[0] ?? null;
-  return <View style={{ backgroundColor: palette.button, paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: radius, borderBottomRightRadius: radius, gap: 18 }}>
-    <TenantSurface band align="start"><TenantBrand /></TenantSurface>
+  return <View style={{ backgroundColor: palette.bg, paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: radius, borderBottomRightRadius: radius, gap: 18 }}>
+    <Atmosphere strong />
+    <TenantBrand />
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -6 }}>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={{ color: on, opacity: 0.8, fontSize: 15 }}>{t(greeting)}</Text>
@@ -84,7 +85,7 @@ export function HomeHero({ name, unread, refreshToken }: { name: string | null; 
       </Tactile>
       <Tactile label={t('profileOpen')} onPress={() => router.push('/profile')}
         style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: on }}>
-        <Text style={{ color: palette.button, fontSize: 16, fontWeight: '800' }}>{initials(name)}</Text>
+        <Text style={{ color: palette.bg, fontSize: 16, fontWeight: '800' }}>{initials(name)}</Text>
       </Tactile>
     </View>
     <ClockHeroCard refreshToken={refreshToken} />
@@ -121,13 +122,13 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
     ]));
     loop.start(); return () => loop.stop();
   }, [today?.clockedIn, reduceMotion, pulse]);
-  const on = palette.onButton as string;
+  const on = palette.text as string;
   const worked = today ? today.workedSeconds + (today.clockedIn ? Math.max(0, (now - receivedAt) / 1000) : 0) : 0;
   const since = today?.openSince ? clockTime(today.openSince) : null;
   const label = view.action === 'in' ? t('clockIn') : t('clockOut');
   const done = view.doneAt ? clockTime(view.doneAt) : null;
-  return <View style={{ borderRadius: 22, padding: 18, gap: 14, backgroundColor: tint(on, 0.1, 'transparent'), borderWidth: 1, borderColor: tint(on, 0.16, 'transparent') }}>
-    {!today && <TenantSurface band align="start"><LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload} /></TenantSurface>}
+  return <View style={{ borderRadius: 22, padding: 18, gap: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+    {!today && <TenantSurface band={false} align="start"><LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload} /></TenantSurface>}
     {today && <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
         <Animated.View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: today.clockedIn ? '#30D158' : tint(on, 0.45, on), opacity: pulse }} />
@@ -136,17 +137,17 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
         </Text>
         <Text style={{ color: on, opacity: 0.75, fontSize: 13 }}>{fmtCalendarDate(today.date, false)}</Text>
       </View>
-      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-        <View style={{ gap: 2, flexShrink: 1 }}>
-          <Text accessibilityLabel={`${t('workedToday')}: ${fmtDuration(worked)}`} style={{ color: on, fontSize: 40, fontWeight: '800', letterSpacing: -1, fontVariant: ['tabular-nums'] }}>{fmtDuration(worked)}</Text>
+      <View style={{ gap: 20 }}>
+        <View style={{ gap: 8, alignItems: 'center', paddingVertical: 20 }}>
+          <Text accessibilityLabel={`${t('workedToday')}: ${fmtDuration(worked)}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: on, fontSize: 56, fontWeight: '500', letterSpacing: -1.5, fontVariant: ['tabular-nums'] }}>{`${Math.floor(worked / 3600).toString().padStart(2, '0')}:${Math.floor(worked % 3600 / 60).toString().padStart(2, '0')}`}</Text>
           <Text style={{ color: on, opacity: 0.75, fontSize: 13 }}>{today.shift.code ? t('workedTodayShift', { shift: today.shift.code }) : t('workedToday')}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={t('clockOpensTab')} accessibilityState={{ disabled: view.disabled || view.busy, busy: view.busy }}
           disabled={view.disabled || view.busy} onPress={view.clock}
-          style={({ pressed }) => [{ minWidth: 112, minHeight: 52, borderRadius: 26, paddingHorizontal: 20, backgroundColor: on, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+          style={({ pressed }) => [{ minWidth: 112, minHeight: 52, borderRadius: 26, paddingHorizontal: 20, backgroundColor: palette.button, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
             (pressed || view.disabled) && { opacity: 0.75 }, pressed && !reduceMotion && { transform: [{ scale: 0.97 }] }]}>
-          {view.busy ? <ActivityIndicator color={palette.button} /> : <Icon name="clock" color={palette.button} size={18} />}
-          <Text style={{ color: palette.button, fontSize: 16, fontWeight: '800' }}>{label}</Text>
+          {view.busy ? <ActivityIndicator color={palette.onButton} /> : <Icon name="clock" color={palette.onButton} size={18} />}
+          <Text style={{ color: palette.onButton, fontSize: 16, fontWeight: '800' }}>{label}</Text>
         </Pressable>
       </View>
       {view.busy && <Text accessibilityLiveRegion="polite" style={{ color: on, fontSize: 14 }}>{t('preparingClock')}</Text>}
@@ -202,17 +203,17 @@ export type QuickAction = { key: string; icon: IconName; label: MessageKey; href
 
 export function QuickActions({ actions }: { actions: readonly QuickAction[] }) {
   const { palette, design } = useTenantDesign();
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 6;
   return <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 }}>
     {actions.map((a) => <View key={a.key} style={{ width: '25%', alignItems: 'center' }}>
-      <Tactile label={a.badge ? `${t(a.label)}, ${a.badge}` : t(a.label)} onPress={() => router.push(a.href)} style={{ alignItems: 'center', gap: 8, minWidth: 72 }}>
+      <Tactile label={a.badge ? `${t(a.label)}, ${a.badge}` : t(a.label)} onPress={() => router.push(a.href)} style={{ alignItems: 'center', gap: 8, width: '100%' }}>
         <View style={{ width: 58, height: 58, borderRadius: radius, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(palette.accent, 0.12, palette.card), borderWidth: 1, borderColor: tint(palette.accent, 0.18, palette.border) }}>
           <Icon name={a.icon} color={palette.accent as ColorValue} size={26} />
           {a.badge ? <View style={{ position: 'absolute', top: -5, right: -5, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: '#E5484D', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: palette.bg }}>
             <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{a.badge > 99 ? '99+' : a.badge}</Text>
           </View> : null}
         </View>
-        <Text numberOfLines={2} style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'center', maxWidth: 82 }}>{t(a.label)}</Text>
+        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'center', maxWidth: 82 }}>{t(a.label)}</Text>
       </Tactile>
     </View>)}
   </View>;
@@ -226,7 +227,7 @@ export function BalanceStrip({ refreshToken }: { refreshToken: number }) {
   const { palette, design } = useTenantDesign();
   const leave = useApi('leave', { employmentId: employmentId ?? undefined }, signOut);
   useEffect(() => { if (refreshToken) leave.reload(); }, [refreshToken, leave.reload]);
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 20 : 6;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 6;
   const cards = homeBalances(leave.data?.cards ?? [], 4);
   return <View style={{ gap: 10 }}>
     <SectionHeader title={t('homeYourLeave')} action={leave.data ? t('allBalances') : undefined} onAction={() => router.navigate('/leave' as Href)} />
@@ -260,7 +261,7 @@ export function PayslipCard({ refreshToken }: { refreshToken: number }) {
   useFocusEffect(useCallback(() => () => setShown(false), []));
   if (pay.data && !pay.data.enabled) return null;
   const latest = pay.data?.items[0];
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 20 : 6;
+  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 6;
   return <View style={{ gap: 10 }}>
     <SectionHeader title={t('payslips')} action={latest ? t('seeAll') : undefined} onAction={() => router.push('/pay')} />
     <LoadState loading={pay.loading} hasData={pay.data != null} error={pay.error} onRetry={pay.reload} />

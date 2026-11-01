@@ -1,6 +1,7 @@
 import { JourneyDraftProvider } from '../lib/journey-drafts';
 import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnection } from '../lib/company-connection';
-import { TenantDesignProvider, useTenantDesign } from '../lib/design';
+import { Atmosphere, PublicDesignProvider, TenantDesignProvider, useTenantDesign } from '../lib/design';
+import { colorContrast } from '../../lib/mobile-composition';
 import { Stack, router } from 'expo-router';
 import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
@@ -15,20 +16,26 @@ import { PushLifecycle, PushSessionWatcher } from '../lib/push';
 import {authGeneration} from '../lib/auth';
 import { Button, colors } from '../lib/ui';
 
+function ThemedStatusBar() {
+  const { palette } = useTenantDesign();
+  return <StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} />;
+}
+
 function ThemedStack() {
   const { palette } = useTenantDesign();
   useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, []);
-  return <><StatusBar style={palette.text === '#111111' ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false }} /></>;
+  return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false }} /></>;
 }
 
 function Gate() {
   const { status, visible, error, unlocking, unlock, signOut } = useSession();
   const company=useCompanyConnection();
+  const { palette } = useTenantDesign();
   // Navigate only AFTER the signed-out Stack commits, including the first connection setup.
   useEffect(()=>{if(company&&status==='signedOut'&&visible)router.replace('/sign-in');},[company,status,visible]);
   if (status === 'loading' || !visible) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { backgroundColor: palette.bg }]}>
         <ActivityIndicator accessibilityLabel={t('loading')} />
       </View>
     );
@@ -41,16 +48,18 @@ function Gate() {
 
 /** The app lock: the phone's own biometric named and pictured, one unlock button, and sign out as the way past it. */
 function LockScreen({ error, unlocking, unlock, signOut }: { error: boolean; unlocking: boolean; unlock: () => Promise<void>; signOut: () => Promise<void> }) {
+  const { palette } = useTenantDesign();
   const cap = useLockCapability();
   const name = cap ? biometricName(cap.method) : 'passcode';
   const icon = name === 'faceId' || name === 'faceUnlock' ? 'faceId' : name === 'touchId' || name === 'fingerprint' ? 'touchId' : 'lock';
   const label: MessageKey = ({ faceId: 'unlockWithFaceId', faceUnlock: 'unlockWithFace', touchId: 'unlockWithTouchId', fingerprint: 'unlockWithFingerprint', iris: 'unlockWithIris' } as Record<string, MessageKey>)[name] ?? 'unlockButton';
   return (
-      <View style={styles.center}>
-        <View style={styles.lockBadge}><Icon name={icon} color={colors.accent} size={44} /></View>
-        <Text style={styles.lockTitle}>{t('unlockTitle')}</Text>
-        <Text style={styles.lockBody}>{t('unlockBody')}</Text>
-        {error && <Text style={styles.problem}>{t('genericError')}</Text>}
+      <View style={[styles.center, { backgroundColor: palette.bg }]}>
+        <Atmosphere strong />
+        <View style={[styles.lockBadge, { backgroundColor: palette.card }]}><Icon name={icon} color={palette.accent} size={44} /></View>
+        <Text style={[styles.lockTitle, { color: palette.text }]}>{t('unlockTitle')}</Text>
+        <Text style={[styles.lockBody, { color: palette.muted }]}>{t('unlockBody')}</Text>
+        {error && <Text accessibilityRole="alert" style={[styles.problem, { color: palette.text }]}>{t('genericError')}</Text>}
         <View style={styles.actions}>
           <Button title={t(label)} disabled={unlocking} onPress={() => void unlock()} />
           <Button title={t('signOut')} onPress={() => {const owner=authGeneration();Alert.alert(t('signOut'),t('pendingLockedLogout'),[{text:t('cancel'),style:'cancel'},{text:t('signOut'),onPress:()=>{if(authGeneration()===owner)void signOut();}}]);}} kind="quiet" />
@@ -64,12 +73,12 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
-      <CompanyConnectionProvider><SessionProvider>
+      <PublicDesignProvider><ThemedStatusBar /><CompanyConnectionProvider><SessionProvider>
         <PushSessionWatcher />
         {/* A language change re-renders every screen in the new language: the screens below the session remount (the
             session, its lock and any draft above them are kept), and Settings reopens itself. */}
         <JourneyDraftProvider><WorkplaceReviewBoundary><Gate key={language} /></WorkplaceReviewBoundary></JourneyDraftProvider>
-      </SessionProvider></CompanyConnectionProvider>
+      </SessionProvider></CompanyConnectionProvider></PublicDesignProvider>
     </SafeAreaProvider>
   );
 }

@@ -26856,7 +26856,7 @@
     "resetDoneTitle": "Kata laluan ditukar",
     "resetDoneHelp": "Sesi terdahulu telah ditamatkan. Log masuk semula dengan kata laluan baharu dan MFA.",
     "back": "Kembali ke log masuk",
-    "inviteTitle": "Sediakan log masuk AI HR",
+    "inviteTitle": "Sediakan log masuk OneHR+",
     "existingLogin": "Sudah mempunyai log masuk? Log masuk di sini.",
     "acceptTitle": "Terima jemputan anda",
     "acceptHelp": "Terima jemputan ini menggunakan akaun yang telah dilog masuk dan disahkan.",
@@ -26876,7 +26876,7 @@
     "switchAccountSubmit": "Log keluar dan buka jemputan",
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
-    "signingInHelp": "Membawa anda ke AIHR."
+    "signingInHelp": "Membawa anda ke OneHR+."
   },
   "aiManagement": {
     "title": "Pengurusan AI",

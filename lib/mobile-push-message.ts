@@ -7,10 +7,10 @@
  * API after unlock. test/mobile-v2-push.test.ts pins that no stored notification text reaches a transport.
  */
 export type PushLocale = 'en' | 'ms';
-export const PUSH_TITLE = 'AI HR';
+export const PUSH_TITLE = 'OneHR+';
 export const PUSH_BODY: Readonly<Record<PushLocale, string>> = {
-  en: 'You have a new update. Open AI HR to see it.',
-  ms: 'Anda ada kemas kini baharu. Buka AI HR untuk melihatnya.',
+  en: 'You have a new update. Open OneHR+ to see it.',
+  ms: 'Anda ada kemas kini baharu. Buka OneHR+ untuk melihatnya.',
 };
 /** The Android channel a push is posted to; the app creates it with private lock-screen visibility. */
 export const PUSH_ANDROID_CHANNEL = 'aihr-updates';

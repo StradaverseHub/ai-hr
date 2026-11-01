@@ -26856,7 +26856,7 @@
     "resetDoneTitle": "密码已更改",
     "resetDoneHelp": "之前的会话已结束。请使用新密码和多因素验证重新登录。",
     "back": "返回登录",
-    "inviteTitle": "设置 AI HR 登录账号",
+    "inviteTitle": "设置 OneHR+ 登录账号",
     "existingLogin": "已有登录账号？请直接登录。",
     "acceptTitle": "接受邀请",
     "acceptHelp": "使用当前已登录并通过验证的账号接受邀请。",
@@ -26876,7 +26876,7 @@
     "switchAccountSubmit": "退出并打开邀请",
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
-    "signingInHelp": "正在进入 AIHR。"
+    "signingInHelp": "正在进入 OneHR+。"
   },
   "aiManagement": {
     "title": "AI 管理",

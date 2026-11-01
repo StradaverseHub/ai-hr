@@ -3,7 +3,7 @@
  * every data screen needs — a truthful loading / unavailable / error state with a retry that never signs
  * anyone out.
  */
-import { DesignText as Text, TenantBrand, useTenantDesign } from './design';
+import { Atmosphere, DesignText as Text, TenantBrand, useTenantDesign } from './design';
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,24 +12,26 @@ import { UnavailableError } from './errors';
 import { t } from './i18n';
 
 export const colors = {
-  bg: '#F5F6F8',
+  bg: '#f3f7f4',
   card: '#FFFFFF',
-  text: '#15171A',
-  muted: '#5F6670',
-  border: '#E3E6EA',
-  accent: '#1F5EFF',
+  text: '#14251b',
+  muted: '#52665a',
+  border: '#ccd8d0',
+  accent: '#176747',
   warn: '#9A5B00',
   danger: '#B42318',
 } as const;
 
 export function Screen({
   children,
+  atmospheric = false,
   refreshing = false,
   onRefresh,
   back = false,
   footer,
 }: {
   children: ReactNode;
+  atmospheric?: boolean;
   refreshing?: boolean;
   onRefresh?: () => void;
   /** A detail screen: the compact header back arrow (HeaderBack) instead of a full-width "Back" button. */
@@ -40,6 +42,7 @@ export function Screen({
   const { palette, reload, design } = useTenantDesign();
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={design.schemaVersion === 2 && design.composition.navigation.style === 'top' ? [] : ['top']}>
+      <Atmosphere strong={atmospheric} />
       <ScrollView
         // A tap on a button while the keyboard is up acts at once (it used to only dismiss the keyboard, and the shifted
         // layout could put the next tap on another control).
@@ -66,7 +69,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 
 export function Card({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 3 }]}>{children}</View>;
+  return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 3 }]}>{children}</View>;
 }
 
 export function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
@@ -98,7 +101,7 @@ export function Button({ title, onPress, kind = 'primary', disabled = false,acce
       accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 18 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 28 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
     >
       <Text style={[styles.buttonText, { color: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? palette.text : palette.onButton }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
     </Pressable>
@@ -119,7 +122,7 @@ export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {
       if (router.canGoBack()) router.back();
       else router.replace('/');
     })}
-      style={({ pressed }) => [styles.back, pressed && { opacity: 0.6 }]}>
+      style={({ pressed }) => [styles.back, { backgroundColor: palette.card }, pressed && { opacity: 0.6 }]}>
       <Text style={{ color: palette.accent, fontSize: 30, lineHeight: 32 }}>‹</Text>
     </Pressable>
   );
@@ -221,21 +224,21 @@ export function fmtMoney(v: string): string {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 16, paddingBottom: 32, gap: 12 },
+  scroll: { padding: 22, paddingBottom: 36, gap: 18 },
   title: { fontSize: 26, fontWeight: '700', color: colors.text, marginBottom: 4 },
-  section: { fontSize: 13, fontWeight: '600', color: colors.muted, textTransform: 'uppercase', marginTop: 8 },
-  card: { backgroundColor: colors.card, borderRadius: 14, padding: 16, gap: 8, borderWidth: 1, borderColor: colors.border },
+  section: { fontSize: 17, fontWeight: '600', color: colors.muted, marginTop: 14 },
+  card: { backgroundColor: colors.card, borderRadius: 14, padding: 20, gap: 12, borderWidth: 1, borderColor: colors.border },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 },
   rowLabel: { fontSize: 15, color: colors.muted, flexShrink: 1 },
-  rowValue: { fontSize: 15, color: colors.text, fontVariant: ['tabular-nums'] },
+  rowValue: { fontSize: 15, flexShrink: 1, textAlign: 'right', color: colors.text, fontVariant: ['tabular-nums'] },
   strong: { fontSize: 17, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.muted },
   body: { fontSize: 15, color: colors.text },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 44, minWidth: 44, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, minHeight: 52, minWidth: 48, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   buttonQuiet: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   buttonTextQuiet: { color: colors.accent },
   chip: { minHeight: 44, minWidth: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  back: { alignSelf: 'flex-start', minWidth: 44, minHeight: 44, justifyContent: 'center', marginLeft: -6 },
+  back: { alignSelf: 'flex-start', width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
   listRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 52, paddingVertical: 12, borderBottomWidth: 1 },
 });

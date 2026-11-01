@@ -15,6 +15,7 @@ import { company as zhCompany } from './locales/zh';
 import { company as taCompany } from './locales/ta';
 import { company as thCompany } from './locales/th';
 import { company as viCompany } from './locales/vi';
+import { Atmosphere, useTenantDesign } from './design';
 import { Button, colors } from './ui';
 import trust from '../connections/trust.json';
 import catalogue from '../connections/profiles.json';
@@ -72,6 +73,8 @@ export function useCompanyConnection() {
   return snapshot?.selection?.profile ?? null;
 }
 function RuntimeCompanyProvider({children}:{children:ReactNode}) {
+  const { palette } = useTenantDesign();
+  const styles = companyStyles(palette);
   const [incoming, setIncoming] = useState<IncomingSetup | null>(null);
   const [intentReady, setIntentReady] = useState(false);
   const [workspaceMounted, setWorkspaceMounted] = useState(false);
@@ -107,7 +110,7 @@ function RuntimeCompanyProvider({children}:{children:ReactNode}) {
   const c=companyCopy();
   const review = incoming ? <CompanySetup key={incoming.id} incoming={incoming} failed={!incoming.raw}/> : null;
   return <Context.Provider value={controller}><IntentContext.Provider value={{incoming,dismiss(id){setIncoming(current=>current?.id===id?null:current);}}}>
-    {!intentReady||state.status==='loading'||state.status==='switching'?<SafeAreaView style={styles.center}><ActivityIndicator accessibilityLabel={c.loading}/><Text>{c.loading}</Text></SafeAreaView>:
+    {!intentReady||state.status==='loading'||state.status==='switching'?<SafeAreaView style={styles.center}><ActivityIndicator accessibilityLabel={c.loading}/><Text style={styles.body}>{c.loading}</Text></SafeAreaView>:
       state.status==='ready'&&state.selection&&(!incoming||workspaceMounted)?<View key={state.generation} style={styles.fill}>{children}</View>:
       review??<CompanySetup failed={state.status==='error'}/>}
   </IntentContext.Provider></Context.Provider>;
@@ -119,6 +122,8 @@ export function WorkplaceReviewBoundary({children}:{children:ReactNode}) {
   return intent?.incoming?<CompanySetup key={intent.incoming.id} incoming={intent.incoming} failed={!intent.incoming.raw}/>:children;
 }
 export function CompanySetup({failed=false,incoming=null}:{failed?:boolean;incoming?:IncomingSetup|null}) {
+  const { palette } = useTenantDesign();
+  const styles = companyStyles(palette);
   const controller=useContext(Context),c=companyCopy();
   const intent=useContext(IntentContext);
   const [candidate,setCandidate]=useState<string|null>(incoming?.raw??null),[error,setError]=useState(incoming?.refusal?setupRefusalText(incoming.refusal):''),[busy,setBusy]=useState(false);
@@ -163,8 +168,8 @@ export function CompanySetup({failed=false,incoming=null}:{failed?:boolean;incom
     if(incoming){intent?.dismiss(incoming.id);router.replace('/');}
     else router.back();
   }
-  return <SafeAreaView style={styles.fill}><ScrollView contentContainerStyle={styles.wrap}>
-    <Text style={styles.brand}>AI HR</Text><Text style={styles.title}>{profile?c.review:c.title}</Text>
+  return <SafeAreaView style={styles.fill}><Atmosphere strong /><ScrollView contentContainerStyle={styles.wrap}>
+    <Text style={styles.brand}>OneHR+</Text><Text style={styles.title}>{profile?c.review:c.title}</Text>
     <Text style={styles.body}>{profile?c.switch:c.body}</Text>
     {profile?<View style={styles.card}><Text style={styles.company}>{profile.name}</Text><Text style={styles.hosting}>{profile.hosting==='cloud'?c.cloud:c.private}</Text><Text style={styles.label}>{c.server}</Text><Text selectable style={styles.address}>{profile.apiOrigin}</Text>{profile.organization&&<><Text style={styles.label}>{c.organization}</Text><Text selectable style={styles.address}>{profile.organization}</Text></>}<Text style={styles.body}>{c.vpn}</Text></View>:
       catalogue.map((item,index)=>{let p;try{p=verifyCompanyProfile(JSON.stringify(item),trust);}catch{return null;}return <Button key={p.id} title={p.name+' · '+new URL(p.apiOrigin).hostname} onPress={()=>setCandidate(JSON.stringify(catalogue[index]))} disabled={busy} kind="quiet"/>;})}
@@ -178,4 +183,4 @@ export function CompanySetup({failed=false,incoming=null}:{failed?:boolean;incom
     <Text style={styles.note}>{c.test}</Text>
   </ScrollView></SafeAreaView>;
 }
-const styles=StyleSheet.create({fill:{flex:1,backgroundColor:colors.bg},center:{flex:1,alignItems:'center',justifyContent:'center',gap:12,backgroundColor:colors.bg},wrap:{padding:24,paddingTop:48,gap:18,flexGrow:1},brand:{color:colors.accent,fontSize:15,fontWeight:'700'},title:{fontSize:30,fontWeight:'700',color:colors.text},body:{fontSize:16,lineHeight:24,color:colors.muted},card:{backgroundColor:colors.card,padding:20,borderRadius:12,gap:12,borderColor:colors.border,borderWidth:1},company:{fontSize:21,fontWeight:'600',color:colors.text},hosting:{fontSize:14,color:colors.accent},label:{fontSize:13,fontWeight:'600',color:colors.muted},address:{fontSize:15,color:colors.text},linkInput:{minHeight:48,borderWidth:1,borderColor:colors.border,borderRadius:10,padding:12,color:colors.text,backgroundColor:colors.card},error:{color:colors.danger,fontSize:15},note:{fontSize:13,color:colors.muted,marginTop:20}});
+const companyStyles=(palette:{bg:string;card:string;text:string;muted:string;accent:string;border:string})=>StyleSheet.create({fill:{flex:1,backgroundColor:palette.bg},center:{flex:1,alignItems:'center',justifyContent:'center',gap:12,backgroundColor:palette.bg},wrap:{padding:24,paddingTop:48,gap:18,flexGrow:1},brand:{color:palette.accent,fontSize:15,fontWeight:'700'},title:{fontSize:30,fontWeight:'700',color:palette.text},body:{fontSize:16,lineHeight:24,color:palette.muted},card:{backgroundColor:palette.card,padding:20,borderRadius:24,gap:12,borderColor:palette.border,borderWidth:1},company:{fontSize:21,fontWeight:'600',color:palette.text},hosting:{fontSize:14,color:palette.accent},label:{fontSize:13,fontWeight:'600',color:palette.muted},address:{fontSize:15,color:palette.text},linkInput:{minHeight:56,borderWidth:1,borderColor:palette.border,borderRadius:28,padding:12,color:palette.text,backgroundColor:palette.card},error:{color:palette.text,fontSize:15},note:{fontSize:13,color:palette.muted,marginTop:20}});

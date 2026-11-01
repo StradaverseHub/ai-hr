@@ -1,5 +1,5 @@
 /** Presentation-only contract shared by the web builder and the store-installed app. No executable code, URLs, permissions or policy. */
-import { parseMobileComposition, newMobileBlock, type MobileComposition } from './mobile-composition';
+import { parseMobileComposition, colorContrast, newMobileBlock, type MobileComposition } from './mobile-composition';
 export type { MobileComposition, MobileBlock, MobilePage, MobileTheme } from './mobile-composition';
 export type MobileDesignV1 = {
   schemaVersion: 1;
@@ -17,22 +17,26 @@ export type MobileDesignV1 = {
 export type MobileDesignV2 = Omit<MobileDesignV1, 'schemaVersion'> & { schemaVersion: 2; composition: MobileComposition };
 export type MobileDesign = MobileDesignV1 | MobileDesignV2;
 export const DEFAULT_MOBILE_DESIGN: MobileDesignV1 = {
-  schemaVersion: 1, brandName: 'AIHR', logo: null, accent: 'coral', appearance: 'dark',
-  clockLayout: 'flow', leaveLayout: 'ledger', corners: 'crisp', motion: 'standard',
+  schemaVersion: 1, brandName: 'OneHR+', logo: null, accent: 'jade', appearance: 'dark',
+  clockLayout: 'flow', leaveLayout: 'ledger', corners: 'soft', motion: 'standard',
   homeOrder: ['clock', 'tasks', 'leave', 'team'], navigationOrder: ['clock', 'requests', 'inbox'],
 };
 export const MOBILE_ACCENTS = {
   coral: { dark: '#ff8958', light: '#bd3800', button: '#ff8958', onButton: '#111111' },
   cobalt: { dark: '#91b5ff', light: '#174bb5', button: '#91b5ff', onButton: '#111111' },
-  jade: { dark: '#75d9b0', light: '#126d50', button: '#75d9b0', onButton: '#111111' },
+  jade: { dark: '#b9f3d5', light: '#176747', button: '#b9f3d5', onButton: '#10251b' },
 } as const;
 export function mobilePalette(design: MobileDesign, appearance: 'dark' | 'light') {
   if (design.schemaVersion === 2) return design.composition.themes[appearance];
   const colors = MOBILE_ACCENTS[design.accent];
   const palette = appearance === 'dark'
-    ? { bg: '#111111', card: '#22211f', text: '#f2f0eb', muted: '#b1aea6', border: '#45433f', accent: MOBILE_ACCENTS[design.accent].dark }
-    : { bg: '#f2f0eb', card: '#ffffff', text: '#111111', muted: '#63625d', border: '#d2cfc7', accent: MOBILE_ACCENTS[design.accent].light };
-  return { ...palette, button: colors.button, onButton: colors.onButton };
+    ? { bg: '#080b09', card: '#171c19', text: '#f4f8f5', muted: '#adb9b0', border: '#354139', accent: MOBILE_ACCENTS[design.accent].dark }
+    : { bg: '#f3f7f4', card: '#ffffff', text: '#14251b', muted: '#52665a', border: '#ccd8d0', accent: MOBILE_ACCENTS[design.accent].light };
+  return { ...palette, button: design.accent === 'jade' && appearance === 'light' ? '#176747' : colors.button, onButton: design.accent === 'jade' && appearance === 'light' ? '#ffffff' : colors.onButton };
+}
+/** Choose foreground treatment from luminance, including explicitly published company palettes. */
+export function mobileSurfaceIsDark(palette: { bg: string }): boolean {
+  return colorContrast(palette.bg, '#ffffff') > colorContrast(palette.bg, '#000000');
 }
 const oneOf = (v: unknown, values: readonly string[]) => typeof v === 'string' && values.includes(v);
 const permutation = (v: unknown, values: readonly string[]) => Array.isArray(v) && v.length === values.length && new Set(v).size === values.length && v.every(x => values.includes(x));
@@ -85,8 +89,8 @@ export function composeMobileDesign(value: MobileDesign): MobileDesignV2 {
   return { ...parseMobileDesign(value), schemaVersion: 2, composition: {
     themes: { light: mobilePalette(value, 'light'), dark: mobilePalette(value, 'dark') },
     typography: { family: 'sans', bodySize: 14, headingSize: 29 },
-    layout: { padding: 22, gap: 16, radius: value.corners === 'soft' ? 18 : 3, surface: 'flat', button: 'solid' },
-    navigation: { style: 'bar', labels: true, items: [{ target: 'home', label: '', icon: 'home' }, ...value.navigationOrder.map(target => ({ target, label: '', icon: target === 'clock' ? 'clock' as const : target === 'requests' ? 'calendar' as const : 'bell' as const })), { target: 'me', label: '', icon: 'person' }] },
+    layout: { padding: 22, gap: 16, radius: value.corners === 'soft' ? 24 : 3, surface: 'flat', button: 'solid' },
+    navigation: { style: 'dock', labels: true, items: [{ target: 'home', label: '', icon: 'home' }, ...value.navigationOrder.map(target => ({ target, label: '', icon: target === 'clock' ? 'clock' as const : target === 'requests' ? 'calendar' as const : 'bell' as const })), { target: 'me', label: '', icon: 'person' }] },
     pages: [{ id: 'home', title: '', blocks: [newMobileBlock('welcome', 'welcome'), ...value.homeOrder.map(kind => ({ ...newMobileBlock(kind, kind), detail: 'compact' as const }))] }],
   } };
 }

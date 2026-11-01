@@ -24,7 +24,8 @@ function fixture(organization?: string) {
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
     './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
     './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
-    './i18n':{appLocale:()=> 'en'},'./internal-auth-copy.json':copy,
+    './i18n':{appLocale:()=> 'en',t:(key:string)=>key==='appName'?'OneHR+':key},'./internal-auth-copy.json':copy,
+    './design':{Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
     './ui':{colors:{},Button:({title,disabled,onPress}:any)=><button disabled={disabled} onClick={onPress}>{title}</button>},
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/internal-sign-in.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,

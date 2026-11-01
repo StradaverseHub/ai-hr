@@ -26856,7 +26856,7 @@
     "resetDoneTitle": "Đã đổi mật khẩu",
     "resetDoneHelp": "Các phiên trước đã kết thúc. Đăng nhập lại bằng mật khẩu mới và MFA.",
     "back": "Quay lại đăng nhập",
-    "inviteTitle": "Thiết lập đăng nhập AI HR",
+    "inviteTitle": "Thiết lập đăng nhập OneHR+",
     "existingLogin": "Đã có tài khoản? Đăng nhập tại đây.",
     "acceptTitle": "Chấp nhận lời mời",
     "acceptHelp": "Chấp nhận lời mời bằng tài khoản đã đăng nhập và xác minh.",
@@ -26876,7 +26876,7 @@
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
-    "signingInHelp": "Đang đưa bạn đến AIHR."
+    "signingInHelp": "Đang đưa bạn đến OneHR+."
   },
   "aiManagement": {
     "title": "Quản lý AI",

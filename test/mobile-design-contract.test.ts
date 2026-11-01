@@ -30,7 +30,10 @@ describe('shared tenant mobile presentation contract', () => {
     for (const accent of Object.keys(MOBILE_ACCENTS) as (keyof typeof MOBILE_ACCENTS)[]) {
       for (const appearance of ['light', 'dark'] as const) {
         const p = mobilePalette({ ...DEFAULT_MOBILE_DESIGN, accent }, appearance);
-        expect(ratio(p.text, p.bg)).toBeGreaterThanOrEqual(4.5);
+        for (const surface of [p.bg, p.card]) {
+          for (const foreground of [p.text, p.muted, p.accent]) expect(ratio(foreground, surface)).toBeGreaterThanOrEqual(4.5);
+        }
+        expect(ratio(p.button, p.onButton)).toBeGreaterThanOrEqual(4.5);
         expect(ratio(p.muted, p.bg)).toBeGreaterThanOrEqual(4.5);
         expect(ratio(p.accent, p.bg)).toBeGreaterThanOrEqual(4.5);
       }

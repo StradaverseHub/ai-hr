@@ -34,7 +34,7 @@
     "resetDoneTitle": "Password changed",
     "resetDoneHelp": "Your previous sessions have ended. Sign in again with your new password and MFA.",
     "back": "Back to sign in",
-    "inviteTitle": "Set up your AI HR login",
+    "inviteTitle": "Set up your OneHR+ login",
     "existingLogin": "Already have a login? Sign in instead.",
     "acceptTitle": "Accept your invitation",
     "acceptHelp": "Accept this invitation using your signed-in, verified account.",
@@ -54,7 +54,7 @@
     "switchAccountSubmit": "Sign out and open invitation",
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
-    "signingInHelp": "Taking you to AIHR."
+    "signingInHelp": "Taking you to OneHR+."
   },
   "ms": {
     "loginTitle": "Log masuk",
@@ -91,7 +91,7 @@
     "resetDoneTitle": "Kata laluan ditukar",
     "resetDoneHelp": "Sesi terdahulu telah ditamatkan. Log masuk semula dengan kata laluan baharu dan MFA.",
     "back": "Kembali ke log masuk",
-    "inviteTitle": "Sediakan log masuk AI HR",
+    "inviteTitle": "Sediakan log masuk OneHR+",
     "existingLogin": "Sudah mempunyai log masuk? Log masuk di sini.",
     "acceptTitle": "Terima jemputan anda",
     "acceptHelp": "Terima jemputan ini menggunakan akaun yang telah dilog masuk dan disahkan.",
@@ -111,7 +111,7 @@
     "switchAccountSubmit": "Log keluar dan buka jemputan",
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
-    "signingInHelp": "Membawa anda ke AIHR."
+    "signingInHelp": "Membawa anda ke OneHR+."
   },
   "zh": {
     "loginTitle": "登录",
@@ -148,7 +148,7 @@
     "resetDoneTitle": "密码已更改",
     "resetDoneHelp": "之前的会话已结束。请使用新密码和多因素验证重新登录。",
     "back": "返回登录",
-    "inviteTitle": "设置 AI HR 登录账号",
+    "inviteTitle": "设置 OneHR+ 登录账号",
     "existingLogin": "已有登录账号？请直接登录。",
     "acceptTitle": "接受邀请",
     "acceptHelp": "使用当前已登录并通过验证的账号接受邀请。",
@@ -168,7 +168,7 @@
     "switchAccountSubmit": "退出并打开邀请",
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
-    "signingInHelp": "正在进入 AIHR。"
+    "signingInHelp": "正在进入 OneHR+。"
   },
   "ta": {
     "loginTitle": "உள்நுழைக",
@@ -205,7 +205,7 @@
     "resetDoneTitle": "கடவுச்சொல் மாற்றப்பட்டது",
     "resetDoneHelp": "உங்கள் முந்தைய அமர்வுகள் முடிக்கப்பட்டுள்ளன. புதிய கடவுச்சொல் மற்றும் பலகட்ட அங்கீகாரத்துடன் மீண்டும் உள்நுழையவும்.",
     "back": "உள்நுழைவுக்குத் திரும்பவும்",
-    "inviteTitle": "உங்கள் AI HR உள்நுழைவை அமைக்கவும்",
+    "inviteTitle": "உங்கள் OneHR+ உள்நுழைவை அமைக்கவும்",
     "existingLogin": "ஏற்கெனவே கணக்கு உள்ளதா? உள்நுழையவும்.",
     "acceptTitle": "உங்கள் அழைப்பை ஏற்கவும்",
     "acceptHelp": "நீங்கள் உள்நுழைந்துள்ள சரிபார்க்கப்பட்ட கணக்கைப் பயன்படுத்தி இந்த அழைப்பை ஏற்கவும்.",
@@ -225,7 +225,7 @@
     "switchAccountSubmit": "வெளியேறி அழைப்பைத் திறக்கவும்",
     "workplaceLoginHelp": "உங்கள் பணியிடம் தேர்ந்தெடுக்கப்பட்டது. பயனர்பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்.",
     "signingInTitle": "உள்நுழைகிறது…",
-    "signingInHelp": "AIHR-க்கு அழைத்துச் செல்கிறது."
+    "signingInHelp": "OneHR+-க்கு அழைத்துச் செல்கிறது."
   },
   "th": {
     "loginTitle": "เข้าสู่ระบบ",
@@ -262,7 +262,7 @@
     "resetDoneTitle": "เปลี่ยนรหัสผ่านแล้ว",
     "resetDoneHelp": "เซสชันก่อนหน้าของคุณสิ้นสุดแล้ว เข้าสู่ระบบอีกครั้งด้วยรหัสผ่านใหม่และการยืนยันตัวตนหลายปัจจัย",
     "back": "กลับไปเข้าสู่ระบบ",
-    "inviteTitle": "ตั้งค่าบัญชีเข้าสู่ระบบ AI HR",
+    "inviteTitle": "ตั้งค่าบัญชีเข้าสู่ระบบ OneHR+",
     "existingLogin": "มีบัญชีอยู่แล้ว? เข้าสู่ระบบได้เลย",
     "acceptTitle": "ยอมรับคำเชิญ",
     "acceptHelp": "ยอมรับคำเชิญนี้ด้วยบัญชีที่เข้าสู่ระบบและยืนยันแล้วของคุณ",
@@ -282,7 +282,7 @@
     "switchAccountSubmit": "ออกจากระบบและเปิดคำเชิญ",
     "workplaceLoginHelp": "เลือกที่ทำงานของคุณแล้ว กรอกชื่อผู้ใช้และรหัสผ่าน",
     "signingInTitle": "กำลังเข้าสู่ระบบ…",
-    "signingInHelp": "กำลังพาคุณไปยัง AIHR"
+    "signingInHelp": "กำลังพาคุณไปยัง OneHR+"
   },
   "vi": {
     "loginTitle": "Đăng nhập",
@@ -319,7 +319,7 @@
     "resetDoneTitle": "Đã đổi mật khẩu",
     "resetDoneHelp": "Các phiên trước đã kết thúc. Đăng nhập lại bằng mật khẩu mới và MFA.",
     "back": "Quay lại đăng nhập",
-    "inviteTitle": "Thiết lập đăng nhập AI HR",
+    "inviteTitle": "Thiết lập đăng nhập OneHR+",
     "existingLogin": "Đã có tài khoản? Đăng nhập tại đây.",
     "acceptTitle": "Chấp nhận lời mời",
     "acceptHelp": "Chấp nhận lời mời bằng tài khoản đã đăng nhập và xác minh.",
@@ -339,6 +339,6 @@
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
-    "signingInHelp": "Đang đưa bạn đến AIHR."
+    "signingInHelp": "Đang đưa bạn đến OneHR+."
   }
 }
