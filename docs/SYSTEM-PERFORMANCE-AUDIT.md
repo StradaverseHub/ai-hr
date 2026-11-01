@@ -74,6 +74,28 @@ review caught a positional validator call instead of its canonical input object;
 that original canceled run is retained. Corrected sourcee27e97cbc runs single
 preflight41298406747. It is running and precedes any further full-load run.
 Application and SQL source remain unchanged from verified7b93d22e4.
+
+Preflight41298406747 FAILS process completion: all six native/browser workflows,
+PDF/foreign boundaries and both native audits completed, withpreflightPassed:true,
+zero Home failures and zero browser runtime errors, but the child remained alive
+until its600s timeout. Native import admission passed100/100 lines and50 people
+for both tenants. Reduced fixture took46.9s (versus prior432.2s full-load fixture;
+different datasets/hosts, not a controlled speed ratio). Build392.2s; original
+run is not relabelled PASS. Native audit import opened an additional application
+pool not closed by the driver. Focused real-child regression41300123720 initially
+FAILS2/2 due to TS module export interop; repaired shared loader/cleanup on source
+00b93196a passes2/2 in41300411156: the observer-only control remains alive, and
+closing both actual restricted-role pools exits normally. No application build
+was needed for that focused recovery.
+
+A separate necessary-only Attendance experiment41300133755 on source6d2d95466
+passes: no-assignment employee median45.0→1.4ms versus its restored original,
+with exact tasks/refusals and real named non-admin/delegated actors preserved.
+Positive paths still invoke the complete original reader with fresh authority.
+This is benchmark-only, no application gate has been added. Million-document
+access-path experiment41300741520 on source255e1850c is running before any
+production-source index/precheck promotion. The synthetic scale test is not a
+native request-creation or HTTP throughput certificate.
 No later speed pass is claimed. These new fixtures derive their business dates from
 the native date owner; the current-month boundary differs from31 October tests,
 so cross-run performance changes must not be treated as controlled causal ratios.
