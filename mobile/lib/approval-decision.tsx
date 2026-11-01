@@ -237,7 +237,10 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
     <Button title={t('approvalsBack')} onPress={() => router.back()} />
   </Screen>;
 
-  return <Screen back onRefresh={detail.reload}>
+  return <Screen back onRefresh={detail.reload} footer={task && !sent ? <Material style={{marginHorizontal:16,marginBottom:20,padding:14,gap:8}}>
+    <View style={{flexDirection:'row',gap:12}}><View style={{flex:1}}><Button title={t('approvalReject')} kind="quiet" disabled={!online || (needsReasonToReject && !trimmed)} onPress={() => confirm('reject')} /></View><View style={{flex:1}}><Button title={t('approvalApprove')} disabled={!online || (perDate && approving.length === 0) || (partial && !trimmed)} onPress={() => confirm('approve')} /></View></View>
+    <Text style={{color:palette.muted,fontSize:12,lineHeight:17,textAlign:'center'}}>{t('approvalConfirmHint')}</Text>
+  </Material> : undefined}>
     <LoadState loading={detail.loading} hasData={detail.data != null} error={detail.error} onRetry={detail.reload} />
     {notice && <Text accessibilityRole="alert" style={{ color: palette.text, lineHeight: 23 }}>{notice}</Text>}
     {detail.data?.outcome === 'refused' && <Muted>{approvalRefusalText(detail.data)}</Muted>}
@@ -283,11 +286,6 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
         <Button title={t('approvalRecheck')} kind="quiet" onPress={() => { setSent(null); detail.reload(); }} />
       </Card>}
       {!sent && !online && <Muted>{t('approvalOnline')}</Muted>}
-      {!sent && <>
-        <Button title={t('approvalReject')} kind="quiet" disabled={!online || (needsReasonToReject && !trimmed)} onPress={() => confirm('reject')} />
-        <Button title={t('approvalApprove')} disabled={!online || (perDate && approving.length === 0) || (partial && !trimmed)} onPress={() => confirm('approve')} />
-        <Muted>{t('approvalConfirmHint')}</Muted>
-      </>}
       {busy && <Muted>{t('approvalSending')}</Muted>}
     </>}
   </Screen>;

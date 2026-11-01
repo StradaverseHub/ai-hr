@@ -58,7 +58,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
   const ui = {fmtMoney:(v:string)=>v,InfoNote:({short,detail}:any)=><span><span>{short}</span><span>{detail}</span></span>,HeaderBack:()=><button aria-label="back">‹</button>,ListRow:({label,value,onPress}:any)=><button aria-label={value?`${label}, ${value}`:label} onClick={onPress}>{label}{value?`: ${value}`:''}</button>,
     Button: (p: { disabled?: boolean; onPress: () => void; title: string }) => <button disabled={p.disabled} onClick={p.onPress}>{p.title}</button>,
     Card: View, Muted: Text, Title: Text, Row: ({ label, value }: { label: string; value: string }) => <p>{label}: {value}</p>,
-    Screen: ({ children, onRefresh }: { children?: React.ReactNode; onRefresh?: () => void }) => <div><button onClick={onRefresh}>refresh</button>{children}</div>,
+    Screen: ({ children, onRefresh, footer }: { children?: React.ReactNode; onRefresh?: () => void; footer?: React.ReactNode }) => <div><button onClick={onRefresh}>refresh</button>{children}{footer}</div>,
     LoadState: (p: { error: Error | null; hasData: boolean; loading: boolean; onRetry: () => void }) => p.error ? <div>{'error:' + p.error.name}{p.hasData && ' staleData'}<button onClick={p.onRetry}>retry-load</button></div> : p.loading ? <span role="progressbar" /> : null,
     fmtDays: copy.fmtDays ?? ((n: unknown) => (n == null ? '—' : String(n))),
   };

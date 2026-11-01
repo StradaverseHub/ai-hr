@@ -347,7 +347,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
       {current&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
-        <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
+        <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13,flexShrink:1,textAlign:'right'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
         <TimeDisplay seconds={current.workedSeconds} label={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}/>
         <Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Text>
       </View>}

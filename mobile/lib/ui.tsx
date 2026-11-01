@@ -31,6 +31,7 @@ export function Screen({
   onRefresh,
   back = false,
   footer,
+  footerInset = 0,
 }: {
   children: ReactNode;
   atmospheric?: boolean;
@@ -40,6 +41,7 @@ export function Screen({
   back?: boolean;
   /** Pinned under the scrolling content (above the tab bar on a tab screen): a screen's one bottom action bar. */
   footer?: ReactNode;
+  footerInset?: number;
 }) {
   const { palette, reload, design } = useTenantDesign();
   const { status } = useSession();
@@ -56,7 +58,7 @@ export function Screen({
       >
         {back ? <HeaderBack /> : null}{children}
       </ScrollView>
-      {footer ?? null}
+      {footer ? <View style={{paddingBottom:footerInset}}>{footer}</View> : null}
     </SafeAreaView>
   );
 }
@@ -231,7 +233,7 @@ const styles = StyleSheet.create({
   scroll: { padding: 20, paddingBottom: 126, gap: 18 },
   title: { fontSize: 28, fontWeight: '600', color: colors.text, marginBottom: 4 },
   section: { fontSize: 17, fontWeight: '600', color: colors.muted, marginTop: 14 },
-  card: { backgroundColor: colors.card, borderRadius: 14, padding: 20, gap: 12 },
+  card: { borderRadius: 14, padding: 20, gap: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 },
   rowLabel: { fontSize: 15, color: colors.muted, flexShrink: 1 },
   rowValue: { fontSize: 15, flexShrink: 1, textAlign: 'right', color: colors.text, fontVariant: ['tabular-nums'] },
