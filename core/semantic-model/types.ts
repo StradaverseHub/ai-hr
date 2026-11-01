@@ -12,7 +12,7 @@
  *  - minimum  the narrowest form of a personal fact. Exact only for the caller's own records and for
  *             configuration an administrator owns. About anyone else (an entity whose audience is another
  *             person: manager, visible_scope, assigned_approver) and for every `name` field, it leaves as an
- *             opaque text placeholder the harness restores locally for the person (core/harness/disclosure.ts).
+ *             opaque text placeholder the harness restores locally for the person (the Teras harness disclosure step).
  *  - full     product vocabulary and calendar facts with no personal weight (a status, a holiday name).
  * A label field marked `screen` (a leave, claim or pay item name) is checked against the harness's list of
  * health-, religion- and similar-indicative names; a match leaves as a placeholder whatever its class. */

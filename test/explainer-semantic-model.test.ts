@@ -58,8 +58,8 @@ describe('step 4 capabilities in the semantic model',()=>{
   const data=terasEntity('module_work').fields.find(field=>field.name==='data')!;
   // Privacy fixes (November 2026): module rows are closed; every field a module reader returns is declared.
   expect(data.disclosure).toBe('minimum');expect('open' in data).toBe(false);
-  const rows=Object.fromEntries((data.of??[]).map(field=>[field.name,field.disclosure]));
-  expect(rows).toMatchObject({gross:'bands',deductions:'bands',net:'bands',amount:'bands',employeeCode:'never',employmentId:'never',name:'minimum'});
+  const declared=Object.fromEntries((data.of??[]).map(field=>[field.name,field.disclosure]));
+  expect(declared).toMatchObject({gross:'bands',deductions:'bands',net:'bands',amount:'bands',employeeCode:'never',employmentId:'never',name:'minimum'});
   expect((data.of??[]).find(field=>field.name==='name')?.type).toBe('name');
   expect('ENTITY_FIELD_EXTENSIONS' in explainModel).toBe(false);
   // The entitlement explainer's rows are the leave_entitlement declaration (less the employment handle) plus proration.

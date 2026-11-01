@@ -77,7 +77,7 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[],page:'/tasks',
   fields:[f('source','enum','full','What is followed up.',{values:['missing_clock','passport_expiry','lifecycle_step']}),f('dueOn','date','minimum','When it became due.'),
    f('itemId','id','never','Handle of the item.')]},
- // The harness's suggest_action result (core/harness/tools.ts), disclosed under this declaration rather than as
+ // The Teras harness's suggest_action result, disclosed under this declaration rather than as
  // product context: with several leave requests waiting, the approver chooses between them by number. The
  // model sees each request's ordinal, a leave type label (screened), its day count and a relative start; the
  // applicant and the exact dates are about another person, so they leave as placeholders the person sees restored.
