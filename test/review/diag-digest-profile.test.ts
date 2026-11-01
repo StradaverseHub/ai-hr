@@ -16,9 +16,18 @@ import {readLetterSettingsReadiness} from '../../core/letters';
 import {complianceWorklist} from '../../core/reporting';
 import {setupCopilot} from '../../core/setup-copilot/copilot';
 import {digestPreview} from '../../core/digest/daily-digest';
+import {isModuleEnabled} from '../../core/entitlements';
+import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../../packs/leave/service';
+import {pendingClaimTaskMetadata} from '../../packs/claims/service';
+import {pendingAttendanceTaskMetadata} from '../../packs/attendance/service';
+import {pendingProfileTaskMetadata} from '../../core/profile';
+import {pendingResignationTaskMetadata} from '../../core/offboarding';
+import {pendingReviewTaskMetadata} from '../../core/employment-review';
+import {pendingPerformanceTasks} from '../../packs/performance/service';
+import {pendingRewardTasks} from '../../packs/rewards/service';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harness';
 
-let b:Base,hr:SessionContext;
+let b:Base,hr:SessionContext,timingsModules='';
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  await resetDb();b=await seedBase();
@@ -36,11 +45,25 @@ describe('diagnostic',()=>{
   const date=todayInKualaLumpur();
   await owner.db.insert(schema.leaveRequest).values(employments.filter((_,i)=>i%10===0).map(row=>({tenantId:b.tenantId,employmentId:row.id,leaveTypeId:b.annualLeaveTypeId,
    startDate:date,endDate:date,days:'1',status:'pending' as const})));
-  const modules={attendance:true,claims:true,performance:true,rewards:true};
+  const modules={attendance:isModuleEnabled(hr,'attendance'),claims:isModuleEnabled(hr,'claims'),performance:isModuleEnabled(hr,'performance'),rewards:isModuleEnabled(hr,'rewards')};
+  timingsModules=JSON.stringify(modules);
   const timings:Record<string,number|string>={};
   const time=async(name:string,run:()=>Promise<unknown>)=>{const started=Date.now();try{await run();timings[name]=Date.now()-started;}catch(error){timings[name]=`threw after ${Date.now()-started} ms: ${String(error).slice(0,120)}`;}};
   await time('listPendingTasks(no notices)',()=>listPendingTasks(hr,undefined,modules,{noticeAcknowledgements:false}));
   await time('listPendingTasks(scoped)',()=>listPendingTasks(hr,[b.companyId],modules));
+  await time('listEmployeeActivationCandidates(first)',()=>listEmployeeActivationCandidates(hr));
+  await time('listEmployeeActivationCandidates(second)',()=>listEmployeeActivationCandidates(hr));
+  await time('pendingLeaveTaskMetadata',()=>pendingLeaveTaskMetadata(hr));
+  await time('pendingLeaveCancellationTaskMetadata',()=>pendingLeaveCancellationTaskMetadata(hr));
+  await time('listPendingReplacementLeaveTasks',()=>listPendingReplacementLeaveTasks(hr,{companyIds:undefined}));
+  if(modules.attendance)await time('pendingAttendanceTaskMetadata',()=>pendingAttendanceTaskMetadata(hr));
+  await time('pendingProfileTaskMetadata',()=>pendingProfileTaskMetadata(hr));
+  if(modules.claims)await time('pendingClaimTaskMetadata',()=>pendingClaimTaskMetadata(hr));
+  await time('pendingResignationTaskMetadata',()=>pendingResignationTaskMetadata(hr));
+  await time('pendingReviewTaskMetadata(manager)',()=>pendingReviewTaskMetadata(hr,'manager'));
+  await time('pendingReviewTaskMetadata(hr)',()=>pendingReviewTaskMetadata(hr,'hr'));
+  if(modules.performance)await time('pendingPerformanceTasks',()=>pendingPerformanceTasks(hr,undefined));
+  if(modules.rewards)await time('pendingRewardTasks',()=>pendingRewardTasks(hr,undefined));
   await time('payrollReadiness',()=>payrollReadiness(hr,{companyId:b.companyId}));
   await time('recordReadiness',()=>recordReadiness(hr,{peopleLimit:0}));
   await time('moduleReadiness',()=>moduleReadiness(hr,b.companyId));
@@ -52,7 +75,7 @@ describe('diagnostic',()=>{
   await time('setupCopilot',()=>setupCopilot(hr,b.companyId,date));
   await time('digestPreview',()=>digestPreview(hr));
   await time('digestPreview(second)',()=>digestPreview(hr));
-  console.log('AIHR_DIAG_DIGEST '+JSON.stringify(timings));
+  console.log('AIHR_DIAG_DIGEST '+timingsModules+' '+JSON.stringify(timings));
   expect(Object.keys(timings).length).toBeGreaterThan(0);
  },300_000);
 });
