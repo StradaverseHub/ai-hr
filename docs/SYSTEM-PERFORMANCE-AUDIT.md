@@ -1,3 +1,24 @@
+## Native administrator write-path work — pending qualification
+
+Reversible experiment 41328889779 on `21cdbb270` confirms another global write-path
+bottleneck over 500 users/502 memberships/one usable administrator. The unchanged
+native check takes 209.0 ms median, the matching-membership fence 3.23 ms, and the
+restored original 206.4 ms. Three checks execute 1,506 eligibility queries before,
+six with the fence, and 1,506 after restoration. Both tenants, an uninitialized
+tenant and loss of the last usable administrator retain identical outcomes.
+Every non-body pg_proc attribute and denied direct app execution remain exact.
+This is about 65× faster for this one check, not a whole-system/500-user speed claim.
+The original setup failure 41328365059 is retained separately; it produced no timing.
+
+Prepared `0897_administrator_candidate_work` applies exactly that measured body
+change, guarded by the read-only verified predecessor fingerprint. It adds no cache,
+index or permission path and leaves all locks, live eligibility and recovery checks
+intact. The candidate incorporates canonical `e1585acba` through a normal owned-branch
+merge and preserves all 640 applied SQL identities plus eleven prior performance
+appends. Its 652-entry ordinary upgrades and added native tests still require hosted
+qualification. The two five-minute 500-user runs 41327543192/41327546364 remain
+frozen on earlier `32c2332fb`; they do not contain 0897. No deployment is authorized.
+
 ## Current verification status — 2 November 2026
 
 The 500-user target remains **0/2 accepted**. No performance changes have been

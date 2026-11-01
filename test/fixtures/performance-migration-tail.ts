@@ -87,5 +87,13 @@ export const PERFORMANCE_MIGRATION_TAIL = [
   "tag": "0896_native_permission_work",
   "breakpoints": true,
   "hash": "a45f6362d2a10b66c14d2be0a4f8199337c7f180bf1d487290cf8ce31fea412e"
+},
+{
+  "idx": 770,
+  "version": "7",
+  "when": 1793330000297,
+  "tag": "0897_administrator_candidate_work",
+  "breakpoints": true,
+  "hash": "312266b1bf13ca69295776d9bed3beb08ad98a0b8c858da6c213c10919dfb2ae"
 }
 ] as const;

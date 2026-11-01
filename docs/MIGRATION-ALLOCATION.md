@@ -1,3 +1,26 @@
+## Performance administrator candidate work — 2 November 2026 (unapplied)
+
+Owned source reserves `0897_administrator_candidate_work`, idx770 / when1793330000297,
+SQL SHA256 `312266b1bf13ca69295776d9bed3beb08ad98a0b8c858da6c213c10919dfb2ae`.
+Fresh all-ref/worktree audit 17:03:50 UTC follows an all-ref fetch: 1,718 heads,
+303 journal blobs, 383 migration trees and 426 worktrees; no parse errors or foreign
+edits. Prior claims end at 0896/idx769/when296. Canonical main/alpha are `e1585acba`.
+Staging's complete ordered 640-row ledger was verified at 16:55:15 UTC; its watermark
+is 1793330000276. All canonical SQL bytes/journal entries and eleven prior owned
+performance appends remain exact. This append makes 652 candidate journal entries.
+
+The guard requires native `app.access_assert_administrator_for(uuid)` body SHA256
+`e1533050337da12c2e16d2d9e657bc6dcc29617648541e4c189067713839f07a`, also read-only
+verified on staging. It replaces only the matching-membership query through the
+function's own definition and verifies every other pg_proc attribute unchanged.
+Volatility, ownership, private ACL, tenant/company/group predicates and fresh
+eligibility/recovery checks remain unchanged. No lock, authority cache or index is added.
+Reversible experiment 41328889779 passes before/candidate/restored medians
+209.0/3.23/206.4 ms over 500 users, with matching outcomes and private execution.
+Actual migration, populated upgrade, complete native regression and HTTP/load
+qualification remain required. Refresh peer claims and live ledger before admission.
+This is a source reservation and grants no deployment authority.
+
 ## Performance native permission work — 1 November2026 (unapplied)
 
 Owned source appends `0896_native_permission_work`, idx769 / when1793330000296,

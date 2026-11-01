@@ -4558,6 +4558,13 @@
       "when": 1793330000296,
       "tag": "0896_native_permission_work",
       "breakpoints": true
+    },
+    {
+      "idx": 770,
+      "version": "7",
+      "when": 1793330000297,
+      "tag": "0897_administrator_candidate_work",
+      "breakpoints": true
     }
   ]
 }
