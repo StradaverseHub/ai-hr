@@ -5,7 +5,7 @@
  * (scripts/ai-provider-data-source-manifest.mjs): any edit to it, even an additive table, changes the
  * approved digest and blocks provider egress until a fresh human approval. Step 5a must leave both approved
  * digests unchanged, so its tables are declared here, imported only by core/outcome-record, core/mandates
- * and the new core/harness adapters. Nothing in the provider or agent closures imports this file.
+ * and the new harness adapters. Nothing in the provider or agent closures imports this file.
  * Fold these into db/schema.ts when the next approval of that closure is taken.
  *
  * The three `*RuleVersion` tables redeclare only the id and `rule_version` of existing owner tables, so the
@@ -14,7 +14,6 @@ import {boolean,index,integer,jsonb,pgTable,primaryKey,text,timestamp,uniqueInde
 import {appUser,company,person,tenant} from './schema';
 import type {HumanInvolvement,NoticeState,OutcomeCheck,OutcomeKind,OutcomeRead,OutcomeReplay} from '../core/outcome-record/types';
 import type {MandateLimits,MandateSchedule,MandateScope,WorkJobType} from '../core/mandates/job-types';
-import type {TaskMemory} from '../core/harness/memory';
 
 const id=()=>uuid('id').primaryKey().defaultRandom();
 const tenantId=()=>uuid('tenant_id').notNull().references(()=>tenant.id);
@@ -68,7 +67,8 @@ export const terasOutcomeFollowup=pgTable('teras_outcome_followup',{
 
 export const terasTaskMemory=pgTable('teras_task_memory',{
  tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),conversationId:text('conversation_id').notNull(),
- memory:jsonb('memory').$type<TaskMemory>().notNull(),updatedAt:at('updated_at').notNull().defaultNow(),
+ // The step 1 task-memory shape; typed loosely here so this file names no harness module (the harness import guard).
+ memory:jsonb('memory').$type<Record<string,unknown>>().notNull(),updatedAt:at('updated_at').notNull().defaultNow(),
 },t=>[primaryKey({columns:[t.tenantId,t.appUserId,t.conversationId]})]);
 
 // 0891 — the version columns only. The owners' full declarations stay in db/schema.ts.

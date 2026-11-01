@@ -15,13 +15,13 @@
  *     stopped one and the prepared result is discarded.
  * Work jobs complete nothing, so a run's human involvement is "none" and its result is "prepared" for the
  * grantor to read. Not scheduled or wired in this step; the scheduler supplies the principal. */
+import {createHash} from 'node:crypto';
 import {and,count,eq,gte,sql} from 'drizzle-orm';
 import {withTenant,type Grant,type SessionContext,type Tx} from '../../db/client';
 import {terasMandate,terasOutcomeRecord} from '../../db/teras-schema';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {agentContext} from '../agent-principal';
 import type {EntitlementSnapshot} from '../entitlement-types';
-import {authorityKey} from '../harness/memory';
 import {newRunId,writeOutcomeRecordTx,type OutcomeCheck} from '../outcome-record/record';
 import {MandateRefused,WORK_JOB_TYPES,WORK_JOB_TYPES_VERSION,delegableJobType,type WorkJobType} from './job-types';
 import {holdsJobAuthority,mandateAgentIdentity,mandateState,readMandateKeysTx} from './mandates';
@@ -35,6 +35,9 @@ const JOBS:Record<WorkJobType,(grantor:SessionContext,mandate:typeof terasMandat
  team_absence_weekly_summary:(grantor,mandate,now)=>teamAbsenceWeeklySummary(grantor,mandate,now),
 };
 const OWNER='core/mandates/run.ts#runMandate';
+/** A fingerprint of the grantor's roles and grants as resolved for this run, for the record; never the grants. */
+const authorityFingerprint=(ctx:SessionContext)=>createHash('sha256').update(JSON.stringify([ctx.tenantId,ctx.userId,ctx.personId,
+ [...(ctx.grants??[])].map(grant=>grant.role+'@'+(grant.companyId??'*')).sort()])).digest('hex').slice(0,16);
 const check=(name:string,ruleVersion:string|null,ok:boolean):OutcomeCheck=>({check:name,owner:OWNER,ruleVersion,result:ok?'pass':'fail'});
 
 /** The grantor's authority now, from the database. Null when the login is gone, archived or blocked. */
@@ -75,7 +78,7 @@ export async function runMandate(options:MandateRunOptions):Promise<MandateRunRe
   const grantor=await currentGrantorTx(tx,options.tenantId,state.mandate.grantorUserId,options.entitlements);
   const authorised=!!grantor&&grantor.personId===state.mandate.grantorPersonId&&state.jobType!==null&&holdsJobAuthority(grantor,state.jobType);
   return{...state,grantor:authorised?grantor:null,
-   checks:[...state.checks,check('grantor_authority',grantor?`authority:${authorityKey(grantor).slice(0,16)}`:null,authorised)]};
+   checks:[...state.checks,check('grantor_authority',grantor?`authority:${authorityFingerprint(grantor)}`:null,authorised)]};
  });
  const failed=first.checks.filter(item=>item.result!=='pass').map(item=>item.check);
  // 3: the job, under the grantor's current authority narrowed by the mandate. A refusal by an owner is a stop.

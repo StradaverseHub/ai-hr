@@ -28,7 +28,7 @@ export class PostgresTaskMemoryStore implements TaskMemoryStore{
   const [row]=await withTenant(this.ctx,tx=>tx.select({memory:terasTaskMemory.memory}).from(terasTaskMemory)
    .where(and(eq(terasTaskMemory.tenantId,tenantId),eq(terasTaskMemory.appUserId,userId),eq(terasTaskMemory.conversationId,conversationId))).limit(1));
   if(!row)return null;
-  const memory=row.memory;
+  const memory=row.memory as unknown as TaskMemory;
   // A row of another shape or owner is never trusted: it is treated as absent.
   if(memory?.version!==TASK_MEMORY_VERSION||memory.tenantId!==tenantId||memory.userId!==userId||memory.conversationId!==conversationId)return null;
   return memory;
@@ -36,8 +36,8 @@ export class PostgresTaskMemoryStore implements TaskMemoryStore{
  async save(memory:TaskMemory):Promise<void>{
   this.own(memory.tenantId,memory.userId);
   const value=JSON.parse(JSON.stringify(memory)) as TaskMemory;
-  await withTenant(this.ctx,tx=>tx.insert(terasTaskMemory).values({tenantId:memory.tenantId,appUserId:memory.userId,conversationId:memory.conversationId,memory:value})
-   .onConflictDoUpdate({target:[terasTaskMemory.tenantId,terasTaskMemory.appUserId,terasTaskMemory.conversationId],set:{memory:value,updatedAt:sql`now()`}}));
+  await withTenant(this.ctx,tx=>tx.insert(terasTaskMemory).values({tenantId:memory.tenantId,appUserId:memory.userId,conversationId:memory.conversationId,memory:value as unknown as Record<string,unknown>})
+   .onConflictDoUpdate({target:[terasTaskMemory.tenantId,terasTaskMemory.appUserId,terasTaskMemory.conversationId],set:{memory:value as unknown as Record<string,unknown>,updatedAt:sql`now()`}}));
  }
  async delete(tenantId:string,userId:string,conversationId:string):Promise<void>{
   this.own(tenantId,userId);

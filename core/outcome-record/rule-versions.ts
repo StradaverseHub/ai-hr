@@ -12,6 +12,7 @@
  * a ResolvedEntitlement, a leave type id) by reading that owner's version column in the caller's
  * transaction, under the caller's RLS. A label is an opaque, stable string for the record, never parsed. */
 import {and,eq,gt,isNull,lte,or} from 'drizzle-orm';
+import type {AnyPgColumn} from 'drizzle-orm/pg-core';
 import type {SessionContext,Tx} from '../../db/client';
 import {entitlementEligibilityRule,entitlementTemplate} from '../../db/schema';
 import {leaveApprovalPolicyRuleVersion as leaveApprovalPolicy,leaveApprovalTemplateRuleVersion as leaveApprovalTemplate,leaveTypeRuleVersion as leaveType} from '../../db/teras-schema';
@@ -51,7 +52,7 @@ export async function approvalChainVersionTx(tx:Tx,decision:Pick<ApprovalDecisio
  return `leave_approval_template:${template.id}@v${template.ruleVersion}`;
 }
 
-const inForce=(validFrom:typeof entitlementTemplate.validFrom,validTo:typeof entitlementTemplate.validTo,asOf:string)=>
+const inForce=(validFrom:AnyPgColumn,validTo:AnyPgColumn,asOf:string)=>
  and(lte(validFrom,asOf),or(isNull(validTo),gt(validTo,asOf)));
 /** Entitlement table: the existing lineage and the version row in force on the date the owner resolved for,
  * plus the eligibility rule that chose it when one did. */

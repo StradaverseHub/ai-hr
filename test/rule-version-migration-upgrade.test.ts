@@ -61,7 +61,7 @@ it('applies only the 0890/0891 tail over populated leave policy and approval row
   const grants=await target.client.unsafe(`select c.relname as table,c.relrowsecurity as rls,
     has_table_privilege('ai_hr_app',c.oid,'SELECT') as s,has_table_privilege('ai_hr_app',c.oid,'INSERT') as i,
     has_table_privilege('ai_hr_app',c.oid,'UPDATE') as u,has_table_privilege('ai_hr_app',c.oid,'DELETE') as d,has_table_privilege('ai_hr_app',c.oid,'TRUNCATE') as t
-   from pg_class c where c.relnamespace='public'::regnamespace and c.relname like 'teras\\_%' order by c.relname`);
+   from pg_class c where c.relnamespace='public'::regnamespace and c.relkind='r' and c.relname like 'teras\\_%' order by c.relname`);
   expect(grants).toEqual([
    {table:'teras_mandate',rls:true,s:true,i:true,u:true,d:false,t:false},
    {table:'teras_mandate_control',rls:true,s:true,i:true,u:true,d:false,t:false},

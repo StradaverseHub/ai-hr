@@ -53,7 +53,8 @@ export const OutcomeRecordInput=z.object({
  trace:z.record(z.string(),z.unknown()).nullable().optional(),
 }).strict().refine(value=>value.finishedAt>=value.startedAt,{message:'finishedAt precedes startedAt'})
  .refine(value=>value.authority.kind==='person'||value.runKind==='mandate_run',{message:'A mandate authority records a mandate run'});
-export type OutcomeRecordInput=z.input<typeof OutcomeRecordInput>;
+/** Callers may pass frozen arrays (the trace and the job results are frozen); validation copies them. */
+export type OutcomeRecordInput=Omit<z.input<typeof OutcomeRecordInput>,'reads'|'checks'>&Readonly<{reads:readonly OutcomeRead[];checks:readonly OutcomeCheck[]}>;
 
 export class OutcomeRecordRefused extends Error{constructor(readonly reason:string){super('Outcome record refused: '+reason);this.name='OutcomeRecordRefused';}}
 
