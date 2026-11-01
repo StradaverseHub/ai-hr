@@ -4,9 +4,11 @@ import {readFileSync} from 'node:fs';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyBrowserRecovery,validateBrowserMetadata,BROWSER_IMAGE,BROWSER_WORKFLOW_ID} from './browser-recovery-policy.mjs';
+import {verifyBrowserRecovery,validateBrowserMetadata,BROWSER_IMAGE,BROWSER_WORKFLOW_ID,requireReviewedBrowserController,validateBrowserRecoveryGrantEvidence} from './browser-recovery-policy.mjs';
 import {validateBrowserControllerDelta,validateBrowserHistory} from './browser-recovery.mjs';
 import {operatorRelease} from './operator-release.mjs';
+import {createInstallGrant} from './ci-install-grant.mjs';
+import {installationFixture} from './staging-install-test-fixture.mjs';
 const branch='codex/recovery',candidateBranch='codex/source',controller='e'.repeat(40),lock='f'.repeat(64);
 function metadata(){
  const f=fixture(),run={...f.run,id:200,head_sha:controller,head_branch:branch,workflow_id:BROWSER_WORKFLOW_ID,path:'.github/workflows/alpha-staging-browser-checks.yml',display_title:`Tooling transport only · ${candidateBranch}`,conclusion:'success',created_at:time(4.5),updated_at:time(.5)};
@@ -21,7 +23,7 @@ function input(){
  f.jobs.find(j=>j.name==='browser (firefox)').conclusion='failure';
  const assessment={...assessResumeCoverage({expectedPlan:plan,reports:f.reports,expected:f.expected}),sourceRun:{id:100},observations:[{id:'browser-firefox',conclusion:'failure'}]};for(const r of assessment.reusable)r.source={runId:100,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
  const m=metadata(),fresh={...m,report,producer:m.jobs[3],binding:{kind:'PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS',releaseAuthorized:false,image:BROWSER_IMAGE,playwrightVersion:'1.62.1',nodeVersion:'22.23.3',candidate:plan.sha,controller,baseline:plan.migrationBase,engine:'firefox',runId:'200',attempt:'1',runtime:plan.runtime,lang:'en_US.UTF-8',tz:'Asia/Kuala_Lumpur',browsersPath:'/ms-playwright',lockSha256:lock}};
- return {plan,freshPlan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,fresh,verificationController:controller,verificationDiagnostic:{runId:500,controller},lockSha256:lock};
+ return {plan,freshPlan,assessment,run:f.run,jobs:f.jobs,reports:f.reports,fresh,verificationController:controller,verificationDiagnostic:{runId:500,controller},producerDiagnostic:{runId:501,controller},lockSha256:lock};
 }
 test('Complete Firefox replacement preserves original failure, all retained sources and both plan fingerprints',()=>{const f=input(),before=structuredClone(f),c=verifyBrowserRecovery(f);assert.deepEqual(f,before);assert.equal(c.originalConclusion,'failure');assert.equal(c.tests,5);assert.equal(c.units.length,f.plan.units.length);assert.equal(c.units.filter(u=>u.kind==='browser-capacity-recovery').length,1);assert.notEqual(c.sourceFingerprint,c.replacementFingerprint);});
 for(const [name,mutate] of [
@@ -45,4 +47,19 @@ const allowed=['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-po
 test('Controller delta cannot alter test runner, resource guards, application, dependencies or migrations',()=>{validateBrowserControllerDelta(allowed);for(const path of ['.github/ci/run-unit.mjs','.github/ci/host-health.mjs','.github/actions/setup-browser-image/action.yml','.github/ci/manifest.mjs','app/page.tsx','pnpm-lock.yaml','drizzle/anything.sql'])assert.throws(()=>validateBrowserControllerDelta([...allowed,path]));assert.throws(()=>validateBrowserControllerDelta(allowed.slice(1)));});
 function history(){const f=fixture(),m=metadata();f.run.display_title=`Alpha CI · ${candidateBranch}`;return {source:{run:f.run},rows:[m.run],candidateBranch,browserRunId:200,auxiliaryRunIds:[]};}
 test('History retains exact successful replacement and refuses hidden/pending failures',()=>{assert.equal(validateBrowserHistory(history()).executions[0].id,200);for(const change of [f=>f.rows=[],f=>f.rows[0].status='queued',f=>f.rows[0].conclusion='failure',f=>f.rows[0].run_attempt=2,f=>f.rows.push({...f.rows[0],id:999}),f=>f.auxiliaryRunIds=[999]]){const f=history();change(f);assert.throws(()=>validateBrowserHistory(f));}});
-test('Read-only recovery cannot enter installation and does not manufacture a normal gate receipt',async()=>{await assert.rejects(operatorRelease({candidatePath:'/fixture',runId:100,execute:true,browserRecovery:{}}),/read-only verification/);const s=readFileSync(new URL('./browser-recovery.mjs',import.meta.url),'utf8');assert(!s.includes('ci-receipt.json'));assert(s.includes('installationAuthorized:false'));});
+test('Unreviewed recovery cannot enter installation and does not manufacture a normal gate receipt',async()=>{await assert.rejects(operatorRelease({candidatePath:'/fixture',runId:100,execute:true,browserRecovery:{}}),/exact reviewed operator controller/);const s=readFileSync(new URL('./browser-recovery.mjs',import.meta.url),'utf8');assert(!s.includes('ci-receipt.json'));assert(s.includes('installationAuthorized:false'));});
+
+test('A separately validated verifier preserves the real browser producer, original build and exact grant format',()=>{
+ const f=input();f.verificationController='d'.repeat(40);f.verificationDiagnostic={runId:502,controller:f.verificationController};f.reviewedController=f.verificationController;
+ const c=verifyBrowserRecovery(f);assert.equal(c.browserProducerController,controller);assert.equal(c.verificationController,f.verificationController);assert.equal(c.pendingReview,false);
+ const g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,source:c.sha,controller:c.controller,runId:c.runId}};
+ const run={...g.run,id:c.runId,head_sha:c.controller,conclusion:'failure'},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
+ assert.equal(validateBrowserRecoveryGrantEvidence(e,run),true);const grant=createInstallGrant({...g,evidence:e,run,producer});assert.equal(grant.witnessFingerprint,hash(c));assert.equal(grant.runId,f.run.id);assert.equal(grant.controller,f.plan.controller);assert.equal(grant.build.nextBuildId,g.evidence.build.nextBuildId);assert.equal(run.conclusion,'failure');
+ for(const change of [x=>x.recovery.pendingReview=true,x=>x.recovery.reviewedController='a'.repeat(40),x=>x.recovery.recoveryPolicy='aihr-browser-capacity-recovery/v1',x=>delete x.recovery.producerDiagnostic,x=>x.recovery.producerDiagnostic.controller='a'.repeat(40),x=>delete x.recovery.verificationDiagnostic,x=>x.recovery.originalConclusion='success',x=>x.recovery.units.find(u=>u.kind==='browser-capacity-recovery').source.controller='a'.repeat(40)]){const altered=structuredClone(e);change(altered);altered.fingerprint=hash(altered.recovery);assert.throws(()=>createInstallGrant({...g,evidence:altered,run,producer}));}
+});
+test('Pending source verification, mutated build and wrong reviewed operator cannot authorize installation',()=>{
+ const f=input(),c=verifyBrowserRecovery(f),g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,source:c.sha,controller:c.controller,runId:c.runId}},run={...g.run,id:c.runId,head_sha:c.controller,conclusion:'failure'},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
+ assert.throws(()=>createInstallGrant({...g,evidence:e,run,producer}));
+ requireReviewedBrowserController({execute:false,controller});assert.throws(()=>requireReviewedBrowserController({execute:true,controller}));assert.throws(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:'d'.repeat(40)}));assert.doesNotThrow(()=>requireReviewedBrowserController({execute:true,controller,reviewedController:controller}));
+ f.reviewedController=controller;const c2=verifyBrowserRecovery(f),e2={...e,...c2,recovery:c2,fingerprint:hash(c2),build:{...e.build,source:'d'.repeat(40)}};assert.throws(()=>createInstallGrant({...g,evidence:e2,run,producer}));
+});

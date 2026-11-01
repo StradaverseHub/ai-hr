@@ -4,7 +4,7 @@ import {isDeepStrictEqual} from 'node:util';
 import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {REPOSITORY,REPOSITORY_ID} from './release-policy.mjs';
-export const BROWSER_RECOVERY_POLICY='aihr-browser-capacity-recovery/v1';
+export const BROWSER_RECOVERY_POLICY='aihr-browser-capacity-recovery/v2';
 export const BROWSER_IMAGE='mcr.microsoft.com/playwright@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e';
 export const BROWSER_WORKFLOW_ID=395862646;
 const same=(a,b,m)=>assert(isDeepStrictEqual(a,b),m);
@@ -35,10 +35,11 @@ export function validateBrowserMetadata({run,jobs,artifacts,expected,now=Date.no
  }
  return producer;
 }
-export function verifyBrowserRecovery({plan,freshPlan,assessment,run,jobs,reports,fresh,verificationController,verificationDiagnostic,lockSha256}){
+export function verifyBrowserRecovery({plan,freshPlan,assessment,run,jobs,reports,fresh,verificationController,verificationDiagnostic,producerDiagnostic,reviewedController=null,lockSha256}){
  assert(sha(verificationController)&&verificationDiagnostic?.controller===verificationController&&positive(verificationDiagnostic.runId),'Hosted recovery verifier controls missing');
  for(const p of [plan,freshPlan]){const {fingerprint,...body}=p;assert(fingerprint===hash(body),'Invalid browser plan fingerprint');}
- assert(freshPlan.controller===verificationController,'Fresh producer differs from reviewed verifier');
+ assert(sha(freshPlan.controller)&&freshPlan.controller===fresh.run.head_sha&&producerDiagnostic?.controller===freshPlan.controller&&positive(producerDiagnostic.runId),'Fresh producer must retain its own validated controller identity');
+ assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier changed');
  const {fingerprint:a,controller:b,...originalBody}=plan,{fingerprint:c,controller:d,...freshBody}=freshPlan;same(originalBody,freshBody,'Browser recovery changed source, coverage, runtime or execution');
  same(plan.runtime,{node:'22.23.3',platform:'linux',arch:'x64'},'Browser runtime changed');
  assert(run.conclusion==='failure'&&run.status==='completed'&&run.run_attempt===1&&assessment.sourceRun?.id===run.id&&assessment.sha===plan.sha&&assessment.controller===plan.controller&&assessment.baseline===plan.migrationBase&&assessment.fingerprint===plan.fingerprint,'Original authenticated failure identity required');
@@ -53,14 +54,29 @@ export function verifyBrowserRecovery({plan,freshPlan,assessment,run,jobs,report
  assert(failed.healthBefore?.ok===false&&Number.isSafeInteger(failed.healthBefore.availableDiskBytes)&&failed.healthBefore.availableDiskBytes>=0&&failed.healthBefore.availableDiskBytes<20*1024**3&&failed.error?.startsWith('Error: Runner disk headroom too low: '),'Original failure was not the unchanged disk guard');
  same(failed.healthBefore.reasons,['Less than 20 GiB available on the worktree volume'],'Non-capacity failure requires independent repair');
  const binding=fresh.binding;
- assert(binding.kind==='PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS'&&binding.releaseAuthorized===false&&binding.image===BROWSER_IMAGE&&binding.playwrightVersion==='1.62.1'&&binding.nodeVersion==='22.23.3'&&binding.candidate===plan.sha&&binding.controller===verificationController&&binding.baseline===plan.migrationBase&&binding.engine==='firefox'&&binding.runId===String(fresh.run.id)&&binding.attempt==='1'&&binding.lockSha256===lockSha256,'Pinned browser runtime/source binding differs');
+ assert(binding.kind==='PINNED_OFFICIAL_IMAGE_TOOLING_NOT_TEST_OR_RELEASE_PASS'&&binding.releaseAuthorized===false&&binding.image===BROWSER_IMAGE&&binding.playwrightVersion==='1.62.1'&&binding.nodeVersion==='22.23.3'&&binding.candidate===plan.sha&&binding.controller===freshPlan.controller&&binding.baseline===plan.migrationBase&&binding.engine==='firefox'&&binding.runId===String(fresh.run.id)&&binding.attempt==='1'&&binding.lockSha256===lockSha256,'Pinned browser runtime/source binding differs');
  same(binding.runtime,plan.runtime,'Actual Firefox runtime differs');assert(binding.lang==='en_US.UTF-8'&&binding.tz==='Asia/Kuala_Lumpur'&&binding.browsersPath==='/ms-playwright','Browser locale/environment differs');
  const report=fresh.report;assert(report.id==='browser-firefox'&&!report.error,'Fresh Firefox process failed');
  for(const h of [report.healthBefore,report.healthAfter])assert(h?.platform==='linux'&&h.ok===true&&Number.isSafeInteger(h.availableDiskBytes)&&h.availableDiskBytes>=20*1024**3&&h.reasons?.length===0&&Date.parse(h.at)>=Date.parse(fresh.producer.started_at)&&Date.parse(h.at)<=Date.parse(fresh.producer.completed_at),'Fresh Firefox health/chronology failed');
  const replacement=verifyUnitReport(freshPlan,report);
  const units=plan.units.map(u=>{
-  if(u.id==='browser-firefox')return {id:u.id,kind:'browser-capacity-recovery',originalReportHash:hash(failed),reportHash:hash(report),tests:replacement.tests,files:replacement.files,source:{runId:fresh.run.id,attempt:1,controller:verificationController,jobId:fresh.producer.id,artifacts:fresh.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})).sort((a,b)=>a.name.localeCompare(b.name))}};
+  if(u.id==='browser-firefox')return {id:u.id,kind:'browser-capacity-recovery',originalReportHash:hash(failed),reportHash:hash(report),tests:replacement.tests,files:replacement.files,source:{runId:fresh.run.id,attempt:1,controller:freshPlan.controller,jobId:fresh.producer.id,artifacts:fresh.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})).sort((a,b)=>a.name.localeCompare(b.name))}};
   const r=reports.find(r=>r.id===u.id),v=verifyUnitReport(plan,r),s=assessment.reusable.find(s=>s.id===u.id);assert(s?.reportHash===hash(r)&&s.source?.runId===run.id,'Retained unit provenance changed');return {id:u.id,kind:'retained',reportHash:hash(r),tests:v.tests,files:v.files,source:s.source};
  });
- return {kind:'AUTHENTICATED_BROWSER_CAPACITY_RECOVERY',recoveryPolicy:BROWSER_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,baseline:plan.migrationBase,runId:run.id,originalConclusion:'failure',originalFailureObservations:assessment.observations,sourceFingerprint:plan.fingerprint,replacementFingerprint:freshPlan.fingerprint,browserRunId:fresh.run.id,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests:units.reduce((n,u)=>n+u.tests,0)};
+ return {kind:'AUTHENTICATED_BROWSER_CAPACITY_RECOVERY',recoveryPolicy:BROWSER_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,browserProducerController:freshPlan.controller,producerDiagnostic,reviewedController,pendingReview:reviewedController!==verificationController,releaseAuthorized:false,baseline:plan.migrationBase,runId:run.id,originalConclusion:'failure',originalFailureObservations:assessment.observations,sourceFingerprint:plan.fingerprint,replacementFingerprint:freshPlan.fingerprint,browserRunId:fresh.run.id,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests:units.reduce((n,u)=>n+u.tests,0)};
+}
+
+/** Frozen reviewed operator controller only; the existing receiver's exact grant format is unchanged. */
+export function requireReviewedBrowserController({execute,controller,reviewedController}){
+ if(execute)assert(sha(controller)&&reviewedController===controller,'Browser recovery installation requires its exact reviewed operator controller');
+}
+export function validateBrowserRecoveryGrantEvidence(evidence,run){
+ const c=evidence.recovery;
+ assert(c?.kind==='AUTHENTICATED_BROWSER_CAPACITY_RECOVERY'&&c.recoveryPolicy===BROWSER_RECOVERY_POLICY&&c.originalConclusion==='failure'&&evidence.fingerprint===hash(c),'Authenticated v2 browser recovery certificate required');
+ for(const key of ['sha','controller','verificationController','baseline','runId','policyVersion','suiteFiles','browserFiles','tests','browserRunId'])same(evidence[key],c[key],'Browser recovery grant identity differs: '+key);
+ assert(c.pendingReview===false&&c.reviewedController===c.verificationController&&c.releaseAuthorized===false,'Exact reviewed verifier required for browser recovery grant');
+ assert(sha(c.verificationController)&&sha(c.browserProducerController)&&c.verificationDiagnostic?.controller===c.verificationController&&positive(c.verificationDiagnostic.runId)&&c.producerDiagnostic?.controller===c.browserProducerController&&positive(c.producerDiagnostic.runId),'Both hosted controller validations required');
+ assert(c.runId===run.id&&c.controller===run.head_sha&&run.status==='completed'&&run.conclusion==='failure'&&run.run_attempt===1&&positive(c.browserRunId),'Original failed run and browser provenance required');
+ assert(c.units?.filter(u=>u.kind==='browser-capacity-recovery').length===1&&c.units.find(u=>u.kind==='browser-capacity-recovery').source?.runId===c.browserRunId&&c.units.find(u=>u.kind==='browser-capacity-recovery').source?.controller===c.browserProducerController,'Unique original Firefox replacement required');
+ return true;
 }
