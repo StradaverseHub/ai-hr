@@ -41,7 +41,7 @@ Every one of those is a place a privacy or security defect can enter. **Teras is
 
 1. **Native owners are the truth.** The model never computes money, entitlements, dates or eligibility, never decides permissions, and is never a record of HR fact.
 2. **Acts as the person, never wider.** Every read runs as the caller under tenant row-level security. There is no chat "service account". Automation runs as the explicit agent principal with its own grants and audit.
-3. **People decide sensitive outcomes.** Changes complete on their own review pages. Pay, employment status and access never auto-apply at any autonomy level.
+3. **People decide, unless they delegate.** Changes complete on their own review pages. **By default nothing is delegated.** An AI agent completes work only under a mandate a person has explicitly granted, within that person's own authority (§3.10). Pay, employment status and access are never delegable.
 4. **Minimum necessary to the provider.** Each tool's fields are disclosed under a reviewed contract. Identifiers never leave. Figures go out as bands or placeholders and are restored locally. Small groups are suppressed **only** where the person could not read every row behind the figure, and **always** for what leaves to the provider.
 5. **Deterministic gates before probabilistic ones.** These checks are code that runs before the model sees anything:
    - privacy;
@@ -105,7 +105,7 @@ flowchart TB
 | 3. Context and knowledge | Context (§3.4) |
 | 4. HR capabilities | Capabilities (§3.5) and Proactive (§3.7) |
 | 5. HR system of record | Native owners (§3.6) |
-| Foundation: Trust and governance | Guard (§3.2) and Trust and learning (§3.8) |
+| Foundation: Trust and governance | Guard (§3.2), Trust and learning (§3.8), mandates (§3.10) and the outcome record (§3.11) |
 
 The engineering parts stay separate where safety depends on it. The Guard is code that runs before the model and cannot be skipped by it. The system of record is the only place money and permissions are decided. Elsewhere they may share packages.
 
@@ -190,7 +190,7 @@ These are the kernel and packs (`packs/<pack>/service`), under RLS, with effecti
 | Audit of every tool call | Prod (closed loop); extend with the run trace |
 | Behaviour scoring, reviewed corpus, overclaim and invented-link checks, adversarial and conversation holdouts | Branch probe; holdouts Prod |
 | **Agent registry**: register, activate, deactivate and archive each agent per tenant, plus a report of actions a person could be offered but cannot complete; delegates get an actor class | **Build** (Workday pattern) |
-| **Autonomy ladder** per action and tenant: show / pre-fill / auto-apply, only for low-risk reversible steps | Later |
+| Autonomy | Replaced by **mandates** (§3.10): no autonomy unless a person delegates |
 | **Agreement metrics**: how often people accept Teras' suggestions and recommendations, from audit data with no new disclosure | Build (ADR-0084 learn) |
 | Model and provider registry, zero retention, residency | Prod for configuration; provider terms and residency are **Review** |
 
@@ -218,6 +218,63 @@ These are the kernel and packs (`packs/<pack>/service`), under RLS, with effecti
 
 **Not exposed through Connect:** configuration writes, bulk exports, payroll runs, other people's records (until a separate decision), and governed metrics (until the §5.1 review).
 
+### 3.10 Mandates: people delegate jobs to AI agents (owner decision, 1 November 2026)
+
+**Owner decision.** Users may delegate jobs to AI agents. **By default there is no delegation:** an agent acts only when a person delegates. This answers the question every AI-native system must answer: *under what authority did the agent act?* The answer is always a mandate, a named person's explicit, limited and revocable grant, recorded before the agent acts.
+
+**Facts this builds on:**
+- Human approval delegation exists. A delegate is scoped by module and task type, and nobody may decide their own request except a super admin (`core/approvals.ts`, `app/delegations`).
+- Automation already runs as an explicit agent principal with its own grants and audit (`SessionContext.agentPrincipal`).
+- Every change has a registry action and a review route whose native service adjudicates it.
+
+**Two kinds of job:**
+
+| Kind | Examples | What the agent may do |
+| --- | --- | --- |
+| **Work jobs** (prepare, never complete) | "Every month, prepare payroll inputs and tell me what is missing." "Chase incomplete claims in my team." "Draft onboarding tasks for each new hire." "Send me a Monday summary of who is away." | Read, prepare drafts and review items, send reminders the person could send. Nothing is completed: the person (or another mandate) confirms |
+| **Decision jobs** (complete within conditions) | "Approve my team's leave of 2 days or less when the balance covers it and team coverage stays above the minimum." | Complete the action through the same native service and review path the person would use, only when every condition passes |
+
+**Rules:**
+1. **Off by default.** No job runs without a mandate.
+2. **Two keys.** This is a recommendation, for enterprise customers. The tenant administrator chooses which job types can be delegated at all, with ceilings (default: none enabled). A person then delegates within that. The employer sets policy and the person chooses.
+3. **You can only delegate what you can do.** The agent's authority is the intersection of the grantor's **current** authority and the mandate's limits. It is re-checked at every run, so if the grantor loses a role, goes on leave or leaves, the mandate stops.
+4. **Conditions are code, never the model.** Balance, overlap, coverage, policy and amount checks are evaluated by native owners. The model may word the summary but never decides whether a condition passed. If anything is unusual, missing or fails, the job **falls back to the person** as "needs review".
+5. **Never delegable:**
+   - pay amounts, payroll close or reprocess;
+   - employment status (hire, confirm, terminate);
+   - access, roles and permissions;
+   - anything irreversible;
+   - deciding the grantor's own requests (the existing self-approval ban).
+6. **Bounded.** Every mandate carries a scope (whose items), limits (size, count per day), a validity period (with a maximum, then renewal), and a notification choice (each action, or a daily summary).
+7. **Revocable at once,** by the grantor, their manager where policy allows, or an administrator. There is a tenant-wide stop switch.
+8. **Earned.** A decision job type becomes available to delegate only after the tenant's own data shows people accept that suggestion at a high rate over enough cases. The threshold is set by the owner; it is not chosen here.
+9. **One agent identity per mandate,** shown as acting *for* the grantor, never *as* them, so every record says who delegated and which agent acted.
+10. **Undo** where the action is reversible, for a set window, through the native service.
+
+**Legal note.** Automated decisions about employees are regulated in some jurisdictions (for example, rules on solely automated decisions with significant effects). Low-impact approvals within the person's own rules are expected to be the lowest-risk case, but specialist review is required before decision jobs ship, and per country if we go international.
+
+### 3.11 Outcome record: how every AI result came about
+
+Every AI run, suggestion, prepared item and mandate action writes one **outcome record**. It is stored with the audit trail and shown on the review page, to the grantor and to administrators:
+
+| Field | Why |
+| --- | --- |
+| Run id, time, tenant, company | Locate it |
+| Who asked, or which mandate (id and version) and grantor | **Authority**: under what authority it happened |
+| Agent identity | Who acted |
+| What was read: tool names and record references (not the data) | **Basis**: what it looked at |
+| Rule and policy versions used by each native check, with each check's result | **Constraints**: which rules applied |
+| Model, provider, instruction-set and tool-catalogue versions | **Replay**: why the AI suggested this, later |
+| What was suggested, prepared or done | **Outcome** |
+| The person's decision, or the mandate's automatic completion, and any undo | **Accountability** |
+
+Data stays in the native owners; the record holds references and versions, and follows audit retention. A customer-facing view summarises outcome records:
+- what the AI did;
+- how often people accepted its suggestions, by job type;
+- what each mandate did.
+
+This view is the evidence for rule 8 above, and for audits.
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
@@ -243,7 +300,7 @@ These are the kernel and packs (`packs/<pack>/service`), under RLS, with effecti
 
 - Infer attitude, sentiment, flight risk or performance from messages.
 - Offer free-form SQL or "chat with the database".
-- Auto-apply pay, employment-status or access changes.
+- Act without a mandate, or delegate pay, employment status, access or anything irreversible.
 - Calculate money, entitlements or dates.
 - Treat memory as HR truth, or keep it longer than the transcript.
 - Send identifiers, or exact small-group figures, to a provider.
@@ -260,6 +317,8 @@ Every step is built on fictional data behind a switch that stays off until the A
 | 3 | Sensitive-topic routing; workplace-harms rule | No |
 | 4 | "Why?" explainers; go-live setup co-pilot on readiness | No |
 | 5 | Approver recommendations; daily digest; agent registry | No |
+| 5a | Outcome record, then **work-job mandates** (prepare, chase, summarise; nothing completed) | No |
+| 5b | **Decision-job mandates**, per job type, once acceptance data qualifies it | Legal review of automated decisions |
 | 6 | Governed metrics, receipts, letter drafting, spreadsheet intake, verified KB, policy-versus-configuration | **Yes** |
 | 6a | Teras Connect, read and prepare only, behind the tenant and app allowlist, after the Guard and capability registry are product code | Its own legal review (§3.9), and the conformance suite |
 | 7 | Pilot with one consenting tenant (ADR-0169 phase D) | **Yes**, plus legal sign-off |
@@ -279,7 +338,8 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 - Tenant acceptance of disclosure.
 - Production model, cost and latency.
 - Whether the Assistant's decision sources admit covering delegates.
-- Malaysian legal requirements specific to AI in employment. This needs the privacy/legal reviewer.
+- Malaysian, and later other countries', legal requirements for AI and automated decisions in employment. This needs the privacy/legal reviewer.
+- The acceptance threshold and minimum case count that qualify a decision job for delegation.
 
 ## 9. Name
 
