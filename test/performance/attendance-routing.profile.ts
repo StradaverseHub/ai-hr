@@ -38,7 +38,7 @@ async function metadataBatchDecision(ctx:SessionContext,companyIds:string[]){
    const ids=versioned.filter(row=>version===2?byId.get(row.id)!.version===2:byId.get(row.id)!.version!==2).map(row=>row.id);
    if(!ids.length)continue;
    const proof=version===2?sql`app.attendance_workflow_v2_decide(q.id)`:sql`app.attendance_workflow_v3_decision_slot(q.id) IS NOT NULL`;
-   const proofs=await tx.execute<{id:string;ok:boolean}>(sql`select q.id,${proof}as ok from(values ${sql.join(ids.map(id=>sql`(${id}::uuid)`),sql`,`)})q(id)`);
+   const proofs=await tx.execute<{id:string;ok:boolean}>(sql`select q.id,(${proof}) as ok from(values ${sql.join(ids.map(id=>sql`(${id}::uuid)`),sql`,`)})q(id)`);
    for(const row of proofs)if(row.ok)allowed.add(row.id);
   }
   const versionedIds=new Set(versioned.map(row=>row.id)),legacy=rows.filter(row=>!versionedIds.has(row.id));

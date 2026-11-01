@@ -129,7 +129,11 @@ pool10/heap4GiB and the existing PostgreSQL2GiB cap. No later capacity pass exis
 A benchmark-only positive-path batching experiment41303932550 uses source
 6fb2e0f2be64f2d86488bd0f28054952f660c030; application/SQL bytes match16e662e6b.
 Incorrect-SHA diagnostic41303908353 was canceled while queued before checks;
-its original cancellation is retained. No app batching optimization is promoted.
+its original cancellation is retained. No app batching optimization is promoted. Its native experiment41303932550
+FAILS on benchmark-only SQL assembly (`NULLas`,42601) before batch timing; the
+independent compiler is allowed to finish. A whitespace/parenthesis-only recovery
+reruns just the affected benchmark, retaining the original failure and compiler
+evidence. Frozen500-user application16e662e6b is unaffected.
 The canonical payroll-tax-reader session flag and both Personnel integration imports
 are preserved. Current source fingerprints regenerate without editing human approval
 literals; exact-source approval remains held before any later integration/release.
