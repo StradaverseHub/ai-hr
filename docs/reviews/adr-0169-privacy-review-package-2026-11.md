@@ -20,6 +20,8 @@ Nothing in this package authorises disclosure, deployment, a pilot or production
 
 ---
 
+> **Signed off by the owner on 2 November 2026** ("Go ahead, signed off"). Decisions and conditions are recorded in ADR-0169 §5.1; the answers are in `docs/reviews/evidence/adr-0169-owner-answers-2026-11-02.md`.
+
 ## Status before you review (2 November 2026)
 
 This package was drafted by reading the code. The drafting pass found seven disclosure defects. The coordinating session confirmed defects 1 to 3 in code, and all seven are **fixed in draft PR 191** (`claude/teras-privacy-fixes`, head da474340, harness spec v6). Each fix has a test that failed on the unfixed code first (run 41327020490: 19 failed). Then 568 tests and the whole typecheck passed (run 41328190341), and a model run on the same head had zero hard-gate failures (run 41329226626). Approved digests are unchanged.
