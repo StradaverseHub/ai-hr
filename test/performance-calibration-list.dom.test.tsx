@@ -8,7 +8,7 @@ import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import en from '../messages/en.json';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
 
 vi.mock('next/navigation', () => ({ usePathname: () => '/', useSearchParams: () => new URLSearchParams(), redirect: vi.fn(), useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('../lib/session', () => ({ getSession: vi.fn() }));

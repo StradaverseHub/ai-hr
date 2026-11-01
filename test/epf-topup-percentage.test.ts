@@ -86,7 +86,7 @@ describe('b6dbadc5 additive Top-up — validation owner',()=>{
   expect(epfRateInputBounds('voluntary_percentage','employer')).toEqual({min:0,max:87});
   expect(epfRateInputBounds('voluntary_percentage','employer',true)).toEqual({min:0,max:100});
   expect(epfRateInputBounds('semi_auto','employee')).toEqual({min:11,max:100});
-  expect(epfRateInputBounds('manual_percentage','employer')).toEqual({min:1,max:100});
+  expect(epfRateInputBounds('manual_percentage','employer')).toEqual({min:0,max:100});
  });
 });
 

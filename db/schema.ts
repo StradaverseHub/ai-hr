@@ -3589,7 +3589,8 @@ export const employeeStatutoryMy = pgTable(
   },
   (t) => [
     uniqueIndex('employee_statutory_my_person_uq').on(t.personId),
-    check('employee_statutory_my_manual_percentage_rates', sql`${t.epfMode}::text <> 'manual_percentage' OR (${t.epfEmployeeRate} IS NOT NULL AND ${t.epfEmployerRate} IS NOT NULL AND ${t.epfEmployeeRate} BETWEEN 0.01 AND 1 AND ${t.epfEmployerRate} BETWEEN 0.01 AND 1)`),
+    check('employee_statutory_my_manual_percentage_rates', sql`${t.epfMode}::text <> 'manual_percentage' OR (${t.epfEmployeeRate} IS NOT NULL AND ${t.epfEmployerRate} IS NOT NULL AND ${t.epfEmployeeRate} BETWEEN 0 AND 1 AND ${t.epfEmployerRate} BETWEEN 0 AND 1)`),
+    // 1058ced1 (migration 0876) — manual percentages accept 0% on either side; both stay mandatory.
     // b6dbadc5 (migration 0697) — top-up increments are 0..1 per side (null = nothing added) and carry no amounts.
     check('employee_statutory_my_topup_percentage_rates', sql`${t.epfMode}::text <> 'topup_percentage' OR ((${t.epfEmployeeRate} IS NULL OR ${t.epfEmployeeRate} BETWEEN 0 AND 1) AND (${t.epfEmployerRate} IS NULL OR ${t.epfEmployerRate} BETWEEN 0 AND 1) AND ${t.epfEmployeeAmount} IS NULL AND ${t.epfEmployerAmount} IS NULL)`),
     check('employee_statutory_my_tax_applicability_epoch_check', sql`${t.taxApplicabilityEpoch} >= 0`),

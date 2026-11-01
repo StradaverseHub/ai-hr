@@ -1,0 +1,459 @@
+{
+  "nav": {
+    "aiCentre": "Trung tâm AI",
+    "aiCentreAdmin": "Quản trị trung tâm AI",
+    "aiCentreWorkers": "Tác tử",
+    "aiCentreSetup": "Thiết lập",
+    "aiCentreSpend": "Chi tiêu và nhà cung cấp",
+    "sectionAiManagement": "Quản trị trung tâm AI"
+  },
+  "aiCentre": {
+    "genericName": "Trung tâm AI",
+    "tabsLabel": "Các mục của {name}",
+    "subnavLabel": "Trong mục này",
+    "tabs": {
+      "ask": "Hỏi",
+      "inbox": "Hộp thư công việc",
+      "jobs": "Công việc ủy quyền",
+      "workers": "Tác tử",
+      "setup": "Thiết lập",
+      "spend": "Chi tiêu và nhà cung cấp",
+      "how": "Cách hoạt động"
+    },
+    "inboxCount": "{count, plural, one {# mục đang chờ} other {# mục đang chờ}}",
+    "subnav": {
+      "workers": "Tất cả tác tử",
+      "inventory": "Danh mục và kiểm toán",
+      "overview": "Tổng quan",
+      "assistant": "Trợ lý",
+      "allowances": "Hạn mức",
+      "spending": "Chi tiêu",
+      "provider": "Nhà cung cấp",
+      "runs": "Lượt chạy gần đây"
+    },
+    "titles": {
+      "workers": "Tác tử",
+      "setup": "Thiết lập",
+      "spend": "Chi tiêu và nhà cung cấp"
+    },
+    "descriptions": {
+      "workers": "Mọi tác tử tự động, được nhóm theo việc chúng làm, kèm công tắc và việc gần nhất chúng đã làm.",
+      "setup": "AI có thể chạy cho công ty bạn hay không, và trợ lý được cung cấp như thế nào.",
+      "spend": "Hạn mức, chi tiêu, nhà cung cấp mô hình và các lượt gọi mô hình gần đây."
+    },
+    "inbox": {
+      "title": "Hộp thư công việc",
+      "description": "Mọi việc đang chờ bạn, trong một danh sách. Mỗi mục mở trang nơi bạn quyết định. Không việc nào được hoàn tất từ danh sách này.",
+      "filterLabel": "Hiển thị",
+      "filters": {
+        "all": "Tất cả",
+        "decide": "Cần bạn quyết định",
+        "findings": "Để bạn biết"
+      },
+      "groups": {
+        "decide": "Cần bạn quyết định",
+        "decideHelp": "Quyết định trên trang mà mỗi mục mở ra.",
+        "prepared": "Đã chuẩn bị cho bạn",
+        "preparedHelp": "Các yêu cầu do trợ lý chuẩn bị cho bạn sẽ chờ trên trang xem xét cho đến khi bạn xác nhận. Mở một cuộc trò chuyện đã lưu trong Hỏi để quay lại.",
+        "findings": "Để bạn biết",
+        "findingsHelp": "Các phát hiện do chính các kiểm tra của hệ thống nêu ra cho công ty bạn."
+      },
+      "empty": "Không có việc gì đang chờ bạn.",
+      "emptyHelp": "Khi có phê duyệt hoặc phát hiện cần bạn, nó sẽ xuất hiện ở đây.",
+      "unavailable": "Hiện chưa tải được một số mục. Các trang riêng của chúng vẫn hoạt động.",
+      "summary": "Đang chờ bạn",
+      "decisions": "Quyết định",
+      "findingsCount": "Phát hiện",
+      "oldest": "Cũ nhất",
+      "daysOld": "{count, plural, =0 {Hôm nay} one {# ngày} other {# ngày}}",
+      "openPrepared": "Mở Hỏi",
+      "jobsTitle": "Công việc ủy quyền",
+      "jobsNone": "Không có việc nào được ủy quyền. Đó là mặc định.",
+      "jobsLink": "Quản lý công việc ủy quyền",
+      "items": {
+        "fromApprovals": "Từ các phê duyệt của bạn",
+        "review": "Xem xét",
+        "open": "Mở",
+        "exceptionsTitle": "{count, plural, one {# ngoại lệ bảng lương đang mở} other {# ngoại lệ bảng lương đang mở}}",
+        "exceptionsBlocking": "{count, plural, =0 {Không có ngoại lệ nào chặn bảng lương} one {# ngoại lệ chặn bảng lương} other {# ngoại lệ chặn bảng lương}}",
+        "exceptionsSource": "Bộ giám sát · Kiểm tra bất thường bảng lương",
+        "exceptionsCta": "Mở ngoại lệ",
+        "proposalsTitle": "{count, plural, one {# thao tác được đề xuất đang chờ bạn phê duyệt} other {# thao tác được đề xuất đang chờ bạn phê duyệt}}",
+        "proposalsSource": "Bộ chuẩn bị · Thao tác được đề xuất",
+        "proposalsCta": "Xem xét đề xuất",
+        "readinessTitle": "{count, plural, one {# hồ sơ nhân viên cần bổ sung dữ liệu} other {# hồ sơ nhân viên cần bổ sung dữ liệu}}",
+        "readinessSource": "Bộ giám sát · Mức sẵn sàng của hồ sơ",
+        "readinessCta": "Mở mức sẵn sàng của hồ sơ"
+      }
+    },
+    "card": {
+      "howPrepared": "Mục này được chuẩn bị như thế nào",
+      "authority": "Thẩm quyền",
+      "read": "Những gì đã được đọc",
+      "model": "Phần của mô hình AI",
+      "decision": "Quyết định của bạn",
+      "notYet": "Chưa có",
+      "awaiting": "Đang chờ bạn xác nhận",
+      "approvalAuthority": "Bạn là người phê duyệt được chỉ định",
+      "approvalRead": "Yêu cầu, do chính mô-đun của nó đọc với tư cách của bạn",
+      "noModel": "Không có. Mục này đến từ chính mô-đun.",
+      "findingAuthority": "Công tắc của công ty bạn cho kiểm tra này",
+      "findingRead": "Các bản ghi trong phạm vi quản trị của bạn",
+      "findingModel": "Không có cho phát hiện này. Phần diễn đạt dễ hiểu, nếu được bật, sẽ hiển thị trên trang của nó."
+    },
+    "jobs": {
+      "title": "Công việc ủy quyền",
+      "description": "Những việc bạn giao cho một tác tử AI, trong phạm vi thẩm quyền của chính bạn, cho đến khi bạn dừng chúng.",
+      "leadStrong": "Không có gì được ủy quyền trừ khi bạn chọn.",
+      "lead": "Công việc ủy quyền cho phép một tác tử AI làm một việc cụ thể thay bạn, trong phạm vi những gì bạn vốn đã được làm, cho đến ngày kết thúc. Bạn có thể dừng nó bất cứ lúc nào, và quản trị viên của bạn cũng vậy.",
+      "none": "Bạn không có công việc ủy quyền nào.",
+      "noneHelp": "Công việc ủy quyền chưa khả dụng cho công ty bạn. Khi công ty cho phép một loại công việc, bạn có thể ủy quyền tại đây.",
+      "neverTitle": "Không bao giờ được ủy quyền",
+      "neverHelp": "Những việc này luôn cần một người thực hiện, bất kể cài đặt.",
+      "never": {
+        "pay": "Số tiền lương",
+        "payroll": "Chốt hoặc xử lý lại bảng lương",
+        "employment": "Tuyển dụng, xác nhận hoặc chấm dứt việc làm",
+        "access": "Quyền truy cập và phân quyền",
+        "irreversible": "Bất cứ việc gì không thể hoàn tác",
+        "own": "Quyết định các yêu cầu của chính bạn"
+      },
+      "approvalCover": "Bạn đang tìm người phê duyệt thay khi bạn vắng mặt? Đó là ủy quyền phê duyệt, một cài đặt riêng.",
+      "approvalCoverLink": "Mở ủy quyền phê duyệt"
+    },
+    "workers": {
+      "families": {
+        "watcher": "Bộ giám sát",
+        "watcherHelp": "Phát hiện vấn đề và nêu ra phát hiện.",
+        "chaser": "Bộ nhắc việc",
+        "chaserHelp": "Gửi lời nhắc mà một người cũng có thể gửi.",
+        "preparer": "Bộ chuẩn bị",
+        "preparerHelp": "Chuẩn bị và soạn thảo. Chúng không hoàn tất việc gì.",
+        "decider": "Bộ quyết định",
+        "deciderHelp": "Hoàn tất một thao tác trong các điều kiện, theo một công việc ủy quyền.",
+        "explainer": "Bộ diễn giải",
+        "explainerHelp": "Giải thích kết quả từ chính phép tính của hệ thống.",
+        "platform": "Trợ lý và nền tảng",
+        "platformHelp": "Chính trợ lý và các công cụ do nhóm nền tảng quản lý."
+      },
+      "runs": "Chạy khi",
+      "effect": "Tác động",
+      "triggers": {
+        "payrollRun": "Mỗi kỳ chạy lương",
+        "nightly": "Hằng đêm",
+        "onChange": "Khi bản ghi thay đổi",
+        "onSubmit": "Khi một khoản chi được gửi",
+        "scheduled": "Theo lịch",
+        "onRequest": "Theo yêu cầu",
+        "onFinding": "Khi có phát hiện",
+        "afterCheck": "Sau mỗi lần kiểm tra"
+      },
+      "effects": {
+        "findings": "Nêu ra phát hiện",
+        "flag": "Đánh dấu để xem xét",
+        "remindTemplate": "Gửi lời nhắc từ mẫu, không dùng mô hình AI",
+        "remind": "Gửi lời nhắc",
+        "prepare": "Chuẩn bị để một người phê duyệt",
+        "draft": "Soạn nháp để một người kiểm tra",
+        "suggest": "Gợi ý để một người kiểm tra",
+        "explain": "Giải thích bằng lời dễ hiểu",
+        "analyse": "Hiển thị xu hướng theo khoảng",
+        "answer": "Trả lời câu hỏi với tư cách người đó",
+        "decide": "Tự hoàn tất"
+      },
+      "builtInTitle": "Kiểm tra và quyết định có sẵn",
+      "builtInHelp": "Những mục này chạy theo quy tắc của chính hệ thống. Trạng thái của chúng được đọc từ hệ thống, không phải do khai báo.",
+      "on": "Bật",
+      "off": "Tắt",
+      "byDesign": "Tắt theo thiết kế",
+      "deciderNone": "Không bộ quyết định nào có thể chạy. Quyết định tự động bị tắt theo thiết kế, và công việc quyết định cần được rà soát pháp lý và có bằng chứng nghiệm thu trước.",
+      "systemJobsTitle": "Tác vụ hệ thống theo lịch",
+      "systemJobsHelp": "Quy tắc nghiệp vụ chạy qua đêm, không phải AI: cộng thêm và hết hạn ngày phép, rà soát thử việc và hợp đồng, ghi nhận mức sử dụng và các việc tương tự. Chúng chạy theo lịch của máy chủ và không thể bật tắt tại đây.",
+      "systemJobsLink": "Mở tác vụ theo lịch",
+      "stopAllTitle": "Tạm dừng tác tử",
+      "stopAllHelp": "Mỗi tác tử có công tắc riêng bên dưới. Tác tử ban đầu ở trạng thái tắt, và tác tử bị tạm dừng sẽ dừng ở lượt chạy tiếp theo."
+    },
+    "how": {
+      "title": "Cách hoạt động",
+      "description": "AI được xây dựng như thế nào, được phép làm gì, và ai quyết định.",
+      "chaptersLabel": "Chương",
+      "chapters": {
+        "request": "Theo dõi một yêu cầu",
+        "jobs": "Công việc ủy quyền",
+        "families": "Năm loại tác tử",
+        "never": "Những gì nó không bao giờ làm"
+      },
+      "previous": "Trước",
+      "next": "Tiếp",
+      "play": "Phát",
+      "pause": "Tạm dừng",
+      "stepOf": "Bước {n} / {total}",
+      "stepsLabel": "Các bước",
+      "mapLabel": "Các lớp của AI: giao diện, bộ điều phối tác tử, ngữ cảnh và kiến thức, năng lực HR và hệ thống hồ sơ HR, trên nền tảng tin cậy và quản trị.",
+      "layers": {
+        "interfaces": "Giao diện",
+        "interfacesHelp": "Trò chuyện, trò chuyện nổi, Hộp thư công việc, trang xem xét",
+        "harness": "Bộ điều phối tác tử",
+        "harnessHelp": "Chạy từng lượt trong giới hạn. Mô hình làm việc bên trong nó.",
+        "model": "Mô hình",
+        "modelHelp": "chỉ gợi ý, không bao giờ quyết định",
+        "context": "Ngữ cảnh và kiến thức",
+        "contextHelp": "Hướng dẫn, trang, mức sẵn sàng thiết lập, vai trò của bạn",
+        "capabilities": "Năng lực HR",
+        "capabilitiesHelp": "Đọc dữ liệu, bộ diễn giải, bộ chuẩn bị và các tác tử",
+        "record": "Hệ thống hồ sơ HR",
+        "recordHelp": "Nghỉ phép, bảng lương, nhân sự, khoản chi. Nơi duy nhất quyết định các con số và quyền hạn.",
+        "foundation": "Nền tảng: tin cậy và quản trị",
+        "guard": "Lớp bảo vệ",
+        "jobs": "Công việc ủy quyền",
+        "outcome": "Bản ghi kết quả",
+        "audit": "Kiểm toán và đánh giá"
+      },
+      "legend": {
+        "rules": "Quy tắc và phép tính",
+        "model": "Mô hình AI",
+        "person": "Một người quyết định"
+      },
+      "steps": {
+        "s0": "Toàn cảnh",
+        "s0Body": "Năm lớp nằm trên một nền tảng. Mọi câu hỏi, thẻ và công việc nền đều đi cùng một đường, nên chỉ có một nơi cần bảo vệ và một nơi cần kiểm toán.",
+        "s1": "Bạn hỏi",
+        "s1Body": "Aina hỏi trò chuyện nổi một câu về ngày nghỉ của chính cô.",
+        "s1Quote": "“Tôi có thể nghỉ thứ Sáu không?”",
+        "s2": "Lớp bảo vệ kiểm tra trước",
+        "s2Body": "Trước khi bất kỳ mô hình nào thấy câu hỏi, mã sẽ kiểm tra nó.",
+        "s2c1": "AI đang bật cho công ty này",
+        "s2c2": "Trong hạn mức hôm nay",
+        "s2c3": "Không phải chủ đề nhạy cảm",
+        "s2c4": "Chỉ về hồ sơ của chính Aina",
+        "s2c5": "Không có chỉ dẫn ẩn trong văn bản",
+        "s3": "Bộ điều phối chạy lượt",
+        "s3Body": "Mô hình nhận câu hỏi và chỉ những công cụ Aina được dùng. Mỗi lần gọi công cụ được kiểm tra lại với tư cách Aina.",
+        "s3c1": "Được cung cấp: số dư phép của cô, đọc với tư cách Aina",
+        "s3c2": "Được cung cấp: chuẩn bị đơn xin nghỉ phép",
+        "s3c3": "Không cung cấp: hồ sơ của người khác",
+        "s3c4": "Không cung cấp: bất cứ thứ gì hoàn tất một thay đổi",
+        "s4": "Ngữ cảnh bổ sung chỗ trống",
+        "s4Body": "Nó biết hướng dẫn nghỉ phép, trang phù hợp và vai trò của Aina. Vai trò là ngữ cảnh, không bao giờ là quyền hạn.",
+        "s5": "Một năng lực chuẩn bị",
+        "s5Body": "Bộ chuẩn bị nghỉ phép nhờ dịch vụ nghỉ phép kiểm tra yêu cầu. Chưa có gì thay đổi, và mô hình không tính bất kỳ con số nào.",
+        "s6": "Hệ thống hồ sơ quyết định",
+        "s6Body": "Dịch vụ nghỉ phép kiểm tra yêu cầu theo phiên bản quy tắc hiện hành của công ty. Chỉ tại đây số ngày và tiền mới được tính.",
+        "s6c1": "Số dư đủ cho yêu cầu",
+        "s6c2": "Không trùng với kỳ nghỉ khác",
+        "s6c3": "Không phải ngày lễ",
+        "s7": "Bản ghi kết quả được lưu",
+        "s7Body": "Ai đã hỏi, những gì đã được đọc, quy tắc nào đã chạy và mô hình nào đã soạn câu trả lời được lưu cùng nhật ký kiểm toán. Yêu cầu chờ trên trang xem xét.",
+        "s8": "Bạn xác nhận",
+        "s8Body": "Aina mở trang xem xét và xác nhận. Chính xác nhận của cô, không phải AI, gửi đơn nghỉ phép.",
+        "s8Mark": "Aina đã xác nhận"
+      },
+      "jobs": {
+        "k1": "Công ty cho phép một công việc",
+        "k1Body": "Quản trị viên chọn những công việc nào được phép ủy quyền, kèm giới hạn. Mặc định là không có.",
+        "k2": "Một người ủy quyền",
+        "k2Body": "Trong phạm vi thẩm quyền của chính họ, trong một khoảng thời gian, kèm giới hạn và lựa chọn thông báo.",
+        "k3": "Một tác tử làm thay họ",
+        "k3Body": "Thay cho họ, không bao giờ mạo danh họ: mỗi bản ghi nêu rõ ai đã ủy quyền và tác tử nào đã thực hiện. Thẩm quyền được kiểm tra lại ở mỗi lượt chạy.",
+        "conditions": "Điều kiện là mã, không bao giờ là mô hình",
+        "conditionsBody": "Các kiểm tra số dư, trùng lặp, người thay thế và số tiền do hệ thống hồ sơ thực hiện. Bất cứ điều gì bất thường được trả lại cho người đó với trạng thái cần xem xét."
+      },
+      "families": {
+        "intro": "Mỗi tác tử thuộc một nhóm và tuân theo một quy ước: một điều kiện kích hoạt, một phạm vi đọc được khai báo, một tác động được khai báo, thẩm quyền mà nó chạy theo, một bản ghi kết quả cho mỗi lượt chạy, và một công tắc ban đầu ở trạng thái tắt.",
+        "watcherRole": "AI: chỉ diễn đạt",
+        "chaserRole": "AI: chỉ diễn đạt",
+        "preparerRole": "AI: lập kế hoạch và soạn nháp",
+        "deciderRole": "AI: không tham gia quyết định",
+        "explainerRole": "AI: diễn đạt dữ kiện của hệ thống"
+      },
+      "never": {
+        "n1": "Phỏng đoán về con người",
+        "n1Body": "Không đánh giá về thái độ, hiệu suất hay ai có thể nghỉ việc.",
+        "n2": "Tính tiền hoặc số ngày",
+        "n2Body": "Các con số đến từ dịch vụ bảng lương và nghỉ phép, không bao giờ từ mô hình.",
+        "n3": "Hành động khi không có công việc ủy quyền",
+        "n3Body": "Mặc định không có gì được ủy quyền.",
+        "n4": "Ủy quyền việc trả lương, việc làm hoặc quyền truy cập",
+        "n4Body": "Những việc này luôn cần một người thực hiện.",
+        "n5": "Truy vấn cơ sở dữ liệu tùy ý",
+        "n5Body": "Chỉ các công cụ được khai báo, mỗi công cụ được kiểm tra theo quyền của bạn.",
+        "n6": "Gửi số giấy tờ tùy thân cho nhà cung cấp",
+        "n6Body": "Số IC, hộ chiếu, tài khoản ngân hàng và mã số thuế không bao giờ bị gửi ra ngoài."
+      },
+      "adminLink": "Xem những gì đang bật cho công ty bạn",
+      "walkthroughLink": "Theo dõi một yêu cầu đi qua AI, từng bước một",
+      "figureCaption": "Hình tách lớp · như bộ máy đồng hồ",
+      "parts": {
+        "interfaces": "mặt số · trò chuyện · hộp thư · trang xem xét",
+        "harness": "bộ thoát · mỗi lần một bước",
+        "model": "bánh xe cân bằng · không quyết định gì",
+        "context": "vòng lịch · hướng dẫn · trang · vai trò của bạn",
+        "capabilities": "bộ bánh răng · đọc · giải thích · chuẩn bị",
+        "record": "dây cót · nghỉ phép · lương · nhân sự",
+        "foundation": "vỏ đồng hồ · lớp bảo vệ · bản ghi kết quả · kiểm toán",
+        "guard": "núm vặn · kiểm tra trước khi có gì thay đổi",
+        "outcome": "nắp lưng khắc chữ · ai · gì · khi nào"
+      },
+      "titleNamed": "{name} hoạt động như thế nào",
+      "taglineNamed": "{osName}: hệ điều hành AI cho nhân sự, xây dựng quanh con người và quy tắc của bạn."
+    },
+    "launcher": {
+      "inbox": "Hộp thư công việc của bạn",
+      "inboxCount": "{count, plural, one {# đang chờ} other {# đang chờ}}",
+      "earlier": "Trước đó, trên trang {area}",
+      "continue": "Tiếp tục trong {name}",
+      "open": "Hỏi {name}"
+    },
+    "review": {
+      "back": "Quay lại Hộp thư công việc",
+      "navLabel": "Quay lại",
+      "note": "Không có gì thay đổi cho đến khi bạn xác nhận trên trang này, và mô-đun sẽ kiểm tra lại mọi thứ khi bạn xác nhận."
+    },
+    "registry": {
+      "title": "Danh mục tác tử",
+      "help": "Mọi tác tử đã đăng ký cùng nhóm của nó, điều gì khởi động nó, thẩm quyền nó chạy theo, công tắc của nó và cách mọi người phản hồi. Tỷ lệ chỉ hiển thị khi đã có đủ trường hợp được quyết định.",
+      "columns": {
+        "worker": "Tác tử",
+        "runsUnder": "Chạy theo thẩm quyền",
+        "switch": "Công tắc",
+        "lastRun": "Lần chạy gần nhất",
+        "response": "Cách mọi người phản hồi"
+      },
+      "details": "Chi tiết",
+      "detailTitle": "{name}: các lần chạy gần đây",
+      "recentRuns": "Các lần chạy gần đây",
+      "noRuns": "Chưa ghi nhận lần chạy nào.",
+      "trigger": {
+        "schedule": "Theo lịch",
+        "event": "Khi có sự kiện",
+        "request": "Theo yêu cầu"
+      },
+      "effect": {
+        "none": "Chỉ giải thích",
+        "notify": "Gửi thông báo",
+        "prepare": "Chuẩn bị cho một người",
+        "complete_under_mandate": "Hoàn tất theo một công việc ủy quyền"
+      },
+      "authority": {
+        "requester": "Người yêu cầu",
+        "agent_principal": "Công tắc của công ty, với tư cách bên ủy nhiệm của tác tử",
+        "mandate": "Công việc ủy quyền của một người"
+      },
+      "mandates": "{active} trên {total} công việc ủy quyền đang hoạt động",
+      "on": "Bật",
+      "off": "Tắt",
+      "stopped": "Bị dừng bởi công tắc dừng của công ty",
+      "unattributed": "Đang bật, nhưng chưa gắn với quản trị viên nào nên không chạy",
+      "stopPending": "Chưa thể kiểm tra công tắc dừng của công ty",
+      "turnOn": "Bật",
+      "turnOff": "Tắt",
+      "switchOwner": {
+        "tenant_setting": "Thay đổi ở công tắc tính năng",
+        "ai_provider": "Thay đổi ở công tắc tính năng",
+        "job_type": "Thay đổi trong công việc ủy quyền",
+        "worker_control": "Chuyển tại đây, cho mọi công ty trong tập đoàn"
+      },
+      "never": "Chưa bao giờ",
+      "accepted": "{rate} được chấp nhận",
+      "reversed": "{rate} bị đảo ngược",
+      "decided": "{count, plural, one {# đã quyết định} other {# đã quyết định}}",
+      "notMeasured": "Chưa đo ({count} đã quyết định)",
+      "mandateList": "Công việc ủy quyền",
+      "mandateState": {
+        "active": "Đang hoạt động",
+        "revoked": "Đã thu hồi",
+        "expired": "Đã hết hạn",
+        "not_started": "Chưa bắt đầu"
+      },
+      "revokedBy": {
+        "grantor": "bị chính người đó thu hồi",
+        "administrator": "bị quản trị viên thu hồi",
+        "manager": "bị quản lý của họ thu hồi"
+      },
+      "validUntil": "Có hiệu lực đến {date}",
+      "mandateGrantors": "Mỗi công việc ủy quyền hành động thay cho người đã cấp nó, không bao giờ với tư cách người đó.",
+      "closeDetail": "Đóng chi tiết",
+      "outcome": {
+        "answered": "Đã trả lời",
+        "suggested": "Đã gợi ý",
+        "prepared": "Đã chuẩn bị",
+        "done": "Đã xong",
+        "fallback": "Chuyển lại cho người xử lý",
+        "refused": "Đã từ chối",
+        "stopped": "Đã dừng"
+      },
+      "involvement": {
+        "none": "Không có người tham gia",
+        "reviewed": "Có người đã xem xét",
+        "decided": "Có người đã quyết định"
+      },
+      "decision": {
+        "accepted": "Đã chấp nhận",
+        "rejected": "Không làm theo"
+      },
+      "summaryTitle": "Bản ghi kết quả",
+      "summaryHelp": "Đến nay có {count, plural, one {# bản ghi kết quả} other {# bản ghi kết quả}}, theo nhóm tác tử.",
+      "refused": {
+        "not_administrator": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
+        "not_switchable_here": "Công tắc của tác tử này nằm ở nơi khác.",
+        "invalid": "Không hiểu được thay đổi đó.",
+        "failed": "Hiện không thể thay đổi công tắc."
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "Thuyết minh bất thường bảng lương",
+        "claims_triage": "Phân loại dữ liệu khoản chi",
+        "readiness_nudges": "Nhắc mức sẵn sàng",
+        "approval_chasers": "Nhắc phê duyệt",
+        "review_chasers": "Nhắc đánh giá nhân sự",
+        "clock_reminders": "Nhắc thiếu chấm công vào",
+        "document_reminders": "Nhắc hộ chiếu sắp hết hạn",
+        "lifecycle_chasers": "Nhắc bước vòng đời nhân viên",
+        "approver_recommendation": "Gợi ý cho người duyệt",
+        "explainers": "Bộ diễn giải",
+        "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
+        "daily_digest": "Bản tóm tắt hằng ngày"
+      },
+      "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
+      "switchRefused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
+      "switchModuleOff": "Mô-đun của tác tử này chưa được bật."
+    },
+    "recommendation": {
+      "show": "Xem gợi ý",
+      "loading": "Đang kiểm tra…",
+      "verdict": {
+        "recommend_approve": "Đề xuất phê duyệt: mọi kiểm tra đều đạt",
+        "needs_review": "Cần bạn xem xét"
+      },
+      "check": {
+        "balance_covers": "Số ngày phép còn lại không đủ cho số ngày yêu cầu",
+        "own_overlap": "Trùng với kỳ nghỉ khác của người nộp đơn",
+        "team_coverage": "Mức bố trí nhân sự của nhóm vào những ngày này",
+        "policy_limits": "Quy tắc về giấy tờ hoặc ngày của loại nghỉ phép"
+      },
+      "blocking": "Một quy tắc nghỉ phép sẽ từ chối yêu cầu này ở trạng thái hiện tại.",
+      "version": {
+        "leave_type": "Quy tắc loại nghỉ phép, phiên bản {version}",
+        "approval_chain": "Chuỗi phê duyệt, phiên bản {version}"
+      },
+      "youDecide": "Đây là lời khuyên. Bạn quyết định trên trang riêng của yêu cầu.",
+      "unavailable": {
+        "switched_off": "Tính năng gợi ý đã tắt cho công ty bạn.",
+        "stopped": "Tính năng gợi ý đang tạm dừng bởi công tắc dừng của công ty.",
+        "not_registered": "Tính năng gợi ý không khả dụng.",
+        "no_login": "Tính năng gợi ý cần bạn tự đăng nhập.",
+        "not_assigned": "Yêu cầu này không được giao cho bạn.",
+        "not_pending": "Yêu cầu này không còn chờ quyết định.",
+        "failed": "Hiện không thể tải gợi ý."
+      }
+    },
+    "digest": {
+      "title": "Ngày của bạn",
+      "approvals": "Đang chờ bạn quyết định",
+      "setup": "Thiếu sót thiết lập",
+      "setupDetail": "{blocked} đang chặn · {attention} cần chú ý",
+      "deadlines": "Hạn chót theo luật định",
+      "deadlinesDetail": "{overdue} quá hạn · {dueSoon} sắp đến hạn",
+      "lastPrepared": "Công việc tóm tắt hằng ngày của bạn chuẩn bị mục này lần gần nhất lúc {when}."
+    }
+  }
+}

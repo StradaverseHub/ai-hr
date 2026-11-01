@@ -14,10 +14,11 @@
  * none is built here and nothing is sent anywhere (§11.3 change 6: no auto-linking of identities, ADR-0117).
  *
  * Both read only the caller's tenant (tenant filter plus RLS) and are for group administrators. */
-import {and,count,eq,gte} from 'drizzle-orm';
+import {and,count,eq,gte,ne} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {terasMandate,terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
 import {mandateAgentIdentity,mandateState} from '../mandates/mandates';
+import {WORKER_SWITCH_IDENTITY} from './controls';
 import {terasEntity} from '../semantic-model/generate';
 import {listWorkers,WorkerRegistryRefused} from './views';
 import {registeredWorkers,type WorkerDeclaration,type WorkerFamily} from './workers';
@@ -50,7 +51,7 @@ export async function outcomeSummary(ctx:SessionContext,options:Readonly<{since?
   const records=await tx.select({id:terasOutcomeRecord.id,agentIdentity:terasOutcomeRecord.agentIdentity,mandateId:terasOutcomeRecord.mandateId,
    jobType:terasMandate.jobType,reads:terasOutcomeRecord.reads,outcomeKind:terasOutcomeRecord.outcomeKind,humanInvolvement:terasOutcomeRecord.humanInvolvement,notice:terasOutcomeRecord.notice})
    .from(terasOutcomeRecord).leftJoin(terasMandate,and(eq(terasMandate.tenantId,terasOutcomeRecord.tenantId),eq(terasMandate.id,terasOutcomeRecord.mandateId)))
-   .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),since));
+   .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),ne(terasOutcomeRecord.agentIdentity,WORKER_SWITCH_IDENTITY),since));
   const decisions=await tx.select({recordId:terasOutcomeFollowup.recordId,decision:terasOutcomeFollowup.decision,n:count()}).from(terasOutcomeFollowup)
    .innerJoin(terasOutcomeRecord,and(eq(terasOutcomeRecord.tenantId,terasOutcomeFollowup.tenantId),eq(terasOutcomeRecord.id,terasOutcomeFollowup.recordId)))
    .where(and(eq(terasOutcomeFollowup.tenantId,ctx.tenantId),since)).groupBy(terasOutcomeFollowup.recordId,terasOutcomeFollowup.decision);

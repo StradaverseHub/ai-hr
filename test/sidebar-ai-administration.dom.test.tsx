@@ -6,7 +6,7 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
+import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 vi.mock('next/navigation',()=>({usePathname:()=>'/',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
@@ -40,7 +40,9 @@ describe('AI administration navigation',()=>{
   fireEvent.click(tower!);
   const panel=screen.getByRole('navigation',{name:nav.aiControlTower});
   const hrefs=within(panel).getAllByRole('link').map(link=>link.getAttribute('href'));
-  for(const href of ['/control-tower','/control-tower/agents','/control-tower/agents/allowances'])expect(hrefs).toContain(href);
-  expect(hrefs.includes('/control-tower/agents/provider')).toBe(provider);
+  for(const href of ['/control-tower','/control-tower/agents/features','/control-tower/agents','/control-tower/agents/allowances'])expect(hrefs).toContain(href);
+  // AI centre: provider setup is a section of Spend and providers, offered there only to a group
+  // administrator (the page's own section filter); it is no longer a sidebar row for anyone.
+  void provider;expect(hrefs).not.toContain('/control-tower/agents/provider');
  });
 });

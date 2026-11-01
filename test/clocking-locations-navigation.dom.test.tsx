@@ -1,7 +1,7 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
+import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/work-locations/clocking/new',useSearchParams:()=>new URLSearchParams(),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));

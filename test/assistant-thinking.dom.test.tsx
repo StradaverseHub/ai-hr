@@ -4,6 +4,8 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
+import {enWithAiCentre} from './helpers/ai-centre-messages';
+import {AI_PRODUCT_NAME} from '../lib/ai-centre/brand';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
 import ta from '../messages/ta.json';
@@ -21,11 +23,11 @@ import {ThinkingIndicator} from '../components/assistant/thinking-indicator';
 type Surface='Assistant'|'Dashboard'|'Floating messenger';
 const surfaces=['Assistant','Dashboard','Floating messenger'] as const;
 function show(surface:Surface){
- render(<NextIntlClientProvider locale="en" messages={en}>{surface==='Assistant'
+ render(<NextIntlClientProvider locale="en" messages={enWithAiCentre}>{surface==='Assistant'
   ?<WorkspaceConversation tasks={[]} fileImport={false}/>
   :surface==='Dashboard'?<AtelierAskBox label="Your question" placeholder="Ask about your work" submitLabel="Ask" suggestions={[]}/>
   :<AssistantLauncher position="bottom-right" hiddenAreas={[]}/>}</NextIntlClientProvider>);
- if(surface==='Floating messenger')fireEvent.click(screen.getByRole('button',{name:en.assistant.launcher.open}));
+ if(surface==='Floating messenger')fireEvent.click(screen.getByRole('button',{name:enWithAiCentre.aiCentre.launcher.open.replace('{name}',AI_PRODUCT_NAME!)}));
  const box=screen.getByRole('textbox') as HTMLTextAreaElement;
  fireEvent.change(box,{target:{value:'What is my leave balance?'}});
  fireEvent.click(screen.getByRole('button',{name:surface==='Floating messenger'?en.assistant.launcher.send:surface==='Dashboard'?'Ask':en.assistant.ask}));

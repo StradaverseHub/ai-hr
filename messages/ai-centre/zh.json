@@ -1,0 +1,459 @@
+{
+  "nav": {
+    "aiCentre": "AI 中心",
+    "aiCentreAdmin": "AI 中心管理",
+    "aiCentreWorkers": "代理",
+    "aiCentreSetup": "设置",
+    "aiCentreSpend": "支出与服务提供方",
+    "sectionAiManagement": "AI 中心管理"
+  },
+  "aiCentre": {
+    "genericName": "AI 中心",
+    "tabsLabel": "{name} 栏目",
+    "subnavLabel": "本栏目内容",
+    "tabs": {
+      "ask": "提问",
+      "inbox": "收件箱",
+      "jobs": "委托任务",
+      "workers": "代理",
+      "setup": "设置",
+      "spend": "支出与服务提供方",
+      "how": "运作方式"
+    },
+    "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
+    "subnav": {
+      "workers": "全部代理",
+      "inventory": "清单与审计",
+      "overview": "概览",
+      "assistant": "助手",
+      "allowances": "额度",
+      "spending": "支出",
+      "provider": "服务提供方",
+      "runs": "最近运行"
+    },
+    "titles": {
+      "workers": "代理",
+      "setup": "设置",
+      "spend": "支出与服务提供方"
+    },
+    "descriptions": {
+      "workers": "所有自动化代理，按职能分组，并显示各自的开关和最近一次执行的内容。",
+      "setup": "AI 能否为贵公司运行，以及助手的提供方式。",
+      "spend": "额度、支出、模型服务提供方和最近的模型调用。"
+    },
+    "inbox": {
+      "title": "收件箱",
+      "description": "所有等待您处理的事项，集中在一个列表中。每一项都会打开您作出决定的页面。此列表本身不会完成任何事项。",
+      "filterLabel": "显示",
+      "filters": {
+        "all": "全部",
+        "decide": "需要您决定",
+        "findings": "供您参考"
+      },
+      "groups": {
+        "decide": "需要您决定",
+        "decideHelp": "请在每项打开的页面上作出决定。",
+        "prepared": "已为您准备",
+        "preparedHelp": "助手为您准备的申请会在其审核页面等待，直到您确认。在“提问”中打开已保存的对话即可返回。",
+        "findings": "供您参考",
+        "findingsHelp": "系统自身检查为贵公司发现的问题。"
+      },
+      "empty": "目前没有等待您处理的事项。",
+      "emptyHelp": "当有审批或发现需要您处理时，会显示在这里。",
+      "unavailable": "部分事项暂时无法加载。它们各自的页面仍可正常使用。",
+      "summary": "等待您处理",
+      "decisions": "决定",
+      "findingsCount": "发现",
+      "oldest": "最早",
+      "daysOld": "{count, plural, =0 {今天} one {# 天} other {# 天}}",
+      "openPrepared": "打开提问",
+      "jobsTitle": "委托任务",
+      "jobsNone": "没有任何委托。这是默认设置。",
+      "jobsLink": "管理委托任务",
+      "items": {
+        "fromApprovals": "来自您的审批",
+        "review": "审核",
+        "open": "打开",
+        "exceptionsTitle": "{count, plural, one {# 项薪资异常未处理} other {# 项薪资异常未处理}}",
+        "exceptionsBlocking": "{count, plural, =0 {没有阻止薪资发放的项} one {# 项阻止薪资发放} other {# 项阻止薪资发放}}",
+        "exceptionsSource": "监察者 · 薪资异常检查",
+        "exceptionsCta": "打开异常",
+        "proposalsTitle": "{count, plural, one {# 项建议操作等待您审批} other {# 项建议操作等待您审批}}",
+        "proposalsSource": "准备者 · 建议操作",
+        "proposalsCta": "审核建议",
+        "readinessTitle": "{count, plural, one {# 份员工档案需要补充资料} other {# 份员工档案需要补充资料}}",
+        "readinessSource": "监察者 · 档案完备性",
+        "readinessCta": "打开档案完备性"
+      }
+    },
+    "card": {
+      "howPrepared": "准备方式",
+      "authority": "权限",
+      "read": "读取了什么",
+      "model": "AI 模型的作用",
+      "decision": "您的决定",
+      "notYet": "尚未决定",
+      "awaiting": "等待您确认",
+      "approvalAuthority": "您是指定的审批人",
+      "approvalRead": "该申请由其所属模块以您的身份读取",
+      "noModel": "无。此事项来自模块本身。",
+      "findingAuthority": "贵公司对此项检查的开关",
+      "findingRead": "您管理范围内的记录",
+      "findingModel": "此发现不使用模型。如已开启通俗说明，会显示在其页面上。"
+    },
+    "jobs": {
+      "title": "委托任务",
+      "description": "在您自身权限范围内交给 AI 代理执行的任务，直到您停止为止。",
+      "leadStrong": "除非您主动选择，否则不会委托任何任务。",
+      "lead": "委托任务让 AI 代理在您已有的权限范围内，为您执行一项指定任务，直到结束日期。您可以随时停止，您的管理员也可以。",
+      "none": "您没有委托任务。",
+      "noneHelp": "贵公司尚未开放委托任务。当贵公司允许某类任务时，您可以在此委托。",
+      "neverTitle": "永不可委托",
+      "neverHelp": "无论如何设置，这些事项始终需要由人处理。",
+      "never": {
+        "pay": "薪酬金额",
+        "payroll": "薪资结算或重新处理",
+        "employment": "录用、转正或终止雇佣",
+        "access": "访问与权限",
+        "irreversible": "任何无法撤销的操作",
+        "own": "决定您自己的申请"
+      },
+      "approvalCover": "想设置您不在时由谁代为审批？那是审批委托，属于另一项设置。",
+      "approvalCoverLink": "打开审批委托"
+    },
+    "workers": {
+      "families": {
+        "watcher": "监察者",
+        "watcherHelp": "发现问题并提出发现。",
+        "chaser": "催办者",
+        "chaserHelp": "发送本可由人发送的提醒。",
+        "preparer": "准备者",
+        "preparerHelp": "准备和起草，不完成任何事项。",
+        "decider": "决定者",
+        "deciderHelp": "在委托任务下，于设定条件内完成操作。",
+        "explainer": "说明者",
+        "explainerHelp": "依据系统自身的计算说明结果。",
+        "platform": "助手与平台",
+        "platformHelp": "助手本身以及由平台团队管理的工具。"
+      },
+      "runs": "运行时机",
+      "effect": "作用",
+      "triggers": {
+        "payrollRun": "每次薪资运行",
+        "nightly": "每晚",
+        "onChange": "记录变更时",
+        "onSubmit": "提交报销时",
+        "scheduled": "按计划",
+        "onRequest": "按需",
+        "onFinding": "出现发现时",
+        "afterCheck": "每次检查后"
+      },
+      "effects": {
+        "findings": "提出发现",
+        "flag": "标记待复核",
+        "remindTemplate": "按模板发送提醒，不使用 AI 模型",
+        "remind": "发送提醒",
+        "prepare": "准备好供人审批",
+        "draft": "起草供人检查",
+        "suggest": "提出建议供人检查",
+        "explain": "用通俗语言说明",
+        "analyse": "按区间显示规律",
+        "answer": "以本人身份回答问题",
+        "decide": "自行完成"
+      },
+      "builtInTitle": "内置检查与决定",
+      "builtInHelp": "这些依据系统自身规则运行。其状态从系统读取，而非人工声明。",
+      "on": "开",
+      "off": "关",
+      "byDesign": "按设计关闭",
+      "deciderNone": "没有决定者可以运行。自主决定按设计关闭，决定类任务须先经过法律审查并具备验收证据。",
+      "systemJobsTitle": "系统计划任务",
+      "systemJobsHelp": "夜间运行的业务规则，而非 AI：假期补充与过期、试用期和合同审查、用量记录等。它们按服务器计划运行，无法在此开关。",
+      "systemJobsLink": "打开计划任务",
+      "stopAllTitle": "暂停代理",
+      "stopAllHelp": "每个代理在下方都有自己的开关。代理初始为关闭状态，暂停的代理会在下次运行时停止。"
+    },
+    "how": {
+      "title": "运作方式",
+      "description": "AI 的构建方式、可以做什么，以及由谁决定。",
+      "chaptersLabel": "章节",
+      "chapters": {
+        "request": "跟随一个申请",
+        "jobs": "委托任务",
+        "families": "五类代理",
+        "never": "它绝不会做的事"
+      },
+      "previous": "上一步",
+      "next": "下一步",
+      "play": "播放",
+      "pause": "暂停",
+      "stepOf": "第 {n} 步，共 {total} 步",
+      "stepsLabel": "步骤",
+      "mapLabel": "AI 的各层：界面、智能体运行框架、上下文与知识、HR 能力以及 HR 记录系统，建立在信任与治理的基础之上。",
+      "layers": {
+        "interfaces": "界面",
+        "interfacesHelp": "对话、悬浮对话、收件箱、审核页面",
+        "harness": "智能体运行框架",
+        "harnessHelp": "在限制范围内运行每一轮。模型在其中工作。",
+        "model": "模型",
+        "modelHelp": "只提建议，从不决定",
+        "context": "上下文与知识",
+        "contextHelp": "指南、页面、设置就绪情况、您的角色",
+        "capabilities": "HR 能力",
+        "capabilitiesHelp": "读取、说明者、准备者和各类代理",
+        "record": "HR 记录系统",
+        "recordHelp": "休假、薪资、人员、报销。唯一决定数字和权限的地方。",
+        "foundation": "基础：信任与治理",
+        "guard": "防护层",
+        "jobs": "委托任务",
+        "outcome": "结果记录",
+        "audit": "审计与评估"
+      },
+      "legend": {
+        "rules": "规则与计算",
+        "model": "AI 模型",
+        "person": "由人决定"
+      },
+      "steps": {
+        "s0": "全貌",
+        "s0Body": "五个层级建立在同一个基础上。每个问题、卡片和后台任务都走同一条路径，因此只需在一处加以保护、在一处进行审计。",
+        "s1": "您提问",
+        "s1Body": "Aina 在悬浮对话中询问关于她自己休假的问题。",
+        "s1Quote": "“我周五可以请假吗？”",
+        "s2": "防护层先检查",
+        "s2Body": "在任何模型看到问题之前，代码会先进行检查。",
+        "s2c1": "本公司已开启 AI",
+        "s2c2": "在今日额度之内",
+        "s2c3": "不是敏感话题",
+        "s2c4": "仅涉及 Aina 本人的记录",
+        "s2c5": "文本中没有隐藏指令",
+        "s3": "运行框架执行本轮",
+        "s3Body": "模型收到问题，以及仅限 Aina 可使用的工具。每次工具调用都会再次以 Aina 的身份检查。",
+        "s3c1": "提供：她的假期余额，以 Aina 的身份读取",
+        "s3c2": "提供：准备休假申请",
+        "s3c3": "不提供：他人的记录",
+        "s3c4": "不提供：任何会完成变更的操作",
+        "s4": "上下文补充信息",
+        "s4Body": "它了解休假指南、正确的页面和 Aina 的角色。角色只是上下文，绝不是权限。",
+        "s5": "由一项能力进行准备",
+        "s5Body": "休假准备者请休假服务检查该申请。此时尚未有任何变更，模型也不计算任何数字。",
+        "s6": "记录系统作出决定",
+        "s6Body": "休假服务依据公司当前的规则版本检查该申请。只有在这里才会计算天数和金额。",
+        "s6c1": "余额足以覆盖申请",
+        "s6c2": "与其他休假没有重叠",
+        "s6c3": "不是公共假日",
+        "s7": "写入结果记录",
+        "s7Body": "谁提问、读取了什么、运行了哪些规则、哪个模型撰写了回复，都会与审计日志一起保存。申请在其审核页面等待。",
+        "s8": "您确认",
+        "s8Body": "Aina 打开审核页面并确认。是她的确认，而不是 AI，提交了休假申请。",
+        "s8Mark": "已由 Aina 确认"
+      },
+      "jobs": {
+        "k1": "公司允许某项任务",
+        "k1Body": "管理员选择哪些任务可以委托，并设定限制。默认一项也没有。",
+        "k2": "由人进行委托",
+        "k2Body": "在其自身权限范围内，设定期限、限制和通知方式。",
+        "k3": "代理为其执行",
+        "k3Body": "代表本人，而非冒充本人：每条记录都写明由谁委托、由哪个代理执行。每次运行都会重新检查权限。",
+        "conditions": "条件由代码判断，绝不由模型判断",
+        "conditionsBody": "余额、重叠、人手覆盖和金额检查均由记录系统执行。任何异常都会作为“需复核”退回给本人。"
+      },
+      "families": {
+        "intro": "每个代理都属于一个类别，并遵循同一份约定：触发条件、声明的读取范围、声明的作用、运行所依据的权限、每次运行的结果记录，以及初始为关闭的开关。",
+        "watcherRole": "AI：仅负责措辞",
+        "chaserRole": "AI：仅负责措辞",
+        "preparerRole": "AI：规划和起草",
+        "deciderRole": "AI：不参与决定",
+        "explainerRole": "AI：表述系统的事实"
+      },
+      "never": {
+        "n1": "揣测他人",
+        "n1Body": "不对态度、绩效或谁可能离职作出判断。",
+        "n2": "计算金额或天数",
+        "n2Body": "数字来自薪资和休假服务，绝不来自模型。",
+        "n3": "在没有委托任务时行动",
+        "n3Body": "默认不委托任何任务。",
+        "n4": "委托薪酬、雇佣或访问权限事项",
+        "n4Body": "这些始终需要由人处理。",
+        "n5": "随意查询数据库",
+        "n5Body": "只使用已声明的工具，每个工具都按您的权限检查。",
+        "n6": "将身份证件号码发送给服务提供方",
+        "n6Body": "IC、护照、银行和税务号码绝不外传。"
+      },
+      "adminLink": "查看贵公司已开启的功能",
+      "walkthroughLink": "一步步跟随一个申请走完 AI 流程",
+      "figureCaption": "分解图 · 如同腕表机芯",
+      "parts": {
+        "interfaces": "表盘 · 对话 · 收件箱 · 审核页面",
+        "harness": "擒纵机构 · 一次只走一步",
+        "model": "摆轮 · 不做任何决定",
+        "context": "日历圈 · 指南 · 页面 · 你的角色",
+        "capabilities": "齿轮组 · 读取 · 说明 · 准备",
+        "record": "发条 · 休假 · 薪资 · 人员",
+        "foundation": "表壳 · 防护层 · 结果记录 · 审计",
+        "guard": "表冠 · 任何改动前先检查",
+        "outcome": "后盖刻字 · 谁 · 什么 · 何时"
+      },
+      "titleNamed": "{name} 如何运作",
+      "taglineNamed": "{osName}：面向人力资源的 AI 操作系统，围绕你的员工与你的规则而构建。"
+    },
+    "launcher": {
+      "inbox": "您的收件箱",
+      "inboxCount": "{count, plural, one {# 项待处理} other {# 项待处理}}",
+      "earlier": "之前，在{area}页面",
+      "continue": "在{name}中继续",
+      "open": "询问 {name}"
+    },
+    "review": {
+      "back": "返回收件箱",
+      "navLabel": "返回",
+      "note": "在您于此页面确认之前，不会有任何变更；您确认时，模块会重新检查所有内容。"
+    },
+    "registry": {
+      "title": "代理登记册",
+      "help": "每个已登记的代理及其类别、触发方式、运行所依据的权限、开关，以及人们对它的反应。只有在足够多的事项已作出决定后才显示比率。",
+      "columns": {
+        "worker": "代理",
+        "runsUnder": "运行权限",
+        "switch": "开关",
+        "lastRun": "上次运行",
+        "response": "人们的反应"
+      },
+      "details": "详情",
+      "detailTitle": "{name}：最近运行",
+      "recentRuns": "最近运行",
+      "noRuns": "尚无运行记录。",
+      "trigger": {
+        "schedule": "按计划",
+        "event": "发生事件时",
+        "request": "按需"
+      },
+      "effect": {
+        "none": "仅作说明",
+        "notify": "发送通知",
+        "prepare": "为人准备",
+        "complete_under_mandate": "在委托任务下完成"
+      },
+      "authority": {
+        "requester": "提出请求的人",
+        "agent_principal": "公司的开关，作为代理委托方",
+        "mandate": "某人的委托任务"
+      },
+      "mandates": "{total} 项委托任务中有 {active} 项有效",
+      "on": "开",
+      "off": "关",
+      "stopped": "已被公司总停开关停止",
+      "unattributed": "已开启，但未归属于任何管理员，因此不会运行",
+      "stopPending": "暂时无法检查公司总停开关",
+      "turnOn": "开启",
+      "turnOff": "关闭",
+      "switchOwner": {
+        "tenant_setting": "在功能开关中更改",
+        "ai_provider": "在功能开关中更改",
+        "job_type": "在委托任务中更改",
+        "worker_control": "在此切换，适用于集团内所有公司"
+      },
+      "never": "从未",
+      "accepted": "{rate} 已接受",
+      "reversed": "{rate} 被推翻",
+      "decided": "{count, plural, one {已决定 # 项} other {已决定 # 项}}",
+      "notMeasured": "尚未统计（已决定 {count} 项）",
+      "mandateList": "委托任务",
+      "mandateState": {
+        "active": "有效",
+        "revoked": "已撤销",
+        "expired": "已过期",
+        "not_started": "未开始"
+      },
+      "revokedBy": {
+        "grantor": "由本人撤销",
+        "administrator": "由管理员撤销",
+        "manager": "由其经理撤销"
+      },
+      "validUntil": "有效期至 {date}",
+      "mandateGrantors": "每项委托任务都代授予人行事，绝不以其身份行事。",
+      "closeDetail": "关闭详情",
+      "outcome": {
+        "answered": "已回答",
+        "suggested": "已建议",
+        "prepared": "已准备",
+        "done": "已完成",
+        "fallback": "已转交人工处理",
+        "refused": "已拒绝",
+        "stopped": "已停止"
+      },
+      "involvement": {
+        "none": "无人参与",
+        "reviewed": "有人复核",
+        "decided": "由人决定"
+      },
+      "decision": {
+        "accepted": "已接受",
+        "rejected": "未采纳"
+      },
+      "summaryTitle": "结果记录",
+      "summaryHelp": "目前共有 {count, plural, one {# 条结果记录} other {# 条结果记录}}，按代理类别统计。",
+      "refused": {
+        "not_administrator": "只有集团管理员才能更改此开关。",
+        "not_switchable_here": "此代理的开关位于其他位置。",
+        "invalid": "无法识别该更改。",
+        "failed": "暂时无法更改开关。"
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "薪资异常说明",
+        "claims_triage": "报销输入分流",
+        "readiness_nudges": "完备性提醒",
+        "approval_chasers": "审批催办",
+        "review_chasers": "雇佣评审催办",
+        "clock_reminders": "缺少上班打卡提醒",
+        "document_reminders": "护照到期提醒",
+        "lifecycle_chasers": "入离职步骤催办",
+        "approver_recommendation": "审批人建议",
+        "explainers": "说明者",
+        "team_absence_weekly_summary": "团队缺勤周报",
+        "daily_digest": "每日摘要"
+      },
+      "switchInvalid": "此开关无法在这里更改。",
+      "switchRefused": "只有集团管理员可以更改此开关。",
+      "switchModuleOff": "此代理所属的模块未启用。"
+    },
+    "recommendation": {
+      "show": "显示建议",
+      "loading": "检查中…",
+      "verdict": {
+        "recommend_approve": "建议批准：所有检查均已通过",
+        "needs_review": "需要您复核"
+      },
+      "check": {
+        "balance_covers": "假期余额不足以覆盖所申请的天数",
+        "own_overlap": "与申请人的其他休假重叠",
+        "team_coverage": "这些日期的团队人手覆盖",
+        "policy_limits": "该假期类型的文件或日期规则"
+      },
+      "blocking": "按目前情况，某项休假规则会拒绝此申请。",
+      "version": {
+        "leave_type": "假期类型规则，版本 {version}",
+        "approval_chain": "审批链，版本 {version}"
+      },
+      "youDecide": "这只是建议。请在该申请自己的页面上作出决定。",
+      "unavailable": {
+        "switched_off": "贵公司已关闭建议功能。",
+        "stopped": "建议功能已被公司总停开关暂停。",
+        "not_registered": "建议功能不可用。",
+        "no_login": "建议功能需要您本人登录。",
+        "not_assigned": "此申请未分配给您。",
+        "not_pending": "此申请已不再等待决定。",
+        "failed": "暂时无法加载建议。"
+      }
+    },
+    "digest": {
+      "title": "您的今天",
+      "approvals": "等待您决定",
+      "setup": "设置缺口",
+      "setupDetail": "{blocked} 项阻塞 · {attention} 项需关注",
+      "deadlines": "法定截止日期",
+      "deadlinesDetail": "{overdue} 项已逾期 · {dueSoon} 项即将到期",
+      "lastPrepared": "您的每日摘要任务上次于 {when} 准备了此内容。"
+    }
+  }
+}

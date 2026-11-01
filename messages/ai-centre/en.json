@@ -1,0 +1,459 @@
+{
+  "nav": {
+    "aiCentre": "AI centre",
+    "aiCentreAdmin": "AI centre administration",
+    "aiCentreWorkers": "Workers",
+    "aiCentreSetup": "Setup",
+    "aiCentreSpend": "Spend and providers",
+    "sectionAiManagement": "AI centre administration"
+  },
+  "aiCentre": {
+    "genericName": "AI centre",
+    "tabsLabel": "{name} sections",
+    "subnavLabel": "In this section",
+    "tabs": {
+      "ask": "Ask",
+      "inbox": "Inbox",
+      "jobs": "Delegated jobs",
+      "workers": "Workers",
+      "setup": "Setup",
+      "spend": "Spend and providers",
+      "how": "How it works"
+    },
+    "inboxCount": "{count, plural, one {# item waiting} other {# items waiting}}",
+    "subnav": {
+      "workers": "All workers",
+      "inventory": "Inventory and audit",
+      "overview": "Overview",
+      "assistant": "Assistant",
+      "allowances": "Allowances",
+      "spending": "Spending",
+      "provider": "Provider",
+      "runs": "Recent runs"
+    },
+    "titles": {
+      "workers": "Workers",
+      "setup": "Setup",
+      "spend": "Spend and providers"
+    },
+    "descriptions": {
+      "workers": "Every automated worker, grouped by what it does, with its switch and what it did last.",
+      "setup": "Whether the AI can run for your company, and how the assistant is offered.",
+      "spend": "Allowances, spending, the model provider and recent model calls."
+    },
+    "inbox": {
+      "title": "Inbox",
+      "description": "Everything waiting for you, in one list. Each item opens the page where you decide. Nothing completes from this list.",
+      "filterLabel": "Show",
+      "filters": {
+        "all": "All",
+        "decide": "Needs your decision",
+        "findings": "For your information"
+      },
+      "groups": {
+        "decide": "Needs your decision",
+        "decideHelp": "Decide on the page each item opens.",
+        "prepared": "Prepared for you",
+        "preparedHelp": "Requests the assistant prepares for you wait on their review page until you confirm them. Open a saved chat in Ask to return to one.",
+        "findings": "For your information",
+        "findingsHelp": "Findings the system's own checks raised for your company."
+      },
+      "empty": "Nothing is waiting for you.",
+      "emptyHelp": "When an approval or a finding needs you, it appears here.",
+      "unavailable": "Some items could not be loaded just now. Their own pages still work.",
+      "summary": "Waiting on you",
+      "decisions": "Decisions",
+      "findingsCount": "Findings",
+      "oldest": "Oldest",
+      "daysOld": "{count, plural, =0 {Today} one {# day} other {# days}}",
+      "openPrepared": "Open Ask",
+      "jobsTitle": "Delegated jobs",
+      "jobsNone": "Nothing is delegated. That is the default.",
+      "jobsLink": "Manage delegated jobs",
+      "items": {
+        "fromApprovals": "From your approvals",
+        "review": "Review",
+        "open": "Open",
+        "exceptionsTitle": "{count, plural, one {# payroll exception is open} other {# payroll exceptions are open}}",
+        "exceptionsBlocking": "{count, plural, =0 {None blocks payroll} one {# blocks payroll} other {# block payroll}}",
+        "exceptionsSource": "Watcher · Payroll anomaly checks",
+        "exceptionsCta": "Open exceptions",
+        "proposalsTitle": "{count, plural, one {# proposed action waits for your approval} other {# proposed actions wait for your approval}}",
+        "proposalsSource": "Preparer · Proposed actions",
+        "proposalsCta": "Review proposals",
+        "readinessTitle": "{count, plural, one {# employee record needs data} other {# employee records need data}}",
+        "readinessSource": "Watcher · Record readiness",
+        "readinessCta": "Open record readiness"
+      }
+    },
+    "card": {
+      "howPrepared": "How this was prepared",
+      "authority": "Authority",
+      "read": "What was read",
+      "model": "AI model's part",
+      "decision": "Your decision",
+      "notYet": "Not yet",
+      "awaiting": "Waiting for your confirmation",
+      "approvalAuthority": "You are the assigned approver",
+      "approvalRead": "The request, read by its own module as you",
+      "noModel": "None. This item comes from the module itself.",
+      "findingAuthority": "Your company's switch for this check",
+      "findingRead": "Records in your administration scope",
+      "findingModel": "None for the finding. Plain-language wording, where switched on, is shown on its page."
+    },
+    "jobs": {
+      "title": "Delegated jobs",
+      "description": "Jobs you hand to an AI worker, within your own authority, until you stop them.",
+      "leadStrong": "Nothing is delegated unless you choose to.",
+      "lead": "A delegated job lets an AI worker do one named job for you, within what you can already do, until its end date. You can stop it at any time, and so can your administrator.",
+      "none": "You have no delegated jobs.",
+      "noneHelp": "Delegated jobs are not available for your company yet. When your company allows a job type, you can delegate it here.",
+      "neverTitle": "Never delegable",
+      "neverHelp": "These always need a person, whatever the settings.",
+      "never": {
+        "pay": "Pay amounts",
+        "payroll": "Payroll close or reprocess",
+        "employment": "Hiring, confirming or ending employment",
+        "access": "Access and permissions",
+        "irreversible": "Anything that cannot be undone",
+        "own": "Deciding your own requests"
+      },
+      "approvalCover": "Looking for who covers your approvals while you are away? That is approval delegation, a separate setting.",
+      "approvalCoverLink": "Open approval delegation"
+    },
+    "workers": {
+      "families": {
+        "watcher": "Watchers",
+        "watcherHelp": "Detect problems and raise findings.",
+        "chaser": "Chasers",
+        "chaserHelp": "Send reminders a person could send.",
+        "preparer": "Preparers",
+        "preparerHelp": "Prepare and draft. They complete nothing.",
+        "decider": "Deciders",
+        "deciderHelp": "Complete an action within conditions, under a delegated job.",
+        "explainer": "Explainers",
+        "explainerHelp": "Explain a result from the system's own calculation.",
+        "platform": "Assistant and platform",
+        "platformHelp": "The assistant itself and tools the platform team manages."
+      },
+      "runs": "Runs",
+      "effect": "Effect",
+      "triggers": {
+        "payrollRun": "Each payroll run",
+        "nightly": "Nightly",
+        "onChange": "When records change",
+        "onSubmit": "When a claim is submitted",
+        "scheduled": "On a schedule",
+        "onRequest": "On request",
+        "onFinding": "On a finding",
+        "afterCheck": "After each check"
+      },
+      "effects": {
+        "findings": "Raise findings",
+        "flag": "Flag for review",
+        "remindTemplate": "Send reminders from a template, no AI model",
+        "remind": "Send reminders",
+        "prepare": "Prepare for a person to approve",
+        "draft": "Draft for a person to check",
+        "suggest": "Suggest for a person to check",
+        "explain": "Explain in plain words",
+        "analyse": "Show banded patterns",
+        "answer": "Answer questions as the person",
+        "decide": "Complete on its own"
+      },
+      "builtInTitle": "Built-in checks and decisions",
+      "builtInHelp": "These run from the system's own rules. Their state is read from the system, not declared.",
+      "on": "On",
+      "off": "Off",
+      "byDesign": "Off by design",
+      "deciderNone": "No decider can run. Autonomous decisions are off by design, and decision jobs need a legal review and acceptance evidence first.",
+      "systemJobsTitle": "Scheduled system jobs",
+      "systemJobsHelp": "Overnight business rules, not AI: leave top-up and expiry, probation and contract reviews, usage capture and similar. They run on the server schedule and cannot be switched here.",
+      "systemJobsLink": "Open scheduled actions",
+      "stopAllTitle": "Pausing workers",
+      "stopAllHelp": "Each worker has its own switch below. Workers start switched off, and a paused worker stops at its next run."
+    },
+    "how": {
+      "title": "How it works",
+      "description": "How the AI is built, what it may do, and who decides.",
+      "chaptersLabel": "Chapters",
+      "chapters": {
+        "request": "Follow a request",
+        "jobs": "Delegated jobs",
+        "families": "Five kinds of worker",
+        "never": "What it never does"
+      },
+      "previous": "Previous",
+      "next": "Next",
+      "play": "Play",
+      "pause": "Pause",
+      "stepOf": "Step {n} of {total}",
+      "stepsLabel": "Steps",
+      "mapLabel": "The AI's layers: interfaces, agentic harness, context and knowledge, HR capabilities and the HR system of record, on a foundation of trust and governance.",
+      "layers": {
+        "interfaces": "Interfaces",
+        "interfacesHelp": "Chat, floating chat, Inbox, review pages",
+        "harness": "Agentic harness",
+        "harnessHelp": "Runs each turn within limits. The model works inside it.",
+        "model": "Model",
+        "modelHelp": "suggests only, never decides",
+        "context": "Context and knowledge",
+        "contextHelp": "Guides, pages, setup readiness, your role",
+        "capabilities": "HR capabilities",
+        "capabilitiesHelp": "Reads, explainers, preparers and the workers",
+        "record": "HR system of record",
+        "recordHelp": "Leave, payroll, people, claims. The only place figures and permissions are decided.",
+        "foundation": "Foundation: trust and governance",
+        "guard": "Guard",
+        "jobs": "Delegated jobs",
+        "outcome": "Outcome record",
+        "audit": "Audit and evaluation"
+      },
+      "legend": {
+        "rules": "Rules and calculations",
+        "model": "AI model",
+        "person": "A person decides"
+      },
+      "steps": {
+        "s0": "The whole picture",
+        "s0Body": "Five layers sit on one foundation. Every question, card and background job takes the same path, so there is one place to secure and one to audit.",
+        "s1": "You ask",
+        "s1Body": "Aina asks the floating chat a question about her own leave.",
+        "s1Quote": "“Can I take Friday off?”",
+        "s2": "The guard checks first",
+        "s2Body": "Before any model sees the question, code checks it.",
+        "s2c1": "AI is on for this company",
+        "s2c2": "Within today's allowance",
+        "s2c3": "Not a sensitive topic",
+        "s2c4": "About Aina's own records only",
+        "s2c5": "No hidden instructions in the text",
+        "s3": "The harness runs the turn",
+        "s3Body": "The model receives the question and only the tools Aina may use. Every tool call is checked again as Aina.",
+        "s3c1": "Offered: her leave balance, read as Aina",
+        "s3c2": "Offered: preparing a leave request",
+        "s3c3": "Not offered: other people's records",
+        "s3c4": "Not offered: anything that completes a change",
+        "s4": "Context fills the gaps",
+        "s4Body": "It knows the leave guide, the right page and Aina's role. A role is context, never permission.",
+        "s5": "A capability prepares",
+        "s5Body": "The leave preparer asks the leave service to check the request. Nothing has changed yet, and the model computes no figure.",
+        "s6": "The system of record decides",
+        "s6Body": "The leave service checks the request against the company's current rule version. Only here are days and money calculated.",
+        "s6c1": "Balance covers the request",
+        "s6c2": "No overlap with other leave",
+        "s6c3": "Not a public holiday",
+        "s7": "An outcome record is written",
+        "s7Body": "Who asked, what was read, which rules ran and which model worded the reply are stored with the audit trail. The request waits on its review page.",
+        "s8": "You confirm",
+        "s8Body": "Aina opens the review page and confirms. Her confirmation, not the AI, submits the leave.",
+        "s8Mark": "Confirmed by Aina"
+      },
+      "jobs": {
+        "k1": "The company allows a job",
+        "k1Body": "An administrator chooses which jobs may be delegated at all, with limits. By default none are.",
+        "k2": "A person delegates it",
+        "k2Body": "Within their own authority, for a set period, with limits and a choice of notifications.",
+        "k3": "A worker acts for them",
+        "k3Body": "For them, never as them: every record names who delegated and which worker acted. Authority is checked again at every run.",
+        "conditions": "Conditions are code, never the model",
+        "conditionsBody": "Balance, overlap, coverage and amount checks are run by the system of record. Anything unusual goes back to the person as needs review."
+      },
+      "families": {
+        "intro": "Every worker belongs to one family and follows one contract: a trigger, a declared read scope, a declared effect, the authority it runs under, an outcome record per run, and a switch that starts off.",
+        "watcherRole": "AI: wording only",
+        "chaserRole": "AI: wording only",
+        "preparerRole": "AI: plans and drafts",
+        "deciderRole": "AI: no part in the decision",
+        "explainerRole": "AI: words the system's facts"
+      },
+      "never": {
+        "n1": "Guess about people",
+        "n1Body": "No judgements about attitude, performance or who might resign.",
+        "n2": "Calculate money or days",
+        "n2Body": "Figures come from the payroll and leave services, never from the model.",
+        "n3": "Act without a delegated job",
+        "n3Body": "By default nothing is delegated.",
+        "n4": "Delegate pay, employment or access",
+        "n4Body": "These always need a person.",
+        "n5": "Query the database freely",
+        "n5Body": "Only declared tools, each checked against your permissions.",
+        "n6": "Send identity numbers to a provider",
+        "n6Body": "IC, passport, bank and tax numbers never leave."
+      },
+      "adminLink": "See what is switched on for your company",
+      "walkthroughLink": "Follow a request through the AI, step by step",
+      "figureCaption": "Exploded view · like a watch movement",
+      "parts": {
+        "interfaces": "the dial · chat · inbox · review pages",
+        "harness": "the escapement · one step at a time",
+        "model": "the balance wheel · decides nothing",
+        "context": "the calendar ring · guides · pages · your role",
+        "capabilities": "the gear train · reads · explainers · preparers",
+        "record": "the mainspring · leave · payroll · people",
+        "foundation": "the case · guard · outcome record · audit",
+        "guard": "the crown · checked before anything moves",
+        "outcome": "the engraved caseback · who · what · when"
+      },
+      "titleNamed": "How {name} works",
+      "taglineNamed": "{osName}: the AI operating system for HR, built around your people and your rules."
+    },
+    "launcher": {
+      "inbox": "Your Inbox",
+      "inboxCount": "{count, plural, one {# waiting} other {# waiting}}",
+      "earlier": "Earlier, on the {area} page",
+      "continue": "Continue in the {name}",
+      "open": "Ask {name}"
+    },
+    "review": {
+      "back": "Back to Inbox",
+      "navLabel": "Back",
+      "note": "Nothing changes until you confirm on this page, and the module checks everything again when you do."
+    },
+    "registry": {
+      "title": "Worker registry",
+      "help": "Every registered worker with its family, what starts it, the authority it runs under, its switch and how people respond to it. Rates show only once enough cases are decided.",
+      "columns": {
+        "worker": "Worker",
+        "runsUnder": "Runs under",
+        "switch": "Switch",
+        "lastRun": "Last run",
+        "response": "How people respond"
+      },
+      "details": "Details",
+      "detailTitle": "{name}: recent runs",
+      "recentRuns": "Recent runs",
+      "noRuns": "No runs recorded yet.",
+      "trigger": {
+        "schedule": "On a schedule",
+        "event": "On an event",
+        "request": "On request"
+      },
+      "effect": {
+        "none": "Explains only",
+        "notify": "Sends a notice",
+        "prepare": "Prepares for a person",
+        "complete_under_mandate": "Completes under a delegated job"
+      },
+      "authority": {
+        "requester": "The person asking",
+        "agent_principal": "The company's switch, as the agent principal",
+        "mandate": "A person's delegated job"
+      },
+      "mandates": "{active} of {total} delegated jobs active",
+      "on": "On",
+      "off": "Off",
+      "stopped": "Stopped by the company stop switch",
+      "unattributed": "On, but not attributed to an administrator, so it does not run",
+      "stopPending": "Cannot check the company stop switch yet",
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "switchOwner": {
+        "tenant_setting": "Change on the feature switches",
+        "ai_provider": "Change on the feature switches",
+        "job_type": "Change in delegated jobs",
+        "worker_control": "Switched here, for every company in the group"
+      },
+      "never": "Never",
+      "accepted": "{rate} accepted",
+      "reversed": "{rate} reversed",
+      "decided": "{count, plural, one {# decided} other {# decided}}",
+      "notMeasured": "Not measured yet ({count} decided)",
+      "mandateList": "Delegated jobs",
+      "mandateState": {
+        "active": "Active",
+        "revoked": "Revoked",
+        "expired": "Expired",
+        "not_started": "Not started"
+      },
+      "revokedBy": {
+        "grantor": "revoked by the person",
+        "administrator": "revoked by an administrator",
+        "manager": "revoked by their manager"
+      },
+      "validUntil": "Valid until {date}",
+      "mandateGrantors": "Each delegated job acts for the person who granted it, never as them.",
+      "closeDetail": "Close details",
+      "outcome": {
+        "answered": "Answered",
+        "suggested": "Suggested",
+        "prepared": "Prepared",
+        "done": "Done",
+        "fallback": "Fell back to a person",
+        "refused": "Refused",
+        "stopped": "Stopped"
+      },
+      "involvement": {
+        "none": "No person involved",
+        "reviewed": "A person reviewed",
+        "decided": "A person decided"
+      },
+      "decision": {
+        "accepted": "Accepted",
+        "rejected": "Not followed"
+      },
+      "summaryTitle": "Outcome records",
+      "summaryHelp": "{count, plural, one {# outcome record} other {# outcome records}} so far, by worker family.",
+      "refused": {
+        "not_administrator": "Only a group administrator can change this switch.",
+        "not_switchable_here": "This worker's switch lives elsewhere.",
+        "invalid": "That change was not understood.",
+        "failed": "The switch could not be changed just now."
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "Payroll anomaly narrator",
+        "claims_triage": "Claims input triage",
+        "readiness_nudges": "Readiness nudges",
+        "approval_chasers": "Approval chasers",
+        "review_chasers": "Employment review chasers",
+        "clock_reminders": "Missing clock-in reminders",
+        "document_reminders": "Passport expiry reminders",
+        "lifecycle_chasers": "Lifecycle step chasers",
+        "approver_recommendation": "Approver recommendations",
+        "explainers": "Explainers",
+        "team_absence_weekly_summary": "Weekly team absence summary",
+        "daily_digest": "Daily digest"
+      },
+      "switchInvalid": "That switch cannot be changed here.",
+      "switchRefused": "Only a group administrator can change this switch.",
+      "switchModuleOff": "The module this worker belongs to is not enabled."
+    },
+    "recommendation": {
+      "show": "Show the recommendation",
+      "loading": "Checking…",
+      "verdict": {
+        "recommend_approve": "Recommend approve: every check passed",
+        "needs_review": "Needs your review"
+      },
+      "check": {
+        "balance_covers": "The balance does not cover the days requested",
+        "own_overlap": "Overlaps other leave of the applicant",
+        "team_coverage": "Team coverage on these dates",
+        "policy_limits": "The leave type's document or date rules"
+      },
+      "blocking": "A leave rule would refuse this request as it stands.",
+      "version": {
+        "leave_type": "Leave type rules, version {version}",
+        "approval_chain": "Approval chain, version {version}"
+      },
+      "youDecide": "This is advice. You decide on the request's own page.",
+      "unavailable": {
+        "switched_off": "Recommendations are switched off for your company.",
+        "stopped": "Recommendations are paused by the company stop switch.",
+        "not_registered": "Recommendations are not available.",
+        "no_login": "Recommendations need your own sign-in.",
+        "not_assigned": "This request is not assigned to you.",
+        "not_pending": "This request is no longer waiting for a decision.",
+        "failed": "The recommendation could not be loaded just now."
+      }
+    },
+    "digest": {
+      "title": "Your day",
+      "approvals": "Waiting for your decision",
+      "setup": "Setup gaps",
+      "setupDetail": "{blocked} blocking · {attention} need attention",
+      "deadlines": "Statutory deadlines",
+      "deadlinesDetail": "{overdue} overdue · {dueSoon} due soon",
+      "lastPrepared": "Your daily digest job last prepared this at {when}."
+    }
+  }
+}

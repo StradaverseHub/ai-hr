@@ -2,7 +2,7 @@ import React from 'react';
 import {beforeEach,describe,it,expect,vi} from 'vitest';
 import {fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
+import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 import {Sidebar} from '../components/sidebar';
 const location=vi.hoisted(()=>({path:'/leave/history'}));
 vi.mock('next/navigation',()=>({usePathname:()=>location.path,useSearchParams:()=>new URLSearchParams()}));

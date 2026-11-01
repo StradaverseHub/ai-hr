@@ -1,7 +1,7 @@
 import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import en from '../messages/en.json';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
 const route=vi.hoisted(()=>({path:'/admin/users/create'}));
 vi.mock('next/navigation',()=>({usePathname:()=>route.path,useSearchParams:()=>new URLSearchParams(),useRouter:()=>({push:vi.fn(),refresh:vi.fn()}),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));

@@ -5,7 +5,8 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import messages from '../messages/en.json';
+import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
+import {AI_PRODUCT_NAME} from '../lib/ai-centre/brand';
 
 vi.mock('next/navigation',()=>({usePathname:()=>'/',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()}),redirect:vi.fn()}));
 vi.mock('../lib/session',()=>({getSession:vi.fn()}));
@@ -25,7 +26,8 @@ describe('AI Assistant sidebar row',()=>{
  it('shows when the tenant snapshot has the assistant module active',()=>{
   rail(['employees','leave','assistant']);
   expect(assistantRows().length).toBeGreaterThan(0);
-  expect(assistantRows()[0].textContent).toContain(messages.nav.assistant);
+  // AI centre (1 Nov 2026): the same row and gate, labelled as the centre.
+  expect(assistantRows()[0].textContent).toContain(AI_PRODUCT_NAME ?? messages.nav.aiCentre);
  });
  it('hides when the snapshot resolves without the assistant module',()=>{
   rail(['employees','leave']);

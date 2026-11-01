@@ -211,7 +211,9 @@ describe('approver recommendations on fictional data',()=>{
   expect(await recommend(applicant.ctx)).toEqual({kind:'unavailable',reason:'not_assigned'});
   await setMandateStopSwitch(hr,true);
   expect(await recommend(manager)).toEqual({kind:'unavailable',reason:'stopped'});
-  expect(await listOutcomeRecords(hr)).toHaveLength(0);
+  // No recommendation was recorded; the administrator's switch change has its own record (worker-control.switch).
+  expect((await listOutcomeRecords(hr)).filter(record=>record.agentIdentity===RECOMMENDER_AGENT_IDENTITY)).toHaveLength(0);
+  expect((await listOutcomeRecords(hr)).map(record=>record.agentIdentity)).toEqual(['worker-control.switch']);
  });
 
  it('appends the approver\'s choice as agreement, which the registry reports as a rate',async()=>{

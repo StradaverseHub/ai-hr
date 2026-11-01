@@ -15,11 +15,18 @@ import {terasMandateControl,terasWorkerControl,type TerasSwitchedWorker} from '.
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agentSwitchStatesTx} from '../agent-principal';
 import {resolveActiveAiConfig} from '../ai-config';
+import {isModuleEnabled} from '../entitlements';
 import {readMandateKeysTx} from '../mandates/mandates';
+import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
 
-export class WorkerControlRefused extends Error{constructor(readonly reason:'not_administrator'|'not_switchable_here'|'invalid'){super('Worker control refused: '+reason);this.name='WorkerControlRefused';}}
+export class WorkerControlRefused extends Error{constructor(readonly reason:'not_administrator'|'not_switchable_here'|'module_not_enabled'|'invalid'){super('Worker control refused: '+reason);this.name='WorkerControlRefused';}}
 const SWITCHED:readonly TerasSwitchedWorker[]=Object.freeze(['approver_recommendation','explainers']);
+/** The module each registry-controlled worker belongs to, checked on every switch change. */
+const SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant'});
+/** The outcome-record identity of an administrator's switch change. It is not a worker run, so the outcome
+ * summary leaves it out of the run counts (./export.ts). */
+export const WORKER_SWITCH_IDENTITY='worker-control.switch';
 
 export type WorkerSwitchState=Readonly<{on:boolean;
  /** Where the switch lives, so the screen sends the administrator to the one place that changes it. */
@@ -65,8 +72,9 @@ export async function registryGates(ctx:SessionContext):Promise<Readonly<Record<
  return withTenant(ctx,async tx=>{const out:Record<string,WorkerGate>={};for(const worker of registeredWorkers())out[worker.id]=await workerRunGateTx(tx,ctx,worker.id);return Object.freeze(out);});
 }
 
-/** A group administrator turns a teras_worker_control worker on or off. Workers with an existing switch are
- * changed where that switch lives, never here. */
+/** A group administrator turns a teras_worker_control worker on or off, while the worker's module is enabled.
+ * The change is audited (actor, time, worker, state before and after) and recorded as an outcome. Workers
+ * with an existing switch are changed where that switch lives, never here. */
 export async function setWorkerSwitch(supplied:SessionContext,input:Readonly<{workerId:unknown;enabled:unknown}>){
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator');
@@ -74,12 +82,22 @@ export async function setWorkerSwitch(supplied:SessionContext,input:Readonly<{wo
  const worker=registeredWorker(input.workerId);
  if(!worker||worker.switch.kind!=='worker_control'||!SWITCHED.includes(worker.switch.workerId))throw new WorkerControlRefused('not_switchable_here');
  const workerId=worker.switch.workerId,enabled=input.enabled;
+ if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled');
  return withTenant(ctx,async tx=>{
+  const startedAt=new Date();
+  const [before]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
+   .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,workerId))).limit(1).for('update');
+  const from=before?.enabled===true;
   const values={enabled,changedByUserId:ctx.userId!,changedAt:sql`now()`};
   const [row]=await tx.insert(terasWorkerControl).values({tenantId:ctx.tenantId,workerId,...values})
    .onConflictDoUpdate({target:[terasWorkerControl.tenantId,terasWorkerControl.workerId],set:values}).returning();
+  // Audit: who (the event actor), when (the event time), which worker, and the state before and after.
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-worker',aggregateId:ctx.tenantId,
-   eventType:enabled?'teras-worker.enabled':'teras-worker.disabled',actor:actorOf(ctx),payload:{workerId,version:row.version}});
+   eventType:enabled?'teras-worker.enabled':'teras-worker.disabled',actor:actorOf(ctx),payload:{workerId,from,to:enabled,version:row.version}});
+  await writeOutcomeRecordTx(tx,ctx,{runId:newRunId(),runKind:'turn',startedAt,finishedAt:new Date(Math.max(Date.now(),startedAt.getTime())),
+   authority:{kind:'person',askedByUserId:ctx.userId!},agentIdentity:WORKER_SWITCH_IDENTITY,reads:[],checks:[],
+   replay:{model:null,provider:null,instructionSet:null,specVersion:null,specDigest:null,toolCatalogue:null},
+   outcomeKind:'done',outcome:{workerId,from,to:enabled,version:row.version},humanInvolvement:'decided',notice:'not_applicable'});
   return Object.freeze(row);
  });
 }

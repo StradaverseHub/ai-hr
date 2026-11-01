@@ -8,7 +8,7 @@ import {serviceYearsAt} from '../lib/completed-years';
 import {PayFormulaError as FormulaLanguageError,evaluatePayFormula,analyzePayFormula,normalizeFormulaDecimal,addFormulaDecimal,applyFormulaAmount,divideFormulaDecimal,type FormulaRequest,type FormulaValue} from '../lib/pay-formula-language';
 import {PAY_FORMULA_PROVIDER_VERSION} from '../lib/pay-formula-registry';
 import {PayFormulaError,type ActiveFormula,type PayFormulaContext,type FormulaReadRequirements} from '../lib/pay-formula-model';
-import {resolvePayrollPermission,loadActiveFormulaProgramTx,loadFormulaAccumulationGroupsTx,recordFormulaEvaluationTx,resolvePayComponentSet,resolveAssignedPolicy,resolveProrationSettings,prorationDivisorDays,usesWorkingDayProration,workingDayRoster,cutOffWindowFor,type PayRuleScope,type PayRuleFormulaRuntime,type ResolvablePayComponent,readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp} from '../packs/payroll/service';
+import {resolvePayrollPermission,loadActiveFormulaProgramTx,loadFormulaAccumulationGroupsTx,recordFormulaEvaluationTx,resolvePayComponentSet,resolveAssignedPolicy,resolveProrationSettings,prorationDivisorDays,usesWorkingDayProration,workingDayRoster,cutOffWindowFor,type PayRuleScope,type PayRuleFormulaRuntime,type ResolvablePayComponent,readPayrollComponentInputsTx,readPayrollIndividualLedgerTx,readPayrollAttendanceHoursTx,payRuleDependencies,payRuleReadsFixedAllowanceTotal,payItemFeedsOvertimeOrp,countsTowardFixedAllowances} from '../packs/payroll/service';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 import {companyOnDate,companySegmentsForPeriodBulk,segmentForCompany} from './employment-company';
 import {employmentInformationAt} from './information-correction-history';
@@ -52,7 +52,7 @@ const employeeFields:Record<string,string>={dateOfBirth:'profile.personal_detail
 const basicField='payroll.basic_salary_and_salary_history.basicsalary',payModeField='payroll.basic_salary_and_salary_history.paymode';
 function sourceFields(request:FormulaRequest):string[]{
  const code=request.code,a=String(request.args[0]?.value??'');
- if(code==='Basic'||code==='Input')return [basicField];if(code==='Payrate')return [payModeField];
+ if(code==='Basic'||code==='Input'||code==='FixedAllowances')return [basicField];if(code==='Payrate')return [payModeField];
  if(code==='EmployeeProfile')return [profileFields[a]];if(code==='EmployeeInformation')return [employeeFields[a]];
  if(['JoinDate','JoinedThisMonth'].includes(code))return [profileFields.joinDate];
  if(['GroupJoinDate','GroupJoinedThisMonth'].includes(code))return [profileFields.groupJoinDate];
@@ -107,6 +107,19 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  const unknownInputs=new Set<string>();for(const c of snapshot.inputComponents??snapshot.components){if(c.formulaInput===undefined)unknownInputs.add(itemKey(c.code));else raw.set(itemKey(c.code),addFormulaDecimal(raw.get(itemKey(c.code))??'0',c.formulaInput));}for(const code of unknownInputs)raw.delete(code);raw.set('BASIC',snapshot.basic);
  let usedWorkforce=false;const usedFields=new Set<string>(),read=(id:string)=>{if(!allowed.get(id))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');usedFields.add(id);const v=values.get(id);if(v===null||v===undefined||v==='')throw unavailable(id);return String(v);};
  const fieldValue=(id:string,type:'date'|'string'):FormulaValue=>({type,value:read(id)});
+ // 02472802 — {#FixedAllowances} is the legacy `fixed_allowances` aggregate: the same row test
+ // (countsTowardFixedAllowances → payItemFeedsOvertimeOrp), the same group rule (a code counts only when
+ // every row counts) and the same stored amounts. Members are rule-free or fixed by construction, so their
+ // values never depend on resolution order and the reader cannot be part of a cycle.
+ let fixedTotal:string|undefined;
+ const fixedAllowanceTotal=()=>{
+  if(fixedTotal!==undefined)return fixedTotal;
+  const pinned=new Set(Object.keys(snapshot.scope.components??{}).map(itemKey)),groups=new Map<string,{counts:boolean;rows:ResolvablePayComponent[]}>();
+  for(const c of snapshot.components){const key=itemKey(c.code),group=groups.get(key)??{counts:true,rows:[]};group.counts=group.counts&&countsTowardFixedAllowances(c,pinned);group.rows.push(c);groups.set(key,group);}
+  let total='0';
+  for(const group of groups.values()){if(!group.counts)continue;for(const c of group.rows){if(c.rule&&c.rule.kind!=='fixed')throw unavailable('fixed allowance member');total=addFormulaDecimal(total,c.formulaInput!==undefined?normalizeFormulaDecimal(c.formulaInput):legacyDecimal(c.amount));}}
+  return fixedTotal=total;
+ };
  const legacyPersonnel=(code:string,proratedValue:boolean,seen=new Set<string>()):boolean=>{
   if(code==='BASIC')return proratedValue;if(seen.has(code))return false;seen.add(code);
   for(const c of snapshot.components.filter(c=>itemKey(c.code)===itemKey(code))){
@@ -129,6 +142,8 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  case 'Payrate':{const value=({monthly:'Monthly',daily:'Daily',hourly:'Hourly',custom_period:'Custom Period'} as Record<string,string>)[read(payModeField)];if(!value)throw unavailable('pay mode');return {type:'string',value};}
  case 'Input':if(component.formulaInput===undefined)throw unavailable('current input');return decimal(component.formulaInput);
  case 'InputType':return {type:'string',value:rule.kind};
+ case 'CalendarDays':{const days=snapshot.scope.calendarDays;if(days===undefined||!Number.isInteger(days)||days<28||days>31)throw unavailable('calendar days');return decimal(String(days));}
+ case 'FixedAllowances':return decimal(fixedAllowanceTotal());
  case 'OrdinaryRate':case 'HoursPerDay':case 'Rate':{const key=code==='OrdinaryRate'?'ordinaryRate':code==='HoursPerDay'?'hoursPerDay':'rate',value=config.context?.[key];if(value===undefined)throw unavailable(code);return decimal(value);}
  case 'PayItem':return fromMap(prorated,args[0]);case 'PayItemNoProrate':return fromMap(unprorated,args[0]);case 'PayItemInput':return fromMap(raw,args[0]);
  case 'Accumulation':{const group=groups.find(g=>g.code===args[0].toUpperCase());if(!group)throw unavailable(args[0]);return decimal(group.members.reduce((sum,c)=>addFormulaDecimal(sum,String(fromMap(prorated,c).value)),'0'));}
@@ -183,6 +198,8 @@ export async function simulatePayFormulaTx(tx:Tx,ctx:SessionContext,formula:Acti
  // Resolve only the selected output closure; unrelated inactive formulas cannot poison a test.
  const candidates=[...components.filter(c=>itemKey(c.code)!==itemKey(context.currentCode)),selected],needed=new Set(formula.dependencies),queue=[...needed];
  for(let i=0;i<queue.length;i++){if(i>1000)throw unavailable('dependency size');for(const component of candidates.filter(c=>itemKey(c.code)===itemKey(queue[i]))){const dependencies=payRuleDependencies(component.rule);if(payRuleReadsFixedAllowanceTotal(component.rule))for(const c of candidates)if(itemKey(c.code)!==itemKey(component.code)&&payItemFeedsOvertimeOrp(c.code,c.kind,c.rule,c.orpOvertime)&&!c.nonPayable&&!c.oneOff)dependencies.push(c.code);for(const code of dependencies)if(!needed.has(code)){needed.add(code);queue.push(code);}}}
+ // {#FixedAllowances} reads every member row, so the test snapshot must contain them (rule-free, so no further closure).
+ if(analyzePayFormula(formula.program).functions.includes('FixedAllowances')){const pinned=new Set(['BASIC']);for(const c of candidates)if(c!==selected&&countsTowardFixedAllowances(c,pinned))needed.add(itemKey(c.code));}
  const all=candidates.filter(c=>c===selected||needed.has(itemKey(c.code))),scope:PayRuleScope={basic:Number(salary.basic),proratedBasic:payrollRateBasic(Number(salary.basic),legacyFactor),calendarDays:dim,daysWorked:legacyFactor*dim,hours,components:{BASIC:Number(salary.basic)}};
  const prepared=await preparePayFormulaRuntimeTx(tx,ctx,context,{components:all,inputComponents:components,scope,basic:salary.basic,proratedBasic:String(paidBasic),factor,legacyFactor,batchId:batch?.id,sourceEvidence:{basic:basicEvidence,policy:cfg,companyCfg,window,ratio,hours,recurring,batch:batchRows,ledger,run:batch??{payrollCycleId:context.cycleId,runType:cycle.runType}}},formula);scope.formulaBuilder=prepared.runtime;
  try{resolvePayComponentSet(all,scope);const result=prepared.evaluations.find(e=>itemKey(e.componentCode)===itemKey(context.currentCode));if(!result)throw unavailable('result');return {passed:true,amount:result.amount,error:null,explanations:result.explanations,sourceFingerprint:prepared.sourceFingerprint(),readRequirements:prepared.readRequirements()};}
