@@ -298,3 +298,41 @@ tables declared as payroll evidence that refuses a company delete). Membership i
 the digest moves `818f55d1…` → `bf995db494112a143c0f22b5513f124f04e0e9e5608660956949d305ecaf9d13` and the same
 24 records are rebound under the same advance owner approval. Module-agent manifest regenerated to
 `21338737bf9ccf5d9ad221b59a5609750882fdb77829d5bee775f93f9addbcf6`.
+
+## Technical source binding — 1 November 2026, EPF Manual 0% and Pay Formula Builder help
+
+Integrating PR175 (board 1058ced1, EPF Manual (by percentage) accepts 0%) and PR177 (board 02472802
+round 2, Pay Formula Builder help, templates, explanation, sample-value test and save checks) onto the
+installed Rewards fix `1a74336e68abf0c06067b19857ad68c8aeb93049` moves the provider closure from 1139
+files / `bf995db494112a143c0f22b5513f124f04e0e9e5608660956949d305ecaf9d13` to 1141 files /
+`c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d`. Full gate 41299278286 on the
+pre-repair candidate `748e5126fb849be9633825ea35b7a8d31f271d05` retains its original failure.
+
+Closure membership grows by two payroll formula sources reached through the payroll pack service:
+`lib/pay-formula-diagnostics.ts` and `lib/pay-formula-sample.ts`. Changed covered files:
+`core/pay-formula.ts`, `core/pay-formula-runtime.ts`, `core/pay-rule.ts`, `db/schema.ts`,
+`lib/pay-formula-language.ts`, `lib/pay-formula-registry.ts`, `localization/my/epf-election.ts`,
+`localization/my/payroll.ts`, `lib/ai/agent-capability-inventory.ts` and the six `messages/*.json`
+dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file
+  changed. `lib/ai/agent-capability-inventory.ts` only adds the classification
+  `sampleFormulaAction: backlog:approve`; the action is not agent-available.
+- Dictionaries: 137 leaves per locale under `payFormula.*` and `people.detail`; no `assistant.*`,
+  `onehr.*` or `aiManagement.*` leaf changed.
+- `db/schema.ts` changes only the `employee_statutory_my_manual_percentage_rates` CHECK (0–100%).
+- The formula sample test and payroll evaluation are deterministic; the model calculates no money.
+  `core/pay-rule.ts` extracts the existing fixed-allowance membership test without changing it.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original
+human status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`2fb7497ff55862838064fb912f2a5f4e44310340fe528541a2f36f7f375140d7` (no approval binds it).
+
+The release owner (human) approved this technical re-binding in the release session on 1 November
+2026 ("Yes, approve rebind") after reviewing the changed-file list above. This is a technical
+disposition within existing scope, not a new privacy approval, certification, runtime PASS or staging
+acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
+requires another exact review.
+

@@ -1076,3 +1076,21 @@ administrative managers retain every pending legacy/unrouted request, and indexe
 frozen identities retain versioned work after reporting changes. Real native
 comparison41305689629 preserves both legacy and named/delegated assignments.
 No live ledger query or installation; re-freeze source/ledger before later integration.
+## EPF Manual (by percentage) 0% floor — 1 November 2026
+
+Approved board item 1058ced1 (PR #175). Integrated onto alpha `1a74336e6`, whose journal ends at the
+Rewards fix `0875_reward_access_request_read_role` (idx753 / when1793330000275, in its staging window).
+A scan of every local and origin ref plus registered worktrees found no claim above when…275.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|754|1793330000276|0876_epf_manual_percentage_zero|e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430|
+
+The source branch first appended it at idx753 on main; integration renumbers only the index above
+Rewards. Timestamp and SQL bytes are unchanged. The SQL only replaces 0682's CHECK with a looser one
+(0–1 instead of 0.01–1, both rates still NOT NULL), so every existing row satisfies it and no data
+script is needed. No table, grant or RLS change. Grants no installation or acceptance.
+
+## Performance integration of EPF/Formula main — 1 November 2026
+
+Normal merge of main/alpha `7fe8f8627f3a5ec0067f7dea777f140dd204ca5b` preserves its complete640-entry journal and all SQL bytes, including0876 atidx754/when1793330000276. The ten existing unapplied owned performance drafts follow unchanged atidx759–768/when1793330000279–287,292. No new allocation, timestamp or SQL rewrite. Source reconciliation is not a live-ledger check or installation authority.

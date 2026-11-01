@@ -405,7 +405,8 @@ function BeforeEpfElection({ mode, employeeRate, employerRate, employeeAmount, e
   // captions; an unconverted legacy total-rate row keeps 0–100 and says why it shows full rates.
   const topup = m === 'voluntary_percentage';
   const legacy = topup && mode === 'voluntary_excess' && employerRate != null;
-  const min = (manual: number) => (m === 'manual_percentage' ? 1 : topup ? 0 : manual);
+  // 1058ced1 — Manual (by percentage) accepts 0–100% on each side.
+  const min = (manual: number) => (m === 'manual_percentage' ? 0 : topup ? 0 : manual);
   const max = (cap: string) => (topup && !legacy ? cap : '100');
   const amounts = beforeIsAmountMode(m) ? BEFORE_AMOUNT_MODES[m] : null;
   return (

@@ -717,6 +717,21 @@ export function validatePayRuleAgainstCatalog(
  *  absent reads as 0 — the employee simply does not have that pay item this period, which is a figure, not
  *  an error, and must never abort a batch. */
 export type FormulaBuilderPayRule = Extract<PayRule,{kind:'formula_builder'}>;
+/**
+ * 02472802 — ONE row-level membership test for the `fixed_allowances` aggregate, shared by
+ * resolvePayComponentSet (the legacy operand) and the Formula Builder `{#FixedAllowances}` variable so the
+ * two can never disagree. A caller-pinned code (BASIC) and nonPayable / one-off rows are not catalogue money
+ * this engine pays; everything else is payItemFeedsOvertimeOrp. A group of rows sharing a code counts only
+ * when every row counts (see resolvePayComponentSet).
+ */
+export function countsTowardFixedAllowances(
+  c: Pick<ResolvablePayComponent, 'code' | 'kind' | 'rule' | 'orpOvertime' | 'nonPayable' | 'oneOff'>,
+  pinned: ReadonlySet<string>,
+): boolean {
+  const code = normCode(c.code);
+  return !pinned.has(code) && !c.nonPayable && !c.oneOff && payItemFeedsOvertimeOrp(code, c.kind, c.rule, c.orpOvertime);
+}
+
 /** The pure resolver consumes an authorized snapshot; it never loads private employee data. */
 export type PayRuleFormulaRuntime = {
   resolve(rule:FormulaBuilderPayRule,component:ResolvablePayComponent):string;
@@ -1017,8 +1032,7 @@ export function resolvePayComponentSet(
     // exclusions in front of it are unchanged and are NOT delegated to the flag: a pinned code and a
     // nonPayable/oneOff row are not money this engine pays out of the catalog, so they are not money the
     // aggregate may total however the operator has ticked them.
-    const fa =
-      !pinned.has(code) && !c.nonPayable && !c.oneOff && payItemFeedsOvertimeOrp(code, c.kind, c.rule, c.orpOvertime);
+    const fa = countsTowardFixedAllowances(c, pinned);
     const ra = payRuleReadsFixedAllowanceTotal(c.rule);
     if (g) {
       g.idx.push(i);
