@@ -21,13 +21,14 @@ Provider adapters, data selection, transformations, serializers, contract descri
 permitted data/purposes and sensitive actions are unchanged. The new generated
 closure is `1841f158f2c594bab7903946e009cfac621f4ecc5bb6d40a79430722b7504a66`.
 
-A concrete unapplied proposal changes only the24 existing approved sourceDigest
+The reviewed proposal changes only the24 existing approved sourceDigest
 values from9f74efea6 to1841f158f. Both pending records and all contract IDs, statuses,
 reviewers, evidence links and original timestamps remain exact. The proposal is
-`/private/tmp/aihr-page-selection-provider-bindings.proposed.ts`; it has not been
-applied. The previous explicit fingerprint approval was limited to9f74efea6, so the
-native positive-provider controls must continue refusing1841f158f until the owner
-answers the supplemental fingerprint-only question. Generated hashes alone do not
+`/private/tmp/aihr-page-selection-provider-bindings.proposed.ts`; the owner subsequently answered the exact supplemental question:
+“Approve fingerprint-only update; don’t deploy”. Apply only these24 fingerprint
+values for1841f158f; preserve all other registry fields and both pending records.
+The earlier approval remains limited to9f74efea6; this new answer authorizes only the
+reviewed six-catalog delta, with native positive/refusal checks still required. Generated hashes alone do not
 renew approval. No real provider call, integration, installation or deployment is
 part of this proposal.
 
