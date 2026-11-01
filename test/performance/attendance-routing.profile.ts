@@ -14,6 +14,7 @@ import {hireEmployee,setReportingLine} from '../../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata} from '../../core/attendance';
 import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../core/attendance-workflow';
 import {todayInKualaLumpur} from '../../lib/hr-date';
+import {actorIdentityKeysSql,possibleAssignmentSql} from './attendance-assignment-sql';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 // Candidate query shape only: keep real request RLS and every per-request canonical decision proof.
@@ -43,56 +44,6 @@ async function metadataAfterDecision(ctx:SessionContext,companyIds:string[]){
    .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
  });
 }
-// Match the UUID casts used by the actual decision owners, including uppercase/unhyphenated IDs.
-// Pure input projection only: no principal or permission result is retained.
-const actorIdentityKeysSql=`
-CREATE FUNCTION app.perf_actor_identity_keys(payload jsonb,shape text) RETURNS uuid[]
-LANGUAGE plpgsql IMMUTABLE PARALLEL SAFE SET search_path=pg_catalog,pg_temp AS $keys$
-DECLARE result uuid[];
-BEGIN
- IF shape='stages' THEN
-  SELECT array_agg(DISTINCT v.id::uuid) FILTER(WHERE v.id IS NOT NULL) INTO result
-  FROM jsonb_array_elements(payload)stage(value)
-  CROSS JOIN LATERAL jsonb_array_elements(stage.value->'approvers')actor(value)
-  CROSS JOIN LATERAL(VALUES(actor.value->>'userId'),(actor.value->>'personId'))v(id);
- ELSIF shape='actors' THEN
-  SELECT array_agg(DISTINCT v.id::uuid) FILTER(WHERE v.id IS NOT NULL) INTO result
-  FROM jsonb_array_elements(payload)actor(value)
-  CROSS JOIN LATERAL(VALUES(actor.value->>'userId'),(actor.value->>'personId'))v(id);
- ELSIF shape='actor' THEN
-  SELECT array_agg(DISTINCT v.id::uuid) FILTER(WHERE v.id IS NOT NULL) INTO result
-  FROM(VALUES(payload->>'userId'),(payload->>'personId'))v(id);
- ELSE RAISE EXCEPTION 'Unknown frozen actor shape'; END IF;
- RETURN coalesce(result,'{}'::uuid[]);
-END;
-$keys$;
-REVOKE ALL ON FUNCTION app.perf_actor_identity_keys(jsonb,text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.perf_actor_identity_keys(jsonb,text) TO ai_hr_app;
-`;
-const possibleAssignmentSql=`
-CREATE FUNCTION app.perf_possible_attendance_work() RETURNS boolean
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $possible$
-DECLARE caller public.app_user;
-BEGIN
- SELECT u.* INTO caller FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL;
- -- Unknown identity/configuration always falls through to the original authoritative reader.
- IF NOT FOUND OR caller.person_id IS NULL OR NOT app.principal_snapshot_current() THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=caller.tenant_id AND r.app_user_id=caller.id AND r.role::text IN ('hr_admin','super_admin')) THEN RETURN true; END IF;
- -- Include historical, inactive and every line kind. False positives are deliberately harmless.
- IF EXISTS(SELECT 1 FROM public.reporting_line r JOIN public.employment e ON e.id=r.manager_employment_id AND e.tenant_id=r.tenant_id
-  WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id) THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.tenant_id=caller.tenant_id AND w.routing_version IN (2,3,4)
-  AND app.perf_actor_identity_keys(w.stages,'stages') && ARRAY[caller.id,caller.person_id]) THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.attendance_workflow_reassignment r WHERE r.tenant_id=caller.tenant_id
-  AND app.perf_actor_identity_keys(r.approvers,'actors') && ARRAY[caller.id,caller.person_id]) THEN RETURN true; END IF;
- IF EXISTS(SELECT 1 FROM public.attendance_workflow_participant_reassignment r WHERE r.tenant_id=caller.tenant_id
-  AND app.perf_actor_identity_keys(r.assigned,'actor') && ARRAY[caller.id,caller.person_id]) THEN RETURN true; END IF;
- RETURN false;
-END;
-$possible$;
-REVOKE ALL ON FUNCTION app.perf_possible_attendance_work() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.perf_possible_attendance_work() TO ai_hr_app;
-`;
 async function metadataWithPossibleAssignment(ctx:SessionContext,companyIds:string[]){
  const possible=await withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
@@ -234,46 +185,4 @@ it('compares fresh request-grained routing before, during and after query-plan r
   for(const definition of installed)await owner.client.unsafe(definition);
   if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;
  }
-},300000);
-
-it('measures indexed frozen-actor lookups over one million synthetic workflow documents',async()=>{
- const tenant=randomUUID(),foreign=randomUUID(),user=randomUUID(),person=randomUUID(),foreignUser=randomUUID(),foreignPerson=randomUUID();
- const phases:Record<string,unknown>={};
- await owner.client.unsafe(actorIdentityKeysSql);
- try{await owner.client.begin(async tx=>{
-  await tx.unsafe('CREATE TEMP TABLE perf_possible_history(id bigint,tenant_id uuid,routing_version integer,stages jsonb) ON COMMIT DROP');
-  const started=performance.now();
-  await tx`insert into perf_possible_history select n,case when n%2=0 then ${tenant}::uuid else ${foreign}::uuid end,4,
-   jsonb_build_array(jsonb_build_object('approvers',jsonb_build_array(jsonb_build_object('userId',gen_random_uuid()::text,'personId',gen_random_uuid()::text)))) from generate_series(1,1000000)n`;
-  await tx`insert into perf_possible_history values(1000001,${tenant}::uuid,4,${JSON.stringify([{approvers:[{userId:user.toUpperCase().replaceAll('-',''),personId:person.toUpperCase()}]}])}::jsonb)`;
-  await tx`insert into perf_possible_history values(1000002,${foreign}::uuid,4,${JSON.stringify([{approvers:[{userId:foreignUser,personId:foreignPerson}]}])}::jsonb)`;
-  await tx.unsafe('ANALYZE perf_possible_history');
-  const setupMs=performance.now()-started;
-  for(const phase of ['scan-before','indexed','scan-restored']){
-   let indexBuildMs:number|undefined;
-   if(phase==='indexed'){
-    const started=performance.now();await tx.unsafe("CREATE INDEX perf_possible_history_gin ON perf_possible_history USING gin (app.perf_actor_identity_keys(stages,'stages')) WHERE routing_version IN(2,3,4)");indexBuildMs=performance.now()-started;
-   }
-   if(phase==='scan-restored')await tx.unsafe('DROP INDEX perf_possible_history_gin');
-   const cases=[];
-   for(const match of ['present','absent','foreign-only']){
-    const wantedUser=match==='present'?user:match==='foreign-only'?foreignUser:randomUUID();
-    const wantedPerson=match==='present'?person:match==='foreign-only'?foreignPerson:randomUUID();
-    const times=[];
-    for(let i=0;i<3;i++){
-     const started=performance.now();
-     const rows=await tx`select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
-      and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid]limit 1`;
-     times.push(performance.now()-started);expect(rows.map(row=>Number(row.id))).toEqual(match==='present'?[1000001]:[]);
-    }
-    const [explained]=await tx`explain(analyze,buffers,format json)select id from perf_possible_history where tenant_id=${tenant}::uuid and routing_version in(2,3,4)
-     and app.perf_actor_identity_keys(stages,'stages') && ARRAY[${wantedUser}::uuid,${wantedPerson}::uuid]limit 1`;
-    const plan=explained['QUERY PLAN'];
-    if(phase==='indexed')expect(JSON.stringify(plan)).toContain('perf_possible_history_gin');
-    cases.push({match,elapsedMs:times,exactIdAndTenant:true,normalizedStoredIdentityMatched:match==='present',plan});
-   }
-   phases[phase]={indexBuildMs,cases};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-assignment-index-scale.json'),JSON.stringify({kind:'SYNTHETIC_QUERY_ACCESS_PATH_ONLY',releaseEligible:false,rows:1000002,tenants:2,setupMs,scope:'Native authorization is tested separately; this measures the same actor-containment expression on a temporary synthetic table, not native request creation or HTTP capacity.',phases},null,2));
-  }
- });}finally{await owner.client.unsafe('DROP FUNCTION IF EXISTS app.perf_actor_identity_keys(jsonb,text)');}
 },300000);
