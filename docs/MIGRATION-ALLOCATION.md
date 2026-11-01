@@ -1,3 +1,30 @@
+## Native incoming payslip parent ownership — 2 November 2026 (unapplied)
+
+Owned candidate reserves0904_attendance_draft_parent_lock,idx774/when1793330000304,
+SQL SHA256be7c125a4c808f57c5b00018447fbdf6a79c6affea48b7a07f0680ff40845fac.
+The21:32:06UTC scan found0903/idx773/when303 as the prior maximum. Final21:37:54UTC
+all-ref/worktree scan covers1749 heads,311 journals,391 migration trees,466 worktrees
+and778 WIP variants with zero parse errors;0904 is only this owned new reservation.
+Canonical refs remain29393c2a5. Read-only21:32:40UTC live ledger verifies640 exact
+ID-ordered rows at watermark1793330000276; queue epoch22 has no lease.
+
+The append pins both native financial donor body hashes and preserves all their
+non-body attributes. A private native trigger takes FOR UPDATE on the incoming
+payslip parent before INSERT or actual membership changes. Existing write RLS
+remains the effect authority. Draft Attendance coverage may then use FOR SHARE;
+processed/closed coverage keeps original FOR UPDATE. The provisional draft lock
+releases through a native exception subtransaction before stronger reacquisition
+when a waiting row changes status. No business transaction or SQL failure is retried.
+The incoming-parent scope follows the FK resource; no outgoing-parent lock is added.
+
+Reversible7f022be5e/run41352040144 passes original/advisory/parent-row/restored
+controls, real distinct Attendance inserts, physically blocked first-payslip/status
+writers, retained processed/closed exclusion and two in-flight status-change readers.
+The advisory alternative exposes actual40P01 under raw INSERT-plus-status and is
+rejected. Native originals are restored. Concrete migrated coverage, incoming
+membership-move ordering, canonical Payroll/history writers, populated upgrades,
+compiler and both500-user workloads remain pending. No deployment authority follows.
+
 ## Native Notice parent membership — 2 November 2026 (unapplied)
 
 Owned candidate reserves0903_notice_parent_membership,idx773/when1793330000303,

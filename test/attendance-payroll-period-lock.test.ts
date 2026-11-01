@@ -48,7 +48,7 @@ it('retains native correction authority, tenant isolation and private-owner exec
 afterAll(closeAll);
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
-it.each([false,true])('keeps same-period exclusion while unrelated Attendance commands overlap (same period: %s)',async samePeriod=>{
+it.each([false,true])('allows distinct Attendance subjects to overlap while protecting relevant draft state (same period: %s)',async samePeriod=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),today=todayInKualaLumpur();
  const oldDate=new Date(today+'T12:00:00Z');oldDate.setUTCMonth(oldDate.getUTCMonth()-6,15);const oldMonth=oldDate.toISOString().slice(0,7);
  const employees:{employmentId:string}[]=[];
@@ -67,5 +67,5 @@ it.each([false,true])('keeps same-period exclusion while unrelated Attendance co
   overlap=await Promise.race([outcome.then(result=>result.ok),delay(200).then(()=>false)]);
   release.resolve();expect(await settledFirst).toEqual({ok:true,value:[]});expect(await outcome).toEqual({ok:true,value:[]});
  }finally{release.resolve();await Promise.allSettled([first,...(second?[second]:[])]);}
- expect(overlap,'only the unrelated month completes while the first guard owns its draft').toBe(!samePeriod);
+ expect(overlap,'distinct subjects share stable draft coverage; first-payslip/status writers still require exclusive parent ownership').toBe(true);
 });

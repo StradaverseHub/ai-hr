@@ -119,5 +119,13 @@ export const PERFORMANCE_MIGRATION_TAIL = [
   "tag": "0903_notice_parent_membership",
   "breakpoints": true,
   "hash": "3f1e29f5724e8e7036360e2ebd7d3576474342000aacf2c907ebc44025e86405"
+},
+{
+  "idx": 774,
+  "version": "7",
+  "when": 1793330000304,
+  "tag": "0904_attendance_draft_parent_lock",
+  "breakpoints": true,
+  "hash": "be7c125a4c808f57c5b00018447fbdf6a79c6affea48b7a07f0680ff40845fac"
 }
 ] as const;

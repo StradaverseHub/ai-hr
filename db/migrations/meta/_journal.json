@@ -4586,6 +4586,13 @@
       "when": 1793330000303,
       "tag": "0903_notice_parent_membership",
       "breakpoints": true
+    },
+    {
+      "idx": 774,
+      "version": "7",
+      "when": 1793330000304,
+      "tag": "0904_attendance_draft_parent_lock",
+      "breakpoints": true
     }
   ]
 }
