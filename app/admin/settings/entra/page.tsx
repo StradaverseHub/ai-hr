@@ -22,15 +22,15 @@ export default async function EntraPage({searchParams}:{searchParams:Promise<{er
       <form action={saveEntra} className="space-y-5">
         <input type="hidden" name="revision" value={config?.revision||''}/>
         <div className="grid gap-4 sm:grid-cols-2">
-          {identifiers.map(key=><Field key={key} label={t(key)}><input name={key} className={inputCls} required defaultValue={config?.[key]||''} maxLength={key==='jobId'?200:253}/></Field>)}
+          {identifiers.map(key=><Field key={key} label={t(key)}><input name={key} className={inputCls} required={['organization','directoryTenantId'].includes(key)} defaultValue={config?.[key]||''} maxLength={key==='jobId'?200:253}/></Field>)}
           <Field label={t('mode')}><select name="mode" className={inputCls} defaultValue={config?.mode||'cloud'}><option value="cloud">{t('cloud')}</option><option value="hybrid">{t('hybrid')}</option></select></Field>
-          <Field label={t('clientSecret')}><input type="password" name="clientSecret" className={inputCls} required={!config} autoComplete="new-password" maxLength={4096}/></Field>
-          <Field label={t('provisioningSecret')}><input type="password" name="provisioningClientSecret" className={inputCls} required={!config} autoComplete="new-password" maxLength={4096}/></Field>
+          <Field label={t('clientSecret')}><input type="password" name="clientSecret" className={inputCls} autoComplete="new-password" maxLength={4096}/></Field>
+          <Field label={t('provisioningSecret')}><input type="password" name="provisioningClientSecret" className={inputCls} autoComplete="new-password" maxLength={4096}/></Field>
         </div>
         <p className="text-sm text-muted-foreground">{t('secretHelp')}</p>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="enabled" defaultChecked={config?.enabled}/>{t('enabled')}</label>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="provisioningEnabled" defaultChecked={config?.provisioningEnabled}/>{t('provisioningEnabled')}</label>
-        <label className="flex items-start gap-2 text-sm"><input required type="checkbox" name="immutableMatchingConfirmed" defaultChecked={config?.immutableMatchingConfirmed}/>{t('matching')}</label>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="immutableMatchingConfirmed" defaultChecked={config?.immutableMatchingConfirmed}/>{t('matching')}</label>
         <p className="text-sm text-muted-foreground">{t('hybridHelp')}</p>
         <button className={btnPrimary}>{t('save')}</button>
       </form>

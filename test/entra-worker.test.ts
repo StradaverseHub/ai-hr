@@ -50,4 +50,10 @@ describe('actual durable worker with mocked Microsoft boundary',()=>{
   const f=await setup('cloud');f.fetcher.mockImplementationOnce(async()=>Response.json({access_token:'token'})).mockImplementationOnce(async()=>{throw Error('Connection lost after sending');});
   await f.next();expect(await f.status()).toBe('uncertain');const count=f.fetcher.mock.calls.length;await f.next();expect(f.fetcher.mock.calls.length).toBe(count);expect(await f.status()).toBe('uncertain');
  });
+ it('provisions directory accounts independently of Microsoft sign-in without creating an HR login',async()=>{
+  const f=await setup('cloud');await saveConnector(adminCtx(base),{...f.config,enabled:false,revision:randomUUID()},f.config.revision);
+  await f.next();await f.next();expect(await f.status()).toBe('ready');
+  expect(await owner.client`select id from app_user where person_id=${f.employee.personId}`).toHaveLength(0);
+ });
+
 });

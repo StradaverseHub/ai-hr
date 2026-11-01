@@ -22,7 +22,7 @@ their ordinary credential/revocation behavior.
 
 Create a confidential web application in the customer's Microsoft tenant. Register exactly
 `https://<HR-origin>/login/entra/callback` as a Web redirect. Configure its client ID and secret in HR;
-only `openid profile` is requested. The mobile app also uses this server callback and never contains a
+only `openid profile` is requested. Sign-in-only deployments do not need a provisioning registration, Graph write consent, account domain or target source marker. Provisioning can also operate while Microsoft sign-in is disabled; that mode does not create HR logins. The mobile app also uses this server callback and never contains a
 Microsoft client secret. Set the installation's comma-separated `ENTRA_NATIVE_REDIRECT_URIS` to its
 reviewed native application redirect URIs; the default is `aihr://auth/callback`. Do not add a wildcard.
 The signed workplace configuration remains the owner of the selected HR server and organization.

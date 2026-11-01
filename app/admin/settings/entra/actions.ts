@@ -14,8 +14,8 @@ export async function saveEntra(form:FormData) {
   let failed=false;
   try{
     const current=await connector(ctx.tenantId), get=(key:string)=>String(form.get(key)||'').trim();
-    const value=entraConfigSchema.parse({tenantId:ctx.tenantId,organization:get('organization'),directoryTenantId:get('directoryTenantId').toLowerCase(),clientId:get('clientId'),clientSecret:get('clientSecret')||current?.clientSecret,
-      provisioningClientId:get('provisioningClientId'),provisioningClientSecret:get('provisioningClientSecret')||current?.provisioningClientSecret,servicePrincipalId:get('servicePrincipalId'),jobId:get('jobId'),
+    const value=entraConfigSchema.parse({tenantId:ctx.tenantId,organization:get('organization'),directoryTenantId:get('directoryTenantId').toLowerCase(),clientId:get('clientId'),clientSecret:get('clientSecret')||current?.clientSecret||'',
+      provisioningClientId:get('provisioningClientId'),provisioningClientSecret:get('provisioningClientSecret')||current?.provisioningClientSecret||'',servicePrincipalId:get('servicePrincipalId'),jobId:get('jobId'),
       sourceAnchorAttribute:get('sourceAnchorAttribute'),mode:get('mode'),domain:get('domain'),enabled:form.get('enabled')==='on',provisioningEnabled:form.get('provisioningEnabled')==='on',immutableMatchingConfirmed:form.get('immutableMatchingConfirmed')==='on',revision:randomUUID()});
     await saveConnector(ctx,value,get('revision')||null);
   }catch{failed=true;}
@@ -23,7 +23,7 @@ export async function saveEntra(form:FormData) {
 }
 export async function testEntra() {
   const ctx=await context();let failed=false;
-  try{const config=await connector(ctx.tenantId);if(!config)throw Error();await oidcConfiguration(config);await graphToken(config);}catch{failed=true;}
+  try{const config=await connector(ctx.tenantId);if(!config||(!config.enabled&&!config.provisioningEnabled))throw Error();if(config.enabled)await oidcConfiguration(config);if(config.provisioningEnabled)await graphToken(config);}catch{failed=true;}
   redirect('/admin/settings/entra?'+(failed?'error=1':'tested=1'));
 }
 export async function bindEntra(form:FormData) {

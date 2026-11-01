@@ -75,14 +75,14 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 BEGIN
  -- Scheduled transitions are discovered even without a write on the effective date. Never infer deletion from an empty/failed source read.
  UPDATE public.entra_workforce w SET revision=w.revision+1,status='pending',next_at=now(),last_day=p_day
- FROM public.entra_connector c WHERE c.tenant_id=w.tenant_id AND c.enabled AND c.provisioning_enabled
+ FROM public.entra_connector c WHERE c.tenant_id=w.tenant_id AND c.provisioning_enabled
  AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=c.tenant_id AND t.status IN ('active','trial'))
  AND w.last_day IS DISTINCT FROM p_day AND w.lease_until IS NULL
  AND w.status IN ('ready','disabled','awaiting-sync')
  AND w.last_active IS DISTINCT FROM app.entra_active(w.tenant_id,w.person_id,p_day);
  RETURN QUERY WITH chosen AS (
  SELECT w.tenant_id,w.person_id FROM public.entra_workforce w JOIN public.entra_connector c USING(tenant_id)
- WHERE c.enabled AND c.provisioning_enabled AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=c.tenant_id AND t.status IN ('active','trial')) AND w.next_at<=now() AND (w.lease_until IS NULL OR w.lease_until<now())
+ WHERE c.provisioning_enabled AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=c.tenant_id AND t.status IN ('active','trial')) AND w.next_at<=now() AND (w.lease_until IS NULL OR w.lease_until<now())
  AND w.status NOT IN ('ready','disabled','failed','rejected','awaiting-link')
  ORDER BY w.next_at,w.tenant_id,w.person_id FOR UPDATE OF w SKIP LOCKED LIMIT 1
  ), claimed AS (
@@ -211,7 +211,7 @@ $$;
 CREATE FUNCTION app.entra_provision_allowed(p_tenant uuid,p_revision uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.entra_connector c JOIN public.tenant t ON t.id=c.tenant_id
- WHERE c.tenant_id=p_tenant AND c.revision=p_revision AND c.enabled AND c.provisioning_enabled AND t.status IN ('active','trial'));
+ WHERE c.tenant_id=p_tenant AND c.revision=p_revision AND c.provisioning_enabled AND t.status IN ('active','trial'));
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_dirty(),app.entra_active(uuid,uuid,date),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_provision_allowed(uuid,uuid),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) FROM PUBLIC,ai_hr_app;

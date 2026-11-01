@@ -12,7 +12,7 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
     let status='failed',location=record.last_location,delay=60;
     try{
       const config=await connector(record.tenant_id);
-      if(!config?.enabled||!config.provisioningEnabled)throw new EntraError('forbidden');
+      if(!config?.provisioningEnabled)throw new EntraError('forbidden');
       await assertProvisioning(config);
       if(record.last_status==='uncertain'&&!location){status='uncertain';delay=3600;}
       else {
@@ -33,8 +33,11 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
             if(!object)status='awaiting-sync';
             else {
               await assertProvisioning(config);
+              if(!config.enabled){status=record.active?'ready':'disabled';}
+              else {
               const linked=await client.unsafe('select app.entra_auto_bind($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5::uuid) linked',[record.tenant_id,record.person_id,record.revision,record.lease,object]);
               status=!record.active?'disabled':linked[0]?.linked?'ready':'awaiting-link';
+              }
             }
         }
       }

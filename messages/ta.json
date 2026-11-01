@@ -33404,7 +33404,7 @@
     "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
     "save": "Save connection",
     "test": "Test discovery and provisioning credentials",
-    "tested": "Discovery and provisioning credentials succeeded. Upload permissions, directory mappings, agent health and employee sign-in require separate verification.",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
     "saved": "Settings saved.",
     "linked": "Microsoft identity linked to the existing HR account.",
     "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",

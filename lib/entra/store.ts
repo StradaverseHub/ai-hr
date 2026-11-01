@@ -27,7 +27,7 @@ export async function saveConnector(ctx: SessionContext, input: EntraConfig, exp
   const config = entraConfigSchema.parse(input);
   if (config.tenantId !== ctx.tenantId) throw new EntraError('forbidden');
   const previous=await connector(ctx.tenantId);
-  if(previous&&(['domain','servicePrincipalId','jobId','sourceAnchorAttribute'] as const).some(key=>previous[key]!==config[key]))throw new EntraError('conflict');
+  if(previous&&(['domain','servicePrincipalId','jobId','sourceAnchorAttribute'] as const).some(key=>previous[key]&&previous[key]!==config[key]))throw new EntraError('conflict');
   // Private record and public connector revision commit together. Credentials never enter audit payloads.
   await withTenant(ctx, async tx => {
     await tx.execute(sql`select app.entra_configure(${config.organization},${config.directoryTenantId}::uuid,${config.mode},${config.enabled},${config.provisioningEnabled},${config.revision}::uuid,${expectedRevision}::uuid)`);
@@ -43,7 +43,8 @@ export async function assertConnector(config: EntraConfig) {
 export { readRecord, writeRecord };
 
 export async function assertProvisioning(config:EntraConfig) {
-  await assertConnector(config);
+  const current=await connector(config.tenantId);
+  if(!current?.provisioningEnabled||current.revision!==config.revision)throw new EntraError('forbidden');
   const rows=await client.unsafe('select app.entra_provision_allowed($1::uuid,$2::uuid) allowed',[config.tenantId,config.revision]);
   if(!rows[0]?.allowed)throw new EntraError('forbidden');
 }

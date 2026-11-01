@@ -48,4 +48,9 @@ describe('Entra workforce transport',()=>{
   expect(await reconcile(config,{...record,last_location:location},'token',fetcher)).toEqual({state:'complete',objectId:id});
  });
 
+ it('permits Microsoft sign-in without a directory-write registration and requires complete provisioning settings only when enabled',()=>{
+  const sso={...config,provisioningEnabled:false,provisioningClientId:'',provisioningClientSecret:'',servicePrincipalId:'',jobId:'',domain:'',sourceAnchorAttribute:'',immutableMatchingConfirmed:false};
+  expect(entraConfigSchema.safeParse(sso).success).toBe(true);expect(entraConfigSchema.safeParse({...sso,provisioningEnabled:true}).success).toBe(false);
+ });
+
 });
