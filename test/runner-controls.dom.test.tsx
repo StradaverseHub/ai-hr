@@ -5,6 +5,8 @@ import {NextIntlClientProvider,createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 import {RUNNERS,type RunnerSnapshot} from '../lib/runner-control-model';
 import {captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
+const router=vi.hoisted(()=>({refresh:vi.fn()}));
+vi.mock('next/navigation',()=>({useRouter:()=>router}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace})}));
 vi.mock('../app/admin/scheduled-actions/actions',()=>({configureRunnerAction:vi.fn(async()=>({ok:true,error:null}))}));
@@ -16,16 +18,17 @@ describe('runner control inventory',()=>{
  it('shows all purposes and result destinations while keeping configured activation separate from health',async()=>{
   await view(snapshot(),true);
   expect(screen.getAllByRole('heading',{level:3})).toHaveLength(19);
+  fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));expect(router.refresh).toHaveBeenCalled();
   expect(screen.getByText('Failed')).toBeInTheDocument();expect(screen.getByText('Disabled')).toBeInTheDocument();
   expect(screen.getByRole('link',{name:'Replacement holidays and calendars'})).toHaveAttribute('href','/admin/holidays/replacements');
   const summary=screen.getAllByText('Configure runner')[1];fireEvent.click(summary);
   // Capture expanded actual form controls; static browser fixture does not claim authenticated mutation.
   summary.closest('details')?.setAttribute('open','');
   await captureAiReviewScreenshots(document.body.innerHTML,'en','runner-controls','real components; synthetic scheduler snapshot; no live operation','atelier');
-  await captureAiReviewScreenshots('<div class="dark bg-background text-foreground">'+document.body.innerHTML+'</div>','en','runner-controls-dark','real components; synthetic scheduler snapshot; scoped dark surface, no live operation','atelier');
+  await captureAiReviewScreenshots(document.body.innerHTML,'en','runner-controls-dark','real components; synthetic scheduler snapshot; no live operation','atelier','dark');
  },60000);
  it('offers no write controls to customer administrators',async()=>{
-  await view(snapshot(),false);expect(screen.queryByText('Configure runner')).toBeNull();expect(screen.queryByRole('button')).toBeNull();
+  await view(snapshot(),false);expect(screen.queryByText('Configure runner')).toBeNull();expect(screen.queryByRole('button',{name:'Save configuration'})).toBeNull();
  });
  it('keeps production replacement holidays and backups held even in an otherwise commissioned snapshot',async()=>{
   await view(snapshot('production'),true);

@@ -3,14 +3,14 @@ import {getTranslations} from 'next-intl/server';
 import {Card} from '@/components/ui';
 import {Badge} from '@/components/ui/badge';
 import {RUNNERS,type RunnerSnapshot} from '@/lib/runner-control-model';
-import {RunnerControls} from './runner-controls';
+import {RunnerControls,RefreshRunnerStatus} from './runner-controls';
 export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnapshot|null;canControl:boolean}) {
  const t=await getTranslations('runnerControl');
  const ordered=[...RUNNERS].sort((a,b)=>{const attention=(id:string)=>['failed','stale','stopped'].includes(snapshot?.runners.find(row=>row.id===id)?.health??'')?0:1;return attention(a.id)-attention(b.id);});
  return <section aria-labelledby="runner-control-title" className="space-y-3">
   <div><h2 id="runner-control-title" className="text-lg font-semibold">{t('title')}</h2><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t('description')}</p></div>
   <Card className="p-4">
-   <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{t('environment')}: {snapshot?t(`environmentName.${snapshot.environment}`):t('unavailable')}</span><Link href="/admin/scheduled-actions" className="text-sm text-primary underline underline-offset-4">{t('refresh')}</Link></div>
+   <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{t('environment')}: {snapshot?t(`environmentName.${snapshot.environment}`):t('unavailable')}</span><RefreshRunnerStatus/></div>
    <p className="mt-2 text-sm text-muted-foreground">{snapshot?t('scopeNote'):t('controllerMissing')}</p>
    {snapshot&&<p className="mt-2 text-xs text-muted-foreground">{t('checkedAt')}: {new Intl.DateTimeFormat('en-MY',{dateStyle:'medium',timeStyle:'medium',timeZone:'Asia/Kuala_Lumpur'}).format(new Date(snapshot.checkedAt))} MYT</p>}
   </Card>
