@@ -18,6 +18,7 @@
 import {createHmac,randomUUID,timingSafeEqual} from 'node:crypto';
 import {z} from 'zod';
 import type {SessionContext} from '../../db/client';
+import {RECOMMENDATION_CHECKS,RECOMMENDATION_RESULTS,RECOMMENDATION_VERDICTS} from '../semantic-model/entities-recommend';
 
 export const PROPOSAL_VERSION=1 as const;
 const DOMAIN='teras:proposal:v1';
@@ -44,6 +45,14 @@ export const ProposalFacts=z.object({
  /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved']),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
+/** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Its own
+ * checks may fail (a blocking failure is what recommends rejection); the proposal's `checks` still may not.
+ * The approver decides; this only informs the card. */
+export const ProposalRecommendation=z.object({verdict:z.enum(RECOMMENDATION_VERDICTS),recommenderVersion:z.string().regex(/^[a-z0-9_.:-]{1,80}$/),
+ checks:z.array(z.object({check:z.enum(RECOMMENDATION_CHECKS),owner:anchor,ruleVersion:z.string().min(1).max(200).nullable(),
+  result:z.enum(RECOMMENDATION_RESULTS),blocking:z.boolean()}).strict()).length(RECOMMENDATION_CHECKS.length),
+ recordId:z.guid().nullable()}).strict();
+export type ProposalRecommendation=z.infer<typeof ProposalRecommendation>;
 export const ProposalBody=z.object({
  kind:z.literal('teras.proposal'),version:z.literal(PROPOSAL_VERSION),id:z.guid(),
  what:z.object({action:z.string().regex(/^[a-z_-]+(?:\.[a-z_-]+)+$/),contractVersion:z.number().int().positive(),
@@ -61,6 +70,7 @@ export const ProposalBody=z.object({
  /** Key facts from the native checks, for the card (step 2). Closed vocabulary; product labels, calendar
   * dates and the owner's own figures only, never a name, identifier or free text. */
  facts:ProposalFacts.optional(),
+ recommendation:ProposalRecommendation.optional(),
  createdAt:instant,expiresAt:instant,
 }).strict().refine(value=>Date.parse(value.expiresAt)>Date.parse(value.createdAt))
  .refine(value=>value.authority.tenantId===value.forWhom.tenantId)

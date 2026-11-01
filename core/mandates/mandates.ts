@@ -3,8 +3,9 @@
  * Off by default. Two keys: a group administrator enables a job type, with ceilings (key 1, default none
  * enabled); then a person delegates within it (key 2). A person delegates only what they can do now, as
  * themself; every mandate is bounded (scope, limits, validity up to the tenant ceiling and a hard year, a
- * notification choice) and revocable at once by its grantor or a group administrator. A tenant-wide stop
- * switch closes granting and running. One agent identity per mandate, generated at grant.
+ * notification choice) and revocable at once by its grantor, a group administrator, or (step 5, where the
+ * tenant's policy allows it) the grantor's manager. A tenant-wide stop switch closes granting and running.
+ * One agent identity per mandate, generated at grant.
  *
  * The database enforces the same rules (migration 0890 policies and the mandate guard trigger): a grant
  * without both keys, an edit other than revocation or renewal, or a delete is refused there as well.
@@ -28,6 +29,7 @@ function requireGroupAdmin(ctx:SessionContext){if(!ctx.userId||ctx.agent||!isGro
 export function holdsJobAuthority(ctx:SessionContext,jobType:WorkJobType):boolean{
  const job=WORK_JOB_TYPES[jobType];
  if(!ctx.userId||!ctx.personId||ctx.agent)return false;
+ if(job.requires==='any_login')return true;
  return job.requires==='team_manager'&&hasTeamAccess(ctx);
 }
 
@@ -62,6 +64,21 @@ export async function setMandateStopSwitch(supplied:SessionContext,stopped:boole
  });
 }
 
+/** Step 5: whether the grantor's manager may revoke a mandate (§3.10 rule 7). Off by default; stored on the
+ * tenant control row next to the stop switch, so tenant mandate policy has one owner. */
+export async function setManagerRevocationPolicy(supplied:SessionContext,allowed:boolean){
+ const ctx=capture(supplied);requireGroupAdmin(ctx);
+ if(typeof allowed!=='boolean')throw new MandateRefused('invalid');
+ return withTenant(ctx,async tx=>{
+  const values={managerMayRevoke:allowed,changedByUserId:ctx.userId!,changedAt:sql`now()`};
+  const [row]=await tx.insert(terasMandateControl).values({tenantId:ctx.tenantId,...values})
+   .onConflictDoUpdate({target:terasMandateControl.tenantId,set:values}).returning();
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-mandate-control',aggregateId:ctx.tenantId,
+   eventType:allowed?'teras-mandate.manager-revocation-allowed':'teras-mandate.manager-revocation-disallowed',actor:actorOf(ctx),payload:{version:row.version}});
+  return Object.freeze(row);
+ });
+}
+
 export async function readMandateKeysTx(tx:Tx,tenantId:string,jobType:WorkJobType){
  const [enablement]=await tx.select().from(terasMandateJobTypeEnablement)
   .where(and(eq(terasMandateJobTypeEnablement.tenantId,tenantId),eq(terasMandateJobTypeEnablement.jobType,jobType))).limit(1);
@@ -74,13 +91,16 @@ export async function readMandateKeysTx(tx:Tx,tenantId:string,jobType:WorkJobTyp
 export type GrantMandateInput=Readonly<{jobType:unknown;scope:unknown;limits:unknown;schedule:unknown;notify:unknown;validDays:unknown}>;
 function parseGrant(jobType:WorkJobType,input:GrantMandateInput):Readonly<{scope:MandateScope;limits:MandateLimits;schedule:MandateSchedule;notify:'each_action'|'daily_summary';validDays:number}>{
  const job=WORK_JOB_TYPES[jobType];
- const scope=input.scope as Partial<MandateScope>|null,limits=input.limits as Partial<MandateLimits>|null,schedule=input.schedule as Partial<MandateSchedule>|null;
+ const scope=input.scope as Partial<MandateScope>|null,limits=input.limits as Partial<MandateLimits>|null,schedule=input.schedule as Record<string,unknown>|null;
  if(!scope||typeof scope!=='object'||Object.keys(scope).length!==1||!job.scopes.includes(scope.team as MandateScope['team']))throw new MandateRefused('invalid');
  if(!limits||typeof limits!=='object'||Object.keys(limits).length!==2||!intIn(limits.maxRunsPerDay,1,24)||!intIn(limits.maxPeople,1,job.limits.maxPeople))throw new MandateRefused('invalid');
- if(!schedule||typeof schedule!=='object'||Object.keys(schedule).length!==1||!intIn(schedule.weekday,1,7))throw new MandateRefused('invalid');
+ if(!schedule||typeof schedule!=='object'||Object.keys(schedule).length!==1)throw new MandateRefused('invalid');
+ const weekly=job.cadence==='weekly';
+ if(weekly?!intIn((schedule as {weekday?:unknown}).weekday,1,7):(schedule as {daily?:unknown}).daily!==true)throw new MandateRefused('invalid');
  if(input.notify!=='each_action'&&input.notify!=='daily_summary')throw new MandateRefused('invalid');
  if(!intIn(input.validDays,1,MAX_VALIDITY_DAYS))throw new MandateRefused('invalid');
- return{scope:{team:scope.team!},limits:{maxRunsPerDay:limits.maxRunsPerDay!,maxPeople:limits.maxPeople!},schedule:{weekday:schedule.weekday!},
+ return{scope:{team:scope.team!},limits:{maxRunsPerDay:limits.maxRunsPerDay!,maxPeople:limits.maxPeople!},
+  schedule:weekly?{weekday:(schedule as {weekday:1|2|3|4|5|6|7}).weekday}:{daily:true},
   notify:input.notify,validDays:input.validDays as number};
 }
 
@@ -135,14 +155,28 @@ export async function renewMandate(supplied:SessionContext,input:Readonly<{manda
  });
 }
 
-/** Revocation at once, by the grantor or a group administrator. Final: a revoked mandate never runs again. */
+/** Whether the caller is the grantor's manager now and the tenant's policy lets managers revoke. Both are
+ * the database's own answers (migration 0895), so code and RLS cannot disagree. */
+async function managerMayRevokeTx(tx:Tx,grantorPersonId:string):Promise<{policy:boolean;manager:boolean}>{
+ const [row]=await tx.execute(sql`select app.teras_manager_may_revoke() as policy,app.teras_is_grantor_manager(${grantorPersonId}::uuid) as manager`) as unknown as {policy:boolean;manager:boolean}[];
+ return{policy:row?.policy===true,manager:row?.manager===true};
+}
+
+/** Revocation at once, by the grantor, a group administrator, or the grantor's manager where tenant policy
+ * allows it (step 5). Final: a revoked mandate never runs again. A manager sees a report's mandates only while
+ * the policy allows it, so with the policy off a manager's attempt reads as not found. */
 export async function revokeMandate(supplied:SessionContext,mandateId:string){
  const ctx=capture(supplied);
  if(!ctx.userId||ctx.agent)throw new MandateRefused('invalid');
  return withTenant(ctx,async tx=>{
   const mandate=await loadOwnTx(tx,ctx,mandateId);
   if(mandate.revokedAt)throw new MandateRefused('revoked');
-  const by=mandate.grantorUserId===ctx.userId?'grantor' as const:isGroupAdmin(ctx)?'administrator' as const:null;
+  let by:'grantor'|'administrator'|'manager'|null=mandate.grantorUserId===ctx.userId?'grantor':isGroupAdmin(ctx)?'administrator':null;
+  if(!by){
+   const asManager=await managerMayRevokeTx(tx,mandate.grantorPersonId);
+   if(asManager.manager&&!asManager.policy)throw new MandateRefused('manager_revocation_not_allowed');
+   if(asManager.manager)by='manager';
+  }
   if(!by)throw new MandateRefused('not_grantor');
   const [row]=await tx.update(terasMandate).set({revokedAt:sql`now()`,revokedByUserId:ctx.userId!,revokedBy:by})
    .where(and(eq(terasMandate.id,mandate.id),eq(terasMandate.version,mandate.version))).returning();

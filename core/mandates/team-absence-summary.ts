@@ -16,11 +16,14 @@ import type {MandateLimits,MandateScope} from './job-types';
 
 export type TeamAbsenceLine=Readonly<{employmentId:string;name:string;leaveType:string;dates:readonly string[]}>;
 export type TeamAbsenceSummary=Readonly<{from:string;to:string;people:number;absent:readonly TeamAbsenceLine[];text:string}>;
-export type WorkJobResult=Readonly<{summary:TeamAbsenceSummary;reads:readonly OutcomeRead[];checks:readonly OutcomeCheck[];
+/** What a work job returns to the run: its prepared result for the grantor, and what the record keeps. */
+export type WorkJobResult<S=TeamAbsenceSummary>=Readonly<{summary:S;reads:readonly OutcomeRead[];checks:readonly OutcomeCheck[];
  outcome:Readonly<Record<string,string|number|boolean|null|readonly string[]>>}>;
 
 export async function teamAbsenceWeeklySummary(grantor:SessionContext,mandate:Readonly<{scope:MandateScope;limits:MandateLimits}>,now:Date):Promise<WorkJobResult>{
  const today=todayInKualaLumpur(now),{from,to}=weekRangeOf(today);
+ // The job type admits only the direct team (job-types.ts); any other scope is refused, never widened.
+ if(mandate.scope.team!=='direct')throw Error('The team summary covers the direct team only.');
  const team=await resolveMyTeamScope(grantor,{view:'week',scope:mandate.scope.team,anchorDate:today});
  // The mandate's people limit narrows the team; it never widens it.
  const members=[...team.employees].sort((a,b)=>a.name.localeCompare(b.name)||a.employmentId.localeCompare(b.employmentId)).slice(0,mandate.limits.maxPeople);
