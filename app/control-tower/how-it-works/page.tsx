@@ -24,6 +24,7 @@ import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 export default async function HowItWorksPage() {
   const s = await requireAdmin();
   const t = await getTranslations('controlTower');
+  const tc = await getTranslations('aiCentre.how');
   const [agents, domains] = [await agentStatuses(s), domainsFor(s)];
 
   return (
@@ -33,6 +34,9 @@ export default async function HowItWorksPage() {
         description={t('howDescription')}
         back={{ href: '/control-tower', label: t('backToTower') }}
       />
+      {/* AI centre: the animated architecture walkthrough is shared with every user; this page keeps the
+          live, tenant-specific statuses that only an administrator may read. */}
+      <Link href="/assistant?view=how" className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{tc('walkthroughLink')}</Link>
 
       {/* This page explains the Control Tower's checking loop. The other AI pieces (the HR assistant and its
           module specialists, the background agents, AI inside other screens) are listed and managed on the

@@ -51,7 +51,7 @@ import { page } from 'vitest/browser';
 import { render, cleanup } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
-import en from '../messages/en.json';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
 import '../app/globals.css';
 import { installTopbarFonts } from './fixtures/topbar-fonts';
 

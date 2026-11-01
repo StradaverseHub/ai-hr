@@ -2,6 +2,7 @@ import { getRequestConfig } from 'next-intl/server';
 import { cookies } from 'next/headers';
 import { defaultLocale, isLocale, LOCALE_COOKIE, type Locale } from './config';
 import en from '../messages/en.json';
+import aiCentreEn from '../messages/ai-centre/en.json';
 
 type Dict = Record<string, unknown>;
 
@@ -42,7 +43,13 @@ export default getRequestConfig(async ({ locale: requested }) => {
       ? cookieLocale
       : defaultLocale;
 
-  if (locale === 'en') return { locale, messages: en };
-  const localeMessages = (await import(`../messages/${locale}.json`)).default as Dict;
-  return { locale, messages: withFallback(en as Dict, localeMessages) as typeof en };
+  // The AI centre's own catalogue (messages/ai-centre/<locale>.json) is merged over the main one. It is a
+  // separate file because messages/<locale>.json sits inside the approved provider-data source digest.
+  const base = withFallback(en as Dict, aiCentreEn as Dict);
+  if (locale === 'en') return { locale, messages: base as typeof en };
+  const [localeMessages, aiCentreLocale] = await Promise.all([
+    import(`../messages/${locale}.json`).then(m => m.default as Dict),
+    import(`../messages/ai-centre/${locale}.json`).then(m => m.default as Dict),
+  ]);
+  return { locale, messages: withFallback(base, withFallback(localeMessages, aiCentreLocale)) as typeof en };
 });

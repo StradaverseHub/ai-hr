@@ -3,19 +3,21 @@ import * as React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { ArrowUp, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
+import { ArrowUp, ChevronRight, Inbox, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
 import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 
-type Turn = { id: number; question: string; area: PageArea | null; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
+type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
  * core/assistant-launcher.ts); every question still goes through the Assistant's own checks. It opens as a
  * small chat window and can be docked as a right-side panel. It knows the page's AREA and, at most, one
  * record id from the address, never what is on the screen. */
-export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[] }) {
+/** `inbox` (AI centre): the label and decision count the shell already read for the notification bell; the
+ * launcher links to the Inbox and never reads anything itself. */
+export function AssistantLauncher({ position, hiddenAreas, inbox }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inbox?: Readonly<{ label: string; count: number }> }) {
  const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
   const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas');
   const pathname = usePathname() ?? '/';
@@ -37,7 +39,9 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
     pageGeneration.current += 1;
     previousExchange.current = null;
     awaitingClarification.current=null;
-    setUncertain(false);setTurns([]);
+    // Earlier turns stay readable (AI centre: one conversation across pages), marked with the page they were
+    // asked on and disabled, so none of their cards or follow-ups can act in this page's context.
+    setUncertain(false);setTurns(list=>list.slice(-10).map(turn=>turn.stale?turn:{...turn,stale:true}));
   }, [pathname]);
   React.useEffect(() => {
     if (open) box.current?.focus();
@@ -103,6 +107,10 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
           <button type="button" onClick={close} aria-label={t('close')} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X aria-hidden className="size-4"/></button>
         </div>
       </header>
+      {inbox && <Link href="/assistant?view=inbox" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{inbox.label}</span>
+        {inbox.count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground">{inbox.count}</span>}
+        <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground"/></Link>}
       <div ref={log} role="log" aria-label={t('title')} aria-live="polite" aria-relevant="additions text" onScroll={event => {
         const element = event.currentTarget;
         followLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop <= 64;
@@ -110,9 +118,10 @@ export function AssistantLauncher({ position, hiddenAreas }: { position: 'bottom
         <div data-message-role="assistant" className="mr-8 w-fit max-w-full rounded-2xl rounded-tl-sm bg-muted/60 px-4 py-3 leading-relaxed">
           <p>{t('welcome')}</p>
         </div>
-        {turns.map(turn => <div key={turn.id} className="space-y-3">
+        {turns.map((turn, index) => <div key={turn.id} className="space-y-3" data-stale-turn={turn.stale || undefined}>
+          {turn.stale && turn.area && turns[index - 1]?.area !== turn.area && <p className="text-center text-xs text-muted-foreground">{t('contextNote', { area: areas(turn.area) })}</p>}
           <p data-message-role="user" className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm bg-primary/10 px-4 py-3 leading-relaxed">{turn.question}</p>
-          <fieldset disabled={uncertain} data-message-role="assistant" className={turn.reply?"mr-5 min-w-0 max-w-full break-words px-1 py-2 leading-relaxed":"min-w-0 px-1"}>
+          <fieldset disabled={uncertain || turn.stale} data-message-role="assistant" className={turn.reply?"mr-5 min-w-0 max-w-full break-words px-1 py-2 leading-relaxed":"min-w-0 px-1"}>
             {!turn.reply ? <ThinkingIndicator label={t('working')}/>
               : !turn.reply.ok ? <p role="alert">{turn.reply.message}</p>
               : <div className="space-y-2">{turn.reply.answer ?? <p className="text-muted-foreground">{t('noCard')}</p>}

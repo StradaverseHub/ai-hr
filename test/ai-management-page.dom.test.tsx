@@ -6,11 +6,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
+import {enWithAiCentre} from './helpers/ai-centre-messages';
 
 const data=vi.hoisted(()=>({view:undefined as unknown,groupAdmin:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({
-  getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace}),
+  getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:enWithAiCentre,namespace}),
   getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
 }));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));

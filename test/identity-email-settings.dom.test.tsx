@@ -2,7 +2,7 @@ import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import messages from '../messages/en.json';
+import {enWithAiCentre as messages} from './helpers/ai-centre-messages';
 const m=vi.hoisted(()=>({session:vi.fn(),allowed:vi.fn(),guard:vi.fn(),read:vi.fn(),demo:vi.fn(),accounts:vi.fn(),project:vi.fn(),log:vi.fn(()=>null),test:vi.fn(),retention:vi.fn()}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/admin/settings/email',useSearchParams:()=>new URLSearchParams(),redirect:(path:string)=>{throw new Error('REDIRECT '+path);}}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:'identityEmail'|'accountEmail')=>((key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],messages[namespace])??key)}));

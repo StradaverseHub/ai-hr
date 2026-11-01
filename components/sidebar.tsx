@@ -28,7 +28,6 @@ import {
   MessageSquareText,
   Megaphone,
   Network,
-  Layers,
   PanelLeftClose,
   PanelLeftOpen,
   Receipt,
@@ -299,22 +298,18 @@ const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
 // Overview is exact so it is not also current on the other sections. Spending opens only where a spend
 // policy exists; elsewhere its page returns to the Overview.
 const AI_MANAGEMENT_NODE: CollapsibleGroupItem = {
+  // AI centre (docs/design/ai-centre/PLAN.md): the nine AI management pages are grouped as the centre's
+  // three administrator tabs. Every page keeps its address and requireAdmin guard; each row owns the
+  // sections its tab groups, and the centre's own tab bar links them.
   collapsible: true,
-  labelKey: 'aiManagement',
+  labelKey: 'aiCentreAdmin',
   icon: Sparkles,
   activeMatch: 'children',
-  defaultHref: '/control-tower/agents',
+  defaultHref: '/control-tower/agents/features',
   children: [
-    // WP12 (R8): the one AI inventory comes first.
-    { href: '/control-tower/agents/inventory', labelKey: 'aiManagementInventory', icon: Layers, adminOnly: true },
-    { href: '/control-tower/agents', labelKey: 'aiManagementOverview', icon: Gauge, adminOnly: true, exactHref: true },
-    { href: '/control-tower/agents/provider', labelKey: 'aiManagementProvider', icon: Settings2, adminOnly: true },
-    { href: '/control-tower/agents/assistant', labelKey: 'aiManagementAssistant', icon: MessageSquareText, adminOnly: true },
-    { href: '/control-tower/agents/features', labelKey: 'aiManagementFeatures', icon: ListChecks, adminOnly: true },
-    { href: '/control-tower/agents/allowances', labelKey: 'aiManagementAllowances', icon: Users, adminOnly: true },
-    { href: '/control-tower/agents/spending', labelKey: 'aiManagementSpending', icon: Wallet, adminOnly: true },
-    { href: '/control-tower/agents/orchestrator', labelKey: 'aiManagementOrchestrator', icon: Network, adminOnly: true },
-    { href: '/control-tower/agents/runs', labelKey: 'aiManagementRuns', icon: ScrollText, adminOnly: true },
+    { href: '/control-tower/agents/features', labelKey: 'aiCentreWorkers', icon: ListChecks, adminOnly: true, ownedSubpaths: ['/control-tower/agents/inventory'] },
+    { href: '/control-tower/agents', labelKey: 'aiCentreSetup', icon: Gauge, adminOnly: true, exactHref: true, ownedSubpaths: ['/control-tower/agents/assistant'] },
+    { href: '/control-tower/agents/allowances', labelKey: 'aiCentreSpend', icon: Wallet, adminOnly: true, ownedSubpaths: ['/control-tower/agents/spending', '/control-tower/agents/provider', '/control-tower/agents/runs'] },
   ],
 };
 const REPORTS_NODE: CollapsibleGroupItem = {
@@ -448,7 +443,8 @@ const GROUPS: Group[] = [
       // one from documents and one from the employee's own records. Module-gated via MODULE_OF_HREF
       // above; a user without a grant sees the row and is told who to ask, which is a better dead end
       // than a row that vanishes with no explanation.
-      { href: '/assistant', labelKey: 'assistant', icon: Sparkles },
+      // AI centre: Ask, Inbox, Delegated jobs and How it works are views of /assistant (one row, same gate).
+      { href: '/assistant', labelKey: 'aiCentre', icon: Sparkles },
       { href: '/knowledge-base', labelKey: 'knowledgeBase', icon: BookOpen, tour: 'nav-knowledge-base' },
       // ca2f2fef: standalone design-preview of the future mobile app (visible to all roles).
       { href: '/mobile-preview', labelKey: 'mobilePreview', icon: Smartphone },
