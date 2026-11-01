@@ -1,0 +1,17 @@
+[Unit]
+Description=AI HR restricted scheduler controller
+Requires=aihr-runner-control.socket
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I -B /usr/local/lib/aihr-runner-control/broker.py
+User=root
+Group=root
+StateDirectory=aihr-runner-control
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/systemd/system /var/lib/aihr-runner-control
+RestrictAddressFamilies=AF_UNIX
