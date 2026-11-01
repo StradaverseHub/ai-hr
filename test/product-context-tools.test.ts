@@ -1,5 +1,9 @@
 /** ADR-0169 phase B: the Assistant context and capability layer over real owners on fictional data. */
 import {randomUUID} from 'node:crypto';
+import {existsSync} from 'node:fs';
+import {join} from 'node:path';
+import {eq} from 'drizzle-orm';
+import * as schema from '../db/schema';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {hireEmployee} from '../core/org';
@@ -28,8 +32,9 @@ describe('Assistant context layer tools',()=>{
  it('offers setup readiness to administrators only and refuses it otherwise',async()=>{
   const {employee,hr}=await people();
   expect(contextToolSpecsFor(employee).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions','approval_queue']);
-  expect(contextToolSpecsFor(hr).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions','approval_queue','setup_readiness']);
+  expect(contextToolSpecsFor(hr).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions','approval_queue','setup_readiness','company_setup']);
   expect(await runContextTool(employee,'setup_readiness',{},scope())).toEqual({ok:false,refusal:'not_offered'});
+  expect(await runContextTool(employee,'company_setup',{},scope())).toEqual({ok:false,refusal:'not_offered'});
   expect(await runContextTool(hr,'unknown_tool',{},scope())).toEqual({ok:false,refusal:'not_offered'});
  });
  it('returns setup counts and statuses without employee names or codes',async()=>{
@@ -40,6 +45,16 @@ describe('Assistant context layer tools',()=>{
   for(const check of content.payroll!.checks)expect(check.href.startsWith('/')).toBe(true);
   expect(content.records?.employees).toBeGreaterThanOrEqual(2);expect(content.records?.gaps.find(gap=>gap.id==='no_compensation')?.count).toBeGreaterThanOrEqual(2);
   const body=JSON.stringify(content);for(const name of NAMES)expect(body.includes(name),name).toBe(false);expect(body).not.toMatch(/EMP-\d+/);
+ });
+ it('lists configured leave types and schedule groups with real setup pages, and no people',async()=>{
+  const {hr}=await people(),result=await runContextTool(hr,'company_setup',{},scope());
+  expect(result.ok).toBe(true);if(!result.ok)return;
+  const content=result.content as {leaveTypes:{code:string;name:string;paid:boolean;accrualConfigured:boolean}[];attendance:{scheduleGroups:{name:string;isDefault:boolean}[]}|null;pages:{leaveTypes:string;scheduleGroups:string|null}};
+  const [annual]=await owner.db.select({code:schema.leaveType.code}).from(schema.leaveType).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
+  expect(content.leaveTypes.map(row=>row.code)).toContain(annual.code);
+  for(const row of content.leaveTypes){expect(typeof row.paid).toBe('boolean');expect(typeof row.accrualConfigured).toBe('boolean');}
+  for(const page of [content.pages.leaveTypes,content.pages.scheduleGroups].filter((page):page is string=>Boolean(page)))expect(existsSync(join(process.cwd(),'app',page,'page.tsx')),page).toBe(true);
+  const body=JSON.stringify(content);for(const name of NAMES)expect(body.includes(name),name).toBe(false);
  });
  it('finds authored guide sections within the caller\'s audience clearance',async()=>{
   const {employee,hr}=await people(),adminOnly=new Set(loadGuides().filter(guide=>guide.meta.audience==='hr_admin').map(guide=>guide.meta.title));
@@ -65,7 +80,7 @@ describe('Assistant context layer tools',()=>{
   expect(new Set(names).size).toBe(names.length);
   for(const tool of ASSISTANT_TOOLS)expect(registry.find(row=>row.name===tool.spec.name)?.effect).toBe('read');
   for(const action of ASSISTANT_PROPOSABLE_ACTIONS){const row=registry.find(item=>item.name===action);expect(row?.effect).toBe('prepare_review');expect(row?.reviewRoute).toMatch(/^\/assistant\//);}
-  expect(registry.filter(row=>row.effect==='context').map(row=>row.name)).toEqual(['product_destinations','product_guidance','setup_readiness','available_actions','approval_queue']);
+  expect(registry.filter(row=>row.effect==='context').map(row=>row.name)).toEqual(['product_destinations','product_guidance','setup_readiness','company_setup','available_actions','approval_queue']);
   expect(registry.filter(row=>row.effect==='prepare_review').map(row=>row.name)).toEqual(SUGGESTABLE_ACTIONS.map(action=>action.id));
  });
  it('names missing required details before any proposal can be shown',()=>{
