@@ -1,7 +1,7 @@
 {
-  "upstream": "https://registry.npmjs.org/decode-uri-component/-/decode-uri-component-0.5.0.tgz",
-  "archiveSha256": "f42d289f996e6c9f0e33d8f31de1fe9a7a077c612dca489cafdb2df4cbb6122f",
-  "sourceSha256": "9401353df38f8010ad7035fe8d666bce6a4902bc1cff809afc4ab23fa2e0bdaa",
-  "commonJsSha256": "684ba79779327ba789733a3a563050370a928a57eb7dd33d19b346f43b32cbb7",
+  "upstream": "https://registry.npmjs.org/decode-uri-component/-/decode-uri-component-0.5.1.tgz",
+  "archiveSha256": "68747a955bbb6a700d758155cf5ff15595c0dfa38504d385abdb249c688bfb15",
+  "sourceSha256": "6a86ac891edf15c5efa0841ebb31935e3669d58b98318b57d7b08a4530317cb0",
+  "commonJsSha256": "e82696ecdf0ee2c25bd90169cc7915e552d2ccb82a5006c55bc17aecdb55b919",
   "transformation": "Replace only the default function export with module.exports; the upstream algorithm is unchanged."
 }

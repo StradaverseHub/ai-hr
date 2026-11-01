@@ -1,10 +1,11 @@
-# CommonJS distribution of decode-uri-component 0.5.0
+# CommonJS distribution of decode-uri-component 0.5.1
 
-The upstream MIT-licensed 0.5.0 fixes
+The upstream MIT-licensed 0.5.1 also fixes
+[GHSA-qr28-fpjm-wq7f](https://github.com/advisories/GHSA-qr28-fpjm-wq7f), the distinct-run quadratic fallback, as well as
 [GHSA-vcc3-ghjq-m6fr](https://github.com/advisories/GHSA-vcc3-ghjq-m6fr), but its ESM-only export is
 incompatible with `query-string` 7's `require('decode-uri-component')` call in Expo SDK 57.
 
-`index.cjs` is the published 0.5.0 `index.js` with exactly one replacement:
+`index.cjs` is the published 0.5.1 `index.js` with exactly one replacement:
 `export default function decodeUriComponent(encodedURI)` becomes
 `module.exports = function decodeUriComponent(encodedURI)`.
 The decoding algorithm is unchanged. The original MIT license is retained. `provenance.json` records

@@ -100,7 +100,7 @@ access-token expiry window and verify WorkOS logout/revocation before a real-dat
 
 ## Dependency maintenance
 
-The official fixed URI decoder 0.5.0 is distributed locally with its MIT license and provenance hashes.
+The official fixed URI decoder 0.5.1 is distributed locally with its MIT license and provenance hashes.
 Only its ESM export is converted to CommonJS for Expo SDK 57's existing `query-string` caller; the
 upstream algorithm is unchanged. Tests exercise valid PKCE/Unicode parameters and malformed input
 through that actual caller. See `vendor/decode-uri-component/README.md` before updating/removing it.
