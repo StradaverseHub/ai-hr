@@ -32,7 +32,7 @@ reasons. Its compiler failed only the inherited quote repair subsequently fixed 
 Six catalog labels and one Claims scope hint implement that decision. The owner then
 approved the reviewed24-binding-only source refresh for closure1841f158f; source
 5f55b824e changes no other approval fields or pending contracts. Hosted positive/refusal
-run41318465411 is pending. See the exact supplemental source review.
+run41318465411 PASS:38cases(24unit,14native),zero failures/skips. See the exact supplemental source review.
 
 A reversible one-million-row covering-index experiment41315944674 passed exact output
 checks but gained negligibly while adding86,269,952bytes. **Do not promote that index.**
