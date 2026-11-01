@@ -3,6 +3,61 @@
 Status: **HOLD — four-area acceptance is incomplete.** Reviewed 1 November 2026.
 Scope: Apple App Store and Google Play. Public name: **OneHR+** (owner confirmed).
 
+## Current review boundary — design paused
+
+The owner moved visual exploration to a separate wireframe/mockup session. This review freezes
+visual source `8979a4945cc729b09d7c88ea15fdef72faec6bf5`; the design has **not been accepted** as
+meeting the Opal reference. Continue functional, navigation, accessibility/adaptive usability,
+security and notification verification here. Do not resume aesthetic iteration without direction.
+All approval types remaining native-incomplete are tracked in
+[MOBILE-APPROVAL-COVERAGE.md](MOBILE-APPROVAL-COVERAGE.md).
+
+Current installed review binaries, version 1.0.3 (4), both source 8979:
+
+- iOS simulator `f6a7e419-72b5-4d87-81bf-1a775e961ccd`, iPhone 17 Pro / iOS 26.5.
+- Android APK `891a86dc-fe0b-43e7-a5ad-afd78e5ec043`, Pixel 3a emulator / API 34.
+
+HEAD `ee7be5bf7f2fcac2aeb16881a51ca06336188f4b` differs only by a DOM-test TypeScript repair.
+Earlier candidate/build descriptions below are historical checkpoints, not the installed binaries.
+Both simulators have reached authenticated Home using the owner-confirmed synthetic account.
+Android remains without an OS screen lock by explicit owner choice; full reauthentication on
+session restoration is expected. Screen protection remains enabled. Owner explicitly approved
+private synthetic-content host captures, excluding password/MFA screens.
+
+Runtime observations on Android source 8979:
+
+- My profile settled to authorized employee details instead of a stranded loading spinner.
+- Tapping My profile's in-app Back returned to Me; Android system Back from Settings also returned
+  to Me. Settings' in-app Back requires further reproduction before marking the whole control accepted.
+- Home, Clock, Leave, Me and Approvals rendered authenticated content. No attendance punch, leave
+  submission or approval decision was issued in this read-only navigation walkthrough.
+- Appearance and language controls changed local preferences; English was restored. Light was
+  selected for subsequent usability checks. This is not contrast or visual acceptance.
+
+Hosted structural run [41310955079](https://github.com/StradaverseHub/ai-hr/actions/runs/41310955079)
+finished all planned jobs: 174 selected tests in 13 files, native compiler and both production
+exports passed; whole-repository compiler failed on an unsupported test query option. Preserve
+that original failure. Repair run
+[41312123992](https://github.com/StradaverseHub/ai-hr/actions/runs/41312123992) passed all jobs:
+102 affected tests in seven files, whole/native compilers and both exports. These overlapping
+counts must not be added as unique coverage. The earlier 07beeff run 41303947136 also completed
+its root compiler and Linux build successfully. Focused evidence remains release-ineligible.
+
+Functional/security/notification run
+[41314593426](https://github.com/StradaverseHub/ai-hr/actions/runs/41314593426) was dispatched on exact
+HEAD ee7 with ten session, native-security/journey, profile and push/notification suites. All planned jobs finished: **165 passed, three failed, zero skipped** across ten suites. The three
+failures were missing `./visual` fixture dependencies in attendance-control tests, before their
+assertions ran. The original log and raw JSON reports are retained privately. Test-only repair
+`724f20e7442cdc63521dbd79f70e3376324cefb2` supplies the existing presentation port without altering
+app behavior. [Repair run 41315044552](https://github.com/StradaverseHub/ai-hr/actions/runs/41315044552)
+checks the failed control suite, protected-file lifecycle and shift reminders, plus root compiler.
+Its 19 behavior tests passed with zero failures/skips; the root compiler is still pending.
+Unaffected successful evidence is retained.
+
+Physical-device secure storage, biometrics, actual APNs/FCM delivery, final signed entitlements,
+all declared form factors and backend release acceptance remain open. No assertion of zero bugs
+or immunity from attack is supported. Store release remains **HOLD**.
+
 ## Candidate and evidence boundary
 
 Preparation starts from freshly fetched main `2f6e5abe6098ab4e83ecd5fc95b4d6a580e7f308`.
@@ -251,3 +306,31 @@ support/privacy URLs, developer identity and screenshots before transferring cop
 - [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
 - [Apple account deletion](https://developer.apple.com/support/offering-account-deletion-in-your-app/)
 - [Google Data safety](https://support.google.com/googleplay/android-developer/answer/10787469)
+
+## Physical-phone acceptance worksheet
+
+Run on both a real iPhone and Android with a synthetic workplace, on exact distributed builds.
+Record device/OS, build, backend identity, result and private evidence for each row.
+
+| Check | Procedure and expected outcome | Current evidence / remaining work |
+| --- | --- | --- |
+| Real push delivery | Trigger a server notification with app foreground, background and terminated; then tap while locked. One generic notification, correct screen after authentication, no private HR text on lock screen. | Server privacy, token isolation and duplicate suppression passed hosted tests; actual APNs/FCM delivery untested. Android Firebase provisioning remains a release blocker. |
+| Push refusal and account transitions | Deny then enable permission; disable notifications; sign out, switch workplace, rotate/reinstall token. Inbox remains usable and prior account receives no further pushes. | Hosted lifecycle tests passed; real OS permission/token behavior untested. |
+| Attendance sensors | Allow/refuse camera and location, approximate location, unavailable GPS, offline/interrupted submission and repeated taps. Verify exactly one accepted server record or an accurate refusal. | Hosted authorization/idempotency tests passed; actual sensors, accuracy, permission prompts and device integrity untested. |
+| Device security | Face ID/fingerprint success, cancel, failed match, passcode fallback, background, notification shade, process death and restart. Private content remains hidden until authorized. | iOS simulator biometric restore observed; real Keychain/Keystore/biometric hardware and Android secure-lock behavior untested. |
+| Files | Open payslip/EA/receipts; cancel and finish explicit sharing; background, switch employment and logout. Confirm protected temporary files are cleaned and only intended share persists. | Hosted protected-file follow-up pending; actual OS viewer/share/file cleanup needs phones. |
+| Employee and manager journeys | Submit and cancel leave, profile change, attendance correction and each supported approval using synthetic records. Verify authoritative records, receipt recovery and no duplicate writes. | Read-only Android profile/inbox/navigation and narrow approval detail observed; hosted mutation tests passed. Live end-to-end writes and all approval types remain incomplete. |
+| Usability | Keyboard, large text, VoiceOver/TalkBack, smallest supported phones, rotation/multi-window where declared. Primary actions remain reachable and labels/facts readable. | Android 320dp attendance detail exposed both decision controls and full facts at default text; broader sizes/large text/accessibility untested. Design remains unaccepted. |
+
+Final source-8979 APK inspection confirms `allowBackup=false`, no SYSTEM_ALERT_WINDOW, target SDK36,
+non-exported file providers and permission-protected exported Firebase/profile-installer receivers.
+Final simulator iOS Info.plist has OneHR+ display name, contextual camera/location/Face ID descriptions
+and `NSAllowsArbitraryLoads=false`. These do not substitute for final signed IPA/AAB inspection.
+The Android emulator disconnected before this follow-up's live walkthrough; no new Android runtime
+PASS is inferred. No production deployment or store submission has occurred.
+
+The source-8979 APK resource table also lacks `google_app_id`, `gcm_defaultSenderId`,
+`google_api_key` and Firebase `project_id` strings. The reviewed Android binary has no embedded
+Firebase registration resources; native FCM delivery cannot be accepted until the owner-provisioned
+Firebase Android registration is supplied through the controlled build environment and rebuilt.
+Never place a service-account private key in the app.
