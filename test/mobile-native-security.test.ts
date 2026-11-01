@@ -129,6 +129,44 @@ describe('native credentials — actual storage and network races', () => {
     expect(f.stored()).toBeNull();
   });
 
+  it('notifies the visible gate of current revocation before credential cleanup finishes', async () => {
+    const f = authFixture(), cleanup = deferred<void>(), revoked = vi.fn();
+    f.ports.remove.mockImplementationOnce(() => cleanup.promise);
+    f.ports.authenticate.mockRejectedValueOnce(new SignInRequiredError());
+    f.state.subscribeRevocation(revoked);
+    const pending = f.state.refresh().catch(error => error);
+    await drain();
+    expect(revoked).toHaveBeenCalledExactlyOnceWith(1);
+    expect(f.state.generation()).toBe(1);
+    cleanup.resolve();
+    expect(await pending).toBeInstanceOf(SignInRequiredError);
+  });
+
+  it('does not notify revocation for an obsolete refusal after a new login', async () => {
+    const f = authFixture(), response = deferred<TokenPair>(), revoked = vi.fn();
+    f.state.subscribeRevocation(revoked);
+    f.ports.authenticate.mockReturnValueOnce(response.promise);
+    const pending = f.state.refresh().catch(error => error);
+    await drain();
+    const owner = f.state.beginSignIn();
+    await f.state.completeTokens(pair('new'), owner);
+    response.reject(new SignInRequiredError());
+    expect(await pending).toBeInstanceOf(SessionChangedError);
+    expect(revoked).not.toHaveBeenCalled();
+    expect(f.stored()).toBe('refresh-new');
+  });
+
+  it('keeps outages separate from revocation and removes an unmounted gate subscription', async () => {
+    const f = authFixture(), revoked = vi.fn(), unsubscribe = f.state.subscribeRevocation(revoked);
+    f.ports.authenticate.mockRejectedValueOnce(new UnavailableError());
+    await expect(f.state.refresh()).rejects.toBeInstanceOf(UnavailableError);
+    expect(revoked).not.toHaveBeenCalled();
+    unsubscribe();
+    f.ports.authenticate.mockRejectedValueOnce(new SignInRequiredError());
+    await expect(f.state.refresh()).rejects.toBeInstanceOf(SignInRequiredError);
+    expect(revoked).not.toHaveBeenCalled();
+  });
+
   it('a credential refusal clears the current session; an outage keeps it', async () => {
     const f = authFixture();
     f.ports.authenticate.mockRejectedValueOnce(new UnavailableError());

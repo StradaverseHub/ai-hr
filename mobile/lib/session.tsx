@@ -3,7 +3,7 @@ import * as ScreenCapture from 'expo-screen-capture';
 import * as WebBrowser from 'expo-web-browser';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
-import { assertAuthGeneration, hasStoredSession, redirectUri, signOut as clearTokens, workosLogoutUrl } from './auth';
+import { assertAuthGeneration, authGeneration, hasStoredSession, redirectUri, signOut as clearTokens, subscribeAuthRevocation, workosLogoutUrl } from './auth';
 import { t } from './i18n';
 import { createSessionState, type Visibility } from './session-state';
 import { sweepProtectedDocuments } from './protected-document';
@@ -67,6 +67,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const snapshot = useSyncExternalStore(state.subscribe, state.getSnapshot, state.getSnapshot);
 
   useEffect(() => {
+    const revoked = subscribeAuthRevocation(generation => {
+      if (authGeneration() === generation) void state.signOut();
+    });
     sweepProtectedDocuments(); // launch: leftovers of a killed process (launch protection runs inside hasStoredSession)
     // Biometrics prompt by themselves ONCE per lock when the app comes back; a cancelled prompt is not re-raised (the
     // lock screen's button stays), so dismissing Face ID can never loop. Unlocking re-arms it.
@@ -85,7 +88,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', state.blur) : null;
     void state.initialize();
-    return () => { armed(); change.remove(); blur?.remove(); state.dispose(); };
+    return () => { revoked(); armed(); change.remove(); blur?.remove(); state.dispose(); };
   }, [state]);
   // A document fetched for one employment never survives a switch to another. Stable, as before.
   const setEmploymentId = useCallback((employmentId: string | null) => {

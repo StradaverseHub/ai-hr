@@ -148,3 +148,4 @@ export const signOut = state.signOut;
 export const completeInternalSignIn = state.completeTokens;
 export const authGeneration = state.generation;
 export const assertAuthGeneration = state.assertCurrent;
+export const subscribeAuthRevocation = state.subscribeRevocation;

@@ -16,6 +16,7 @@ export function createAuthState(ports: Ports) {
   let accessExpiresAt = 0;
   let flight: { generation: number; promise: Promise<string> } | null = null;
   let writes: Promise<unknown> = Promise.resolve();
+  const revocationListeners = new Set<(generation: number) => void>();
 
   function assertCurrent(owner: number) {
     if (owner !== generation) throw new SessionChangedError();
@@ -72,7 +73,14 @@ export function createAuthState(ports: Ports) {
       } catch (error) {
         assertCurrent(owner); // a stale refusal must never delete a newer login
         if (error instanceof SignInRequiredError) {
-          try { await signOut(); } catch { /* Invalidated in memory; keep the credential refusal for the UI gate. */ }
+          const revokedGeneration = owner + 1;
+          const removal = signOut();
+          // The API's obsolete-result guard correctly drops this request after invalidation.
+          // Notify the visible session independently, before slow storage cleanup can finish.
+          for (const listener of [...revocationListeners]) {
+            try { listener(revokedGeneration); } catch { /* Credentials stay revoked even if a view fails. */ }
+          }
+          try { await removal; } catch { /* Invalidated in memory; keep the credential refusal for the UI gate. */ }
         }
         throw error;
       }
@@ -84,6 +92,10 @@ export function createAuthState(ports: Ports) {
   }
   return {
     generation: () => generation,
+    subscribeRevocation(listener: (generation: number) => void) {
+      revocationListeners.add(listener);
+      return () => { revocationListeners.delete(listener); };
+    },
     assertCurrent,
     hasStoredSession,
     refresh,

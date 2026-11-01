@@ -437,12 +437,10 @@ describe('profile loading after current credential revocation', () => {
       authenticate: async () => { throw new SignInRequiredError(); },
     });
     const f = clientFixture(credentials);
-    type RevokingState = typeof credentials & { subscribeRevocation?: (listener: (generation: number) => void) => () => void };
     const authPort = {
       ...f.auth, hasStoredSession: credentials.hasStoredSession,
       signOut: credentials.signOut, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback',
-      subscribeAuthRevocation: (listener: (generation: number) => void) =>
-        (credentials as RevokingState).subscribeRevocation?.(listener) ?? (() => {}),
+      subscribeAuthRevocation: credentials.subscribeRevocation,
     };
     const module = { exports: {} as { SessionProvider: React.ComponentType<React.PropsWithChildren>;
       useSession: () => { status: string; signOut: () => Promise<void> } } };
