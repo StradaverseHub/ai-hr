@@ -853,3 +853,19 @@ are renamed byte-identical and appended above every known claim. If this bundle 
 performance owner's 0866–0872 fall below the new watermark and must be reallocated above when…274
 before their own release. Re-verify the accepted V9 ledger at handback before installation. This
 reservation grants no deployment or acceptance.
+
+## EPF Manual (by percentage) 0% floor — 1 November 2026 (source reservation)
+
+Approved board item 1058ced1 (branch `claude/epf-manual-zero-1058ced1`, base `2f6e5abe6`). A fresh scan of
+every local and origin ref plus registered worktrees found the highest claim at
+`0875_reward_access_request_read_role` (idx753 / when1793330000275, unapplied, rewards work), so this append
+takes the next timestamp above it. idx753 collides with that foreign claim; whichever integrates second must
+renumber its index (never its timestamp downward) against the then-current journal.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|753|1793330000276|0876_epf_manual_percentage_zero|e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430|
+
+The SQL only replaces 0682's CHECK with a looser one (0–1 instead of 0.01–1, both rates still NOT NULL), so
+every existing row satisfies it and no data script is needed. No table, grant or RLS change. This reservation
+grants no installation or acceptance; verify the live staging ledger before any release.

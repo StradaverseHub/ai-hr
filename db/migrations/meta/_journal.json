@@ -4467,6 +4467,13 @@
       "when": 1793330000274,
       "tag": "0874_payroll_tax_basis_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1793330000276,
+      "tag": "0876_epf_manual_percentage_zero",
+      "breakpoints": true
     }
   ]
 }

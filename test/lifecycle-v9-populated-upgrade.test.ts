@@ -13,8 +13,8 @@ it('preserves populated Native issuance, private data, identity and every applie
  const journal=JSON.parse(journalBytes.toString());
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
- // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(638);
+ // The tax/movement release (1 Nov 2026) appends exactly 0873/0874, then 1058ced1 appends 0876; the ordinary upgrade below applies them too.
+ expect(journal.entries).toHaveLength(639);
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
  expect(journal.entries.slice(boundary)).toHaveLength(67);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
@@ -30,6 +30,7 @@ it('preserves populated Native issuance, private data, identity and every applie
  expect(journal.entries.slice(636).map(migrationIdentity)).toEqual([
   {idx:751,version:'7',when:1793330000273,tag:'0873_movement_exit_payroll_preservation',breakpoints:true,hash:'39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440'},
   {idx:752,version:'7',when:1793330000274,tag:'0874_payroll_tax_basis_corrections',breakpoints:true,hash:'9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745'},
+  {idx:753,version:'7',when:1793330000276,tag:'0876_epf_manual_percentage_zero',breakpoints:true,hash:'e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430'},
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

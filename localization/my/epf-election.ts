@@ -77,7 +77,7 @@ const basisPoints = (rate: number) => Math.round(rate * 10000);
  *  unchanged, or replaced by an increment below the old floor, so the browser bounds it only to 0–100%
  *  and the server (`retainLegacyTotalTopup`, then `resolveEpfElection`) decides. */
 export function epfRateInputBounds(uiMode: string, side: 'employee' | 'employer', legacyTotal = false) {
-  if (uiMode === 'manual_percentage') return {min: 1, max: 100};
+  if (uiMode === 'manual_percentage') return {min: 0, max: 100};
   if (uiMode === 'voluntary_percentage')
     return legacyTotal ? {min: 0, max: 100} : {min: 0, max: (10000 - basisPoints(side === 'employee' ? EPF_EMPLOYEE_STATUTORY_MAX : EPF_EMPLOYER_STATUTORY_MAX)) / 100};
   return {min: (side === 'employee' ? EPF_EMPLOYEE_FLOOR : EPF_EMPLOYER_FLOOR) * 100, max:100};
@@ -107,12 +107,14 @@ export function topupEpfPercentageRates(employee: number | null | undefined, emp
   };
 }
 
-/** One validation owner for manual rates, shared by persistence and defensive payroll reads. */
+/** One validation owner for manual rates, shared by persistence and defensive payroll reads.
+ *  1058ced1: each side is 0–100% inclusive (0% on either or both sides is a real election, e.g. employee
+ *  0% / employer 4%); blank stays required, so null is refused and 0 is not treated as blank. */
 export function manualEpfPercentageRates(employee: number | null | undefined, employer: number | null | undefined) {
   const rate = (value: number | null | undefined, side: 'Employee' | 'Employer', field: EpfElectionField) => {
     if (value == null) throw new InvalidEpfElectionError(`${side} Rate % is required when EPF Category is Manual (by percentage).`, field);
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0.01 || value > 1)
-      throw new InvalidEpfElectionError(`${side} Rate % must be between 1% and 100% when EPF Category is Manual (by percentage).`, field);
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)
+      throw new InvalidEpfElectionError(`${side} Rate % must be from 0% to 100% when EPF Category is Manual (by percentage).`, field);
     if (Math.abs(value * 10000 - Math.round(value * 10000)) > 0.0000001)
       throw new InvalidEpfElectionError(`${side} Rate % must use no more than two decimal places.`, field);
     return value;

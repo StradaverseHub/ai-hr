@@ -1,5 +1,5 @@
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {createBatch,generatePayslips} from '../core/payroll';
@@ -28,6 +28,31 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
   const rows=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id);
   expect(rows).toHaveLength(1);
   expect(rows[0].statutory).toMatchObject({epfMode:'manual_percentage',epfEmployee:330,epfEmployer:390});
+ });
+ it('1058ced1 saves employee 0% / employer 4%, reopens 0 as 0 (not blank) and pays exactly those percentages',async()=>{
+  const a=adminCtx(base),employee=await hire(),display=clientPackFor('MY')!.payroll.epfRateToPercent!;
+  await setCompensation(a,{employmentId:employee.employmentId,basicSalary:6000,monthlyAllowance:0,effectiveFrom:start});
+  await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('manual_percentage','0','4')});
+  const saved=await getStatutoryProfileMY(a,employee.personId);
+  expect(saved).toMatchObject({epfMode:'manual_percentage',epfEmployeeRate:'0.0000',epfEmployerRate:'0.0400'});
+  expect(String(display(saved!.epfEmployeeRate))).toBe('0');expect(String(display(saved!.epfEmployerRate))).toBe('4');
+  const {batchId}=await createBatch(a,{companyId:base.companyId,payPeriod:period});
+  await generatePayslips(a,{batchId});
+  const rows=await owner.db.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id);
+  expect(rows).toHaveLength(1);
+  expect(rows[0].statutory).toMatchObject({epfMode:'manual_percentage',epfEmployee:0,epfEmployer:240});
+ });
+ it('1058ced1 the database rule accepts 0 and 100% and still refuses below 0, above 100% and blank',async()=>{
+  const a=adminCtx(base),employee=await hire();
+  await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',...mapEpfUiMode('manual_percentage','5','5')});
+  const write=(employeeRate:string|null,employerRate:string|null)=>owner.db.execute(sql`update employee_statutory_my set epf_employee_rate=${employeeRate}::numeric,epf_employer_rate=${employerRate}::numeric where person_id=${employee.personId}`);
+  const refusal=async(employeeRate:string|null,employerRate:string|null)=>{
+   try{await write(employeeRate,employerRate);return 'accepted';}
+   catch(e){const err=e as {message?:string;constraint_name?:string;cause?:{message?:string;constraint_name?:string}};return [err.constraint_name,err.cause?.constraint_name,err.message,err.cause?.message].join(' ');}
+  };
+  expect(await refusal('0','0')).toBe('accepted');expect(await refusal('1','0')).toBe('accepted');
+  for(const [employeeRate,employerRate] of [['-0.0001','0'],['0','1.0001'],[null,'0.04'],['0.04',null]] as const)
+   expect(await refusal(employeeRate,employerRate)).toMatch(/employee_statutory_my_manual_percentage_rates/);
  });
  it.each(['14','11','14.5','14.01'])('d670e4d6 keeps %s stable through persisted percentage save/reopen cycles',async value=>{
   const a=adminCtx(base),employee=await hire(),display=clientPackFor('MY')!.payroll.epfRateToPercent!;
