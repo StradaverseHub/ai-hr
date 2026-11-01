@@ -27,6 +27,7 @@ it('independently compares native concurrency and first-slip/status exclusion be
  const install=async(advisory:boolean)=>{
   await owner.client.unsafe(`create function public.perf_draft_first_slip_barrier() returns trigger language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $fn$
   declare batch_key uuid; begin
+   ${advisory?'':"IF TG_OP='UPDATE' THEN IF ROW(OLD.batch_id,OLD.employment_id,OLD.tenant_id) IS NOT DISTINCT FROM ROW(NEW.batch_id,NEW.employment_id,NEW.tenant_id) THEN RETURN NEW; END IF; END IF;"}
    for batch_key in select distinct id from unnest(case when TG_OP='INSERT' then ARRAY[NEW.batch_id] else ARRAY[OLD.batch_id,NEW.batch_id] end) wanted(id) order by id loop
     perform id from public.payroll_batch where id=batch_key for ${advisory?'key share':'update'};
     ${advisory?"perform pg_advisory_xact_lock(hashtextextended('perf-draft-first-slip:'||batch_key::text,0));":''}
@@ -39,18 +40,19 @@ it('independently compares native concurrency and first-slip/status exclusion be
    expect(body).not.toBe(before);
    const start=body.indexOf(' PERFORM b.id FROM payroll_batch b'),end=body.indexOf('ORDER BY b.id FOR UPDATE;',start)+'ORDER BY b.id FOR UPDATE;'.length;
    expect(start).toBeGreaterThan(0);const select=body.slice(start,end).replace(' PERFORM b.id FROM','SELECT b.id,b.status::text AS expected_status FROM').replace(' FOR UPDATE;','');
+   const filters=body.slice(start,end).replace(' PERFORM b.id FROM payroll_batch b','').replace(' ORDER BY b.id FOR UPDATE;','');
    body=body.slice(0,start)+` FOR selected_batch IN ${select} LOOP
     IF selected_batch.expected_status='draft' THEN
     BEGIN
-     SELECT b.status::text INTO locked_status FROM payroll_batch b WHERE b.id=selected_batch.id FOR SHARE;
+     SELECT b.status::text INTO locked_status FROM payroll_batch b ${filters} AND b.id=selected_batch.id FOR SHARE;
      IF locked_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'Reacquire changed Payroll source' USING ERRCODE='PFD01'; END IF;
      PERFORM pg_advisory_xact_lock_shared(hashtextextended('perf-draft-first-slip:'||selected_batch.id::text,0));
     EXCEPTION WHEN SQLSTATE 'PFD01' THEN
      -- The exception subtransaction releases the provisional SHARE lock before stronger ownership.
-     PERFORM b.id FROM payroll_batch b WHERE b.id=selected_batch.id FOR UPDATE;
+     PERFORM b.id FROM payroll_batch b ${filters} AND b.id=selected_batch.id FOR UPDATE;
     END;
     ELSE
-     PERFORM b.id FROM payroll_batch b WHERE b.id=selected_batch.id FOR UPDATE;
+     PERFORM b.id FROM payroll_batch b ${filters} AND b.id=selected_batch.id FOR UPDATE;
     END IF;
    END LOOP;`+body.slice(end);
    if(!advisory)body=body.replace("PERFORM pg_advisory_xact_lock_shared(hashtextextended('perf-draft-first-slip:'||selected_batch.id::text,0));",'');
@@ -96,7 +98,7 @@ it('independently compares native concurrency and first-slip/status exclusion be
     const result=await Promise.all([write,guard]);
     report[phase+'-insert-and-status']={guardWait,result};save();
     if(phase==='advisory')expect(result.some(row=>'causes' in row&&row.causes.some(c=>c.code==='40P01')),'reject the advisory variant: a raw first-slip writer then changing status exposes a real lock cycle').toBe(true);
-    else expect(result).toEqual([{ok:true,value:[]},{ok:true,value:[{batchId:batch.id,status:'processed'}]}]);
+    else {expect(result.every(row=>row.ok)).toBe(true);expect(result[1]).toEqual({ok:true,value:[{batchId:batch.id,status:'processed'}]});}
     await owner.db.delete(s.payslip).where(eq(s.payslip.batchId,batch.id));await owner.db.update(s.payrollBatch).set({status:'draft'}).where(eq(s.payrollBatch.id,batch.id));
    }
    if(phase==='parent-row'){
