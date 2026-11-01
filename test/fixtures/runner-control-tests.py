@@ -4,6 +4,10 @@ import importlib.util
 import json
 from pathlib import Path
 import tempfile
+import socket
+import socketserver
+import threading
+import os
 import unittest
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('broker',Path(__file__).resolve().parents[2]/'deploy/runner-control/broker.py')
@@ -16,6 +20,26 @@ class RunnerControlTests(unittest.TestCase):
         self.current={'revision':'a'*64,'managed':True,'installed':True,'hold':False,'running':False}
         self.request={'op':'configure','id':'reviews','actor':'11111111-1111-1111-1111-111111111111','revision':'a'*64,'enabled':False,'schedule':None}
     def tearDown(self): self.temp.cleanup()
+    def request_socket(self,allowed_uid):
+        path=str(self.root/'controller.sock')
+        server=socketserver.UnixStreamServer(path,b.Handler)
+        with patch.object(b,'read_policy',return_value=({'webUid':allowed_uid},[])),patch.object(b,'handle',return_value={'verified':True}),patch.object(b,'STATE',self.root):
+            thread=threading.Thread(target=server.handle_request);thread.start()
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as client:
+                client.connect(path);client.sendall(b'POST /v1/runners HTTP/1.0\r\nContent-Length: 15\r\n\r\n{"op":"status"}')
+                response=b''
+                while True:
+                    chunk=client.recv(4096)
+                    if not chunk:break
+                    response+=chunk
+            thread.join(timeout=5)
+        server.server_close();return response
+    def test_actual_unix_peer_uid_is_required(self):
+        response=self.request_socket(os.getuid()+1)
+        self.assertIn(b'409',response.split(b'\r\n')[0]);self.assertNotIn(b'"verified": true',response)
+    def test_actual_unix_peer_uid_can_read_status(self):
+        response=self.request_socket(os.getuid())
+        self.assertIn(b'200',response.split(b'\r\n')[0]);self.assertIn(b'"verified": true',response)
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:
