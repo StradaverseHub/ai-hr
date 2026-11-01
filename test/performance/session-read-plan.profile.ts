@@ -41,14 +41,19 @@ it('independently compares native concurrency and first-slip/status exclusion be
    expect(start).toBeGreaterThan(0);const select=body.slice(start,end).replace(' PERFORM b.id FROM','SELECT b.id,b.status::text AS expected_status FROM').replace(' FOR UPDATE;','');
    body=body.slice(0,start)+` FOR selected_batch IN ${select} LOOP
     IF selected_batch.expected_status='draft' THEN
-     SELECT b.status::text INTO STRICT locked_status FROM payroll_batch b WHERE b.id=selected_batch.id FOR SHARE;
-     IF locked_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'Payroll source changed; review again' USING ERRCODE='40001'; END IF;
+    BEGIN
+     SELECT b.status::text INTO locked_status FROM payroll_batch b WHERE b.id=selected_batch.id FOR SHARE;
+     IF locked_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'Reacquire changed Payroll source' USING ERRCODE='PFD01'; END IF;
      PERFORM pg_advisory_xact_lock_shared(hashtextextended('perf-draft-first-slip:'||selected_batch.id::text,0));
+    EXCEPTION WHEN SQLSTATE 'PFD01' THEN
+     -- The exception subtransaction releases the provisional SHARE lock before stronger ownership.
+     PERFORM b.id FROM payroll_batch b WHERE b.id=selected_batch.id FOR UPDATE;
+    END;
     ELSE
      PERFORM b.id FROM payroll_batch b WHERE b.id=selected_batch.id FOR UPDATE;
     END IF;
    END LOOP;`+body.slice(end);
-   await owner.client.unsafe(String(original.definition).replace(before,body));
+   await owner.client.unsafe(String(original.definition).replace(before,()=>body));
    const [attrs]=await owner.client`select to_jsonb(p)-'prosrc' as value from pg_proc p where p.oid=${original.identity}::regprocedure`;
    const expected={...original.attributes};delete expected.prosrc;expect(attrs.value).toEqual(expected);
   }
@@ -67,8 +72,10 @@ it('independently compares native concurrency and first-slip/status exclusion be
     overlap=await Promise.race([other.then(outcome=>outcome.ok),delay(250).then(()=>false)]);expect(overlap).toBe(phase==='candidate');
     slip=settle(owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:people[2].employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'}));
     firstSlipBlocked=await Promise.race([slip.then(()=>false),delay(200).then(()=>true)]);expect(firstSlipBlocked).toBe(true);
+    const nativeWait=async(fragment:string)=>{const until=Date.now()+1500;while(Date.now()<until){const [row]=await owner.client`select exists(select 1 from pg_stat_activity where wait_event_type='Lock' and position(${fragment} in query)>0 and cardinality(pg_blocking_pids(pid))>0) as blocked`;if(row.blocked)return true;await delay(10);}return false;};
+    expect(await nativeWait('insert into "payslip"'),'native first-payslip writer is physically blocked, not merely slow').toBe(true);
     status=settle(owner.db.update(s.payrollBatch).set({status:'processed'}).where(eq(s.payrollBatch.id,batch.id)));
-    statusBlocked=await Promise.race([status.then(()=>false),delay(200).then(()=>true)]);expect(statusBlocked).toBe(true);
+    statusBlocked=await Promise.race([status.then(()=>false),delay(200).then(()=>true)]);expect(statusBlocked).toBe(true);expect(await nativeWait('update "payroll_batch"'),'native status writer is physically blocked').toBe(true);
    }finally{release.resolve();const outcomes=await Promise.all([first,...(other?[other]:[]),...(slip?[slip]:[]),...(status?[status]:[])]);report[phase]={overlap,firstSlipBlocked,statusBlocked,outcomes};save();expect(outcomes.every(row=>row.ok)).toBe(true);}
    await owner.db.delete(s.payslip).where(eq(s.payslip.batchId,batch.id));await owner.db.update(s.payrollBatch).set({status:'draft'}).where(eq(s.payrollBatch.id,batch.id));
   }
