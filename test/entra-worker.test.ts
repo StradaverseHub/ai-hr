@@ -11,10 +11,10 @@ import {createEntraSession,readEntraSession} from '../lib/entra/sessions';
 let base:Base;
 beforeAll(migrateTestDb);beforeEach(async()=>{await resetDb();base=await seedBase();vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://hr.test');vi.stubEnv('AUTH_SESSION_KEY','7'.repeat(64));});
 afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
-async function setup(mode:'cloud'|'hybrid'){
+async function setup(mode:'cloud'|'hybrid',hiredOn='2020-01-01'){
  const config:EntraConfig={tenantId:base.tenantId,organization:'worker',directoryTenantId:randomUUID(),clientId:randomUUID(),clientSecret:'private',provisioningClientId:randomUUID(),provisioningClientSecret:'private',servicePrincipalId:randomUUID(),jobId:'job-1',mode,domain:'company.test',sourceAnchorAttribute:mode==='hybrid'?'onPremisesExtensionAttributes.extensionAttribute15':'extension_'+'a'.repeat(32)+'_hrSourceId',enabled:true,provisioningEnabled:true,immutableMatchingConfirmed:true,revision:randomUUID()};
  await saveConnector(adminCtx(base),config,null);
- const employee=await hireEmployee(adminCtx(base),{person:{fullName:'Worker Employee',primaryEmail:'worker@contact.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
+ const employee=await hireEmployee(adminCtx(base),{person:{fullName:'Worker Employee',primaryEmail:'worker@contact.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn});
  const object=randomUUID(),state={active:true,synced:mode==='cloud',missing:false};
  const fetcher=vi.fn<typeof fetch>(async(input,init)=>{
   const url=String(input);
@@ -53,6 +53,13 @@ describe('actual durable worker with mocked Microsoft boundary',()=>{
  it('provisions directory accounts independently of Microsoft sign-in without creating an HR login',async()=>{
   const f=await setup('cloud');await saveConnector(adminCtx(base),{...f.config,enabled:false,revision:randomUUID()},f.config.revision);
   await f.next();await f.next();expect(await f.status()).toBe('ready');
+  expect(await owner.client`select id from app_user where person_id=${f.employee.personId}`).toHaveLength(0);
+ });
+
+ it('preprovisions a future hire disabled without granting an HR login before their start date',async()=>{
+  const date=new Date(todayInKualaLumpur()+'T12:00:00Z');date.setUTCDate(date.getUTCDate()+10);
+  const f=await setup('cloud',date.toISOString().slice(0,10));f.state.active=false;
+  await f.next();await f.next();expect(await f.status()).toBe('disabled');
   expect(await owner.client`select id from app_user where person_id=${f.employee.personId}`).toHaveLength(0);
  });
 

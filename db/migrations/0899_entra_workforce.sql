@@ -167,14 +167,14 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.entra_auto_bind(p_tenant uuid,p_person uuid,p_revision bigint,p_lease uuid,p_object uuid) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE c public.entra_connector%ROWTYPE; u uuid; iss text;
+DECLARE c public.entra_connector%ROWTYPE; u uuid; iss text; d date;
 BEGIN
  SELECT * INTO c FROM public.entra_connector WHERE tenant_id=p_tenant AND enabled AND provisioning_enabled
  AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=p_tenant AND t.status IN ('active','trial')) FOR SHARE;
  IF NOT FOUND THEN RETURN false; END IF;
  PERFORM 1 FROM public.person p WHERE p.id=p_person AND p.tenant_id=p_tenant AND p.voided_at IS NULL FOR UPDATE;
  IF NOT FOUND THEN RETURN false; END IF;
- PERFORM 1 FROM public.entra_workforce w WHERE w.tenant_id=p_tenant AND w.person_id=p_person AND w.revision=p_revision AND w.lease=p_lease AND w.lease_until>now() FOR UPDATE;
+ SELECT w.last_day INTO d FROM public.entra_workforce w WHERE w.tenant_id=p_tenant AND w.person_id=p_person AND w.revision=p_revision AND w.lease=p_lease AND w.lease_until>now() FOR UPDATE;
  IF NOT FOUND THEN RETURN false; END IF;
  iss:='https://login.microsoftonline.com/'||c.directory_tenant_id||'/v2.0';
  -- Existing logins are never automatically adopted or changed; an admin uses the explicit link path.
@@ -182,12 +182,14 @@ BEGIN
    RETURN EXISTS(SELECT 1 FROM public.app_user u JOIN public.app_external_identity i ON i.app_user_id=u.id
     WHERE u.tenant_id=p_tenant AND u.person_id=p_person AND i.issuer=iss AND i.subject=p_object::text AND i.revoked_at IS NULL);
  END IF;
+ IF NOT app.entra_active(p_tenant,p_person,d) THEN RETURN false; END IF;
  IF EXISTS(SELECT 1 FROM public.app_external_identity WHERE issuer=iss AND subject=p_object::text) THEN RETURN false; END IF;
  -- Only baseline employee grants, owned by the administrator-enabled provisioning policy and the committed hire.
  INSERT INTO public.app_user(tenant_id,person_id,workos_user_id) VALUES(p_tenant,p_person,'provision:'||gen_random_uuid()) RETURNING id INTO u;
  INSERT INTO public.role_assignment(tenant_id,app_user_id,role,company_id)
  SELECT DISTINCT p_tenant,u,'employee'::public.role,e.company_id FROM public.employment e
- WHERE e.tenant_id=p_tenant AND e.person_id=p_person AND e.voided_at IS NULL;
+ WHERE e.tenant_id=p_tenant AND e.person_id=p_person AND e.voided_at IS NULL AND e.blacklisted_at IS NULL
+ AND e.hired_on<=d AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR LEAST(e.resignation_date,e.last_working_date,e.terminated_on)>=d);
  INSERT INTO public.app_external_identity(issuer,subject,app_user_id) VALUES(iss,p_object::text,u);
  UPDATE public.entra_workforce SET object_id=p_object WHERE tenant_id=p_tenant AND person_id=p_person;
  PERFORM app.append_auth_event(p_tenant,'app-user',u,'entra.identity-provisioned','system',NULL,jsonb_build_object('personId',p_person));
