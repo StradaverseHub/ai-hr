@@ -77,3 +77,30 @@ Audit context labels are current display facts, separate from immutable money/so
 reader independently authorizes employee code (Personnel) and full name (Identity) before selecting
 those columns. Financially permitted evidence remains available with protected employee labels when
 these extra fields are denied. The paying-company label uses the stored paying-company identity.
+
+## Help, examples, sample values and checks (feedback 02472802, round 2)
+
+`{#CalendarDays}` and `{#FixedAllowances}` are additive registry entries. CalendarDays reads the
+period length the payroll scope already carries (`calendarDays`). FixedAllowances is the legacy
+`fixed_allowances` aggregate: one row test, `countsTowardFixedAllowances` (which delegates to
+`payItemFeedsOvertimeOrp`), the same all-rows-of-a-code group rule and the same stored amounts. Members
+are rule-free or fixed, so the reader cannot join a cycle. A reader's dependency snapshot adds the
+member rows, so changing the overtime-rate tick boxes requires a retest. Formulas that do not read the
+new names keep their previous snapshot.
+
+`PAY_FORMULA_REGISTRY_VERSION` and `PAY_FORMULA_EVALUATOR_VERSION` are not bumped. Active revisions
+are loaded only when their stored versions equal the current ones, and the provider version is part
+of every dependency fingerprint. Bumping either value would deactivate every live formula. The change
+is additive: an older revision cannot name the new variables, because they would not have parsed.
+Golden hashes of the parse tree, analysis, printed form and evaluation for older formulas lock this in.
+
+Reference examples are code constants (`lib/pay-formula-templates.ts`). "Use as template" only
+pre-fills an unsaved draft, which the user saves through `savePayFormula`. The explanation is a
+deterministic rendering of the parsed tree; no model is involved. The sample-value test
+(`samplePayFormula`) needs formula catalogue access only. It uses `evaluatePayFormula` with a resolver
+that answers only from typed values, and refuses any other variable by name. It reads no employee
+data and writes no row or event. It is never activation evidence.
+
+Checks before saving collect every recoverable problem with a position and length. They are
+diagnostics only. Save-time refusal adds one rule: a divisor that is a plain or constant zero.
+Possibly-zero divisors are warnings, and runtime division behaviour is unchanged.

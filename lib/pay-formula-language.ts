@@ -7,12 +7,15 @@ export type {FormulaType,FormulaValue} from './pay-formula-registry';
 export const PAY_FORMULA_EVALUATOR_VERSION='payroll-formula-1';
 export const PAY_FORMULA_LIMITS={source:24000,tokens:6000,statements:512,nodes:3000,depth:24,steps:6000,explanations:64,explanationLength:12000,string:4096} as const;
 export type FormulaLocation={line:number;column:number};
+export type FormulaErrorDetail={name?:string};
 export class PayFormulaError extends Error {
  readonly line:number;readonly column:number;
- constructor(readonly code:string,message:string,loc:FormulaLocation={line:1,column:1}){super(`${message} (line ${loc.line}, column ${loc.column})`);this.name='PayFormulaError';this.line=loc.line;this.column=loc.column;}
+ /** Plain message without the position suffix, for diagnostics that show the position separately. */
+ readonly reason:string;
+ constructor(readonly code:string,message:string,loc:FormulaLocation={line:1,column:1},readonly detail?:FormulaErrorDetail){super(`${message} (line ${loc.line}, column ${loc.column})`);this.name='PayFormulaError';this.line=loc.line;this.column=loc.column;this.reason=message;}
 }
 const start={line:1,column:1};
-function fail(code:string,message:string,loc:FormulaLocation=start):never{throw new PayFormulaError(code,message,loc);}
+function fail(code:string,message:string,loc:FormulaLocation=start,detail?:FormulaErrorDetail):never{throw new PayFormulaError(code,message,loc,detail);}
 const Z=BigInt(0),O=BigInt(1),TEN=BigInt(10),SCALE=BigInt('1000000000000'),MAX=BigInt('999999999999999999999999999999');
 const abs=(n:bigint)=>n<Z?-n:n;
 function bounded(n:bigint,loc:FormulaLocation=start){if(abs(n)>MAX)fail('overflow','The decimal result exceeds 18 integer digits',loc);return n;}
@@ -70,7 +73,9 @@ const reserved=new Set(['dim','as','if','then','elseif','else','end','return','a
 function validName(name:unknown,loc:FormulaLocation){if(typeof name!=='string'||!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name)||reserved.has(name.toLowerCase()))fail('identifier','Choose a non-reserved variable name',loc);return name;}
 class Parser{
  private index=0;private depth=0;private count=0;
- constructor(private tokens:Token[]){}
+ /** With a sink (diagnostics only) single-line statement errors are recorded and parsing continues on
+  * the next line. Without one, the first error throws exactly as before. */
+ constructor(private tokens:Token[],private sink?:PayFormulaError[]){}
  private token(){return this.tokens[this.index];}private next(){return this.tokens[this.index++];}
  private is(text:string){return this.token().text.toLowerCase()===text.toLowerCase();}
  private expect(text:string){const t=this.next();if(t.text.toLowerCase()!==text.toLowerCase())fail('syntax',`Expected ${text}`,t.loc);return t;}
@@ -85,12 +90,21 @@ class Parser{
   else if(t.text==='+'||t.text==='-'||t.text.toLowerCase()==='not')left={kind:'unary',operator:t.text.toLowerCase()==='not'?'Not':t.text as '+'|'-',operand:this.expression(t.text.toLowerCase()==='not'?3:7),loc:t.loc};
   else if(t.kind==='identifier'&&['true','false'].includes(t.text.toLowerCase()))left={kind:'literal',value:{type:'boolean',value:t.text.toLowerCase()==='true'},loc:t.loc};
   else if(t.kind==='identifier')left={kind:'name',name:validName(t.text,t.loc),loc:t.loc};
-  else if(t.kind==='call'){const fn=payFormulaFunction(t.text);if(!fn)fail('function',`Unsupported payroll function ${t.text}`,t.loc);const args:FormulaExpression[]=[];if(this.is('(')){this.next();if(!this.is(')')){do{args.push(this.expression());if(!this.is(','))break;this.next();}while(true);}this.expect(')');}left={kind:'call',code:fn.code,args,loc:t.loc};}
+  else if(t.kind==='call'){const fn=payFormulaFunction(t.text);if(!fn){if(!this.sink)fail('function',`Unsupported payroll function ${t.text}`,t.loc);this.sink.push(new PayFormulaError('function',`Unsupported payroll function ${t.text}`,t.loc,{name:t.text}));}const args:FormulaExpression[]=[];if(this.is('(')){this.next();if(!this.is(')')){do{args.push(this.expression());if(!this.is(','))break;this.next();}while(true);}this.expect(')');}left={kind:'call',code:fn?.code??t.text,args,loc:t.loc};}
   else fail('syntax','Expected a value, variable or approved function',t.loc);
   while(true){const candidate=this.token(),operator=['and','or'].includes(candidate.text.toLowerCase())?candidate.text[0].toUpperCase()+candidate.text.slice(1).toLowerCase():candidate.text,p=precedence[operator];if(p===undefined||p<min)break;this.next();left={kind:'binary',operator,left,right:this.expression(p+1),loc:candidate.loc};}
   this.depth--;return left;
  }
- private block(stops:string[]=[]):FormulaStatement[]{const body:FormulaStatement[]=[];this.newlines();while(this.token().kind!=='eof'&&!stops.some(s=>this.is(s))){if(++this.count>PAY_FORMULA_LIMITS.statements)fail('limit','Too many formula statements',this.token().loc);body.push(this.statement());if(this.token().kind==='comment')body.push({kind:'comment',text:this.next().text,loc:this.tokens[this.index-1].loc});this.lineEnd();this.newlines();}return body;}
+ private block(stops:string[]=[]):FormulaStatement[]{const body:FormulaStatement[]=[];this.newlines();while(this.token().kind!=='eof'&&!stops.some(s=>this.is(s))){if(++this.count>PAY_FORMULA_LIMITS.statements)fail('limit','Too many formula statements',this.token().loc);
+  if(!this.sink){body.push(this.statement());if(this.token().kind==='comment')body.push({kind:'comment',text:this.next().text,loc:this.tokens[this.index-1].loc});this.lineEnd();this.newlines();continue;}
+  const first=this.token();
+  try{body.push(this.statement());if(this.token().kind==='comment')body.push({kind:'comment',text:this.next().text,loc:this.tokens[this.index-1].loc});this.lineEnd();}
+  catch(error){
+   // Block structure (If/ElseIf/Else/End) cannot be resynchronised reliably; stop there.
+   if(!(error instanceof PayFormulaError)||error.code==='limit'||['if','elseif','else','end'].includes(first.text.toLowerCase()))throw error;
+   this.sink.push(error);this.depth=0;while(!['newline','eof'].includes(this.token().kind))this.next();
+  }
+  this.newlines();}return body;}
  private statement():FormulaStatement{
   const t=this.next(),word=t.text.toLowerCase();
   if(t.kind==='comment')return {kind:'comment',text:t.text,loc:t.loc};
@@ -133,7 +147,7 @@ function valueOf(value:unknown,loc:FormulaLocation):FormulaValue{
 function literalValue(expression:FormulaExpression|undefined):FormulaValue|undefined{return expression?.kind==='literal'?expression.value:undefined;}
 function fieldType(code:string,field:string){return PAY_FORMULA_FIELD_TYPES[code==='EmployeeProfile'?'profile':'employee'][field];}
 function callType(expression:Extract<FormulaExpression,{kind:'call'}>,types:FormulaType[]):FormulaType{
- const fn=payFormulaFunction(expression.code),loc=expression.loc;if(!fn)fail('function',`Unsupported payroll function ${expression.code}`,loc);
+ const fn=payFormulaFunction(expression.code),loc=expression.loc;if(!fn)fail('function',`Unsupported payroll function ${expression.code}`,loc,{name:expression.code});
  const required=fn.parameters.filter(p=>!p.optional).length;
  if(expression.args.length<required||expression.args.length>fn.parameters.length)fail('parameter',`${fn.code} requires ${required===fn.parameters.length?required:`${required}–${fn.parameters.length}`} parameter(s)`,loc);
  fn.parameters.forEach((parameter,i)=>{if(i>=types.length)return;const literal=literalValue(expression.args[i]);
@@ -153,7 +167,11 @@ function callType(expression:Extract<FormulaExpression,{kind:'call'}>,types:Form
  return fn.returns==='field'?fieldType(fn.code,String(first?.value)):fn.returns;
 }
 /** Validates untrusted visual-editor ASTs as strictly as written source. No executable values enter it. */
-export function validatePayFormula(program:unknown):FormulaAnalysis{
+export function validatePayFormula(program:unknown):FormulaAnalysis{return analyzeProgram(program);}
+/** With a sink, statement-level problems are recorded and analysis continues so every problem can be
+ * listed together. Without one (every payroll path) the first problem throws exactly as before. */
+function analyzeProgram(program:unknown,sink?:PayFormulaError[]):FormulaAnalysis{
+ const guard=<T,>(run:()=>T,recover:()=>T):T=>{if(!sink)return run();try{return run();}catch(error){if(!(error instanceof PayFormulaError)||error.code==='limit')throw error;sink.push(error);return recover();}};
  if(!object(program)||program.version!==1||!Array.isArray(program.statements)||!program.statements.length)fail('program','A version 1 formula with statements is required');
  let nodes=0,statements=0;const dependencies:FormulaDependency[]=[],calls:FormulaRequest[]=[],functions=new Set<string>();
  const tick=(depth:number,loc:FormulaLocation)=>{if(++nodes>PAY_FORMULA_LIMITS.nodes||depth>PAY_FORMULA_LIMITS.depth)fail('limit','Formula structure exceeds its bounded size or depth',loc);};
@@ -162,7 +180,7 @@ export function validatePayFormula(program:unknown):FormulaAnalysis{
   const expression=raw as unknown as FormulaExpression;
   switch(expression.kind){
    case 'literal':{const v=valueOf(expression.value,loc);if(v.type==='date')fail('date','Use the Date function for a date literal',loc);return v.type;}
-   case 'name':{const name=validName(expression.name,loc),type=scope.get(name.toLowerCase());if(!type)fail('identifier',`Variable ${name} is not defined in this scope`,loc);return type;}
+   case 'name':{const name=validName(expression.name,loc),type=scope.get(name.toLowerCase());if(!type)fail('identifier',`Variable ${name} is not defined in this scope`,loc,{name});return type;}
    case 'unary':{if(!['+','-','Not'].includes(expression.operator))fail('operator','Unknown unary operator',loc);const type=infer(expression.operand,scope,depth+1),expected=expression.operator==='Not'?'boolean':'decimal';if(type!==expected)fail('type',`${expression.operator} needs a ${expected} value`,loc);return expected;}
    case 'binary':{if(!Object.hasOwn(precedence,expression.operator))fail('operator','Unknown binary operator',loc);const left=infer(expression.left,scope,depth+1),right=infer(expression.right,scope,depth+1);
     if(expression.operator==='&')return 'string';
@@ -188,24 +206,34 @@ export function validatePayFormula(program:unknown):FormulaAnalysis{
  const block=(raw:unknown,scope:Map<string,FormulaType>,depth:number):boolean=>{
   if(!Array.isArray(raw))fail('statement','A statement list is required');let returned=false;
   for(const entry of raw){const loc=location(object(entry)?entry.loc:null);tick(depth,loc);if(++statements>PAY_FORMULA_LIMITS.statements)fail('limit','Too many formula statements',loc);if(!object(entry))fail('statement','A statement is required',loc);const statement=entry as unknown as FormulaStatement;
-   if(returned&&statement.kind!=='comment')fail('unreachable','This statement follows an unconditional return',loc);
-   switch(statement.kind){
+   if(returned&&statement.kind!=='comment')guard(()=>fail('unreachable','This statement follows an unconditional return',loc),()=>undefined);
+   const declared=statement.kind==='declare'&&typeof statement.name==='string'&&['decimal','string','boolean','date'].includes(statement.type)?statement.name.toLowerCase():null;
+   guard(()=>{switch(statement.kind){
     case 'comment':if(typeof statement.text!=='string'||statement.text.length>PAY_FORMULA_LIMITS.string||/[\r\n]/.test(statement.text))fail('comment','A comment must fit on one bounded line',loc);break;
     case 'declare':{const name=validName(statement.name,loc).toLowerCase();if(scope.has(name))fail('identifier','Variable is already declared in this scope',loc);if(!['decimal','string','boolean','date'].includes(statement.type))fail('type','Unknown declaration type',loc);if(infer(statement.value,scope,depth+1)!==statement.type)fail('type','Declaration value does not match its type',loc);scope.set(name,statement.type);break;}
     case 'assign':{const name=validName(statement.name,loc).toLowerCase(),type=scope.get(name);if(!type)fail('identifier','Assign only to a previously declared variable',loc);if(infer(statement.value,scope,depth+1)!==type)fail('type','Assignment value does not match its declaration',loc);break;}
     case 'explain':infer(statement.value,scope,depth+1);break;
     case 'return':if(infer(statement.value,scope,depth+1)!=='decimal')fail('return','A payroll formula must return a Decimal amount',loc);returned=true;break;
     case 'if':{if(!Array.isArray(statement.branches)||!statement.branches.length||statement.branches.length>64||!Array.isArray(statement.otherwise))fail('condition','A bounded condition and branch list is required',loc);let all=true;
-     for(const branch of statement.branches){if(!object(branch))fail('condition','A condition branch is required',loc);if(infer(branch.condition,scope,depth+1)!=='boolean')fail('type','If/ElseIf needs a Boolean condition',loc);if(!block(branch.body,new Map(scope),depth+1))all=false;}
+     for(const branch of statement.branches){if(!object(branch))fail('condition','A condition branch is required',loc);guard(()=>{if(infer(branch.condition,scope,depth+1)!=='boolean')fail('type','If/ElseIf needs a Boolean condition',loc);},()=>undefined);if(!block(branch.body,new Map(scope),depth+1))all=false;}
      const elseReturns=block(statement.otherwise,new Map(scope),depth+1);returned=all&&elseReturns;break;}
     default:fail('statement','Unknown formula statement',loc);
-   }
+   }},()=>{if(declared&&!scope.has(declared))scope.set(declared,statement.type as FormulaType);if(statement.kind==='return')returned=true;});
   }return returned;
  };
- if(!block(program.statements,new Map(),0))fail('return','Every formula path must return a Decimal amount');
+ if(!block(program.statements,new Map(),0)){const last=[...(program.statements as unknown as FormulaStatement[])].reverse().find(s=>object(s)&&s.kind!=='comment');guard(()=>fail('return','Every formula path must return a Decimal amount',sink&&last?location(last.loc):start),()=>undefined);}
  return {dependencies,calls,functions:[...functions].sort(),registryVersion:PAY_FORMULA_REGISTRY_VERSION,evaluatorVersion:PAY_FORMULA_EVALUATOR_VERSION};
 }
 export const analyzePayFormula=validatePayFormula;
+/** Diagnostics only: parse and validate while collecting every recoverable problem (capped). Never
+ * used to accept a formula — saving still requires parsePayFormula to succeed. */
+export function inspectPayFormula(source:string,cap=50):{program:FormulaProgram|null;tree:FormulaProgram|null;problems:PayFormulaError[]}{
+ const problems:PayFormulaError[]=[];let program:FormulaProgram|null=null;
+ try{program=new Parser(tokenize(source),problems).parse();}catch(error){if(!(error instanceof PayFormulaError))throw error;problems.push(error);}
+ // After a fatal syntax error the partial tree is discarded; recovered single-line problems keep it.
+ if(program)try{analyzeProgram(program,problems);}catch(error){if(!(error instanceof PayFormulaError))throw error;problems.push(error);}
+ const seen=new Set<string>();return {program:problems.length?null:program,tree:program,problems:problems.filter(p=>{const key=p.line+':'+p.column+':'+p.code;if(seen.has(key))return false;seen.add(key);return true;}).slice(0,cap)};
+}
 export function formulaDependencies(program:FormulaProgram):FormulaDependency[]{return validatePayFormula(program).dependencies;}
 function quoted(value:string){return '"'+value.replaceAll('"','""')+'"';}
 /** Prints every typed construct, including comments; original authored source remains revision metadata. */
@@ -216,14 +244,23 @@ export function printPayFormula(program:FormulaProgram):string{
  return block(program.statements,'').join('\n');
 }
 export type FormulaEvaluation={amount:string;explanations:string[];reads:(FormulaRequest&{value:FormulaValue})[];steps:number;registryVersion:string;evaluatorVersion:string};
-export type FormulaRuntime={resolve:(request:FormulaRequest)=>FormulaValue;limits?:Partial<{steps:number;explanations:number;explanationLength:number;reads:number;readLength:number}>};
+/** Observation only: a trace callback never changes a value or the order of evaluation. */
+export type FormulaTraceEvent=
+ |{kind:'read';code:string;value:FormulaValue;loc:FormulaLocation}
+ |{kind:'arithmetic';operator:string;left:string;right:string;result:string;loc:FormulaLocation}
+ |{kind:'condition';branch:number;value:boolean;loc:FormulaLocation}
+ |{kind:'otherwise';loc:FormulaLocation}
+ |{kind:'set';name:string;value:FormulaValue;loc:FormulaLocation}
+ |{kind:'explain';text:string;loc:FormulaLocation}
+ |{kind:'return';value:FormulaValue;loc:FormulaLocation};
+export type FormulaRuntime={resolve:(request:FormulaRequest)=>FormulaValue;limits?:Partial<{steps:number;explanations:number;explanationLength:number;reads:number;readLength:number}>;trace?:(event:FormulaTraceEvent)=>void};
 function display(value:FormulaValue){return value.type==='boolean'?(value.value?'True':'False'):value.value;}
 /** All external facts are pre-resolved by the authorized payroll adapter, never loaded by this engine. */
 export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime):FormulaEvaluation{
  validatePayFormula(program);if(!runtime||typeof runtime.resolve!=='function')fail('source','An authorized payroll source resolver is required');
  const maxima={steps:PAY_FORMULA_LIMITS.steps,explanations:PAY_FORMULA_LIMITS.explanations,explanationLength:PAY_FORMULA_LIMITS.explanationLength,reads:512,readLength:24000};
  const limits:Record<keyof typeof maxima,number>={...maxima};for(const key of Object.keys(maxima) as (keyof typeof maxima)[]){const proposed=runtime.limits?.[key];if(proposed!==undefined){if(!Number.isInteger(proposed)||proposed<1||proposed>maxima[key])fail('limit','Runtime limits may only narrow the bounded engine limits');limits[key]=proposed;}}
- let steps=0,textLength=0,readLength=0;const explanations:string[]=[],reads:FormulaEvaluation['reads']=[];
+ let steps=0,textLength=0,readLength=0;const explanations:string[]=[],reads:FormulaEvaluation['reads']=[],trace=runtime.trace;
  const step=(loc:FormulaLocation)=>{if(++steps>limits.steps)fail('limit','Formula execution exceeded its step limit',loc);};
  type Cell={type:FormulaType;value:FormulaValue};type Environment=Map<string,Cell>;
  const expression=(e:FormulaExpression,env:Environment):FormulaValue=>{
@@ -244,7 +281,7 @@ export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime
     if(['+','-','*','/'].includes(e.operator)){
      if(left.type!=='decimal'||right.type!=='decimal')fail('type','Arithmetic requires Decimal values',e.loc);const a=decimal(left.value,e.loc),b=decimal(right.value,e.loc);
      const n=e.operator==='+'?a+b:e.operator==='-'?a-b:e.operator==='*'?roundedDivision(a*b,SCALE,e.loc):roundedDivision(a*SCALE,b,e.loc);
-     return {type:'decimal',value:decimalText(bounded(n,e.loc))};
+     const out={type:'decimal' as const,value:decimalText(bounded(n,e.loc))};trace?.({kind:'arithmetic',operator:e.operator,left:left.value,right:right.value,result:out.value,loc:e.loc});return out;
     }
     if(left.type!==right.type)fail('type','Comparison values must have matching types',e.loc);
     let order:number;
@@ -265,18 +302,18 @@ export function evaluatePayFormula(program:FormulaProgram,runtime:FormulaRuntime
     const value=valueOf(supplied,e.loc),expected=fn.returns==='field'?fieldType(fn.code,String(args[0].value)):fn.returns;
     if(value.type!==expected)fail('source_type',`Payroll source ${fn.code} returned the wrong type`,e.loc);
     readLength+=display(value).length+args.reduce((sum,arg)=>sum+display(arg).length,0);if(reads.length>=limits.reads||readLength>limits.readLength)fail('limit','Formula source trace exceeded its limit',e.loc);
-    reads.push({...request,args:args.map(arg=>({...arg})),value:{...value}});return value;
+    reads.push({...request,args:args.map(arg=>({...arg})),value:{...value}});trace?.({kind:'read',code:fn.code,value:{...value},loc:e.loc});return value;
    }
   }
  };
  const block=(statements:FormulaStatement[],env:Environment):FormulaValue|undefined=>{
   for(const statement of statements){step(statement.loc);switch(statement.kind){
    case 'comment':break;
-   case 'declare':env.set(statement.name.toLowerCase(),{type:statement.type,value:expression(statement.value,env)});break;
-   case 'assign':{const cell=env.get(statement.name.toLowerCase());if(!cell)fail('identifier','Variable is unavailable',statement.loc);cell.value=expression(statement.value,env);break;}
-   case 'explain':{const text=display(expression(statement.value,env));textLength+=text.length;if(explanations.length>=limits.explanations||textLength>limits.explanationLength)fail('limit','Formula explanation output exceeded its limit',statement.loc);explanations.push(text);break;}
-   case 'return':return expression(statement.value,env);
-   case 'if':{let selected=statement.otherwise;for(const branch of statement.branches){const condition=expression(branch.condition,env);if(condition.type!=='boolean')fail('type','Condition must be Boolean',statement.loc);if(condition.value){selected=branch.body;break;}}const value=block(selected,new Map(env));if(value)return value;break;}
+   case 'declare':{const value=expression(statement.value,env);env.set(statement.name.toLowerCase(),{type:statement.type,value});trace?.({kind:'set',name:statement.name,value,loc:statement.loc});break;}
+   case 'assign':{const cell=env.get(statement.name.toLowerCase());if(!cell)fail('identifier','Variable is unavailable',statement.loc);cell.value=expression(statement.value,env);trace?.({kind:'set',name:statement.name,value:cell.value,loc:statement.loc});break;}
+   case 'explain':{const text=display(expression(statement.value,env));textLength+=text.length;if(explanations.length>=limits.explanations||textLength>limits.explanationLength)fail('limit','Formula explanation output exceeded its limit',statement.loc);explanations.push(text);trace?.({kind:'explain',text,loc:statement.loc});break;}
+   case 'return':{const value=expression(statement.value,env);trace?.({kind:'return',value,loc:statement.loc});return value;}
+   case 'if':{let selected=statement.otherwise,chosen=false;for(const [index,branch] of statement.branches.entries()){const condition=expression(branch.condition,env);if(condition.type!=='boolean')fail('type','Condition must be Boolean',statement.loc);trace?.({kind:'condition',branch:index,value:condition.value,loc:branch.condition.loc});if(condition.value){selected=branch.body;chosen=true;break;}}if(!chosen&&statement.otherwise.length)trace?.({kind:'otherwise',loc:statement.loc});const value=block(selected,new Map(env));if(value)return value;break;}
   }}return undefined;
  };
  const result=block(program.statements,new Map());if(!result||result.type!=='decimal')fail('return','Formula did not return a Decimal amount');
