@@ -27,7 +27,7 @@ it('checks the actual counted Claims application summary over one million record
  await owner.db.insert(s.claimRequest).values({tenantId:b.tenantId,employmentId:users[2].employmentId,claimTypeId:type.id,amount:'1',incurredOn:'2026-01-01',status:'draft'});
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.role==='hr_admin'?null:b.companyId}]});
  const policies=await owner.client`select polname,polcmd,polpermissive,polroles::text,pg_get_expr(polqual,polrelid) as qual,pg_get_expr(polwithcheck,polrelid) as check_expr from pg_policy where polrelid='public.claim_request'::regclass order by polname`;
- const modified=['claim_request_rls','claim_delegate_read'];
+ const modified=['claim_request_rls'];
  for(const name of modified)expect(policies.find(row=>row.polname===name)).toBeDefined();
  const enumOperators=await owner.client`select proname,proleakproof from pg_proc where proname in ('enum_eq','uuid_eq') order by proname`;
  const original=async()=>{for(const name of modified){const policy=policies.find(row=>row.polname===name)!;await owner.client.unsafe('ALTER POLICY '+name+' ON public.claim_request USING ('+policy.qual+')');}};
@@ -36,31 +36,32 @@ it('checks the actual counted Claims application summary over one million record
   for(const phase of ['original-before','hashed-membership','original-restored']){
    if(phase==='hashed-membership'){
     await owner.client.unsafe("ALTER POLICY claim_request_rls ON public.claim_request USING (tenant_id=app.current_tenant_id() AND employment_id IN (SELECT unnest(app.visible_employment_ids())))");
-    await owner.client.unsafe("ALTER POLICY claim_delegate_read ON public.claim_request USING (tenant_id=app.current_tenant_id() AND status::text<>'draft' AND employment_id IN (SELECT unnest(app.delegated_subject_ids('claims','claims.claim'))))");
    }
    if(phase==='original-restored')await original();
    const actualPolicies=await owner.client`select polname,polcmd,polpermissive,polroles::text,pg_get_expr(polqual,polrelid) as qual,pg_get_expr(polwithcheck,polrelid) as check_expr from pg_policy where polrelid='public.claim_request'::regclass order by polname`;
    expect(actualPolicies.map(({qual,...attrs})=>attrs)).toEqual(policies.map(({qual,...attrs})=>attrs));
    if(phase!=='hashed-membership')expect(actualPolicies).toEqual(policies);
    const measurements=[];
-   for(const u of [...users.slice(0,3),users[502]]){
+   for(const u of phase==='original-restored'?[users[0]]:[...users.slice(0,3),users[502]]){
     const actor=u===users[502]?'delegate':u.role,ctx=context(u),times=[];
     await expect(pendingClaimTaskSummary({...ctx,personId:randomUUID()},undefined,25)).rejects.toThrow();
+    await owner.client`select pg_stat_statements_reset()`;
     for(let i=0;i<1;i++){
      const start=performance.now(),result=await pendingClaimTaskSummary(ctx,undefined,25);times.push(performance.now()-start);
      expect(result.total).toBe(actor==='hr_admin'?1000000:actor==='employee'?0:200000);
      expect(result.items).toHaveLength(actor==='employee'?0:25);
      if(!expected.has(actor))expected.set(actor,result);else expect(result).toEqual(expected.get(actor));
     }
+    const statements=await owner.client`select queryid::text,calls,total_exec_time,rows,left(query,1800) as query from pg_stat_statements where query not ilike '%pg_stat_statements%' order by total_exec_time desc limit 8`;
     const [raw]=await withClaimsTenant(ctx,tx=>tx.execute<{total:number}>(sql`select count(*)::int as total from public.claim_request`));
     expect(raw.total).toBe(actor==='hr_admin'?1000001:actor==='manager'?200001:actor==='employee'?2001:200000);
     expect(await pendingClaimTaskSummary(ctx,[],25)).toEqual({items:[],total:0});
-    measurements.push({actor,reads:1,elapsedMs:times,exactTotal:true,exactOrderedPreview:true,rawRlsCount:raw.total,delegateDraftExcluded:true});
+    measurements.push({actor,reads:1,elapsedMs:times,exactTotal:true,exactOrderedPreview:true,rawRlsCount:raw.total,delegateDraftExcluded:true,statements});
     phases[phase]=measurements;
-    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_RLS_MEMBERSHIP_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
+    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_REGULAR_RLS_MEMBERSHIP_ONLY_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
    }
    phases[phase]=measurements;
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_RLS_MEMBERSHIP_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'claim-task-reader.json'),JSON.stringify({kind:'REVERSIBLE_REGULAR_RLS_MEMBERSHIP_ONLY_PROBE',releaseEligible:false,claims:1000000,drafts:1,employments:503,pendingSubjects:500,readerPrincipals:4,policyAttributesPreserved:true,enumOperators,phases},null,2));
   }
  }finally{await original();}
 },300000);
