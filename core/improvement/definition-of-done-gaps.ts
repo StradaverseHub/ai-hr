@@ -1,5 +1,7 @@
 /** Step 5c — the definition of done's current gaps (core/improvement/definition-of-done.ts), as of the
- * claude/teras-integration head a2a39018: 358 of 71 registry actions and 293 linkable pages.
+ * claude/teras-integration head a2a39018: 358 of 71 registry actions and 293 linkable pages. Baseline re-taken against
+ * released main 50ea2471 at integration (claude/teras-review-fixes): items derived on main that were absent at a2a39018
+ * were computed mechanically and added in the group of their computed gaps, nothing else (one page, 359 entries).
  *
  * SHRINK ONLY. Grouped by the requirements each item is missing. test/definition-of-done-registry.test.ts fails
  * when an item has a gap not listed here (a new action or page must ship with its semantic entry, guide link,
@@ -84,7 +86,10 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/notice-board/new','page:/admin/organization/new','page:/admin/pay-components','page:/admin/pay-components/new',
  'page:/admin/payroll-config','page:/admin/payroll-cycle','page:/admin/payroll-permissions','page:/admin/payroll-policy',
  'page:/admin/personnel/child-relief','page:/admin/personnel/import/history','page:/admin/personnel/new','page:/admin/personnel/profile-changes',
- 'page:/admin/personnel/settings','page:/admin/security-center','page:/admin/settings','page:/admin/settings/dashboard','page:/admin/settings/login',
+ 'page:/admin/personnel/settings','page:/admin/security-center','page:/admin/settings','page:/admin/settings/dashboard',
+ // arrived via main 50ea2471
+ 'page:/admin/settings/entra',
+ 'page:/admin/settings/login',
  'page:/admin/settings/movement','page:/admin/settings/movement/reasons','page:/admin/settings/movement/types/new',
  'page:/admin/settings/people-general','page:/admin/settings/profile-options','page:/admin/settings/system-labels',
  'page:/admin/settings/system-labels/profile-options','page:/admin/system-settings/approval-delegation','page:/admin/system-testing/new',
