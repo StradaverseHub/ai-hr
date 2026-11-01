@@ -47,7 +47,7 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
 const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. Nothing is prepared or submitted.';
-const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, listed in pending. Nothing is prepared. List them (applicant, leave type and dates) and ask which one they want to approve; never choose one yourself. When they say which, suggest again with that request\'s startDate in details. Requests not listed are on the review page.';
+const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, numbered in pending. Nothing is prepared. List them by number (applicant, leave type, days and when it starts) and ask which number they want to approve; never choose one yourself. When they say which, suggest again with that number as request in details. Requests not listed are on the review page.';
 export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const owners=new Map(toolsFor(ctx).map(tool=>[tool.spec.name,tool]));
  const reads=contextToolSpecs().filter(spec=>owners.has(spec.name)).map((spec):ToolBinding=>{
@@ -63,7 +63,9 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>({name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
   async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}}));
  const catalogue=actions?await actionCatalogueFor(ctx):[];
- const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:null,identifierInputs:[],
+ // Disclosed under its declared entity (core/semantic-model/entities-recommend.ts): pending applicants and dates are
+ // another person's, so they leave as placeholders.
+ const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:'suggested_action',identifierInputs:[],
   spec:{name:HARNESS_SPEC.offer.suggestTool,description:SUGGEST_DESCRIPTION,inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
   async run(input){const result=suggestAction(catalogue,input.action,input.details);
    if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);

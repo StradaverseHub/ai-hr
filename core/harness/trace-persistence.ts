@@ -1,7 +1,9 @@
 /** ADR-0170 §3.11, step 5a — persists one harness turn trace (./trace.ts) as its outcome record.
  *
- * The trace already holds only names, versions, counts, verdicts and argument digests, so the whole trace is
- * kept in the record's `trace` column for replay, and its field groups map onto the record's columns:
+ * The record's `trace` column keeps kinds and counts only (storedTrace): tool and check names, statuses, versions,
+ * per-tool disclosure counts, identifier-screen counts and kinds, budgets and the outcome. No reply text, matched
+ * phrase, field path, placeholder or person id is stored there; the caller is the record's authority column. The
+ * trace's field groups map onto the record's columns:
  * caller → authority (the person who asked); calls → reads; reply checks → checks, each labelled with the
  * harness spec version that defined it; spec and model → replay; outcome → outcome. A turn never prepares,
  * confirms or writes a change, so it is recorded as answered, suggested or fallback, with no human
@@ -17,6 +19,26 @@ import {TRACE_KEYS,type TurnTrace} from './trace';
 export const ASSISTANT_AGENT_IDENTITY='teras.assistant' as const;
 const REPLY_CHECK_OWNER='core/harness/reply-checks.ts#checkReply';
 const GATE_OWNER='lib/product-context/request-gate.ts#gateTurn';
+
+const count=<T>(rows:readonly T[],key:(row:T)=>string)=>rows.reduce<Record<string,number>>((out,row)=>{const name=key(row);out[name]=(out[name]??0)+1;return out;},{});
+/** The trace as the outcome record keeps it: kinds and counts only. The `notice` default and retention are the
+ * privacy reviewer's decision (ADR-0170 §3.11) and are not changed here. */
+export function storedTrace(trace:TurnTrace):Record<string,unknown>{
+ const stored={kind:trace.kind,version:trace.version,turnId:trace.turnId,spec:trace.spec,model:trace.model,
+  gate:trace.gate,offered:[...trace.offered],
+  calls:trace.calls.map(call=>({step:call.step,tool:call.tool,status:call.status,...(call.refusal?{refusal:call.refusal}:{})})),
+  disclosure:trace.disclosure.map(row=>({tool:row.tool,entity:row.entity,removed:row.removed.length,banded:row.banded.length,handles:row.handles,
+   undeclared:row.undeclared.length,withheld:row.withheld.length,identifiers:row.identifiers,identifierKinds:[...row.identifierKinds]})),
+  checks:trace.checks.map(row=>({attempt:row.attempt,failed:row.results.filter(result=>!result.ok).map(result=>result.check)})),
+  retries:trace.retries.map(row=>({step:row.step,reason:row.reason})),
+  screening:{question:trace.screening.question,history:trace.screening.history,memory:trace.screening.memory,tools:trace.screening.tools,kinds:[...trace.screening.kinds]},
+  budgets:trace.budgets,
+  restoration:{restored:trace.restoration.restored,refused:count(trace.restoration.refused,row=>row.reason)},
+  memory:{authorityChanged:trace.memory.authorityChanged,droppedReads:trace.memory.droppedReads.length,droppedSelections:trace.memory.droppedSelections.length,
+   droppedProposals:count(trace.memory.droppedProposals,row=>row.reason)},
+  outcome:trace.outcome};
+ return JSON.parse(JSON.stringify(stored)) as Record<string,unknown>;
+}
 
 export function outcomeRecordFromTrace(trace:TurnTrace,options:Readonly<{companyId?:string|null;notice?:NoticeState}>={}):OutcomeRecordInput{
  for(const key of TRACE_KEYS)if(!(key in trace))throw Error('Trace is missing '+key+'.');
@@ -44,7 +66,7 @@ export function outcomeRecordFromTrace(trace:TurnTrace,options:Readonly<{company
   humanInvolvement:'none',
   // A turn answers the person who asked about their own work unless the surface says otherwise.
   notice:options.notice??'not_applicable',
-  trace:JSON.parse(JSON.stringify(trace)) as Record<string,unknown>,
+  trace:storedTrace(trace),
  };
 }
 

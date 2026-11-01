@@ -25,7 +25,7 @@
 import {SEMANTIC_ENTITIES} from './entities';
 import type {DisclosureClass,FieldType,SemanticEntity,SemanticField,SemanticRead} from './types';
 
-const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'open'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
+const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 /** Where an explanation came from: the owner function, where its rule version comes from, and the page the
  * person checks it on. Product vocabulary and routes only. */

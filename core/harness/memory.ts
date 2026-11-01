@@ -1,6 +1,6 @@
 /** ADR-0170 §3.3 — task memory: what one conversation is working on, never HR truth.
  *
- * Serialisable state per conversation: the goal in the person's own words, the selections they made, the
+ * Serialisable state per conversation: the goal in the person's own words (identifiers screened out by the runner), the selections they made, the
  * question the Assistant is waiting on, the reads already completed and the proposals still open. It is
  * advisory context for the model and is RE-AUTHORISED at the start of every turn:
  *  - a different tenant or user never sees it (the store is keyed by both, and the runner refuses a mismatch);
