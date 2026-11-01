@@ -5,7 +5,7 @@ export const MAX_IMPORT_LOOKBACK_DAYS=90;
 export function performanceFixtureCalendar(today){
  assert(/^\d{4}-\d{2}-\d{2}$/.test(today));
  const now=new Date(today+'T12:00:00Z');assert(now.toISOString().startsWith(today));
- // The five-minute workload cannot exceed75 iterations: three navigation pauses plus
+ // Five minutes plus the10s arrival window cannot exceed78 iterations: three navigation pauses plus
  // the end-of-iteration pause, each at least1s. Keep every import offset2..90 open.
  const earliest=new Date(now.getTime()-MAX_IMPORT_LOOKBACK_DAYS*86400000);
  const historicalMonth=new Date(Date.UTC(earliest.getUTCFullYear(),earliest.getUTCMonth()-1,1)).toISOString().slice(0,7);
