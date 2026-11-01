@@ -1,4 +1,4 @@
-/** Diagnostic only: bounded prepared SELECT plans; same actual Notice owner and fresh native RLS. */
+/** Diagnostic only: uncorrelated native self-membership set; actual Notice owner and unchanged RLS. */
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {randomUUID,createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
@@ -36,8 +36,15 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
   connection.unsafe=function(...args:any[]){
    const [query,params,options]=args;
    if(!captured&&typeof query==='string'&&query.includes('"notice_recipient"')&&query.includes('"content_version"')&&Array.isArray(params))captured={query,params:params.slice()};
-   if(enabled&&typeof query==='string'&&/^\s*select\b/i.test(query)&&Array.isArray(params)&&params.length>0&&options?.prepare!==false&&options?.simple!==true&&(templates.has(query)||templates.size<128)){
-    templates.add(query);selectedCalls++;return Reflect.apply(raw,connection,[query,params,{...options,prepare:true}]);
+   if(enabled&&typeof query==='string'&&query.includes('"notice_recipient"')&&query.includes('"content_version"')){
+    const before=`EXISTS(SELECT 1 FROM public.employment self_employment
+    WHERE self_employment.id=notice_recipient.employment_id AND self_employment.tenant_id=notice_recipient.tenant_id
+     AND app.is_self_person(self_employment.person_id))`;
+    if(query.includes(before)){
+     const replacement=`notice_recipient.employment_id IN (SELECT self_employment.id FROM public.employment self_employment
+      WHERE self_employment.tenant_id=$1::uuid AND app.is_self_person(self_employment.person_id))`;
+     templates.add(query);selectedCalls++;return Reflect.apply(raw,connection,[query.replace(before,replacement),params,options]);
+    }
    }
    return Reflect.apply(raw,connection,args);
   };
@@ -47,7 +54,7 @@ it('compares actual empty/populated Notice reads while keeping pooled identities
   return connection;
  }
  const reports:Record<string,unknown>={},noticeRows:typeof s.notice.$inferSelect[]=[];
- const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'prepared-select-work.json'),JSON.stringify({kind:'REVERSIBLE_PARAMETERIZED_SELECT_PLAN_EXPERIMENT',releaseEligible:false,principals:500,tenants:2,templateLimit:128,templateCount:templates.size,capturedQuerySha256:captured?createHash('sha256').update(captured.query).digest('hex'):null,reports},null,2));
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'notice-self-set-work.json'),JSON.stringify({kind:'REVERSIBLE_NOTICE_SELF_MEMBERSHIP_SET_EXPERIMENT',releaseEligible:false,principals:500,tenants:2,templateLimit:128,templateCount:templates.size,capturedQuerySha256:captured?createHash('sha256').update(captured.query).digest('hex'):null,reports},null,2));
  const expected=(u:typeof users[number],populated:boolean)=>populated?[{noticeId:noticeRows[u.tenant].id,employmentId:u.employmentId,title:noticeRows[u.tenant].title,contentVersion:noticeRows[u.tenant].contentVersion,sourceUpdatedAt:noticeRows[u.tenant].updatedAt}]:[];
  const read=async(u:typeof users[number],populated:boolean)=>{const rows=await pendingNoticeAcknowledgementTasks(ctx(u));expect(rows).toEqual(expected(u,populated));if(rows.length)expect(rows[0].sourceUpdatedAt).toBeInstanceOf(Date);return rows;};
  try{
