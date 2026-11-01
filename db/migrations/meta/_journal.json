@@ -4572,6 +4572,13 @@
       "when": 1793330000300,
       "tag": "0900_attendance_payroll_period_locks",
       "breakpoints": true
+    },
+    {
+      "idx": 772,
+      "version": "7",
+      "when": 1793330000302,
+      "tag": "0902_company_hierarchy_query_plan",
+      "breakpoints": true
     }
   ]
 }

@@ -70,10 +70,18 @@ Four five-second failures are native Personnel draft-delete busy refusals; one j
 
 Relevant batch-row contention persists:24/18 sampled protection-helper backends respectively wait on native tuple/transaction locks. The complete five-second SQL snapshot reports221.31s of planning and zero JIT compilation time. PostgreSQL consumes973.56 CPU seconds and the app384.68 over443.79s; host IO wait is0.44s and PostgreSQL has no CPU throttling. These counters overlap and cannot be added to host totals. Next hypotheses must preserve financial exclusion, rather than weakening draft or first-payslip protection.
 
+## Additional hierarchy plan reuse (qualification pending)
+
+Reversible source3d1107e4b, run41343026304, passes all500 independent visibility sets, eight raw RLS sets, malformed contexts, known hierarchy boundaries and same-connection live grants/parent edits. It restores both native helpers and preserves every attribute except the expected language/body. For43,712 ancestry calls per phase, planning is976.59ms original,4.49ms descendant-only and974.16ms restored. Manager/HOD/company-HR native visibility micro medians are0.296/0.387/1.264ms before,0.189/0.164/0.801ms with descendant reuse and0.295/0.386/1.267ms restored. Ordinary/group readers show little benefit; the direct repeated ancestry loop is slightly slower. The whole500-principal burst has no consistent improvement against the restored control. No whole-system claim follows from these measurements.
+
+Only descendant plan reuse is selected for guarded0902 qualification. The is_admin_for wrapper remains SQL and unchanged: its small composite gain did not justify direct-call regressions. The new append retains the entire canonical ancestry expression and all non-language attributes; no permission result or financial lock is cached or weakened. Aggregate native, financial, populated upgrade and compiler checks remain pending.
+
 ## Changed canonical baseline
 
-Fresh19:37 UTC main/alpha are438bfae3d,21 commits beyond the e158 development baseline. Staging still read-only verifies the exact640-row e158 applied ledger. The frozen load sources and financial receipts remain original development evidence. Aggregate source/journal integration, reallocation of all unapplied performance migrations above the then-current tail and exact aggregate verification are still required. No lease or release ticket is claimed.
+Fresh main/alpha438bfae3d add21 migration-free runner-controls/maintenance commits. Owned mergea6a58ede2 integrates that source and preserves all640 canonical SQL bytes and journal entries. The earlier wording about canonical authentication migrations was incorrect:0898/0899 are pending foreign reservations. The installed ledger is still exactly640 rows at watermark276. Existing13 owned append positions remain above it; future admission must refresh and reallocate only if a later canonical/live tail overtakes them. The frozen9ca load receipts remain original development evidence, not results for the newer aggregate. No lease or release ticket is claimed.
 
 ## AI source approval boundary
+
+The merged source retains canonical main’s already approved5bd1ea76 bindings byte-for-byte; its newly generated privacy digest429b6adc and agent digestf7089c7c truthfully describe the combined source. They do not match the approved canonical fingerprint, so provider egress stays blocked. No merged-source approval is invented.
 
 These core files are in the transitive privacy source closure. Any generated source digest change is source metadata only and does not renew the 24 literal source-bound approvals. Existing purposes, data contracts and two pending approvals must remain unchanged. No provider request or source-binding refresh is authorized by this review. Native non-AI performance tests can proceed without enabling provider access.

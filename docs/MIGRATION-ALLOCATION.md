@@ -1,3 +1,28 @@
+## Native hierarchy query-plan reuse — 2 November 2026 (unapplied)
+
+Owned source reserves `0902_company_hierarchy_query_plan`, idx772 /
+when1793330000302; SQL SHA256
+`7dc2b50fd2289e886737a00fad2a15598ff62b8c066c9e9f384ed23cc7fd77ba`.
+Fresh19:52:14 UTC all-ref/worktree scan inspects1,737 heads,309 journals,389
+migration trees,452 worktrees and762 WIP variants, with zero parse errors. Prior
+claims end at0901/when301 and idx771. No foreign reservation is integrated.
+
+Both canonical refs are438bfae3d. The complete live ID-ordered640-row ledger is
+read-only verified again, with watermark1793330000276 and unchanged applied hashes.
+Canonical438 adds no migration. Mergea6a58ede2 preserves its history and the existing
+13 owned performance appends. This14th append gives654 candidate journal entries.
+
+The guard requires the exact native is_company_descendant(uuid,uuid) SQL body
+SHA2562966296c5a5c1f383e92fc88816b5dfc07c3794d78877b17d0db1d0d1668a670.
+It wraps that complete expression for per-connection query-plan reuse and verifies
+every non-language/body pg_proc attribute unchanged. No result cache, predicate,
+lock, owner, ACL, search path or volatility change. Is_admin_for is not altered.
+Reversible experiment41343026304 passes500 independent visibility/RLS oracles and
+live same-connection grant/hierarchy changes; it restores both originals. Role-level
+and planning gains do not establish a500-user system speedup. Migrated native tests,
+financial/populated upgrades, whole compiler and full-load verification are required.
+This source reservation grants no deployment or provider-source approval.
+
 ## Attendance Payroll period locks — 2 November 2026 (unapplied)
 
 Owned performance source reserves `0900_attendance_payroll_period_locks`, idx771 /
@@ -19,11 +44,12 @@ browser loads remain required. No installation or deployment is authorized.
 Source refresh at19:37:23 UTC inspects1,735 heads,308 journals,388 migration trees,
 448 worktrees and756 WIP variants, with zero parse errors. Main/alpha have advanced
 to438bfae3d while staging still verifies the exact640-row e158 prefix. Foreign0901 /
-when1793330000301 is excluded. This development candidate retains its frozen e158
-lineage; before aggregate integration, reconcile the newer canonical journal and
-reallocate every still-unapplied performance append above the then-live/claimed tail.
-Do not append lower timestamps behind the newer canonical authentication migrations.
-Original isolated migration/load receipts are not aggregate release evidence.
+when1793330000301 is excluded. Main438 is migration-free runner-controls/maintenance work and retains640 canonical
+entries; authentication0898/0899 are pending foreign source reservations, not part of
+that canonical journal. The existing performance reservations remain above the live
+watermark276. Refresh the live/canonical tail before admission and reallocate any
+unapplied position overtaken by a later installation. Original isolated migration/load
+receipts are not aggregate release evidence.
 
 ## Performance administrator candidate work — 2 November 2026 (unapplied)
 

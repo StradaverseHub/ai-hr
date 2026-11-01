@@ -103,5 +103,13 @@ export const PERFORMANCE_MIGRATION_TAIL = [
   "tag": "0900_attendance_payroll_period_locks",
   "breakpoints": true,
   "hash": "018d4bbfdc1fc0d1b0a4957918e07e206f5a6fca1337d196c0c63fb8940b3fdb"
+},
+{
+  "idx": 772,
+  "version": "7",
+  "when": 1793330000302,
+  "tag": "0902_company_hierarchy_query_plan",
+  "breakpoints": true,
+  "hash": "7dc2b50fd2289e886737a00fad2a15598ff62b8c066c9e9f384ed23cc7fd77ba"
 }
 ] as const;
