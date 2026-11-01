@@ -13,7 +13,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness
 beforeAll(migrateTestDb);afterAll(closeAll);
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return{promise,resolve};}
-const settle=(work:Promise<unknown>)=>work.then(value=>({ok:true,value}),error=>({ok:false,error:String(error)}));
+const settle=(work:Promise<unknown>)=>work.then(value=>({ok:true,value}),error=>{const causes=[];for(let item=error,i=0;item&&i<8;item=item.cause,i++)causes.push({code:item.code,message:String(item.message)});return{ok:false,causes};});
 it('independently compares native concurrency and first-slip/status exclusion before, candidate and restored',async()=>{
  expect(process.env.GITHUB_ACTIONS).toBe('true');expect(new URL(process.env.TEST_DATABASE_URL!).hostname).toBe('127.0.0.1');
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),today=todayInKualaLumpur(),month=today.slice(0,7);
@@ -58,12 +58,12 @@ it('independently compares native concurrency and first-slip/status exclusion be
   for(const phase of ['before','candidate','restored']){
    if(phase==='candidate')await install();if(phase==='restored')await restore();
    const entered=barrier(),release=barrier();
-   const first=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[0].employmentId,today)).toEqual([]);entered.resolve();await release.promise;await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[0].employmentId,date:today,status:'present'}).onConflictDoNothing();}));
+   const first=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[0].employmentId,today)).toEqual([]);entered.resolve();await release.promise;await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[0].employmentId,attendanceDate:today,status:'present'}).onConflictDoNothing();}));
    let other:ReturnType<typeof settle>|undefined,slip:ReturnType<typeof settle>|undefined,status:ReturnType<typeof settle>|undefined;
    let overlap=false,firstSlipBlocked=false,statusBlocked=false;
    try{
     expect(await Promise.race([entered.promise.then(()=>true),first.then(()=>false),delay(3000).then(()=>false)])).toBe(true);
-    other=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[1].employmentId,today)).toEqual([]);await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[1].employmentId,date:today,status:'present'}).onConflictDoNothing();}));
+    other=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[1].employmentId,today)).toEqual([]);await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[1].employmentId,attendanceDate:today,status:'present'}).onConflictDoNothing();}));
     overlap=await Promise.race([other.then(outcome=>outcome.ok),delay(250).then(()=>false)]);expect(overlap).toBe(phase==='candidate');
     slip=settle(owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:people[2].employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'}));
     firstSlipBlocked=await Promise.race([slip.then(()=>false),delay(200).then(()=>true)]);expect(firstSlipBlocked).toBe(true);
