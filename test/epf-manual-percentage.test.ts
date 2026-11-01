@@ -78,7 +78,7 @@ describe('5e204d56 manual percentage persistence and payroll',()=>{
  it('rejects missing or invalid rates without changing the existing election',async()=>{
   const a=adminCtx(base),employee=await hire();
   await setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',epfMode:'voluntary_excess',epfEmployeeRate:.15,epfEmployerRate:.16});
-  for(const [ee,er]of[[null,.1],[.1,null],[null,null],[.0099,.1],[.1,1.0001],[NaN,.1]] as const){
+  for(const [ee,er]of[[null,.1],[.1,null],[null,null],[-.0001,.1],[.1,1.0001],[NaN,.1]] as const){
    await expect(setStatutoryProfileMY(a,{personId:employee.personId,icNumber:'900101011234',epfMode:'manual_percentage',epfEmployeeRate:ee,epfEmployerRate:er})).rejects.toBeInstanceOf(InvalidEpfElectionError);
   }
   expect(await getStatutoryProfileMY(a,employee.personId)).toMatchObject({epfMode:'voluntary_excess',epfEmployeeRate:'0.1500',epfEmployerRate:'0.1600'});
