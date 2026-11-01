@@ -10,6 +10,9 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.RemoteViews
 import android.view.View
+import android.os.Build
+import android.os.Bundle
+import android.util.SizeF
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
@@ -27,6 +30,10 @@ class AttendanceWidgetModule : Module() {
 /** Minimal, expiring display snapshot only. No identity, token, network, location or attendance writer. */
 class AttendanceWidget : AppWidgetProvider() {
   override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) { render(context, manager, ids) }
+  override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, id: Int, options: Bundle) {
+    super.onAppWidgetOptionsChanged(context, manager, id, options)
+    render(context, manager, intArrayOf(id))
+  }
   override fun onReceive(context: Context, intent: Intent) {
     super.onReceive(context, intent)
     if (intent.action == EXPIRE) refresh(context)
@@ -70,39 +77,49 @@ class AttendanceWidget : AppWidgetProvider() {
       val fresh = prefs.getLong("expiresAt", 0) > System.currentTimeMillis()
       if (!fresh) prefs.edit().clear().apply()
       for (id in ids) {
-        val view = RemoteViews(context.packageName, R.layout.onehr_attendance_widget)
-        val text = listOf(
-          Triple("status", R.id.onehr_status, R.string.onehr_widget_refresh),
-          Triple("clockIn", R.id.onehr_in_label, R.string.onehr_widget_clock_in),
-          Triple("clockOut", R.id.onehr_out_label, R.string.onehr_widget_clock_out),
-          Triple("clockIn", R.id.onehr_clock_in, R.string.onehr_widget_clock_in),
-          Triple("clockIn", R.id.onehr_clock_in_secondary, R.string.onehr_widget_clock_in),
-          Triple("clockOut", R.id.onehr_clock_out, R.string.onehr_widget_clock_out),
-          Triple("clockOut", R.id.onehr_clock_out_primary, R.string.onehr_widget_clock_out),
-          Triple("updated", R.id.onehr_updated, R.string.onehr_widget_description)
-        )
-        for ((field, target, fallback) in text) view.setTextViewText(target, if (fresh) prefs.getString(field, context.getString(fallback)) else context.getString(fallback))
-        view.setTextViewText(R.id.onehr_in_time, if (fresh) prefs.getString("inTime", "—") else "—")
-        view.setTextViewText(R.id.onehr_out_time, if (fresh) prefs.getString("outTime", "—") else "—")
-        val active = fresh && prefs.getBoolean("active", false)
-        // Keep semantic colors as XML resources so the launcher can resolve night-mode changes
-        // even while this process is stopped. Resolved color ints in cached RemoteViews go stale.
-        // Only one role per direction is visible; both retain the same immutable launch intent.
-        view.setViewVisibility(R.id.onehr_clock_in, if (active) View.GONE else View.VISIBLE)
-        view.setViewVisibility(R.id.onehr_clock_in_secondary, if (active) View.VISIBLE else View.GONE)
-        view.setViewVisibility(R.id.onehr_clock_out, if (active) View.GONE else View.VISIBLE)
-        view.setViewVisibility(R.id.onehr_clock_out_primary, if (active) View.VISIBLE else View.GONE)
-        for ((direction, button, code) in listOf(
-          Triple("in", R.id.onehr_clock_in, 8301), Triple("in", R.id.onehr_clock_in_secondary, 8301),
-          Triple("out", R.id.onehr_clock_out, 8302), Triple("out", R.id.onehr_clock_out_primary, 8302)
-        )) {
-          val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: continue
-          launch.action = Intent.ACTION_VIEW
-          launch.data = Uri.parse("aihr://clock?action=$direction")
-          launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-          val pending = PendingIntent.getActivity(context, code, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-          view.setOnClickPendingIntent(button, pending)
+        fun layout(resource: Int): RemoteViews {
+          val view = RemoteViews(context.packageName, resource)
+          val text = listOf(
+            Triple("status", R.id.onehr_status, R.string.onehr_widget_refresh),
+            Triple("clockIn", R.id.onehr_in_label, R.string.onehr_widget_clock_in),
+            Triple("clockOut", R.id.onehr_out_label, R.string.onehr_widget_clock_out),
+            Triple("clockIn", R.id.onehr_clock_in, R.string.onehr_widget_clock_in),
+            Triple("clockIn", R.id.onehr_clock_in_secondary, R.string.onehr_widget_clock_in),
+            Triple("clockOut", R.id.onehr_clock_out, R.string.onehr_widget_clock_out),
+            Triple("clockOut", R.id.onehr_clock_out_primary, R.string.onehr_widget_clock_out),
+            Triple("updated", R.id.onehr_updated, R.string.onehr_widget_description)
+          )
+          for ((field, target, fallback) in text) view.setTextViewText(target, if (fresh) prefs.getString(field, context.getString(fallback)) else context.getString(fallback))
+          view.setTextViewText(R.id.onehr_in_time, if (fresh) prefs.getString("inTime", "—") else "—")
+          view.setTextViewText(R.id.onehr_out_time, if (fresh) prefs.getString("outTime", "—") else "—")
+          val active = fresh && prefs.getBoolean("active", false)
+          // Keep semantic colors as XML resources so the launcher can resolve night-mode changes
+          // even while this process is stopped. Resolved color ints in cached RemoteViews go stale.
+          // Only one role per direction is visible; both retain the same immutable launch intent.
+          view.setViewVisibility(R.id.onehr_clock_in, if (active) View.GONE else View.VISIBLE)
+          view.setViewVisibility(R.id.onehr_clock_in_secondary, if (active) View.VISIBLE else View.GONE)
+          view.setViewVisibility(R.id.onehr_clock_out, if (active) View.GONE else View.VISIBLE)
+          view.setViewVisibility(R.id.onehr_clock_out_primary, if (active) View.VISIBLE else View.GONE)
+          for ((direction, button, code) in listOf(
+            Triple("in", R.id.onehr_clock_in, 8301), Triple("in", R.id.onehr_clock_in_secondary, 8301),
+            Triple("out", R.id.onehr_clock_out, 8302), Triple("out", R.id.onehr_clock_out_primary, 8302)
+          )) {
+            val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: continue
+            launch.action = Intent.ACTION_VIEW
+            launch.data = Uri.parse("aihr://clock?action=$direction")
+            launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            val pending = PendingIntent.getActivity(context, code, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+            view.setOnClickPendingIntent(button, pending)
+          }
+          return view
         }
+        val compact = layout(R.layout.onehr_attendance_widget_compact)
+        val full = layout(R.layout.onehr_attendance_widget)
+        // Let Android select a layout for the actual host size without waking the app on rotation.
+        // The fallback preserves support for launchers on Android 11 and earlier.
+        val view = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          RemoteViews(mapOf(SizeF(180f, 110f) to compact, SizeF(180f, 180f) to full))
+        } else if (manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 180) < 180) compact else full
         manager.updateAppWidget(id, view)
       }
     }
