@@ -26864,7 +26864,7 @@
       "invalidLogin": "Mã tổ chức, tên đăng nhập hoặc mật khẩu không đúng, hoặc tài khoản không khả dụng.",
       "invalidChallenge": "Liên kết thiết lập hoặc khôi phục đã hết hạn hoặc không còn hợp lệ. Vui lòng bắt đầu lại.",
       "invalidCode": "Mã không đúng, hết hạn hoặc đã dùng. Thử mã xác thực tiếp theo hoặc mã khôi phục chưa dùng.",
-      "passwordPolicy": "Dùng mật khẩu khác có ít nhất 14 ký tự, không chứa tên đăng nhập hoặc email.",
+      "passwordPolicy": "Dùng mật khẩu chưa từng sử dụng, có ít nhất 14 ký tự, không chứa tên đăng nhập hoặc email.",
       "passwordMismatch": "Mật khẩu không khớp.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi rồi thử lại.",
       "unavailable": "Đăng nhập hoặc khôi phục tạm thời không khả dụng. Thử lại sau hoặc liên hệ quản trị viên.",
@@ -33378,5 +33378,26 @@
     "noticeApplied": "Kết quả này sử dụng các điều chỉnh cơ sở thuế thu nhập đã lưu. PCB thực tế đã nộp và bảng lương đã phát hành không thay đổi.",
     "noticeReferences": "Mã tham chiếu điều chỉnh thuế thu nhập",
     "noticeView": "Xem điều chỉnh thuế thu nhập"
+  },
+  "passwordPolicy": {
+    "title": "Bảo mật mật khẩu",
+    "description": "Yêu cầu người dùng trong tổ chức đổi mật khẩu định kỳ.",
+    "enabled": "Yêu cầu đổi mật khẩu định kỳ",
+    "interval": "Đổi sau mỗi",
+    "unit": "Đơn vị",
+    "days": "Ngày",
+    "months": "Tháng theo lịch",
+    "limits": "Chọn 1–3.650 ngày hoặc 1–120 tháng. Cuối tháng dùng ngày hợp lệ cuối cùng.",
+    "reuse": "Người dùng không thể dùng lại mật khẩu đã được ghi nhận kể từ khi bắt đầu lưu lịch sử. Quy tắc cũng áp dụng khi khôi phục, ngay cả khi tắt hết hạn.",
+    "effect": "Lưu sẽ áp dụng cho tài khoản và phiên hiện có. Người dùng có mật khẩu hết hạn hoặc chưa ghi nhận ngày đổi phải đăng nhập, xác minh MFA và chọn mật khẩu mới để tiếp tục.",
+    "save": "Lưu chính sách mật khẩu",
+    "saving": "Đang lưu…",
+    "result": {
+      "saved": "Đã lưu chính sách mật khẩu.",
+      "invalid": "Nhập số nguyên trong phạm vi cho phép.",
+      "conflict": "Quản trị viên khác đã đổi chính sách. Tải lại trước khi lưu.",
+      "forbidden": "Bạn không có quyền thay đổi chính sách này.",
+      "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
+    }
   }
 }
