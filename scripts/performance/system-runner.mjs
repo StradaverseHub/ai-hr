@@ -44,8 +44,10 @@ async function run(label,command,args,childEnv=env,timeout=900000){
 }
 function summarizeCpu(){
  const frames=new Map(),root=resolve('.next/server/chunks/ssr')+'/';
+ const profiles=[];
  for(const name of readdirSync(join(out,'cpu')).filter(name=>name.endsWith('.cpuprofile'))){
   const profile=JSON.parse(readFileSync(join(out,'cpu',name),'utf8')),nodes=new Map(profile.nodes.map(node=>[node.id,node.callFrame]));
+  profiles.push({file:name,samples:(profile.samples??[]).length,durationMs:(profile.endTime-profile.startTime)/1000});
   for(let i=0;i<(profile.samples??[]).length;i++){
    const frame=nodes.get(profile.samples[i]);if(!frame?.url?.startsWith('file://'))continue;
    const file=new URL(frame.url).pathname;if(!file.startsWith(root))continue;
@@ -61,6 +63,8 @@ function summarizeCpu(){
   return {...frame,file:frame.file.slice(resolve('.').length+1),excerpt};
  });
  writeFileSync(join(out,'cpu-hot-frames.json'),JSON.stringify(rows,null,2));
+ report.cpuProfiles={files:profiles.length,samples:profiles.reduce((sum,profile)=>sum+profile.samples,0),ssrHotFrames:rows.length,profiles};
+ if(!profiles.length)report.cpuProfileUnavailable=true;
 }
 function summarizeNativeFailures(){
  // The raw logs remain private. Publish only generated references, SQLSTATEs and fixed diagnostic flags.
@@ -103,7 +107,7 @@ try{
  mkdirSync(join(out,'cpu'),{recursive:true});
  for(const [index,port]of ports.entries()){
   const fd=openSync(join(privateDir,'server-'+index+'.log'),'w',0o600);appFds.push(fd);
-  apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(poolPerWorker),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
+  apps.push(spawn(process.execPath,['--cpu-prof','--cpu-prof-dir='+join(out,'cpu'),'--import',resolve('scripts/performance/profile-exit.mjs'),'node_modules/next/dist/bin/next','start','--hostname','127.0.0.1','--port',String(port)],{env:{...env,NODE_ENV:'production',AIHR_DB_POOL_MAX:String(poolPerWorker),NODE_OPTIONS:'--max-old-space-size='+heapPerWorker},stdio:['ignore',fd,fd]}));
  }
  // Avoid replaying a mutation onto a backend socket that closed during an idle interval.
  // Fresh loopback connections also avoid unsafe automatic retries after an ambiguous write.
@@ -128,7 +132,14 @@ try{
 finally{
  if(proxy)await new Promise(resolve=>{proxy.close(resolve);proxy.closeAllConnections();});
  if(upstream)upstream.destroy();
- await Promise.all(apps.map(async app=>{if(app.exitCode!==null)return;app.kill('SIGTERM');await Promise.race([new Promise(resolve=>app.once('exit',resolve)),pause(5000)]);if(app.exitCode===null)app.kill('SIGKILL');}));
+ report.profileShutdown=await Promise.all(apps.map(async(app,worker)=>{
+  if(app.exitCode!==null||app.signalCode!==null)return {worker,alreadyExited:true,code:app.exitCode,signal:app.signalCode};
+  const exited=new Promise(resolve=>app.once('exit',resolve));
+  app.kill('SIGUSR2');await Promise.race([exited,pause(5000)]);
+  const forced=app.exitCode===null&&app.signalCode===null;
+  if(forced){app.kill('SIGKILL');await exited;}
+  return {worker,requestedSignal:'SIGUSR2',forced,code:app.exitCode,signal:app.signalCode};
+ }));
  for(const fd of appFds)closeSync(fd);
  try{summarizeNativeFailures();}catch{report.nativeFailureSummaryUnavailable=true;}
  if(apps.length)try{summarizeCpu();}catch(error){report.cpuSummaryError=String(error.message).slice(0,180);}
