@@ -22,7 +22,7 @@ async function closedSlip(id:string){
  const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:'2026-06',batchDate:'2026-06-25',status:'closed',releasedAt:new Date('2026-06-25T00:00:00Z')}).returning();
  const [slip]=await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:id,basicSalary:'3000.00',grossPay:'3000.00',statutory:{epfEmployee:330,epfEmployer:390},totalDeductions:'330.00',netPay:'2670.00',employerCost:'3390.00'}).returning();return{batch,slip};
 }
-const repair=readFileSync('db/migrations/0729_movement_exit_payroll_preservation.sql','utf8');
+const repair=readFileSync('db/migrations/0873_movement_exit_payroll_preservation.sql','utf8');
 async function installRepair(){for(const block of repair.split('--> statement-breakpoint'))if(block.trim())await owner.client.unsafe(block);}
 describe('646355e5 — ended employment retains finalised payroll before correction',()=>{
  it('upgrades the populated strict helper and restores the employee while keeping the payslip document byte-identical',async()=>{
