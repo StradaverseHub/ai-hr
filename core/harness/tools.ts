@@ -47,6 +47,7 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
 const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. Nothing is prepared or submitted.';
+const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, listed in pending. Nothing is prepared. List them (applicant, leave type and dates) and ask which one they want to approve; never choose one yourself. When they say which, suggest again with that request\'s startDate in details. Requests not listed are on the review page.';
 export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const owners=new Map(toolsFor(ctx).map(tool=>[tool.spec.name,tool]));
  const reads=contextToolSpecs().filter(spec=>owners.has(spec.name)).map((spec):ToolBinding=>{
@@ -65,9 +66,13 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:null,identifierInputs:[],
   spec:{name:HARNESS_SPEC.offer.suggestTool,description:SUGGEST_DESCRIPTION,inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
   async run(input){const result=suggestAction(catalogue,input.action,input.details);
-   if(result.suggested){const proposal=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);
+   if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);
+    const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
+    // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
+    if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:CHOOSE_NOTE},suggestion};
+    const proposal=outcome?.kind==='proposal'?outcome.proposal:null;
     return{ok:true,content:{...result,note:proposal?'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.':'The person completes and confirms this on the review page; nothing is prepared or submitted.'},
-     suggestion:{action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard},...(proposal?{proposal}:{})};}
+     suggestion,...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
  return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
   destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});

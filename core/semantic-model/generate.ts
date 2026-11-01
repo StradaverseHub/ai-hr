@@ -12,7 +12,7 @@
 import type {AiJsonSchema,AiToolSpec} from '../../lib/ai/types';
 import {SEMANTIC_ACTIONS,SEMANTIC_ENTITIES,SEMANTIC_READS,semanticEntity} from './entities';
 import {DISCLOSURE_CLASSES,type CapabilityRow,type ConnectToolSpec,type DisclosureClass,type EntityId,type SemanticAction,type SemanticEntity,type SemanticField,type SemanticRead} from './types';
-import {ENTITY_FIELD_EXTENSIONS,EXPLAIN_ENTITIES,EXPLAIN_READS} from './entities-explain';
+import {EXPLAIN_ENTITIES,EXPLAIN_READS} from './entities-explain';
 import {SETUP_ENTITIES,SETUP_READS} from './entities-setup';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -95,17 +95,12 @@ export function connectToolSpecs():readonly ConnectToolSpec[]{
 /** Every page a generated output names: entity pages and review routes. */
 export const referencedPages=():readonly string[]=>Object.freeze([...new Set([...SEMANTIC_ENTITIES.map(entity=>entity.page),...SEMANTIC_ACTIONS.map(action=>action.reviewRoute)])]);
 
-/** ADR-0170 step 4 — the model as the Teras harness reads it: the declared entities with their step 4 field
- * extensions applied (./entities-explain.ts ENTITY_FIELD_EXTENSIONS), plus the explainer and setup co-pilot
- * entities. The production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
-function extended(entity:SemanticEntity):SemanticEntity{
- const extension=ENTITY_FIELD_EXTENSIONS[entity.id];if(!extension)return entity;
- const replaced=new Map((extension.replace??[]).map(field=>[field.name,field]));
- return{...entity,fields:[...entity.fields.map(field=>replaced.get(field.name)??field),...(extension.add??[])]};
-}
+/** ADR-0170 step 4 — the model as the Teras harness reads it: the declared entities (step 4's field additions
+ * are declared in ./entities.ts since integration), plus the explainer and setup co-pilot entities. The
+ * production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
 let terasModel:readonly SemanticEntity[]|undefined;
 export function terasEntities():readonly SemanticEntity[]{
- terasModel??=freeze([...SEMANTIC_ENTITIES.map(extended),...EXPLAIN_ENTITIES,...SETUP_ENTITIES]);
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES]);
  return terasModel;
 }
 export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
@@ -117,9 +112,9 @@ export function terasToolSpecs():readonly AiToolSpec[]{
  return terasSpecs;
 }
 let terasRegistry:readonly CapabilityRow[]|undefined;
-/** capabilityRegistry() with extended disclosure, plus one row per step 4 capability. */
+/** capabilityRegistry(), plus one row per step 4 capability. */
 export function terasCapabilityRegistry():readonly CapabilityRow[]{
- terasRegistry??=freeze([...capabilityRegistry().map(row=>({...row,disclosure:disclosureOf(terasEntity(row.entity).fields)})),
+ terasRegistry??=freeze([...capabilityRegistry(),
   ...TERAS_READS.map((read):CapabilityRow=>{const entity=terasEntity(read.entity);
    return{name:read.name,effect:'read',entity:entity.id,module:entity.module,sensitivity:entity.sensitivity,audience:entity.audience,rls:entity.rls,
     purpose:read.purpose,owners:entity.owners,disclosure:disclosureOf(entity.fields)};})]);

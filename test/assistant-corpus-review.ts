@@ -14,7 +14,7 @@ const clarifyPeriod:BaselineIdeal={mode:'clarify',slot:'period'};
 const gap:BaselineIdeal={mode:'honest_gap'};
 export const REVIEWED_OUTCOMES:Readonly<Record<string,ReviewedOutcome>>=Object.freeze({
  'emp-cancel-backref':{ideal:{mode:'clarify',slot:'period'},also:[answer('my_leave_requests')],reason:'The fixture has no leave requests, so "the second one" does not exist; proposing a cancellation acts on nothing.'},
- 'mf-entitlement-why':{ideal:answer('my_leave_balances','leave_entitlement_explain'),reason:'leave_entitlement_explain needs a leave type id that only my_leave_balances supplies.'},
+ 'mf-entitlement-why':{ideal:answer('my_leave_balances','leave_entitlement_explain'),also:[answer('explain_leave_entitlement')],reason:'leave_entitlement_explain needs a leave type id that only my_leave_balances supplies. The step 4 entitlement explainer takes the leave type by name, so it answers alone (ADR-0170 §3.15, at integration).'},
  'mf-apply-and-balance':{also:[{mode:'propose',action:'leave.apply'}],reason:'The question already names annual leave.'},
  'pay-exact':{also:[answer('my_payslip_summary'),clarifyPeriod],reason:'Reading the payslip summary and reporting nothing released is as good as a gap.'},
  'pay-ordinary':{also:[answer('my_payslip_summary'),clarifyPeriod],reason:'As pay-exact.'},

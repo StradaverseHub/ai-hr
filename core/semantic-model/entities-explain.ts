@@ -14,7 +14,8 @@
  * arithmetic, which it must not do. Effective rates are reported by the owner as fractions of the recorded
  * wage, so with the wage they disclose it; they are banded too.
  *
- * Also settles step 1's open questions about existing reads (applied by the generator, ./generate.ts):
+ * Also settled step 1's open questions about existing reads, now declared in ./entities.ts (folded at
+ * integration, ADR-0170 §3.15):
  *  - leave_entitlement gains the breakdown fields the Mine projection already returns and step 1's disclosure
  *    removed as undeclared (run 41302596155). They are the caller's own day counts, like their declared
  *    siblings (displayEntitlementDays, totalAvailable), so they are `bands`;
@@ -22,7 +23,7 @@
  *    pay item amounts) become `bands`: they are the same money my_payslip_summary already bands.
  * Pure declarations; nothing here reads, grants or is imported by the production Assistant. */
 import {SEMANTIC_ENTITIES} from './entities';
-import type {DisclosureClass,EntityId,FieldType,SemanticEntity,SemanticField,SemanticRead} from './types';
+import type {DisclosureClass,FieldType,SemanticEntity,SemanticField,SemanticRead} from './types';
 
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'open'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
@@ -46,27 +47,13 @@ const statutoryItem:readonly SemanticField[]=[
  f('setBy','enum','full','Who decided the figure: the run\'s rule, a payroll statutory adjustment, or the employee\'s manual EPF amount.',{values:['computed','statutoryAdjustment','epfManualAmount']}),
  f('systemEmployee','number','bands','When set by hand: what the rule had computed for the employee share.'),f('systemEmployer','number','bands','When set by hand: what the rule had computed for the employer share.'),
 ];
-const LEAVE_ENTITLEMENT_EXTENSIONS:readonly SemanticField[]=[
- f('eligibleDays','number','bands','Full-year allowance of the entitlement table that applied, before proration, carry, adjustments or use.'),
- f('currentYearEntitlement','number','bands','Earned to date this cycle, exact.'),f('currentYearEntitlementRounded','number','bands','Earned to date as the leave type\'s rounding shows it.'),
- f('monthlyAccruedToDate','number','bands','Earned leave only: accrued to date this cycle.'),f('carriedForward','number','bands','Days carried into the cycle, after the carry cap.'),
- f('carryForwardRemaining','number','bands','Carried days not yet used.'),f('configAdjustments','number','bands','HR\'s own adjustments this cycle.'),
- f('systemAdjustments','number','bands','Automatic corrections this cycle.'),f('balance','number','bands','Ledger balance as at the date asked.'),
-];
 const proration=f('proration','object','minimum','How the table allowance became this cycle\'s entitlement.',{of:[
  f('annualEntitlementDays','number','bands','The table allowance.'),f('prorated','boolean','full','Whether it was prorated for a part year.'),
  f('eligibleCalendarDays','integer','bands','Days from joining to the end of the leave year, when prorated.'),f('daysInLeaveYear','integer','full','The divisor, when prorated.'),
  f('unroundedEntitlementDays','number','bands','The prorated figure before rounding.'),f('displayEntitlementDays','number','bands','The entitlement shown.'),
  f('roundingApplied','boolean','full','Whether the leave type\'s rounding changed it.')]});
 const leaveEntitlementBase=():readonly SemanticField[]=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id==='leave_entitlement');if(!entity)throw Error('leave_entitlement is not declared.');return entity.fields;};
-const PAY_FIGURES:readonly SemanticField[]=[f('gross','number','bands','Gross pay.'),f('deductions','number','bands','Total deductions.'),f('net','number','bands','Net pay.'),f('amount','number','bands','A pay item amount.')];
 
-/** Fields added to, or replacing, declarations of existing entities. Applied by the generator; SHRINK ONLY
- * once ./entities.ts adopts them (step 2 owns that file during step 4). */
-export const ENTITY_FIELD_EXTENSIONS:Readonly<Partial<Record<EntityId,Readonly<{add?:readonly SemanticField[];replace?:readonly SemanticField[]}>>>>=freeze({
- leave_entitlement:{add:LEAVE_ENTITLEMENT_EXTENSIONS},
- module_work:{replace:[f('data','list','minimum','Module-owned rows; each module projects its own allow-list. Pay figures inside them are released as bands.',{of:PAY_FIGURES,open:true})]},
-});
 
 const ATTENDANCE_STATUS=['exempt','present','absent','rest','off','ph','on_leave'] as const;
 const section=(name:string,meaning:string)=>f(name,'object','minimum',meaning,{of:[f('minutes','integer','minimum','The figure explained, in minutes; null when it does not apply to the day.'),
@@ -92,7 +79,7 @@ export const EXPLAIN_ENTITIES:readonly SemanticEntity[]=freeze([
   // (ADR-0170 §3.14 folds company-policy versions into step 5a).
   ruleVersion:null,relations:[{to:'leave_balance',kind:'many_to_one',via:'leaveType'}],page:'/leave',
   fields:[f('leaveType','label','full','Leave type explained.'),f('leaveTypes','list','full','The caller\'s own leave type names, when the one asked for was not found.'),
-   f('employments','list','minimum','One explanation per employment that holds the type.',{of:[...leaveEntitlementBase().filter(field=>field.name!=='employmentId'),...LEAVE_ENTITLEMENT_EXTENSIONS,proration]}),
+   f('employments','list','minimum','One explanation per employment that holds the type.',{of:[...leaveEntitlementBase().filter(field=>field.name!=='employmentId'),proration]}),
    provenanceField]},
  {id:'attendance_day_explanation',label:'Attendance day explanation',meaning:'Why one of the caller\'s own attendance days reads as it does (late, early out, overtime), from the day\'s stored working.',
   module:'attendance',sensitivity:'ordinary',audience:'self',rls:'own_employment',

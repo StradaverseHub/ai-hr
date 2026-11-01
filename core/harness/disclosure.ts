@@ -48,7 +48,7 @@ export function bandOf(value:number):string{
 }
 const ENVELOPE:ReadonlySet<string>=new Set<string>(HARNESS_SPEC.disclosure.envelopeKeys);
 const fieldMap=(fields:readonly SemanticField[])=>new Map(fields.map(field=>[field.name,field]));
-// The model with its step 4 extensions and capabilities (core/semantic-model/generate.ts terasEntities).
+// The declared model plus the step 4 capabilities (core/semantic-model/generate.ts terasEntities).
 const entityFields=(entity:EntityId)=>fieldMap(terasEntity(entity).fields);
 
 type Walk={tool:string;ledger:DisclosureLedger;removed:string[];banded:string[];undeclared:string[];handles:number};

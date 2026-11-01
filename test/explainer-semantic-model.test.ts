@@ -6,7 +6,8 @@ import {fileURLToPath} from 'node:url';
 import {describe,expect,it} from 'vitest';
 import {ASSISTANT_TOOL_CATALOGUE} from '../lib/ai/assistant-tool-catalogue';
 import {SEMANTIC_ENTITIES} from '../core/semantic-model/entities';
-import {ENTITY_FIELD_EXTENSIONS,EXPLAIN_ENTITIES,EXPLAIN_READS} from '../core/semantic-model/entities-explain';
+import * as explainModel from '../core/semantic-model/entities-explain';
+import {EXPLAIN_ENTITIES,EXPLAIN_READS} from '../core/semantic-model/entities-explain';
 import {SETUP_ENTITIES,SETUP_READS} from '../core/semantic-model/entities-setup';
 import {capabilityRegistry,contextToolSpecs,disclosureOf,TERAS_READS,terasCapabilityRegistry,terasEntities,terasEntity,terasToolSpecs} from '../core/semantic-model/generate';
 import type {OwnerAnchor,SemanticField} from '../core/semantic-model/types';
@@ -51,12 +52,16 @@ describe('step 4 capabilities in the semantic model',()=>{
  it('settles the entitlement explainer fields as bands and bands pay figures inside module work',()=>{
   const entitlement=terasEntity('leave_entitlement'),names=new Map(walk(entitlement.fields).map(field=>[field.name,field.disclosure]));
   for(const name of ['currentYearEntitlement','currentYearEntitlementRounded','eligibleDays','monthlyAccruedToDate','carriedForward','carryForwardRemaining','configAdjustments','systemAdjustments','balance'])expect(names.get(name),name).toBe('bands');
-  // The 0b declaration is untouched; the extension is applied by the generator.
-  expect(SEMANTIC_ENTITIES.find(row=>row.id==='leave_entitlement')!.fields.some(field=>field.name==='currentYearEntitlement')).toBe(false);
+  // Folded into ./entities.ts at integration (ADR-0170 §3.15): the declaration is the model, with no generator patch.
+  expect(terasEntity('leave_entitlement')).toBe(SEMANTIC_ENTITIES.find(row=>row.id==='leave_entitlement'));
+  expect(terasEntity('module_work')).toBe(SEMANTIC_ENTITIES.find(row=>row.id==='module_work'));
   const data=terasEntity('module_work').fields.find(field=>field.name==='data')!;
   expect(data.disclosure).toBe('minimum');expect(data.open).toBe(true);
   expect(Object.fromEntries((data.of??[]).map(field=>[field.name,field.disclosure]))).toEqual({gross:'bands',deductions:'bands',net:'bands',amount:'bands'});
-  expect(Object.keys(ENTITY_FIELD_EXTENSIONS).sort()).toEqual(['leave_entitlement','module_work']);
+  expect('ENTITY_FIELD_EXTENSIONS' in explainModel).toBe(false);
+  // The entitlement explainer's rows are the leave_entitlement declaration (less the employment handle) plus proration.
+  const rows=EXPLAIN_ENTITIES.find(row=>row.id==='entitlement_explanation')!.fields.find(field=>field.name==='employments')!.of!.map(field=>field.name);
+  expect(rows).toEqual([...entitlement.fields.filter(field=>field.name!=='employmentId').map(field=>field.name),'proration']);
  });
  it('names every field once, carries a provenance block, and resolves every owner and rule version',()=>{
   for(const entity of STEP4){

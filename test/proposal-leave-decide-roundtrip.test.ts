@@ -1,8 +1,11 @@
 /** ADR-0170 step 2 — `approvals.leave.decide` proposals end to end on fictional data: prepared from the assigned
  * review's native checks as the approver, signed, verified against the approver's real cookie login, rendered
  * as a card and confirmed once on the existing review command (POST /api/assistant/module-actions). Refusals:
- * the self-approval ban, a manager the request is not assigned to, another login, tampering and expiry. Also
- * the harness: a scripted model's suggestion returns the proposal. Next cookies are a framework seam;
+ * the self-approval ban, a manager the request is not assigned to, another login, tampering and expiry. A
+ * covering delegate the decision source admits gets a card and records the decision as themselves; once the
+ * delegation ends, nothing (ADR-0170 §3.15). Also the harness: a scripted model's suggestion returns the
+ * proposal, and with several pending it lists them and prepares nothing until the person names one (§3.15).
+ * Next cookies are a framework seam;
  * identity SQL, custody, RLS and leave effects are real. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -17,13 +20,14 @@ import * as schema from '../db/schema';
 import {handleConfiguredModuleActionBrowserCommand} from '../core/assistant-actions/module-action-server';
 import {getSession} from '../lib/session';
 import {grantAssistant} from '../core/assistant-grant';
-import {hireEmployee,setReportingLine} from '../core/org';
+import {endReportingLine,hireEmployee,setReportingLine} from '../core/org';
 import {requestLeave} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {verifyProposal,type Proposal} from '../core/proposals/proposal';
 import {leaveDecideReviewPackets,prepareLeaveDecideProposal,type LeaveDecideHumanInput} from '../core/proposals/leave-decide';
 import {PROPOSAL_CARD_KEYS,renderProposalCard} from '../core/proposals/card';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
+import {prepareSuggestedProposal} from '../core/proposals/suggested';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import {scriptedModel} from './harness-ratchet/scripted-model';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -32,7 +36,7 @@ type Hired={uid:string;employmentId:string;personId:string};
 let base:Base,applicant:Hired,manager:Hired,otherManager:Hired,date:string,requestId:string;
 const UUID=/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
-async function hire(name:string,role:'employee'|'hr_admin'='employee'):Promise<Hired>{
+async function hire(name:string,role:'employee'|'manager'|'hr_admin'='employee'):Promise<Hired>{
  const hired=await hireEmployee(adminCtx(base),{person:{fullName:name,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2020-01-01'});
  const uid=await createAppUser(base.tenantId,hired.personId,role);await grantAssistant(adminCtx(base),{appUserId:uid});
  await owner.db.insert(schema.leaveLedger).values({tenantId:base.tenantId,employmentId:hired.employmentId,leaveTypeId:base.annualLeaveTypeId,entryType:'accrual',days:'10',effectiveOn:todayInKualaLumpur()});
@@ -118,6 +122,30 @@ describe('approvals.leave.decide proposal round trip',()=>{
  },60000);
 });
 
+describe('a covering delegate the decision source admits',()=>{
+ it('gets a card as themselves and records the decision once; after the delegation ends, nothing',async()=>{
+  const stand=await hire('Fictional Covering Delegate','manager'),today=todayInKualaLumpur();
+  const delegated=await setReportingLine(adminCtx(base),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:today,scopes:[{module:'leave',taskType:'leave.application'}]});
+  const me=await login(stand);
+  const result=await prepareLeaveDecideProposal(me,await human());if(result.kind!=='proposal')throw Error('The covering delegate got no proposal.');
+  // The authority is the delegate's own login, never the manager they cover.
+  expect(result.proposal.body).toMatchObject({forWhom:{subjectId:requestId},authority:{kind:'person',userId:stand.uid,personId:stand.personId}});
+  expect(leaveDecideReviewPackets(result.proposal,await login(manager),new Date())).toEqual({ok:false,reason:'authority_mismatch'});
+  await login(stand);
+  const packets=leaveDecideReviewPackets(result.proposal,me,new Date());if(!packets.ok)throw Error('packets refused: '+packets.reason);
+  const done=await post(packets.packets.confirm);expect(done.status).toBe(200);expect(done.body.kind).toBe('completed');
+  const [event]=await owner.db.select({actorId:schema.domainEvent.actorId}).from(schema.domainEvent).where(eq(schema.domainEvent.id,done.body.receipt.receipt.decisionEventId));
+  expect(event?.actorId).toBe(stand.uid);
+  // A second request, after the delegation ends: the delegate gets nothing and the request stays pending.
+  await endReportingLine(adminCtx(base),{reportingLineId:delegated.reportingLineId,endDate:today});
+  const later=new Date(date+'T00:00:00Z');do{later.setUTCDate(later.getUTCDate()+1);}while([0,6].includes(later.getUTCDay()));const laterDate=later.toISOString().slice(0,10);
+  const second=(await requestLeave(await login(applicant),{employmentId:applicant.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:laterDate,endDate:laterDate,durationType:'full_day',reason:'Fictional later reason'})).leaveRequestId;
+  const [secondStep]=await owner.db.select({id:schema.leaveApprovalStep.id}).from(schema.leaveApprovalStep).where(eq(schema.leaveApprovalStep.leaveRequestId,second)).orderBy(schema.leaveApprovalStep.stepIndex);
+  expect(await prepareLeaveDecideProposal(await login(stand),{leaveRequestId:second,currentStepId:secondStep?.id??null,decision:'approved',rejectReason:null})).toEqual({kind:'unavailable'});
+  const [row]=await owner.db.select({status:schema.leaveRequest.status}).from(schema.leaveRequest).where(eq(schema.leaveRequest.id,second));expect(row.status).toBe('pending');
+ },60000);
+});
+
 describe('harness returns the proposal for the matching suggestion',()=>{
  const run=(question:string)=>getSession().then(ctx=>runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId:randomUUID(),question,scope:{companyId:base.companyId,locale:'en'},
   model:scriptedModel([{calls:[{name:'suggest_action',args:{action:'approvals.leave.decide'}}]},{final:{reply:'It is ready for you to review on the approvals review page.',mode:'propose'}}]),
@@ -131,6 +159,32 @@ describe('harness returns the proposal for the matching suggestion',()=>{
   expect(JSON.stringify(asked.trace)).not.toContain(asked.proposals[0].body.what.reviewedDigest);
   const neutral=await run('What leave requests are waiting for me?');
   expect(neutral.proposals).toEqual([]);
+  expect(await status()).toBe('pending');
+ },60000);
+
+ it('with several pending, lists them for the person to choose and prepares nothing until they name one',async()=>{
+  const second=await hire('Fictional Second Applicant');
+  await setReportingLine(adminCtx(base),{subordinateEmploymentId:second.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
+  const later=new Date(date+'T00:00:00Z');do{later.setUTCDate(later.getUTCDate()+1);}while([0,6].includes(later.getUTCDay()));const laterDate=later.toISOString().slice(0,10);
+  const secondId=(await requestLeave(await login(second),{employmentId:second.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:laterDate,endDate:laterDate,durationType:'full_day',reason:'Fictional second reason'})).leaveRequestId;
+  const me=await login(manager);
+  const choice=await prepareSuggestedProposal(me,'approvals.leave.decide',{},'Please approve the leave request waiting for me.');
+  expect(choice).toEqual({kind:'choose',more:0,pending:[
+   {applicant:'Fictional Decide Applicant',leaveType:'Annual Leave',startDate:date,endDate:date,days:1},
+   {applicant:'Fictional Second Applicant',leaveType:'Annual Leave',startDate:laterDate,endDate:laterDate,days:1}]});
+  expect(JSON.stringify(choice)).not.toMatch(UUID);
+  // Through the harness: the model is sent the list and the instruction to ask; no proposal is issued.
+  const model=scriptedModel([{calls:[{name:'suggest_action',args:{action:'approvals.leave.decide'}}]},{final:{reply:'Two requests are waiting: which one would you like to approve?',mode:'clarify'}}]);
+  const asked=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:me,conversationId:randomUUID(),question:'Please approve the leave request waiting for me.',scope:{companyId:base.companyId,locale:'en'},model,memory:new InMemoryTaskMemoryStore()});
+  expect(asked.proposals).toEqual([]);
+  const sent=JSON.stringify(model.requests[1].messages.filter(message=>message.role==='tool'));
+  expect(sent).toContain('Fictional Second Applicant');expect(sent).toContain('never choose one yourself');expect(sent).not.toContain(secondId);
+  // The person names one by its date: exactly that request is prepared.
+  const named=await prepareSuggestedProposal(me,'approvals.leave.decide',{startDate:laterDate},'Approve the one starting '+laterDate+'.');
+  if(named?.kind!=='proposal')throw Error('The named request was not prepared.');
+  expect(named.proposal.body).toMatchObject({forWhom:{subjectId:secondId},what:{selectors:{startDate:laterDate,decision:'approved'}}});
+  // Without the person's own words asking to approve, nothing is listed or prepared.
+  expect(await prepareSuggestedProposal(me,'approvals.leave.decide',{},'What is waiting for me?')).toBeNull();
   expect(await status()).toBe('pending');
  },60000);
 });
