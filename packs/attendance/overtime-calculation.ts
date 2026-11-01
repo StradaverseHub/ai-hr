@@ -47,7 +47,10 @@ export async function refreshOvertimePatternDayTx(tx: Tx, ctx: SessionContext, p
   const [day] = await tx.select({id:attendance.id}).from(attendance).where(and(eq(attendance.tenantId,ctx.tenantId),eq(attendance.employmentId,p.employmentId),eq(attendance.attendanceDate,p.date))).limit(1);
   if (!day) return null;
   if (!await hasOvertimePatternForDayTx(tx,ctx,p)) {
-    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`}).where(eq(attendance.id,day.id));
+    // A missing key is already the desired state. Avoid physical no-op writes and their
+    // financial/source triggers; an existing marker still goes through every original guard.
+    await tx.update(attendance).set({calcTrace:sql`${attendance.calcTrace} - 'overtimePattern'`})
+      .where(and(eq(attendance.id,day.id),sql`${attendance.calcTrace} ? 'overtimePattern'`));
     return null;
   }
   let result;
