@@ -118,7 +118,18 @@ Qualification41303017578:208 cases in16 affected files PASS (204DB-classified,4m
 zero failures/skips; the independent whole compiler PASS. The real scan-required
 control fails without the gate, then the same native employee call avoids correction
 SELECT while HR retains the complete reader. Exact application paired comparison
-and million-document index profile41303020809 are queued.
+and million-document index profile41303020809 PASS:2/2 cases, zero failures/skips.
+Native employee median76.59ms before /1.80ms candidate /78.35ms restored; named
+HR82.05/82.18ms, delegate148.74/149.37ms and manager123.18/122.62ms candidate/
+restored. Every phase preserves ordered results and expiry/archive/person refusals.
+Exact native parser indexed lookups over1,000,002 synthetic documents take0.185–
+0.691ms. Both full500-user workloads now run on frozen16e662e6b:41304047446(1s),
+41304050133(5s),5min steady activity,1mClaims+1mAttendance, one app worker, total
+pool10/heap4GiB and the existing PostgreSQL2GiB cap. No later capacity pass exists.
+A benchmark-only positive-path batching experiment41303932550 uses source
+6fb2e0f2be64f2d86488bd0f28054952f660c030; application/SQL bytes match16e662e6b.
+Incorrect-SHA diagnostic41303908353 was canceled while queued before checks;
+its original cancellation is retained. No app batching optimization is promoted.
 The canonical payroll-tax-reader session flag and both Personnel integration imports
 are preserved. Current source fingerprints regenerate without editing human approval
 literals; exact-source approval remains held before any later integration/release.
