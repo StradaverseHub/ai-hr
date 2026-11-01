@@ -16,8 +16,14 @@ describe('sensitive-topic routing and workplace-harms rule',()=>{
    expect(new Set(SENSITIVE_CORPUS.filter(turn=>turn.expect===reason).map(turn=>turn.locale)),reason).toEqual(new Set(['en','ms','zh','vi']));
   expect(SENSITIVE_CORPUS.filter(turn=>turn.expect==='open').length).toBeGreaterThanOrEqual(12);
  });
+ it('gates another person\'s statutory record named through a possessive, even when the person also says "me" (step 4, run 41308136839)',()=>{
+  for(const question of ['Show me how Siti Fictional\'s EPF was calculated.','Explain how Siti\'s PCB was worked out.','What is Ahmad bin Ali\'s EPF?','Can you show me Farid\'s income tax?','Show me Mei Ling\'s EA form.'])
+   expect(gateTurn(question),question).toEqual({privateReads:false,actions:true,reason:'other_person'});
+  for(const question of ['Show me how my EPF was calculated.','What\'s my PCB this month?','Explain the Company\'s EPF policy.','Tell me about Malaysia\'s EPF rates.','Let\'s apply leave next Friday.','How do I set up Hari Raya\'s holiday?'])
+   expect(gateTurn(question),question).toEqual({privateReads:true,actions:true});
+ });
  it('routes with no private reads and no action suggestions',()=>{
-  for(const turn of SENSITIVE_CORPUS.filter(row=>row.expect!=='open')){
+  for(const turn of SENSITIVE_CORPUS.filter(row=>row.expect!=='open'&&row.expect!=='other_person')){
    const gate=gateTurn(turn.question);expect(gate.privateReads,turn.id).toBe(false);expect(gate.actions,turn.id).toBe(false);
   }
  });

@@ -42,6 +42,8 @@ const ATTACHMENT:readonly RegExp[]=[
  /\b(attached|attachment|enclosed)\b/i,/\b(file|document|pdf|spreadsheet|screenshot|image)\s+(i|we)\s+(sent|uploaded|shared|attached)\b/i,
  /\b(dilampirkan|lampiran)\b/i,/(附件|附上的|上传的文件)/,/(đính kèm|tệp đã gửi)/i,
 ];
+// Private-record nouns, pay and statutory terms included (step 4's run 41308136839 found "Siti Fictional's EPF" open).
+const RECORD='(?:salary|salaries|pay|payslips?|leave|balances?|records?|details?|claims?|bank|address|passport|contact|bonus|ic|epf|kwsp|socso|perkeso|eis|sip|pcb|mtd|zakat|lhdn|cp39|ea\\s+form|(?:income\\s+)?tax(?:es)?|contributions?|deductions?|statutory|allowances?|overtime|attendance|appraisal|performance|medical|nric)';
 const THIRD_PARTY:readonly RegExp[]=[
  /\b(my|our)\s+(co-?workers?|colleagues?|team\s*mates?|boss|manager|supervisor|subordinates?|staff|direct reports?)('s|s')\b/i,
  /\b(co-?workers?|colleagues?|someone else|another (employee|person|staff)|other (employees|people|staff)|every(one|body)|all (employees|staff))('s|')?\s+(salary|salaries|pay|payslips?|leave|balances?|records?|details?|claims?|bank|address|ic|passport)\b/i,
@@ -50,6 +52,8 @@ const THIRD_PARTY:readonly RegExp[]=[
  /\b(does|did|will|can|has)\s+\p{Lu}\p{Ll}+(?:\s+\p{Lu}\p{Ll}+)*\s+(have|get|earn|make|take|receive|owe)\b/u,
  /\b(every|all)\s+(employee|staff)\s*('s)?\s*(salary|salaries|pay|payslips?)\b/i,
  /\b(gaji|cuti|rekod)\s+(rakan sekerja|pekerja lain|semua pekerja)\b/i,
+ /\b(gaji|cuti|rekod|cukai|potongan|caruman|slip\s+gaji|KWSP|kwsp|PERKESO|perkeso|PCB|pcb)(\s+(KWSP|kwsp|PERKESO|perkeso|PCB|pcb|bulanan))?\s+(rakan sekerja|pekerja lain|semua pekerja|\p{Lu}\p{Ll}+)/u,
+ /(同事|别人|其他员工|所有员工|\p{Lu}\p{Ll}+)的(公积金|社险|社保|个税|所得税|税务|扣款|扣除|工资单|工资|薪水|假期)/u,/(bảo hiểm|thuế|khoản khấu trừ|phiếu lương)\s+(của\s+)?(đồng nghiệp|người khác|tất cả nhân viên)/i,
  /(同事|别人|其他员工|所有员工)的?(工资|薪水|假期|记录|余额)/,/\b(lương|hồ sơ|ngày phép)\s+(của\s+)?(đồng nghiệp|người khác|tất cả nhân viên)\b/i,
 ];
 // Sensitive topics. Each list states the person's own situation, not a question about policy wording alone
@@ -118,6 +122,24 @@ const HARMS:readonly RegExp[]=[
 ];
 // A judgement the person asks about themself ("Am I likely to be promoted?") is not inference about someone else.
 const SELF_ONLY=/^\s*(am\s+i|was\s+i|will\s+i|do\s+i|could\s+i)\b/i;
+// A capitalised word with a possessive ("Siti Fictional's EPF", "Ahmad bin Ali's pay"). Case-sensitive for the name;
+// the possessed words are matched against RECORD case-insensitively. Words that take 's as "is" or that name a
+// place, time or the company are never a person.
+const POSSESSIVE=/(?:^|[^\p{L}])(\p{Lu}\p{Ll}+)(?:'s|’s|s')\s+((?:[\p{L}-]+\s+){0,2}[\p{L}-]+)/gu;
+const POSSESSOR_NOT_A_PERSON=/^(What|Who|Where|When|How|Why|It|That|There|Here|Let|He|She|This|Today|Tomorrow|Yesterday|Year|Month|Week|Company|Malaysia|Singapore|Indonesia|Vietnam|China|Government|Employer|Assistant|Everyone|Everybody|Nobody|Raya|Puasa|Haji|Aidilfitri|Aidiladha|Day|Eve)$/;
+const RECORD_WORDS=new RegExp('\\b'+RECORD+'\\b','i');
+/** True when the words name someone else's record through a possessive. Mid-sentence, any person's possessive
+ * counts; at a sentence start (always capitalised) only one followed by a private-record term does. */
+function namedPossessive(text:string):boolean{
+ for(const match of text.matchAll(POSSESSIVE)){
+  const name=match[1];if(NOT_A_PERSON.test(name)||POSSESSOR_NOT_A_PERSON.test(name))continue;
+  const start=match.index+match[0].indexOf(name),before=text.slice(0,start);
+  // At the start of a sentence, or only capitalised words before it there ("Siti Fictional's ...").
+  const sentenceStart=/(^|[.?!]\s+)(\p{Lu}\p{Ll}+\s+){0,2}$/u.test(before);
+  if(!sentenceStart||RECORD_WORDS.test(match[2]))return true;
+ }
+ return false;
+}
 const FIRST_PERSON=/\b(i|i'm|i've|me|my|mine|myself|saya|aku|tôi|mình)\b|我/i;
 // Two or more capitalised words in a row: a likely person name. Only counts when the person does not also
 // speak about themselves, so "How much Annual Leave do I have" stays open while "does Siti Fictional have" does not.
@@ -151,7 +173,7 @@ export function gateTurn(question:string,options:Readonly<{sensitive?:readonly S
  if(OVERRIDE.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'instruction_override'});
  if(ATTACHMENT.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'attachment'});
  if(topic)return closed(`sensitive_${topic}`,false);
- if(THIRD_PARTY.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});
+ if(THIRD_PARTY.some(pattern=>pattern.test(text))||namedPossessive(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});
  const body=sentenceLower(text);
  const named=[...body.matchAll(PROPER_NAME)].some(match=>!NOT_A_PERSON.test(match[1]));
  if(named&&!FIRST_PERSON.test(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});

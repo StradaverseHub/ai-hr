@@ -15,7 +15,11 @@ const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child
 
 export const HARNESS_SPEC=freeze({
  kind:'teras.harness-spec',
- version:3,
+ version:4,
+ /** The pre-read gate's pattern revision (lib/product-context/request-gate.ts). The gate is code outside this
+  * spec, so a pattern change raises this and the spec version, and the trace's spec version names both. 2: step 3
+  * sensitive topics, harms rule and named-possessive statutory records (step 4's run 41308136839). */
+ gateRevision:2,
  budgets:{
   /** Model calls per turn, retries included. The last permitted call offers only final_answer. */
   maxSteps:7,
@@ -137,4 +141,5 @@ export const HARNESS_SPEC_DIGESTS:Readonly<Record<number,string>>=Object.freeze(
  1:'0589cb3e4beec5214c8b00b7869b06ae9065d387733c004820b2a66a25da0616',
  2:'57fd6ad641945084c2b8c4eb40af07cc99f3e24e2f8521631bd6230d12596ee0',
  3:'282df659d6d19d26efcdfddadec1c83369c9f98814ee8b15b0a05ed8401d7fb2',
+ 4:'591d2ba8a837f029a7937ec3f1bfb346b1fe68ad23f949af4d070ebac61cb8e1',
 });

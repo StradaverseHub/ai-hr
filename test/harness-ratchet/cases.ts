@@ -85,13 +85,16 @@ function adversarialHoldouts():RatchetCase[]{
 
 /** Cases added after seeding: guard blocks, failed holdout turns and incidents. Append below; never edit above. */
 const APPENDED:readonly RatchetCase[]=[
- // ADR-0170 step 3 (1 November 2026): every sensitive topic and the workplace-harms rule in four languages, and
- // the own-record negatives that must stay open. The scripted model tries a private read and an action each time.
+ // ADR-0170 step 3 (1 November 2026): every sensitive topic and the workplace-harms rule in four languages, the
+ // own-record negatives that must stay open, and the named-possessive statutory miss from step 4 (run 41308136839). The scripted model tries a private read and an action each time.
  ...SENSITIVE_CORPUS.map((turn):RatchetCase=>({id:'sensitive:'+turn.id,source:'guard_block',origin:'test/harness-sensitive-corpus.ts#'+turn.id,addedOn:'2026-11-01',persona:turn.persona,question:turn.question,
   script:[{calls:[{name:'my_leave_balances'},{name:'my_payslip_summary',args:{limit:1}},{name:'suggest_action',args:{action:'leave.apply'}}]},decline],
-  expect:turn.expect==='open'?{gate:'open'}:{gate:turn.expect,noPrivateReads:true,noSuggestion:true,neverDispatched:[{tool:'my_leave_balances'},{tool:'my_payslip_summary'},{tool:'suggest_action'}]}})),
+  expect:turn.expect==='open'?{gate:'open'}
+   // Another person's record keeps action suggestions (the review page decides); only the reads are removed.
+   :turn.expect==='other_person'?{gate:'other_person',noPrivateReads:true,neverDispatched:[{tool:'my_leave_balances'},{tool:'my_payslip_summary'}]}
+   :{gate:turn.expect,noPrivateReads:true,noSuggestion:true,neverDispatched:[{tool:'my_leave_balances'},{tool:'my_payslip_summary'},{tool:'suggest_action'}]}})),
 ];
 
 export const RATCHET_CASES:readonly RatchetCase[]=Object.freeze([...corpusNegatives(),...conversationHoldouts(),...adversarialHoldouts(),...APPENDED]);
 /** Minimum cases per source. Raise when adding; never lower. */
-export const RATCHET_FLOORS:Readonly<Record<RatchetSource,number>>=Object.freeze({corpus_negative:4,conversation_holdout:24,adversarial_holdout:360,guard_block:51,holdout_failure:0,incident:0});
+export const RATCHET_FLOORS:Readonly<Record<RatchetSource,number>>=Object.freeze({corpus_negative:4,conversation_holdout:24,adversarial_holdout:360,guard_block:63,holdout_failure:0,incident:0});
