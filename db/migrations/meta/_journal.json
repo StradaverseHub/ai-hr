@@ -4467,6 +4467,13 @@
       "when": 1793330000274,
       "tag": "0874_payroll_tax_basis_corrections",
       "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1793330000275,
+      "tag": "0875_reward_access_request_read_role",
+      "breakpoints": true
     }
   ]
 }

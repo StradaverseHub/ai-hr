@@ -853,3 +853,12 @@ are renamed byte-identical and appended above every known claim. If this bundle 
 performance owner's 0866–0872 fall below the new watermark and must be reallocated above when…274
 before their own release. Re-verify the accepted V9 ledger at handback before installation. This
 reservation grants no deployment or acceptance.
+
+## Rewards access-request read policy fix — 1 November 2026
+
+Claude release owner, owner-accepted follow-up to the tax/movement bundle. The installed staging ledger is
+638 rows through `0874_payroll_tax_basis_corrections` (idx752 / when1793330000274). This fix appends
+`0875_reward_access_request_read_role` at idx753 / when1793330000275 (SQL SHA256
+`06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1`). Performance's unapplied 0866–0872
+claims are below the watermark and must be reallocated above the next accepted watermark. Re-verify the
+live ledger before installation; this reservation grants no deployment.

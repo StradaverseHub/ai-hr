@@ -68,6 +68,17 @@ async function nativeRefused(promise:Promise<unknown>,state:string){
  expect(error,'native authority must refuse this operation').not.toBeNull();expect(pgSqlState(error)).toBe(state);
 }
 describe('Rewards two-person access and live People eligibility',()=>{
+ it('scopes the request read policy to the application role so owner-run checks never re-enter it',async()=>{
+  // 0875: a policy with no role also applies to the (non-superuser) owner inside SECURITY DEFINER
+  // reward_access_request_authorised, which reads this FORCE RLS table — infinite recursion on staging.
+  const rows=await owner.client`select policyname,roles::text[] as roles,cmd from pg_policies where schemaname='public' and tablename='reward_access_request' order by policyname`;
+  expect(rows.map(r=>({policyname:r.policyname,roles:r.roles,cmd:r.cmd}))).toEqual([
+   {policyname:'reward_access_request_owner',roles:['public'],cmd:'ALL'},
+   {policyname:'reward_access_request_read',roles:['ai_hr_app'],cmd:'SELECT'},
+  ]);
+  const [force]=await owner.client`select relforcerowsecurity as forced from pg_class where oid='public.reward_access_request'::regclass`;
+  expect(force.forced).toBe(true);
+ });
  it('refuses a real named agent as access requester, independent checker or Group Rewards holder without effects',async()=>{
   const pending=await request({userId:target.userId!,role:'bu'}),agent=await namedAgent();
   const before=await securityState();expect(before.requests).toHaveLength(1);expect(before.requests[0]).toMatchObject({id:pending.requestId,status:'pending'});expect(before.members).toHaveLength(1);expect(before.events.length).toBeGreaterThan(0);
