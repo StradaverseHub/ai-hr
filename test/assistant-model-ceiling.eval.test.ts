@@ -21,7 +21,7 @@ import {seedGuides} from '../db/seed-guides';
 import {contextToolSpecsFor,runContextTool,suggestAction} from '../core/product-context/tools';
 import {actionCatalogueFor} from '../core/product-context/actions';
 import {gateTurn,TURN_GATE_NOTE} from '../lib/product-context/request-gate';
-import {scoreBehaviour,summarizeBehaviour,type BehaviourScore} from './assistant-behaviour-score';
+import {overclaim,scoreBehaviour,summarizeBehaviour,type BehaviourScore} from './assistant-behaviour-score';
 import {REVIEWED_OUTCOMES} from './assistant-corpus-review';
 import {setReportingLine} from '../core/org';
 import {requestLeave} from '../packs/leave/service';
@@ -186,7 +186,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
    reviewedIdeals:{original:behaviourGroup(behaviourOf(true),id=>!parity.has(id)),parity:behaviourGroup(behaviourOf(true),id=>parity.has(id))}},original:group(id=>!parity.has(id)),parity:group(id=>parity.has(id)),
    blankReplies:ledger.filter(row=>!row.reply).length,truncationRetries:ledger.reduce((sum,row)=>sum+(row.truncated??0),0),errors:ledger.filter(row=>row.error).map(row=>row.pass+':'+row.turn+':'+row.error)};
   const guidance=ledger.filter(row=>passes[row.pass].scores.find(score=>score.id===row.turn)?.ideal.mode==='guide');
-  const context={inventedLinks:ledger.flatMap(row=>row.inventedLinks??[]),guidanceTurns:guidance.length,
+  const context={inventedLinks:ledger.flatMap(row=>row.inventedLinks??[]),overclaims:ledger.flatMap(row=>{const claim=overclaim(row.reply);return claim?[row.pass+':'+row.turn+': '+claim]:[];}),guidanceTurns:guidance.length,
    guidanceGroundedInProduct:guidance.filter(row=>row.reads.some(read=>['product_guidance','setup_readiness','product_destinations'].includes(read))).length,routes:ROUTES.length};
   process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+JSON.stringify({variant:'phase_b_repeated',stability,context,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
    summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger})+'\n');
