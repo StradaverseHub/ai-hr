@@ -392,34 +392,37 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 
 ## 9. Name
 
+**Owner direction (1 November 2026):** an international name, not a Malay one. "Teras" stays only as the working label in this file until a name is chosen; the file will be renamed then.
+
 **What the name must do:**
-1. Say what the system is: the trusted core every AI feature runs through, with people in control.
-2. Read naturally in Malay and English, and be pronounceable in the other interface languages.
-3. Not be a person's name. A human persona encourages over-trust (ADR-0169 §4), and it invites assumptions about the assistant's gender.
-4. Have no clash with an AI, HR or Malaysian technology product.
-5. Work for both the platform ("built on Teras") and the features ("Teras Connect", "Ask Teras").
+1. Say what the system is: a trusted core that acts for people within the authority they give it, anchored to the record.
+2. Be pronounceable across the interface languages and internationally.
+3. Not be a person's name (a human persona encourages over-trust, ADR-0169 §4, and invites gender assumptions).
+4. Have no clash with an AI, HR or workplace product, in particular none in agent governance or security.
+5. Work as platform and prefix: "X Connect", "Ask X", "X mandate".
 
-**Shortlist** (quick web searches on 1 November 2026; **not a trademark search**):
+**Checked (web searches, 1 November 2026; not a trademark search):**
 
-| Name | Meaning and fit | Clash found |
+| Name | Meaning and fit | Finding |
 | --- | --- | --- |
-| **Teras** | Malay: *core*, the heartwood of a tree. The one core every AI feature runs through, rooted in the system's own records. Works as a platform name | None found for an AI or HR product. Near names are different words (Tera AI, robotics; TeraGen, marketing) |
-| **Kemudi** | Malay: *rudder*. The rudder steers, but the helmsman decides, which matches "models propose, people decide". Strong metaphor | None found |
-| **Suluh** | Malay: *torch*. Lights the way: guidance, "Why?" explanations. Better for an assistant than for a platform | None found (Sulu.ai is a near-miss) |
-| Nadi | Malay: *pulse* | Close to Nadia, an AI work coach used in HR (Valence) |
-| Rakan | Malay: *companion, colleague* | Used by the National AI Office's agriculture AI (Rakan Tani) and RakanMET |
-| Nakhoda | Malay: *ship's captain* | Nakhoda AI, a Malaysian compliance AI (Otonoco) |
-| Akal | Malay: *reason* | A Malaysia-listed AI solutions company |
-| Keel | English | Close to Keelzo, an AI recruiting product |
-| Onyx | Current branch codename | Onyx, an open-source enterprise AI search product |
-| Amanah | Trust | Also the name of a Malaysian political party |
+| **Steward** | One who manages on another's behalf with a duty of care; "stewardship" is the word the market already uses for agent governance. Fits "acts for the person, never as them" and mandates exactly | **No AI or HR product found.** Risks: a common English word (harder to register); other classes use it (a US hospital operator, aviation crew) |
+| **Tiller** | The handle that steers; the person at the tiller decides. Short | No AI platform found; small unrelated startups. A personal-finance product of the same name is believed to exist (not checked here) |
+| **Lodestar** | The guiding star | Two small unrelated companies (data annotation; a 2026 learning startup spelled "L0destar") |
+| Mooring | What holds a ship fast; "moored to the record" | Nothing in AI; the word is weaker as a brand and the root has historical baggage |
+| Ballast | What keeps a vessel stable | Clean, but also means dead weight |
+| Charter | A grant of bounded authority (close to mandate) | Crowded: an "agentic execution platform" (Charter Global), New Charter Technologies, and a major US telecom |
+| Custodian | Holds on another's behalf | Crowded, and a direct concept clash: "custodian-kernel" is an authority layer for AI agents; Custodian Labs; Cloud Custodian |
+| Regent | Governs in the name of the rightful authority | Taken: Regent AI Security |
+| Tenet | A guiding principle | Taken: Tenet Security (AI agent security) |
+| Arbiter | The one who decides | Taken: Arbiter AI (healthcare), Arbiter (security) |
+| Trellis, Fulcrum, Tessera, Keystone, Plinth, Rootstock, Verity, Mainstay | Structural or truth metaphors | All taken by AI or software products |
+| Teras, Kemudi, Suluh, Nadi, Rakan, Nakhoda, Akal, Onyx, Amanah | Earlier Malay and codename candidates | Withdrawn by owner direction (international name) or clashing (§9 history in git) |
 
-**Recommendation.** **Teras** for the AI operating architecture and brand ("Teras Connect", "Ask Teras"). Kemudi is a close second if the owner prefers the steering metaphor over the core metaphor.
+**Recommendation.** **Steward.** It names the behaviour the architecture guarantees, it is the market's own governance vocabulary, it is clean in AI and HR, and it reads well as "Steward Connect", "Steward mandate" and "Ask Steward". Second choice: Tiller.
 
-Before adopting either:
-- a MyIPO and international trademark search in the software classes;
-- a domain and app-store check;
-- a native-speaker check of meaning and connotation in all six interface languages.
+If the trademark search fails on Steward, the fallback is a coined word built on the same idea, chosen with a naming professional, since coined marks register more easily.
+
+**Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
 ## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)
 
