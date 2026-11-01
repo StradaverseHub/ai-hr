@@ -11,7 +11,7 @@
  * without both keys, an edit other than revocation or renewal, or a delete is refused there as well.
  * Every change appends an audit event. Running a mandate lives in ./run.ts. Not imported by the production
  * Assistant; no screen is wired in this step. */
-import {and,desc,eq,sql} from 'drizzle-orm';
+import {and,desc,eq,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {terasMandate,terasMandateControl,terasMandateJobTypeEnablement} from '../../db/teras-schema';
@@ -104,6 +104,25 @@ function parseGrant(jobType:WorkJobType,input:GrantMandateInput):Readonly<{scope
   notify:input.notify,validDays:input.validDays as number};
 }
 
+/** Job types a person holds at most one unrevoked mandate for (migration 0906 unique index): one daily digest a day. */
+const SINGLE_PER_GRANTOR:readonly WorkJobType[]=Object.freeze(['daily_digest']);
+/** Before a single-per-grantor grant: serialise the grantor's grants of this job type, refuse while one is in force,
+ * and revoke (as the grantor, who is acting now) an own mandate of this type that has expired unrevoked, so the
+ * unique index never blocks a fresh grant after expiry. */
+async function clearForSingleGrantTx(tx:Tx,ctx:SessionContext,jobType:WorkJobType,now:Date){
+ await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-mandate-grant:${ctx.tenantId}:${ctx.userId}:${jobType}`},0))`);
+ const held=await tx.select().from(terasMandate).where(and(eq(terasMandate.tenantId,ctx.tenantId),eq(terasMandate.grantorUserId,ctx.userId!),
+  eq(terasMandate.jobType,jobType),isNull(terasMandate.revokedAt)));
+ if(held.some(row=>row.validUntil>now))throw new MandateRefused('already_granted');
+ for(const row of held){
+  const [revoked]=await tx.update(terasMandate).set({revokedAt:sql`now()`,revokedByUserId:ctx.userId!,revokedBy:'grantor'})
+   .where(and(eq(terasMandate.id,row.id),eq(terasMandate.version,row.version))).returning();
+  if(!revoked)throw new MandateRefused('already_granted');
+  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-mandate',aggregateId:row.id,eventType:'teras-mandate.revoked',actor:actorOf(ctx),
+   payload:{version:revoked.version,revokedBy:'grantor',reason:'expired_replaced'}});
+ }
+}
+
 export async function grantMandate(supplied:SessionContext,input:GrantMandateInput,now:Date=new Date()){
  const ctx=capture(supplied);
  const jobType=delegableJobType(input.jobType);
@@ -114,6 +133,7 @@ export async function grantMandate(supplied:SessionContext,input:GrantMandateInp
   if(control?.stopped)throw new MandateRefused('stopped');
   if(!enablement?.enabled)throw new MandateRefused('not_enabled');
   if(grant.validDays>enablement.maxValidityDays||grant.limits.maxRunsPerDay>enablement.maxRunsPerDay)throw new MandateRefused('over_ceiling');
+  if(SINGLE_PER_GRANTOR.includes(jobType))await clearForSingleGrantTx(tx,ctx,jobType,now);
   const [row]=await tx.insert(terasMandate).values({tenantId:ctx.tenantId,jobType,grantorUserId:ctx.userId!,grantorPersonId:ctx.personId!,
    scope:grant.scope,limits:grant.limits,schedule:grant.schedule,notify:grant.notify,
    validFrom:now,validUntil:new Date(now.getTime()+grant.validDays*DAY_MS)}).returning();

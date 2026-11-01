@@ -23,7 +23,7 @@ beforeEach(async()=>{
 });
 
 describe('worker switch audit under concurrency',()=>{
- it('REVIEW low: 8 concurrent first-time switch-ons leave an audit trail whose "from" chains to the previous "to" (controls.ts:88-96)',async()=>{
+ it('fixed L-switch: 8 concurrent first-time switch-ons leave an audit trail whose "from" chains to the previous "to" (controls.ts:88-96)',async()=>{
   await Promise.all(Array.from({length:8},()=>setWorkerSwitch(hr,{workerId:'approver_recommendation',enabled:true})));
   const events=await owner.db.select({payload:schema.domainEvent.payload}).from(schema.domainEvent)
    .where(and(eq(schema.domainEvent.tenantId,b.tenantId),eq(schema.domainEvent.aggregateType,'teras-worker'))).orderBy(asc(schema.domainEvent.occurredAt),asc(schema.domainEvent.id));

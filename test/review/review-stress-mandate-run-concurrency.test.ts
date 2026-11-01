@@ -47,7 +47,7 @@ beforeEach(async()=>{
 });
 
 describe('mandate runs under concurrency',()=>{
- it('REVIEW medium: maxRunsPerDay=1 holds when 8 runs of the same mandate overlap (run.ts:63-71, 97)',async()=>{
+ it('fixed M1: maxRunsPerDay=1 holds when 8 runs of the same mandate overlap (run.ts:63-71, 97)',async()=>{
   const mandate=await grantMandate(manager,grant);
   const started=Date.now();
   const results=await Promise.all(Array.from({length:8},()=>run(mandate.id)));
@@ -58,7 +58,7 @@ describe('mandate runs under concurrency',()=>{
   expect(await prepared(mandate.id)).toHaveLength(1);
  },60_000);
 
- it('REVIEW medium: a run stopped by the stop switch does not use up the day\'s run allowance (run.ts:63-64 counts stopped records)',async()=>{
+ it('fixed M5: a run stopped by the stop switch does not use up the day\'s run allowance (run.ts:63-64 counts stopped records)',async()=>{
   const mandate=await grantMandate(manager,grant);
   await setMandateStopSwitch(hr,true);
   expect(await run(mandate.id)).toMatchObject({status:'stopped',failed:['stop_switch']});
@@ -68,7 +68,7 @@ describe('mandate runs under concurrency',()=>{
   expect(resumed).toMatchObject({status:'prepared'});
  },60_000);
 
- it('REVIEW low: one person gets at most one prepared daily digest per HR day, however many digest mandates they grant (mandates.ts:107-125)',async()=>{
+ it('fixed L-digest: one person gets at most one prepared daily digest per HR day, however many digest mandates they grant (mandates.ts:107-125)',async()=>{
   const first=await grantMandate(manager,grant);
   // No uniqueness on (tenant, grantor, job_type) for active mandates: a second identical grant is accepted.
   let second:typeof first|null=null;
