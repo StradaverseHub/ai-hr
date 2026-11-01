@@ -498,7 +498,7 @@ A later notice follow-up can record `given` with a channel (in-app or email) (S5
 
 ### Bundled with this review (owner decision, 2 November 2026)
 
-- **Module-agent digest change for worker switches.** The AI centre's Workers page (the step 5 UI follow-up, stacked on PR 191) shows two workers read-only: the approver recommendation and the explainers. To make them switchable from that page, one server action must be added together with its entry in `lib/ai/agent-capability-inventory.ts`, and `MODULE_AGENT_SOURCE_DIGEST` regenerated. Those files are inside the approved module-agent digest. **Decision:** approve or decline the change as part of this review. Engineering default: approve, with the action limited to the tenant's group administrator and every change written to the audit log. Both workers stay off by default either way.
+- **Module-agent digest change for worker switches.** The AI centre's Workers page (the step 5 UI follow-up, stacked on PR 191) shows two workers read-only: the approver recommendation and the explainers. To make them switchable from that page, one server action must be added together with its entry in `lib/ai/agent-capability-inventory.ts`, and `MODULE_AGENT_SOURCE_DIGEST` regenerated. Those files are inside the approved module-agent digest. **Decided by the owner, 2 November 2026:** approved ("They should be able to do it from that page"). This covers exactly one action and its inventory entry. The action is limited to the tenant's group administrator, and every change is written to the audit log and an outcome record. Both workers stay off by default. This approval is separate from, and does not imply, the ADR-0169 disclosure approval.
 
 ## 11. Unverified
 
