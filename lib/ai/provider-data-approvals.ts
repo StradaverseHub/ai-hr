@@ -186,28 +186,28 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
     "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
     "reviewedAt": "2026-10-30T06:19:30Z"
   },
-  {
-    "contractId": "performance_native_outline_v1",
-    "status": "approved",
-    "sourceDigest": "bc3b393b16e93849269e80db4ee7b867faf21ac022aa9d3ea3809bd007a4cacd",
-    "reviewer": "human:zenlam repository-owner provisional",
-    "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
-    "reviewedAt": "2026-10-30T06:19:30Z"
-  },
-  {
-    "contractId": "performance_explicit_commands_v1",
-    "status": "approved",
-    "sourceDigest": "bc3b393b16e93849269e80db4ee7b867faf21ac022aa9d3ea3809bd007a4cacd",
-    "reviewer": "human:zenlam repository-owner provisional",
-    "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
-    "reviewedAt": "2026-10-30T06:19:30Z"
-  },
-  {
-    "contractId": "performance_starter_selection_v1",
-    "status": "approved",
-    "sourceDigest": "bc3b393b16e93849269e80db4ee7b867faf21ac022aa9d3ea3809bd007a4cacd",
-    "reviewer": "human:zenlam repository-owner provisional",
-    "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
-    "reviewedAt": "2026-10-30T06:19:30Z"
-  }
+{
+  "contractId": "performance_native_outline_v1",
+  "status": "approved",
+  "sourceDigest": "bc3b393b16e93849269e80db4ee7b867faf21ac022aa9d3ea3809bd007a4cacd",
+  "reviewer": "human:zenlam repository-owner provisional",
+  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
+  "reviewedAt": "2026-10-30T06:19:30Z"
+},
+{
+  "contractId": "performance_explicit_commands_v1",
+  "status": "approved",
+  "sourceDigest": "bc3b393b16e93849269e80db4ee7b867faf21ac022aa9d3ea3809bd007a4cacd",
+  "reviewer": "human:zenlam repository-owner provisional",
+  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
+  "reviewedAt": "2026-10-30T06:19:30Z"
+},
+{
+  "contractId": "performance_starter_selection_v1",
+  "status": "approved",
+  "sourceDigest": "bc3b393b16e93849269e80db4ee7b867faf21ac022aa9d3ea3809bd007a4cacd",
+  "reviewer": "human:zenlam repository-owner provisional",
+  "evidence": "docs/reviews/ai-provider-owner-approval-2026-10.md#owner-approval",
+  "reviewedAt": "2026-10-30T06:19:30Z"
+}
 ].map(row=>Object.freeze(row as ProviderDataReviewRecord)));
