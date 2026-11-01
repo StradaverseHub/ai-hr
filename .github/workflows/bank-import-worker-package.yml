@@ -35,6 +35,8 @@ jobs:
         run: node --test scripts/bank-import-worker-package.test.mjs
       - name: Produce immutable worker bytes from this exact source
         run: node scripts/bank-import-worker-package.mjs "$GITHUB_WORKSPACE" "$RUNNER_TEMP/worker-package" "$GITHUB_SHA"
+      - name: Verify actual extracted worker startup without database credentials
+        run: node scripts/bank-import-worker-startup-check.mjs "$RUNNER_TEMP/worker-package/worker-package.zip" "$GITHUB_SHA"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: worker-package-v1

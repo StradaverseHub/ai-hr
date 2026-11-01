@@ -9,10 +9,11 @@ import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
-export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation }: {
-  presentation?: LoginPresentation; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
+export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
+  presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
+  const [microsoftOrganization,setMicrosoftOrganization]=useState(organization);
   const router = useRouter();
   const copy = useTranslations('loginPresentation');
   const passwordId = useId();
@@ -65,6 +66,8 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         <h1 id="internal-auth-title">{state.step === 'login' ? copy('welcome') : t(title)}</h1>
         {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
       </header>
+      {idleSignedOut && state.step === 'login' && !error && <p role="status" data-idle-signed-out className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t('idleSignedOut')}</p>}
+      {entraError && state.step==='login' && <p role="alert" className="text-sm text-destructive">{t('microsoftError')}</p>}
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{t(`errors.${errors.includes(error) ? error : 'unavailable'}`)}</p>}
       {state.step === 'signing-in' ? <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{t('signingInHelp')}</p>
       : state.step === 'resetDone' ? <div className="space-y-4"><p role="status" className="text-sm">{t('resetDoneHelp')}</p><a href="/login" className="text-sm underline">{t('back')}</a></div> : state.step === 'sent' ? <div className="space-y-4"><p role="status" className="text-sm leading-relaxed">{t('sentHelp')}</p><a className="text-sm underline" href="/login">{t('back')}</a></div>
@@ -84,7 +87,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         </form>
       </div> : <form method="post" onSubmit={submit} className="space-y-4">
         {['login','recovery'].includes(state.step) && <>
-          <label className="block space-y-1.5"><span className="text-sm font-medium">{t('organization')}</span><input className={field} name="organization" required defaultValue={organization} maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="organization"/></label>
+          <label className="block space-y-1.5"><span className="text-sm font-medium">{t('organization')}</span><input className={field} name="organization" required value={microsoftOrganization} onChange={e=>setMicrosoftOrganization(e.target.value)} maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="organization"/></label>
           <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input className={field} name="username" required maxLength={64} autoCapitalize="none" spellCheck={false} autoComplete="username"/></label>
         </>}
         {state.step === 'invite' && <label className="block space-y-1.5"><span className="text-sm font-medium">{t('username')}</span><input name="username" required minLength={3} maxLength={64} autoComplete="username" autoCapitalize="none" spellCheck={false} className={field}/></label>}
@@ -105,6 +108,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
+      {state.step==='login'&&<form action="/login/entra/start" method="get" className="space-y-3"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><button className={button} disabled={busy||!microsoftOrganization.trim()}>{t('microsoft')}</button></form>}
       {state.step === 'login' && <div className="login-help">
         <details><summary>{copy('firstTime')}</summary><p className="mt-2">{copy('firstTimeHelp')}</p></details>
         <details><summary>{copy('getHelp')}</summary><p className="mt-2">{copy('getHelpBody')}</p></details>

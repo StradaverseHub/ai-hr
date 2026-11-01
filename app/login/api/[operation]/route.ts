@@ -1,16 +1,47 @@
+import { rotateEntraRefresh, revokeEntraSession, touchEntraSession } from '@/lib/entra/sessions';
+import { EntraError } from '@/lib/entra/model';
 import {getLocale} from 'next-intl/server';
 import {emailLocale} from '@/lib/email-design/model';
 import { after, NextRequest, NextResponse } from 'next/server';
 import { toDataURL } from 'qrcode';
 import { internalSelected, internalReady, internalConfig, INTERNAL_SESSION_COOKIE } from '@/lib/internal-auth/config';
 import { AuthBusyError } from '@/lib/internal-auth/crypto';
-import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotateRefresh, revokeSession, type AuthReply } from '@/lib/internal-auth/service';
+import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotateRefresh, revokeSession, touchSession, type AuthReply } from '@/lib/internal-auth/service';
 import { requestRecovery, completeRecovery } from '@/lib/internal-auth/recovery';
 import { startInvitation, acceptInternalInvitation } from '@/lib/internal-auth/invitations';
 import { readBoundedBody } from '@/lib/bounded-body';
+import { recordWebActivity } from '@/lib/session-activity';
 import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '@/lib/request-budget';
 const admit = createRequestAdmission(8);
 const admitSource = createScopedAdmission(4);
+// Idle-activity reports (ADR-0171) are frequent and per signed-in tab: their own admission and budget, so an
+// office behind one address can never crowd sign-in out of the 60-per-minute session budget.
+const admitActivity = createRequestAdmission(16);
+async function reportActivity(request: NextRequest) {
+  let release: (() => void) | undefined;
+  try {
+    release = admitActivity();
+    const source = trustedRequestSource(request);
+    if (source) await takeRequestBudget(['auth-source', source, 'activity'], 600, 60);
+    const activity = await recordWebActivity(request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, {
+      recorders: [touchSession, touchEntraSession],
+      liveIdentity: async () => (await import('@/lib/internal-auth/web-session')).currentInternalIdentity(),
+    });
+    if (activity.status === 'expired') {
+      const expired = NextResponse.json({ error: 'expired' }, { status: 401, headers: responseHeaders });
+      expired.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
+      return expired;
+    }
+    if (activity.status === 'not-enforced') return NextResponse.json({ step: 'not-enforced' }, { headers: responseHeaders });
+    const { status: _status, ...allowance } = activity;
+    return NextResponse.json({ step: 'active', ...allowance }, { headers: responseHeaders });
+  } catch (error) {
+    if (error instanceof RequestBudgetExceeded) return NextResponse.json({ error: 'rateLimited' }, { status: 429,
+      headers: { ...responseHeaders, 'retry-after': String(error.retryAfter) } });
+    if (!(error instanceof AuthBusyError)) console.error('Idle activity report unavailable.');
+    return NextResponse.json({ error: 'unavailable' }, { status: 503, headers: responseHeaders });
+  } finally { release?.(); }
+}
 const responseHeaders = { 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer' };
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   if (request.headers.get('content-type')?.split(';')[0].trim() !== 'application/json') throw new InternalAuthError('invalidChallenge');
@@ -34,6 +65,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
   // Browser mutations require exact Origin. Native JSON requests never read or set browser cookies.
   if ((origin && origin !== internalConfig().origin) || (!native && origin !== internalConfig().origin))
     return NextResponse.json({ error: 'forbidden' }, { status: 403, headers: responseHeaders });
+  if (operation === 'activity') return native ? NextResponse.json({ error: 'unavailable' }, { status: 404, headers: responseHeaders }) : reportActivity(request);
   let result: AuthReply | { step: string };
   let release: (() => void) | undefined;
   let releaseSource: (() => void) | undefined;
@@ -46,7 +78,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     if (operation === 'login') result = await startLogin({ organization: text(body, 'organization', 64), username: text(body, 'username', 64), password: text(body, 'password', 128), native, sourceBudgeted:source!==null });
     else if (operation === 'password') result = await changeInitialPassword(text(body, 'challenge', 43), text(body, 'password', 128), native);
     else if (operation === 'mfa') result = await verifyMfa(text(body, 'challenge', 43), text(body, 'code', 64), native);
-    else if (operation === 'refresh' && native) result = await rotateRefresh(text(body, 'refresh_token', 80));
+    else if (operation === 'refresh' && native) result = await rotateEntraRefresh(text(body, 'refresh_token', 80)) || await rotateRefresh(text(body, 'refresh_token', 80));
     else if (operation === 'invite') result = await startInvitation(text(body, 'token', 43), text(body, 'username', 64), text(body, 'password', 128), native, source!==null);
     else if (operation === 'accept-invite' && !native) {
       const identity = await (await import('@/lib/internal-auth/web-session')).currentInternalIdentity();
@@ -65,6 +97,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
     } else if (operation === 'logout') {
       const bearer = /^Bearer (aihr_[A-Za-z0-9_-]{43})$/i.exec(request.headers.get('authorization') || '')?.[1];
       await revokeSession(native ? bearer : request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, native, native ? text(body, 'refresh_token', 80) : undefined);
+      await revokeEntraSession(native ? bearer : request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, native, native ? text(body, 'refresh_token', 80) : undefined);
       result = { step: 'signedOut' };
     } else return NextResponse.json({ error: 'unavailable' }, { status: 404, headers: responseHeaders });
     const reply: Record<string, unknown> = { ...result };
@@ -85,7 +118,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ op
   } catch (error) {
     if (error instanceof RequestBudgetExceeded) return NextResponse.json({ error: 'rateLimited' }, { status: 429,
       headers: { ...responseHeaders, 'retry-after': String(error.retryAfter) } });
-    const code = error instanceof InternalAuthError ? error.code : error instanceof AuthBusyError ? 'unavailable' : 'unavailable';
+    const code = error instanceof EntraError ? (error.code === 'forbidden' ? 'invalidLogin' : 'unavailable') : error instanceof InternalAuthError ? error.code : error instanceof AuthBusyError ? 'unavailable' : 'unavailable';
     if (!(error instanceof InternalAuthError) && !(error instanceof AuthBusyError)) console.error('Internal authentication operation unavailable.');
     const response = NextResponse.json({ error: code }, { status: code === 'rateLimited' ? 429 : code === 'unavailable' ? 503 : code === 'invalidLogin' ? 401 : 400,
       headers: { ...responseHeaders, ...(code === 'rateLimited' ? { 'retry-after': '900' } : {}) } });

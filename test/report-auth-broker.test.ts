@@ -25,7 +25,7 @@ const credential=(subject:string,email:string):Credential=>({subject,tenantId:te
 const relay={config:{host:'smtp.example.test',port:465,security:'tls' as const,from:'sender@example.test',fromName:'Fictional',replyTo:'',auth:true,user:'relay'},password:'synthetic-active-secret'};
 beforeEach(()=>{vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN',origin);vi.stubEnv('AUTH_SESSION_KEY','9'.repeat(64));});
 afterEach(()=>vi.unstubAllEnvs());
-function fixture(){
+function fixture(expiryEnabled=false){
  const context=structuredClone(baseContext),credentials=new Map<string,Credential>([[ownerSubject,credential(ownerSubject,'owner@example.test')],[recipientSubject,credential(recipientSubject,'recipient@example.test')]]),events:string[]=[];
  let revision='R'.repeat(43),active:StoredEmailRelay|null=relay,lockStatus='ready',startStatus='started',inTransaction=false,started=false,clock=now;
  const unsafe=vi.fn(async(statement:string,args:unknown[]=[])=>{
@@ -34,7 +34,12 @@ function fixture(){
   if(statement.includes('email_design_report'))return [{design:{document:null,kind:'employee_master_report',locale:'en'}}];
   if(statement.includes('internal_auth_report_lock_context'))return [{value:lockStatus==='ready'?{status:'ready',context}:{status:lockStatus}}];
   if(statement.includes('app.internal_auth_read')){
-   const key=String(args[0]);expect(args[1]).toBe(true);const value=key==='email-state'?{revision,active,drafts:{operator:{password:'draft-secret'}}}:credentials.get(key.slice('credential:'.length));
+   const key=String(args[0]);
+   if(key.startsWith('password-policy:')){
+    expect(key).toBe('password-policy:'+tenant);expect(args[1]).toBe(false);
+    return expiryEnabled?[{sealed:encryptRecord({policy:{enabled:true,interval:90,unit:'days'},revision:1},key,null)}]:[];
+   }
+   expect(args[1]).toBe(true);const value=key==='email-state'?{revision,active,drafts:{operator:{password:'draft-secret'}}}:credentials.get(key.slice('credential:'.length));
    return value===undefined?[]:[{sealed:encryptRecord(value,key,null)}];
   }
   if(statement.includes('app.principal_by_identity'))return [{app_user_id:args[1]===ownerSubject?owner:recipient,tenant_id:tenant}];
@@ -121,6 +126,11 @@ describe('inspection AEAD, role separation and committed one-attempt output',()=
  it.each([{enabled:false},{mustChange:true},{totpSecret:null},{emailVerified:false},{email:'another@example.test'},{tenantId:randomUUID()},{subject:randomUUID()},{issuer:origin+'/auth/'+randomUUID()}])('uses canonical recipient active and exact identity checks: %j',async patch=>{
   const f=fixture(),inspection=await inspected(f);Object.assign(f.credentials.get(recipientSubject)!,patch);
   expect(await executeReportBrokerRequest(request(inspection.inspectionProof),f.d)).toEqual({ok:false,reason:'notEligible'});expect(f.started).toBe(false);
+ });
+ it('refuses broker access when the tenant requires a password change',async()=>{
+  const f=fixture(true);
+  expect(await executeReportBrokerRequest({phase:'inspect',...nonce},f.d)).toEqual({ok:false,reason:'notEligible'});
+  expect(f.started).toBe(false);expect(f.events).toContain('ROLLBACK');
  });
  it('refuses a sender constraint mismatch before opening any final transaction',async()=>{
   const f=fixture(),inspection=await inspected(f);f.events.length=0;

@@ -220,14 +220,15 @@ export function NavFlyoutPanel({
       {/* Backdrop dismissal (language-switcher.tsx idiom). The rail is raised to z-50 by the
           sidebar while open, so its rows stay clickable above this z-40 layer. */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
+      {/* Phones replace the drawer with a viewport-bounded panel; wider screens keep the side flyout. */}
       <div
         id={panelId}
         aria-label={label}
-        className={layout === 'atelier' ? 'atelier-flyout z-50 flex min-h-0 flex-col overflow-hidden px-3 py-4' : 'absolute bottom-0 left-[calc(100%+0.75rem)] top-0 z-50 flex w-64 flex-col overflow-hidden rounded-[1.25rem] border border-border bg-sidebar px-3 py-4 shadow-[var(--shadow-card)] lg:left-[calc(100%+1rem)]'}
+        className={layout === 'atelier' ? 'atelier-flyout z-50 flex min-h-0 flex-col overflow-hidden px-3 py-4' : 'fixed inset-0 z-50 flex w-full flex-col overflow-hidden rounded-[1.25rem] sm:absolute sm:inset-auto sm:bottom-0 sm:left-[calc(100%+0.75rem)] sm:top-0 sm:w-64 border border-border bg-sidebar px-3 py-4 shadow-[var(--shadow-card)] lg:left-[calc(100%+1rem)]'}
       >
-        <div className={layout === 'atelier' ? 'mb-2 flex items-center justify-between gap-2 px-2 text-sm font-semibold' : 'px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80'}>
+        <div className={layout === 'atelier' ? 'mb-2 flex items-center justify-between gap-2 px-2 text-sm font-semibold' : 'flex items-center justify-between gap-2 px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80'}>
           <span>{label}</span>
-          {layout === 'atelier' && <button type="button" onClick={onEscape} aria-label={common('close')} className="inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent"><X aria-hidden className="size-4"/></button>}
+          <button type="button" onClick={onEscape} aria-label={common('close')} className={layout === 'atelier' ? 'inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent' : 'inline-flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-accent sm:hidden'}><X aria-hidden className="size-4"/></button>
         </div>
         <nav aria-label={label} className="flex flex-1 flex-col gap-1 overflow-y-auto">
           {(() => { const renderChild = (child: FlyoutChild, i: number) => {

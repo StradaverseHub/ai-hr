@@ -51,7 +51,7 @@ export async function bootstrapInternalOwner(db: Sql, input: {
     if (enrolled.length) throw new Error('This HR administrator already has an internal identity. Bootstrap never replaces it.');
     const subject = randomUUID();
     const c: Credential = { subject, tenantId: user.tenant_id, issuer, organization: code, username, email, emailVerified: true,
-      enabled: true, password: hash, mustChange: true, version: randomUUID(), totpSecret: null, lastStep: -1, recoveryHashes: [] };
+      enabled: true, password: hash, passwordChangedAt: Date.now(), mustChange: true, version: randomUUID(), totpSecret: null, lastStep: -1, recoveryHashes: [] };
     const organization: Organization = { code, tenantId: user.tenant_id, name: user.name };
     await writeRecord(tx, orgKey, organization, null); await writeRecord(tx, tenantKey, organization, null);
     await writeRecord(tx, `credential:${subject}`, c, subject); await writeRecord(tx, indexKey, { subject }, subject);

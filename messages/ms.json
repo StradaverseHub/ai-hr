@@ -508,7 +508,8 @@
     "securityPermissions": "Keselamatan & Kebenaran",
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
-    "aiManagementInventory": "Inventori AI"
+    "aiManagementInventory": "Inventori AI",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -11214,7 +11215,8 @@
         "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya.",
         "securityCenter": "Tersedia kepada pentadbir atau individu dengan kebenaran mengkonfigurasi akses.",
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
-        "inviteUser": "Pentadbir seluruh kumpulan sahaja."
+        "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
+        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -26864,7 +26866,7 @@
       "invalidLogin": "Kod organisasi, nama pengguna atau kata laluan tidak betul, atau akaun tidak tersedia.",
       "invalidChallenge": "Persediaan atau pautan pemulihan ini telah tamat tempoh atau tidak sah. Mulakan semula.",
       "invalidCode": "Kod tidak betul, tamat tempoh atau telah digunakan. Cuba kod pengesah seterusnya atau kod pemulihan yang belum digunakan.",
-      "passwordPolicy": "Gunakan kata laluan lain sekurang-kurangnya 14 aksara tanpa nama pengguna atau e-mel.",
+      "passwordPolicy": "Gunakan kata laluan yang belum pernah digunakan, sekurang-kurangnya 14 aksara tanpa nama pengguna atau e-mel.",
       "passwordMismatch": "Kata laluan tidak sepadan.",
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebelum mencuba lagi.",
       "unavailable": "Log masuk atau pemulihan tidak tersedia buat sementara waktu. Cuba kemudian atau hubungi pentadbir.",
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "Log keluar dan buka jemputan",
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
-    "signingInHelp": "Membawa anda ke AIHR."
+    "signingInHelp": "Membawa anda ke AIHR.",
+    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan.",
+    "microsoft": "Teruskan dengan Microsoft",
+    "microsoftError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi."
   },
   "aiManagement": {
     "title": "Pengurusan AI",
@@ -33378,5 +33383,248 @@
     "noticeApplied": "Hasil ini menggunakan pembetulan asas cukai pendapatan yang direkodkan. PCB yang dibayar dan gaji yang telah dikeluarkan kekal tidak berubah.",
     "noticeReferences": "Rujukan pembetulan cukai pendapatan",
     "noticeView": "Lihat pembetulan cukai pendapatan"
+  },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "Adakah anda masih di sana?",
+    "warningBody": "Untuk keselamatan anda, anda akan dilog keluar dalam {seconds} saat kerana tidak aktif.",
+    "staySignedIn": "Kekal log masuk",
+    "signOutNow": "Log keluar sekarang",
+    "settingsTitle": "Log keluar automatik",
+    "settingsDescription": "Log keluar pengguna daripada aplikasi web apabila mereka tidak aktif selama tempoh ini. Mereka akan melihat amaran satu minit terlebih dahulu.",
+    "minutesLabel": "Log keluar selepas (minit tidak aktif)",
+    "minutesHelp": "Pilih antara {min} hingga {max} minit. Lalai ialah 15 minit. Sesi tetap tamat 8 jam selepas log masuk.",
+    "save": "Simpan log keluar automatik",
+    "saving": "Menyimpan…",
+    "notEnforced": "Pemasangan ini tidak menggunakan log masuk terbina dalam, jadi had ini belum digunakan.",
+    "result": {
+      "saved": "Log keluar automatik disimpan.",
+      "invalid": "Masukkan bilangan minit dalam julat yang dibenarkan.",
+      "conflict": "Orang lain telah mengubah tetapan ini. Muat semula halaman dan cuba lagi.",
+      "forbidden": "Hanya pentadbir kumpulan boleh mengubah log keluar automatik.",
+      "unavailable": "Log keluar automatik tidak dapat disimpan. Cuba lagi."
+    }
+  },
+  "runnerControl": {
+    "title": "Runner controls",
+    "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
+    "environment": "Environment",
+    "environmentName": {
+      "staging": "Staging",
+      "production": "Production"
+    },
+    "unavailable": "Unavailable",
+    "refresh": "Refresh status",
+    "checkedAt": "Checked at",
+    "controllerMissing": "Live scheduler status is unavailable. Do not interpret this as disabled. The installation operator must commission the controller.",
+    "scopeNote": "Changes apply to this installation. Customer administrators can inspect status; only installation operators can change it.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "held": "On hold",
+    "external": "Not managed here",
+    "configure": "Configure runner",
+    "editSchedule": "Change schedule",
+    "minutes": "Minutes between completed runs",
+    "time": "Run time (Malaysia time)",
+    "monthlyRule": "Runs on the first day of each month. The business date cannot be changed here.",
+    "yearlyRule": "Runs on 1 April, after carry-forward expiry. The business date cannot be changed here.",
+    "effectNote": "Enabling may process overdue work immediately. Disabling prevents future runs; a transaction already in progress is allowed to finish.",
+    "confirm": "I have reviewed this runner’s purpose and the data it may change.",
+    "save": "Save configuration",
+    "saving": "Saving…",
+    "saved": "Configuration saved. Refresh to check actual status.",
+    "saveFailed": "The configuration could not be confirmed. Refresh actual status before retrying, or contact the installation operator.",
+    "schedule": "Schedule",
+    "installedSchedule": "Installed schedule; next run shown alongside",
+    "lastRun": "Last completed run",
+    "nextRun": "Next scheduled run",
+    "noEvidence": "No scheduler evidence",
+    "results": "Results",
+    "holdNote": "This production runner is held by the installation policy. A separate owner decision is required to remove the hold.",
+    "health": {
+      "missing": "Not installed",
+      "running": "Running",
+      "failed": "Failed",
+      "unknown": "Not yet verified",
+      "success": "Last run succeeded",
+      "stale": "Last success is overdue",
+      "stopped": "Scheduler stopped"
+    },
+    "jobs": {
+      "provision": {
+        "name": "Customers and modules",
+        "description": "Processes approved customer provisioning and module changes.",
+        "results": "Operator customers"
+      },
+      "accrual": {
+        "name": "Earned leave accrual",
+        "description": "Adds earned leave to employee balances and records ledger entries.",
+        "results": "Leave balances"
+      },
+      "carry-expiry": {
+        "name": "Carry-forward leave expiry",
+        "description": "Forfeits unused carry-forward leave after the configured expiry.",
+        "results": "Leave entitlements"
+      },
+      "reviews": {
+        "name": "Reviews, movements and reminders",
+        "description": "Applies due employment movements, opens reviews and creates reminders and notifications.",
+        "results": "Run history below; employee records and reviews"
+      },
+      "notifications": {
+        "name": "Workflow notifications and email",
+        "description": "Projects workflow notices and sends eligible email. May also advance enabled lifecycle and letter automation.",
+        "results": "My notifications; Email delivery for email outcomes"
+      },
+      "anomalies": {
+        "name": "Payroll anomaly checks",
+        "description": "Records findings and verdicts for review. Does not change payroll amounts.",
+        "results": "Control Tower exceptions and payroll anomalies"
+      },
+      "child-relief": {
+        "name": "Child tax-relief refresh",
+        "description": "Updates calculated child-relief projections from family records; may affect future payroll tax.",
+        "results": "Employee statutory profile"
+      },
+      "usage": {
+        "name": "Usage capture",
+        "description": "Records installation usage snapshots. Missed historical snapshots cannot be fully reconstructed.",
+        "results": "Run history below; operator usage records"
+      },
+      "entitlement-alarm": {
+        "name": "Leave entitlement coverage",
+        "description": "Checks for missing or expired leave-entitlement coverage. Records a monitoring result.",
+        "results": "Run history below"
+      },
+      "ai-alerts": {
+        "name": "AI alerts",
+        "description": "Checks AI operational alert conditions and records monitoring results.",
+        "results": "AI administration and run history below"
+      },
+      "ai-retention": {
+        "name": "AI data retention",
+        "description": "Removes expired AI custody data according to retention policy. Deletions are permanent.",
+        "results": "Protected maintenance logs"
+      },
+      "bank-import": {
+        "name": "Bank and statutory imports",
+        "description": "Processes queued imports and writes the corresponding validated records.",
+        "results": "Import progress and history"
+      },
+      "replacement-holidays": {
+        "name": "Replacement holidays",
+        "description": "Reconciles queued calendar changes and replacement-holiday allocations.",
+        "results": "Replacement holidays and calendars"
+      },
+      "reports": {
+        "name": "Scheduled reports",
+        "description": "Generates and emails due reports when report delivery is commissioned.",
+        "results": "Employee Master report schedules"
+      },
+      "mobile-push": {
+        "name": "Mobile push delivery",
+        "description": "Sends eligible queued notifications through a configured push provider.",
+        "results": "Device notifications and delivery logs"
+      },
+      "auth-cleanup": {
+        "name": "Authentication cleanup",
+        "description": "Removes expired authentication sessions and challenges.",
+        "results": "Protected authentication maintenance logs"
+      },
+      "account-email-retention": {
+        "name": "Account-email retention",
+        "description": "Retires expired account-email content according to retention policy.",
+        "results": "Email delivery and protected maintenance logs"
+      },
+      "dunning": {
+        "name": "Customer payment standing",
+        "description": "Checks customer payment standing. Applying customer suspension requires separately approved configuration.",
+        "results": "Operator customers and maintenance logs"
+      },
+      "backups": {
+        "name": "Database backups",
+        "description": "Creates database backups to an approved destination when configured.",
+        "results": "Backup storage and protected backup logs"
+      }
+    }
+  },
+  "passwordPolicy": {
+    "title": "Keselamatan kata laluan",
+    "description": "Tetapkan pertukaran berkala untuk kata laluan HR. Urus kata laluan Microsoft dan Akses Bersyarat dalam Entra.",
+    "enabled": "Wajibkan penukaran kata laluan berkala",
+    "interval": "Tukar setiap",
+    "unit": "Unit",
+    "days": "Hari",
+    "months": "Bulan kalendar",
+    "limits": "Pilih 1–3,650 hari atau 1–120 bulan. Hujung bulan menggunakan hari sah terakhir.",
+    "reuse": "Pengguna tidak boleh menggunakan semula kata laluan yang direkodkan sejak sejarah kata laluan bermula. Ini juga terpakai kepada pemulihan, walaupun tamat tempoh dimatikan.",
+    "effect": "Simpanan terpakai kepada akaun dan sesi sedia ada. Pengguna dengan kata laluan tamat tempoh atau tanpa tarikh penukaran perlu log masuk, sahkan MFA dan pilih kata laluan baharu sebelum meneruskan.",
+    "save": "Simpan dasar kata laluan",
+    "saving": "Menyimpan…",
+    "result": {
+      "saved": "Dasar kata laluan disimpan.",
+      "invalid": "Masukkan nombor bulat dalam julat yang dibenarkan.",
+      "conflict": "Pentadbir lain mengubah dasar ini. Muat semula sebelum menyimpan.",
+      "forbidden": "Anda tiada kebenaran untuk mengubah dasar ini.",
+      "unavailable": "Tetapan kata laluan tidak tersedia. Cuba lagi."
+    }
   }
 }

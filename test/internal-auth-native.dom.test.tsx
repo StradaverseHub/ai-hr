@@ -11,6 +11,7 @@ function fixture(organization?: string) {
   let generation = 0;
   class Failure extends Error { constructor(public code: string) { super(code); } }
   const auth = { beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
+  const microsoft = vi.fn();
   const request = vi.fn(), probe = vi.fn(async () => {}), router = { replace: vi.fn(), push: vi.fn() }, mark = vi.fn(async () => {});
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
   const Text = ({ children, accessibilityRole }: React.PropsWithChildren<{accessibilityRole?:string}>) => accessibilityRole === 'header' ? <h1>{children}</h1> : <span role={accessibilityRole === 'alert' ? 'alert' : undefined}>{children}</span>;
@@ -21,6 +22,7 @@ function fixture(organization?: string) {
     react: React, 'react/jsx-runtime': jsx,
     'react-native': { Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
+    './entra-auth':{signInWithMicrosoft:microsoft},
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
     './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
     './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
@@ -29,7 +31,7 @@ function fixture(organization?: string) {
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/internal-sign-in.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
     {exports:output.exports,module:output,URL,require:(name:string)=>{if(!(name in ports))throw new Error(name);return ports[name];}});
-  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure };
+  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure,microsoft };
 }
 afterEach(cleanup);
 async function login(user: ReturnType<typeof userEvent.setup>) {
@@ -37,6 +39,14 @@ async function login(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(copy.en.password),'Temporary fixture password 771!'); await user.click(screen.getByRole('button',{name:copy.en.signIn}));
 }
 describe('native embedded sign-in — rendered shipped screen',()=>{
+  it('uses the signed workplace for Microsoft login and sends no local password request',async()=>{
+    const f=fixture('cloud-alpha'),user=userEvent.setup();f.microsoft.mockResolvedValue(true);
+    render(<f.View/>);await user.type(screen.getByLabelText(copy.en.password),'Local password stays private 771!');
+    await user.click(screen.getByRole('button',{name:copy.en.microsoft}));
+    await waitFor(()=>expect(f.router.replace).toHaveBeenCalledWith('/'));
+    expect(f.mark).toHaveBeenCalledWith(1);expect(f.microsoft).toHaveBeenCalledWith('cloud-alpha',1);expect(f.request).not.toHaveBeenCalled();expect(f.router.replace).toHaveBeenCalledWith('/');
+  });
+
   it.each(['cloud-alpha','cloud-beta','private-company'])('uses the signed workplace %s with only username/password entry before MFA',async organization=>{
     const f=fixture(organization),user=userEvent.setup();f.request.mockResolvedValueOnce({step:'mfa',challenge:'m'.repeat(43)});
     render(<f.View/>);expect(screen.queryByLabelText(copy.en.organization)).not.toBeInTheDocument();

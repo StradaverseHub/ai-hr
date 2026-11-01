@@ -508,7 +508,8 @@
     "securityPermissions": "Bảo mật và quyền",
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
-    "aiManagementInventory": "Danh mục AI"
+    "aiManagementInventory": "Danh mục AI",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -11214,7 +11215,8 @@
         "importHistory": "Liệt kê lần nhập khi bạn có quyền xem Nhân sự cho ít nhất một công ty trong đó, và chỉ hiển thị nhân viên của các công ty bạn được xem. Tệp gốc cần quyền xem mọi công ty trong tệp; Hoàn tác cần quyền duy trì Nhân sự cho mọi công ty trong tệp.",
         "securityCenter": "Dành cho quản trị viên hoặc người có quyền cấu hình truy cập.",
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
-        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm."
+        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
+        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -26864,7 +26866,7 @@
       "invalidLogin": "Mã tổ chức, tên đăng nhập hoặc mật khẩu không đúng, hoặc tài khoản không khả dụng.",
       "invalidChallenge": "Liên kết thiết lập hoặc khôi phục đã hết hạn hoặc không còn hợp lệ. Vui lòng bắt đầu lại.",
       "invalidCode": "Mã không đúng, hết hạn hoặc đã dùng. Thử mã xác thực tiếp theo hoặc mã khôi phục chưa dùng.",
-      "passwordPolicy": "Dùng mật khẩu khác có ít nhất 14 ký tự, không chứa tên đăng nhập hoặc email.",
+      "passwordPolicy": "Dùng mật khẩu chưa từng sử dụng, có ít nhất 14 ký tự, không chứa tên đăng nhập hoặc email.",
       "passwordMismatch": "Mật khẩu không khớp.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi rồi thử lại.",
       "unavailable": "Đăng nhập hoặc khôi phục tạm thời không khả dụng. Thử lại sau hoặc liên hệ quản trị viên.",
@@ -26876,7 +26878,10 @@
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
-    "signingInHelp": "Đang đưa bạn đến AIHR."
+    "signingInHelp": "Đang đưa bạn đến AIHR.",
+    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục.",
+    "microsoft": "Tiếp tục với Microsoft",
+    "microsoftError": "Không thể hoàn tất đăng nhập Microsoft. Hãy kiểm tra tổ chức và tài khoản đã liên kết, rồi thử lại."
   },
   "aiManagement": {
     "title": "Quản lý AI",
@@ -33378,5 +33383,248 @@
     "noticeApplied": "Kết quả này sử dụng các điều chỉnh cơ sở thuế thu nhập đã lưu. PCB thực tế đã nộp và bảng lương đã phát hành không thay đổi.",
     "noticeReferences": "Mã tham chiếu điều chỉnh thuế thu nhập",
     "noticeView": "Xem điều chỉnh thuế thu nhập"
+  },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "Bạn vẫn còn ở đó chứ?",
+    "warningBody": "Vì lý do bảo mật, bạn sẽ bị đăng xuất sau {seconds} giây do không hoạt động.",
+    "staySignedIn": "Tiếp tục đăng nhập",
+    "signOutNow": "Đăng xuất ngay",
+    "settingsTitle": "Tự động đăng xuất",
+    "settingsDescription": "Đăng xuất người dùng khỏi ứng dụng web khi họ không hoạt động trong khoảng thời gian này. Họ sẽ thấy cảnh báo trước một phút.",
+    "minutesLabel": "Đăng xuất sau (số phút không hoạt động)",
+    "minutesHelp": "Chọn từ {min} đến {max} phút. Mặc định là 15 phút. Phiên vẫn kết thúc 8 giờ sau khi đăng nhập.",
+    "save": "Lưu cài đặt tự động đăng xuất",
+    "saving": "Đang lưu…",
+    "notEnforced": "Bản cài đặt này không dùng đăng nhập tích hợp nên giới hạn này chưa được áp dụng.",
+    "result": {
+      "saved": "Đã lưu cài đặt tự động đăng xuất.",
+      "invalid": "Nhập số phút nguyên trong phạm vi cho phép.",
+      "conflict": "Người khác đã thay đổi cài đặt này. Hãy tải lại trang và thử lại.",
+      "forbidden": "Chỉ quản trị viên nhóm mới có thể thay đổi cài đặt tự động đăng xuất.",
+      "unavailable": "Không thể lưu cài đặt tự động đăng xuất. Hãy thử lại."
+    }
+  },
+  "runnerControl": {
+    "title": "Runner controls",
+    "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
+    "environment": "Environment",
+    "environmentName": {
+      "staging": "Staging",
+      "production": "Production"
+    },
+    "unavailable": "Unavailable",
+    "refresh": "Refresh status",
+    "checkedAt": "Checked at",
+    "controllerMissing": "Live scheduler status is unavailable. Do not interpret this as disabled. The installation operator must commission the controller.",
+    "scopeNote": "Changes apply to this installation. Customer administrators can inspect status; only installation operators can change it.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "held": "On hold",
+    "external": "Not managed here",
+    "configure": "Configure runner",
+    "editSchedule": "Change schedule",
+    "minutes": "Minutes between completed runs",
+    "time": "Run time (Malaysia time)",
+    "monthlyRule": "Runs on the first day of each month. The business date cannot be changed here.",
+    "yearlyRule": "Runs on 1 April, after carry-forward expiry. The business date cannot be changed here.",
+    "effectNote": "Enabling may process overdue work immediately. Disabling prevents future runs; a transaction already in progress is allowed to finish.",
+    "confirm": "I have reviewed this runner’s purpose and the data it may change.",
+    "save": "Save configuration",
+    "saving": "Saving…",
+    "saved": "Configuration saved. Refresh to check actual status.",
+    "saveFailed": "The configuration could not be confirmed. Refresh actual status before retrying, or contact the installation operator.",
+    "schedule": "Schedule",
+    "installedSchedule": "Installed schedule; next run shown alongside",
+    "lastRun": "Last completed run",
+    "nextRun": "Next scheduled run",
+    "noEvidence": "No scheduler evidence",
+    "results": "Results",
+    "holdNote": "This production runner is held by the installation policy. A separate owner decision is required to remove the hold.",
+    "health": {
+      "missing": "Not installed",
+      "running": "Running",
+      "failed": "Failed",
+      "unknown": "Not yet verified",
+      "success": "Last run succeeded",
+      "stale": "Last success is overdue",
+      "stopped": "Scheduler stopped"
+    },
+    "jobs": {
+      "provision": {
+        "name": "Customers and modules",
+        "description": "Processes approved customer provisioning and module changes.",
+        "results": "Operator customers"
+      },
+      "accrual": {
+        "name": "Earned leave accrual",
+        "description": "Adds earned leave to employee balances and records ledger entries.",
+        "results": "Leave balances"
+      },
+      "carry-expiry": {
+        "name": "Carry-forward leave expiry",
+        "description": "Forfeits unused carry-forward leave after the configured expiry.",
+        "results": "Leave entitlements"
+      },
+      "reviews": {
+        "name": "Reviews, movements and reminders",
+        "description": "Applies due employment movements, opens reviews and creates reminders and notifications.",
+        "results": "Run history below; employee records and reviews"
+      },
+      "notifications": {
+        "name": "Workflow notifications and email",
+        "description": "Projects workflow notices and sends eligible email. May also advance enabled lifecycle and letter automation.",
+        "results": "My notifications; Email delivery for email outcomes"
+      },
+      "anomalies": {
+        "name": "Payroll anomaly checks",
+        "description": "Records findings and verdicts for review. Does not change payroll amounts.",
+        "results": "Control Tower exceptions and payroll anomalies"
+      },
+      "child-relief": {
+        "name": "Child tax-relief refresh",
+        "description": "Updates calculated child-relief projections from family records; may affect future payroll tax.",
+        "results": "Employee statutory profile"
+      },
+      "usage": {
+        "name": "Usage capture",
+        "description": "Records installation usage snapshots. Missed historical snapshots cannot be fully reconstructed.",
+        "results": "Run history below; operator usage records"
+      },
+      "entitlement-alarm": {
+        "name": "Leave entitlement coverage",
+        "description": "Checks for missing or expired leave-entitlement coverage. Records a monitoring result.",
+        "results": "Run history below"
+      },
+      "ai-alerts": {
+        "name": "AI alerts",
+        "description": "Checks AI operational alert conditions and records monitoring results.",
+        "results": "AI administration and run history below"
+      },
+      "ai-retention": {
+        "name": "AI data retention",
+        "description": "Removes expired AI custody data according to retention policy. Deletions are permanent.",
+        "results": "Protected maintenance logs"
+      },
+      "bank-import": {
+        "name": "Bank and statutory imports",
+        "description": "Processes queued imports and writes the corresponding validated records.",
+        "results": "Import progress and history"
+      },
+      "replacement-holidays": {
+        "name": "Replacement holidays",
+        "description": "Reconciles queued calendar changes and replacement-holiday allocations.",
+        "results": "Replacement holidays and calendars"
+      },
+      "reports": {
+        "name": "Scheduled reports",
+        "description": "Generates and emails due reports when report delivery is commissioned.",
+        "results": "Employee Master report schedules"
+      },
+      "mobile-push": {
+        "name": "Mobile push delivery",
+        "description": "Sends eligible queued notifications through a configured push provider.",
+        "results": "Device notifications and delivery logs"
+      },
+      "auth-cleanup": {
+        "name": "Authentication cleanup",
+        "description": "Removes expired authentication sessions and challenges.",
+        "results": "Protected authentication maintenance logs"
+      },
+      "account-email-retention": {
+        "name": "Account-email retention",
+        "description": "Retires expired account-email content according to retention policy.",
+        "results": "Email delivery and protected maintenance logs"
+      },
+      "dunning": {
+        "name": "Customer payment standing",
+        "description": "Checks customer payment standing. Applying customer suspension requires separately approved configuration.",
+        "results": "Operator customers and maintenance logs"
+      },
+      "backups": {
+        "name": "Database backups",
+        "description": "Creates database backups to an approved destination when configured.",
+        "results": "Backup storage and protected backup logs"
+      }
+    }
+  },
+  "passwordPolicy": {
+    "title": "Bảo mật mật khẩu",
+    "description": "Thiết lập đổi mật khẩu HR định kỳ. Quản lý mật khẩu Microsoft và Truy nhập có điều kiện trong Entra.",
+    "enabled": "Yêu cầu đổi mật khẩu định kỳ",
+    "interval": "Đổi sau mỗi",
+    "unit": "Đơn vị",
+    "days": "Ngày",
+    "months": "Tháng theo lịch",
+    "limits": "Chọn 1–3.650 ngày hoặc 1–120 tháng. Cuối tháng dùng ngày hợp lệ cuối cùng.",
+    "reuse": "Người dùng không thể dùng lại mật khẩu đã được ghi nhận kể từ khi bắt đầu lưu lịch sử. Quy tắc cũng áp dụng khi khôi phục, ngay cả khi tắt hết hạn.",
+    "effect": "Lưu sẽ áp dụng cho tài khoản và phiên hiện có. Người dùng có mật khẩu hết hạn hoặc chưa ghi nhận ngày đổi phải đăng nhập, xác minh MFA và chọn mật khẩu mới để tiếp tục.",
+    "save": "Lưu chính sách mật khẩu",
+    "saving": "Đang lưu…",
+    "result": {
+      "saved": "Đã lưu chính sách mật khẩu.",
+      "invalid": "Nhập số nguyên trong phạm vi cho phép.",
+      "conflict": "Quản trị viên khác đã đổi chính sách. Tải lại trước khi lưu.",
+      "forbidden": "Bạn không có quyền thay đổi chính sách này.",
+      "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
+    }
   }
 }

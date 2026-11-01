@@ -1,0 +1,21 @@
+[
+ {"id":"provision","unit":"aihr-provisioner","frequency":"interval","defaultMinutes":1,"impact":"configuration","destination":"/operator"},
+ {"id":"accrual","unit":"aihr-accrue-earned","frequency":"monthly","impact":"hr","destination":"/leave/employee-balances"},
+ {"id":"carry-expiry","unit":"aihr-expire-carry","frequency":"yearly","impact":"hr","destination":"/admin/leave/entitlements"},
+ {"id":"reviews","unit":"aihr-review-sweep","frequency":"daily","impact":"hr","destination":"/admin/scheduled-actions"},
+ {"id":"notifications","unit":"aihr-notification-email","frequency":"interval","defaultMinutes":1,"impact":"messages","destination":"/me/notifications"},
+ {"id":"anomalies","unit":"aihr-anomaly-sweep","frequency":"daily","impact":"findings","destination":"/control-tower/exceptions"},
+ {"id":"child-relief","unit":"aihr-child-relief","frequency":"daily","impact":"hr","destination":"/admin/personnel"},
+ {"id":"usage","unit":"aihr-usage-capture","frequency":"daily","impact":"metering","destination":"/admin/scheduled-actions"},
+ {"id":"entitlement-alarm","unit":"aihr-entitlement-alarm","frequency":"daily","impact":"monitoring","destination":"/admin/scheduled-actions"},
+ {"id":"ai-alerts","unit":"aihr-ai-alerts","frequency":"interval","defaultMinutes":60,"impact":"monitoring","destination":"/admin/ai"},
+ {"id":"ai-retention","unit":"aihr-ai-retention","frequency":"interval","defaultMinutes":5,"impact":"deletion","destination":null},
+ {"id":"bank-import","unit":"aihr-bank-import","frequency":"continuous","impact":"hr","destination":null},
+ {"id":"replacement-holidays","unit":"aihr-replacement-holidays","frequency":"interval","defaultMinutes":1,"impact":"hr","destination":"/admin/holidays/replacements"},
+ {"id":"reports","unit":"aihr-report-dispatch","frequency":"interval","defaultMinutes":1,"impact":"messages","destination":"/reports/employee-master"},
+ {"id":"mobile-push","unit":"aihr-mobile-push","frequency":"interval","defaultMinutes":1,"impact":"messages","destination":null},
+ {"id":"auth-cleanup","unit":"aihr-auth-prune","frequency":"daily","impact":"deletion","destination":null},
+ {"id":"account-email-retention","unit":"aihr-account-email-retention","frequency":"interval","defaultMinutes":60,"impact":"deletion","destination":"/admin/settings/email"},
+ {"id":"dunning","unit":"aihr-apply-dunning","frequency":"daily","impact":"configuration","destination":"/operator"},
+ {"id":"backups","unit":"aihr-db-backup","frequency":"daily","impact":"backup","destination":null}
+]

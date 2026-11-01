@@ -27,6 +27,9 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
+import { SessionLifecycle } from '@/components/session-lifecycle';
+import { internalSelected } from '@/lib/internal-auth/config';
+import { idleTimeoutMinutesFor } from '@/lib/session-policy-server';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
@@ -141,13 +144,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
   }
+  // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
+  const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
   if (isOperator(session) && !isDemoDeployment()) {
-    if (pathname !== '/operator' && !pathname.startsWith('/operator/')) redirect('/operator');
+    if (pathname !== '/operator' && !pathname.startsWith('/operator/') && pathname !== '/admin/scheduled-actions') redirect('/operator');
     const viewer = await viewerIdentity(session);
     return <html lang={locale} data-ui-theme={uiTheme} className={`${fontVariables} h-full antialiased`} suppressHydrationWarning>
       <body className="h-dvh overflow-hidden font-sans">
         <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
+          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
         </UiThemeProvider></Providers></NextIntlClientProvider>
@@ -374,7 +380,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   Dashboard" covered "Log out" (reported: "can't log out or change company after new theme").
                   Raising the header's own context above <main> puts its menus back on top.
                   test/r416-monolith-header-menus.browser.test.tsx measures it in Chromium. */}
-              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv monolith:relative monolith:z-30" data-app-header>
+              {/* Narrow Monolith uses separate context/action rows so the company and notification count stay reachable. */}
+              <header className="grid h-16 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,max-content)] items-center gap-4 rounded-[1.25rem] border border-border bg-card px-4 shadow-[var(--shadow-card)] sm:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,max-content)] md:grid-cols-[minmax(0,1fr)_minmax(0,min(20rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,min(28rem,max(0px,100%_-_27.75rem)))_minmax(0,1fr)] monolith:flex monolith:h-auto monolith:min-h-9 monolith:gap-[22px] monolith:max-lg:flex-col monolith:max-lg:items-stretch monolith:max-lg:gap-2 monolith:rounded-none monolith:border-0 monolith:bg-transparent monolith:px-0 monolith:shadow-none monolith-rv monolith:relative monolith:z-30" data-app-header>
                 {/* Left cluster = WHERE you are working. The CompanySwitcher MOVED here from the right
                     cluster (r256): this track is a full 1fr — 243px at 1280, 563px at 1920 — carrying
                     one static group label, while the switcher was being crushed to 27px on the right
@@ -485,6 +492,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <ToastFromQuery />
           </Suspense>
           <Toaster />
+          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
         </UiThemeProvider>
         </Providers>
         </NextIntlClientProvider>
