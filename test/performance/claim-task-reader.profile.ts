@@ -11,7 +11,7 @@ import {createClaimType,pendingClaimTaskSummary} from '../../packs/claims/servic
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('checks the actual counted Claims application summary over one million records and500subjects',async()=>{
- await resetDb();const b=await seedBase();await setModule(b.tenantId,'claims','active');const base=adminCtx(b);
+ await resetDb();await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');await owner.client`select pg_stat_statements_reset()`;const b=await seedBase();await setModule(b.tenantId,'claims','active');const base=adminCtx(b);
  const type=await createClaimType(base,{code:'PERF_META',name:'Fictional paired metadata',requiresReceipt:false,defaultTaxable:false});
  const users=Array.from({length:503},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),role:i===0?'hr_admin' as const:i===1||i===502?'manager' as const:'employee' as const}));
  await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional metadata subject '+i,primaryEmail:u.id+'@example.invalid'})));
@@ -26,14 +26,13 @@ it('checks the actual counted Claims application summary over one million record
  await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:users[502].employmentId,subordinateEmploymentId:users[1].employmentId,lineType:'delegate',validFrom:'2020-01-01'});
  await owner.db.insert(s.claimRequest).values({tenantId:b.tenantId,employmentId:users[2].employmentId,claimTypeId:type.id,amount:'1',incurredOn:'2026-01-01',status:'draft'});
  const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.role==='hr_admin'?null:b.companyId}]});
- const context=(u:typeof users[number]):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:u.role==='hr_admin'?null:b.companyId}]});
  const results=[];
  for(const u of [...users.slice(0,3),users[502]]){
   const actor=u===users[502]?'delegate':u.role,ctx=context(u);
   await owner.client`select pg_stat_statements_reset()`;
   const start=performance.now(),actual=await pendingClaimTaskSummary(ctx,undefined,25),serviceMs=performance.now()-start;
   expect(actual.total).toBe(actor==='hr_admin'?1000000:actor==='employee'?0:200000);
-  const serviceStatements=await owner.client`select queryid::text,calls,total_exec_time,rows,left(query,1800) as query from pg_stat_statements where query not ilike '%pg_stat_statements%' order by total_exec_time desc limit 8`;
+  const serviceStatements=await owner.client`select queryid::text,calls,total_exec_time,rows,left(query,1800) as query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and query not ilike '%pg_stat_%' order by total_exec_time desc limit 8`;
   const allowed=(actor==='hr_admin'?users.slice(2,502):actor==='employee'?[]:users.slice(2,102)).map(row=>row.employmentId);
   const timings=[];
   if(allowed.length)await withClaimsTenant(ctx,async tx=>{
