@@ -86,8 +86,11 @@ period length the payroll scope already carries (`calendarDays`). FixedAllowance
 `payItemFeedsOvertimeOrp`), the same all-rows-of-a-code group rule and the same stored amounts. Members
 are rule-free or fixed, so the reader cannot join a cycle. A reader's dependency snapshot adds the
 membership policy: each row's overtime-rate tick box and kind, evaluated without its rule. Changing a
-tick box therefore requires a retest, but linking the reader's own Pay Item does not. Formulas that do
-not read the new names keep their previous snapshot.
+tick box or marking a member non-payable therefore requires a retest, but linking the reader's own Pay
+Item does not. Because the rule is left out, a ticked fixed member later changed to a rule-driven item
+leaves the snapshot unchanged; run time still excludes it, exactly as the legacy aggregate does. Formulas
+that do not read the new names keep their previous snapshot. A constant zero divisor is refused only when
+the saved formula text is new or changed, so re-saving an existing revision's unchanged text is allowed.
 
 `PAY_FORMULA_REGISTRY_VERSION` and `PAY_FORMULA_EVALUATOR_VERSION` are not bumped. Active revisions
 are loaded only when their stored versions equal the current ones, and the provider version is part

@@ -78,6 +78,12 @@ describe('CalendarDays and FixedAllowances in the employee test and the payroll 
   await upsertPayComponent(ctx,{code:'FX_MEAL',name:'Fictional meal',label:'Fictional meal',kind:'allowance',...flags,orpOvertime:true,rule:null});
   await expect(testPayFormula(ctx,{...saved,context})).rejects.toThrow(/Dependencies changed/);
  });
+ it('marking a fixed-allowance member non-payable invalidates the saved test snapshot for a reader',async()=>{
+  await upsertPayComponent(ctx,{code:'FX_HOUSE',name:'Fictional housing',label:'Fictional housing',kind:'allowance',...flags,orpOvertime:true,rule:null});
+  const saved=await savePayFormula(ctx,{formulaId:'FIXED_NONPAY',description:'Fictional non-payable reader',method:'write',source:'Return {#FixedAllowances}'});
+  await upsertPayComponent(ctx,{code:'FX_HOUSE',name:'Fictional housing',label:'Fictional housing',kind:'allowance',...flags,isNonPayable:true,orpOvertime:true,rule:null});
+  await expect(testPayFormula(ctx,{...saved,context})).rejects.toThrow(/Dependencies changed/);
+ });
  it('refuses to save a plain zero divisor but keeps a possibly-zero input as a warning only',async()=>{
   await expect(savePayFormula(ctx,{formulaId:'ZERO',description:'Plain zero',method:'write',source:'Return {#Basic} / 0'})).rejects.toThrow(/Division by zero/);
   await expect(savePayFormula(ctx,{formulaId:'INPUT_DIV',description:'Input divisor',method:'write',source:'Return {#Basic} / {#Input}'})).resolves.toMatchObject({id:expect.any(String)});
