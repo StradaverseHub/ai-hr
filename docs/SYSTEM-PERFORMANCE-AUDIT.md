@@ -1,3 +1,57 @@
+## Current recovery and profiling checkpoint — 1 November,22:57 MYT
+
+The500-user speed target remains **0/2 accepted**. No deployment is authorized.
+Repaired full workloads on immutablea8a09667f both finished FAIL at the original600s
+HTTP budget:41313830506(1s),41313833575(5s). Last incomplete snapshots were
+148complete/318failed/34active and144/1/355 respectively. Partial response p95s
+were66.63s/88.98s(read/write) and41.82s/73.42s. These incomplete samples do not
+establish final throughput, functional accounting, loaded-browser or audit acceptance.
+Personnel lock timeouts persist under overload; no new deadlock was captured.
+
+The frozen complete CI41314691362 on d17a977f6 finished63passing/7failing test
+units; build, whole compiler, migrations and Chromium/Firefox/WebKit passed. Its
+owned-branch controller means this is **development evidence only**, not authenticated
+release admission. All chunks finished before repair. Retain original failures.
+A later exact-source release witness must use the published main/alpha controller;
+controller provenance and the owner-approved new UI/test inventory are concrete
+coverage/identity invalidations, not a reason to rerun every gate after ordinary failures.
+
+Failed/affected recovery preserves original assertions of observable behavior while
+updating old source/async-server fixtures. Hosted3fb02ab2b supplied85 passing model/DOM
+cases but exposed a test-only quote syntax error and old worker-fixture fingerprints.
+The quote was corrected: whole compiler PASS on c9c2f14a9 in41317411126. The final
+reviewed fixture pin96600d0e4 passes48native cases in41318258706, including executing
+the byte-identical968354c00 immutable worker for real admission, confirmed writes,
+tenant denial and process replay. Mistyped selection41317959591 refused before any
+case and is retained separately; it supplies no verification evidence.
+
+The owner explicitly selected page-only bulk selection with clear labeling. Source
+e188aba64 passes48selected cases in41317079408(39unit/DOM,9native): exact displayed
+IDs, page changes discarding old selections, section isolation and required rejection
+reasons. Its compiler failed only the inherited quote repair subsequently fixed above.
+Six catalog labels and one Claims scope hint implement that decision. The owner then
+approved the reviewed24-binding-only source refresh for closure1841f158f; source
+5f55b824e changes no other approval fields or pending contracts. Hosted positive/refusal
+run41318465411 is pending. See the exact supplemental source review.
+
+A reversible one-million-row covering-index experiment41315944674 passed exact output
+checks but gained negligibly while adding86,269,952bytes. **Do not promote that index.**
+Actual summary attribution41315124780 finds seconds in preview/count SQL; the separate
+delegated-principal experiment41317613296 exposed approximately41s summaries before
+its unchanged300s comparison budget expired. No permission-policy improvement is yet
+established. Reduced-repetition paired probe41318339148 is pending; application SQL
+is unchanged. Candidate and restored policies retain native tenant/company/self/draft
+checks; a successful prototype would still need independent command/privacy qualification.
+
+Real Node process probe41317908246 PASS demonstrates that signal-only termination
+loses CPU profiles, controlled exit retains actual hot-loop samples, and non-hosted
+use refuses. The load harness repairf362b04ff adds only opt-in hosted shutdown capture
+and explicit profile accounting; unchanged request/HTTP budgets, CPU sampling flags,
+app pool/heap and data size. Actual500-user1s/30s diagnostic41318363060 is pending.
+That shortened diagnostic does not replace either required five-minute activity test.
+
+---
+
 # System performance and capacity review
 
 ## Outcome and limits
