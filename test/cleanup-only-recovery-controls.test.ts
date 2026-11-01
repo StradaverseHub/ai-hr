@@ -1,25 +1,26 @@
 /** Controller-only: fictional ports, no application/DB/provider imports or live operations. */
 import {describe,it,expect} from 'vitest';
-import {SELECTION,ORIGIN,digest,historicalInstallMetadata,issueCleanupCertificate,validateCleanupCertificate,validateCleanupFences,validateCleanupReady,createCleanupCommit,validateCleanupCommit,validateReauthentication} from '../.github/ci/cleanup-only-recovery-policy.mjs';
+import {SELECTION,ORIGIN,digest,historicalInstallMetadata,issueCleanupCertificate,validateCleanupCertificate,validateCleanupFences,validateCleanupReady,createCleanupCommit,validateCleanupCommit,validateReauthentication,validateCustodyBinding,validateStaleLockBinding} from '../.github/ci/cleanup-only-recovery-policy.mjs';
 import {runCleanupOnlySession} from '../.github/ci/cleanup-only-recovery-session.mjs';
 import {validateInstallGrant,installHash,installJson} from '../.github/ci/ci-install-grant.mjs';
-const H='a'.repeat(64),CONTROLLER='b'.repeat(40),TOOL='c'.repeat(64),T=Date.parse('2026-10-31T11:00:00Z');
+const H='a'.repeat(64),CONTROLLER='b'.repeat(40),TOOL='c'.repeat(64),T=Date.parse('2026-11-01T05:00:00Z');
 function fixture(){
  let clock=T;const events:string[]=[];let ready:any,consumed=false;
  const names=['authorization.json','store.json','verified.json','activated.json','audit/system-testing.json','audit/successful-build.json','audit/build-provenance.json','audit/bytes/build-bundle-files.json'];
  const state:any={source:SELECTION.source,installId:SELECTION.installId,authorizationSha256:SELECTION.authorizationSha256,lease:{batch:SELECTION.batch,epoch:String(SELECTION.epoch)},pid:'123',started:'1000',boot:H,environment:H,active:{device:1,inode:1},retained:{device:1,inode:2},packet:{device:1,inode:3},directory:{device:1,inode:4},sourceMetadata:H,compiledMetadata:H,records:names.map(name=>[name,H,['1','2','3','4','1','8','7','8']]),ledger:{format:1,kind:'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE',rows:636,expectedSha256:H,actualSha256:H,releaseAuthorized:false}};
  const runtime:any={source:SELECTION.source,installId:SELECTION.installId,buildRecordId:SELECTION.buildRecordId,nextBuildId:SELECTION.nextBuildId,pid:'123',healthStatus:200,fullMigrationLedgerVerified:true,migrationLedger:state.ledger};
  const reauthentication={...ORIGIN,source:SELECTION.source,alpha:SELECTION.source,main:SELECTION.source,metadataSha256:H,verifiedAt:new Date(clock).toISOString()};
- const certificate=issueCleanupCertificate({controller:CONTROLLER,toolSha256:TOOL,humanEvidenceSha256:H,reauthentication,fences:state,runtime,certificateId:'d'.repeat(64),now:clock});
+ const custody={source:SELECTION.source,installId:SELECTION.installId,batch:SELECTION.batch,epoch:13,pid:999,bootSha256:H,originalStartTicks:null,lock:{device:1,inode:9,bytes:100,sha256:H},ready:{device:1,inode:10,bytes:200,sha256:H}};
+ const certificate=issueCleanupCertificate({reconciliationSha256:H,custody,controller:CONTROLLER,toolSha256:TOOL,humanEvidenceSha256:H,reauthentication,fences:state,runtime,certificateId:'d'.repeat(64),now:clock});
  const context=()=>({controller:CONTROLLER,toolSha256:TOOL,now:clock});
  const options:any={certificate,controller:CONTROLLER,toolSha256:TOOL,now:()=>clock,nonce:()=> 'e'.repeat(64),retainAudit:async()=>events.push('audit-retained'),fences:async()=>structuredClone(state),audit:async()=>{events.push('full-audit');return structuredClone(runtime);},persist:async(name:string)=>events.push(name),authorize:async()=>events.push('authority'),consume:async()=>{expect(consumed).toBe(false);consumed=true;events.push('consumed');},removeOwned:async()=>{events.push('engine');return{kind:'OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED',authorizationSha256:SELECTION.authorizationSha256,installId:SELECTION.installId,nextBuildId:SELECTION.nextBuildId,verifiedAbsent:['next','packet'],auditEvidenceRetained:true};},io:{ready:async(value:any)=>{ready=value;events.push('READY');},commit:async()=>createCleanupCommit(ready,certificate,{output:'',checkedAt:new Date(clock).toISOString()},context())}};
- return{certificate,state,runtime,reauthentication,events,options,context,advance:(ms:number)=>clock+=ms,getReady:()=>ready};
+ return{certificate,custody,state,runtime,reauthentication,events,options,context,advance:(ms:number)=>clock+=ms,getReady:()=>ready};
 }
 describe('fresh cleanup-only authority is distinct from historical installation metadata',()=>{
  it('retains the original byte-exact canonical hashing contract without bundling application helpers',()=>{for(const value of [{z:[1,{b:true,a:null}],a:'string'},[],{source:SELECTION.source}])expect(digest(value)).toBe(installHash(installJson(value)));});
  it('issues exactly fifteen-minute purpose-only authority and never an install grant',()=>{const f=fixture();expect(Date.parse(f.certificate.expiresAt)-Date.parse(f.certificate.issuedAt)).toBe(900000);expect(f.certificate.purpose).toBe('remove-owned-retained-next-and-consumed-packet-only');expect(()=>validateInstallGrant(f.certificate,{now:T})).toThrow();});
  it('does not accept fabricated historical bytes as permission or metadata',()=>{expect(()=>historicalInstallMetadata(Buffer.from('{}'),{now:T})).toThrow();expect(()=>historicalInstallMetadata(Buffer.from(JSON.stringify(fixture().certificate)),{now:T})).toThrow();});
- for(const field of ['kind','policy','purpose','selection','controller','toolSha256','humanEvidenceSha256','fencesSha256','runtimeSha256','certificateId'])it('rejects altered certificate '+field,()=>{const f=fixture(),c=structuredClone(f.certificate) as any;c[field]=field==='selection'?{...c.selection,epoch:11}:'wrong';expect(()=>validateCleanupCertificate(c,f.context())).toThrow();});
+ for(const field of ['kind','policy','purpose','selection','controller','toolSha256','humanEvidenceSha256','fencesSha256','runtimeSha256','reconciliationSha256','custodySha256','certificateId'])it('rejects altered certificate '+field,()=>{const f=fixture(),c=structuredClone(f.certificate) as any;c[field]=field==='selection'?{...c.selection,epoch:12}:'wrong';expect(()=>validateCleanupCertificate(c,f.context())).toThrow();});
  for(const field of ['install','restart','sourceWrite','roleChange','databaseWrite','production'])it('rejects added authority '+field,()=>{const f=fixture();expect(()=>validateCleanupCertificate({...f.certificate,[field]:true},f.context())).toThrow();});
  it('rejects missing/expired/future/extended certificate and issuer reauthentication age',()=>{const f=fixture();for(const c of [{...f.certificate,expiresAt:new Date(T).toISOString()},{...f.certificate,issuedAt:new Date(T+1).toISOString()},{...f.certificate,expiresAt:new Date(T+900001).toISOString()}])expect(()=>validateCleanupCertificate(c,f.context())).toThrow();expect(()=>validateReauthentication({...f.reauthentication,verifiedAt:new Date(T-120001).toISOString()},{now:T,issuing:true})).toThrow();});
  for(const field of ['source','alpha','main','runId','controller','artifactId','artifactDigest','witnessFingerprint','metadataSha256'])it('rejects foreign or unbound reauthentication '+field,()=>{const f=fixture();expect(()=>validateReauthentication({...f.reauthentication,[field]:'wrong'},{now:T,issuing:true})).toThrow();});
@@ -82,4 +83,31 @@ for(const [moduleName,boundary]of [['server','finishCleanupServerCli'],['operato
    expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status).toBe(1);expect(child.stdout).toBe('');expect(child.stderr).toBe('Cleanup-only recovery refused; preserve all records and lease; reconcile before any retry.\n');expect(child.stderr).not.toContain('private operation detail');expect(readFileSync(marker,'utf8')).toBe('awaited-finally');
   }finally{rmSync(root,{recursive:true,force:true});}
  });
+});
+
+// Every existing session/timing/refusal case above remains mandatory.
+describe('V9 exact dead-lock custody authority',()=>{
+ it('rejects the old sidebar selection and epoch12 without broadening the accepted source',()=>{const f=fixture();expect(SELECTION.epoch).toBe(13);expect(ORIGIN.runId).toBe(41225772492);for(const change of [{source:'194e140e0f714bc9cf4820acdf8c4451da11988c'},{epoch:12},{pid:0},{originalStartTicks:'invented'}])expect(()=>validateStaleLockBinding({...f.custody,...change})).toThrow();});
+ it('binds exact old lock, READY and full reconciliation bytes to a distinct certificate',()=>{const f=fixture(),raw=Buffer.from(JSON.stringify({staleLock:f.custody,interruptionSha256:H})),reconciled=JSON.parse(raw.toString()),certificate={...f.certificate,reconciliationSha256:digest(raw)};expect(validateCustodyBinding(certificate,reconciled,raw,f.context())).toEqual(f.custody);for(const change of [{...reconciled,staleLock:{...f.custody,pid:1000}},{...reconciled,staleLock:{...f.custody,ready:{...f.custody.ready,sha256:'e'.repeat(64)}}}])expect(()=>validateCustodyBinding(certificate,change,raw,f.context())).toThrow();expect(()=>validateCustodyBinding(certificate,reconciled,Buffer.concat([raw,Buffer.from(' ')]),f.context())).toThrow();});
+ it('runs actual isolated Python custody filesystem and kernel-lock controls on the hosted runner',()=>{
+  const script=new URL('./cleanup-only-recovery-custody-controls.py',import.meta.url);
+  const child=spawnSync('python3',[script.pathname],{encoding:'utf8',timeout:30000,maxBuffer:1024*1024,env:{...process.env,PYTHONDONTWRITEBYTECODE:'1'}});
+  expect(child.error).toBeUndefined();expect(child.signal).toBeNull();expect(child.status,child.stderr).toBe(0);expect(child.stderr).toContain('OK');expect(child.stderr).toMatch(/Ran \d+ tests/);
+ });
+});
+
+import {validateOriginalProducerMetadata} from '../.github/ci/cleanup-only-recovery-admission.mjs';
+it('cleanup reauthentication accepts only the actual successful first-attempt manual alpha producer and packet',()=>{
+ const run={id:ORIGIN.runId,workflow_id:395777276,path:'.github/workflows/alpha-staging.yml',repository:{id:1333414856},head_repository:{id:1333414856},status:'completed',conclusion:'success',head_sha:SELECTION.source,head_branch:'alpha',event:'workflow_dispatch',run_attempt:1};
+ const artifact={id:ORIGIN.artifactId,digest:ORIGIN.artifactDigest,expired:false,workflow_run:{id:ORIGIN.runId,head_sha:SELECTION.source,head_branch:'alpha',repository_id:1333414856,head_repository_id:1333414856}};
+ expect(validateOriginalProducerMetadata(run,artifact)).toBe(true);
+ for(const change of [{event:'push'},{event:'pull_request'},{head_branch:'main'},{head_sha:'e'.repeat(40)},{run_attempt:2},{conclusion:'failure'},{id:1},{workflow_id:1},{repository:{id:1}},{head_repository:{id:1}}])expect(()=>validateOriginalProducerMetadata({...run,...change},artifact)).toThrow();
+ for(const change of [{id:1},{expired:true},{digest:'sha256:'+'e'.repeat(64)},{workflow_run:{...artifact.workflow_run,head_branch:'main'}},{workflow_run:{...artifact.workflow_run,repository_id:1}}])expect(()=>validateOriginalProducerMetadata(run,{...artifact,...change})).toThrow();
+});
+
+import {validateInterruptedObservation} from '../.github/ci/cleanup-only-recovery-operator.mjs';
+it('retains the actual unknown original operator exit and refuses invented terminal success or exit1',()=>{
+ const observation={kind:'INTERRUPTED_OPERATOR_EXIT_UNKNOWN',source:SELECTION.source,originalSessionId:27283,originalOperatorExit:null,originalOperatorPass:false,canonicalEvidence:'/fictional/private/evidence',presentEvidence:{'installed-arrival.json':H,'remote-build-result.json':H,'source-arrival.json':H},outputFiles:{'deploy.stderr.log':{bytes:0,sha256:H},'deploy.stdout.json':{bytes:100,sha256:H}},absentTerminalEvidence:['owned-cleanup.json','final-source-arrival.json','cleanup-session-incomplete.json'],reconciliationSha256:H};
+ expect(validateInterruptedObservation(observation,observation.canonicalEvidence)).toEqual(observation);
+ for(const change of [{originalOperatorExit:1},{originalOperatorExit:0},{originalOperatorPass:true},{originalSessionId:1},{presentEvidence:{}},{outputFiles:{}},{absentTerminalEvidence:[]},{source:'e'.repeat(40)}])expect(()=>validateInterruptedObservation({...observation,...change},observation.canonicalEvidence)).toThrow();
 });
