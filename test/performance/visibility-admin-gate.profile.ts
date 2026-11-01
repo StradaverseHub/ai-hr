@@ -65,7 +65,7 @@ it('materializes the identical native batch candidate set with exact coverage, l
  for(let index=0;index<companies.length;index++)for(const month of [prior,current]){
   if(index===0&&month===prior)continue;
   const [period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:companies[index],period:month,status:'open'}).returning();
-  const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:companies[index],payPeriodId:period.id,payPeriod:month,status:'draft'}).returning();batches.push({id:batch.id,companyIndex:index});
+  const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:companies[index],payPeriodId:period.id,payPeriod:month,batchDate:month+'-28',status:'draft'}).returning();batches.push({id:batch.id,companyIndex:index});
  }
  for(const table of ['employment','assignment','payslip','payroll_batch','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
  const original=await catalog();expect(original.body.split(previous)).toHaveLength(2);expect(original.definition.split(previous)).toHaveLength(2);
