@@ -17,3 +17,6 @@ Rules:
 
 Sources: `corpus_negative`, `conversation_holdout`, `adversarial_holdout` (seeded 1 November 2026),
 `guard_block`, `holdout_failure`, `incident` (appended later).
+
+Appended on 1 November 2026 (`guard_block`): the ADR-0170 step 3 corpus (`test/harness-sensitive-corpus.ts`),
+one case per sensitive-topic, workplace-harms and negative turn, in English, Malay, Chinese and Vietnamese.
