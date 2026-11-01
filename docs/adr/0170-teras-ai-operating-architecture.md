@@ -573,6 +573,24 @@ Clean candidates across all passes that can stand alone: **Atoll, Fram, Keelson,
 
 **Finding.** Across seven passes and 82 names, almost every meaningful real word in English, Latin, Greek and the maritime vocabulary is already used by an AI or HR product. Clean options are now mostly coined words, which also register most easily. Recommendation: choose a coined name (Orivo, Velyn, Lumae) or engage a naming professional with this brief and record for a coined set screened by trademark search, and use "the AI operating system for HR" as the tagline.
 
+**Owner brief (2 November 2026), eighth pass.** A blend of real roots; feeling intelligent and trustworthy; smooth and modern with a light touch; aimed first at investors and partners. Built from roots for wisdom (*nous*, *sophia*, *prudentia*, *sapiens*) and trust (*fides*, *credo*, *veritas*).
+
+| Name | Roots and meaning | Finding |
+| --- | --- | --- |
+| **Noveri** (no-VAIR-ee) | *nous* (mind) + *veritas* (truth); also reads as "new" | No exact match. Near: Novera A.i. (early-stage, 2025), Noveo.ai; the "Nove-" prefix is busy |
+| **Sofida** (so-FEE-da) | *sophia* (wisdom) + *fides* (trust) | No exact match. Near: SofIA (an OpenSistemas assistant), Soffi, Sofy |
+| **Prudia** (PROO-dee-a) | *prudentia*: practical wisdom with care, the classical virtue of judging well | No exact match, but PrudAI (Dutch audit-grade AI assistants for regulated professions) is close in sound **and** field |
+| **Fidara** (fi-DAR-a) | *fides* (trust) | No exact match. Near: FiduraAI, Fidacta |
+| Noesia | *noesis* (understanding) | No exact match. Near: Noesis Solutions (AI assistant), Neysa, Nesa |
+| Sophera | *sophia* | Near the SOPHEVA trademark for AI software |
+| Sapira, Sapio | *sapiens* | Too close to Saphira AI (YC) and Sapia.ai, an HR AI company |
+| Mindora | | **Taken in HR AI:** Mindora (UK wellbeing AI for HR), MindoraAI |
+| Credia | *credo* | Taken: Credia (AI SOP platform) |
+| Veridia | *veritas* | Crowded root: Veridium, Veridion, Veridian AI |
+| Fidelo | *fides* | Taken: Fidelo (school software) |
+
+**Recommendation on this brief:** **Noveri** first (mind plus truth, and "new"; the meaning holds without a tagline), **Sofida** second (wisdom plus trust, the most exact fit to the brief), **Prudia** third (the strongest meaning, but the closest live competitor). Each still needs the trademark screen below.
+
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
 ## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)
