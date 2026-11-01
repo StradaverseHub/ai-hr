@@ -19,7 +19,7 @@ import {NEVER_DELEGABLE,WORK_JOB_TYPES,WORK_JOB_TYPES_VERSION} from '../core/man
 import {triageSignals} from '../core/improvement/signals';
 import {draftImprovements} from '../core/improvement/proposals';
 import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
-import {runStandardContracts} from '../core/improvement/kit-contracts';
+import {runStandardContracts} from './capability-kit-contract-runner';
 import {compareRuns} from '../core/improvement/compare';
 import {definitionOfDoneGaps} from '../core/improvement/definition-of-done';
 import {OutputRefused,localOutputPath} from '../scripts/teras/output';
@@ -69,7 +69,7 @@ export function scanEngineSource(path:string,source:string):string[]{
 
 describe('the engine source has no write path',()=>{
  it('scans every engine file',()=>{
-  expect(ENGINE).toEqual(expect.arrayContaining(['core/improvement/signals.ts','core/improvement/proposals.ts','core/improvement/kit.ts','core/improvement/kit-contracts.ts',
+  expect(ENGINE).toEqual(expect.arrayContaining(['core/improvement/signals.ts','core/improvement/proposals.ts','core/improvement/kit.ts','core/improvement/kit-registry.ts',
    'core/improvement/compare.ts','core/improvement/definition-of-done.ts','scripts/teras/output.ts','scripts/teras/compare-models.ts','scripts/teras/draft-improvements.ts']));
  });
  it('finds no forbidden import, write, database statement, process, enablement or mutation',()=>{
@@ -134,6 +134,9 @@ describe('running the engine changes nothing it may not change',()=>{
 });
 
 describe('nothing in the product imports the engine',()=>{
+ it('the engine itself never imports the harness (only test/ may)',()=>{
+  expect(ENGINE.filter(path=>/core\/harness\/|['"]\.\.?\/harness\//.test(readFileSync(join(root,path),'utf8')))).toEqual([]);
+ });
  it('no file outside the engine and its tests imports core/improvement or scripts/teras',()=>{
   const product=['app','lib','core','packs','db','localization','middleware.ts'].flatMap(dir=>{try{return statSync(join(root,dir)).isDirectory()?files(dir):[dir];}catch{return[];}})
    .filter(path=>!path.startsWith('core/improvement/'));

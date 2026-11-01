@@ -1,6 +1,6 @@
 /** Step 5c — capabilities generated through the capability kit (./kit.ts).
  *
- * Every entry here gets the standard contracts (./kit-contracts.ts) from test/capability-kit-contracts.test.ts
+ * Every entry here gets the standard contracts from test/capability-kit-contracts.test.ts
  * without writing a test of its own. The first entries regenerate the four step 4 capabilities from their native
  * owner, permission and entity alone; test/capability-kit-equivalence.test.ts proves each equals the
  * hand-declared read, tool spec, registry row and harness offer (core/semantic-model/entities-explain.ts,

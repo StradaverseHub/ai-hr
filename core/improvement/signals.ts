@@ -21,17 +21,19 @@
  * returned nothing. A turn that ended as an honest gap after a guidance lookup and no private read is counted
  * as "no guide found"; any other honest gap as "no tool or action" (open question in the step 5c hand-over).
  *
+ * The harness's own names (its public context tools, action tools, reply checks, retry reasons and budgets)
+ * are copied into HARNESS_VOCABULARY below, because nothing outside the harness may import it
+ * (test/teras-harness-units.test.ts); test/improvement-signals.test.ts pins the copy to the harness spec.
+ *
  * Read only. Nothing here writes, changes a guard, a permission, a disclosure class or a job type, and the
  * module is not imported by the production Assistant (test/improvement-engine-boundary.test.ts). */
 import type {SessionContext} from '../../db/client';
 import {roleEnum} from '../../db/schema';
 import {AGENT_ACTION_IDS} from '../../lib/ai/agent-action-registry';
 import {TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
-import {HARNESS_SPEC} from '../harness/spec';
-import {outcomeRecordFromTrace} from '../harness/trace-persistence';
-import type {TurnTrace} from '../harness/trace';
 import {WORK_JOB_TYPES} from '../mandates/job-types';
 import {listOutcomeRecords} from '../outcome-record/record';
+import type {OutcomeRecordInput} from '../outcome-record/record';
 import type {OutcomeCheck,OutcomeKind,OutcomeRead} from '../outcome-record/types';
 import {SEMANTIC_ACTIONS} from '../semantic-model/entities';
 import {terasCapabilityRegistry} from '../semantic-model/generate';
@@ -55,6 +57,14 @@ export type SignalReport=Readonly<{kind:'teras.improvement-signals';version:1;
  clusters:readonly SignalCluster[]}>;
 
 const OTHER='other';
+/** The harness spec's names triage reads, pinned to the spec by test/improvement-signals.test.ts. */
+export const HARNESS_VOCABULARY=Object.freeze({
+ publicContextTools:Object.freeze(['product_destinations','product_guidance','available_actions']),
+ actionTools:Object.freeze(['available_actions','suggest_action']),
+ replyChecks:Object.freeze(['non_blank','destination_links','overclaim','identifiers']),
+ retryReasons:Object.freeze(['truncated','blank']),
+ budgets:Object.freeze(['steps','tokens','time','spend']),
+});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const closed=(known:Iterable<string>)=>{const set=new Set(known);return(value:unknown):string=>typeof value==='string'&&set.has(value)?value:OTHER;};
 
@@ -62,17 +72,17 @@ const closed=(known:Iterable<string>)=>{const set=new Set(known);return(value:un
 const TOOL_CATEGORY:ReadonlyMap<string,string>=new Map([
  ...terasCapabilityRegistry().filter(row=>row.effect==='read').map(row=>[row.name,row.module??'company'] as const),
  ...['product_destinations','product_guidance','company_setup','setup_readiness','approval_queue'].map(name=>[name,'product_context'] as const),
- ...HARNESS_SPEC.offer.actionTools.map(name=>[name,'actions'] as const),
+ ...HARNESS_VOCABULARY.actionTools.map(name=>[name,'actions'] as const),
 ]);
-const PUBLIC_CONTEXT:ReadonlySet<string>=new Set(HARNESS_SPEC.offer.publicContextTools);
+const PUBLIC_CONTEXT:ReadonlySet<string>=new Set(HARNESS_VOCABULARY.publicContextTools);
 const toolName=closed(TOOL_CATEGORY.keys());
 const jobType=closed([...AGENT_ACTION_IDS,...SEMANTIC_ACTIONS.map(action=>action.id),...Object.keys(WORK_JOB_TYPES)]);
 const gateReason=closed(Object.keys(TURN_GATE_NOTE));
-const retryReason=closed(['truncated','blank',...HARNESS_SPEC.replyChecks.order]);
-const budgetReason=closed(['steps','tokens','time','spend']);
+const retryReason=closed([...HARNESS_VOCABULARY.retryReasons,...HARNESS_VOCABULARY.replyChecks]);
+const budgetReason=closed(HARNESS_VOCABULARY.budgets);
 const refusalReason=closed(['not_offered','invalid_input','not_permitted','unknown_handle','missing_details','not_available','not_found','repeat']);
 const callStatus=closed(['refused','not_offered','invalid_input','unknown_handle','repeat','error']);
-const checkName=closed([...HARNESS_SPEC.replyChecks.order,...SEMANTIC_ACTIONS.flatMap(action=>action.checks.map(check=>check.check)),'turn_gate']);
+const checkName=closed([...HARNESS_VOCABULARY.replyChecks,...SEMANTIC_ACTIONS.flatMap(action=>action.checks.map(check=>check.check)),'turn_gate']);
 const role=closed(roleEnum.enumValues);
 
 const CLASSIFY:Readonly<Record<SignalKind,Classification>>={
@@ -100,7 +110,7 @@ type Hit=Readonly<{signal:SignalKind;category:string}>;
 /** The signals one record raises. Categories are already closed-vocabulary strings. */
 function hitsOf(record:SignalRecord,trace:TraceView):Hit[]{
  const hits:Hit[]=[];const outcome=record.outcome??{};
- const reads=(trace.calls.length?trace.calls:record.reads.map(read=>({tool:read.tool,status:read.status}))).map(call=>({...call,tool:toolName(call.tool)}));
+ const reads:{tool:string;status:string;refusal?:string}[]=(trace.calls.length?trace.calls:record.reads.map(read=>({tool:read.tool,status:read.status}))).map(call=>({...call,tool:toolName(call.tool)}));
  if(outcome.mode==='honest_gap'){
   const privateCategories=[...new Set(reads.filter(call=>call.tool!==OTHER&&!PUBLIC_CONTEXT.has(call.tool)&&TOOL_CATEGORY.get(call.tool)!=='actions').map(call=>TOOL_CATEGORY.get(call.tool)!))];
   const guidance=reads.some(call=>call.tool==='product_guidance');
@@ -161,11 +171,11 @@ export function triageSignals(records:readonly SignalRecord[]):SignalReport{
   fallbacks:sorted(fallbacks),guardBlocks:sorted(guards),replyCheckRetries:sorted(retries),toolCallFailures:sorted(failures),clusters:ranked});
 }
 
-/** A harness trace not yet persisted, read as the record it would become (core/harness/trace-persistence.ts). */
-export function signalRecordFromTrace(trace:TurnTrace):SignalRecord{
- const record=outcomeRecordFromTrace(trace);
- return{runKind:'turn',outcomeKind:record.outcomeKind,askedByUserId:trace.caller.userId,grantorUserId:null,outcome:record.outcome,
-  checks:record.checks,reads:record.reads,trace,decision:null};
+/** A turn not yet persisted, read as the record it would become: pass the input the trace persistence builds
+ * from a harness trace (outcomeRecordFromTrace). */
+export function signalRecordFromOutcomeInput(input:OutcomeRecordInput):SignalRecord{
+ return{runKind:input.runKind,outcomeKind:input.outcomeKind,askedByUserId:input.authority.kind==='person'?input.authority.askedByUserId:null,
+  grantorUserId:input.authority.kind==='mandate'?input.authority.grantorUserId:null,outcome:input.outcome,checks:input.checks,reads:input.reads,trace:input.trace??null,decision:null};
 }
 
 /** The caller's tenant's report, from the outcome records the caller may see (RLS: who asked, the grantor,

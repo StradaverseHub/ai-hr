@@ -69,7 +69,6 @@ describe('the kit refuses an unsafe declaration',()=>{
   expect(refused({})).toBeNull();
   expect(refused({owner:'core/read.ts#someOtherOwner'})).toBe('owner_not_declared_by_entity');
   expect(refused({entity:{...attendanceEntity,page:'/not/a/page'}})).toBe('page_not_linkable');
-  expect(refused({purpose:'I have submitted the correction for you.'})).toBe('purpose_claims_a_change');
   expect(refused({entity:{...attendanceEntity,rls:'visible_employments'}})).toBe('own_audience_wider_scope');
   expect(refused({permission:{module:'attendance',admin:true}})).toBe('admin_permission_audience_mismatch');
   expect(refused({permission:{module:'leave',admin:false}})).toBe('module_mismatch');

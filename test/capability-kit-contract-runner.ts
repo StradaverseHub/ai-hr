@@ -1,4 +1,4 @@
-/** ADR-0170 §3.12, step 5c — the standard contracts every kit-generated capability inherits.
+/** ADR-0170 §3.12, step 5c — the runner of the standard contracts every kit-generated capability inherits.
  *
  *  - acts_as_person: the binding hands the owner the caller's own session and only the declared inputs; an
  *    undeclared input (a subject id slipped in by a model) never reaches it; an own-scope entity has an own row
@@ -13,16 +13,18 @@
  *  - minimum_fields: every field states its meaning, free text is never disclosed, the description and card
  *    name no `never` field, and an undeclared key in a result is removed.
  * Each contract returns findings; none means it holds. test/capability-kit-contracts.test.ts runs every
- * contract for every entry of ./kit-registry.ts, so a capability gets them by being generated, and proves each
- * contract fails on a deliberately broken declaration. Pure apart from the spy owner it calls. */
-import type {SessionContext} from '../../db/client';
-import {gateTurn} from '../../lib/product-context/request-gate';
-import {DisclosureLedger,discloseToolOutput} from '../harness/disclosure';
-import {overclaim} from '../harness/reply-checks';
+ * contract for every entry of core/improvement/kit-registry.ts, so a capability gets them by being generated, and
+ * proves each contract fails on a deliberately broken declaration. Under test/ because it runs the harness's own
+ * disclosure and reply check, which nothing outside core/harness may import (test/teras-harness-units.test.ts).
+ * Pure apart from the spy owner it calls. */
+import type {SessionContext} from '../db/client';
+import {gateTurn} from '../lib/product-context/request-gate';
+import {DisclosureLedger,discloseToolOutput} from '../core/harness/disclosure';
+import {overclaim} from '../core/harness/reply-checks';
 import {isDeepStrictEqual} from 'node:util';
-import {disclosureOf,terasEntities} from '../semantic-model/generate';
-import type {SemanticField} from '../semantic-model/types';
-import type {KitCapability,StandardContract} from './kit';
+import {disclosureOf,terasEntities} from '../core/semantic-model/generate';
+import type {SemanticField} from '../core/semantic-model/types';
+import type {KitCapability,StandardContract} from '../core/improvement/kit';
 
 const SAMPLE_ID='0f3c9a52-7d41-4c1e-9b8a-2e6d5f4a3b21',SAMPLE_SUBJECT='5a1e2b3c-4d5e-4f60-8a7b-9c0d1e2f3a4b';
 const SAMPLE_CODE='CODE-778899',SAMPLE_TEXT='free text a person typed about Siti Fictional',UNDECLARED='undeclaredExtraKey';

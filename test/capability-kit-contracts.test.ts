@@ -6,7 +6,7 @@
 import {describe,expect,it} from 'vitest';
 import {KIT_CAPABILITIES} from '../core/improvement/kit-registry';
 import {STANDARD_CONTRACTS,kitCapability,type KitCapability} from '../core/improvement/kit';
-import {runStandardContracts} from '../core/improvement/kit-contracts';
+import {runStandardContracts} from './capability-kit-contract-runner';
 import type {SemanticField} from '../core/semantic-model/types';
 
 describe('standard contracts hold for every kit capability',()=>{
@@ -31,7 +31,7 @@ describe('each contract fails on a broken capability',()=>{
   expect((await findings(wide)).acts_as_person).toEqual(expect.arrayContaining(['own audience with a wider row scope','input employee_id selects a subject without being a handle']));
  });
  it('no_identifiers: an id disclosed as minimum',async()=>{
-  const leaky=withFields([...fields,{name:'date',type:'id',disclosure:'minimum',meaning:'A record id shadowing the date.'}].filter((field,index,all)=>all.findLastIndex(other=>other.name===field.name)===index));
+  const leaky=withFields(([...fields,{name:'date',type:'id',disclosure:'minimum',meaning:'A record id shadowing the date.'}] as SemanticField[]).filter((field,index,all)=>all.findLastIndex(other=>other.name===field.name)===index));
   expect((await findings(leaky)).no_identifiers).toEqual(['date is an identifier not declared never','entity differs from the one registered in the semantic model']);
  });
  it('other_person_refusal: a drafted turn the gate leaves open',async()=>{
@@ -43,7 +43,7 @@ describe('each contract fails on a broken capability',()=>{
   expect((await findings(claims)).no_overclaim).toEqual(expect.arrayContaining([expect.stringMatching(/^description claims a change/),'a drafted turn expects a proposal','the change request does not expect an honest gap']));
  });
  it('minimum_fields: free text disclosed, a never field named, an undeclared key kept',async()=>{
-  const chatty=withFields([...fields,{name:'note',type:'text',disclosure:'minimum',meaning:'What the person typed.'},{name:'secretCode',type:'code',disclosure:'never',meaning:''}]);
+  const chatty=withFields([...fields,{name:'note',type:'text',disclosure:'minimum',meaning:'What the person typed.'},{name:'secretCode',type:'code',disclosure:'never',meaning:''}] as SemanticField[]);
   const named=unchecked({...chatty,card:{...chatty.card,fields:[...chatty.card.fields,'secretCode']}});
   expect((await findings(named)).minimum_fields).toEqual(expect.arrayContaining(['note discloses free text','secretCode has no meaning','never field secretCode is named']));
  });

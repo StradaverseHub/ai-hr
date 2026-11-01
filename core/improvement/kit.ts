@@ -11,15 +11,15 @@
  *  - the review link: the product page where the person sees the subject themselves;
  *  - DRAFT corpus turns (own answer, another person's record, a change request), which a person reviews before
  *    they join the probe (ideals are set before any run);
- *  - the standard contracts it must pass (./kit-contracts.ts), run for every entry of ./kit-registry.ts.
+ *  - the standard contracts it must pass, run for every entry of ./kit-registry.ts by
+ *    test/capability-kit-contracts.test.ts (a purpose that claims a change fails no_overclaim there).
  * The kit refuses a declaration whose owner is not one of the entity's owners, whose page is not a linkable
- * product page, whose purpose claims a change, whose own-scope entity has a wider row scope, or that takes a
- * subject id that is not a handle from an earlier result. It grants nothing: the owner re-checks its own
+ * product page, whose own-scope entity has a wider row scope, whose permission does not match its entity, or
+ * that takes a subject id that is not a handle from an earlier result. It grants nothing: the owner re-checks its own
  * authority, and an offer is never permission. Pure; not imported by the production Assistant. */
 import type {SessionContext} from '../../db/client';
 import {LINKABLE_PAGES} from '../../lib/product-context/destinations';
 import type {AiToolSpec} from '../../lib/ai/types';
-import {overclaim} from '../harness/reply-checks';
 import {describeRead,disclosableFields,disclosureOf,readInputSchema,readRegistryRow} from '../semantic-model/generate';
 import type {CapabilityRow,OwnerAnchor,SemanticEntity,SemanticField,SemanticInput,SemanticRead} from '../semantic-model/types';
 import type {BaselineIdeal} from './corpus-shape';
@@ -63,7 +63,6 @@ function check(declaration:KitDeclaration):void{
  if(!/^[a-z][a-z0-9_]{2,63}$/.test(declaration.name))throw new KitRefused('name');
  if(!entity.owners.includes(declaration.owner))throw new KitRefused('owner_not_declared_by_entity');
  if(!LINKABLE_PAGES.some(([path])=>path===entity.page))throw new KitRefused('page_not_linkable');
- if(overclaim(declaration.purpose))throw new KitRefused('purpose_claims_a_change');
  if(entity.audience==='self'&&!OWN_SCOPES.has(entity.rls))throw new KitRefused('own_audience_wider_scope');
  if(permission.admin!==(entity.audience==='admin'))throw new KitRefused('admin_permission_audience_mismatch');
  if(permission.module!==entity.module)throw new KitRefused('module_mismatch');

@@ -5,7 +5,9 @@ import {describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
-import {CLASSIFICATIONS,signalRecordFromTrace,triageSignals,type SignalRecord} from '../core/improvement/signals';
+import {HARNESS_SPEC} from '../core/harness/spec';
+import {outcomeRecordFromTrace} from '../core/harness/trace-persistence';
+import {CLASSIFICATIONS,HARNESS_VOCABULARY,signalRecordFromOutcomeInput,triageSignals,type SignalRecord} from '../core/improvement/signals';
 import {draftImprovements} from '../core/improvement/proposals';
 import {fakeTools} from './harness-ratchet/fake-tools';
 import {scriptedModel} from './harness-ratchet/scripted-model';
@@ -90,13 +92,21 @@ describe('signal triage',()=>{
  });
 });
 
+describe('the harness vocabulary copy',()=>{
+ it('equals the harness spec it was copied from',()=>{
+  expect(HARNESS_VOCABULARY).toEqual({publicContextTools:HARNESS_SPEC.offer.publicContextTools,actionTools:HARNESS_SPEC.offer.actionTools,
+   replyChecks:HARNESS_SPEC.replyChecks.order,retryReasons:Object.keys(HARNESS_SPEC.retryNotes).filter(key=>!(HARNESS_SPEC.replyChecks.order as readonly string[]).includes(key)),
+   budgets:['steps','tokens','time','spend']});
+ });
+});
+
 describe('a real harness trace',()=>{
  const ctx:SessionContext={tenantId:TENANT,userId:people[0],personId:randomUUID(),roles:['employee'],grants:[{role:'employee',companyId:null}]};
  it('reads a scripted honest-gap turn as a no-guide signal, without the question',async()=>{
   const {provider}=fakeTools();
   const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId:'c-1',question:'How do I set up a fictional bonus scheme for Siti Fictional?',scope:{companyId:randomUUID(),locale:'en'},
    model:scriptedModel([{calls:[{name:'product_guidance',args:{query:'bonus scheme'}}]},{final:{reply:'There is no guide for that yet.',mode:'honest_gap'}}]),memory:new InMemoryTaskMemoryStore(),tools:provider});
-  const report=triageSignals([signalRecordFromTrace(result.trace)]);
+  const report=triageSignals([signalRecordFromOutcomeInput(outcomeRecordFromTrace(result.trace))]);
   expect(report.replies.noGuideFound).toEqual({product_context:1});
   expect(JSON.stringify(report)).not.toMatch(/bonus|Siti|guide for that/);
  });

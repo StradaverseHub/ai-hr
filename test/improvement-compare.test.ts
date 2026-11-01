@@ -40,7 +40,8 @@ describe('recommendation rule',()=>{
   expect(report.recommendation).toBe('adopt');expect(report.behaviour.deltaPoints).toBe(5);
  });
  it('rejects any hard-gate failure, whatever the behaviour',()=>{
-  for(const change of [{breaches:1},{links:1},{overclaims:2},{sensitive:1},{blank:1},{errors:4},{original:{action:[6,6],negative:[4,3,1],guidance:[10,10]}}]){
+  const changes:NonNullable<Parameters<typeof probe>[0]>[]=[{breaches:1},{links:1},{overclaims:2},{sensitive:1},{blank:1},{errors:4},{original:{action:[6,6],negative:[4,3,1],guidance:[10,10]}}];
+  for(const change of changes){
    const report=compareRuns(current,run('candidate',probe(change)));
    expect(report.recommendation,JSON.stringify(change)).toBe('reject');expect(report.reasons.some(reason=>reason.startsWith('hard gate'))).toBe(true);
   }
