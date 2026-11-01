@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../db/schema';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { hireEmployee, setReportingLine, editDelegation } from '../core/org';
-import { checkIn, checkOut, requestAttendanceCorrection, decideAttendanceCorrection, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment, listAttendanceCorrections } from '../core/attendance';
+import { checkIn, checkOut, requestAttendanceCorrection, pendingAttendanceTaskMetadata, decideAttendanceCorrection, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment, listAttendanceCorrections } from '../core/attendance';
 import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, reassignAttendanceWorkflowStageToHr, decideAttendanceWorkflowStageTx, previewAttendanceWorkflow, snapshotAttendanceWorkflowTx } from '../core/attendance-workflow';
 import { attendanceApplicationDetail } from '../core/attendance-application-history';
 import { createBatch, generatePayslips, closeBatch, unlockClosedBatch } from '../packs/payroll/service';
@@ -82,6 +82,8 @@ describe('797ba70b: explicit hierarchy routing and frozen accountable actors', (
     expect(detail?.workflow?.stages.map(s => s.approvers[0])).toEqual([f.first, f.second, f.third].map((e, i) => expect.objectContaining({ employmentId: e.employmentId, personId: e.personId, userId: f.actors[i].userId, hierarchyDepth: i + 1 })));
     await expect(decideAttendanceCorrection(f.actors[2], { correctionId: id, decision: 'approved', expectedStageIndex: 0 })).rejects.toThrow();
     await approveFirstTwo(f, id);
+    expect((await pendingAttendanceTaskMetadata(f.actors[2],[b.companyId])).map(row=>row.id)).toEqual([id]);
+    expect(await pendingAttendanceTaskMetadata(f.actors[0],[b.companyId])).toEqual([]);
     expect(await readDay(f.d.employmentId)).toEqual(before);
     expect((await listAttendanceCorrections(f.actors[2], { status: 'pending' })).map(r => r.id)).toContain(id);
     expect(await decideAttendanceCorrection(f.actors[2], { correctionId: id, decision: 'approved', expectedStageIndex: 2 })).toMatchObject({ status: 'approved' });

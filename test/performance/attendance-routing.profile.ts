@@ -1,23 +1,23 @@
-/** Reversible native routing experiment. No migration, installation or authorization-result cache. */
+/** Paired task-read transport experiment; all native decision owners remain unchanged. */
 import {randomUUID} from 'node:crypto';
-import {readFileSync,writeFileSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {and,desc,eq,inArray,sql} from 'drizzle-orm';
+import {and,desc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
 import type {SessionContext} from '../../db/client';
 import {withAttendanceTenant as withTenant} from '../../core/module-gate';
-import {assertAssignedWorkPrincipalTx,decisionEmploymentAuthorityTx} from '../../core/approvals';
+import {assertAssignedWorkPrincipalTx,isApprovalDecisionRefusal} from '../../core/approvals';
 import {AttendanceWorkflowError} from '../../lib/attendance-workflow';
+import {assertCanDecideAttendanceApplicationTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../core/attendance-workflow';
 import * as s from '../../db/schema';
 import {hireEmployee,setReportingLine} from '../../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,pendingAttendanceTaskMetadata} from '../../core/attendance';
-import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../../core/attendance-workflow';
 import {todayInKualaLumpur} from '../../lib/hr-date';
-import {actorIdentityKeysSql} from './attendance-assignment-sql';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-// Disposable experiment: batch transport of the same native decision owners; no command change.
-async function metadataBatchDecision(ctx:SessionContext,companyIds:string[]){
+// Exact pre-batching reader, including the qualified necessary-only precheck. Counterfactual
+// transport only: every request uses the original scalar command decision owner unchanged.
+async function scalarMetadata(ctx:SessionContext,companyIds:string[]){
  return withTenant(ctx,async tx=>{
   await assertAssignedWorkPrincipalTx(tx,ctx);
   const [candidate]=await tx.execute<{possible:boolean}>(sql`select app.may_have_attendance_task_metadata()as possible`);
@@ -28,27 +28,16 @@ async function metadataBatchDecision(ctx:SessionContext,companyIds:string[]){
    .where(and(eq(s.attendanceCorrection.tenantId,ctx.tenantId),eq(s.attendanceCorrection.status,'pending'),
     sql`NOT app.is_self_person(subject.person_id)`,companyIds.length?sql`(subject.company_id IN (${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`,`)}) OR app.attendance_workflow_v3_decision_slot(${s.attendanceCorrection.id}) IS NOT NULL)`:sql`false`))
    .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
-  if(!rows.length)return [];
-  const flows=await tx.select({correctionId:s.attendanceWorkflowRequest.correctionId,employmentId:s.attendanceWorkflowRequest.employmentId,version:s.attendanceWorkflowRequest.routingVersion})
-   .from(s.attendanceWorkflowRequest).where(inArray(s.attendanceWorkflowRequest.correctionId,rows.map(row=>row.id)));
-  const byId=new Map(flows.map(flow=>[flow.correctionId,flow])),allowed=new Set<string>();
-  const versioned=rows.filter(row=>{const flow=byId.get(row.id);return flow&&[2,3,4].includes(flow.version);});
-  for(const row of versioned)if(byId.get(row.id)!.employmentId!==row.employmentId)throw new AttendanceWorkflowError('scope','The application subject does not match its frozen workflow.');
-  for(const version of [2,3]){
-   const ids=versioned.filter(row=>version===2?byId.get(row.id)!.version===2:byId.get(row.id)!.version!==2).map(row=>row.id);
-   if(!ids.length)continue;
-   const proof=version===2?sql`app.attendance_workflow_v2_decide(q.id)`:sql`app.attendance_workflow_v3_decision_slot(q.id) IS NOT NULL`;
-   const proofs=await tx.execute<{id:string;ok:boolean}>(sql`select q.id,(${proof}) as ok from(values ${sql.join(ids.map(id=>sql`(${id}::uuid)`),sql`,`)})q(id)`);
-   for(const row of proofs)if(row.ok)allowed.add(row.id);
+  const result=[];
+  for(const row of rows){
+   try{await assertCanDecideAttendanceApplicationTx(tx,ctx,row.id,row.employmentId);result.push(row);}
+   catch(error){if(error instanceof AttendanceWorkflowError&&error.code==='notApprover')continue;
+    if(isApprovalDecisionRefusal(error,'attendance application'))continue;throw error;}
   }
-  const versionedIds=new Set(versioned.map(row=>row.id)),legacy=rows.filter(row=>!versionedIds.has(row.id));
-  if(legacy.length){const authority=await decisionEmploymentAuthorityTx(tx,ctx,legacy.map(row=>row.employmentId),{module:'attendance',taskType:'attendance.correction'});
-   for(const row of legacy)if(authority.allowed.has(row.employmentId)&&!authority.self.has(row.employmentId))allowed.add(row.id);
-  }
-  return rows.filter(row=>allowed.has(row.id));
+  return result;
  });
 }
-it('compares fresh request-grained routing before, during and after query-plan reuse and necessary denial gates',async()=>{
+it('compares scalar native decisions with the exact batched application and a restored scalar control',async()=>{
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'attendance','active');
  const root=adminCtx(b),today=todayInKualaLumpur();
  const actors=[];
@@ -68,123 +57,52 @@ it('compares fresh request-grained routing before, during and after query-plan r
   await checkOut(root,{employmentId:a.employmentId,date:today,time:'17:00',manual:true});
   await requestAttendanceCorrection(a.ctx,{employmentId:a.employmentId,date:today,checkIn:'09:00',checkOut:'18:00',reason:'Fictional native routing profile'});
  }
- const signatures=['app.can_see_employment(uuid)','app.is_admin_report_of(uuid,uuid)','app.can_decide_via_delegation_from(uuid,uuid,text,text)','app.attendance_workflow_v3_effective(uuid,integer)','app.attendance_workflow_v3_actor(uuid,integer,text)','app.heads_department_of(uuid,uuid)','app.can_decide_via_delegation(uuid,text,text)','app.unrouted_attendance_delegate(uuid)','app.principal(uuid)'];
- const assignmentSignature='app.attendance_workflow_v3_assigned_allowed(uuid,integer,text,text)';
- const installed=[];
+ const signatures=['app.can_see_employment(uuid)','app.is_admin_report_of(uuid,uuid)','app.can_decide_via_delegation_from(uuid,uuid,text,text)','app.attendance_workflow_v3_effective(uuid,integer)','app.attendance_workflow_v3_actor(uuid,integer,text)','app.principal(uuid)','app.attendance_workflow_v3_assigned_allowed(uuid,integer,text,text)','app.may_have_attendance_task_metadata()'];
  const attributes=async(signature:string)=>{
   const [row]=await owner.client`select p.proowner::regrole::text as owner,p.proacl::text as acl,p.prosecdef,p.provolatile,p.proconfig,p.proparallel,p.proisstrict,p.proleakproof,p.procost,p.prorettype::regtype::text as returns,p.proretset from pg_proc p where p.oid=${signature}::regprocedure`;return row;
  };
- const expectedAttributes=new Map<string,unknown>();
- for(const signature of [...signatures,assignmentSignature]){
-  const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure)as definition`;
-  installed.push(row.definition);expectedAttributes.set(signature,await attributes(signature));
-  const name=signature.slice(4,signature.indexOf('('));
-  const file=name==='principal'?'0016_company_scoped_authz.sql':name==='can_see_employment'||name==='is_admin_report_of'?'0109_hierarchy_visibility_rls.sql':name==='heads_department_of'?'0121_rls_leak_fixes.sql':['can_decide_via_delegation_from','can_decide_via_delegation','unrouted_attendance_delegate'].includes(name)?'0818_delegated_approvals.sql':'0592_attendance_workflow_v4.sql';
-  const source=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
-  let start=source.indexOf('CREATE OR REPLACE FUNCTION app.'+name+'(');if(start<0)start=source.indexOf('CREATE FUNCTION app.'+name+'(');
-  const end=source.indexOf('$$;',start)+3;
-  expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
-  await owner.client.unsafe(source.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION'));
- }
- const definitions=[];
- for(const signature of signatures){
-  const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure) as original,prosrc as body,p.proretset as returns_set,l.lanname as language from pg_proc p join pg_language l on l.oid=p.prolang where p.oid=${signature}::regprocedure`;
-  expect(row.language).toBe('sql');
-  const body=row.body.trim().replace(/;$/,'');
-  const cached=row.original.replace('LANGUAGE sql','LANGUAGE plpgsql').replace(/AS (\$[^$]*\$)[\s\S]*\1/,(_all:string,delimiter:string)=>'AS '+delimiter+(row.returns_set?'\nBEGIN RETURN QUERY\n'+body+'; END;\n':'\nBEGIN RETURN (\n'+body+'\n); END;\n')+delimiter);
-  expect(cached).not.toBe(row.original);definitions.push({original:row.original,cached});
- }
- const [assignment]=await owner.client`select pg_get_functiondef('app.attendance_workflow_v3_assigned_allowed(uuid,integer,text,text)'::regprocedure) as original`;
- const marker=" IF NOT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id";
- expect(assignment.original.split(marker)).toHaveLength(2);
- // These are necessary conditions only. Every positive result still passes the complete original
- // live actor, dates, roles, tenant, module/task and organizational delegation proof below them.
- const denialGates=`
- IF acting='assigned' AND (caller.id<>(actor->>'userId')::uuid OR caller.person_id<>(actor->>'personId')::uuid) THEN RETURN false; END IF;
- IF acting='delegate' AND NOT EXISTS(SELECT 1 FROM public.reporting_line d JOIN public.employment recipient ON recipient.id=d.manager_employment_id AND recipient.tenant_id=d.tenant_id
-  WHERE d.tenant_id=w.tenant_id AND d.subordinate_employment_id=(actor->>'employmentId')::uuid AND recipient.person_id=caller.person_id) THEN RETURN false; END IF;
-`;
- const guarded=assignment.original.replace(marker,denialGates+marker),expected=new Map<number,unknown>();
- const phases:Record<string,unknown>={},oldAudit=process.env.AUDIT_HASH_CHAIN_ENABLED;
- let nativeGateDefinition:string|undefined;
+ const expectedAttributes=new Map<string,unknown>();for(const signature of signatures)expectedAttributes.set(signature,await attributes(signature));
+ const phases:Record<string,unknown>={},expected=new Map<number,unknown>(),oldAudit=process.env.AUDIT_HASH_CHAIN_ENABLED;
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  await owner.client.unsafe(actorIdentityKeysSql);
-  const identityActor={userId:actors[0].ctx.userId!.toUpperCase().replaceAll('-',''),personId:actors[0].personId.toUpperCase()};
-  for(const [shape,payload]of [['stages',[{approvers:[identityActor]}]],['actors',[identityActor]],['actor',identityActor]]as const){
-   const [row]=await owner.client`select app.perf_actor_identity_keys(${JSON.stringify(payload)}::jsonb,${shape})as ids`;
-   expect([...row.ids].sort()).toEqual([actors[0].ctx.userId!,actors[0].personId].sort());
-  }
-  await expect(owner.client`select app.perf_actor_identity_keys(${'{"userId":"invalid-native-uuid"}'}::jsonb,'actor')`).rejects.toMatchObject({code:'22P02'});
-  const [nativeGate]=await owner.client`select pg_get_functiondef('app.may_have_attendance_task_metadata()'::regprocedure)as definition`;
-  nativeGateDefinition=nativeGate.definition;
-  const baselineGate=nativeGate.definition.replace(/AS (\$[^$]*\$)[\s\S]*\1/,(_all:string,delimiter:string)=>'AS '+delimiter+' BEGIN RETURN true; END; '+delimiter);
-  expect(baselineGate).not.toBe(nativeGate.definition);
-  for(const phase of ['migration-principal-file','migration-possible-assignment','migration-possible-restored','migration-batch-decision','migration-batch-restored']){
-   for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
-   await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
-   if(phase.startsWith('migration'))for(const file of ['0884_visibility_routing_plans.sql','0885_attendance_assignment_work.sql']){
-    const contents=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
-    for(const statement of contents.split('--> statement-breakpoint'))await owner.client.unsafe(statement);
-   }
-   if(phase==='migration-plus-live-guard-plans')for(const d of definitions.slice(5,8))await owner.client.unsafe(d.cached);
-   if(phase==='migration-principal-plan')await owner.client.unsafe(definitions[8].cached);
-   if(phase.startsWith('migration'))await owner.client.unsafe(readFileSync(new URL('../../db/migrations/0886_principal_query_plan.sql',import.meta.url),'utf8'));
-   for(const signature of [...signatures,assignmentSignature])expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
-   const liveBootstrap=await owner.client`select * from app.principal(${actors[0].ctx.userId!}::uuid)`;
-   expect(liveBootstrap).toHaveLength(1);expect(liveBootstrap[0].person_id).toBe(actors[0].personId);
-   expect(liveBootstrap[0].tenant_id).toBe(b.tenantId);expect(liveBootstrap[0].grants).toEqual([{role:'hr_admin',companyId:null}]);
+  for(const phase of ['scalar-before','batched-application','scalar-restored']){
+   const read=phase==='batched-application'?pendingAttendanceTaskMetadata:scalarMetadata;
+   for(const signature of signatures)expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
    expect(await owner.client`select * from app.principal(${randomUUID()}::uuid)`).toHaveLength(0);
    try{
     await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,actors[0].ctx.userId!));
-    const [changed]=await owner.client`select * from app.principal(${actors[0].ctx.userId!}::uuid)`;
-    expect(changed.grants).toEqual([{role:'employee',companyId:null}]);
-    await expect(pendingAttendanceTaskMetadata(actors[0].ctx,[b.companyId])).rejects.toThrow();
+    const principal=await owner.client`select * from app.principal(${actors[0].ctx.userId!}::uuid)`;
+    expect(principal).toHaveLength(1);expect(principal[0].grants).toEqual([{role:'employee',companyId:null}]);
+    await expect(read(actors[0].ctx,[b.companyId])).rejects.toThrow();
    }finally{await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,actors[0].ctx.userId!));}
-   await owner.client.unsafe(['migration-possible-assignment','migration-batch-decision','migration-batch-restored'].includes(phase)?nativeGate.definition:baselineGate);
-   const read=phase==='migration-batch-decision'?metadataBatchDecision:pendingAttendanceTaskMetadata;
    const measurements=[];
    for(let i=0;i<4;i++){
     const times=[];
     for(let j=0;j<3;j++){
      const start=performance.now(),rows=await read(actors[i].ctx,[b.companyId]);times.push(performance.now()-start);
-     expect(rows).toHaveLength(i<2?32:0);
-     if(!expected.has(i))expected.set(i,rows);else expect(rows).toEqual(expected.get(i));
+     expect(rows).toHaveLength(i<2?32:0);if(!expected.has(i))expected.set(i,rows);else expect(rows).toEqual(expected.get(i));
     }
     measurements.push({principal:i,role:actors[i].role,elapsedMs:times,exactOrderedMetadata:true});
    }
    await expect(read({...actors[0].ctx,personId:randomUUID()},[b.companyId])).rejects.toThrow();
-   try{
-    await owner.db.update(s.reportingLine).set({validTo:today}).where(eq(s.reportingLine.id,delegation.reportingLineId));
-    expect(await read(actors[1].ctx,[b.companyId])).toEqual([]);
-   }finally{await owner.db.update(s.reportingLine).set({validTo:null}).where(eq(s.reportingLine.id,delegation.reportingLineId));}
+   try{await owner.db.update(s.reportingLine).set({validTo:today}).where(eq(s.reportingLine.id,delegation.reportingLineId));expect(await read(actors[1].ctx,[b.companyId])).toEqual([]);}
+   finally{await owner.db.update(s.reportingLine).set({validTo:null}).where(eq(s.reportingLine.id,delegation.reportingLineId));}
    expect(await read(actors[1].ctx,[b.companyId])).toEqual(expected.get(1));
-   try{
-    await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,actors[0].ctx.userId!));
-    expect(await read(actors[1].ctx,[b.companyId])).toEqual([]);
-   }finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,actors[0].ctx.userId!));}
+   try{await owner.db.update(s.appUser).set({archivedAt:new Date()}).where(eq(s.appUser.id,actors[0].ctx.userId!));expect(await read(actors[1].ctx,[b.companyId])).toEqual([]);}
+   finally{await owner.db.update(s.appUser).set({archivedAt:null}).where(eq(s.appUser.id,actors[0].ctx.userId!));}
    expect(await read(actors[0].ctx,[b.companyId])).toEqual(expected.get(0));
-   phases[phase]={measurements,expiredDelegationRefused:true,archivedAssignedActorRefused:true,forgedPersonRefused:true,securityAttributesOwnerAndAclUnchanged:true};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-routing.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_ATTENDANCE_ROUTING',releaseEligible:false,pendingRequests:32,realLinkedPrincipals:35,auditGucVerified:'on',phases},null,2));
+   phases[phase]={measurements,expiredDelegationRefused:true,archivedAssignedActorRefused:true,forgedPersonRefused:true,liveGrantChangesChecked:true,securityAttributesOwnerAndAclUnchanged:true};
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-routing.json'),JSON.stringify({kind:'PAIRED_NATIVE_ATTENDANCE_TASK_TRANSPORT',releaseEligible:false,pendingRequests:32,realLinkedPrincipals:35,auditGucVerified:'on',phases},null,2));
   }
-  await owner.client.unsafe(nativeGate.definition);
   try{
    for(const a of actors.slice(0,2))await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,a.ctx.userId!));
    for(const a of actors.slice(0,2)){
     const ctx:SessionContext={...a.ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]};
-    const original=await pendingAttendanceTaskMetadata(ctx,[b.companyId]);expect(original).toHaveLength(32);
+    const original=await scalarMetadata(ctx,[b.companyId]);expect(original).toHaveLength(32);
     expect(await pendingAttendanceTaskMetadata(ctx,[b.companyId])).toEqual(original);
-    expect(await metadataBatchDecision(ctx,[b.companyId])).toEqual(original);
    }
-   expect(await pendingAttendanceTaskMetadata({...actors[3].ctx,personId:randomUUID()},[b.companyId]).then(()=>false,()=>true)).toBe(true);
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-possible-assignment.json'),JSON.stringify({namedNonAdminActor:true,nonAdminDelegate:true,orderedMetadataExact:true,forgedPersonRefused:true,nativeApplicationGate:true},null,2));
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-possible-assignment.json'),JSON.stringify({namedNonAdminActor:true,nonAdminDelegate:true,orderedMetadataExact:true,nativeApplicationBatch:true},null,2));
   }finally{for(const a of actors.slice(0,2))await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,a.ctx.userId!));}
-
- }finally{
-  if(nativeGateDefinition)await owner.client.unsafe(nativeGateDefinition);
-  await owner.client.unsafe('DROP FUNCTION IF EXISTS app.perf_actor_identity_keys(jsonb,text)');
-  for(const definition of installed)await owner.client.unsafe(definition);
-  if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;
- }
+ }finally{if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;}
 },300000);
