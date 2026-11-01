@@ -120,7 +120,7 @@ export type TaxProfile = {
  * produces 5.5% and no election expresses it. So this mode does NOT floor at statutory; it is the one EPF
  * mode that can go down, and it is the only affordance the system has for that member.
  */
-/** 5e204d56: manual_percentage is an explicit operator election, 1–100% on both sides,
+/** 5e204d56: manual_percentage is an explicit operator election, 0–100% on both sides (1058ced1),
  * independent of schedule floors and age/citizenship branches. Legacy modes retain their behavior.
  *
  * b6dbadc5: 'topup_percentage' is Top-up (existing percentage election) as an ADDITIVE top-up: each stored

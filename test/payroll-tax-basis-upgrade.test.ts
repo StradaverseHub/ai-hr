@@ -1,5 +1,5 @@
 /** Ordinary journal upgrade over a populated, trigger-protected database at the installed 636-entry prefix,
- *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role). Hosted only. */
+ *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%). Hosted only. */
 import {randomUUID,createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -26,7 +26,7 @@ it('applies only the 0873/0874 tail through the ordinary migrator after closed p
  const destinationUrl=new URL(sourceUrl);destinationUrl.pathname='/'+name;
  const preDirectory=mkdtempSync(join(tmpdir(),'aihr-tax-pre0873-'));
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275']] as const;
+ const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276']] as const;
  expect(journal.entries.slice(-tail.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(tail);
  const installed=journal.entries.slice(0,-tail.length);expect(installed).toHaveLength(636);expect(installed.at(-1).tag).toBe('0865_assistant_company_retention_references');
  mkdirSync(join(preDirectory,'meta'));writeFileSync(join(preDirectory,'meta','_journal.json'),JSON.stringify({...journal,entries:installed}));

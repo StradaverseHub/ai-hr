@@ -4474,6 +4474,13 @@
       "when": 1793330000275,
       "tag": "0875_reward_access_request_read_role",
       "breakpoints": true
+    },
+    {
+      "idx": 754,
+      "version": "7",
+      "when": 1793330000276,
+      "tag": "0876_epf_manual_percentage_zero",
+      "breakpoints": true
     }
   ]
 }

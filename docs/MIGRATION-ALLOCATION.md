@@ -862,3 +862,18 @@ Claude release owner, owner-accepted follow-up to the tax/movement bundle. The i
 `06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1`). Performance's unapplied 0866–0872
 claims are below the watermark and must be reallocated above the next accepted watermark. Re-verify the
 live ledger before installation; this reservation grants no deployment.
+
+## EPF Manual (by percentage) 0% floor — 1 November 2026
+
+Approved board item 1058ced1 (PR #175). Integrated onto alpha `1a74336e6`, whose journal ends at the
+Rewards fix `0875_reward_access_request_read_role` (idx753 / when1793330000275, in its staging window).
+A scan of every local and origin ref plus registered worktrees found no claim above when…275.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|754|1793330000276|0876_epf_manual_percentage_zero|e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430|
+
+The source branch first appended it at idx753 on main; integration renumbers only the index above
+Rewards. Timestamp and SQL bytes are unchanged. The SQL only replaces 0682's CHECK with a looser one
+(0–1 instead of 0.01–1, both rates still NOT NULL), so every existing row satisfies it and no data
+script is needed. No table, grant or RLS change. Grants no installation or acceptance.

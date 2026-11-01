@@ -978,7 +978,7 @@
       "epfModeAuto": "Auto (berkanun)",
       "epfModeVoluntary": "Lebihan sukarela (i-Topup)",
       "epfModeVoluntaryPercentage": "Tambahan (pilihan peratusan sedia ada)",
-      "epfManualPercentageHint": "Kedua-dua kadar diperlukan, dari 1% hingga 100%. Gaji menggunakan peratusan yang dimasukkan tanpa minimum kadar berkanun.",
+      "epfManualPercentageHint": "Kedua-dua kadar diperlukan, dari 0% hingga 100%. Gaji menggunakan peratusan yang dimasukkan tanpa minimum kadar berkanun.",
       "epfManualEmployeeRateRequired": "Kadar Pekerja % diperlukan apabila Kategori EPF ialah Manual (mengikut peratusan).",
       "epfManualEmployerRateRequired": "Kadar Majikan % diperlukan apabila Kategori EPF ialah Manual (mengikut peratusan).",
       "epfManualRateRange": "Masukkan peratusan dari 1% hingga 100%.",

@@ -978,7 +978,7 @@
       "epfModeAuto": "Tự động (luật định)",
       "epfModeVoluntary": "Đóng vượt tự nguyện (i-Topup)",
       "epfModeVoluntaryPercentage": "Đóng thêm (lựa chọn tỷ lệ hiện có)",
-      "epfManualPercentageHint": "Cần nhập cả hai tỷ lệ từ 1% đến 100%. Bảng lương dùng tỷ lệ đã nhập, không áp mức tỷ lệ tối thiểu theo quy định.",
+      "epfManualPercentageHint": "Cần nhập cả hai tỷ lệ từ 0% đến 100%. Bảng lương dùng tỷ lệ đã nhập, không áp mức tỷ lệ tối thiểu theo quy định.",
       "epfManualEmployeeRateRequired": "Phải nhập Tỷ lệ nhân viên % khi Loại EPF là Thủ công (theo tỷ lệ).",
       "epfManualEmployerRateRequired": "Phải nhập Tỷ lệ chủ lao động % khi Loại EPF là Thủ công (theo tỷ lệ).",
       "epfManualRateRange": "Nhập tỷ lệ từ 1% đến 100%.",
