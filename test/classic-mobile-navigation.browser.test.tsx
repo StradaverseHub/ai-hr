@@ -25,8 +25,8 @@ function mount(){
  </div></NextIntlClientProvider>);
 }
 describe('Classic V9 flyout is reachable within the real phone viewport',()=>{
- it.each([false,true].flatMap(dark=>[320,390,639,640,1280].map(width=>({dark,width}))))('keeps every destination reachable at $width px (dark=$dark)',async({dark,width})=>{
-  await page.viewport(width,844);document.documentElement.classList.toggle('dark',dark);mount();
+ it.each([false,true].flatMap(dark=>[{width:320,height:560},{width:390,height:844},{width:639,height:844},{width:640,height:844},{width:1280,height:844}].map(size=>({dark,...size}))))('keeps every destination reachable at $width × $height (dark=$dark)',async({dark,width,height})=>{
+  await page.viewport(width,height);document.documentElement.classList.toggle('dark',dark);mount();
   if(width<640)fireEvent.click(document.querySelector<HTMLButtonElement>('[data-mobile-navigation-toggle]')!);
   const trigger=screen.getByRole('button',{name:en.nav.moduleOnboarding});
   fireEvent.click(trigger);
@@ -39,7 +39,7 @@ describe('Classic V9 flyout is reachable within the real phone viewport',()=>{
   expect(bounds.left).toBeGreaterThanOrEqual(0);
   expect(bounds.right).toBeLessThanOrEqual(width+.5);
   expect(bounds.top).toBeGreaterThanOrEqual(0);
-  expect(bounds.bottom).toBeLessThanOrEqual(844+.5);
+  expect(bounds.bottom).toBeLessThanOrEqual(height+.5);
   for(const link of links){
    link.scrollIntoView({block:'nearest'});
    const r=link.getBoundingClientRect(), n=nav.getBoundingClientRect();
