@@ -76,11 +76,10 @@ describe('recommendation at scale',()=>{
 });
 
 describe('large tenant (2000 employments)',()=>{
- // H4 is fixed for what the digest adds: the Inbox hands it its own approvals list (one queue read per view, not two),
- // the company checks run four at a time, and deadlines are skipped without payroll. The cold case below is the
- // native assigned-approvals read (core/approvals-inbox.ts listPendingTasks), which the Inbox list and the bell pay on
- // every view whether or not the digest exists. claude/teras-review-fixes cut it from about 45 s to about 24 s
- // (pendingLeaveTaskMetadata batches assertCanDecide's subject lookup); the rest is outside this change and OPEN.
+ // H4. The original end-to-end bound (cold digest, native assigned-approvals read included) is the required check and
+ // stays enforcing. Measured on claude/teras-review-fixes: about 45 s before, 23.9 s after the batched subject lookup
+ // (run 41357595590); the remaining assigned-approvals cost is coordinated with system optimization, without changing
+ // RLS or approval semantics unreviewed. The Inbox-view case is a separate diagnostic of the digest's own cost.
  const bulk=async()=>{
   const people=await owner.db.insert(schema.person).values(Array.from({length:2000},(_,i)=>({tenantId:b.tenantId,fullName:`Fictional Bulk Person ${i}`,primaryEmail:`${randomUUID()}@fixture.test`})))
    .returning({id:schema.person.id});
@@ -91,7 +90,7 @@ describe('large tenant (2000 employments)',()=>{
   await owner.db.insert(schema.leaveRequest).values(employments.filter((_,i)=>i%10===0).map(row=>({tenantId:b.tenantId,employmentId:row.id,leaveTypeId:b.annualLeaveTypeId,
    startDate:date,endDate:date,days:'1',status:'pending' as const})));
  };
- it('fixed H4: on an Inbox view (with the Inbox\'s own list) the digest adds less than 10 s on 2000 employments',async()=>{
+ it('diagnostic H4: on an Inbox view (with the Inbox\'s own list) the digest adds less than 10 s on 2000 employments',async()=>{
   await bulk();
   const {listPendingTasks}=await import('../../core/approvals-inbox');
   const tasks=await listPendingTasks(hr,undefined,{attendance:false,claims:false,performance:false,rewards:false},{noticeAcknowledgements:false});
@@ -102,7 +101,7 @@ describe('large tenant (2000 employments)',()=>{
   expect(digest.kind).toBe('teras.daily_digest');expect(digest.approvals.total).toBe(tasks.length);
   expect(elapsed,`digestPreview took ${elapsed} ms`).toBeLessThan(10_000);
  },90_000);
- it.fails('OPEN H4 (native queue, owner item): a cold digest, which includes the native assigned-approvals read, stays within 10 s on 2000 employments (daily-digest.ts:54-80)',async()=>{
+ it('REVIEW medium: the inbox digest for an administrator stays within a bounded time on 2000 employments (daily-digest.ts:54-80)',async()=>{
   await bulk();
   const started=Date.now();
   const digest=await digestPreview(hr);
