@@ -181,7 +181,7 @@ describe('reply checks',()=>{
  it('refuses links outside the destination registry, allowing the suggested review page',()=>{
   const allowed=new Set(['/leave','/me/payslip']),order=HARNESS_SPEC.replyChecks.order;
   expect(checkReply('Open /leave or /me/payslip?period=2026-09.',allowed,order).every(row=>row.ok)).toBe(true);
-  expect(checkReply('Open /leave/secret-admin or https://example.test/x.',allowed,order).find(row=>row.check==='destination_links')).toEqual({check:'destination_links',ok:false,finding:'/leave/secret-admin, https://example.test/x.'});
+  expect(checkReply('Open /leave/secret-admin or https://example.test/x.',allowed,order).find(row=>row.check==='destination_links')).toEqual({check:'destination_links',ok:false,finding:'2 links'});
  });
  it('replaces a reply that still invents a link after its retry',async()=>{
   const {result}=await turn('Where do I apply?',[{final:{reply:'Go to /leave/apply-now.'}},{final:{reply:'Go to /hr/portal.'}}]);

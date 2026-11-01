@@ -20,15 +20,13 @@ async function turn(question:string,script:readonly ScriptStep[]=greedy,options:
 }
 
 describe('sensitive-topic routing in the runner',()=>{
- it('offers only public product context, runs no read or action, and always ends with the contact route',async()=>{
+ it('answers with the contact route alone, without a model call, read or action (spec v6)',async()=>{
   for(const question of ['My supervisor keeps making sexual comments about me.','I want to file a grievance against my manager.','I was diagnosed with depression last month.','My boss threatened to fire me.']){
    const {result,model,dispatched}=await turn(question);
-   expect(model.requests[0].tools.map(tool=>tool.name),question).toEqual(['product_destinations','product_guidance','final_answer']);
-   expect(dispatched,question).toEqual([]);expect(result.reads,question).toEqual([]);expect(result.suggestion,question).toBeNull();
-   expect(result.trace.calls.map(call=>call.status),question).toEqual(['not_offered','not_offered','not_offered']);
+   expect(model.requests,question).toEqual([]);expect(dispatched,question).toEqual([]);expect(result.reads,question).toEqual([]);expect(result.suggestion,question).toBeNull();
+   expect(result.trace.calls,question).toEqual([]);expect(result.trace.offered,question).toEqual([]);expect(result.trace.budgets.steps,question).toBe(0);
    expect(result.trace.gate.privateReads,question).toBe(false);expect(result.trace.gate.actions,question).toBe(false);expect(result.trace.gate.reason,question).toMatch(/^sensitive_/);
-   expect(result.reply,question).toBe('I am sorry you are dealing with this.\n\n'+routeReply());
-   expect(String(model.requests[0].messages[0].content),question).toContain('Never name a contact');
+   expect(result.reply,question).toBe(routeReply());expect(result.trace.outcome.fallback,question).toBe(false);
   }
  });
  it('answers a crisis turn with the fixed safe message and the route only, without calling the model',async()=>{
@@ -39,14 +37,13 @@ describe('sensitive-topic routing in the runner',()=>{
    expect(result.reply,question).toBe(HARNESS_SPEC.sensitive.crisisReply+'\n\n'+routeReply());expect(result.memory.goal,question).toBeNull();
   }
  });
- it('keeps the route even when the model reply falls back or a budget ends the turn',async()=>{
-  const {result}=await turn('I am being bullied at work.',[{final:{reply:'',mode:'answer'}},{final:{reply:'',mode:'answer'}}]);
-  expect(result.trace.outcome.fallback).toBe(true);expect(result.reply).toBe(HARNESS_SPEC.replyChecks.fallbackReply+'\n\n'+routeReply());
+ it('ignores whatever the model would have said: the route is the whole reply',async()=>{
+  const {result,model}=await turn('I am being bullied at work.',[{final:{reply:'',mode:'answer'}},{final:{reply:'',mode:'answer'}}]);
+  expect(model.requests).toEqual([]);expect(result.trace.outcome.fallback).toBe(false);expect(result.reply).toBe(routeReply());
  });
- it('lets the model still answer a product question that only shares a word with a topic (reads removed, nothing blocked)',async()=>{
+ it('routes a product question that shares a word with a topic too (spec v6: availability cost accepted; the gate decides)',async()=>{
   const {result,model}=await turn('Where is the anti-harassment policy?',[{calls:[{name:'product_guidance',args:{query:'harassment policy'}}]},{final:{reply:'Open Leave and choose Apply.',mode:'guide'}}]);
-  expect(model.requests).toHaveLength(2);expect(result.reads).toEqual(['product_guidance']);
-  expect(result.reply.startsWith('Open Leave and choose Apply.')).toBe(true);
+  expect(result.trace.gate.reason).toBe('sensitive_harassment');expect(model.requests).toEqual([]);expect(result.reply).toBe(routeReply());
  });
  it('keeps the person\'s words on a routed turn out of task memory',async()=>{
   const memory=new InMemoryTaskMemoryStore();
