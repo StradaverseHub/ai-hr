@@ -205,6 +205,30 @@ describe('approver recommendations on fictional data',()=>{
   expect(records[0].checks).toContainEqual(expect.objectContaining({check:'balance_covers',result:'fail'}));
  });
 
+ it('records a reload of the same recommendation once per request, step and HR day, and a changed one again',async()=>{
+  // PR 198 review (low): opening ?recommend= wrote an outcome record on every page load.
+  await setWorkerSwitch(hr,{workerId:'approver_recommendation',enabled:true});
+  const first=await recommend(manager),second=await recommend(manager),third=await recommend(manager);
+  if(first.kind!=='recommendation'||second.kind!=='recommendation'||third.kind!=='recommendation')throw Error('expected recommendations');
+  expect(first.recommendation.recordId).toBeTruthy();
+  expect([second.recommendation.recordId,third.recommendation.recordId]).toEqual([first.recommendation.recordId,first.recommendation.recordId]);
+  const mine=async()=>(await listOutcomeRecords(manager)).filter(record=>record.agentIdentity===RECOMMENDER_AGENT_IDENTITY);
+  expect(await mine()).toHaveLength(1);
+  // The facts change (a colleague is now away): the recommendation is recomputed, differs, and is recorded anew.
+  const [away]=await owner.db.insert(schema.leaveRequest).values({tenantId:b.tenantId,employmentId:colleague.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:date,endDate:date,days:'1',status:'approved'}).returning({id:schema.leaveRequest.id});
+  await owner.db.insert(schema.leaveRequestDate).values({tenantId:b.tenantId,leaveRequestId:away.id,subjectEmploymentId:colleague.employmentId,leaveDate:date,days:'1',status:'approved'});
+  const changed=await recommend(manager);
+  if(changed.kind!=='recommendation')throw Error('expected a recommendation');
+  expect(changed.recommendation.verdict).toBe('needs_review');
+  expect(changed.recommendation.recordId).not.toBe(first.recommendation.recordId);
+  expect(await mine()).toHaveLength(2);
+  // Another HR day is another record, even when nothing changed (records are append-only, so the clock moves instead).
+  const nextDay=await recommendLeaveDecision(manager,{leaveRequestId:requestId},new Date(Date.now()+86_400_000));
+  if(nextDay.kind!=='recommendation')throw Error('expected a recommendation');
+  expect(nextDay.recommendation.recordId).not.toBe(changed.recommendation.recordId);
+  expect(await mine()).toHaveLength(3);
+ });
+
  it('serves only the assigned approver, and the stop switch halts it',async()=>{
   await setWorkerSwitch(hr,{workerId:'approver_recommendation',enabled:true});
   expect(await recommend(otherManager)).toEqual({kind:'unavailable',reason:'not_assigned'});

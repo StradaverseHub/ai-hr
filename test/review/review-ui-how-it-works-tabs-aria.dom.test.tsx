@@ -25,7 +25,7 @@ beforeEach(() => {
 const show = () => render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never} timeZone="Asia/Kuala_Lumpur"><HowItWorks /></NextIntlClientProvider>);
 
 describe('How it works tab semantics', () => {
-  it('REVIEW low: every chapter tab aria-controls an element that exists', () => {
+  it('fixed L3: every chapter tab aria-controls an element that exists', () => {
     const view = show();
     const tabs = within(screen.getByRole('tablist', { name: how.chaptersLabel })).getAllByRole('tab');
     expect(tabs).toHaveLength(4);
@@ -33,7 +33,7 @@ describe('How it works tab semantics', () => {
     expect(dangling).toEqual([]);
   });
 
-  it('REVIEW low: the step tabs control a tabpanel (or are not tabs)', () => {
+  it('fixed L4: the step tabs control a tabpanel (or are not tabs)', () => {
     const view = show();
     const tabs = within(screen.getByRole('tablist', { name: how.stepsLabel })).getAllByRole('tab');
     expect(tabs).toHaveLength(9);

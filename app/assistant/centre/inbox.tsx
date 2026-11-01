@@ -39,17 +39,21 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
   const admin = isAdmin(session);
   const payroll = isModuleEnabledOrFalse(session, 'payroll');
 
-  const tasks = await settle(async () => {
-    const scopeIds = await getScopeIds((await allowedCompanies(session)).map(company => company.id));
-    return listPendingTasks(session, scopeIds, {
-      attendance: isModuleEnabledOrFalse(session, 'attendance'),
-      claims: isModuleEnabledOrFalse(session, 'claims'),
-      performance: isModuleEnabledOrFalse(session, 'performance'),
-      rewards: isModuleEnabledOrFalse(session, 'rewards'),
-    });
-  });
-  // Step 5: today's digest, computed now as the viewer and not recorded, plus the viewer's last prepared one.
-  const [digest, lastDigest] = await Promise.all([settle(() => digestPreview(session)), settle(() => latestDailyDigest(session))]);
+  const scope = await settle(async () => getScopeIds((await allowedCompanies(session)).map(company => company.id)));
+  const tasks = scope.ok ? await settle(() => listPendingTasks(session, scope.value, {
+    attendance: isModuleEnabledOrFalse(session, 'attendance'),
+    claims: isModuleEnabledOrFalse(session, 'claims'),
+    performance: isModuleEnabledOrFalse(session, 'performance'),
+    rewards: isModuleEnabledOrFalse(session, 'rewards'),
+  })) : scope;
+  // Step 5: "Your day". One owner and one scope for what waits on the viewer (review M9): the approvals count
+  // is this Inbox's own list below, handed to the digest rather than read again, and the administrator's
+  // setup and deadline counts cover the same companies as that list (the company switcher's scope). Computed
+  // as the viewer and not recorded; the viewer's last prepared digest, if any, is read beside it.
+  const [digest, lastDigest] = await Promise.all([
+    settle(() => digestPreview(session, { approvals: tasks.ok ? tasks.value : [], companyIds: scope.ok ? scope.value : undefined })),
+    settle(() => latestDailyDigest(session)),
+  ]);
   const [exceptions, proposals, readiness] = await Promise.all([
     admin && payroll ? settle(() => openExceptionsAcrossRuns(session, { limit: 100 })) : null,
     admin && payroll ? settle(() => proposeActions(session)) : null,
@@ -82,6 +86,14 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
   ] as const };
   const findingIcon = { exceptions: <Receipt />, proposals: <Wand2 />, readiness: <ClipboardCheck /> } as const;
   const empty = decisions.length === 0 && findings.length === 0;
+  // "Your day" tiles. Waiting-for-you counts this Inbox's own list and links to it on this page: /approvals
+  // redirects anyone without approval work (review M10), and some decisions live on their module's page.
+  // A zero is not a tile (the empty state says it once). Statutory deadlines live in payroll, so they show
+  // only with the payroll module on (review M11), as the payroll findings below already do.
+  const setupTile = digest.ok ? digest.value.setup : null;
+  const deadlineTile = digest.ok && payroll ? digest.value.deadlines : null;
+  const showApprovals = tasks.ok && decisions.length > 0;
+  const hasTiles = showApprovals || !!setupTile || !!deadlineTile;
 
   return (
     <div className="space-y-6">
@@ -92,21 +104,29 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
           {digest.ok && (
             <section aria-labelledby="inbox-digest" data-inbox-digest className="rounded-xl border border-border bg-card p-4">
               <h2 id="inbox-digest" className="text-[0.9375rem] font-semibold">{t('digest.title')}</h2>
+              {hasTiles ? (
               <ul className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
-                <li><Link href={digest.value.approvals.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span className="block text-xs text-muted-foreground">{t('digest.approvals')}</span><span className="text-lg font-semibold tabular-nums">{digest.value.approvals.total}</span></Link></li>
-                {digest.value.setup && <li><Link href={digest.value.setup.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span className="block text-xs text-muted-foreground">{t('digest.setup')}</span><span className="text-lg font-semibold tabular-nums">{digest.value.setup.blocked + digest.value.setup.attention}</span>
-                  <span className="block text-xs text-muted-foreground">{t('digest.setupDetail', { blocked: digest.value.setup.blocked, attention: digest.value.setup.attention })}</span></Link></li>}
-                {digest.value.deadlines && <li><Link href={digest.value.deadlines.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <span className="block text-xs text-muted-foreground">{t('digest.deadlines')}</span><span className="text-lg font-semibold tabular-nums">{digest.value.deadlines.overdue + digest.value.deadlines.dueSoon}</span>
-                  <span className="block text-xs text-muted-foreground">{t('digest.deadlinesDetail', { overdue: digest.value.deadlines.overdue, dueSoon: digest.value.deadlines.dueSoon })}</span></Link></li>}
+                {showApprovals && <li><Link href="#inbox-decide" className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="block text-xs text-muted-foreground">{t('digest.approvals')}</span><span className="text-lg font-semibold tabular-nums">{decisions.length}</span></Link></li>}
+                {setupTile && <li><Link href={setupTile.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="block text-xs text-muted-foreground">{t('digest.setup')}</span><span className="text-lg font-semibold tabular-nums">{setupTile.blocked + setupTile.attention}</span>
+                  <span className="block text-xs text-muted-foreground">{t('digest.setupDetail', { blocked: setupTile.blocked, attention: setupTile.attention })}</span></Link></li>}
+                {deadlineTile && <li><Link href={deadlineTile.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="block text-xs text-muted-foreground">{t('digest.deadlines')}</span><span className="text-lg font-semibold tabular-nums">{deadlineTile.overdue + deadlineTile.dueSoon}</span>
+                  <span className="block text-xs text-muted-foreground">{t('digest.deadlinesDetail', { overdue: deadlineTile.overdue, dueSoon: deadlineTile.dueSoon })}</span></Link></li>}
               </ul>
+              ) : empty && !failed && (
+                // Nothing at all waits: say so once, here, instead of a zero tile, an empty-state box and a zero summary.
+                <div data-inbox-empty className="mt-1">
+                  <p className="font-medium">{t('inbox.empty')}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('inbox.emptyHelp')}</p>
+                </div>
+              )}
               {lastDigest.ok && lastDigest.value && <p className="mt-2 text-xs text-muted-foreground">{t('digest.lastPrepared', { when: f.dateTime(lastDigest.value.preparedAt, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) })}</p>}
             </section>
           )}
-          {empty && !failed && (
-            <section className="rounded-xl border border-dashed border-border p-6 text-center">
+          {empty && !failed && !(digest.ok && !hasTiles) && (
+            <section data-inbox-empty className="rounded-xl border border-dashed border-border p-6 text-center">
               <p className="font-medium">{t('inbox.empty')}</p>
               <p className="mt-1 text-sm text-muted-foreground">{t('inbox.emptyHelp')}</p>
             </section>
@@ -146,13 +166,13 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
           )}
         </div>
         <aside className="space-y-3">
-          <section aria-labelledby="inbox-summary" className="rounded-xl border border-border bg-card p-4 text-sm">
+          {!empty && <section aria-labelledby="inbox-summary" className="rounded-xl border border-border bg-card p-4 text-sm">
             <h2 id="inbox-summary" className="font-semibold">{t('inbox.summary')}</h2>
             <dl className="mt-2 divide-y divide-border">
               <div className="flex justify-between py-1.5"><dt>{t('inbox.decisions')}</dt><dd className="font-semibold tabular-nums">{decisions.length}</dd></div>
               {admin && <div className="flex justify-between py-1.5"><dt>{t('inbox.findingsCount')}</dt><dd className="font-semibold tabular-nums">{findings.length}</dd></div>}
             </dl>
-          </section>
+          </section>}
           <section aria-labelledby="inbox-jobs" className="rounded-xl border border-border bg-card p-4 text-sm">
             <h2 id="inbox-jobs" className="font-semibold">{t('inbox.jobsTitle')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{t('inbox.jobsNone')}</p>

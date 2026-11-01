@@ -9,7 +9,7 @@
  *
  * digestPreview is mocked here only to supply the administrator's digest shape the real service returns
  * (no database in a DOM test); the gating under test is the Inbox's rendering.
- * FAILS on 7d57fc6a4. */
+ * FAILED on 7d57fc6a4 and on cdfcf53f (run 41353460111); passes on claude/teras-fix-ui. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
@@ -43,7 +43,7 @@ import { AiCentreInbox } from '../../app/assistant/centre/inbox';
 afterEach(cleanup);
 
 describe('Inbox for an HR administrator without payroll', () => {
-  it('REVIEW medium: no digest link leads into the disabled payroll module', async () => {
+  it('fixed M11: no digest link leads into the disabled payroll module', async () => {
     const node = await AiCentreInbox({ session: { tenantId: 'fictional', userId: 'fictional', personId: 'fictional', roles: ['hr_admin'] } as never });
     const view = render(<NextIntlClientProvider locale="en" messages={enWithAiCentre as never} timeZone="Asia/Kuala_Lumpur">{node}</NextIntlClientProvider>);
     expect(view.container.querySelector('[data-inbox-digest]')).not.toBeNull();

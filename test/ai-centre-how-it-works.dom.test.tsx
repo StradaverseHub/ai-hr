@@ -3,7 +3,8 @@
  * Pinned here, on the real component with the merged six-language catalogue:
  *  - keyboard: the chapter and step tab lists move with the arrow keys, Home and End, and focus follows;
  *  - focus order: chapters, Previous, Play, Next, the one selected step; the figure takes no focus;
- *  - reduced motion: Play advances one step and never autoplays; the request marker does not travel;
+ *  - reduced motion: there is no Play button (nothing plays), Next steps one at a time, nothing autoplays and
+ *    the request marker does not travel (review L5: a Play that acted as Next kept its label);
  *  - without reduced motion, Play advances on its own and stops at the last step;
  *  - the step text is a polite live region, and every language renders the step titles it owns. */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +18,7 @@ import th from '../messages/th.json';
 import aiEn from '../messages/ai-centre/en.json';
 import { enWithAiCentre, withAiCentre } from './helpers/ai-centre-messages';
 import { HowItWorks, HOW_STEPS } from '../components/ai-centre/how-it-works';
+import { ClockworkFigure, type ClockworkLabels } from '../components/ai-centre/clockwork-figure';
 
 const how = aiEn.aiCentre.how;
 function setReducedMotion(reduce: boolean) {
@@ -82,16 +84,37 @@ describe('How it works walkthrough', () => {
     expect(screen.getByRole('button', { name: how.play })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('under reduced motion, Play advances one step and never autoplays, and the marker does not travel', () => {
+  it('under reduced motion, there is no Play, Next advances one step, nothing autoplays, and the marker does not travel', () => {
     setReducedMotion(true);
     const view = show();
-    fireEvent.click(screen.getByRole('button', { name: how.play }));
+    expect(screen.queryByRole('button', { name: how.play })).toBeNull();
+    expect(screen.queryByRole('button', { name: how.pause })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: how.next }));
     expect(selectedStep()).toHaveAccessibleName(how.steps.s1);
     act(() => { vi.advanceTimersByTime(3600 * 5); });
     expect(selectedStep()).toHaveAccessibleName(how.steps.s1);
     const token = view.container.querySelector('[data-clockwork-token]')!;
     expect(token.getAttribute('class')).not.toContain('transform');
     expect(token.getAttribute('class')).toContain('transition-opacity');
+  });
+
+  it('draws the figure labels as wrapping HTML inside the panel, in the longest locale (review M13)', () => {
+    const own = (withAiCentre('ta', ta as Record<string, unknown>) as { aiCentre: typeof aiEn.aiCentre }).aiCentre.how;
+    const keys = ['interfaces', 'harness', 'context', 'capabilities', 'record', 'model', 'foundation', 'guard', 'outcome'] as const;
+    const labels = Object.fromEntries(keys.map(key => [key, { name: own.layers[key], part: own.parts[key] }])) as unknown as ClockworkLabels;
+    const view = render(<ClockworkFigure active="context" labels={labels} reduced title="t" caption="c" mark="m" label="figure" />);
+    const rows = [...view.container.querySelectorAll('[data-label]')];
+    expect(rows).toHaveLength(9);
+    for (const row of rows) {
+      // SVG text neither wraps nor ellipsises; a foreignObject box inside the 1000-unit viewBox does both.
+      expect(row.querySelector('text')).toBeNull();
+      const box = row.querySelector('foreignObject')!;
+      const x = Number(box.getAttribute('x')), width = Number(box.getAttribute('width'));
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x + width).toBeLessThanOrEqual(1000);
+      for (const line of box.querySelectorAll('p')) expect(line.className).toContain('line-clamp-2');
+    }
+    expect(view.container.textContent).toContain(own.parts.context);
   });
 
   it('announces each step politely', () => {

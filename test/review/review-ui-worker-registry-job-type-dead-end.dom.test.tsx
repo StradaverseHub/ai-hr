@@ -8,7 +8,7 @@
  * or components/ calls them. So the administrator follows "Change ..." to a page where nothing can be changed.
  * Expected: until a job-type control exists, the row states that the job type cannot be switched on yet
  * (no link), or the link goes to a page that has the control.
- * FAILS on 7d57fc6a4. */
+ * FAILED on 7d57fc6a4 and on cdfcf53f (run 41353460111); passes on claude/teras-fix-ui. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
@@ -31,7 +31,7 @@ const digestRow = {
 } as never;
 
 describe('Worker registry job-type switch', () => {
-  it('REVIEW medium: "Change in delegated jobs" does not lead to a view with no control', async () => {
+  it('fixed M12: "Change in delegated jobs" does not lead to a view with no control', async () => {
     const jobs = wrap(await AiCentreDelegatedJobs());
     const jobsHasControl = jobs.container.querySelector('form, button, input, select') !== null;
     jobs.unmount();
@@ -39,5 +39,9 @@ describe('Worker registry job-type switch', () => {
     wrap(<WorkerRegistry rows={[digestRow]} summary={null} detail={null} />);
     const link = screen.queryByRole('link', { name: enWithAiCentre.aiCentre.registry.switchOwner.job_type });
     if (link?.getAttribute('href') === '/assistant?view=jobs') expect(jobsHasControl, 'the registry sends the administrator to Delegated jobs, which has no control').toBe(true);
+    // Fixed by saying so instead of linking (no job-type control exists yet): no link to Delegated jobs at all,
+    // and the row states that the job type cannot be switched on from a screen yet.
+    expect(document.querySelector('#worker-daily_digest a[href="/assistant?view=jobs"]')).toBeNull();
+    expect(document.querySelector('#worker-daily_digest [data-switch-unavailable]')).toHaveTextContent(enWithAiCentre.aiCentre.registry.switchOwner.job_type);
   });
 });

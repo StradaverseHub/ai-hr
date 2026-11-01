@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ADMIN_GROUPS, centreTabsFor, type AdminSection, type CentreTabKey } from '@/lib/ai-centre/centre-nav';
 import { cn } from '@/lib/utils';
+import { ScrollCurrentTabIntoView } from './centre-tabs-scroll';
 
 const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
   ask: MessageSquareText, inbox: Inbox, jobs: UserCheck, workers: Workflow, setup: Settings2, spend: Wallet, how: BookOpen,
@@ -17,8 +18,11 @@ export function AiCentreTabs({ active, isAdmin, inboxCount }: { active: CentreTa
   const t = useTranslations('aiCentre');
   const name = aiCentreName(t('genericName'));
   return (
-    <nav aria-label={t('tabsLabel', { name })} data-ai-centre-tabs className="-mx-1 overflow-x-auto border-b border-border">
-      <ul className="flex min-w-max items-end gap-1 px-1">
+    // Phones: one scrolling row, with the current tab brought into view. From sm up the tabs wrap instead, so
+    // a long locale (Tamil at 1440px, review M13) never clips the last tab.
+    <nav id="ai-centre-tabs" aria-label={t('tabsLabel', { name })} data-ai-centre-tabs className="-mx-1 overflow-x-auto border-b border-border sm:overflow-x-visible">
+      <ScrollCurrentTabIntoView navId="ai-centre-tabs" />
+      <ul className="flex min-w-max items-end gap-1 px-1 sm:min-w-0 sm:flex-wrap">
         {centreTabsFor({ isAdmin }).map((tab, index, tabs) => {
           const Icon = ICONS[tab.key];
           const current = tab.key === active;

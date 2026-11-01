@@ -350,7 +350,7 @@
       "switchOwner": {
         "tenant_setting": "Change on the feature switches",
         "ai_provider": "Change on the feature switches",
-        "job_type": "Change in delegated jobs",
+        "job_type": "Not available yet: this version has no screen to switch on delegated jobs",
         "worker_control": "Switched here, for every company in the group"
       },
       "never": "Never",

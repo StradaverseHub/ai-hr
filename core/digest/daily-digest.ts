@@ -16,7 +16,7 @@
  * is the prepared item the person reads (latestDailyDigest). Projecting it into the notification bell needs a
  * registry entry in core/notifications.ts, which sits in the approved provider closure: that is left for the
  * next approval of that closure, so no new channel and no closure change here. */
-import {and,desc,eq,sql} from 'drizzle-orm';
+import {and,desc,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {company} from '../../db/schema';
 import {terasMandate,terasOutcomeRecord} from '../../db/teras-schema';
@@ -51,29 +51,47 @@ export function digestText(digest:Omit<DailyDigest,'text'|'kind'|'version'>):str
 /** The outcome record's reference shape; an item id outside it is counted but not referenced. */
 const REF=/^[a-z0-9_.:/#@-]{1,80}$/i;
 type Prepared=Readonly<{digest:DailyDigest;reads:readonly OutcomeRead[]}>;
-async function prepare(ctx:SessionContext,today:string):Promise<Prepared>{
+/** For the Inbox view: the approvals list the Inbox already read as the viewer (so the digest counts the same
+ * list it shows, and the queue is not read twice), and the companies in the viewer's current scope (so the
+ * setup and deadline counts cover the same companies as that list). Both absent for the scheduled job. */
+export type DigestViewInput=Readonly<{approvals?:readonly Readonly<{id:string;kind:string}>[];companyIds?:readonly string[]}>;
+/** How many administered companies are checked at once: each check is itself several parallel owner reads,
+ * so this keeps one digest well inside the connection pool while not walking twenty companies one by one. */
+const COMPANY_CONCURRENCY=4;
+async function inBatches<T,R>(items:readonly T[],size:number,run:(item:T)=>Promise<R>):Promise<R[]>{
+ const out:R[]=[];
+ for(let i=0;i<items.length;i+=size)out.push(...await Promise.all(items.slice(i,i+size).map(run)));
+ return out;
+}
+async function prepare(ctx:SessionContext,today:string,view:DigestViewInput={}):Promise<Prepared>{
  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
- const tasks=await listPendingTasks(ctx,undefined,modules,{noticeAcknowledgements:false});
+ const tasks=view.approvals??await listPendingTasks(ctx,undefined,modules,{noticeAcknowledgements:false});
  const counts=new Map<string,number>();for(const task of tasks)counts.set(task.kind,(counts.get(task.kind)??0)+1);
  const byKind=[...counts].map(([kind,count])=>Object.freeze({kind,count})).sort((a,b)=>b.count-a.count||a.kind.localeCompare(b.kind));
  const reads:OutcomeRead[]=[{tool:'core/approvals-inbox.ts#listPendingTasks',status:'ok',refs:tasks.map(task=>task.id).filter(id=>REF.test(id)).slice(0,200)}];
  let setup:DailyDigest['setup']=null,deadlines:DailyDigest['deadlines']=null;
  if(isAdmin(ctx)){
-  const companies=await withTenant(ctx,tx=>tx.select({id:company.id}).from(company)
-   .where(sql`app.is_admin_for(${company.id})`).orderBy(company.id).limit(DIGEST_COMPANY_LIMIT));
+  const scope=view.companyIds;
+  const companies=scope&&scope.length===0?[]:await withTenant(ctx,tx=>tx.select({id:company.id}).from(company)
+   .where(and(sql`app.is_admin_for(${company.id})`,scope?inArray(company.id,[...scope]):undefined)).orderBy(company.id).limit(DIGEST_COMPANY_LIMIT));
+  // Statutory notifications are a payroll page; without the payroll module there is no deadline tile to give.
+  const payroll=isModuleEnabled(ctx,'payroll');
+  const results=await inBatches(companies,COMPANY_CONCURRENCY,async({id})=>{
+   const [copilot,items]=await Promise.all([setupCopilot(ctx,id,today).catch(()=>null),payroll?complianceWorklist(ctx,{companyId:id,today}).catch(()=>null):Promise.resolve([])]);
+   return {copilot,items};
+  });
   let blocked=0,attention=0,unknown=0,overdue=0,dueSoon=0,checked=0;
-  for(const {id} of companies){
-   try{const copilot=await setupCopilot(ctx,id,today);checked++;
-    blocked+=copilot.stages.filter(stage=>stage.status==='blocked').length;attention+=copilot.stages.filter(stage=>stage.status==='attention').length;}
-   catch{unknown++;}
-   try{const items=await complianceWorklist(ctx,{companyId:id,today});
-    overdue+=items.filter(item=>item.status==='overdue').length;dueSoon+=items.filter(item=>item.status==='due_soon').length;}
-   catch{unknown++;}
+  for(const {copilot,items} of results){
+   if(copilot){checked++;blocked+=copilot.stages.filter(stage=>stage.status==='blocked').length;attention+=copilot.stages.filter(stage=>stage.status==='attention').length;}
+   else unknown++;
+   if(items){overdue+=items.filter(item=>item.status==='overdue').length;dueSoon+=items.filter(item=>item.status==='due_soon').length;}
+   else unknown++;
   }
   const refs=companies.map(row=>row.id);
-  reads.push({tool:'core/setup-copilot/copilot.ts#setupCopilot',status:unknown?'partial':'ok',refs},{tool:'core/reporting.ts#complianceWorklist',status:unknown?'partial':'ok',refs});
+  reads.push({tool:'core/setup-copilot/copilot.ts#setupCopilot',status:unknown?'partial':'ok',refs});
+  if(payroll)reads.push({tool:'core/reporting.ts#complianceWorklist',status:unknown?'partial':'ok',refs});
   setup=Object.freeze({blocked,attention,companies:checked,unknown,page:DIGEST_PAGES.setup});
-  deadlines=Object.freeze({overdue,dueSoon,page:DIGEST_PAGES.deadlines});
+  deadlines=payroll?Object.freeze({overdue,dueSoon,page:DIGEST_PAGES.deadlines}):null;
  }
  const body={asOf:today,approvals:Object.freeze({total:tasks.length,byKind:Object.freeze(byKind),page:DIGEST_PAGES.approvals}),setup,deadlines};
  return Object.freeze({digest:Object.freeze({kind:'teras.daily_digest' as const,version:1 as const,...body,text:digestText(body)}),reads:Object.freeze(reads)});
@@ -84,8 +102,14 @@ export async function prepareDailyDigest(ctx:SessionContext,today:string=todayIn
  if(!ctx.userId||!ctx.personId||ctx.agent)throw Error('The daily digest is prepared for a person.');
  return (await prepare(ctx,today)).digest;
 }
-/** Read service for the interface: what the caller's digest would say right now, without a mandate or a record. */
-export const digestPreview=(ctx:SessionContext,today?:string)=>prepareDailyDigest(ctx,today);
+/** Read service for the interface: what the caller's digest would say right now, without a mandate or a record.
+ * The Inbox passes its own approvals list and company scope (DigestViewInput), so "Your day" and the list
+ * below it have one owner and one scope (PR 198 review M9) and the queue is read once per view (H4). */
+export async function digestPreview(ctx:SessionContext,options:DigestViewInput&Readonly<{today?:string}>={}):Promise<DailyDigest>{
+ if(!ctx.userId||!ctx.personId||ctx.agent)throw Error('The daily digest is prepared for a person.');
+ const {today=todayInKualaLumpur(),...view}=options;
+ return (await prepare(ctx,today,view)).digest;
+}
 
 /** The `daily_digest` job, run by core/mandates/run.ts under the grantor's current authority. */
 export async function dailyDigestJob(grantor:SessionContext,mandate:Readonly<{scope:MandateScope}>,now:Date):Promise<WorkJobResult<DailyDigest>>{
