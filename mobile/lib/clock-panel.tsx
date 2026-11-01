@@ -37,7 +37,7 @@ export type HomeClockView={
  * tap: prepare (saved attempt, signed-clock checks, location assessment and required photo), then show the same
  * explicit review and receipt recovery controls on Home. No Home tap automatically submits a punch.
  */
-export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent}:{initialAction?:'in'|'out';widgetIntent?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
+export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent,widgetEmployment}:{initialAction?:'in'|'out';widgetIntent?:string;widgetEmployment?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
@@ -102,10 +102,12 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   useEffect(()=>{
     if(!initialAction||!widgetIntent||consumedWidget.current===widgetIntent||!recovery.ready||!identity||sessionStatus!=='signedIn')return;
     consumedWidget.current=widgetIntent;
+    // A server-default subject can change between reads. Never apply the hint to another employment.
+    if(widgetEmployment&&widgetEmployment!==identity)return;
     // An unsubmitted preparation, uncertain response or saved command always takes precedence.
     if(flight.current||draft&&(draft.phase!=='idle'||draft.requestId||draft.geo||draft.photo)||signedStatus?.status==='pending')return;
     putClock({employmentId:identity,action:initialAction,phase:'idle'});
-  },[initialAction,widgetIntent,recovery.ready,identity,sessionStatus,draft,signedStatus,putClock]);
+  },[initialAction,widgetIntent,widgetEmployment,recovery.ready,identity,sessionStatus,draft,signedStatus,putClock]);
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
   const label=action==='in'?t('clockIn'):t('clockOut');
   function needsRegistration(e:unknown){return e instanceof EnrollmentConflict||e instanceof SignedClockUnavailable&&e.reason==='registration_required';}

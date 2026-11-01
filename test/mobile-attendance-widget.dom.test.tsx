@@ -33,7 +33,7 @@ it('a launch waits for sign-in and employment selection, then routes once; its o
  vi.useFakeTimers();const f=observerFixture(),C=f.WidgetLaunchObserver,r=render(<C/>);
  await React.act(async()=>{f.receive('aihr://clock?action=out');await vi.advanceTimersByTimeAsync(0);});expect(f.replace).not.toHaveBeenCalled();expect(f.read).not.toHaveBeenCalled();
  f.session.status='signedIn';r.rerender(<C/>);await React.act(async()=>vi.advanceTimersByTimeAsync(0));expect(f.replace).not.toHaveBeenCalled();
- f.session.employmentId='own';r.rerender(<C/>);await React.act(async()=>vi.advanceTimersByTimeAsync(0));expect(f.replace).toHaveBeenCalledOnce();expect(f.replace.mock.calls[0][0]).toMatchObject({pathname:'/clock',params:{widgetAction:'out'}});expect(f.read.mock.calls[0].slice(0,2)).toEqual(['clock',{employmentId:'own'}]);
+ f.session.employmentId='own';r.rerender(<C/>);await React.act(async()=>vi.advanceTimersByTimeAsync(0));expect(f.replace).toHaveBeenCalledOnce();expect(f.replace.mock.calls[0][0]).toMatchObject({pathname:'/clock',params:{widgetAction:'out'}});expect(f.read.mock.calls.at(-1)!.slice(0,2)).toEqual(['clock',{employmentId:'own'}]);
  r.rerender(<C/>);await React.act(async()=>vi.advanceTimersByTimeAsync(0));expect(f.replace).toHaveBeenCalledOnce();
 });
 it('clears snapshots at logout and refuses a late result from the previous employment',async()=>{
@@ -45,4 +45,20 @@ it('does not poll in the background or publish a response received after the app
  vi.useFakeTimers();const f=observerFixture();let finish:(v:{})=>void=()=>{};f.read.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));f.session.status='signedIn';f.session.employmentId='one';const C=f.WidgetLaunchObserver,r=render(<C/>);
  f.session.status='locked';f.session.visible=false;f.app.currentState='background';r.rerender(<C/>);
  await React.act(async()=>{finish({});await vi.advanceTimersByTimeAsync(120_000);});expect(f.read).toHaveBeenCalledOnce();expect(f.update).not.toHaveBeenCalled();
+});
+
+it('resolves the authorized default work profile without changing the session selection, then delivers its scoped hint',async()=>{
+ vi.useFakeTimers();const f=observerFixture();f.session.status='signedIn';f.read.mockResolvedValue({employmentId:'server-default'});const C=f.WidgetLaunchObserver;
+ await React.act(async()=>{render(<C/>);await vi.advanceTimersByTimeAsync(0);});
+ expect(f.session.employmentId).toBeNull();expect(f.project).toHaveBeenCalledWith({employmentId:'server-default'},'server-default',expect.any(Number));
+ await React.act(async()=>{f.receive('aihr://clock?action=in');await vi.advanceTimersByTimeAsync(0);});
+ expect(f.replace.mock.calls[0][0].params).toMatchObject({widgetAction:'in',widgetEmployment:'server-default'});
+});
+it('does not reuse a resolved default subject after an explicit work-profile switch',async()=>{
+ vi.useFakeTimers();const f=observerFixture();f.session.status='signedIn';f.read.mockResolvedValue({employmentId:'default-one'});const C=f.WidgetLaunchObserver;let r:any;
+ await React.act(async()=>{r=render(<C/>);await vi.advanceTimersByTimeAsync(0);});
+ f.session.employmentId='explicit';await React.act(async()=>{r.rerender(<C/>);await vi.advanceTimersByTimeAsync(0);});
+ let finish:(v:{})=>void=()=>{};f.read.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));f.session.employmentId=null;r.rerender(<C/>);
+ await React.act(async()=>{f.receive('aihr://clock?action=out');await vi.advanceTimersByTimeAsync(0);});expect(f.replace).not.toHaveBeenCalled();
+ await React.act(async()=>{finish({employmentId:'default-two'});await vi.advanceTimersByTimeAsync(0);});await React.act(async()=>vi.advanceTimersByTimeAsync(0));expect(f.replace.mock.calls[0][0].params.widgetEmployment).toBe('default-two');
 });
