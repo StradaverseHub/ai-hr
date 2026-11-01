@@ -209,7 +209,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
    let run:Awaited<ReturnType<ToolBinding['run']>>;
    try{run=await binding.run(resolved);}catch{record('error',{ok:false,message:'This source is unavailable for this request.'});continue;}
    // Reads and suggest_action are disclosed under their declared entity; context tools (no entity) are swept.
-   const disclosed=discloseToolOutput(binding.name,binding.entity,run.content,ledger);disclosure.push(disclosed.applied);
+   const disclosed=discloseToolOutput(binding.name,binding.entity,run.content,ledger,{namesInScope:run.namesInScope});disclosure.push(disclosed.applied);
    screening.tools+=disclosed.applied.identifiers;for(const kind of disclosed.applied.identifierKinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);
    if(run.ok&&binding.kind!=='suggest')reads.push(binding.name);
    if(run.suggestion)suggestion=run.suggestion;

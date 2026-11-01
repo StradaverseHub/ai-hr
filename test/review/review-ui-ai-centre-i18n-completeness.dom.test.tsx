@@ -74,7 +74,9 @@ describe('AI centre catalogue completeness', () => {
     const messages = (locale === 'en' ? en : LOCALES[locale as keyof typeof LOCALES]) as Dict;
     const errors: string[] = [];
     const t = createTranslator({ locale, messages: messages as never, onError: e => { errors.push(e.message); } });
-    const values = { name: 'Noveri', osName: 'Noveri OS', count: 2, n: 1, total: 9, area: 'Leave', version: 3, rate: '50%', active: 1, blocked: 1, attention: 2, overdue: 0, dueSoon: 1, when: '2 Nov 2026', date: '2 Nov 2026' };
+    const values = { name: 'Noveri', osName: 'Noveri OS', count: 2, n: 1, total: 9, area: 'Leave', version: 3, rate: '50%', active: 1, blocked: 1, attention: 2, overdue: 0, dueSoon: 1, when: '2 Nov 2026', date: '2 Nov 2026',
+      // Arguments of the live-chat wiring copy (aiCentre.conversation, PR 197), added by claude/teras-review-fixes.
+      time: '3:00 pm', reads: 'your leave balances' };
     for (const key of Object.keys(flat(messages))) t(key as never, values as never);
     expect(errors).toEqual([]);
   });

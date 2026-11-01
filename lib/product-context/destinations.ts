@@ -27,6 +27,9 @@ export type DestinationAudience='everyone'|'manager'|'admin';
  * Feedback, the product feedback board read by the software team). Shown to the model beside the label. */
 export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
  '/feedback':'Product feedback to the software team about this application: problems, ideas and new functions. Never for workplace concerns, complaints about people or personal matters; those go to the person\'s HR team.',
+ // Review M16 (run 41343676782, pp-scope-2): a payroll partner asking for the October payroll summary was sent here.
+ // Payroll runs and their reports are on the payroll pages, which only HR administrators open (scopedAdmin).
+ '/me/payslip':'The signed-in person\'s own released payslips only. Never a payroll run, a payroll summary, a company report or anyone else\'s pay.',
 });
 export type ProductDestination=Readonly<{href:string;labelKey:string;audience:DestinationAudience;module:string|null;source:'pack'|'lifecycle_v9'|'security'|'sidebar'}>;
 

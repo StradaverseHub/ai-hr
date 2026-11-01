@@ -1,7 +1,8 @@
 /** REVIEW (security-surface) — the inbound identifier screen (core/harness/reply-checks.ts screenIdentifiers) and
  * what the scripted model is actually sent. Written as test/review/review-harness-identifiers.test.ts. No database.
  * Free-text and identifier FIELDS are removed structurally by disclosure; this screen is what protects the person's
- * own typed words, task memory and history. Its patterns are Malaysian-only; the product ships th, vi, zh and ta. */
+ * own typed words, task memory and history. Its patterns were Malaysian-only; the product ships th, vi, zh and ta.
+ * Fixed (M6, claude/teras-review-fixes): Thai ID, Singapore NRIC, Thai and Vietnamese mobiles, 3-6-3 accounts. */
 import {describe,expect,it} from 'vitest';
 import type {SessionContext} from '../../db/client';
 import {screenIdentifiers} from '../../core/harness/reply-checks';
@@ -26,12 +27,12 @@ describe('identifier screen gaps',()=>{
   ['Thai mobile','My number is 081-234-5678.','081-234-5678'],
   ['Singapore NRIC','My NRIC is S1234567D.','S1234567D'],
   ['Malaysian account in 3-6-3 groups','My bank account is 164-123456-789.','164-123456-789'],
- ])('REVIEW medium: a %s is removed before it is sent',(_kind,text,value)=>{
+ ])('fixed M6: a %s is removed before it is sent',(_kind,text,value)=>{
   const result=screenIdentifiers(text);
   expect(result.count).toBeGreaterThan(0);
   expect(result.text).not.toContain(value);
  });
- it('REVIEW medium: a Thai national ID typed by the person never reaches the model',async()=>{
+ it('fixed M6: a Thai national ID typed by the person never reaches the model',async()=>{
   expect(await sentFor('My Thai ID is 1-1037-02071-81-1. Is my record complete?')).not.toContain('1-1037-02071-81-1');
  });
 });

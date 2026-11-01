@@ -39,17 +39,26 @@ export type IdentifierKind='record_id'|'email'|'ic'|'tax_number'|'epf'|'socso'|'
  * number" label followed by digits); EPF (KWSP) and SOCSO (PERKESO) numbers after their label; passports (one or
  * two letters, either case, and seven to nine digits); Malaysian mobile and landline numbers (0 or +60, with or
  * without separators); and a run of ten to seventeen digits or 4-4-4+ groups (bank account). Figures with
- * separators or decimals ("1,234.50", "17.25") do not match; a full stop after a number is punctuation. */
+ * separators or decimals ("1,234.50", "17.25") do not match; a full stop after a number is punctuation.
+ * Review M6 adds the shipped locales' formats: Thai national ID (1-4-5-2-1), Singapore NRIC/FIN (S1234567D),
+ * Thai and Vietnamese mobiles, and Malaysian bank accounts written in 3-6-3 groups. */
 const IDENTIFIERS:readonly (readonly [IdentifierKind,RegExp])[]=[
  ['record_id',/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi],
  ['email',/\b[A-Z0-9._%+-]+@[A-Z0-9-]+(?:\.[A-Z0-9-]+)*\.[A-Z]{2,}\b/gi],
  ['ic',/(?<!\d|\d[.,])\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])[- ]?\d{2}[- ]?\d{4}(?![.,]?\d)/g],
+ // Thai national ID in its printed groups (1-2345-67890-12-3); undivided, its 13 digits are a bank-account run below.
+ ['ic',/(?<!\d|\d[.,])\d[- ]\d{4}[- ]\d{5}[- ]\d{2}[- ]\d(?![.,]?\d)/g],
+ // Singapore NRIC or FIN: a prefix letter, seven digits and a check letter.
+ ['ic',/\b[STFGM]\d{7}[A-Z]\b/gi],
  ['tax_number',/\b(?:SG|OG|IG|C|D|E|F|J|TP|TA|TC|TN|TR|PT|LE)\s?\d{8,11}\b|\b(?:tax|TIN|cukai)\s*(?:no\.?|number|ref(?:erence)?|nombor)?\s*[:#]?\s*[A-Z]{0,2}\s?\d{6,}/gi],
  ['epf',/\b(?:EPF|KWSP)\s*(?:member(?:ship)?\s*|ahli\s*)?(?:no\.?|number|nombor)?\s*[:#]?\s*\d{6,12}(?![.,]?\d)/gi],
  ['socso',/\b(?:SOCSO|PERKESO)\s*(?:no\.?|number|nombor)?\s*[:#]?\s*[A-Z]?\d{6,12}(?![.,]?\d)/gi],
  ['passport',/\b[A-Z]{1,2}\d{7,9}\b/gi],
  ['phone',/(?<![\w+])(?:\+?60[- ]?|0)(?:1\d|[3-9])[- ]?\d{3,4}[- ]?\d{4}(?![.,]?\d)/g],
- ['bank_account',/(?<!\d|\d[.,])\d{10,17}(?![.,]?\d)|(?<!\d|\d[.,])\d{4}[- ]\d{4}[- ]\d{4,9}(?![.,]?\d)/g],
+ // Thai mobiles (08x-xxx-xxxx, +66) and Vietnamese mobiles (09xx xxx xxx, +84).
+ ['phone',/(?<![\w+])(?:\+?66[- ]?|0)[689]\d[- ]?\d{3}[- ]?\d{4}(?![.,]?\d)/g],
+ ['phone',/(?<![\w+])(?:\+?84[- ]?|0)[35789]\d{2}[- ]?\d{3}[- ]?\d{3}(?![.,]?\d)/g],
+ ['bank_account',/(?<!\d|\d[.,])\d{10,17}(?![.,]?\d)|(?<!\d|\d[.,])\d{4}[- ]\d{4}[- ]\d{4,9}(?![.,]?\d)|(?<!\d|\d[.,])\d{3}[- ]\d{6}[- ]\d{3}(?![.,]?\d)/g],
 ];
 export type IdentifierScreen=Readonly<{text:string;count:number;kinds:readonly IdentifierKind[]}>;
 /** Replaces every identifier with `[<kind> removed]`. Returns the screened text, how many were removed and their
