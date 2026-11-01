@@ -35,10 +35,21 @@ are byte-identical to the accepted base. No new raw person/document field, exter
 provider operation, numerical model authority or sensitive AI effect is introduced.
 These source facts do not substitute for native behavior, release or human approval.
 
-Source-bound positive-provider control41311496352 on earlier integratede45181a80
-remains FAIL;163othercases pass. A future authorized fingerprint refresh must bind
-its exact reviewed final closure and retain original human provenance; changing a
-generated hash or passing unrelated tests does not authorize that refresh.
+### Owner-authorized binding refresh — 1 November 2026,22:04MYT
+
+The repository owner answered the exact24-binding fingerprint-refresh question:
+“Approve the fingerprint refresh; don’t deploy”. The authorized scope is this reviewed
+closure`9f74efea6ae0ee912f602dc263429bf1e238e13ff4ed0cf9d1d83cd0d1e3f8e8` only.
+Apply only the24 existing approved sourceDigest values; retain every contract ID,
+status, reviewer, evidence link and original human timestamp, and both pending records.
+The module-agent manifest is regenerated because it covers the approval registry.
+This is not a new permitted dataset, purpose, provider contract, sensitive action,
+provisional approval upgrade or deployment authorization.
+
+Original source-bound positive-provider control41311496352 on integratede45181a80
+remains FAIL;163othercases passed there. The newly authorized refresh needs its own
+hosted positive/refusal regression evidence and complete exact-candidate release
+qualification. No real provider call is needed for those synthetic checks.
 
 ---
 

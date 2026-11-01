@@ -215,9 +215,10 @@ this task neither claims nor changes it. These are snapshots that must be refres
 before any separately authorized installation. The actual candidatea8 customer/runtime preflight also PASSes: customer profile,
 zero configuration errors, pinned Linux x64/Node22.23.3/ABI127/glibc2.39/Next16.3.8.
 Both GitHub deployment switches remainfalse; deployed baseline variable matches7fe8.
-The complete exact-candidate release witness remains outstanding. An unapplied
-24-binding-only source fingerprint patch is prepared; the owner question is pending.
-No approval is inferred from elapsed time, source review or a generated manifest.
+The complete exact-candidate release witness remains outstanding. The owner explicitly approved the24-binding-only fingerprint refresh at22:04MYT,
+with deployment held. The reviewed provider closure remains9f74efea6; contract IDs,
+purposes, data shapes, statuses, provenance and both pending records stay unchanged.
+Original source-bound failures remain failed; new positive/refusal checks are required.
 
 No staging deployment, queue lease, package publication or live data/configuration
 mutation is authorized or performed. Allocation source audits and exact mapping live
