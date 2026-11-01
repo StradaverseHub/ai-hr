@@ -2,7 +2,7 @@
 
 Source`da336d00074122c7d44bab7c4f9d30889effd4ec` integrates canonical main438bfae3d, guarded0902 native hierarchy-plan reuse and the two-entry client catalog recovery. Hierarchy qualification passes160 database/21 additional checks plus the whole compiler (41344434698); catalog recovery passes23 checks plus the whole compiler (41345580191).
 
-The unchanged-resource500-user runs [1s41346050530](https://github.com/StradaverseHub/ai-hr/actions/runs/41346050530) and [5s41346066075](https://github.com/StradaverseHub/ai-hr/actions/runs/41346066075) are running on that frozen source. No final speed result exists yet. **0/2 targets accepted; no deployment.** The completed failures below retain their original source identities.
+The unchanged-resource500-user runs [1s41346050530](https://github.com/StradaverseHub/ai-hr/actions/runs/41346050530) and [5s41346066075](https://github.com/StradaverseHub/ai-hr/actions/runs/41346066075) both FAIL on that frozen source. Both traffic accounts settle:1s426 completed/74 failed, read/write p9566.03/86.87s;5s499 completed/1 failed,58.63/85.46s. Each completes5/6 browsers and reports three loaded Home-card failures; both tenant audit chains validate in each run. The five-second600s parent also times out after final child accounting. **0/2 targets accepted; no deployment.** Earlier failures below retain their original source identities. Two separate reversible Notice query experiments pass semantic controls but show no consistent populated gain and are rejected; no driver or Notice runtime rewrite is promoted.
 
 ## Latest qualified source change and full-load results
 
