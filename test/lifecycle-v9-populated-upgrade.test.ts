@@ -1,3 +1,4 @@
+import {PERFORMANCE_MIGRATION_TAIL} from './fixtures/performance-migration-tail';
 /** Ordinary journal rehearsal against an owned populated pre-V9 database. */
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -9,14 +10,15 @@ import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
 
 it('preserves populated Native issuance, private data, identity and every applied receipt through the ordinary V9 upgrade',async()=>{
+ for(const entry of PERFORMANCE_MIGRATION_TAIL)expect(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')).toBe(entry.hash);
  const journalBytes=readFileSync('db/migrations/meta/_journal.json');
  const journal=JSON.parse(journalBytes.toString());
  const boundary=journal.entries.findIndex((entry:{tag:string})=>entry.tag==='0713_lifecycle_v9');
  expect(boundary).toBe(571);
  // The tax/movement release (1 Nov 2026) appends exactly 0873/0874; the ordinary upgrade below applies them too.
- expect(journal.entries).toHaveLength(640); // + 1058ced1's 0876
+ expect(journal.entries).toHaveLength(650); // Canonical640 plus the ten frozen performance appends.
  expect(journal.entries.slice(boundary,579)).toHaveLength(8);
- expect(journal.entries.slice(boundary)).toHaveLength(69);
+ expect(journal.entries.slice(boundary)).toHaveLength(79);
  const migrationIdentity=(entry:{idx:number;version:string;when:number;tag:string;breakpoints:boolean})=>({...entry,hash:createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')});
  // The accepted V9 prefix and coordinated Feedback/Bank identities are immutable; the two coordinated Formula appends follow.
  expect(createHash('sha256').update(JSON.stringify(journal.entries.slice(0,579).map(migrationIdentity))).digest('hex')).toBe('11e5295ce4e60acb1f13c009a78098b043c862b6412ed2bbc2e102f142a87f85');
@@ -32,6 +34,7 @@ it('preserves populated Native issuance, private data, identity and every applie
   {idx:752,version:'7',when:1793330000274,tag:'0874_payroll_tax_basis_corrections',breakpoints:true,hash:'9177fcd20fa1706ccc8077f50083270b9f03acb126b729e6af725082ed5d5745'},
   {idx:753,version:'7',when:1793330000275,tag:'0875_reward_access_request_read_role',breakpoints:true,hash:'06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1'},
   {idx:754,version:'7',when:1793330000276,tag:'0876_epf_manual_percentage_zero',breakpoints:true,hash:'e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430'},
+  ...PERFORMANCE_MIGRATION_TAIL,
  ]);
  expect(journal.entries.slice(583,636).map(migrationIdentity)).toEqual([
   {

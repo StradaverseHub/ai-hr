@@ -8,6 +8,10 @@
       "assistant.fileImport",
       "assistant.launcher",
       "assistant.workspace.chat",
+      "assistant.workspace.claimActions",
+      "assistant.workspace.decisionActions",
+      "assistant.workspace.overtimeActions",
+      "assistant.workspace.proposal",
       "auth",
       "commandBar",
       "common",
@@ -21,6 +25,7 @@
       "onboarding",
       "onehr.workspace",
       "operatorWorkspace",
+      "ownLeaveChange",
       "pageStyleRecovery",
       "topbar"
     ],
@@ -46,7 +51,8 @@
         "employeeHome.team",
         "employeeHome.timeOff",
         "employeeHome.today",
-        "notices"
+        "notices",
+        "ownLeaveChange"
       ],
       "unknown": []
     },
@@ -164,56 +170,11 @@
       "unknown": []
     },
     "assistant": {
-      "prefixes": [
-        "admin.personnel.benefitScheme.colLeaveType",
-        "admin.personnel.benefitScheme.colPickedUpBy",
-        "admin.personnel.benefitScheme.effectiveFrom",
-        "admin.personnel.benefitScheme.title",
-        "assistant",
-        "attendance",
-        "common.databaseError",
-        "components.confirmSubmit",
-        "costAllocations.costCenter",
-        "costAllocations.effectiveDate",
-        "costAllocations.percentage",
-        "costAllocations.remainderField",
-        "costAllocations.totalField",
-        "employeeHome.calendar",
-        "employeeHome.taskNames",
-        "employeeHome.tasks",
-        "employeeHome.team",
-        "holidayCalendarAssignments.calendar",
-        "holidayCalendarAssignments.end",
-        "holidayCalendarAssignments.start",
-        "leave.breakdown.asAtDate",
-        "leave.breakdown.field.adjustments",
-        "leave.breakdown.field.availableBalance",
-        "leave.breakdown.field.broughtForward",
-        "leave.breakdown.field.broughtForwardForfeited",
-        "leave.breakdown.field.eligible",
-        "leave.breakdown.field.pendingApproval",
-        "leave.breakdown.field.taken",
-        "leave.breakdown.field.total",
-        "leave.breakdown.field.ytdEntitled",
-        "leave.fieldStartDate",
-        "leave.inquiry.colEntitlementStatus",
-        "leaveCreditHistory.col.expiryDate",
-        "me",
-        "ownLeaveChange",
-        "ownLeaveReview",
-        "payComponents",
-        "payRule",
-        "payrollPolicy.assignLabel",
-        "people",
-        "replacementRequest",
-        "review.currentType",
-        "review.dueDate",
-        "review.endDate",
-        "review.typeLabel",
-        "review.uploadSignedLetter",
-        "workflowEmail.categories"
-      ],
-      "unknown": []
+      "prefixes": null,
+      "unknown": [
+        "components/assistant/profile-request-rejection-panel.tsx",
+        "components/assistant/workforce-profile-maintenance-panel.tsx"
+      ]
     },
     "attendance": {
       "prefixes": [
@@ -497,6 +458,7 @@
         "payroll.transactions",
         "payroll.txnImport",
         "payrollPolicy.assignLabel",
+        "payrollTaxBasis",
         "people",
         "review.currentType",
         "review.dueDate",
@@ -554,6 +516,8 @@
     "rewards": {
       "prefixes": [
         "common.databaseError",
+        "components.confirmSubmit",
+        "components.drawer",
         "rewards"
       ],
       "unknown": []
