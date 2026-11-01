@@ -7,12 +7,16 @@
  * the store refuses a memory, key or load whose tenant or login is not the session's.
  *
  * Erased with the transcript: retiring or deleting the login's Assistant exchanges deletes its task memory
- * in the database (0890 trigger), whichever path retired them; delete() removes one conversation now.
+ * in the database (0890 trigger), whichever path retired them; delete() removes one conversation now. Memory not
+ * updated for TASK_MEMORY_RETENTION is expired: never read, and erased by the database on later writes (0906).
  * Wired by core/teras-wiring/turn.ts, keyed by the conversation, when the tenant's Noveri conversation switch is on. */
-import {and,eq,sql} from 'drizzle-orm';
+import {and,eq,gt,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {terasTaskMemory} from '../../db/teras-schema';
 import {TASK_MEMORY_VERSION,type TaskMemory,type TaskMemoryStore} from './memory';
+
+/** Task memory not updated within this interval is expired (migration 0906 erases it; the store never reads it). */
+export const TASK_MEMORY_RETENTION='1 day';
 
 export class TaskMemoryRefused extends Error{constructor(){super('Task memory belongs to another caller.');this.name='TaskMemoryRefused';}}
 
@@ -25,8 +29,11 @@ export class PostgresTaskMemoryStore implements TaskMemoryStore{
  private own(tenantId:string,userId:string){if(tenantId!==this.ctx.tenantId||userId!==this.ctx.userId)throw new TaskMemoryRefused();}
  async load(tenantId:string,userId:string,conversationId:string):Promise<TaskMemory|null>{
   this.own(tenantId,userId);
+  // Retention (migration 0906): memory not updated for a day belongs to a conversation that can no longer continue
+  // (core/teras-wiring/history.ts), so it is never read again; the database erases it on later writes.
   const [row]=await withTenant(this.ctx,tx=>tx.select({memory:terasTaskMemory.memory}).from(terasTaskMemory)
-   .where(and(eq(terasTaskMemory.tenantId,tenantId),eq(terasTaskMemory.appUserId,userId),eq(terasTaskMemory.conversationId,conversationId))).limit(1));
+   .where(and(eq(terasTaskMemory.tenantId,tenantId),eq(terasTaskMemory.appUserId,userId),eq(terasTaskMemory.conversationId,conversationId),
+    gt(terasTaskMemory.updatedAt,sql`now()-${TASK_MEMORY_RETENTION}::interval`))).limit(1));
   if(!row)return null;
   const memory=row.memory as unknown as TaskMemory;
   // A row of another shape or owner is never trusted: it is treated as absent.

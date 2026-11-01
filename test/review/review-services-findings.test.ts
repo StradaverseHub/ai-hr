@@ -126,7 +126,7 @@ describe('outcome record free text',()=>{
 });
 
 describe('grantor-manager definer function',()=>{
- it('REVIEW low: a manager whose employment ends in the future may still revoke a report\'s mandate (terminated_on IS NULL is too strict)',async()=>{
+ it('fixed L-manager: a manager whose employment ends in the future may still revoke a report\'s mandate (terminated_on IS NULL is too strict)',async()=>{
   // Fixture note: teras_is_grantor_manager requires mgr.terminated_on IS NULL, while My Team (core/my-team-scope.ts)
   // treats a manager as current until terminated_on > today. Give the manager a future termination date.
   await owner.db.update(schema.employment).set({terminatedOn:'2099-12-31'}).where(eq(schema.employment.id,m.manager.employmentId));

@@ -11,6 +11,7 @@
  *
  * The three `*RuleVersion` tables redeclare only the id and `rule_version` of existing owner tables, so the
  * labeller can read a version without the owner's full declaration changing. */
+import {sql} from 'drizzle-orm';
 import {boolean,index,integer,jsonb,pgTable,primaryKey,text,timestamp,uniqueIndex,uuid} from 'drizzle-orm/pg-core';
 import {appUser,company,person,tenant} from './schema';
 import type {HumanInvolvement,NoticeState,OutcomeCheck,OutcomeKind,OutcomeRead,OutcomeReplay} from '../core/outcome-record/types';
@@ -56,7 +57,9 @@ export const terasMandate=pgTable('teras_mandate',{
  validFrom:at('valid_from').notNull(),validUntil:at('valid_until').notNull(),
  revokedAt:at('revoked_at'),revokedByUserId:uuid('revoked_by_user_id').references(()=>appUser.id),revokedBy:text('revoked_by').$type<'grantor'|'administrator'|'manager'>(),
  createdAt:at('created_at').notNull().defaultNow(),
-},t=>[index('teras_mandate_grantor_idx').on(t.tenantId,t.grantorUserId)]);
+},t=>[index('teras_mandate_grantor_idx').on(t.tenantId,t.grantorUserId),
+ // 0906: one unrevoked daily digest mandate per grantor.
+ uniqueIndex('teras_mandate_one_daily_digest_idx').on(t.tenantId,t.grantorUserId).where(sql`job_type='daily_digest' AND revoked_at IS NULL`)]);
 
 export const terasOutcomeRecord=pgTable('teras_outcome_record',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').references(()=>company.id),
@@ -69,7 +72,10 @@ export const terasOutcomeRecord=pgTable('teras_outcome_record',{
  outcomeKind:text('outcome_kind').$type<OutcomeKind>().notNull(),outcome:jsonb('outcome').$type<Record<string,unknown>>().notNull(),
  humanInvolvement:text('human_involvement').$type<HumanInvolvement>().notNull(),notice:text('notice').$type<NoticeState>().notNull(),
  trace:jsonb('trace').$type<Record<string,unknown>>(),
-},t=>[uniqueIndex('teras_outcome_record_tenant_id_run_id_key').on(t.tenantId,t.runId)]);
+},t=>[uniqueIndex('teras_outcome_record_tenant_id_run_id_key').on(t.tenantId,t.runId),
+ // 0906: the inbox digest (grantor) and registry (agent identity) lookups.
+ index('teras_outcome_record_grantor_idx').on(t.tenantId,t.grantorUserId,t.startedAt).where(sql`grantor_user_id IS NOT NULL`),
+ index('teras_outcome_record_agent_idx').on(t.tenantId,t.agentIdentity,t.startedAt)]);
 
 export const terasOutcomeFollowup=pgTable('teras_outcome_followup',{
  id:id(),tenantId:tenantId(),recordId:uuid('record_id').notNull(),
@@ -78,7 +84,9 @@ export const terasOutcomeFollowup=pgTable('teras_outcome_followup',{
  notice:text('notice').$type<NoticeState>(),noticeChannel:text('notice_channel').$type<'in_app'|'email'>(),
  byUserId:uuid('by_user_id').references(()=>appUser.id),reference:jsonb('reference').$type<Record<string,string>>().notNull().default({}),
  at:at('at').notNull().defaultNow(),
-});
+},t=>[
+ // 0906: at most one decision follow-up per record.
+ uniqueIndex('teras_outcome_followup_one_decision_idx').on(t.tenantId,t.recordId).where(sql`kind='decision'`)]);
 
 export const terasTaskMemory=pgTable('teras_task_memory',{
  tenantId:tenantId(),appUserId:uuid('app_user_id').notNull().references(()=>appUser.id),conversationId:text('conversation_id').notNull(),
