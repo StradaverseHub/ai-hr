@@ -25,5 +25,5 @@ it.each([false,true])('avoids empty marker writes but still removes an existing 
   })).resolves.toBeNull();
  }finally{await owner.client.unsafe('drop trigger test_empty_pattern_write on attendance;drop function public.test_empty_pattern_write()');}
  const [after]=await owner.db.select().from(s.attendance).where(eq(s.attendance.id,day.id));
- expect(after.calcTrace).toEqual(day.calcTrace);expect(after.checkInAt).toBe(day.checkInAt);expect(after.checkOutAt).toBe(day.checkOutAt);
+ expect(after.calcTrace).toEqual(existingKey?(day.calcTrace??{}):day.calcTrace);expect(after.checkInAt).toBe(day.checkInAt);expect(after.checkOutAt).toBe(day.checkOutAt);
 });
