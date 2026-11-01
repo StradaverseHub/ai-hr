@@ -308,6 +308,149 @@
       "back": "Kembali ke Peti masuk",
       "navLabel": "Kembali",
       "note": "Tiada apa yang berubah sehingga anda mengesahkan di halaman ini, dan modul menyemak semuanya semula apabila anda berbuat demikian."
+    },
+    "registry": {
+      "title": "Daftar ejen",
+      "help": "Setiap ejen berdaftar dengan jenisnya, apa yang memulakannya, kuasa yang digunakannya, suisnya dan cara orang memberi respons kepadanya. Kadar hanya ditunjukkan apabila cukup kes telah diputuskan.",
+      "columns": {
+        "worker": "Ejen",
+        "runsUnder": "Berjalan di bawah",
+        "switch": "Suis",
+        "lastRun": "Larian terakhir",
+        "response": "Cara orang memberi respons"
+      },
+      "details": "Butiran",
+      "detailTitle": "{name}: larian terkini",
+      "recentRuns": "Larian terkini",
+      "noRuns": "Belum ada larian direkodkan.",
+      "trigger": {
+        "schedule": "Mengikut jadual",
+        "event": "Apabila ada peristiwa",
+        "request": "Atas permintaan"
+      },
+      "effect": {
+        "none": "Menerangkan sahaja",
+        "notify": "Menghantar notis",
+        "prepare": "Menyediakan untuk seseorang",
+        "complete_under_mandate": "Menyelesaikan di bawah tugas diwakilkan"
+      },
+      "authority": {
+        "requester": "Orang yang meminta",
+        "agent_principal": "Suis syarikat, sebagai prinsipal ejen",
+        "mandate": "Tugas diwakilkan seseorang"
+      },
+      "mandates": "{active} daripada {total} tugas diwakilkan aktif",
+      "on": "Hidup",
+      "off": "Mati",
+      "stopped": "Dihentikan oleh suis henti syarikat",
+      "unattributed": "Hidup, tetapi tidak dikaitkan dengan pentadbir, jadi ia tidak berjalan",
+      "stopPending": "Belum dapat menyemak suis henti syarikat",
+      "turnOn": "Hidupkan",
+      "turnOff": "Matikan",
+      "switchOwner": {
+        "tenant_setting": "Tukar pada suis ciri",
+        "ai_provider": "Tukar pada suis ciri",
+        "job_type": "Tukar dalam tugas diwakilkan",
+        "worker_control": "Tukar di sini"
+      },
+      "never": "Tidak pernah",
+      "accepted": "{rate} diterima",
+      "reversed": "{rate} diterbalikkan",
+      "decided": "{count, plural, one {# diputuskan} other {# diputuskan}}",
+      "notMeasured": "Belum diukur ({count} diputuskan)",
+      "mandateList": "Tugas diwakilkan",
+      "mandateState": {
+        "active": "Aktif",
+        "revoked": "Dibatalkan",
+        "expired": "Luput",
+        "not_started": "Belum bermula"
+      },
+      "revokedBy": {
+        "grantor": "dibatalkan oleh orang itu",
+        "administrator": "dibatalkan oleh pentadbir",
+        "manager": "dibatalkan oleh pengurus mereka"
+      },
+      "validUntil": "Sah hingga {date}",
+      "mandateGrantors": "Setiap tugas diwakilkan bertindak bagi pihak orang yang memberikannya, tidak pernah sebagai orang itu.",
+      "closeDetail": "Tutup butiran",
+      "outcome": {
+        "answered": "Dijawab",
+        "suggested": "Dicadangkan",
+        "prepared": "Disediakan",
+        "done": "Selesai",
+        "fallback": "Diserahkan kembali kepada seseorang",
+        "refused": "Ditolak",
+        "stopped": "Dihentikan"
+      },
+      "involvement": {
+        "none": "Tiada orang terlibat",
+        "reviewed": "Seseorang menyemak",
+        "decided": "Seseorang memutuskan"
+      },
+      "decision": {
+        "accepted": "Diterima",
+        "rejected": "Tidak diikuti"
+      },
+      "summaryTitle": "Rekod hasil",
+      "summaryHelp": "{count, plural, one {# rekod hasil} other {# rekod hasil}} setakat ini, mengikut jenis ejen.",
+      "refused": {
+        "not_administrator": "Hanya pentadbir kumpulan boleh menukar suis ini.",
+        "not_switchable_here": "Suis ejen ini terletak di tempat lain.",
+        "invalid": "Perubahan itu tidak difahami.",
+        "failed": "Suis tidak dapat ditukar buat masa ini."
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "Penghurai anomali gaji",
+        "claims_triage": "Triage input tuntutan",
+        "readiness_nudges": "Peringatan kesediaan",
+        "approval_chasers": "Pengejar kelulusan",
+        "review_chasers": "Pengejar semakan pekerjaan",
+        "clock_reminders": "Peringatan rekod masuk tiada",
+        "document_reminders": "Peringatan tamat tempoh pasport",
+        "lifecycle_chasers": "Pengejar langkah kitar hayat",
+        "approver_recommendation": "Cadangan untuk pelulus",
+        "explainers": "Penerang",
+        "team_absence_weekly_summary": "Ringkasan mingguan ketidakhadiran pasukan",
+        "daily_digest": "Ringkasan harian"
+      }
+    },
+    "recommendation": {
+      "show": "Tunjukkan cadangan",
+      "loading": "Menyemak…",
+      "verdict": {
+        "recommend_approve": "Disyorkan lulus: setiap semakan berjaya",
+        "needs_review": "Perlu semakan anda"
+      },
+      "check": {
+        "balance_covers": "Baki cuti tidak mencukupi untuk hari yang dimohon",
+        "own_overlap": "Bertindih dengan cuti lain pemohon",
+        "team_coverage": "Liputan pasukan pada tarikh ini",
+        "policy_limits": "Peraturan dokumen atau tarikh bagi jenis cuti ini"
+      },
+      "blocking": "Peraturan cuti akan menolak permohonan ini dalam keadaan sekarang.",
+      "version": {
+        "leave_type": "Peraturan jenis cuti, versi {version}",
+        "approval_chain": "Rantaian kelulusan, versi {version}"
+      },
+      "youDecide": "Ini nasihat sahaja. Anda membuat keputusan pada halaman permohonan itu sendiri.",
+      "unavailable": {
+        "switched_off": "Cadangan dimatikan untuk syarikat anda.",
+        "stopped": "Cadangan dijeda oleh suis henti syarikat.",
+        "not_registered": "Cadangan tidak tersedia.",
+        "no_login": "Cadangan memerlukan log masuk anda sendiri.",
+        "not_assigned": "Permohonan ini tidak ditugaskan kepada anda.",
+        "not_pending": "Permohonan ini tidak lagi menunggu keputusan.",
+        "failed": "Cadangan tidak dapat dimuatkan buat masa ini."
+      }
+    },
+    "digest": {
+      "title": "Hari anda",
+      "approvals": "Menunggu keputusan anda",
+      "setup": "Jurang persediaan",
+      "setupDetail": "{blocked} menyekat · {attention} perlu perhatian",
+      "deadlines": "Tarikh akhir berkanun",
+      "deadlinesDetail": "{overdue} lewat · {dueSoon} hampir tiba tarikh akhir",
+      "lastPrepared": "Tugas ringkasan harian anda kali terakhir menyediakan ini pada {when}."
     }
   }
 }

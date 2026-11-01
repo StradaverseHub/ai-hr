@@ -308,6 +308,149 @@
       "back": "返回收件箱",
       "navLabel": "返回",
       "note": "在您于此页面确认之前，不会有任何变更；您确认时，模块会重新检查所有内容。"
+    },
+    "registry": {
+      "title": "代理登记册",
+      "help": "每个已登记的代理及其类别、触发方式、运行所依据的权限、开关，以及人们对它的反应。只有在足够多的事项已作出决定后才显示比率。",
+      "columns": {
+        "worker": "代理",
+        "runsUnder": "运行权限",
+        "switch": "开关",
+        "lastRun": "上次运行",
+        "response": "人们的反应"
+      },
+      "details": "详情",
+      "detailTitle": "{name}：最近运行",
+      "recentRuns": "最近运行",
+      "noRuns": "尚无运行记录。",
+      "trigger": {
+        "schedule": "按计划",
+        "event": "发生事件时",
+        "request": "按需"
+      },
+      "effect": {
+        "none": "仅作说明",
+        "notify": "发送通知",
+        "prepare": "为人准备",
+        "complete_under_mandate": "在委托任务下完成"
+      },
+      "authority": {
+        "requester": "提出请求的人",
+        "agent_principal": "公司的开关，作为代理委托方",
+        "mandate": "某人的委托任务"
+      },
+      "mandates": "{total} 项委托任务中有 {active} 项有效",
+      "on": "开",
+      "off": "关",
+      "stopped": "已被公司总停开关停止",
+      "unattributed": "已开启，但未归属于任何管理员，因此不会运行",
+      "stopPending": "暂时无法检查公司总停开关",
+      "turnOn": "开启",
+      "turnOff": "关闭",
+      "switchOwner": {
+        "tenant_setting": "在功能开关中更改",
+        "ai_provider": "在功能开关中更改",
+        "job_type": "在委托任务中更改",
+        "worker_control": "在此更改"
+      },
+      "never": "从未",
+      "accepted": "{rate} 已接受",
+      "reversed": "{rate} 被推翻",
+      "decided": "{count, plural, one {已决定 # 项} other {已决定 # 项}}",
+      "notMeasured": "尚未统计（已决定 {count} 项）",
+      "mandateList": "委托任务",
+      "mandateState": {
+        "active": "有效",
+        "revoked": "已撤销",
+        "expired": "已过期",
+        "not_started": "未开始"
+      },
+      "revokedBy": {
+        "grantor": "由本人撤销",
+        "administrator": "由管理员撤销",
+        "manager": "由其经理撤销"
+      },
+      "validUntil": "有效期至 {date}",
+      "mandateGrantors": "每项委托任务都代授予人行事，绝不以其身份行事。",
+      "closeDetail": "关闭详情",
+      "outcome": {
+        "answered": "已回答",
+        "suggested": "已建议",
+        "prepared": "已准备",
+        "done": "已完成",
+        "fallback": "已转交人工处理",
+        "refused": "已拒绝",
+        "stopped": "已停止"
+      },
+      "involvement": {
+        "none": "无人参与",
+        "reviewed": "有人复核",
+        "decided": "由人决定"
+      },
+      "decision": {
+        "accepted": "已接受",
+        "rejected": "未采纳"
+      },
+      "summaryTitle": "结果记录",
+      "summaryHelp": "目前共有 {count, plural, one {# 条结果记录} other {# 条结果记录}}，按代理类别统计。",
+      "refused": {
+        "not_administrator": "只有集团管理员才能更改此开关。",
+        "not_switchable_here": "此代理的开关位于其他位置。",
+        "invalid": "无法识别该更改。",
+        "failed": "暂时无法更改开关。"
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "薪资异常说明",
+        "claims_triage": "报销输入分流",
+        "readiness_nudges": "完备性提醒",
+        "approval_chasers": "审批催办",
+        "review_chasers": "雇佣评审催办",
+        "clock_reminders": "缺少上班打卡提醒",
+        "document_reminders": "护照到期提醒",
+        "lifecycle_chasers": "入离职步骤催办",
+        "approver_recommendation": "审批人建议",
+        "explainers": "说明者",
+        "team_absence_weekly_summary": "团队缺勤周报",
+        "daily_digest": "每日摘要"
+      }
+    },
+    "recommendation": {
+      "show": "显示建议",
+      "loading": "检查中…",
+      "verdict": {
+        "recommend_approve": "建议批准：所有检查均已通过",
+        "needs_review": "需要您复核"
+      },
+      "check": {
+        "balance_covers": "假期余额不足以覆盖所申请的天数",
+        "own_overlap": "与申请人的其他休假重叠",
+        "team_coverage": "这些日期的团队人手覆盖",
+        "policy_limits": "该假期类型的文件或日期规则"
+      },
+      "blocking": "按目前情况，某项休假规则会拒绝此申请。",
+      "version": {
+        "leave_type": "假期类型规则，版本 {version}",
+        "approval_chain": "审批链，版本 {version}"
+      },
+      "youDecide": "这只是建议。请在该申请自己的页面上作出决定。",
+      "unavailable": {
+        "switched_off": "贵公司已关闭建议功能。",
+        "stopped": "建议功能已被公司总停开关暂停。",
+        "not_registered": "建议功能不可用。",
+        "no_login": "建议功能需要您本人登录。",
+        "not_assigned": "此申请未分配给您。",
+        "not_pending": "此申请已不再等待决定。",
+        "failed": "暂时无法加载建议。"
+      }
+    },
+    "digest": {
+      "title": "您的今天",
+      "approvals": "等待您决定",
+      "setup": "设置缺口",
+      "setupDetail": "{blocked} 项阻塞 · {attention} 项需关注",
+      "deadlines": "法定截止日期",
+      "deadlinesDetail": "{overdue} 项已逾期 · {dueSoon} 项即将到期",
+      "lastPrepared": "您的每日摘要任务上次于 {when} 准备了此内容。"
     }
   }
 }

@@ -308,6 +308,149 @@
       "back": "Quay lại Hộp thư công việc",
       "navLabel": "Quay lại",
       "note": "Không có gì thay đổi cho đến khi bạn xác nhận trên trang này, và mô-đun sẽ kiểm tra lại mọi thứ khi bạn xác nhận."
+    },
+    "registry": {
+      "title": "Danh mục tác tử",
+      "help": "Mọi tác tử đã đăng ký cùng nhóm của nó, điều gì khởi động nó, thẩm quyền nó chạy theo, công tắc của nó và cách mọi người phản hồi. Tỷ lệ chỉ hiển thị khi đã có đủ trường hợp được quyết định.",
+      "columns": {
+        "worker": "Tác tử",
+        "runsUnder": "Chạy theo thẩm quyền",
+        "switch": "Công tắc",
+        "lastRun": "Lần chạy gần nhất",
+        "response": "Cách mọi người phản hồi"
+      },
+      "details": "Chi tiết",
+      "detailTitle": "{name}: các lần chạy gần đây",
+      "recentRuns": "Các lần chạy gần đây",
+      "noRuns": "Chưa ghi nhận lần chạy nào.",
+      "trigger": {
+        "schedule": "Theo lịch",
+        "event": "Khi có sự kiện",
+        "request": "Theo yêu cầu"
+      },
+      "effect": {
+        "none": "Chỉ giải thích",
+        "notify": "Gửi thông báo",
+        "prepare": "Chuẩn bị cho một người",
+        "complete_under_mandate": "Hoàn tất theo một công việc ủy quyền"
+      },
+      "authority": {
+        "requester": "Người yêu cầu",
+        "agent_principal": "Công tắc của công ty, với tư cách bên ủy nhiệm của tác tử",
+        "mandate": "Công việc ủy quyền của một người"
+      },
+      "mandates": "{active} trên {total} công việc ủy quyền đang hoạt động",
+      "on": "Bật",
+      "off": "Tắt",
+      "stopped": "Bị dừng bởi công tắc dừng của công ty",
+      "unattributed": "Đang bật, nhưng chưa gắn với quản trị viên nào nên không chạy",
+      "stopPending": "Chưa thể kiểm tra công tắc dừng của công ty",
+      "turnOn": "Bật",
+      "turnOff": "Tắt",
+      "switchOwner": {
+        "tenant_setting": "Thay đổi ở công tắc tính năng",
+        "ai_provider": "Thay đổi ở công tắc tính năng",
+        "job_type": "Thay đổi trong công việc ủy quyền",
+        "worker_control": "Thay đổi tại đây"
+      },
+      "never": "Chưa bao giờ",
+      "accepted": "{rate} được chấp nhận",
+      "reversed": "{rate} bị đảo ngược",
+      "decided": "{count, plural, one {# đã quyết định} other {# đã quyết định}}",
+      "notMeasured": "Chưa đo ({count} đã quyết định)",
+      "mandateList": "Công việc ủy quyền",
+      "mandateState": {
+        "active": "Đang hoạt động",
+        "revoked": "Đã thu hồi",
+        "expired": "Đã hết hạn",
+        "not_started": "Chưa bắt đầu"
+      },
+      "revokedBy": {
+        "grantor": "bị chính người đó thu hồi",
+        "administrator": "bị quản trị viên thu hồi",
+        "manager": "bị quản lý của họ thu hồi"
+      },
+      "validUntil": "Có hiệu lực đến {date}",
+      "mandateGrantors": "Mỗi công việc ủy quyền hành động thay cho người đã cấp nó, không bao giờ với tư cách người đó.",
+      "closeDetail": "Đóng chi tiết",
+      "outcome": {
+        "answered": "Đã trả lời",
+        "suggested": "Đã gợi ý",
+        "prepared": "Đã chuẩn bị",
+        "done": "Đã xong",
+        "fallback": "Chuyển lại cho người xử lý",
+        "refused": "Đã từ chối",
+        "stopped": "Đã dừng"
+      },
+      "involvement": {
+        "none": "Không có người tham gia",
+        "reviewed": "Có người đã xem xét",
+        "decided": "Có người đã quyết định"
+      },
+      "decision": {
+        "accepted": "Đã chấp nhận",
+        "rejected": "Không làm theo"
+      },
+      "summaryTitle": "Bản ghi kết quả",
+      "summaryHelp": "Đến nay có {count, plural, one {# bản ghi kết quả} other {# bản ghi kết quả}}, theo nhóm tác tử.",
+      "refused": {
+        "not_administrator": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
+        "not_switchable_here": "Công tắc của tác tử này nằm ở nơi khác.",
+        "invalid": "Không hiểu được thay đổi đó.",
+        "failed": "Hiện không thể thay đổi công tắc."
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "Thuyết minh bất thường bảng lương",
+        "claims_triage": "Phân loại dữ liệu khoản chi",
+        "readiness_nudges": "Nhắc mức sẵn sàng",
+        "approval_chasers": "Nhắc phê duyệt",
+        "review_chasers": "Nhắc đánh giá nhân sự",
+        "clock_reminders": "Nhắc thiếu chấm công vào",
+        "document_reminders": "Nhắc hộ chiếu sắp hết hạn",
+        "lifecycle_chasers": "Nhắc bước vòng đời nhân viên",
+        "approver_recommendation": "Gợi ý cho người duyệt",
+        "explainers": "Bộ diễn giải",
+        "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
+        "daily_digest": "Bản tóm tắt hằng ngày"
+      }
+    },
+    "recommendation": {
+      "show": "Xem gợi ý",
+      "loading": "Đang kiểm tra…",
+      "verdict": {
+        "recommend_approve": "Đề xuất phê duyệt: mọi kiểm tra đều đạt",
+        "needs_review": "Cần bạn xem xét"
+      },
+      "check": {
+        "balance_covers": "Số ngày phép còn lại không đủ cho số ngày yêu cầu",
+        "own_overlap": "Trùng với kỳ nghỉ khác của người nộp đơn",
+        "team_coverage": "Mức bố trí nhân sự của nhóm vào những ngày này",
+        "policy_limits": "Quy tắc về giấy tờ hoặc ngày của loại nghỉ phép"
+      },
+      "blocking": "Một quy tắc nghỉ phép sẽ từ chối yêu cầu này ở trạng thái hiện tại.",
+      "version": {
+        "leave_type": "Quy tắc loại nghỉ phép, phiên bản {version}",
+        "approval_chain": "Chuỗi phê duyệt, phiên bản {version}"
+      },
+      "youDecide": "Đây là lời khuyên. Bạn quyết định trên trang riêng của yêu cầu.",
+      "unavailable": {
+        "switched_off": "Tính năng gợi ý đã tắt cho công ty bạn.",
+        "stopped": "Tính năng gợi ý đang tạm dừng bởi công tắc dừng của công ty.",
+        "not_registered": "Tính năng gợi ý không khả dụng.",
+        "no_login": "Tính năng gợi ý cần bạn tự đăng nhập.",
+        "not_assigned": "Yêu cầu này không được giao cho bạn.",
+        "not_pending": "Yêu cầu này không còn chờ quyết định.",
+        "failed": "Hiện không thể tải gợi ý."
+      }
+    },
+    "digest": {
+      "title": "Ngày của bạn",
+      "approvals": "Đang chờ bạn quyết định",
+      "setup": "Thiếu sót thiết lập",
+      "setupDetail": "{blocked} đang chặn · {attention} cần chú ý",
+      "deadlines": "Hạn chót theo luật định",
+      "deadlinesDetail": "{overdue} quá hạn · {dueSoon} sắp đến hạn",
+      "lastPrepared": "Công việc tóm tắt hằng ngày của bạn chuẩn bị mục này lần gần nhất lúc {when}."
     }
   }
 }
