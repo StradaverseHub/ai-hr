@@ -2,8 +2,9 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
-import {hireEmployee} from '../core/org';
-import {pendingAttendanceTaskMetadata} from '../core/attendance';
+import {hireEmployee,setReportingLine} from '../core/org';
+import {pendingAttendanceTaskMetadata,checkIn,checkOut,requestAttendanceCorrection} from '../core/attendance';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,createAppUser,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'attendance','active');});
@@ -45,4 +46,19 @@ it('uses UUID-native frozen actor keys and a private stable precheck with no cal
  expect(attrs.proconfig).toContain('search_path=pg_catalog, public, pg_temp');
  const [acl]=await owner.client`select exists(select 1 from pg_proc p,lateral aclexplode(p.proacl)a where p.oid='app.may_have_attendance_task_metadata()'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE')as public_execute`;
  expect(acl.public_execute).toBe(false);
+});
+
+it('retains unrouted administrative assignments for an actual manager without a Manager role',async()=>{
+ const worker=await employee(),manager=await employee(),root=adminCtx(b),today=todayInKualaLumpur();
+ const workers=await owner.client`select id from employment where tenant_id=${b.tenantId}::uuid and person_id=${worker.personId!}::uuid`;
+ const managers=await owner.client`select id from employment where tenant_id=${b.tenantId}::uuid and person_id=${manager.personId!}::uuid`;
+ expect(workers).toHaveLength(1);expect(managers).toHaveLength(1);
+ await setReportingLine(root,{subordinateEmploymentId:workers[0].id,managerEmploymentId:managers[0].id,lineType:'administrative',validFrom:'2020-01-01'});
+ await checkIn(root,{employmentId:workers[0].id,date:today,time:'08:00',manual:true});
+ await checkOut(root,{employmentId:workers[0].id,date:today,time:'17:00',manual:true});
+ const request=await requestAttendanceCorrection(worker,{employmentId:workers[0].id,date:today,checkIn:'09:00',checkOut:'18:00',reason:'Fictional unrouted task precheck'});
+ expect(await owner.client`select id from attendance_workflow_request where correction_id=${request.correctionId}::uuid`).toHaveLength(0);
+ expect(manager.roles).toEqual(['employee']);
+ expect((await pendingAttendanceTaskMetadata(manager,[b.companyId])).map(row=>row.id)).toEqual([request.correctionId]);
+ expect(await pendingAttendanceTaskMetadata(worker,[b.companyId])).toEqual([]);
 });
