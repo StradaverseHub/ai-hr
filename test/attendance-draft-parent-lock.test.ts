@@ -15,7 +15,7 @@ function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{
 const settled=<T,>(work:PromiseLike<T>)=>Promise.resolve(work).then(value=>({ok:true as const,value}),error=>({ok:false as const,error}));
 async function fixture(){
  await resetDb();const b=await seedBase(),ctx=adminCtx(b),date=todayInKualaLumpur(),month=date.slice(0,7);
- const people=[];for(let i=0;i<3;i++)people.push(await hireEmployee(ctx,{person:{fullName:'Fictional native lock subject '+i,primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}));
+ const people:{employmentId:string}[]=[];for(let i=0;i<3;i++)people.push(await hireEmployee(ctx,{person:{fullName:'Fictional native lock subject '+i,primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'}));
  const draft=async(period:string)=>{const [p]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period}).returning();const [row]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:p.id,payPeriod:period,batchDate:period+'-15'}).returning();return row;};
  const batch=await draft(month);
  const slip=(batchId:string,employmentId=people[2].employmentId)=>({tenantId:b.tenantId,batchId,employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'});
