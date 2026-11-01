@@ -20,7 +20,9 @@ Before management, migrate each legacy cron entry in the exclusive staging windo
 original crontab and removing only reviewed matching schedules and their obsolete heartbeat alarms.
 Verify no duplicate scheduler remains. The installer refuses management while matching cron remains.
 A combined provisioning CLI includes replacement holidays: split that scheduler before claiming
-independent control of provisioning, holidays and report delivery. Until then leave it unmanaged.
+independent control of provisioning, holidays and report delivery. Use `scripts/provision-only-runner.ts` for independent provisioning and the existing
+`--installed-internal-reports-only` mode for report delivery. The controller refuses enabling either
+capability through the combined entrypoint. Until then leave it unmanaged.
 Optional capabilities without provider/destination prerequisites also stay unmanaged.
 
 Policy example (root-owned file, 0600; replace webUid with the actual verified UID):

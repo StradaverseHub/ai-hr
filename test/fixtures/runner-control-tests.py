@@ -44,6 +44,12 @@ class RunnerControlTests(unittest.TestCase):
         self.assertEqual(b.displayed_schedule({'TimersCalendar':'{ OnCalendar=*-*-01 02:00:00 Asia/Kuala_Lumpur ; next_elapse=example }'}),'*-*-01 02:00:00 Asia/Kuala_Lumpur')
         self.assertEqual(b.displayed_schedule({'TimersMonotonic':'{ OnUnitInactiveUSec=5min ; next_elapse=example }'}),'5min after completion')
         self.assertIsNone(b.displayed_schedule({}))
+    def test_combined_provisioning_entrypoint_cannot_bypass_holiday_hold(self):
+        row=next(row for row in CATALOG if row['id']=='provision')
+        with patch.object(b,'command',return_value='ExecStart={ argv[]=/opt/node22/bin/node --import tsx scripts/provision-runner.ts ; }'):
+            with self.assertRaises(b.Refused):b.separate_capability(row)
+        with patch.object(b,'command',return_value='ExecStart={ argv[]=/opt/node22/bin/node --import tsx scripts/provision-only-runner.ts ; }'):
+            b.separate_capability(row)
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:

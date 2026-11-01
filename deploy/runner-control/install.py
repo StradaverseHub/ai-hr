@@ -57,7 +57,8 @@ if __name__=='__main__':
         value=policy['jobs'].get(row['id'],{'managed':False,'note':''})
         b.require(set(value)=={'managed','note'} and type(value['managed']) is bool and isinstance(value['note'],str) and len(value['note'])<=300,'invalid runner policy')
         b.require(not b.held(policy,row['id']) or not value['managed'],'production hold cannot be commissioned')
-        if value['managed']: validate_managed(row,user.pw_uid)
+        if value['managed']:
+            validate_managed(row,user.pw_uid);b.separate_capability(row)
     if not args.check:
         # Root must run this installer from a separately reviewed, exact accepted source package.
         target=Path('/usr/local/lib/aihr-runner-control');target.mkdir(mode=0o755,exist_ok=True);b.protected(target)

@@ -120,6 +120,14 @@ def audit(value):
         os.chmod(STATE/'audit.jsonl',0o600)
         stream.write(json.dumps(value,sort_keys=True)+'\n');stream.flush();os.fsync(stream.fileno())
 
+def separate_capability(row):
+    if row['id'] not in ('provision','reports'):return
+    props=command('show',row['unit']+'.service','--property=ExecStart','--no-pager')
+    if row['id']=='provision':
+        require(re.search(r'(?:/|\s)scripts/provision-only-runner\.ts(?:\s|;|$)',props) is not None,'provisioning must use the independent capability')
+    else:
+        require('--installed-internal-reports-only' in props,'reports must use the independent capability')
+
 def handle(body,policy,catalog):
     require(isinstance(body,dict),'invalid request')
     if body=={'op':'status'}:
@@ -134,6 +142,7 @@ def handle(body,policy,catalog):
     require(current['managed'] and current['installed'],'runner not commissioned for control')
     require(current['revision']==body['revision'],'runner changed; refresh before saving')
     require(body['schedule'] is None or not current['running'],'wait for the current run before rescheduling')
+    if body['enabled']:separate_capability(row)
     text=schedule(row,body['schedule']) if body['schedule'] is not None else None
     unit=row['unit']+('.service' if row['frequency']=='continuous' else '.timer')
     # Intent is durable BEFORE a mutation; completion or failure is recorded afterward.
