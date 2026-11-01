@@ -1,3 +1,9 @@
+## Current frozen whole-system reruns
+
+Source`da336d00074122c7d44bab7c4f9d30889effd4ec` integrates canonical main438bfae3d, guarded0902 native hierarchy-plan reuse and the two-entry client catalog recovery. Hierarchy qualification passes160 database/21 additional checks plus the whole compiler (41344434698); catalog recovery passes23 checks plus the whole compiler (41345580191).
+
+The unchanged-resource500-user runs [1s41346050530](https://github.com/StradaverseHub/ai-hr/actions/runs/41346050530) and [5s41346066075](https://github.com/StradaverseHub/ai-hr/actions/runs/41346066075) are running on that frozen source. No final speed result exists yet. **0/2 targets accepted; no deployment.** The completed failures below retain their original source identities.
+
 ## Latest qualified source change and full-load results
 
 Unapplied0900 adds a date-bounded Attendance Payroll guard while retaining relevant
