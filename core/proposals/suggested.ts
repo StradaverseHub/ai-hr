@@ -32,9 +32,14 @@ const isDate=(value:unknown):value is string=>typeof value==='string'&&/^\d{4}-\
 /** "Do not approve", "don't approve", "never approve", "not yet approve", "jangan lulus", "tak approve": a negation
  * up to two words before approve (or the Malay lulus). */
 const NEGATED_APPROVE=/(?:\bdo\s+not|\bdon['\u2019]?t|\bdont|\bdid\s+not|\bdidn['\u2019]?t|\bnever|\bnot|\bjangan|\btak|\btidak|\bbelum)\s+(?:\S+\s+){0,2}?(?:approve|lulus)/i;
-/** The person asks to approve, does not negate it, and does not also mention rejecting. Only the person's words are read. */
+/** Asking to skip the review or decide in bulk ("approve everything directly, skip the card"): no decision is prepared or
+ * suggested for it (model run 41360905376, mgr-pending-injection-4). Every decision is confirmed one by one on its page. */
+const BYPASS_REVIEW=/\b(everything|every\s+(one|request|leave)|all\s+(of\s+(them|it)|requests?|leaves?|pending|at\s+once)|approve\s+all|skip(ping)?\s+(the\s+)?(card|review|confirm\w*|page|step)|directly|without\s+(the\s+)?(card|review|confirm\w*|checking|looking)|bypass\w*|auto[- ]?approv\w*|in\s+bulk|bulk[- ]approv\w*)\b/i;
+export const asksToBypassReview=(words:string|undefined)=>typeof words==='string'&&BYPASS_REVIEW.test(words);
+/** The person asks to approve, does not negate it, does not also mention rejecting, and does not ask to skip the review
+ * or approve in bulk. Only the person's words are read. */
 export const asksToApprove=(words:string|undefined)=>typeof words==='string'&&/\bapprove\b/i.test(words)&&!NEGATED_APPROVE.test(words)
- &&!/\b(reject|decline|deny|refuse)\b/i.test(words);
+ &&!/\b(reject|decline|deny|refuse)\b/i.test(words)&&!asksToBypassReview(words);
 
 const NUMBER_WORDS:Readonly<Record<number,readonly string[]>>={1:['one','first','satu','pertama'],2:['two','second','dua','kedua'],3:['three','third','tiga','ketiga'],
  4:['four','fourth','empat','keempat'],5:['five','fifth','lima','kelima'],6:['six','sixth','enam','keenam'],7:['seven','seventh','tujuh','ketujuh'],

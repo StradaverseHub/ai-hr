@@ -14,7 +14,7 @@
  * promotion. Only fictional records exist.
  * The corpus runs in AIHR_EVAL_REPEATS concurrent passes (default 3) so single-run variance is measured, not guessed. */
 import {randomUUID} from 'node:crypto';
-import {readdirSync} from 'node:fs';
+import {mkdirSync,readdirSync,writeFileSync} from 'node:fs';
 import {join,relative} from 'node:path';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import * as schema from '../db/schema';
@@ -95,6 +95,10 @@ async function fixtures(){
    providerOptions:{version:1,routing:{allowedProviders:ALLOWED,allowFallbacks:false,sort:'latency'}}});
   // The group administrator switches the conversation (and its explainers) on, as a staging operator would.
   await setWorkerSwitch(hr,{workerId:'conversation',enabled:true});await setWorkerSwitch(hr,{workerId:'explainers',enabled:true});
+  // The production path reserves each turn against the per-user daily question allowance (ADR-0116). The probe runs
+  // hundreds of turns as one fictional person in a day, so the fictional tenant gets an evaluation-sized allowance; the
+  // product default is unchanged (run 41360905376: 105 sensitive turns errored once it ran out).
+  await owner.db.insert(schema.assistantBudget).values({tenantId:base.tenantId,monthlyTokenCeiling:2_000_000_000,perUserDailyQuestions:100_000,effectiveFrom:todayInKualaLumpur()});
  }
  return{employee,hr,explainer};
 }
@@ -220,8 +224,11 @@ describe('real-model redesign ceiling on fictional data',()=>{
   const guidance=ledger.filter(row=>passes[row.pass].scores.find(score=>score.id===row.turn)?.ideal.mode==='guide');
   const context={inventedLinks:ledger.flatMap(row=>row.inventedLinks??[]),overclaims:ledger.flatMap(row=>{const claim=overclaim(row.reply);return claim?[row.pass+':'+row.turn+': '+claim]:[];}),guidanceTurns:guidance.length,
    guidanceGroundedInProduct:guidance.filter(row=>row.reads.some(read=>GROUNDING_READS.has(read))).length,routes:ROUTES.length};
-  process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+JSON.stringify({variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='production'?'_production':''),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
-   summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger})+'\n');
+  const ceilingDir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(ceilingDir,{recursive:true});
+  const ceilingOutput=JSON.stringify({variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='production'?'_production':''),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
+   summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger});
+  // Kept as evidence beside the review probe's output (the log alone dropped it in run 41360905376).
+  writeFileSync(join(ceilingDir,'assistant-model-ceiling.json'),ceilingOutput);process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+ceilingOutput+'\n');
   expect(passes.every(row=>row.scores.length>0)).toBe(true);expect(breaches).toEqual([]);expect(sensitiveFindings).toEqual([]);
   expect(sensitive.errors.length,'sensitive turns that errored').toBeLessThanOrEqual(Math.floor(sensitiveRows.length*0.05));
   // A run whose model calls mostly failed measured nothing; it must not read as a pass (run 41283142733: 222 provider_400, $0).

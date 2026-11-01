@@ -18,7 +18,7 @@
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {employment} from '../../db/schema';
-import {isAdmin} from '../../lib/authz-model';
+import {hasTeamAccess,isAdmin} from '../../lib/authz-model';
 import type {AiToolSpec} from '../../lib/ai/types';
 import {toolsFor} from '../assistant-tools';
 import {contextToolSpecsFor,runContextTool,suggestAction} from '../product-context/tools';
@@ -29,7 +29,7 @@ import {contextToolSpecs,TERAS_READS,terasToolSpecs} from '../semantic-model/gen
 import {terasCapabilitiesFor} from '../explainers/capabilities';
 import {SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
-import {prepareSuggestedProposal} from '../proposals/suggested';
+import {asksToBypassReview,prepareSuggestedProposal} from '../proposals/suggested';
 import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 
@@ -56,6 +56,11 @@ export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>P
 const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. Nothing is prepared or submitted.';
 const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, numbered in pending. Nothing is prepared. List them by number (applicant, leave type, days and when it starts) and ask which number they want to approve; never choose one yourself. When they say which, suggest again with that number as request in details. Requests not listed are on the review page.';
 /** Entities whose rows name other people the caller may see (core/semantic-model/entities.ts). */
+/** Review H5 (runs 41343676782 and 41360905376): an approver asking what is "pending for me" was answered from their own
+ * applications. For an approver whose words ask that, their own-requests result says where the queue is. */
+const PENDING_FOR_ME=/\bpending\s+(for|to|on)\s+me\b|\bwaiting\s+(for|on)\s+(me|my)\b|\bneeds?\s+my\s+(approval|decision|review)\b|\b(for|to)\s+(me\s+to\s+)?approve\b|\bmy\s+approvals?\b|\bawaiting\s+my\b/i;
+export const asksPendingForMe=(words:string|undefined)=>typeof words==='string'&&PENDING_FOR_ME.test(words);
+const QUEUE_NOTE='These are the person\'s own applications only. Requests from other people waiting for their decision are in approval_queue: call it for "pending for me".';
 const NAMED_OTHERS:ReadonlySet<EntityId>=new Set<EntityId>(['absence','employment_profile']);
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function employmentIdsIn(value:unknown,out=new Set<string>()):Set<string>{
@@ -82,6 +87,7 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
   const declared=SEMANTIC_READS.find(read=>read.name===spec.name)!,owner=owners.get(spec.name)!;
   return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:declared.input.filter(input=>input.identifier).map(input=>input.name),
    async run(input){const outcome=await owner.run(ctx,input);if(!outcome.ok)return{ok:false,content:outcome,refusal:outcome.refusal};
+    if(spec.name==='my_leave_requests'&&hasTeamAccess(ctx)&&asksPendingForMe(scope.personWords))return{ok:true,content:{...outcome,note:QUEUE_NOTE}};
     return NAMED_OTHERS.has(declared.entity)?{ok:true,content:outcome,namesInScope:await administeredEmployments(ctx,outcome)}:{ok:true,content:outcome};}};
  });
  const teras=(await terasCapabilitiesFor(ctx)).map((capability):ToolBinding=>{
@@ -96,7 +102,11 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  // another person's, so they leave as placeholders.
  const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:'suggested_action',identifierInputs:[],
   spec:{name:HARNESS_SPEC.offer.suggestTool,description:SUGGEST_DESCRIPTION,inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
-  async run(input){const result=suggestAction(catalogue,input.action,input.details);
+  async run(input){
+   // A request to skip the review or decide in bulk gets no decision suggestion at all (model run 41360905376).
+   if(typeof input.action==='string'&&/^approvals\..+\.decide$/.test(input.action)&&asksToBypassReview(scope.personWords))
+    return{ok:false,refusal:'review_required',content:{ok:false,note:'The person asked to skip the review or to decide in bulk. Nothing is suggested: every decision is checked and confirmed one at a time on its review page. Say so briefly.'}};
+   const result=suggestAction(catalogue,input.action,input.details);
    if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);
     const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
     // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
