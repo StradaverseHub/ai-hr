@@ -308,6 +308,149 @@
       "back": "Back to Inbox",
       "navLabel": "Back",
       "note": "Nothing changes until you confirm on this page, and the module checks everything again when you do."
+    },
+    "registry": {
+      "title": "Worker registry",
+      "help": "Every registered worker with its family, what starts it, the authority it runs under, its switch and how people respond to it. Rates show only once enough cases are decided.",
+      "columns": {
+        "worker": "Worker",
+        "runsUnder": "Runs under",
+        "switch": "Switch",
+        "lastRun": "Last run",
+        "response": "How people respond"
+      },
+      "details": "Details",
+      "detailTitle": "{name}: recent runs",
+      "recentRuns": "Recent runs",
+      "noRuns": "No runs recorded yet.",
+      "trigger": {
+        "schedule": "On a schedule",
+        "event": "On an event",
+        "request": "On request"
+      },
+      "effect": {
+        "none": "Explains only",
+        "notify": "Sends a notice",
+        "prepare": "Prepares for a person",
+        "complete_under_mandate": "Completes under a delegated job"
+      },
+      "authority": {
+        "requester": "The person asking",
+        "agent_principal": "The company's switch, as the agent principal",
+        "mandate": "A person's delegated job"
+      },
+      "mandates": "{active} of {total} delegated jobs active",
+      "on": "On",
+      "off": "Off",
+      "stopped": "Stopped by the company stop switch",
+      "unattributed": "On, but not attributed to an administrator, so it does not run",
+      "stopPending": "Cannot check the company stop switch yet",
+      "turnOn": "Turn on",
+      "turnOff": "Turn off",
+      "switchOwner": {
+        "tenant_setting": "Change on the feature switches",
+        "ai_provider": "Change on the feature switches",
+        "job_type": "Change in delegated jobs",
+        "worker_control": "Change here"
+      },
+      "never": "Never",
+      "accepted": "{rate} accepted",
+      "reversed": "{rate} reversed",
+      "decided": "{count, plural, one {# decided} other {# decided}}",
+      "notMeasured": "Not measured yet ({count} decided)",
+      "mandateList": "Delegated jobs",
+      "mandateState": {
+        "active": "Active",
+        "revoked": "Revoked",
+        "expired": "Expired",
+        "not_started": "Not started"
+      },
+      "revokedBy": {
+        "grantor": "revoked by the person",
+        "administrator": "revoked by an administrator",
+        "manager": "revoked by their manager"
+      },
+      "validUntil": "Valid until {date}",
+      "mandateGrantors": "Each delegated job acts for the person who granted it, never as them.",
+      "closeDetail": "Close details",
+      "outcome": {
+        "answered": "Answered",
+        "suggested": "Suggested",
+        "prepared": "Prepared",
+        "done": "Done",
+        "fallback": "Fell back to a person",
+        "refused": "Refused",
+        "stopped": "Stopped"
+      },
+      "involvement": {
+        "none": "No person involved",
+        "reviewed": "A person reviewed",
+        "decided": "A person decided"
+      },
+      "decision": {
+        "accepted": "Accepted",
+        "rejected": "Not followed"
+      },
+      "summaryTitle": "Outcome records",
+      "summaryHelp": "{count, plural, one {# outcome record} other {# outcome records}} so far, by worker family.",
+      "refused": {
+        "not_administrator": "Only a group administrator can change this switch.",
+        "not_switchable_here": "This worker's switch lives elsewhere.",
+        "invalid": "That change was not understood.",
+        "failed": "The switch could not be changed just now."
+      },
+      "workers": {
+        "payroll_anomaly_narrator": "Payroll anomaly narrator",
+        "claims_triage": "Claims input triage",
+        "readiness_nudges": "Readiness nudges",
+        "approval_chasers": "Approval chasers",
+        "review_chasers": "Employment review chasers",
+        "clock_reminders": "Missing clock-in reminders",
+        "document_reminders": "Passport expiry reminders",
+        "lifecycle_chasers": "Lifecycle step chasers",
+        "approver_recommendation": "Approver recommendations",
+        "explainers": "Explainers",
+        "team_absence_weekly_summary": "Weekly team absence summary",
+        "daily_digest": "Daily digest"
+      }
+    },
+    "recommendation": {
+      "show": "Show the recommendation",
+      "loading": "Checking…",
+      "verdict": {
+        "recommend_approve": "Recommend approve: every check passed",
+        "needs_review": "Needs your review"
+      },
+      "check": {
+        "balance_covers": "The balance does not cover the days requested",
+        "own_overlap": "Overlaps other leave of the applicant",
+        "team_coverage": "Team coverage on these dates",
+        "policy_limits": "The leave type's document or date rules"
+      },
+      "blocking": "A leave rule would refuse this request as it stands.",
+      "version": {
+        "leave_type": "Leave type rules, version {version}",
+        "approval_chain": "Approval chain, version {version}"
+      },
+      "youDecide": "This is advice. You decide on the request's own page.",
+      "unavailable": {
+        "switched_off": "Recommendations are switched off for your company.",
+        "stopped": "Recommendations are paused by the company stop switch.",
+        "not_registered": "Recommendations are not available.",
+        "no_login": "Recommendations need your own sign-in.",
+        "not_assigned": "This request is not assigned to you.",
+        "not_pending": "This request is no longer waiting for a decision.",
+        "failed": "The recommendation could not be loaded just now."
+      }
+    },
+    "digest": {
+      "title": "Your day",
+      "approvals": "Waiting for your decision",
+      "setup": "Setup gaps",
+      "setupDetail": "{blocked} blocking · {attention} need attention",
+      "deadlines": "Statutory deadlines",
+      "deadlinesDetail": "{overdue} overdue · {dueSoon} due soon",
+      "lastPrepared": "Your daily digest job last prepared this at {when}."
     }
   }
 }

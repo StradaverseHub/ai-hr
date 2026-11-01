@@ -22,13 +22,18 @@ import { AiCentreSubnav, AiCentreTabs } from '@/components/ai-centre/centre-tabs
 import { adminGroupOf } from '@/lib/ai-centre/centre-nav';
 import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily } from '@/lib/ai-centre/worker-families';
 import type { AgentStatus } from '@/core/control-domains';
+import type { WorkerDetail, WorkerRow } from '@/core/agent-registry/views';
+import type { OutcomeSummary } from '@/core/agent-registry/export';
+import { WorkerRegistry } from './worker-registry';
 import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
 
-export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[];from?:string;to?:string;page?:string};
+export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[];from?:string;to?:string;page?:string;worker?:string};
 
 /** One AI management section per route (app/control-tower/agents/<section>/page.tsx); the sub-menu links them.
  * Provider and Assistant pages pass their own content as children. */
-export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null}) {
+export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks,registry}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null;
+  /** AI centre step 5: the worker registry, for group administrators only (the features page reads it). */
+  registry?:Readonly<{rows:readonly WorkerRow[];summary:OutcomeSummary|null;detail:WorkerDetail|null;switchAction:(formData:FormData)=>Promise<void>}>|null}) {
   const sp = await searchParams;
   const t = await getTranslations('aiManagement');
   const f = await getFormatter();
@@ -204,6 +209,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
+    {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail} switchAction={registry.switchAction}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
       <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><caption className="sr-only">{t('inventory')}</caption>

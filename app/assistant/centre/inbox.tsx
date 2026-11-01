@@ -12,6 +12,9 @@ import { isAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { PageHeader } from '@/components/ui';
 import { ProposalCard } from '@/components/ai-centre/proposal-card';
+import { LeaveRecommendation } from '@/components/ai-centre/leave-recommendation';
+import { digestPreview, latestDailyDigest } from '@/core/digest/daily-digest';
+import { loadLeaveRecommendation } from './recommendation-action';
 
 type Finding = { key: 'exceptions' | 'proposals' | 'readiness'; count: number; blocking?: number; href: string };
 
@@ -45,6 +48,8 @@ export async function AiCentreInbox({ session }: { session: SessionContext }) {
       rewards: isModuleEnabledOrFalse(session, 'rewards'),
     });
   });
+  // Step 5: today's digest, computed now as the viewer and not recorded, plus the viewer's last prepared one.
+  const [digest, lastDigest] = await Promise.all([settle(() => digestPreview(session)), settle(() => latestDailyDigest(session))]);
   const [exceptions, proposals, readiness] = await Promise.all([
     admin && payroll ? settle(() => openExceptionsAcrossRuns(session, { limit: 100 })) : null,
     admin && payroll ? settle(() => proposeActions(session)) : null,
@@ -81,6 +86,22 @@ export async function AiCentreInbox({ session }: { session: SessionContext }) {
       {failed && <p role="status" className="rounded-lg border border-border bg-muted/50 p-3 text-sm text-muted-foreground">{t('inbox.unavailable')}</p>}
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="min-w-0 space-y-7">
+          {digest.ok && (
+            <section aria-labelledby="inbox-digest" data-inbox-digest className="rounded-xl border border-border bg-card p-4">
+              <h2 id="inbox-digest" className="text-[0.9375rem] font-semibold">{t('digest.title')}</h2>
+              <ul className="mt-2 grid gap-2 text-sm sm:grid-cols-3">
+                <li><Link href={digest.value.approvals.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="block text-xs text-muted-foreground">{t('digest.approvals')}</span><span className="text-lg font-semibold tabular-nums">{digest.value.approvals.total}</span></Link></li>
+                {digest.value.setup && <li><Link href={digest.value.setup.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="block text-xs text-muted-foreground">{t('digest.setup')}</span><span className="text-lg font-semibold tabular-nums">{digest.value.setup.blocked + digest.value.setup.attention}</span>
+                  <span className="block text-xs text-muted-foreground">{t('digest.setupDetail', { blocked: digest.value.setup.blocked, attention: digest.value.setup.attention })}</span></Link></li>}
+                {digest.value.deadlines && <li><Link href={digest.value.deadlines.page} className="block rounded-lg border border-border p-3 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                  <span className="block text-xs text-muted-foreground">{t('digest.deadlines')}</span><span className="text-lg font-semibold tabular-nums">{digest.value.deadlines.overdue + digest.value.deadlines.dueSoon}</span>
+                  <span className="block text-xs text-muted-foreground">{t('digest.deadlinesDetail', { overdue: digest.value.deadlines.overdue, dueSoon: digest.value.deadlines.dueSoon })}</span></Link></li>}
+              </ul>
+              {lastDigest.ok && lastDigest.value && <p className="mt-2 text-xs text-muted-foreground">{t('digest.lastPrepared', { when: f.dateTime(lastDigest.value.preparedAt, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) })}</p>}
+            </section>
+          )}
           {empty && !failed && (
             <section className="rounded-xl border border-dashed border-border p-6 text-center">
               <p className="font-medium">{t('inbox.empty')}</p>
@@ -96,6 +117,7 @@ export async function AiCentreInbox({ session }: { session: SessionContext }) {
                   <ProposalCard tone="decide" icon={task.kind === 'noticeAcknowledgement' ? <ListChecks /> : <CalendarCheck />} title={taskTitle(task)}
                     meta={[t('inbox.items.fromApprovals'), f.dateTime(new Date(task.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })]}
                     href={task.linkPath} cta={t('inbox.items.review')} awaitingLabel={t('card.awaiting')} prepared={approvalPrepared} />
+                  {task.kind === 'leave' && <LeaveRecommendation leaveRequestId={task.id} load={loadLeaveRecommendation} />}
                 </li>
               ))}</ul>
             </section>
