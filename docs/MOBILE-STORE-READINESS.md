@@ -26,11 +26,62 @@ no attached Android device or iPhone; two iPhone simulators were booted. A simul
 the existing app's lock screen and normal Face ID prompt, but its candidate identity has not
 been established. This is an observation, not candidate acceptance.
 
+## Verification of the preparation candidate
+
+Frozen application/configuration source: `437c6b8041880534c1141db21155c29e9d175ebb`.
+[Hosted focused run 41296681327](https://github.com/StradaverseHub/ai-hr/actions/runs/41296681327)
+uses controller `2f6e5abe6098ab4e83ecd5fc95b4d6a580e7f308` on standard GitHub runners.
+
+- Selected tests: **491 passed, zero failed/skipped**, across 29 files. Raw reports independently
+  reconcile to 12 database files / 229 cases and 17 non-database files / 262 cases.
+- Native TypeScript: **PASS**. iOS and Android production Metro/Hermes exports: **PASS**.
+- Whole-repository TypeScript: **PASS** (compiler step completed 10:25:16 UTC).
+- Actual local EAS archive-stage inspection with CLI 24.10.0: **185 files**, including all **28**
+  shared dependency files. Inspection found no server/core/database/deployment source, environment
+  files, signing credentials or node_modules. The regression suite also checks private exclusions.
+- Dependency advisory review: **NOT VERIFIED**. The GitHub alert API returned 403, with Dependabot
+  alerts disabled. No access scopes were expanded; a fresh mobile dependency advisory scan remains open.
+
+The focused report explicitly has `releaseEligible: false`. This is not a full release gate,
+signed native build, physical-device test, live authorization audit or store acceptance.
+Documentation-only follow-ups do not relabel this evidence onto a different application commit.
+
+### Preliminary simulator observation
+
+The existing iPhone 17 Pro / iOS 26.5 app identifies as AI HR Test 1.0.3 (4). Its bundled JavaScript
+was written 29 October at 16:20 UTC (30 October MYT), and it has no established source-SHA binding
+for this review. It is **not** the frozen preparation candidate. The owner confirmed the account
+is synthetic. The native lock screen hid HR content and presented the normal Face ID flow.
+After simulator biometric completion, My profile rendered in dark mode with an activity spinner;
+tapping Back and trying the left-edge back gesture produced no observed route change. No HR write
+was performed. Root cause is unverified: repeat with the frozen candidate, known backend and clean
+navigation, and verify that loading terminates in data or an actionable error. The current shared
+HeaderBack also calls `router.back()` without a `canGoBack` fallback, so cold-entry navigation needs
+specific coverage. This observation blocks acceptance of the installed build, without asserting a
+regression in the newer candidate.
+
+### Native UI source audit
+
+Source has platform-specific SF/Material symbols, reduced-motion subscriptions, native text scaling
+(no global `allowFontScaling=false`), explicit loading/error states, virtualized paged lists and an
+accessible two-step alternative to sliding confirmation. Preserve these properties.
+
+Accessibility still needs VoiceOver/TalkBack order and large-text measurements; performance needs
+startup/scroll measurements; theme quality needs contrast and screen captures in both appearances;
+platform conformance needs working Back/gestures and measured targets; adaptivity needs keyboard,
+iPad/tablet and multi-window acceptance. These five dimensions are **unscored pending runtime evidence**;
+source structure alone cannot establish a polished UI. Source concerns are prioritized below.
+
+Recommended design follow-up: `$impeccable adapt` for targets/keyboard/tablets, `$impeccable harden` for
+loading/navigation recovery and help/privacy entry points, then `$impeccable polish` after verification.
+The existing product/design metadata is stale; a separate `init`/`document` refresh can reconcile it.
+Do not alter unrelated design context during this release review.
+
 ## Findings and preparation
 
 | Priority | Finding | Evidence and consequence | State |
 | --- | --- | --- | --- |
-| P1 | EAS archive excludes current shared dependencies | Root `.easignore` admits v1 only, while mobile imports v2 attendance, pay, notifications, etc., and offline contracts. A full-repository export can pass while a cloud upload cannot resolve these imports. | Explicit shared-file allowlist repaired; regression checks and actual archive inspection required. |
+| P1 | EAS archive excludes current shared dependencies | Root `.easignore` admits v1 only, while mobile imports v2 attendance, pay, notifications, etc., and offline contracts. A full-repository export can pass while a cloud upload cannot resolve these imports. | Explicit shared-file allowlist repaired; two regression cases and actual archive inspection passed. |
 | P1 | No store build profile | Existing profiles distribute internal APK/IPA or simulator builds. | Added standalone production profile: store distribution, Android AAB, embedded auth and runtime connections. No submission automation. |
 | P1 | Production workplace onboarding not established | Bundled signed profile identifies staging and uses a test trust key. There is no verified production setup in this review. | Pending signed production setup/trust provisioning and reviewer setup. Do not rename, forge or re-sign an existing profile without its owner. |
 | P1 | Privacy and support entry points absent | `mobile/app/settings.tsx` contains display/security/notification/device controls, but no privacy or support link; no policy URL exists in mobile configuration. | Pending owner URLs and accessible in-app entry points, including before sign-in. |
