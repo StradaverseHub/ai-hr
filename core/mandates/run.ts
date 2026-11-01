@@ -12,7 +12,9 @@
  *  4. Every run, including a stopped one, writes an outcome record as the agent principal, naming the
  *     mandate id and version, the grantor and the mandate's own agent identity. The record is written only if
  *     the mandate is still the same version at write time; a revocation in between turns the run into a
- *     stopped one and the prepared result is discarded.
+ *     stopped one and the prepared result is discarded. Records of one mandate are written under a per-mandate
+ *     lock that recounts the day's prepared runs, so overlapping runs never exceed the run limit; only prepared
+ *     runs use the allowance.
  * Work jobs complete nothing, so a run's human involvement is "none" and its result is "prepared" for the
  * grantor to read. Not scheduled or wired in this step; the scheduler supplies the principal. */
 import {createHash} from 'node:crypto';
@@ -60,8 +62,9 @@ async function stateTx(tx:Tx,tenantId:string,mandateId:string,now:Date){
  const keys=jobType?await readMandateKeysTx(tx,tenantId,jobType):{enablement:null,control:null};
  // The HR day (Asia/Kuala_Lumpur, fixed UTC+08:00) that `now` falls in.
  const dayStart=new Date(todayInKualaLumpur(now)+'T00:00:00+08:00');
+ // Only prepared runs use the allowance: a stopped run (stop switch, revocation, refusal) prepared nothing.
  const [runs]=await tx.select({n:count()}).from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,tenantId),
-  eq(terasOutcomeRecord.mandateId,mandateId),gte(terasOutcomeRecord.startedAt,dayStart)));
+  eq(terasOutcomeRecord.mandateId,mandateId),eq(terasOutcomeRecord.outcomeKind,'prepared'),gte(terasOutcomeRecord.startedAt,dayStart)));
  const runLimit=Math.min(mandate.limits.maxRunsPerDay,keys.enablement?.maxRunsPerDay??0);
  const checks:OutcomeCheck[]=[
   check('stop_switch',keys.control?`teras_mandate_control@v${keys.control.version}`:'teras_mandate_control:none',!keys.control?.stopped),
@@ -90,12 +93,19 @@ export async function runMandate<S=TeamAbsenceSummary>(options:MandateRunOptions
  if(!failed.length&&first.grantor&&first.jobType){
   try{result=await JOBS[first.jobType](first.grantor,first.mandate,now);}catch{failed.push('job_refused');}
  }
- // 4: the outcome record, only against the same mandate version.
+ // 4: the outcome record, only against the same mandate version. Records of one mandate are written one at a
+ // time (a per-mandate transaction lock), and the day's prepared runs are recounted under that lock, so
+ // overlapping runs cannot all pass the run limit: the first to record prepares, the rest record a stop.
  return withTenant(agent,async tx=>{
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`teras-mandate-run:${options.tenantId}:${options.mandateId}`},0))`);
   const again=await stateTx(tx,options.tenantId,options.mandateId,now);
   // Only a run that passed its checks can be overtaken: a revocation, renewal or switch change since then.
   const changed=again.mandate.version!==first.mandate.version||again.checks.some(item=>item.check!=='run_limit'&&item.result!=='pass');
   if(result&&!failed.length&&changed)failed.push('mandate_changed');
+  // Another run of this mandate prepared since the first count and used the last of today's allowance.
+  const lateLimit=again.checks.find(item=>item.check==='run_limit')!;
+  const overLimit=!!result&&!failed.length&&lateLimit.result!=='pass';
+  if(overLimit)failed.push('run_limit');
   const stopped=failed.length>0||!result;
   const job=first.jobType?WORK_JOB_TYPES[first.jobType]:null;
   const record=await writeOutcomeRecordTx(tx,agent,{
@@ -103,7 +113,7 @@ export async function runMandate<S=TeamAbsenceSummary>(options:MandateRunOptions
    authority:{kind:'mandate',mandateId:again.mandate.id,mandateVersion:again.mandate.version,grantorUserId:again.mandate.grantorUserId},
    agentIdentity:mandateAgentIdentity(again.mandate),
    reads:stopped?[]:[...result!.reads],
-   checks:[...first.checks,...(stopped?[]:result!.checks)],
+   checks:[...first.checks,...(overLimit?[lateLimit]:[]),...(stopped?[]:result!.checks)],
    replay:{model:null,provider:null,instructionSet:WORK_JOB_TYPES_VERSION,specVersion:null,specDigest:null,toolCatalogue:null},
    outcomeKind:stopped?'stopped':'prepared',
    outcome:stopped?{jobType:again.mandate.jobType,failed}:{jobType:again.mandate.jobType,...result!.outcome},
