@@ -51,8 +51,11 @@ export const OutcomeRecordInput=z.object({
  humanInvolvement:z.enum(['none','reviewed','decided']),
  notice:z.enum(['not_applicable','given','not_given']),
  trace:z.record(z.string(),z.unknown()).nullable().optional(),
+ /** A routed or refused turn (migration 0905): only the person who asked reads the record, never a group administrator. */
+ privateToAsker:z.boolean().optional(),
 }).strict().refine(value=>value.finishedAt>=value.startedAt,{message:'finishedAt precedes startedAt'})
- .refine(value=>value.authority.kind==='person'||value.runKind==='mandate_run',{message:'A mandate authority records a mandate run'});
+ .refine(value=>value.authority.kind==='person'||value.runKind==='mandate_run',{message:'A mandate authority records a mandate run'})
+ .refine(value=>!value.privateToAsker||(value.authority.kind==='person'&&value.runKind==='turn'),{message:'Only a person\'s turn is private to the asker'});
 /** Callers may pass frozen arrays (the trace and the job results are frozen); validation copies them. */
 export type OutcomeRecordInput=Omit<z.input<typeof OutcomeRecordInput>,'reads'|'checks'>&Readonly<{reads:readonly OutcomeRead[];checks:readonly OutcomeCheck[]}>;
 
@@ -72,7 +75,7 @@ export async function writeOutcomeRecordTx(tx:Tx,ctx:SessionContext,supplied:Out
   mandateId:authority.kind==='mandate'?authority.mandateId:null,mandateVersion:authority.kind==='mandate'?authority.mandateVersion:null,
   grantorUserId:authority.kind==='mandate'?authority.grantorUserId:null,
   agentIdentity:input.agentIdentity,reads:input.reads as OutcomeRead[],checks:input.checks as OutcomeCheck[],replay:input.replay as OutcomeReplay,
-  outcomeKind:input.outcomeKind,outcome:input.outcome,humanInvolvement:input.humanInvolvement,notice:input.notice,trace:input.trace??null,
+  outcomeKind:input.outcomeKind,outcome:input.outcome,humanInvolvement:input.humanInvolvement,notice:input.notice,trace:input.trace??null,privateToAsker:input.privateToAsker??false,
  }).returning({id:terasOutcomeRecord.id,runId:terasOutcomeRecord.runId});
  return Object.freeze({id:row.id,runId:row.runId});
 }
@@ -109,7 +112,8 @@ export type OutcomeRecordView=Readonly<typeof terasOutcomeRecord.$inferSelect&{f
  effectiveNotice:NoticeState;
  /** The latest decision or undo, if any. */
  decision:'accepted'|'rejected'|'completed'|'undone'|null}>;
-/** The records the caller may see (RLS: who asked, the grantor, group administrators), newest first. */
+/** The records the caller may see (RLS: who asked, the grantor, group administrators except for a turn private to
+ * the asker), newest first. */
 export async function listOutcomeRecords(ctx:SessionContext,filter:Readonly<{mandateId?:string;limit?:number}>={}):Promise<readonly OutcomeRecordView[]>{
  return withTenant(ctx,async tx=>{
   const rows=await tx.select().from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),

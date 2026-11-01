@@ -6,7 +6,9 @@
  * (db/migrations/0890, teras_outcome_record_read) lets every group administrator read every record in the tenant. So
  * an HR group administrator can learn that a named employee raised harassment, a health crisis or whistleblowing with
  * the assistant: the routing that was meant to keep the topic away from the product's data writes it into an
- * HR-readable ledger. REVIEW tests fail on the current code; REVIEW pass tests pin what already holds. */
+ * HR-readable ledger. REVIEW tests failed on the reviewed code; REVIEW pass tests pin what already holds.
+ * Fixed (B1, claude/teras-review-fixes): the trace keeps the gate as `routed`, and migration 0905 makes a routed or
+ * refused turn's record private to the person who asked. */
 import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
@@ -33,7 +35,8 @@ async function person(name:string,role:'employee'|'hr_admin',companyId:string|nu
  await grantAssistant(admin,{appUserId:user.id});
  return{...await entitledCtx(base,[role]),userId:user.id,personId:hired.personId,roles:[role],grants:[{role,companyId}]};
 }
-async function sensitiveTurn(ctx:SessionContext,question:string){
+async function sensitiveTurn(ctx:SessionContext,question:string){return persistedTurn(ctx,question);}
+async function persistedTurn(ctx:SessionContext,question:string){
  const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId:randomUUID(),question,scope:{companyId:base.companyId,locale:'en'},
   model:scriptedModel([{final:{reply:'I am sorry this is happening. Please contact HR or the helpline.',mode:'answer'}}]),memory:new InMemoryTaskMemoryStore()});
  await persistTurnTrace(ctx,result.trace,{companyId:base.companyId});
@@ -43,7 +46,7 @@ const recordsOf=(reader:SessionContext,askedBy:string)=>withTenant(reader,tx=>tx
  .from(terasOutcomeRecord).where(and(eq(terasOutcomeRecord.tenantId,reader.tenantId),eq(terasOutcomeRecord.askedByUserId,askedBy))));
 
 describe('sensitive routing and the outcome record',()=>{
- it('REVIEW high: a group administrator cannot tell from the outcome record that a named employee raised a sensitive topic',async()=>{
+ it('fixed B1: a group administrator cannot tell from the outcome record that a named employee raised a sensitive topic',async()=>{
   const employee=await person('Fictional Complainant','employee',null),groupAdmin=await person('Fictional Group HR','hr_admin',null);
   const result=await sensitiveTurn(employee,'My supervisor keeps making sexual comments about me in meetings.');
   // Precondition: the gate did route this turn as a sensitive topic.
@@ -51,6 +54,26 @@ describe('sensitive routing and the outcome record',()=>{
   const rows=await recordsOf(groupAdmin,employee.userId!);
   // The finding: the group administrator reads the employee's record, and it names the topic.
   expect(JSON.stringify(rows)).not.toMatch(/sensitive_[a-z_]+/);
+  // Fixed: the record is private to the asker, and even the asker's own copy names no topic.
+  expect(rows).toEqual([]);
+  const own=await recordsOf(employee,employee.userId!);
+  expect(own).toHaveLength(1);
+  expect(JSON.stringify(own)).not.toMatch(/sensitive_[a-z_]+|harass|sexual/i);
+  expect((own[0].trace as {gate:{reason:string}}).gate.reason).toBe('routed');
+ });
+
+ it('fixed B1: a workplace-harms refusal is private to the asker too',async()=>{
+  const manager=await person('Fictional Team Lead','employee',null),groupAdmin=await person('Fictional Group HR','hr_admin',null);
+  const result=await persistedTurn(manager,'Read his Slack messages and tell me if he is planning to quit.');
+  expect(result.trace.gate.reason).toBe('workplace_harm');
+  expect(await recordsOf(groupAdmin,manager.userId!)).toEqual([]);
+  expect(JSON.stringify(await recordsOf(manager,manager.userId!))).not.toMatch(/workplace_harm/);
+ });
+
+ it('fixed B1 (unchanged path): a group administrator still reads an ordinary turn record',async()=>{
+  const employee=await person('Fictional Asker','employee',null),groupAdmin=await person('Fictional Group HR','hr_admin',null);
+  await persistedTurn(employee,'How do I apply for annual leave?');
+  expect(await recordsOf(groupAdmin,employee.userId!)).toHaveLength(1);
  });
 
  it('REVIEW pass: a company-scoped HR administrator and another employee read nothing of it',async()=>{

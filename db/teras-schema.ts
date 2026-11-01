@@ -69,6 +69,8 @@ export const terasOutcomeRecord=pgTable('teras_outcome_record',{
  outcomeKind:text('outcome_kind').$type<OutcomeKind>().notNull(),outcome:jsonb('outcome').$type<Record<string,unknown>>().notNull(),
  humanInvolvement:text('human_involvement').$type<HumanInvolvement>().notNull(),notice:text('notice').$type<NoticeState>().notNull(),
  trace:jsonb('trace').$type<Record<string,unknown>>(),
+ /** Migration 0905: a routed or refused turn, readable only by the person who asked. */
+ privateToAsker:boolean('private_to_asker').notNull().default(false),
 },t=>[uniqueIndex('teras_outcome_record_tenant_id_run_id_key').on(t.tenantId,t.runId)]);
 
 export const terasOutcomeFollowup=pgTable('teras_outcome_followup',{
