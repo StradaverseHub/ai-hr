@@ -17,7 +17,7 @@
  *  - the workplace-harms rule (§2 principle 8, §5): a request to infer someone's attitude, sentiment,
  *    loyalty, likelihood of leaving, or performance from their messages or behaviour is refused by the
  *    harness with a fixed reply, and the model is never called. It needs a subject other than the person.
- * Which sensitive topics are routed is read from the harness spec (core/harness/spec.ts `sensitive`).
+ * Which sensitive topics are routed is read from the harness spec's `sensitive` section.
  *
  * Deterministic and pure. Patterns cover English, Malay, Chinese and Vietnamese wording; Tamil and Thai
  * are not covered yet (ADR-0169 §6). Authored independently of the adversarial holdouts
