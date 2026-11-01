@@ -19,7 +19,7 @@ const facts=m=>({run:m.run,jobs:m.jobs,artifacts:m.artifacts});
 const metadata=id=>({run:api(`actions/runs/${id}`),jobs:pages(`actions/runs/${id}/jobs?filter=all`,'jobs'),artifacts:pages(`actions/runs/${id}/artifacts`,'artifacts')});
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 export function validateBrowserControllerDelta(records){
- const allowed=new Set(['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-policy.mjs','.github/ci/browser-recovery.test.mjs','.github/ci/operator-release.mjs','.github/workflows/alpha-staging.yml','.github/workflows/alpha-staging-browser-checks.yml','docs/BROWSER-CAPACITY-RECOVERY.md']);
+ const allowed=new Set(['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-policy.mjs','.github/ci/browser-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/staging-preflight.test.mjs','.github/workflows/alpha-staging.yml','.github/workflows/alpha-staging-browser-checks.yml','docs/BROWSER-CAPACITY-RECOVERY.md']);
  assert(records.length>0&&records.every(p=>allowed.has(p)),'Recovery producer changed application, runtime, unit runner or unrelated controls');
  for(const p of ['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-policy.mjs','.github/ci/browser-recovery.test.mjs','.github/workflows/alpha-staging-browser-checks.yml'])assert(records.includes(p),'Incomplete recovery controller');
 }

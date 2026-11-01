@@ -8,7 +8,7 @@ No installation-grant or deployment route is added. Normal source, security/data
 ordered migration-ledger checks remain mandatory. This certificate alone cannot install a build.
 
 Freeze an owned controller descended from the original trusted controller. Only the recovery
-adapter/policy/tests, operator verification routing, two workflow files and this document may differ;
+adapter/policy/tests, operator verification routing and its preflight regression, two workflow files and this document may differ;
 application files, dependencies, unit runner, browser setup and resource guards must be unchanged.
 Run `alpha-staging.yml` with controller_only=true, diagnostics_only=true and identical frozen
 controller/candidate. All existing integrity checks plus recovery refusal tests must pass.

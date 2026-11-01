@@ -29,9 +29,9 @@ test('demo branch matches actual default deploy predicate and never grants relea
  assert(command.includes('set -a\n. ./.env.production\nset +a\nnode'));assert(command.includes(DEPLOY_RUNTIME_SELECTION));assert(command.startsWith("bash -s <<'AIHR_PROFILE_PREFLIGHT_SHELL'"));assert(!command.includes('--env-file'));assert(!command.includes('deploy-state.sh'));
 });
 for(const [name,change] of [['unknown field',r=>r.secret='bad'],['wrong checker',r=>r.checkerSha256='f'.repeat(64)],['wrong native runtime',r=>r.runtime.abi='115'],['invented pass',r=>{r.errors=['actual refusal'];r.ok=true;}],['invented release',r=>r.releaseAuthorized=true],['unknown profile',r=>r.profile='bypass']])test('refuse '+name,()=>{const {report}=observe({ALLOW_DEMO_SESSION:'true'});change(report);assert.throws(()=>validateStagingProfile(report,customerEnvironmentErrors));});
-test('normal, unchanged-source and repaired-source operators await profile before archives and repeat it before launch',()=>{
+test('normal, unchanged-source, browser-capacity and repaired-source operators await profile before archives and repeat it before launch',()=>{
  const source=readFileSync(new URL('./operator-release.mjs',import.meta.url),'utf8');
- const early='const profilePreflight=await probeStagingProfile({candidatePath,ssh});',verify='const evidence=repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});';
+ const early='const profilePreflight=await probeStagingProfile({candidatePath,ssh});',verify='const evidence=browserRecovery?await verifyBrowserRecoveredCi({...browserRecovery,candidatePath,runId,baseline}):repair?await verifyRepairedCi({...repair,candidatePath,runId,baseline}):recovering?await verifyRecoveredCi({candidatePath,runId,baseline,focusedRunIds:recoveryRunIds}):await verifyCi({candidatePath,runId,baseline});';
  assert.equal(source.split(early).length,2);assert.equal(source.split(verify).length,2);assert(source.indexOf(early)>=0&&source.indexOf(early)<source.indexOf(verify));
  assert(source.includes('const revalidate=async({announced=false}={})=>{await probeStagingProfile({candidatePath,ssh});await (repair?revalidateRepairedCi(evidence):recovering?revalidateRecoveredCi(evidence):revalidateCi(evidence));'));
 });
