@@ -384,7 +384,10 @@ try{
  },30000);
  progressTimer=setInterval(()=>{
   const loaded=samples.slice(offset);report.progress={...progress,elapsedMs:performance.now()-started};
-  report.partialTiming={kind:'INCOMPLETE_PROGRESS_SNAPSHOT',complete:false,read:summary(loaded.filter(v=>v.method==='GET').map(v=>v.durationMs)),write:summary(loaded.filter(v=>v.method==='POST').map(v=>v.durationMs)),knownRequestErrors:report.requestErrors?.length??0};
+  const currentAppCpu=appCpu(),driverCpu=process.cpuUsage(driverCpuBefore);
+  report.partialTiming={kind:'INCOMPLETE_PROGRESS_SNAPSHOT',complete:false,read:summary(loaded.filter(v=>v.method==='GET').map(v=>v.durationMs)),write:summary(loaded.filter(v=>v.method==='POST').map(v=>v.durationMs)),knownRequestErrors:report.requestErrors?.length??0,
+   partialCpu:{appCpuSeconds:appCpuBefore!==null&&currentAppCpu!==null?currentAppCpu-appCpuBefore:null,driverCpuSeconds:(driverCpu.user+driverCpu.system)/1e6,elapsedSeconds:(performance.now()-started)/1000,postgresCpuUnavailable:true},
+   appMemory:{processes:appMemory(),peakIncludesStartupAndBaseline:true}};
   save();writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));writeFileSync(join(out,'database-waits.json'),JSON.stringify(waits));
  },5000);
  // Representative hydrated browsers share the load interval with all 500 HTTP principals.
