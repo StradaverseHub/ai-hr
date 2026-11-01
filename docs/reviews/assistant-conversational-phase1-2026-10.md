@@ -409,3 +409,39 @@ It returns no people, balances or ledger data. My first draft used two page path
 - The gate does not cover Tamil and Thai, which need a native-speaker review.
 - The truncation retry is untested against a real model.
 - A human review of a sample of guidance replies is still needed.
+
+## 16. Leave, holiday, attendance and onboarding readiness; overclaim check
+
+**Readiness.** Setup readiness (administrators only) adds `modules` from `core/product-context/module-readiness.ts`, reading the owners the admin screens read:
+- **Leave:** each active leave type's Balance Health status, finding keys and configured day range, from `leaveConfigHealthAll`. It goes through one shared projection, `core/leave-config-health-input.ts`, which the Entitlement Tables loader now also uses, so the screen and the reply cannot disagree.
+- **Public holidays:** gazetted holidays loaded against the s.60D minimum of 11 for the company's country. This year is always checked; next year from November.
+- **Attendance:** schedule groups, whether a default exists, and current employments in the company with no group.
+- **Onboarding:** whether onboarding is initialised, checklists (and those without tasks), workflows, active catalogue items and access holders. There is no tenant-wide joiner count, because a company-scoped administrator must not learn other companies' volumes.
+
+It returns counts, statuses and configuration names only. The real-database test is `test/product-context-module-readiness.test.ts`.
+
+**Overclaim check.** The behaviour scorer fails a reply that says a change is already made, such as "I've submitted…", "…has been approved for you" or a bare "Done.". Negated sentences ("nothing has been submitted for you") are skipped. The probe lists every match for review, and it now fails when more than 5% of turns error.
+
+**Workforce metrics** are not built here. A governed owner already exists (`core/ai-workforce-analysis.ts`, `core/ai-domain-analysis.ts`), and reusing it changes approved provider-digest files. See the [capability review](assistant-ai-native-capability-review-2026-11.md) §5.
+
+**Hosted runs** (all retained):
+- [41282572975](https://github.com/StradaverseHub/ai-hr/actions/runs/41282572975) at 3e76d8d: typecheck passed, 2 source-text tests failed. One was my scorer test expecting "Done." to be an ordinary miss; the other was an r209 check pinning the old loader text. Both were repointed to the shared projection.
+- [41283137685](https://github.com/StradaverseHub/ai-hr/actions/runs/41283137685): passed.
+- [41283142733](https://github.com/StradaverseHub/ai-hr/actions/runs/41283142733): **measured nothing**. I passed `model_eval=true` instead of a model id, so all 222 calls returned provider 400 and $0 was spent, yet the job passed. The probe now fails above a 5% error rate.
+- [41284048653](https://github.com/StradaverseHub/ai-hr/actions/runs/41284048653) at the corrected dispatch: $0.0941. Two defects surfaced:
+  - `company_setup` reported "accrual configured" for types that readiness reports blocked for no earning method. Fixed: the flag is removed, and Balance Health is the one verdict.
+  - The overclaim check flagged "nothing has been submitted for you". Fixed: negation is skipped.
+- [41284923944](https://github.com/StradaverseHub/ai-hr/actions/runs/41284923944) (tests and typecheck) and [41284929145](https://github.com/StradaverseHub/ai-hr/actions/runs/41284929145) at 87acf695f (three real-model passes, 576 calls, $0.0843): passed.
+
+| Run 41284929145, pass 1 / 2 / 3 | Original 58 met (fully observable) | Parity 16 met |
+| --- | --- | --- |
+| Self-reported label score | 37 / 38 / 38 | n/a |
+| Behaviour, corpus ideals | 49 (33) / 51 (34) / 51 (35) | 16 / 16 / 15 |
+| Behaviour, reviewed ideals | 55 (45) / 57 (46) / 56 (46) | 16 / 16 / 15 |
+
+- 0 failed turns, 0 negative-turn private reads, 0 blank replies, 0 errors, 0 invented links, 0 overclaims, 0 truncation retries.
+- `adm-leave` now says both fixture leave types are blocked for no earning method, so their configured days are not usable yet. It also reports 2 of 11 holidays loaded for 2026 and 0 of 11 for 2027.
+- `adm-attendance` reports no schedule groups and all 3 employments without one.
+- `adm-payroll-ready` gives 2 blockers and 4 warnings.
+
+These results are on fictional data only, and nothing is in production.
