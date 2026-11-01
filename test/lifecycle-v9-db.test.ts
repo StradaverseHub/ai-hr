@@ -775,7 +775,8 @@ it('protects an email referenced by a frozen waiting run even before any message
   const c=await prepared(addDays(todayInKualaLumpur(),30));let config=(await v9Workspace(admin)).config!;
   config.emails.push({id:'waiting-email',name:'Waiting fictional email',module:'off',active:true,sender:'hr',subject:'Fictional',body:'Fictional',cc:[],links:[],attachments:[],slots:[]});
   config.workflows.push({id:'frozen-mail',name:'Fictional frozen reference',module:'off',status:'published',trigger:{event:'beforeLWD',days:30,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'file',type:'waitFile',slot:'frozen-proof',label:'Fictional proof'},{id:'mail',type:'email',template:'waiting-email',to:'employee',cc:[]}],description:''});
-  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'runWorkflows'});
+  // This checks retained frozen definitions, not the wall-clock date-trigger window.
+  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'frozen-mail'});
   const workspace=await v9Workspace(admin);
   expect(workspace.definitionUsage?.find(row=>row.kind==='email'&&row.definitionId==='waiting-email')).toEqual({kind:'email',definitionId:'waiting-email',messages:0,runs:1});
   config=workspace.config!;const changed=config.workflows.find(workflow=>workflow.id==='frozen-mail')!;changed.status='draft';changed.steps=[];

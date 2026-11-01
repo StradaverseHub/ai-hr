@@ -371,9 +371,9 @@ review.
 ## Technical source review — 2 November 2026, PR #194 with shared idle policy
 
 The PR review and required security/data gate include an exact technical source review of the
-combined Entra and PR #196 idle-policy candidate. The closure is 1146 files at
-`bb2514a8ef4722f03d02a755dcec4fa591f7c2c8ba7cce7455fd0a9861cedc98`.
-Compared with accepted main, covered changes are `db/schema.ts`,
+combined Entra and PR #196 idle-policy candidate. The closure is 1148 files at
+`7c2e2c31164fcbfc2f5d5c95cb566b52d62c0735f64d698e5f2e19eaab9b05f5`.
+Compared with newly installed staging baseline `438bfae3d9f5b71f54f7fc258959e91249c4f597`, covered changes are `db/schema.ts`,
 `lib/ai/agent-capability-inventory.ts`, `lib/entra/{model,sessions,store}.ts`,
 `lib/internal-auth/{service,web-session}.ts`, `lib/permissions.ts`, `lib/session.ts`,
 `lib/session-policy{,-server}.ts` and the six locale dictionaries.
@@ -390,5 +390,5 @@ This agent technical review rebinds only `sourceDigest` on the same 24 approved 
 requested review/fix/gate scope. Original human reviewers, dates, statuses and evidence anchors are
 preserved; the two pending records remain identical and blocked. It does not assert a new human
 privacy approval, live tenant acceptance or release PASS. The generated module manifest is
-`a9b6438d2470065e9f73e31ec17eaa5a8cc2b6799b03501e939d20997b81515f`.
+`2fd3bef631acf8e7cd6e7d7bb1d15b4e5dc1d0c15c8cf690b8603ecdde74b73b`.
 Further covered source changes require exact review again.

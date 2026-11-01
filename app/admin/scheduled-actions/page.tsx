@@ -1,40 +1,29 @@
 import { getLocale, getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
-import { isGroupAdmin } from '@/lib/authz';
+import { isGroupAdmin, isOperator } from '@/lib/authz';
 import { getSession } from '@/lib/session';
 import { employeeMasterScheduledEmailEnabled } from '@/lib/employee-master-scheduled-email';
 import { JOBS, listRecentJobRuns, type JobRunRow } from '@/core/job-run';
 import { Card, PageHeader, SectionHeader } from '@/components/ui';
 import { Badge } from '@/components/ui/badge';
+import { runnerControlSnapshot } from '@/lib/runner-control';
+import { RunnerInventory } from './runner-inventory';
 
 /** How many past runs a job's expanded panel shows. */
 const RECENT = 10;
 
-/**
- * Scheduled actions (0280) — READ-ONLY operator view of the four out-of-band sweeps. Answers the one
- * question nobody could answer without SSHing to the box: "did the overnight work run, and did it work?"
- *
- * Deliberately has no actions.ts, no run-now button, no interval/active controls and no next-run column:
- *   - There is no write path to job_run at all (see migration 0280's header). Its read gate,
- *     app.is_group_admin(), reads the CURRENT SESSION's grants and has no tenant dimension, so any write
- *     gated on the same predicate would let one customer's HR admin forge or erase another's history.
- *   - The schedules are business rules (accrual on the 1st, carry-forward forfeiture just after 31 Mar),
- *     not preferences, and they live in version-controlled systemd units on the host. Next-run belongs to
- *     `systemctl list-timers`; duplicating it here would let the two disagree silently.
- *
- * Gated in-page with getSession() + isGroupAdmin(), matching app/admin/users/page.tsx. The nav row uses
- * the existing adminOnly flag (a delegated admin sees the row and is redirected here), and RLS is the
- * real backstop — a company-scoped hr_admin reading this table gets zero rows regardless of the UI.
- */
+/** Installation controls are operator-only through a narrow local scheduler port.
+ * Customer administrators keep read-only aggregate run history. No owner database URL enters Next. */
 export default async function ScheduledActionsPage() {
   const s = await getSession();
-  if (!isGroupAdmin(s)) redirect('/');
+  if (!isGroupAdmin(s) && !isOperator(s)) redirect('/');
+  const snapshot = await runnerControlSnapshot(s);
 
   const t = await getTranslations('scheduledActions');
   const locale = await getLocale();
   const reportEmailEnabled = employeeMasterScheduledEmailEnabled();
   const reportSchedule = await getTranslations('employeeMasterReports.schedule');
-  const runs = await listRecentJobRuns(s, RECENT);
+  const runs = isGroupAdmin(s) ? await listRecentJobRuns(s, RECENT) : [];
 
   const now = Date.now();
   const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
@@ -83,7 +72,9 @@ export default async function ScheduledActionsPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader title={t('title')} description={t('description')} />
 
-      <Card className="p-4 text-sm text-muted-foreground">{t('readOnlyNote')}</Card>
+      <RunnerInventory snapshot={snapshot} canControl={isOperator(s)} />
+      {isGroupAdmin(s) && <section id="recent-run-history" className="space-y-3">
+      <SectionHeader title={t('historyTitle')} />
 
       <div className="space-y-3">
         {JOBS.map((job) => {
@@ -97,11 +88,8 @@ export default async function ScheduledActionsPage() {
                     <div className="min-w-0">
                       <div className="font-medium">{t(`jobs.${job.i18nKey}.name`)}</div>
                       <p className="mt-0.5 text-sm text-muted-foreground">{t(`jobs.${job.i18nKey}.description`)}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {job.key === 'reports.employee-master.deliver' && !reportEmailEnabled
-                          ? reportSchedule('unavailable')
-                          : <>{t('scheduleLabel')}: {job.schedule}</>}
-                      </p>
+                      {job.key === 'reports.employee-master.deliver' && !reportEmailEnabled &&
+                        <p className="mt-1 text-xs text-muted-foreground">{reportSchedule('unavailable')}</p>}
                     </div>
                     {last ? (
                       <Badge variant={outcomeVariant(last.outcome)}>{outcomeLabel(last.outcome)}</Badge>
@@ -181,6 +169,7 @@ export default async function ScheduledActionsPage() {
           );
         })}
       </div>
+      </section>}
     </div>
   );
 }
