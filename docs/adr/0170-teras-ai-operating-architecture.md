@@ -474,3 +474,73 @@ What holds across all five: the system of record, rules as code, authorisation, 
 - **This review has a shelf life.** Re-run it every six months, or when any trigger fires: a customer asks to connect their own agent; a model vendor ships an HR-specific agent; in-boundary model cost falls below provider cost; an employment-AI regulation is announced in a target market.
 
 Nothing in this section authorises a disclosure change, deployment or production contact.
+
+## 11. Market check: US and China, FDE, and the vocabulary (1 November 2026)
+
+A research pass over US and China platforms, standards, HR vendors, regulation, Forward Deployed Engineering and the forum vocabulary. Full report with a URL per claim, each labelled vendor-stated, independently reported, policy text or unverified: `RESUME/AI-DEV-CLAUDE-EVIDENCE-20261031/ai-os-us-china.md`. Three claims below were re-checked at source; the rest are the report's. Primary pages that could not be fetched are listed in its §(f).
+
+### 11.1 What both markets converged on (facts, as reported)
+
+- **Same shape everywhere:** a vendor-managed harness underneath, an enterprise "control tower" (agent identity, registry, kill switch, audit) on top, and a governed data layer between agents and data. Every product sold as an "AI OS" (Windows agentic OS, Agent 365, Gemini Enterprise, DingTalk Agent OS, Kingdee Lingee, HarmonyOS 7, StepFun Step AOS) is a control plane plus a shell, not an operating system.
+- **Harness is commoditising** (Claude Managed Agents, OpenAI AgentKit/Frontier, Tencent ADP, Kingdee Lingee, Databricks Agent Bricks). **Re-checked at source:** Anthropic's documentation states Managed Agents is not eligible for zero data retention or HIPAA because sessions persist transcripts, including with self-hosted sandboxes. A vendor harness is therefore out of scope for personal HR data until retention terms change.
+- **Standards settled:** MCP (foundation-hosted; authorization profile revised 2026-07-28 on OAuth 2.1 and protected resource metadata; client-registration details conflict across secondary sources and must be read from the normative text), A2A, MCP Apps and A2UI for generative UI, Agent Skills and AGENTS.md for packaged context. HR peers already expose MCP servers (Glean, Deel; Rippling reported).
+- **Governed data for agents:** Snowflake agents cannot query raw tables; Databricks enforces catalog permissions per request; Palantir binds agents to Ontology permissions. The unit of context is a declared semantic or ontology model, not a list of tools.
+- **Agent identity is a product category** (Entra Agent ID, Google Agent Identity, Okta, Workday ASOR). **No vendor surveyed implements a person-granted, scoped, revocable mandate.** Google's AP2 independently uses signed "mandates" for agent payments.
+- **China:** frontier open weights deployed privately on day one (DeepSeek V4 at an SOE; Huawei openPangu open-sourced), while Alibaba's flagship went closed and API-only; licence and provenance are now part of model selection. HR verticals: Beisen (reported 300+ FDEs, large AI contract growth), Moka agents, Kingdee Lingee, Yonyou BIP. DingTalk markets "silicon-based employees" with badges and permissions. PIPL art. 24 constrains solely automated decisions.
+- **Regulation:** EU Annex III employment obligations moved to 2 December 2027; California and Colorado ADMT rules take effect 1 January 2027; NYC LL144 enforcement found weak; Malaysia's AI Governance Bill was in consultation (July 2026) with employment named high-risk.
+- **Contrarian signals:** Gartner forecasts over 40% of agentic projects cancelled by end-2027 and widespread "agent washing"; an MIT report found 95% of pilots with no P&L impact; the MCP security incidents reported all came from tool-metadata injection and over-broad permissions; China's regulator issued a security guide after the OpenClaw agent-runtime craze.
+- **Vocabulary (27 terms in the report's glossary):** substance clusters around harness engineering, context engineering, Agent Skills, agent identity, generative UI and agent runtimes. "Agentic mesh", generic "AgentOS", "model-native", "digital employee" and every "OS" label are hype or rebranding. **Re-checked:** Step-Agentic OS is StepFun's agent-native phone OS, announced 13 July 2026 with an agent and a phone brand; details are company claims.
+
+### 11.2 Verdict on this draft
+
+**Ahead of both markets (principle):** mandates; explainers and recommenders from native checks; the outcome record with rule versions; Guard before model; AI-off; the improvement engine closing the loop to a human-approved backlog (nobody surveyed does this; nobody validates it either).
+
+**Behind both markets (form):**
+- no MCP server or OAuth client flow while HR peers ship one;
+- registries are flat lists where the market's unit of context is a declared semantic model with lineage;
+- no packaged "how to use Teras" for external agents (Agent Skills, AGENTS.md);
+- agent identity is internal only;
+- the harness is still probe code;
+- no tested in-boundary model.
+
+### 11.3 Changes adopted into this draft (ranked by the report; accepted here as proposals for the owner)
+
+| # | Change | Where | Review needed |
+| --- | --- | --- | --- |
+| 1 | **The signed proposal object plus its mandate is the universal unit** of every surface and of Connect; "mandate" becomes public vocabulary (consistent with AP2; check customer-material confusion) | Interfaces, Harness, Trust | Object: no. Its fields over Connect: yes (§3.9) |
+| 2 | **A declared semantic model replaces the flat registries:** entities, relations, measures, per-field disclosure, RLS scope, rule version, audience, sensitivity, generated from source with drift tests. The capability kit, Connect tool specs, guides and corpus turns are generated from it | Context, Capabilities, Improvement engine | No |
+| 3 | **Connect moves earlier**, in parallel with step 5a: read and prepare only, on the MCP 2026-07-28 authorization profile over the embedded login, per-app allowlist, no bulk tools, fenced output, injection corpus run against returned data; with a generated Agent Skill and AGENTS.md "Using Teras" pack | Interfaces, Guard | **Yes** (§3.9 legal review) |
+| 4 | **Harness as an engineered, versioned artifact:** a harness spec file; model and instruction changes only through the comparison report; an engineering ratchet where every guard block, failed holdout and incident becomes a permanent test; vendor-managed harnesses excluded for personal data while they persist transcripts | Harness, Trust | No |
+| 5 | **Outcome record gains two fields:** human involvement (none / reviewed / decided) and notice given to the affected person; a customer-facing agent registry and outcome summary export; evaluate OpenTelemetry GenAI conventions for the trace (unverified; read the spec) | Trust | Light: notice wording and retention |
+| 6 | **Agent-identity interoperability:** register Connect client apps and our agent principals in customers' Entra Agent ID or Google Agent Identity where present, as an adapter; every mandate expressed as delegated, never autonomous; never auto-link identities (ADR-0117) | Trust, Interfaces | No, confirm no new personal data leaves |
+| 7 | **Context packaged as portable artifacts** (Agent Skills, guide bundles) generated from the semantic model and verified KB for our harness, Connect clients and an in-boundary model alike; product knowledge only, tenant KB stays behind its disclosure rule | Context | Product: no. Tenant KB: yes |
+| 8 | **In-boundary model path funded and tested now**, with a licence and provenance gate in the model registry and a Malaysia residency plan; the disclosure contract rewritten to cover memory and logs, not only egress | Harness, Trust | **Yes** |
+| 9 | **Step 7 (pilot tenant) is an FDE engagement bound to the kit** (§11.4) | Capabilities, Improvement engine | No |
+| 10 | **Positioning:** "needs review by default" stated as a feature against "resolve, not route"; Gartner's agent-washing test applied to our own claims (genuinely agentic: mandates with native checks; workflow: chasers and digests); "delegate, never employee" language; the "digital employee" frame rejected | Documentation | No |
+| 11 | **Stated non-goals:** computer-use agents over our own UI, and free-form SQL; GUI-automation requests go to Connect | Interfaces | No |
+| 12 | Rules as readable code stays, ranked after 1–3 (no external validation either way) | System of record | No |
+
+**Revised delivery order (replaces §6 where they differ):**
+- 0: usage data; **0b: semantic model over the twelve existing reads and three cards; proposal objects**.
+- 1: harness as product code **with its spec file and ratchet**, behind a switch that stays off.
+- 2: the three leave cards **as proposal objects**.
+- 3 to 5 unchanged (sensitive topics and harms rule; explainers and setup co-pilot; recommendations, digest, agent registry).
+- 5a: outcome record **with the two new fields**, then work-job mandates. **5b** decision-job mandates after legal review. **5c** improvement engine. **Connect read-only in parallel with 5a** after its legal review.
+- 6 unchanged (needs §5.1). **8** in-boundary model path after review.
+- 7: pilot tenant **as an FDE engagement** (§11.4).
+
+### 11.4 Forward Deployed Engineering: where it fits and whether it changes the product
+
+**What it is (reported):** engineers embedded with a customer who map real workflows and data, build integrations, evaluations and per-customer agents, and feed what they learn back into the product. Palantir's model, now adopted at scale by the AI labs and enterprise agent companies, by Beisen in China, and through partner ecosystems at Kingdee and Yonyou. No audited margin evidence exists; the critique is "consulting in disguise", with feedback that dies as tickets and equity not shared.
+
+**Where an FDE works in Teras:** Context and knowledge (tenant guides, verified KB, readiness checks), Capabilities through the capability kit, mandate job types and ceilings per tenant, and the improvement engine's signals and corpus turns. **Never** the Guard and never the native owners: an FDE may add a capability declaration, a guide or a corpus turn, not a guard exception or a disclosure widening (the same rule that binds the improvement engine).
+
+**Does it change the product?** It benefits the multi-tenant, self-serve model on two conditions:
+1. FDE output is semantic-model declarations, guides, readiness checks, corpus turns and mandate ceilings **in the shared codebase, never per-tenant code**. The capability kit and the definition-of-done check are the enforcement: they are what makes FDE work productisable, which no surveyed vendor describes.
+2. Small tenants self-serve through the setup co-pilot; enterprise tenants get time-boxed FDE (ours) or partner "FDE-lite" (the Kingdee and Yonyou pattern, cheaper for Malaysia and ASEAN), measured by acceptance metrics in the outcome record. No services P&L before the kit exists.
+
+### 11.5 Triggers for the next review
+
+The §10.4 triggers, plus: the Malaysia AI Governance Bill is tabled; any HR vendor ships decision-job delegation (none found); each MCP or A2A specification release (now roughly quarterly).
+
+Nothing in this section authorises a disclosure change, deployment or production contact.
