@@ -26,6 +26,12 @@ export async function passwordHash(password: string) {
   const salt = randomBytes(16);
   return `scrypt$32768$8$3$${salt.toString('hex')}$${(await derive(password, salt)).toString('hex')}`;
 }
+/** Stable per-account history fingerprint, with the same memory-hard work as login hashes.
+ * The random salt lives only in the encrypted history record; never use a fast password digest. */
+export async function passwordHistoryFingerprint(password: string, salt: string) {
+  if (password.length > 128 || Buffer.byteLength(password) > 512 || !/^[a-f0-9]{64}$/.test(salt)) throw new Error('passwordPolicy');
+  return createHash('sha256').update(await derive(password, Buffer.from(salt, 'hex'))).digest('hex');
+}
 export async function passwordMatches(password: string, encoded: string) {
   if (typeof password !== 'string' || password.length > 128 || Buffer.byteLength(password) > 512) return false;
   const parts = encoded.split('$');

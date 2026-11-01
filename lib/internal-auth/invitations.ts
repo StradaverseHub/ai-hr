@@ -34,7 +34,7 @@ export async function startInvitation(token: string, username: string, password:
   try { validatePassword(password, username, invitation.email); } catch { throw new InternalAuthError('passwordPolicy'); }
   if (await readRecord(client, loginKey(org.code, username))) throw new InternalAuthError('conflict');
   const c: Credential = { subject: randomUUID(), tenantId: org.tenantId, issuer: internalIssuer(org.tenantId), organization: org.code,
-    username, email: invitation.email, emailVerified: false, enabled: false, password: await passwordHash(password), mustChange: false,
+    username, email: invitation.email, emailVerified: false, enabled: false, password: await passwordHash(password), passwordChangedAt: Date.now(), mustChange: false,
     version: randomUUID(), totpSecret: null, lastStep: -1, recoveryHashes: [] };
   const raw = opaque(), secret = generateSecret(), expiresAt = Date.now() + 10 * 60_000;
   await authTransaction(c.subject, async tx => {

@@ -26866,7 +26866,7 @@
       "invalidLogin": "Kod organisasi, nama pengguna atau kata laluan tidak betul, atau akaun tidak tersedia.",
       "invalidChallenge": "Persediaan atau pautan pemulihan ini telah tamat tempoh atau tidak sah. Mulakan semula.",
       "invalidCode": "Kod tidak betul, tamat tempoh atau telah digunakan. Cuba kod pengesah seterusnya atau kod pemulihan yang belum digunakan.",
-      "passwordPolicy": "Gunakan kata laluan lain sekurang-kurangnya 14 aksara tanpa nama pengguna atau e-mel.",
+      "passwordPolicy": "Gunakan kata laluan yang belum pernah digunakan, sekurang-kurangnya 14 aksara tanpa nama pengguna atau e-mel.",
       "passwordMismatch": "Kata laluan tidak sepadan.",
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebelum mencuba lagi.",
       "unavailable": "Log masuk atau pemulihan tidak tersedia buat sementara waktu. Cuba kemudian atau hubungi pentadbir.",
@@ -33522,6 +33522,27 @@
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
       }
+    }
+  },
+  "passwordPolicy": {
+    "title": "Keselamatan kata laluan",
+    "description": "Wajibkan pengguna organisasi ini menukar kata laluan secara berkala.",
+    "enabled": "Wajibkan penukaran kata laluan berkala",
+    "interval": "Tukar setiap",
+    "unit": "Unit",
+    "days": "Hari",
+    "months": "Bulan kalendar",
+    "limits": "Pilih 1–3,650 hari atau 1–120 bulan. Hujung bulan menggunakan hari sah terakhir.",
+    "reuse": "Pengguna tidak boleh menggunakan semula kata laluan yang direkodkan sejak sejarah kata laluan bermula. Ini juga terpakai kepada pemulihan, walaupun tamat tempoh dimatikan.",
+    "effect": "Simpanan terpakai kepada akaun dan sesi sedia ada. Pengguna dengan kata laluan tamat tempoh atau tanpa tarikh penukaran perlu log masuk, sahkan MFA dan pilih kata laluan baharu sebelum meneruskan.",
+    "save": "Simpan dasar kata laluan",
+    "saving": "Menyimpan…",
+    "result": {
+      "saved": "Dasar kata laluan disimpan.",
+      "invalid": "Masukkan nombor bulat dalam julat yang dibenarkan.",
+      "conflict": "Pentadbir lain mengubah dasar ini. Muat semula sebelum menyimpan.",
+      "forbidden": "Anda tiada kebenaran untuk mengubah dasar ini.",
+      "unavailable": "Tetapan kata laluan tidak tersedia. Cuba lagi."
     }
   }
 }

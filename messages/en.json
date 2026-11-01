@@ -26866,7 +26866,7 @@
       "invalidLogin": "The organization, username or password is incorrect, or this account is unavailable.",
       "invalidChallenge": "This setup or recovery link has expired or is no longer valid. Start again.",
       "invalidCode": "This code is incorrect, expired or already used. Try the next authenticator code or an unused recovery code.",
-      "passwordPolicy": "Use a different password with at least 14 characters, excluding your username and email.",
+      "passwordPolicy": "Use a password you have not used before, with at least 14 characters, excluding your username and email.",
       "passwordMismatch": "The passwords do not match.",
       "rateLimited": "Too many attempts. Please wait before trying again.",
       "unavailable": "Sign-in or recovery is temporarily unavailable. Try again later or contact your administrator.",
@@ -33522,6 +33522,27 @@
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
       }
+    }
+  },
+  "passwordPolicy": {
+    "title": "Password security",
+    "description": "Require users in this organization to change their password at a recurring interval.",
+    "enabled": "Require recurring password changes",
+    "interval": "Change every",
+    "unit": "Unit",
+    "days": "Days",
+    "months": "Calendar months",
+    "limits": "Choose 1–3,650 days or 1–120 months. Month ends use the last valid day.",
+    "reuse": "Users cannot reuse any password recorded since password history began. This also applies to password recovery, even when expiry is off.",
+    "effect": "Saving applies to existing accounts and sessions. Users with an expired password, or no recorded change date, must sign in, verify MFA and choose a new password before continuing.",
+    "save": "Save password policy",
+    "saving": "Saving…",
+    "result": {
+      "saved": "Password policy saved.",
+      "invalid": "Enter a whole number within the allowed range.",
+      "conflict": "Another administrator changed this policy. Reload before saving.",
+      "forbidden": "You do not have permission to change this policy.",
+      "unavailable": "Password settings are unavailable. Try again."
     }
   }
 }

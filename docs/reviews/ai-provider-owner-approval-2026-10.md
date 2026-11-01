@@ -336,3 +336,52 @@ disposition within existing scope, not a new privacy approval, certification, ru
 acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
 requires another exact review.
 
+
+## Technical source binding — 2 November 2026, recurring password policy
+
+For the password-policy staging release, the owner explicitly approved the exact rebind
+`8d364f4c8cb03c2a61f75b168f9d80b43222f64490204a3def3508f1c165cc47` after reviewing the
+covered delta, responding “Approve this exact rebind.” This updates the same 24 provisional
+approvals; both pending contracts and every original status, reviewer, evidence anchor and human
+review timestamp remain unchanged. It is a technical binding update, not a new privacy certification.
+
+The closure grows from 1,141 to 1,143 files. Added: `lib/internal-auth/password-policy.ts` and
+`lib/password-policy.ts`. Other changed covered sources are `lib/internal-auth/credential.ts`,
+`lib/internal-auth/crypto.ts`, `lib/internal-auth/service.ts`, `lib/ai/agent-capability-inventory.ts`
+and the six `messages/*.json` dictionaries. The dictionaries change only password security labels
+and the password-policy refusal text. Authentication records remain encrypted and local; expiry
+restricts active credentials. The capability inventory classifies the settings action as
+`handoff:access_and_authentication`, granting no agent execution authority. No AI serializer,
+transport, protected data contract, raw-data variant or model calculation is added or widened.
+
+Original release gate 41336655104 retains its failed result. The additional inherited lifecycle
+fixture used a fixed last working day of 1 November; its waiting-run test now supplies a last
+working day 30 days after the HR calendar's current date. Production lifecycle behavior and the
+original assertions are unchanged. Because the existing recovery verifier refuses test-file
+repairs, the owner separately answered “Authorize the new complete gate.” The new complete gate
+must establish its own exact-source evidence before merge or staging installation. This approval
+does not authorize production deployment or claim staging acceptance.
+
+### Released Runner baseline integration — 2 November 2026
+
+The staging orchestrator delegated the owner's instruction “All sessions can auto approve and
+release without me” for routine staging review/integration, while preserving independent
+provider-data permissions and every required check. Under that authority, this automated technical
+review combines accepted Runner source `438bfae3d9f5b71f54f7fc258959e91249c4f597` with password source
+`8507fe45763d8e41415c80aeae6bedec5e893ea8`. It is not a new human privacy-specialist review.
+
+The combined closure has 1,145 files and digest
+`a8886330ea60bcb66d96ee73f58e14e84c33cca8c906a656aff18bcd7441ba1c`. Relative to the accepted Runner
+baseline, changed covered bytes are the password policy and credential helpers, the human-only
+password-policy action classification, and the password-security leaves in six dictionaries.
+Runner labels/classification and the original native source owners remain intact. No serializer,
+transport, protected data contract, raw-data variant or autonomous sensitive effect is introduced.
+The same 24 provisional records receive only the new technical source digest; original approval
+metadata and both pending blocks are preserved.
+
+The accepted Runner lifecycle fixture explicitly starts the frozen workflow to test retention
+independently of a date-trigger window. Integration retains that baseline fixture and all its
+assertions instead of layering the earlier standalone date workaround onto it. No production
+lifecycle rule changes. The accepted baseline has no new migrations. The integrated candidate
+requires its own exact-source qualification against the handed-back baseline; member results
+remain attributed to their original sources and are not aggregate release evidence.
