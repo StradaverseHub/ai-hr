@@ -14,7 +14,8 @@
  *  8. exact figures restored only for values this caller may see (./restore.ts);
  *  9. a trace (./trace.ts) for the outcome record.
  * It returns a reply, an optional suggestion (a pointer to a review page) and the caller's still-valid open
- * proposals (core/proposals objects). It never prepares, confirms or writes a change. */
+ * proposals (core/proposals objects), including any a native preparer issued for this turn's suggestion. It
+ * never confirms or writes a change. */
 import {createHash,randomUUID} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
 import {isAdmin} from '../../lib/authz-model';
@@ -77,7 +78,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(options.enabled!==HARNESS_TEST_ONLY||!testProcess())throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
  const callerKey=authorityKey(ctx),gate=gateTurn(options.question),admin=isAdmin(ctx);
- const candidates=await (options.tools??nativeToolProvider)(ctx,options.scope,gate.actions);
+ const candidates=await (options.tools??nativeToolProvider)(ctx,{...options.scope,personWords:options.question},gate.actions);
  const offered=offerFor(candidates.bindings,gate,options.allowTools),offeredNames=new Set(offered.map(binding=>binding.name));
 
  // Task memory: loaded for this tenant and user only, then re-authorised against what the caller is offered now.
@@ -93,6 +94,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const ledger=new DisclosureLedger(callerKey),nonce=fenceNonce(),seen=new Set<string>();
  const calls:TraceCall[]=[],disclosure:DisclosureApplied[]=[],checks:{attempt:number;results:readonly ReplyCheckResult[]}[]=[],retries:TraceRetry[]=[],reads:string[]=[];
  let steps=0,inputTokens=0,outputTokens=0,spendUsd=0,repeats=0,forceFinal=false,blankRetries=0,checkRetries=0,retryPending=false;
+ const issued:Proposal[]=[];
  let suggestion:TurnSuggestion|null=null,exhausted:BudgetExhausted|null=null,reply:string|null=null,mode:string|null=null,slot:string|null=null,fallback=false;
  const allowedPaths=()=>new Set([...candidates.destinations,...(suggestion?[suggestion.reviewRoute]:[])].map(path=>path.replace(/\/$/,'')||'/'));
 
@@ -152,6 +154,7 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
    const disclosed=discloseToolOutput(binding.name,binding.kind==='read'?binding.entity:null,run.content,ledger);disclosure.push(disclosed.applied);
    if(run.ok&&binding.kind!=='suggest')reads.push(binding.name);
    if(run.suggestion)suggestion=run.suggestion;
+   if(run.proposal)issued.push(run.proposal);
    record(run.ok?'ok':'refused',disclosed.value,run.refusal);
   }
  }
@@ -159,7 +162,8 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const shown=reply??S.replyChecks.fallbackReply;
  const restoration=fallback?{reply:shown,restored:0,refused:[]}:restoreFigures(shown,ledger,callerKey,offeredNames);
  const finished=clock();
- const next=advanceMemory(current,{question:options.question,reads,slot,mode},finished);
+ // Proposals issued this turn join the open ones, newest first; each is re-verified at the next turn's start.
+ const next=advanceMemory({...current,openProposals:[...issued.reverse(),...current.openProposals]},{question:options.question,reads,slot,mode},finished);
  await options.memory.save(next);
  const trace:TurnTrace=Object.freeze({kind:'teras.turn-trace',version:1,turnId:randomUUID(),conversationId:options.conversationId,startedAt:started.toISOString(),finishedAt:finished.toISOString(),
   spec:{version:S.version,digest:harnessSpecDigest()},model:{id:model.modelId},

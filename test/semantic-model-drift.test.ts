@@ -25,6 +25,8 @@ import * as ownLeaveDigest from '../core/assistant-actions/own-leave-review-dige
 import * as ownLeaveContract from '../lib/assistant-actions/own-leave-contract';
 import * as ownLeaveChange from '../core/assistant-actions/own-leave-change-source';
 import * as leaveApplyProposal from '../core/proposals/leave-apply';
+import * as leaveCancelProposal from '../core/proposals/leave-cancel';
+import * as leaveDecideProposal from '../core/proposals/leave-decide';
 
 /** Literal imports only, so a new anchor file must be added here on purpose. */
 const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={
@@ -34,6 +36,7 @@ const OWNER_MODULES:Readonly<Record<string,Record<string,unknown>>>={
  'core/ai-governance.ts':aiGovernance,'packs/leave/service.ts':leaveService,'core/assistant-actions/own-leave-store.ts':ownLeaveStore,
  'core/assistant-actions/own-leave-review-digest.ts':ownLeaveDigest,'lib/assistant-actions/own-leave-contract.ts':ownLeaveContract,
  'core/assistant-actions/own-leave-change-source.ts':ownLeaveChange,'core/proposals/leave-apply.ts':leaveApplyProposal,
+ 'core/proposals/leave-cancel.ts':leaveCancelProposal,'core/proposals/leave-decide.ts':leaveDecideProposal,
 };
 const root=fileURLToPath(new URL('..',import.meta.url));
 function resolveAnchor(anchor:OwnerAnchor):unknown{
