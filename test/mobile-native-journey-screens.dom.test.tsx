@@ -20,7 +20,7 @@ function fixture(platform:'ios'|'android'='ios'){
   const photo=vi.fn<()=>Promise<any>>(async()=>null);
   const reloadAttempts=vi.fn(),attemptsState={items:[] as any[]};
   const preview=vi.fn<(...args:unknown[])=>Promise<any>>(async()=>({outcome:'not_enforced',siteId:null,siteName:null,distanceM:null,radiusM:null,accuracyM:5,maximumAccuracyM:null}));
-  const session={employmentId:'own',status:'signedIn',signOut:vi.fn()};
+  const session={employmentId:'own' as string|null,status:'signedIn',signOut:vi.fn()};
   const View=({children}:any)=><div>{children}</div>,Text=({children,accessibilityRole}:any)=><span role={accessibilityRole==='alert'?'alert':undefined}>{children}</span>;
   const Pressable=(p:any)=><button disabled={p.disabled} role={p.accessibilityRole??'button'} aria-label={p.accessibilityLabel} aria-checked={p.accessibilityState?.checked} onClick={p.onPress}>{p.children}</button>;
   const alert=vi.fn();
@@ -66,6 +66,24 @@ afterEach(cleanup);
 /** Start a request and choose its type in the leave-type list (nothing is pre-selected). */
 function startRequest(name='Annual leave'){fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByRole('button',{name:'leaveType, chooseLeaveType'}));fireEvent.click(screen.getByRole('radio',{name:new RegExp('^'+name)}));}
 describe('native clock job',()=>{
+  it('prepares and records against the server-authorized default work profile without an explicit Me selection',async()=>{
+    const f=fixture();f.session.employmentId=null;render(<f.App kind="clock"/>);
+    fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    expect(f.capture).toHaveBeenCalledOnce();expect(f.post).not.toHaveBeenCalled();
+    f.post.mockResolvedValueOnce({outcome:'recorded',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T08:00:00.000Z',photoAvailable:false});
+    fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('clockRecorded');
+    expect(f.post).toHaveBeenCalledOnce();expect(f.session.employmentId).toBeNull();
+  });
+  it('refuses a default work profile that changes while its local preparation is being saved',async()=>{
+    const f=fixture();f.session.employmentId=null;let finish!:(value:any)=>void;
+    f.prepareClock.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    const ui=render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));
+    await waitFor(()=>expect(f.prepareClock).toHaveBeenCalledOnce());
+    f.clockState.employmentId='different-employment';ui.rerender(<f.App kind="clock"/>);
+    const id=f.prepareClock.mock.calls[0][1];await act(async()=>{finish({requestId:id,kind:'clock',stage:'preparation',createdAt:Date.now()});});
+    expect(f.capture).not.toHaveBeenCalled();expect(f.preview).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+  });
+
   it('a widget only selects a direction; it does not capture location, photos, prepare or submit',async()=>{
     const f=fixture();render(<f.App kind="clock" widgetAction="out" widgetIntent="launch-1"/>);
     await waitFor(()=>expect(f.drafts().clock).toMatchObject({action:'out',phase:'idle'}));
