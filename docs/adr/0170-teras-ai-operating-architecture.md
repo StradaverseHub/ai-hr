@@ -352,6 +352,34 @@ The Assistant is the visible part. Behind it run detectors, chasers, narrators a
 - Native checks return the version they used, and the outcome record (§3.11) stores it, so a result can say which company rule and which statutory schedule applied. Delivered with step 5a.
 - A company handbook upload is only ever compared against the configuration (§3.5 policy versus configuration), never applied.
 
+### 3.15 Build decisions taken under delegated authority (1 November 2026)
+
+The owner delegated ordinary design questions to the coordinating session ("go with the best recommendation; only extra-sensitive questions come to me"). Questions on disclosure to a provider, legal notice and retention, and anything that widens access stay with the owner or the reviewers. Decisions taken:
+
+| Question (step) | Decision |
+| --- | --- |
+| Approve-leave proposals: prepared only when the person's own words ask to approve and exactly one request is pending (2) | Accepted. With several pending, the harness lists them and asks which; it never picks one |
+| Approver card shows balance now, not after (2) | Show balance now plus the days requested. A post-approval figure comes only when the leave owner publishes a deterministic projection (backlog); the model never computes it |
+| Approved-leave cancellation: own Assistant review and custody (2) | Not now. The native cancellation request with its normal approval is sufficient; revisit with usage data |
+| Card labels English only (2) | Translated with production wiring, through the existing six-language messages |
+| Delegates admitted by the decision source but untested (2) | Add a covering-delegate test at integration |
+| Mandate run identity: controlled as the agent principal, reads under the grantor's freshly resolved authority (5a) | Accepted: this is "for, never as" (§3.10 rule 3 and 9) |
+| Revocation by the grantor's manager (5a) | Built with the agent registry in step 5, where tenant policy allows |
+| Task memory erased per login on transcript retirement (5a) | Accepted for now; a conversation id is added when production wiring exists |
+| Customer-facing outcome summary and export (5a) | Built in step 5 with the agent registry |
+| Notice wording and retention of outcome records (5a) | **Reserved for the privacy reviewer.** Default stays `not_given` and audit retention |
+| Entitlement and payslip explanation figures as bands, including the person's own payslip (4) | Accepted. The model sees bands; the exact figure the person may see is restored locally from the native owner |
+| `module_work.data` pay figures banded (4) | Accepted |
+| Co-pilot description to name pending logins (4) | Yes, in the next spec description change, measured by the next run |
+| `mf-entitlement-why` reviewed ideal still requires the balances read (4) | Add the entitlement explainer as an accepted alternative read; the original corpus stays unchanged |
+| Fold `ENTITY_FIELD_EXTENSIONS` into `entities.ts`, widen `EntityId` (4) | At integration, after step 2 is merged in |
+| Leave generation run volumes are tenant-wide (4) | Backlog: a company-scoped run owner in the leave pack |
+| Holdouts used as ratchet inputs become "seen" (1) | Accepted for harness invariants. A fresh, unseen holdout set is authored by a separate session with no access to the corpus or code, as an interim for ADR-0169 §6; a human-written set remains required before pilot |
+| Spend up about 25% (1) | Accepted; revisit if a later spec version grows it further |
+| Destination registry too narrow (1) | Settled in step 4: every page the caller's role may open is linkable, pinned by a drift test |
+| Sensitive-topic categories a tenant may switch off (3) | Self-harm and crisis: never. Others: only through an audited override by a group administrator. The setting is built with production wiring |
+| Connect identifiers via opaque per-client handles (0b) | **Reserved for the Connect legal review** (§3.9) |
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
