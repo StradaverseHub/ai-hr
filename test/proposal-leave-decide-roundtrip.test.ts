@@ -82,7 +82,10 @@ describe('approvals.leave.decide proposal round trip',()=>{
   expect(await status()).toBe('pending');
   const first=await post(packets.packets.confirm);expect(first.status).toBe(200);expect(first.body.kind).toBe('completed');
   const again=await post(packets.packets.confirm);expect(again.body).toEqual(first.body);
-  expect(await status()).toBe(decision);
+  // The decision is recorded once; whether the request is final is the owner's outcome (a later step may remain).
+  const final=proposal.body.facts?.outcome!=='step_decision_if_confirmed';
+  expect(first.body.receipt.receipt).toMatchObject({decision,currentStatus:final?decision:'pending'});
+  expect(await status()).toBe(final?decision:'pending');
  },60000);
 
  it('keeps the self-approval ban: an HR administrator gets a card for another\'s request but never for their own',async()=>{
