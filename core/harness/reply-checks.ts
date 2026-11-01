@@ -33,13 +33,13 @@ export type IdentifierKind='ic'|'passport'|'bank_account'|'tax_number'|'record_i
 /** Malaysian NRIC (yymmdd-pb-####, with or without dashes, date-checked), passport (one or two letters and
  * seven to nine digits), a run of ten to seventeen digits (bank account), LHDN income tax references (SG/OG/IG
  * and the other file prefixes, or a "tax number" label followed by digits) and internal UUIDs. Figures with
- * separators or decimals ("1,234.50", "17.25") do not match. */
+ * separators or decimals ("1,234.50", "17.25") do not match; a full stop after a number is punctuation. */
 const IDENTIFIERS:readonly (readonly [IdentifierKind,RegExp])[]=[
  ['record_id',/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i],
- ['ic',/(?<![\d.,])\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-?\d{2}-?\d{4}(?![\d.,])/],
+ ['ic',/(?<!\d|\d[.,])\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])-?\d{2}-?\d{4}(?![.,]?\d)/],
  ['tax_number',/\b(?:SG|OG|IG|C|D|E|F|J|TP|TA|TC|TN|TR|PT|LE)\s?\d{8,11}\b|\b(?:tax|TIN|cukai)\s*(?:no\.?|number|ref(?:erence)?|nombor)?\s*[:#]?\s*[A-Z]{0,2}\s?\d{6,}/i],
  ['passport',/\b[A-Z]{1,2}\d{7,9}\b/],
- ['bank_account',/(?<![\d.,])\d{10,17}(?![\d.,])|(?<![\d.,])\d{4}[- ]\d{4}[- ]\d{4,9}(?![\d.,])/],
+ ['bank_account',/(?<!\d|\d[.,])\d{10,17}(?![.,]?\d)|(?<!\d|\d[.,])\d{4}[- ]\d{4}[- ]\d{4,9}(?![.,]?\d)/],
 ];
 export function identifiersIn(reply:string):readonly IdentifierKind[]{
  return IDENTIFIERS.filter(([,pattern])=>pattern.test(reply)).map(([kind])=>kind);
