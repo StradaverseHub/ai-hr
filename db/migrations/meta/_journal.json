@@ -4453,6 +4453,13 @@
       "when": 1793330000265,
       "tag": "0865_assistant_company_retention_references",
       "breakpoints": true
+    },
+    {
+      "idx": 751,
+      "version": "7",
+      "when": 1793330000273,
+      "tag": "0873_movement_exit_payroll_preservation",
+      "breakpoints": true
     }
   ]
 }

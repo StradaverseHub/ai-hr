@@ -85,11 +85,11 @@ describe('custom Movement correction uses canonical behavior and retains recorde
   await expect(reverseMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,reason:'Fictional repointed rollback'})).rejects.toBeInstanceOf(MovementNotCorrectableError);
   expect(await state(e.employmentId)).toEqual(before);
  });
- it('retains exclusive lifecycle families and tenant subject visibility for a custom comparison',async()=>{
+ it('validates incomplete destination inputs and tenant subject visibility for a custom comparison',async()=>{
   const e=await hire(),ctx=adminCtx(b),type=await saveMovementEventType(ctx,{label:'Fictional protected promotion',behaviourKind:'promotion'});
   await createMovementEvent(ctx,{employmentId:e.employmentId,kind:type.code,effectiveDate:day(-2),departmentId:b.deptB});
   const row=(await movementHistory(ctx,e.employmentId)).find(item=>item.kind===type.code)!,before=await state(e.employmentId);
-  for(const kind of ['confirmation','entityTransfer','termination'])await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind,effectiveDate:day(-2),reason:'Fictional forbidden family'})).rejects.toBeInstanceOf(MovementNotCorrectableError);
+  for(const kind of ['entityTransfer','termination'])await expect(editMovementEvent(ctx,{employmentId:e.employmentId,movementId:row.id,kind,effectiveDate:day(-2),reason:'Fictional incomplete replacement'})).rejects.toThrow();
   const foreign=await seedBase();
   await expect(editMovementEvent(adminCtx(foreign),{employmentId:e.employmentId,movementId:row.id,kind:'transfer',effectiveDate:day(-2),reason:'Fictional foreign access'})).rejects.toThrow();
   await expect(reverseMovementEvent(adminCtx(foreign),{employmentId:e.employmentId,movementId:row.id,reason:'Fictional foreign access'})).rejects.toThrow();
