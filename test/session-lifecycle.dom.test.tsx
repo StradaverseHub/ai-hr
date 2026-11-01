@@ -128,6 +128,18 @@ describe('idle sign-out', () => {
     expect(reload).toHaveBeenCalledWith(expect.stringMatching(/^\/login\?reason=idle/));
   });
 
+  it('a session no enforcing provider owns (federated sign-in) shows no countdown and is never signed out by the shell', async () => {
+    const report: Report = vi.fn(async () => new Response(JSON.stringify({ step: 'not-enforced' }), { status: 200 }));
+    const { signOut, reload, advance } = mount({ idleTimeoutSeconds: 300, report });
+    await advance(1_000);
+    expect(report).toHaveBeenCalledTimes(1);
+    await advance(400_000);
+    expect(warning()).toBeNull();
+    expect(signOut).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
   it("never ends a new session because of an earlier session's stored activity", async () => {
     window.localStorage.setItem('aihr-session-activity', JSON.stringify({ input: 1, reportedAt: 1, serverDeadline: 2 }));
     const { signOut, reload, report, advance } = mount({ idleTimeoutSeconds: 300 });

@@ -88,6 +88,8 @@ function IdleSignOut({ idleTimeoutSeconds, reload, now, report, signOut }: Requi
   const ended = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const [remaining, setRemaining] = useState<number | null>(null);
+  /** False once the server says no enforcing provider owns this session (ADR-0171 provider contract). */
+  const [enforced, setEnforced] = useState(true);
 
   const leave = useCallback((announce: boolean) => {
     if (ended.current) return;
@@ -106,7 +108,8 @@ function IdleSignOut({ idleTimeoutSeconds, reload, now, report, signOut }: Requi
       const response = await report();
       if (response.status === 401) return leave(true);
       if (!response.ok) return;
-      const body = await response.json() as { remainingSeconds?: unknown };
+      const body = await response.json() as { step?: unknown; remainingSeconds?: unknown };
+      if (body.step === 'not-enforced') { setRemaining(null); setEnforced(false); return; }
       const seconds = typeof body.remainingSeconds === 'number' && Number.isFinite(body.remainingSeconds) ? body.remainingSeconds : null;
       state.current = { ...(readShared() ?? state.current), reportedAt: sentAt, serverDeadline: seconds === null ? null : sentAt + seconds * 1000 };
       writeShared(state.current);
@@ -116,6 +119,7 @@ function IdleSignOut({ idleTimeoutSeconds, reload, now, report, signOut }: Requi
   }, [leave, now, report]);
 
   useEffect(() => {
+    if (!enforced) return;
     // Loading the document is activity. Storage can hold an earlier session's figures (signed out yesterday, or
     // in another account); they must never end this one, so its server deadline is dropped until the first report.
     const shared = readShared();
@@ -156,7 +160,7 @@ function IdleSignOut({ idleTimeoutSeconds, reload, now, report, signOut }: Requi
       window.removeEventListener('storage', onStorage);
       window.clearInterval(tick);
     };
-  }, [idleMs, leave, now, send]);
+  }, [enforced, idleMs, leave, now, send]);
 
   useEffect(() => {
     const node = dialog.current;
@@ -165,6 +169,7 @@ function IdleSignOut({ idleTimeoutSeconds, reload, now, report, signOut }: Requi
     if (remaining === null && node.open) { if (typeof node.close === 'function') node.close(); else node.removeAttribute('open'); }
   }, [remaining]);
 
+  if (!enforced) return null;
   const stay = () => {
     state.current = { ...(readShared() ?? state.current), input: now() };
     writeShared(state.current);

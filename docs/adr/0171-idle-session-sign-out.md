@@ -39,6 +39,22 @@ the session and sends every tab to `/login?reason=idle`, which explains the sign
 browser's and the server's deadline. It also reloads the document whenever a client navigation lands on a
 login-flow route, so no expiry path renders the login form inside the shell.
 
+## Provider contract
+
+`lib/session-activity.ts` defines what one activity report means for any web session, independent of which
+provider issued it: `active` (an enforcing provider recorded it and returns the remaining allowance),
+`not-enforced` (a live web session exists but no enforcing provider owns it — the shell hides the countdown and
+never signs that person out) or `expired` (no live web session, or an enforcing provider just ended it). The
+activity route consults enforcing recorders in order, then the live identity across every provider.
+
+A provider with its own web session store (the Entra connector, PR194, which owns that store) adopts the limit by:
+recording `lastActivity` on its web sessions; refusing, revoking and auditing its own idle sessions on read with
+`idleTimeoutMinutesFor(tenant)`; and adding its recorder to the route's list (returning `null` for tokens it does
+not own). Until it does, its users are `not-enforced`, never `expired`. The combined regression that must pass
+before both land: a valid federated web session reporting activity is never answered `expired`; once the
+provider records activity, the same session ends after the organization's limit and the shell's countdown
+appears for it.
+
 ## Scope and consequences
 
 - Web sessions on the embedded sign-in only. Native app sessions keep their 15-minute access tokens and
