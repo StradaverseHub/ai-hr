@@ -1,14 +1,13 @@
 # Exact-source Firefox capacity recovery
 
-This separately versioned, read-only verifier implements the owner's failed-area-only recovery
+The v2 verifier (retaining the original read-only v1 evidence) implements the owner's failed-area-only recovery
 policy for a complete frozen gate whose sole failed application unit is Firefox admission below
 the existing 20 GiB disk guard. The failed process must have executed zero batches. Failed tests,
 other engines, compiler/build/migration/controller failures and changes to source or runtime refuse.
-No installation-grant or deployment route is added. Normal source, security/data, live profile and
-ordered migration-ledger checks remain mandatory. This certificate alone cannot install a build.
+Installation additionally requires an exact reviewed operator controller, both hosted controller diagnostics, independently authenticated original/fresh evidence and revalidation, the current queue lease and the existing fixed-format original-build grant. Normal source, security/data, live profile, ordered ledger, preserved baseline, source/build arrival and owned cleanup checks remain mandatory. Source verification alone cannot install a build.
 
 Freeze an owned controller descended from the original trusted controller. Only the recovery
-adapter/policy/tests, operator verification routing and its preflight regression, two workflow files and this document may differ;
+adapter/policy/tests, operator verification routing, existing grant construction, their preflight/refusal regressions, two workflow files and this document may differ;
 application files, dependencies, unit runner, browser setup and resource guards must be unchanged.
 Run `alpha-staging.yml` with controller_only=true, diagnostics_only=true and identical frozen
 controller/candidate. All existing integrity checks plus recovery refusal tests must pass.
@@ -28,7 +27,7 @@ AIHR_RECOVERY_CONTROLLER_RUN_ID=<controller-only-run> \
 AIHR_CI_PREFETCH_DIR=<optional-private-original-archives> \
 node --import tsx .github/ci/operator-release.mjs verify-browser-recovery \
   <unchanged-candidate-worktree> <original-full-run> \
-  '{"browserRunId":123,"candidateBranch":"codex/source","controllerBranch":"codex/controller","auxiliaryRunIds":[]}'
+  '{"browserRunId":123,"candidateBranch":"codex/source","controllerBranch":"codex/controller","browserProducerController":"FULL_ORIGINAL_BROWSER_CONTROLLER","browserProducerBranch":"codex/producer","producerDiagnosticRunId":456,"auxiliaryRunIds":[]}'
 ```
 
 The verifier independently authenticates complete API inventories, repository/workflow/controller,
@@ -46,3 +45,22 @@ fresh Firefox provenance and the verifier's hosted integrity run. It never creat
 ci-receipt.json, rewrites a report or changes the original workflow conclusion. The operator adds
 its real read-only staging profile and baseline migration-ledger preflight. IT's Entra consent,
 hybrid directory environment and physical-device acceptance remain separate from source checks.
+
+## Reviewed v2 installation admission
+
+The original passing Firefox producer retains its actual controller, branch, hosted diagnostic and
+plan fingerprint; a later operator/grant repair never relabels it. The current operator controller
+gets its own controller-only validation. Reconstruct and authenticate all original and replacement
+metadata/archives against the unchanged application source before verification and again immediately
+before pending/transfer and launch. Both producer and verifier changes are bounded to reviewed CI
+recovery/grant files; application, unit runner, dependencies and resource guards stay unchanged.
+
+After source review, set AIHR_BROWSER_REVIEWED_CONTROLLER to the exact operator SHA. V2 grants refuse
+v1 read-only certificates, pending review, missing or mismatched producer/verifier diagnostics,
+changed source/build identity or original conclusions. deploy-browser-recovery uses the existing
+lease and operator spine, unchanged fixed-format installation grant, original successful build and
+actual baseline/environment binding. No receiver compatibility decoder or new grant format is added.
+Set AIHR_STAGING_LEASE_FILE to the claimed exact-source lease and retain it through automated safe
+acceptance and handback. Deployment authorization does not enable Microsoft sign-in, provisioning,
+worker services, tenant consent or directory permissions. Those remain explicitly commissioned IT
+operations. No production or package publication is authorized by this staging-only admission.

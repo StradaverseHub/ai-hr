@@ -1,4 +1,4 @@
-/** Read-only authenticated recovery adapter; deliberately no installation-grant/deploy route. */
+/** Authenticated exact-source recovery; producer and reviewed operator identities remain distinct. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync} from 'node:fs';
@@ -19,7 +19,7 @@ const facts=m=>({run:m.run,jobs:m.jobs,artifacts:m.artifacts});
 const metadata=id=>({run:api(`actions/runs/${id}`),jobs:pages(`actions/runs/${id}/jobs?filter=all`,'jobs'),artifacts:pages(`actions/runs/${id}/artifacts`,'artifacts')});
 const save=(dir,name,value)=>writeFileSync(join(dir,name),JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
 export function validateBrowserControllerDelta(records){
- const allowed=new Set(['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-policy.mjs','.github/ci/browser-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/staging-preflight.test.mjs','.github/workflows/alpha-staging.yml','.github/workflows/alpha-staging-browser-checks.yml','docs/BROWSER-CAPACITY-RECOVERY.md']);
+ const allowed=new Set(['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-policy.mjs','.github/ci/browser-recovery.test.mjs','.github/ci/operator-release.mjs','.github/ci/staging-preflight.test.mjs','.github/ci/ci-install-grant.mjs','.github/workflows/alpha-staging.yml','.github/workflows/alpha-staging-browser-checks.yml','docs/BROWSER-CAPACITY-RECOVERY.md']);
  assert(records.length>0&&records.every(p=>allowed.has(p)),'Recovery producer changed application, runtime, unit runner or unrelated controls');
  for(const p of ['.github/ci/browser-recovery.mjs','.github/ci/browser-recovery-policy.mjs','.github/ci/browser-recovery.test.mjs','.github/workflows/alpha-staging-browser-checks.yml'])assert(records.includes(p),'Incomplete recovery controller');
 }
@@ -44,43 +44,54 @@ function planAt(candidatePath,controller,baseline){
  try{const local=createPlan(candidatePath),{fingerprint,...body}={...local,controller,migrationBase:baseline,runtime:{node:'22.23.3',platform:'linux',arch:'x64'}};return {...body,fingerprint:hash(body)};}
  finally{if(previous===undefined)delete process.env.AIHR_CI_CLASSIFIER_RUNTIME;else process.env.AIHR_CI_CLASSIFIER_RUNTIME=previous;}
 }
-export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,browserRunId,candidateBranch,controllerBranch,auxiliaryRunIds=[],evidenceDirectory,reuse=false}){
+export async function verifyBrowserRecoveredCi({candidatePath,runId,baseline,browserRunId,candidateBranch,controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,auxiliaryRunIds=[],evidenceDirectory,reuse=false}){
  candidatePath=resolve(candidatePath);runId=Number(runId);browserRunId=Number(browserRunId);
  assert(positiveId(runId)&&positiveId(browserRunId)&&runId!==browserRunId&&/^[a-f0-9]{40}$/.test(baseline??''),'Exact original/browser/baseline required');
- for(const branch of [candidateBranch,controllerBranch])assert(/^codex\/[A-Za-z0-9._/-]+$/.test(branch??'')&&!branch.includes('..'),'Exact owned source/controller branches required');
+ for(const branch of [candidateBranch,controllerBranch,browserProducerBranch])assert(/^codex\/[A-Za-z0-9._/-]+$/.test(branch??'')&&!branch.includes('..'),'Exact owned source/controller branches required');
  assert(auxiliaryRunIds.length<=16&&auxiliaryRunIds.every(id=>positiveId(id)&&![runId,browserRunId].includes(id))&&new Set(auxiliaryRunIds).size===auxiliaryRunIds.length,'Distinct bounded auxiliary run IDs required');
  const candidate=cleanHead(candidatePath),verificationController=cleanHead(controllerRoot);
+ assert(/^[a-f0-9]{40}$/.test(browserProducerController??'')&&positiveId(producerDiagnosticRunId),'Exact original browser producer and hosted diagnostic required');
+ const reviewedController=process.env.AIHR_BROWSER_REVIEWED_CONTROLLER??null;assert(reviewedController===null||reviewedController===verificationController,'Reviewed browser verifier changed');
  assert(git(candidatePath,'remote','get-url','origin').toLowerCase()==='https://github.com/stradaversehub/ai-hr.git','Foreign source origin');
  execFileSync('git',['merge-base','--is-ancestor',baseline,candidate],{cwd:candidatePath,stdio:'ignore'});
  const checkRefs=()=>{
-  for(const [b,s] of [[candidateBranch,candidate],[controllerBranch,verificationController]])assert(api('git/ref/heads/'+b.split('/').map(encodeURIComponent).join('/')).object?.sha===s,'Frozen recovery branch moved');
+  for(const [b,s] of [[candidateBranch,candidate],[controllerBranch,verificationController],[browserProducerBranch,browserProducerController]])assert(api('git/ref/heads/'+b.split('/').map(encodeURIComponent).join('/')).object?.sha===s,'Frozen recovery branch moved');
   for(const b of ['main','alpha'])assert([baseline,candidate].includes(api('git/ref/heads/'+b).object?.sha),'Canonical baseline moved');
  };checkRefs();
  const originalMetadata=metadata(runId),controller=originalMetadata.run.head_sha;
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Wait for every original gate chunk to finish');
  execFileSync('git',['merge-base','--is-ancestor',controller,verificationController],{cwd:controllerRoot,stdio:'ignore'});
  validateBrowserControllerDelta(git(controllerRoot,'diff','--name-only',controller,verificationController).split('\n').filter(Boolean));
+ execFileSync('git',['merge-base','--is-ancestor',controller,browserProducerController],{cwd:controllerRoot,stdio:'ignore'});
+ validateBrowserControllerDelta(git(controllerRoot,'diff','--name-only',controller,browserProducerController).split('\n').filter(Boolean));
  assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/browser-recovery.test.mjs'),'Hosted integrity must include recovery refusal tests');
  const diagnosticId=Number(process.env.AIHR_RECOVERY_CONTROLLER_RUN_ID);assert(positiveId(diagnosticId),'Frozen verifier controller-only run required');
  const verificationDiagnostic=validateRecoveryControllerDiagnostic({...metadata(diagnosticId),controller:verificationController});
+ const producerDiagnostic=validateRecoveryControllerDiagnostic({...metadata(producerDiagnosticRunId),controller:browserProducerController});
  const workflow=api('actions/workflows/alpha-staging-browser-checks.yml');assert(workflow.id===BROWSER_WORKFLOW_ID&&workflow.path==='.github/workflows/alpha-staging-browser-checks.yml'&&workflow.state==='active','Browser workflow registry differs');
- const browserMetadata=metadata(browserRunId),producer=validateBrowserMetadata({...browserMetadata,expected:{runId:browserRunId,controller:verificationController,branch:controllerBranch,candidateBranch,after:originalMetadata.run.updated_at}});
+ const browserMetadata=metadata(browserRunId),producer=validateBrowserMetadata({...browserMetadata,expected:{runId:browserRunId,controller:browserProducerController,branch:browserProducerBranch,candidateBranch,after:originalMetadata.run.updated_at}});
  const dir=evidenceDirectory??join(controllerRoot,'scratchpad',`validated-browser-recovery-${runId}-${randomUUID()}`);
  const source=await collectRecoveryEvidence(runId,dir,{reuse,prefetchDirectory:process.env.AIHR_CI_PREFETCH_DIR||undefined});
  assert(isDeepStrictEqual(originalMetadata,facts(source)),'Original metadata changed during collection');
- const plan=planAt(candidatePath,controller,baseline),freshPlan=planAt(candidatePath,verificationController,baseline);
+ const plan=planAt(candidatePath,controller,baseline),freshPlan=planAt(candidatePath,browserProducerController,baseline);
  const assessment=assessResumeSource({...source,expectedPlan:plan,expected:{candidate,controller,baseline,runId}});
  const fresh=await collectRecoveryEvidence(browserRunId,join(dir,'browser-'+browserRunId),{reuse});assert(isDeepStrictEqual(browserMetadata,facts(fresh)),'Browser metadata changed during collection');
  const packet=fresh.parsed.get('diagnostic-complete-image-browser-firefox'),binding=fresh.parsed.get('browser-recovery-runtime-firefox');
  assert(binding?.size===1&&binding.has('image-binding.json'),'Exact runtime binding packet required');
  assert(packet?.has('unit-browser-firefox.json')&&[...packet.keys()].every(n=>/^(unit-browser-firefox|health-before-browser-firefox|browser-firefox-batch-\d+)\.json$/.test(n)),'Unexpected Firefox packet member');
- const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports:plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`)),fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
+ const recovery=verifyBrowserRecovery({plan,freshPlan,assessment,run:source.run,jobs:source.jobs,reports:plan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`)),fresh:{...fresh,producer,binding:binding.get('image-binding.json'),report:packet.get('unit-browser-firefox.json')},verificationController,verificationDiagnostic,producerDiagnostic,reviewedController,lockSha256:createHash('sha256').update(readFileSync(join(candidatePath,'pnpm-lock.yaml'))).digest('hex')});
  const since=new Date(Date.parse(source.run.created_at)-86400000).toISOString(),rows=pages('actions/runs?created='+encodeURIComponent('>='+since),'workflow_runs').filter(r=>[WORKFLOW_ID,BROWSER_WORKFLOW_ID].includes(r.workflow_id)||r.path==='.github/workflows/alpha-focused-checks.yml');
  for(const status of ['queued','in_progress','waiting','requested','pending'])rows.push(...pages('actions/runs?status='+status,'workflow_runs'));
  recovery.history=validateBrowserHistory({source,rows,candidateBranch,browserRunId,auxiliaryRunIds});
  const build=await sourceBoundBuild({candidatePath,dir,p:{candidate,controller,baseline,runId,controllerBranch:source.run.head_branch},jobs:source.jobs});
  assert(isDeepStrictEqual(originalMetadata,metadata(runId))&&isDeepStrictEqual(browserMetadata,metadata(browserRunId)),'Recovery API evidence changed before admission');
  assert(cleanHead(candidatePath)===candidate&&cleanHead(controllerRoot)===verificationController,'Recovery source/controller changed');checkRefs();
- const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,browserControllerBranch:controllerBranch,candidateBranch,auxiliaryRunIds,browserRunId,verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})),installationAuthorized:false};
+ const result={...recovery,tier:'ci',result:'PASS',recovery,fingerprint:hash(recovery),build,candidatePath,controllerBranch:source.run.head_branch,browserControllerBranch:controllerBranch,browserProducerController,browserProducerBranch,producerDiagnosticRunId,candidateBranch,auxiliaryRunIds,browserRunId,verifiedAt:new Date().toISOString(),url:source.run.html_url,evidenceDirectory:dir,artifacts:source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest})),installationAuthorized:false};
  save(dir,reuse?`revalidation-${randomUUID()}.json`:'verification.json',result);return result;
+}
+
+export async function revalidateBrowserRecoveredCi(evidence){
+ assert(evidence.verificationController===cleanHead(controllerRoot),'Browser recovery verification controller changed');
+ const current=await verifyBrowserRecoveredCi({candidatePath:evidence.candidatePath,runId:evidence.runId,baseline:evidence.baseline,browserRunId:evidence.browserRunId,candidateBranch:evidence.candidateBranch,controllerBranch:evidence.browserControllerBranch,browserProducerController:evidence.browserProducerController,browserProducerBranch:evidence.browserProducerBranch,producerDiagnosticRunId:evidence.producerDiagnosticRunId,auxiliaryRunIds:evidence.auxiliaryRunIds,evidenceDirectory:evidence.evidenceDirectory,reuse:true});
+ assert(isDeepStrictEqual(current.recovery,evidence.recovery)&&isDeepStrictEqual(current.build,evidence.build)&&isDeepStrictEqual(current.artifacts,evidence.artifacts),'Browser recovery changed before installation');return true;
 }
