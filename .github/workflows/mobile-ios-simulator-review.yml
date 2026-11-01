@@ -1,0 +1,48 @@
+name: mobile-ios-simulator-review
+run-name: iOS simulator review · ${{ github.sha }}
+on:
+  push:
+    branches: [codex/mobile-store-readiness-20261101]
+    paths:
+      - .github/workflows/mobile-ios-simulator-review.yml
+      - .github/ci/native-ios-simulator-review.sh
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mobile-ios-simulator-review-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  simulator:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_RUNTIME_CONNECTIONS: '1'
+      EXPO_PUBLIC_AUTH_PROVIDER: internal
+      NODE_OPTIONS: --max-old-space-size=4096
+      EXPECTED_SOURCE: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Build only an unsigned arm64 simulator app
+        run: bash .github/ci/native-ios-simulator-review.sh
+      - name: Retain review artifact and source manifest briefly
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-ios-simulator-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/onehr-ios-review/OneHR-simulator.zip
+            ${{ runner.temp }}/onehr-ios-review/manifest.json
+          if-no-files-found: error
+          retention-days: 1
