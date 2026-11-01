@@ -1,4 +1,4 @@
-## Native permission work and retained CPU evidence — 1 November,23:42MYT
+## Native permission work and retained CPU evidence — 1 November2026
 
 The500-user target remains **0/2 accepted**; no deployment is authorized. Two
 independent paired native experiments now justify the guarded0896 append:
@@ -24,7 +24,8 @@ expects650rather than651journal rows and stops before its ordinary populated reh
 All other selected privacy/delegation/Claims/mobile/hierarchy and three populated
 upgrade checks pass, including the new multiple-account/live-archive/tenant regression.
 The fixture retains all frozen expected SQL hashes and is corrected to651/80rows;
-failed-area recovery41322278228 is pending. Whole compiler41321442525 is pending.
+failed-area recovery41322278228 PASS onb46b683aa(ordinary populated rehearsal,1case).
+Whole compiler41321442525 is pending.
 No successful original is relabeled or discarded.
 
 The0896guard matches the installed native helper's exact predecessor body SHA256,
