@@ -93,6 +93,7 @@ def row_status(policy,row):
     result={'id':row['id'],'managed':setting['managed'],'hold':held(policy,row['id']),'note':setting['note'],'installed':installed,'enabled':enabled,'health':health,'running':service.get('ActiveState') in ('active','activating'),'lastRun':service.get('ExecMainExitTimestamp') or None,'nextRun':next_run(timer),'schedule':displayed_schedule(timer)}
     # Configuration-only revision: execution timestamps advance independently of operator edits.
     configuration={key:result[key] for key in ('id','managed','hold','installed','enabled','schedule')}
+    configuration['environment']=policy['environment']
     result['revision']=hashlib.sha256(json.dumps(configuration,sort_keys=True).encode()).hexdigest()
     return result
 

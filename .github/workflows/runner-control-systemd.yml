@@ -1,6 +1,8 @@
 name: runner-control-systemd
 run-name: Disposable scheduler proof · ${{ github.sha }}
 on:
+  push:
+    branches: ['codex/runner-control-systemd-*']
   workflow_dispatch:
 permissions:
   contents: read

@@ -43,7 +43,7 @@ def status():
 def configure(row,enabled,schedule=None):
     return request({'op':'configure','id':KEY,'actor':ACTOR,'revision':row['revision'],'enabled':enabled,'schedule':schedule})
 
-def wait_until(predicate,seconds=95):
+def wait_until(predicate,seconds=180):
     deadline=time.monotonic()+seconds
     while time.monotonic()<deadline:
         if predicate():return
@@ -83,7 +83,7 @@ WantedBy=multi-user.target
 Description=Disposable runner-control timer
 [Timer]
 OnBootSec=1s
-OnUnitInactiveSec=1min
+OnUnitInactiveSec=2min
 AccuracySec=1s
 Unit={UNIT}.service
 [Install]
@@ -108,11 +108,12 @@ WantedBy=timers.target
         # A prior revision must now be stale after the actual schedule changed.
         code,_=configure(first,False);assert code==409
         _,scheduled=status();assert scheduled['enabled'] and scheduled['nextRun'] and '1min' in scheduled['schedule']
-        # Both invocations come from the real timer; never manually start the fixture service.
-        wait_until(lambda:len(executions())>=2)
+        # At least three invocations include the edited completion interval, not only boot triggers.
+        # Never manually start the fixture service.
+        wait_until(lambda:len(executions())>=3)
         _,completed=status();code,_=configure(completed,False);assert code==200
         _,disabled=status();assert not disabled['enabled']
-        actual=executions();assert len(actual)>=2 and all(row['uid']==identity.pw_uid for row in actual)
+        actual=executions();assert len(actual)>=3 and all(row['uid']==identity.pw_uid for row in actual)
         assert run('/usr/bin/systemctl','show',UNIT+'.timer','--property=ActiveState','--value').stdout.strip()=='inactive'
         # Simulate only the production policy in this disposable VM, never a production installation.
         policy['environment']='production';Path('/etc/aihr/runner-control/policy.json').write_text(json.dumps(policy))
