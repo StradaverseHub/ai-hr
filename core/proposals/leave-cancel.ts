@@ -8,16 +8,20 @@
  *    withdraws the request at once.
  *  - APPROVED: there is no Assistant review route for giving back approved leave. The card points to the
  *    existing native path, the Cancel dates dialog on /leave (requestLeaveCancellationAction ->
- *    requestLeaveCancellation), which re-runs every gate and starts the give-back approval (or approves it
- *    automatically where the leave type says so). The dates offered are the native offer
+ *    requestLeaveCancellation), which re-runs every gate and creates a cancellation request that goes through
+ *    its normal approval. A leave type set to approve give-backs automatically would change the balance at
+ *    once, so no card is issued for it (Orchestrator condition, 1 November 2026). The dates offered are the native offer
  *    (core/read.ts employeeCancelOffers), the same predicate the /leave button uses. No custody row exists, so
  *    the proposal's digest binds what the card showed but the /leave form does not check it; the person
  *    re-selects the dates there.
  * Inputs come from the person's own selection (a request, optional dates), never from a model. Nothing here
  * writes leave. Not imported by the production Assistant. */
 import {createHash} from 'node:crypto';
+import {eq} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {employeeCancelOffers,listLeaveRequests} from '../read';
+import {cancelApprovedSettingOf,cancelApprovedTypeColumns} from '../leave';
+import {leaveType as leaveTypeTable} from '../../db/schema';
 import {readOwnLeaveActorTx} from '../assistant-actions/own-leave-actor';
 import {assertAiActionUnpausedTx} from '../ai-governance';
 import {leaveCancellationReviews} from '../assistant-actions/leave-change-review-store';
@@ -69,8 +73,11 @@ export async function prepareLeaveCancelProposal(supplied:SessionContext,input:R
  }
 
  if(row.status!=='approved')return unavailable;
- // The Assistant's own actor and AI-control checks, so a card is never issued where the Assistant is withdrawn.
- try{const allowed=await withTenant(ctx,async tx=>{const fresh=await readOwnLeaveActorTx(tx,ctx);if(!fresh)return false;await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');return true;});
+ // The Assistant's own actor and AI-control checks, so a card is never issued where the Assistant is withdrawn;
+ // and the leave type's own rule: only a give-back that waits for its normal approval gets a card.
+ try{const allowed=await withTenant(ctx,async tx=>{const fresh=await readOwnLeaveActorTx(tx,ctx);if(!fresh)return false;await assertAiActionUnpausedTx(tx,fresh,'hr_assistant');
+   const [type]=await tx.select(cancelApprovedTypeColumns).from(leaveTypeTable).where(eq(leaveTypeTable.id,row!.leaveTypeId)).limit(1);
+   const setting=cancelApprovedSettingOf(type);return setting.allowed&&!setting.autoApprove;});
   if(!allowed)return unavailable;}catch{return unavailable;}
  const today=todayInKualaLumpur(now);
  let offered:readonly string[]|null|undefined;

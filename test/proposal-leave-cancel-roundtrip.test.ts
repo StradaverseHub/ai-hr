@@ -115,16 +115,19 @@ describe('leave.cancel proposal for approved leave',()=>{
   const packets=leaveCancelReviewPackets(proposal,me,new Date());if(!packets.ok||packets.packets.kind!=='leave_form')throw Error('packets refused');
   const form=new FormData();form.set('leaveRequestId',packets.packets.form.leaveRequestId);for(const date of packets.packets.form.cancelDate)form.append('cancelDate',date);
   await expect(requestLeaveCancellationAction(form)).rejects.toThrow('NEXT_REDIRECT');
-  expect(browser.redirects.at(-1)).toMatch(/cancellation(Requested|Approved)/);
-  const rows=await cancellations(id);expect(rows).toHaveLength(1);expect(rows[0].cancelDates).toEqual([weekdays[4]]);
+  expect(browser.redirects.at(-1)).toMatch(/cancellationRequested/);
+  // A cancellation request waiting for its normal approval; the leave and the balance are unchanged.
+  const rows=await cancellations(id);expect(rows).toHaveLength(1);expect(rows[0].cancelDates).toEqual([weekdays[4]]);expect(rows[0].status).toBe('pending');
   expect(await status(id)).toBe('approved');
  },60000);
- it('issues nothing when the leave type does not let employees cancel approved leave, or for a colleague',async()=>{
+ it('issues nothing when the leave type does not let employees cancel approved leave, approves give-backs automatically, or for a colleague',async()=>{
   const id=await approvedRequest();
   browser.selected=colleague.uid;vi.stubEnv('DEV_USER_ID',colleague.uid);
   expect(await prepareLeaveCancelProposal(await caller(),{leaveRequestId:id})).toEqual({kind:'unavailable'});
   browser.selected=person.uid;vi.stubEnv('DEV_USER_ID',person.uid);
-  await owner.db.update(schema.leaveType).set({employeeCancelApproved:false}).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
+  await owner.db.update(schema.leaveType).set({cancelAutoApprove:true}).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
+  expect(await prepareLeaveCancelProposal(await caller(),{leaveRequestId:id})).toEqual({kind:'unavailable'});
+  await owner.db.update(schema.leaveType).set({cancelAutoApprove:false,employeeCancelApproved:false}).where(eq(schema.leaveType.id,base.annualLeaveTypeId));
   expect(await prepareLeaveCancelProposal(await caller(),{leaveRequestId:id})).toEqual({kind:'unavailable'});
   const [counts]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from leave_cancellation_request where tenant_id=${base.tenantId}::uuid`);expect(counts.n).toBe(0);
  },60000);

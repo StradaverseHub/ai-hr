@@ -18,7 +18,7 @@ const FACT_LABELS:Readonly<Record<FactKey,string>>=Object.freeze({
  othersAway:'Others away on these dates',decision:'Your decision',outcome:'What confirming does',
 });
 const OUTCOME_TEXT:Readonly<Record<NonNullable<ProposalFacts['outcome']>,string>>=Object.freeze({
- withdrawn_now:'The request is withdrawn at once.',give_back_requested:'Asks to give these dates back; it is approved through the usual chain unless the leave type approves it automatically.',
+ withdrawn_now:'The request is withdrawn at once.',give_back_requested:'Asks to give these dates back; the request goes through the usual approval before the days return.',
  rejection_if_confirmed:'The request is rejected.',step_decision_if_confirmed:'Your step is recorded; the request moves to the next approver.',
  approval_if_native_checks_pass:'The request is approved if the leave checks still pass.',submitted_not_approved:'The application is submitted for approval; it is not approved yet.',
 });

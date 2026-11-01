@@ -43,7 +43,7 @@ export async function prepareLeaveDecideProposal(supplied:SessionContext,input:L
   const balance=Number(row?.applicantBalance);
   if(row&&Number.isFinite(balance))facts.balanceNow=balance;
   if(row){const people=await plannedAbsences(ctx,undefined,{from:request.startDate,to:request.endDate});
-   facts.othersAway=people.filter(person=>person.personId!==row.personId&&person.leaves.length>0).length;}
+   facts.othersAway=people.filter(person=>person.id!==row.personId&&person.leaves.length>0).length;}
  }catch{/* context is optional; the review route still shows the request */}
  return Object.freeze({kind:'proposal',proposal:issueProposal({
   what:{action:REVIEWED_LEAVE_DECISION_ACTION,contractVersion:review.contractVersion,entity:declared.entity,effect:declared.effect,

@@ -67,9 +67,12 @@ function outputProperty(field:SemanticField):Record<string,unknown>{
  return{type:JSON_TYPE[field.type],...(field.values?{enum:[...field.values]}:{}),...tag};
 }
 /** A read that needs an identifier handle is not Connect-eligible: identifiers never leave the product,
- * and no opaque per-client handle exists yet. An action without a proposal preparer is not migrated. */
+ * and no opaque per-client handle exists yet. An action without a proposal preparer is not migrated, and a
+ * migrated action reaches Connect only once its legal review (ADR-0170 §3.9) admits it: step 2 gave
+ * leave.cancel and approvals.leave.decide preparers without widening Connect. */
+export const CONNECT_REVIEWED_ACTIONS:readonly string[]=Object.freeze(['leave.apply']);
 export const connectEligibleRead=(read:SemanticRead)=>read.input.every(input=>!input.identifier);
-export const connectEligibleAction=(action:SemanticAction)=>action.proposal!==null;
+export const connectEligibleAction=(action:SemanticAction)=>action.proposal!==null&&CONNECT_REVIEWED_ACTIONS.includes(action.id);
 let connect:readonly ConnectToolSpec[]|undefined;
 export function connectToolSpecs():readonly ConnectToolSpec[]{
  if(connect)return connect;
