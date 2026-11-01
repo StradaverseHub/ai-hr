@@ -8,8 +8,9 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 async function child(omitNative:boolean){
  const moduleUrl=(file:string)=>JSON.stringify(pathToFileURL(resolve(file)).href);
  const code=`import postgres from 'postgres';
- import {client} from ${moduleUrl('db/client.ts')};
- import {closePerformanceDbPools} from ${moduleUrl('scripts/performance/driver-shutdown.mjs')};
+ const nativeModule=await import(${moduleUrl('db/client.ts')});
+ import {closePerformanceDbPools,performanceNativeDbClient} from ${moduleUrl('scripts/performance/driver-shutdown.mjs')};
+ const client=performanceNativeDbClient(nativeModule);
  const observer=postgres(process.env.DATABASE_URL,{max:1});
  const [native]=await client\`select current_user as role\`;
  const [driver]=await observer\`select current_user as role\`;

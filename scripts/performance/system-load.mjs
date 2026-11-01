@@ -12,7 +12,7 @@ import {performance} from 'node:perf_hooks';
 import {setTimeout as pause} from 'node:timers/promises';
 import {chromium} from 'playwright';
 import postgres from 'postgres';
-import {closePerformanceDbPools} from './driver-shutdown.mjs';
+import {closePerformanceDbPools,performanceNativeDbClient} from './driver-shutdown.mjs';
 const base='https://localhost:3443',out=process.env.PERF_EVIDENCE_DIR;
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(new URL(process.env.DATABASE_URL).pathname,'/ai_hr_system_perf');
 const fixture=JSON.parse(readFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),'utf8'));
@@ -120,7 +120,7 @@ async function databaseSnapshot(label){
 }
 let nativeAuditClient;
 async function verifyAudit(){
- nativeAuditClient=(await import('../../db/client.ts')).client;
+ nativeAuditClient=performanceNativeDbClient(await import('../../db/client.ts'));
  const {verifyTenantChain}=await import('../../core/audit-chain.ts');
  report.auditVerification=[];
  for(const actor of fixture.users.filter(user=>user.role==='groupHR')){
