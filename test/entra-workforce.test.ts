@@ -1,3 +1,9 @@
+import { savePasswordPolicy } from '../core/password-policy';
+import { passwordChangeRequired, replacePassword } from '../lib/internal-auth/password-policy';
+import { assertActiveCredential, type Credential } from '../lib/internal-auth/credential';
+import { passwordHash } from '../lib/internal-auth/crypto';
+import { internalIssuer } from '../lib/internal-auth/config';
+import { authTransaction, writeRecord } from '../lib/internal-auth/store';
 import { provisionEntraTestOrganization } from './entra-fixture';
 import { randomUUID } from 'node:crypto';
 import { afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi } from 'vitest';
@@ -66,6 +72,19 @@ describe('Entra actual app-role and durable lifecycle',()=>{
   await writeRecord(client,`credential:${local}`,{version:'before-recovery'},local);
   const session=await createEntraSession(config,object,false);expect(await readEntraSession(session.access_token)).not.toBeNull();
   await writeRecord(client,`credential:${local}`,{version:'after-recovery'},local);expect(await readEntraSession(session.access_token)).toBeNull();
+ });
+
+ it('keeps Microsoft credential authority separate from local expiry while revoking Microsoft sessions after an actual local password replacement',async()=>{
+  const subject=randomUUID(),object=randomUUID();
+  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${issuerFor(config.directoryTenantId)},${object},${base.adminUserId}),(${internalIssuer(base.tenantId)},${subject},${base.adminUserId})`;
+  const credential:Credential={subject,tenantId:base.tenantId,issuer:internalIssuer(base.tenantId),organization:'acme',username:'expiry-owner',email:'fictional.expiry@example.test',emailVerified:true,enabled:true,password:await passwordHash('Fictional initial password 882!'),mustChange:false,version:randomUUID(),totpSecret:'A'.repeat(32),lastStep:-1,recoveryHashes:[],passwordChangedAt:Date.now()-2*86400000};
+  await writeRecord(client,`credential:${subject}`,credential,subject);
+  await savePasswordPolicy({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},{enabled:true,interval:1,unit:'days'},0);
+  expect(await passwordChangeRequired(client,credential)).toBe(true);
+  await expect(assertActiveCredential(client,credential)).rejects.toMatchObject({code:'invalidLogin'});
+  const microsoft=await createEntraSession(config,object,false);expect(await readEntraSession(microsoft.access_token)).not.toBeNull();
+  await authTransaction(subject,async tx=>{await replacePassword(tx,credential,'Fictional replacement password 993!');credential.version=randomUUID();await writeRecord(tx,`credential:${subject}`,credential,subject);});
+  expect(await passwordChangeRequired(client,credential)).toBe(false);expect(await assertActiveCredential(client,credential)).toMatchObject({app_user_id:base.adminUserId});expect(await readEntraSession(microsoft.access_token)).toBeNull();
  });
 
  it('does not exhaust the shared pool during concurrent same-user Microsoft logins',async()=>{

@@ -44,6 +44,7 @@ export const AGENT_ACTION_CATEGORY=Object.freeze(Object.fromEntries(AGENT_ACTION
 export type RegisteredAgentActionPolicies={[K in AgentActionId]:AgentActionOf<K>['policy']};
 
 export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<string,AgentCapabilityClass>>>>=Object.freeze({
+ "app/admin/settings/login/password-policy-actions.ts":{"savePasswordPolicyAction":"handoff:access_and_authentication"},
  "app/lifecycle/v9/email-assets/route.ts#route":{"POST":"backlog:confirm"},
  "app/lifecycle/v9/files/[caseId]/route.ts#route":{"POST":"handoff:employment_exit_or_discipline"},
  "app/lifecycle/v9/actions.ts":{"setupV9":"handoff:access_and_authentication","saveV9Config":"handoff:access_and_authentication","createV9Offboarding":"handoff:employment_exit_or_discipline","commandV9":"handoff:employment_exit_or_discipline","readV9Case":"backlog:automatic","readV9Email":"backlog:automatic","readV9Workflow":"backlog:automatic","readV9UpdatedEmail":"backlog:automatic"},

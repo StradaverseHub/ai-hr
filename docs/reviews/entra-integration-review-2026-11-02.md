@@ -2,7 +2,7 @@
 
 PR #194 implements cloud and hybrid AD inbound provisioning plus Microsoft login for web and mobile.
 The isolated candidate integrates PR #196's shared web idle policy at frozen source
-`2dd7fc4d7152e3f91a99b3586be3593edd41136c`; PASSWORD CHANGE remains a separate integration dependency.
+`2dd7fc4d7152e3f91a99b3586be3593edd41136c`; The final aggregate also includes accepted PASSWORD CHANGE baseline `29393c2a50242f76b1f454a8b08073aa90524688`.
 
 ## Findings addressed
 
@@ -77,3 +77,23 @@ cross-source recovery policy requires identical suite/unit inventories and there
 this aggregate using the original plan. The changed authentication contract and complete-inventory
 identity require fresh aggregate qualification, rather than relabelling old artifacts. Failed and
 successful original evidence is retained; focused repair passes alone grant no release authority.
+
+
+## Accepted password-policy baseline integration
+
+The passing Entra source gate at `08497929d` remains immutable evidence. PASSWORD CHANGE advanced
+main/alpha to `29393c2a50242f76b1f454a8b08073aa90524688` during qualification; the canonical verifier
+correctly refused its old-baseline admission. The aggregate preserves the accepted local expiry,
+password history and recovery behavior together with shared web idle policy and Entra federation.
+Microsoft remains the authority for its credentials and conditional access. Actual local password
+replacement still invalidates Microsoft HR sessions through the captured local credential version.
+A real-store regression covers that boundary, including refusal of the expired local credential.
+No migration or prior SQL hash changes; new aggregate evidence must use the accepted baseline.
+
+The repaired source `08497929d` passed complete CI gate
+[41346798812](https://github.com/StradaverseHub/ai-hr/actions/runs/41346798812): 42,942 tests,
+3,078 Node/DOM files and complete three-engine browser coverage, with 81 successful jobs.
+Its canonical independent verifier reached the alpha-baseline guard after authenticating artifacts,
+reports and the source-bound build, then refused admission because alpha had advanced to `29393c2a5`.
+That refusal is retained. The combined candidate requires its own evidence; the passing old-source
+receipt is not rebound to it. Live Entra/hybrid acceptance still requires IT's test environment.

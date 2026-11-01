@@ -73,3 +73,41 @@ login or grant administrative access. Existing logins require explicit ownership
 See the [Entra candidate decision and scope](entra-workforce-integration-proposal.md) and
 [IT setup](../../deploy/entra/README.md). Source implementation and hosted checks are separate from
 real tenant/AD acceptance and installation. No deployment authority is added by this amendment.
+
+## Configurable password expiry and reuse prevention — 2 November 2026
+
+The owner requested recurring password changes with a configurable number of days or months and
+no reuse of previous passwords. Embedded authentication owns this policy per tenant. Organization-wide
+HR administrators and super administrators configure it in System Settings → Login; company-scoped
+administrators and employees cannot edit it. The service verifies the current database principal and
+group grant, derives the tenant from the authenticated session, rejects stale revisions, and commits
+an audit event with the policy. Compatibility identity providers continue to own their own policies.
+
+Expiry is initially disabled to avoid an unannounced installation-wide lockout. Administrators may
+choose 1–3,650 elapsed days or 1–120 calendar months. Month arithmetic uses the HR calendar in
+Asia/Kuala_Lumpur, preserving wall-clock time and clamping the day to the last valid target-month day.
+A policy edit applies to existing credentials and sessions immediately, using the last successful
+password assignment time. Legacy credentials without a recorded date require a change when expiry
+is enabled. Expired credentials cannot resolve browser/native sessions, rotate refresh tokens, or use
+other services guarded by the canonical active-credential check. Login verifies existing MFA before
+issuing the password-change challenge, then revokes old sessions/challenges when a new password is set.
+No recurring scheduler or privileged bypass session is needed.
+
+All subsequent password assignments (required changes, recovery, and disabled-account enrollment)
+refuse the current password and every password recorded by this feature. Bootstrap and invitation
+credentials record their assignment time; their first replacement retains the original scrypt hash.
+A random per-subject history salt is encrypted in the existing private auth record store. History
+fingerprints run the same scrypt parameters as login, then SHA-256 for bounded record keys. Markers
+are namespaced by subject; each marker persists as its own encrypted,
+non-expiring record, permitting constant-cost indexed history lookup without plaintext, growing
+credential blobs, or trimming old passwords. The original pre-history password remains covered by
+its encrypted salted scrypt hash. History cannot recover passwords used before tracking began.
+History creation and markers share the subject-locked password transaction; rejected/replayed changes
+cannot consume recovery factors, alter history, or partially replace a credential. Session revocation
+and expired-record pruning preserve history. The per-subject history salt stays encrypted across
+deployment-key re-encryption. As in the existing boundary, application-process/key compromise can
+expose decrypted authentication material; history markers do not claim to protect against that attacker.
+Disabling expiry preserves reuse protection. Existing recovery still requires MFA and revokes sessions.
+
+This amendment describes the source candidate; hosted checks, installation and rendered acceptance
+remain separate evidence. It grants no production deployment authority.

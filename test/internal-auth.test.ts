@@ -1,3 +1,4 @@
+import { readPasswordPolicy, savePasswordPolicy } from '../core/password-policy';
 import {saveEmailDesign} from '../core/email-design/service';
 import {defaultEmailDocument} from '../lib/email-design/model';
 import { randomUUID } from 'node:crypto';
@@ -61,6 +62,54 @@ describe('first-party authentication with real private storage and existing HR b
     for (const secret of [temp, final, signedIn.access_token, signedIn.recoveryCodes![0]]) expect(raw).not.toContain(secret);
     await expect(client`select * from app_internal_auth_record`).rejects.toThrow(/permission denied/);
     expect(externalHttp).not.toHaveBeenCalled();
+  });
+  it('enforces tenant expiry after MFA for browser/native sessions and refuses historical passwords', async () => {
+    const { signedIn } = await enroll(true);
+    const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+    expect(await readPasswordPolicy(ctx)).toMatchObject({ revision: 0, policy: { enabled: false } });
+    await savePasswordPolicy(ctx, { enabled: true, interval: 1, unit: 'months' }, 0);
+    const c = (await credentialByLogin('alpha', 'owner'))!;
+    // A real expired credential, with existing session and refresh records still present.
+    c.passwordChangedAt = Date.now() - 40 * 86_400_000;
+    await writeRecord(client, `credential:${c.subject}`, c, c.subject);
+    expect(await readSession(signedIn.access_token, true)).toBeNull();
+    await expect(rotateRefresh(signedIn.refresh_token!)).rejects.toMatchObject({ code: 'invalidLogin' });
+    const login = await startLogin({ organization: 'alpha', username: 'owner', password: final, native: true });
+    expect(login.step).toBe('mfa');
+    await expect(changeInitialPassword(challenge(login), 'Unused secure replacement 901!', true)).rejects.toMatchObject({ code: 'invalidChallenge' });
+    const required = await verifyMfa(challenge(login), signedIn.recoveryCodes![0], true);
+    expect(required.step).toBe('password');
+    for (const previous of [temp, final]) await expect(changeInitialPassword(challenge(required), previous, true)).rejects.toMatchObject({ code: 'passwordPolicy' });
+    const replacement = 'Unused secure replacement 901!';
+    const next = completed(await changeInitialPassword(challenge(required), replacement, true));
+    expect(await readSession(next.access_token, true)).not.toBeNull();
+    expect(await readSession(signedIn.access_token, true)).toBeNull();
+    await savePasswordPolicy(ctx, { enabled: true, interval: 1, unit: 'days' }, 1);
+    const current = (await credentialByLogin('alpha', 'owner'))!;
+    current.passwordChangedAt = Date.now() - 2 * 86_400_000;
+    await writeRecord(client, `credential:${c.subject}`, current, c.subject);
+    const web = await startLogin({ organization: 'alpha', username: 'owner', password: replacement, native: false });
+    const again = await verifyMfa(challenge(web), signedIn.recoveryCodes![1]);
+    expect(again.step).toBe('password');
+    await expect(changeInitialPassword(challenge(again), final)).rejects.toMatchObject({ code: 'passwordPolicy' });
+    const done = completed(await changeInitialPassword(challenge(again), 'Another unused secret phrase 902!'));
+    expect(await readSession(done.access_token)).not.toBeNull();
+  });
+  it('guards policy edits, revisions and tenant boundaries, with an audit event', async () => {
+    const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };
+    for (const refused of [{ ...ctx, userId: undefined }, { ...ctx, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] }, { ...ctx, grants: [{ role: 'hr_admin', companyId: base.companyId }] }]) {
+      await expect(savePasswordPolicy(refused, { enabled: true, interval: 90, unit: 'days' }, 0)).rejects.toThrow('forbidden');
+    }
+    // A forged/stale grant set must fail the current database principal snapshot.
+    await expect(savePasswordPolicy({ ...ctx, userId: randomUUID() }, { enabled: true, interval: 90, unit: 'days' }, 0)).rejects.toThrow();
+    await savePasswordPolicy(ctx, { enabled: true, interval: 90, unit: 'days' }, 0);
+    await expect(savePasswordPolicy(ctx, { enabled: false, interval: 90, unit: 'days' }, 0)).rejects.toThrow('conflict');
+    await expect(readPasswordPolicy({ ...ctx, tenantId: randomUUID() })).rejects.toThrow();
+    expect(await readPasswordPolicy(ctx)).toMatchObject({ revision: 1, policy: { enabled: true, interval: 90, unit: 'days' } });
+    const rows = await owner.client`select payload from domain_event where tenant_id=${base.tenantId} and event_type='password-policy.updated'`;
+    expect(rows).toHaveLength(1); expect(rows[0].payload).toMatchObject({ revision: 1, interval: 90, unit: 'days' });
+    await owner.client`delete from role_assignment where app_user_id=${base.adminUserId}`;
+    await expect(savePasswordPolicy(ctx, { enabled: false, interval: 90, unit: 'days' }, 1)).rejects.toThrow('forbidden');
   });
   it('retains account guessing limits while verified-source traffic is independent of a spent global ceiling',async()=>{
     const clock=vi.spyOn(Date,'now').mockReturnValue(Date.now());
@@ -258,6 +307,7 @@ describe('first-party authentication with real private storage and existing HR b
     expect((await owner.client`select count(*)::int n from app_internal_auth_record where record_key like 'mail:%'`)[0].n).toBe(0);
     await expect(completeRecovery(token, 'A replacement secure phrase 556!', 'bad-code')).rejects.toMatchObject({ code: 'invalidCode' });
     expect(await readSession(signedIn.access_token)).not.toBeNull();
+    for (const previous of [temp, final]) await expect(completeRecovery(token, previous, signedIn.recoveryCodes![0])).rejects.toMatchObject({ code: 'passwordPolicy' });
     await completeRecovery(token, 'A replacement secure phrase 556!', signedIn.recoveryCodes![0]);
     expect(await readSession(signedIn.access_token)).toBeNull(); expect((await credentialByLogin('alpha', 'owner'))?.totpSecret).toBe(c.totpSecret);
     await expect(completeRecovery(token, 'Yet another secure phrase 337!', signedIn.recoveryCodes![1])).rejects.toMatchObject({ code: 'invalidChallenge' });

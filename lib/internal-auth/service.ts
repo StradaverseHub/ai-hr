@@ -1,8 +1,9 @@
+import { passwordChangeRequired, replacePassword } from './password-policy';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { generateSecret, verify } from 'otplib';
 import { client } from '../../db/client';
 import { internalConfig, internalIssuer } from './config';
-import { digest, opaque, validOpaque, passwordHash, passwordMatches, validatePassword, DUMMY_PASSWORD_HASH } from './crypto';
+import { digest, opaque, validOpaque, passwordMatches, DUMMY_PASSWORD_HASH } from './crypto';
 import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
@@ -82,7 +83,7 @@ export async function startLogin(input: { organization: string; username: string
     const principal = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [current.issuer, current.subject]);
     if (!principal[0] || principal[0].tenant_id !== current.tenantId) throw new InternalAuthError('invalidLogin');
     const raw = opaque();
-    const phase = current.totpSecret ? 'mfa' : current.mustChange ? 'password' : 'enroll';
+    const phase = current.totpSecret ? 'mfa' : await passwordChangeRequired(tx, current) ? 'password' : 'enroll';
     const challenge: Challenge = { subject: c.subject, version: c.version, phase, attempts: 0, native: input.native, expiresAt: Date.now() + CHALLENGE_LIFE,
       ...(phase === 'enroll' ? { secret: generateSecret() } : {}) };
     await writeRecord(tx, `challenge:${digest(raw)}`, challenge, c.subject, challenge.expiresAt);
@@ -111,9 +112,7 @@ async function withChallenge(raw: string, native: boolean, operation: (tx: AuthS
 export async function changeInitialPassword(raw: string, password: string, native = false): Promise<AuthReply> {
   return withChallenge(raw, native, async (tx, c, ch, key) => {
     if (ch.phase !== 'password' || (c.totpSecret && !ch.mfaPassed)) throw new InternalAuthError('invalidChallenge');
-    try { validatePassword(password, c.username, c.email); } catch { throw new InternalAuthError('passwordPolicy'); }
-    if (c.password && await passwordMatches(password, c.password)) throw new InternalAuthError('passwordPolicy');
-    c.password = await passwordHash(password); c.mustChange = false; c.version = randomUUID();
+    await replacePassword(tx, c, password); c.mustChange = false; c.version = randomUUID();
     await revokeCredentialsSessions(tx, c.subject);
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
     await audit(tx, c, 'app-user.password-reset');
@@ -167,7 +166,7 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
       await audit(tx, c, 'app-user.mfa-enrolled');
     }
     await writeRecord(tx, credentialKey(c.subject), c, c.subject);
-    if (c.mustChange) {
+    if (await passwordChangeRequired(tx, c)) {
       ch.phase = 'password'; ch.mfaPassed = true;
       await writeRecord(tx, key, ch, c.subject, ch.expiresAt);
       return reply(raw, c, ch);
@@ -288,8 +287,7 @@ export async function updateDisabledCredential(subject: string, operation: 'pass
     if (operation === 'enable' && c.enabled) return;
     if (c.enabled) throw new InternalAuthError('conflict');
     if (operation === 'password') {
-      try { validatePassword(password || '', c.username, c.email); } catch { throw new InternalAuthError('passwordPolicy'); }
-      c.password = await passwordHash(password!); c.version = randomUUID();
+      await replacePassword(tx, c, password || ''); c.version = randomUUID();
     } else if (operation === 'enable') {
       const p = await tx.unsafe('select tenant_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
       if (!c.password || !p[0] || p[0].tenant_id !== c.tenantId || !c.mustChange) throw new InternalAuthError('conflict');

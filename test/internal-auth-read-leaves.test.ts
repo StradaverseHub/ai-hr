@@ -75,6 +75,7 @@ describe('same canonical credential and error authority', () => {
   it('retains exact function/class identities and resolves only the supplied issuer/subject tuple', async () => {
     expect(legacyService.InternalAuthError).toBe(InternalAuthError);expect(legacyService.assertActiveCredential).toBe(assertActiveCredential);
     const user='44444444-4444-4444-8444-444444444444',{tx,unsafe}=captured([{app_user_id:user,tenant_id:credential.tenantId}]);
+    unsafe.mockImplementation(async (...args: unknown[]) => String(args[0]).includes('app.internal_auth_read') ? [] : [{app_user_id:user,tenant_id:credential.tenantId}]);
     const before=structuredClone(credential);
     expect(await assertActiveCredential(tx,credential)).toEqual({app_user_id:user,tenant_id:credential.tenantId});
     expect(unsafe).toHaveBeenCalledWith('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[credential.issuer,credential.subject]);
