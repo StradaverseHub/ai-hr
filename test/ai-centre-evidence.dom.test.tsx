@@ -142,7 +142,7 @@ describe('AI centre screens', () => {
 
   it('the floating chat links to the Inbox with the decision count', async () => {
     state.locale = 'en';
-    const view = wrap('en', <AssistantLauncher position="bottom-right" hiddenAreas={[]} inbox={{ label: messagesFor('en').aiCentre.launcher.inbox, count: 2 }} />);
+    const view = wrap('en', <AssistantLauncher position="bottom-right" hiddenAreas={[]} inboxCount={2} />);
     fireEvent.click(screen.getByRole('button', { name: en.assistant.launcher.open }));
     const link = screen.getByRole('link', { name: new RegExp(messagesFor('en').aiCentre.launcher.inbox) });
     expect(link).toHaveAttribute('href', '/assistant?view=inbox');

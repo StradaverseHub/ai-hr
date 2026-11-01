@@ -5,7 +5,7 @@ import { Plus_Jakarta_Sans, Geist_Mono, DM_Mono } from 'next/font/google';
 import localFont from 'next/font/local';
 import { cookies, headers } from 'next/headers';
 import { NextIntlClientProvider } from 'next-intl';
-import { getLocale, getTranslations } from 'next-intl/server';
+import { getLocale } from 'next-intl/server';
 import './globals.css';
 import './login/login.css';
 import './onboarding-workspace.css';
@@ -214,8 +214,6 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   // The canonical inbox admits ordinary employees only for an actionable, non-self v3/v4 assignment.
   // Reuse that result; do not promote the viewer to manager or query the assignment owner twice.
   const hasAssignedAttendanceApproval = !canApprove && approvalTasks.some(task => task.kind === 'attendance');
-  // AI centre: the floating chat links to the Inbox with the same decision count the bell shows.
-  const launcherInboxLabel = (await getTranslations('aiCentre.launcher'))('inbox');
   const onboardingNav=isModuleEnabledOrFalse(session,'lifecycle')?await onboardingNavigation(session):{module:false,v9:false,v9Navigation:{onboarding:false,offboarding:false,administration:false},master:false,requisitions:false,joiners:0,checklists:0};
   const onboardingAccess=onboardingNav.module;
   const onboardingQueue = isModuleEnabledOrFalse(session, 'lifecycle') ? await onboardingTasks(session) : [];
@@ -475,7 +473,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </div>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
-          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} inbox={{label:launcherInboxLabel,count:approvalTasks.length}} />}</AssistantReplyClientEntry>
+          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={personnelImportBrowserKey(session,scopeIds)} position={launcher.position} hiddenAreas={launcher.hiddenAreas} inboxCount={approvalTasks.length} />}</AssistantReplyClientEntry>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most
               ONE notice, chosen server-side; the slot renders null when nothing is due, so this costs an

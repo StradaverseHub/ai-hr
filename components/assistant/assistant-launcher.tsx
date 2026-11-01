@@ -15,9 +15,9 @@ type Turn = { id: number; question: string; area: PageArea | null; stale?: true;
  * core/assistant-launcher.ts); every question still goes through the Assistant's own checks. It opens as a
  * small chat window and can be docked as a right-side panel. It knows the page's AREA and, at most, one
  * record id from the address, never what is on the screen. */
-/** `inbox` (AI centre): the label and decision count the shell already read for the notification bell; the
+/** `inboxCount` (AI centre): the decision count the shell already read for the notification bell; the
  * launcher links to the Inbox and never reads anything itself. */
-export function AssistantLauncher({ position, hiddenAreas, inbox }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inbox?: Readonly<{ label: string; count: number }> }) {
+export function AssistantLauncher({ position, hiddenAreas, inboxCount }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inboxCount?: number }) {
  const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
   const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas');
   const pathname = usePathname() ?? '/';
@@ -107,10 +107,7 @@ export function AssistantLauncher({ position, hiddenAreas, inbox }: { position: 
           <button type="button" onClick={close} aria-label={t('close')} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X aria-hidden className="size-4"/></button>
         </div>
       </header>
-      {inbox && <Link href="/assistant?view=inbox" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{inbox.label}</span>
-        {inbox.count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground">{inbox.count}</span>}
-        <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground"/></Link>}
+      {inboxCount !== undefined && <InboxLink count={inboxCount}/>}
       <div ref={log} role="log" aria-label={t('title')} aria-live="polite" aria-relevant="additions text" onScroll={event => {
         const element = event.currentTarget;
         followLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop <= 64;
@@ -144,4 +141,14 @@ export function AssistantLauncher({ position, hiddenAreas, inbox }: { position: 
       </form>
     </section>}
   </AssistantChatBoundary>;
+}
+
+/** AI centre: the floating chat's way to the Inbox. Its own translations, so a login without the count
+ * (a shell that passes none) renders nothing here. */
+function InboxLink({ count }: { count: number }) {
+  const t = useTranslations('aiCentre.launcher');
+  return <Link href="/assistant?view=inbox" className="mx-4 mt-3 flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-primary/10 px-3 text-sm hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <Inbox aria-hidden className="size-4 text-primary"/><span className="font-medium">{t('inbox')}</span>
+    {count > 0 && <span className="rounded-full bg-primary px-1.5 py-0.5 text-[0.6875rem] font-semibold leading-none tabular-nums text-primary-foreground"><span aria-hidden>{count}</span><span className="sr-only">{t('inboxCount', { count })}</span></span>}
+    <ChevronRight aria-hidden className="ml-auto size-4 text-muted-foreground"/></Link>;
 }
