@@ -118,7 +118,7 @@ class AttendanceWidget : AppWidgetProvider() {
         // Let Android select a layout for the actual host size without waking the app on rotation.
         // The fallback preserves support for launchers on Android 11 and earlier.
         val view = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-          RemoteViews(mapOf(SizeF(180f, 110f) to compact, SizeF(180f, 180f) to full))
+          RemoteViews(mapOf(SizeF(180f, 144f) to compact, SizeF(180f, 180f) to full))
         } else if (manager.getAppWidgetOptions(id).getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 180) < 180) compact else full
         manager.updateAppWidget(id, view)
       }
