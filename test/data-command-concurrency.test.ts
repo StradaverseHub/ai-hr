@@ -13,7 +13,7 @@ import * as s from '../db/schema';
 import {todayInKualaLumpur} from '../lib/hr-date';
 beforeAll(migrateTestDb);afterAll(closeAll);
 const delay=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
-it('commits a different employee request while the first real request is paused before its insert and audit append',async()=>{
+it.each([false,true])('keeps native subject exclusion while unrelated requests overlap (same subject: %s)',async sameSubject=>{
  await resetDb();const b=await seedBase(),today=todayInKualaLumpur();
  const worker=async(name:string)=>{
   const hired=await hireEmployee(adminCtx(b),{person:{fullName:name,primaryEmail:randomUUID()+'@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:today});
@@ -41,17 +41,18 @@ it('commits a different employee request while the first real request is paused 
    const [row]=await owner.client`select exists(select 1 from pg_locks where locktype='advisory' and not granted and classid=((hashtextextended(${gate},0)>>32)&4294967295)::oid and objid=(hashtextextended(${gate},0)&4294967295)::oid) as waiting`;
    if(row.waiting){reached=true;break;}await delay(3);
   }
-  if(reached){second=settle(submit(c));overlapped=await Promise.race([second.then(result=>result.ok),delay(200).then(()=>false)]);}
+  if(reached){second=settle(submit(sameSubject?a:c));overlapped=await Promise.race([second.then(result=>result.ok),delay(200).then(()=>false)]);}
  }finally{
   await connection`select pg_advisory_unlock(hashtextextended(${gate},0))`;connection.release();
  }
  const outcomes=await Promise.all([...(first?[first]:[]),...(second?[second]:[])]);
  await owner.client.unsafe('drop trigger a_perf_request_pause on leave_request; drop function public.perf_request_pause()');
  expect(reached,'first real request reaches native pre-insert pause').toBe(true);
- expect(outcomes,'both original native requests remain valid').toEqual([expect.objectContaining({ok:true}),expect.objectContaining({ok:true})]);
+ if(sameSubject){expect(outcomes[0]).toMatchObject({ok:true});expect(outcomes[1]).toMatchObject({ok:false,error:{name:'LeaveDependencyUnavailable'}});}
+ else expect(outcomes,'both original native requests remain valid').toEqual([expect.objectContaining({ok:true}),expect.objectContaining({ok:true})]);
  const [persisted]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from leave_request where tenant_id=${b.tenantId}::uuid and employment_id in (${a.employmentId}::uuid,${c.employmentId}::uuid)`);
- expect(persisted.n).toBe(2);
- expect(overlapped,'unrelated employee B commits before A releases its pre-insert gate').toBe(true);
+ expect(persisted.n).toBe(sameSubject?1:2);
+ expect(overlapped,'only an unrelated employee commits before A releases its pre-insert gate').toBe(!sameSubject);
 });
 
 function barrier(){let resolve!:()=>void;const promise=new Promise<void>(done=>{resolve=done;});return {promise,resolve};}
