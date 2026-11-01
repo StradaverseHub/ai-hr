@@ -1,6 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
 import {page} from 'vitest/browser';
-import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {PDFDocument,StandardFonts} from 'pdf-lib';
 import en from '../messages/en.json';
@@ -8,6 +8,14 @@ import '../app/globals.css';
 import '../app/atelier.css';
 vi.mock('@/app/assistant/file-import-actions',()=>({prepareAssistantImportAction:async()=>({ok:true,draft:{columns:['employee_no','amount'],rows:[['E001','-25.50']],spans:[]}})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:()=>{}})}));
+const fileReads=vi.hoisted(()=>({pending:undefined as Promise<{name:string;parts:{text:string}[]}>|undefined}));
+vi.mock('../lib/assistant-import-file',async importOriginal=>{
+ const actual=await importOriginal<typeof import('../lib/assistant-import-file')>();
+ return {...actual,readAssistantImportFile:(file:File)=>{
+  // Observe the actual parser's completion; do not replace its extraction or race a one-second DOM wait.
+  const pending=actual.readAssistantImportFile(file);fileReads.pending=pending;return pending;
+ }};
+});
 const {AssistantFileImport}=await import('../components/assistant/file-import');
 const {AssistantImportHandoffProvider}=await import('../components/assistant/import-handoff');
 const {readAssistantImportFile}=await import('../lib/assistant-import-file');
@@ -35,7 +43,12 @@ for(const [width,height] of [[1280,900],[390,844]]){
  it(`shows a reviewable PDF draft without page overflow at ${width}px`,async()=>{
   await page.viewport(width,height);document.documentElement.setAttribute('data-ui-theme','atelier');
   render(<NextIntlClientProvider locale="en" messages={en}><main style={{maxWidth:768,margin:'auto',padding:16}}><AssistantImportHandoffProvider><AssistantFileImport/></AssistantImportHandoffProvider></main></NextIntlClientProvider>);
-  fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[await textPdf('Employee E001 amount -25.50')]}});
+  const file=await textPdf('Employee E001 amount -25.50');fileReads.pending=undefined;
+  await act(async()=>{
+   fireEvent.change(screen.getByLabelText(copy.attach,{selector:'input'}),{target:{files:[file]}});
+   expect(fileReads.pending).toBeDefined();const parsed=await fileReads.pending!;
+   expect(parsed.name).toBe('payroll.pdf');expect(parsed.parts[0].text).toContain('E001');
+  });
   await screen.findByText('payroll.pdf');
   fireEvent.change(screen.getByLabelText(copy.target),{target:{value:'payroll_history'}});
   fireEvent.change(screen.getByLabelText(copy.request),{target:{value:'Prepare these payroll history records'}});

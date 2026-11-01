@@ -58,7 +58,7 @@ function appMemory(){
  });}catch{return null;}
 }
 const samples=[],pageInteractions=[];
-const homeHttp=createHomeHttpReplay({base,fixture,request,report});
+const homeHttp=createHomeHttpReplay({base,request,report});
 async function request(user,path,fields,expectedStatus=200,record=true,actionHeaders={},fieldOrder=[]){
  assert(path.startsWith('/')&&!path.startsWith('//'));const started=performance.now();let body,contentType;
  if(Array.isArray(fields)){body=Buffer.from(JSON.stringify(fields));contentType='text/plain;charset=UTF-8';}

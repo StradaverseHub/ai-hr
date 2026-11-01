@@ -1,3 +1,36 @@
+## Current verification status — 2 November 2026
+
+The 500-user target remains **0/2 accepted**. No performance changes have been
+deployed. Both full five-minute activity runs on frozen `11f964d3f` stopped during
+Home replay preflight, before concurrent traffic launched: runs 41322607819 (1s)
+and 41322610322 (5s). All six baseline mutation/processing workflows and eleven
+authority/document fences passed in each. These are failed preflights, not capacity
+measurements. The actual replay regression on `c57b0249d`, run 41327021751,
+reproduces five date failures: valid live Home data is refused after KL midnight,
+and stale fixture-day data is incorrectly accepted. The repair binds live dates to
+the bounded request interval and retains exact explicit date/month queries and
+native response validators. Its expanded regression is awaiting green verification.
+
+Published-controller full run 41323325332 on `11f964d3f` completed before repairs:
+68/70 Node/DOM units passed; build, whole compiler, migrations, Firefox and WebKit
+passed. Chromium passed 434/435 cases; the real PDF parser was still processing
+when a default one-second DOM wait expired. Two native units passed 476/477 and
+455/456 cases respectively: the historical exact Claims policy assertion needs
+the reviewed 0896 predicate, and a before-LWD waiting-run fixture had an expired
+1 November anchor. Prepared repairs retain original assertion identities,
+historical SQL fixtures, real PDF extraction and production scheduling rules.
+Original failures remain failed; only affected checks are being recovered.
+
+Read-only staging inspection observed a separate release and package capture on a
+2-CPU/~4-GiB host, load averages above four, swapping and substantial system CPU.
+Three sequential loopback login requests took 0.79/0.87/2.24 seconds. Ten app-role
+connections were idle/unblocked at one snapshot; other-role visibility is limited
+and statement statistics are not enabled. Small authenticated browser samples
+showed mixed responsiveness, not a 500-user result. Background jobs, security
+agents, live data and configuration were left untouched. Customer/runtime preflight
+passed again after that separate release. This is diagnostic evidence, not acceptance
+of the undeployed candidate or a complete explanation for all reported lag.
+
 ## Native permission work and retained CPU evidence — 1 November2026
 
 The500-user target remains **0/2 accepted**; no deployment is authorized. Two
@@ -25,7 +58,7 @@ All other selected privacy/delegation/Claims/mobile/hierarchy and three populate
 upgrade checks pass, including the new multiple-account/live-archive/tenant regression.
 The fixture retains all frozen expected SQL hashes and is corrected to651/80rows;
 failed-area recovery41322278228 PASS onb46b683aa(ordinary populated rehearsal,1case).
-Whole compiler41321442525 is pending.
+Whole compiler41321442525 PASS; the later complete frozen run also passes it.
 No successful original is relabeled or discarded.
 
 The0896guard matches the installed native helper's exact predecessor body SHA256,
