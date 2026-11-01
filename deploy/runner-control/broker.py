@@ -69,10 +69,20 @@ def displayed_schedule(timer):
     if interval:return interval.group(1)+' after completion'
     return None
 
+def monotonic_seconds(value):
+    # systemctl renders inactive deadlines as infinity and some finite USec fields as durations.
+    value=str(value or '').strip()
+    if value in ('','0','n/a','infinity','[not set]'):return 0
+    if value.isdigit():return int(value)/1000000
+    pattern=r'([0-9]+(?:\.[0-9]+)?)(us|µs|ms|s|min|h|d|w)'
+    if re.sub(pattern,'',value).strip():return 0
+    units={'us':0.000001,'µs':0.000001,'ms':0.001,'s':1,'min':60,'h':3600,'d':86400,'w':604800}
+    return sum(float(number)*units[unit] for number,unit in re.findall(pattern,value))
+
 def next_run(timer):
     real=timer.get('NextElapseUSecRealtime')
-    if real and real not in ('n/a','0'):return real
-    monotonic=int(timer.get('NextElapseUSecMonotonic') or 0)/1000000
+    if real and real not in ('n/a','0','infinity','[not set]'):return real
+    monotonic=monotonic_seconds(timer.get('NextElapseUSecMonotonic'))
     if monotonic:
         return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=monotonic-time.monotonic())).isoformat()
     return None
@@ -86,7 +96,7 @@ def row_status(policy,row):
     enabled=active.get('UnitFileState') in ('enabled','enabled-runtime')
     # A disabled schedule can still have an in-flight service; these are separate facts.
     health=('missing' if not installed else 'running' if service.get('ActiveState')=='activating' or row['frequency']=='continuous' and service.get('ActiveState')=='active' else 'failed' if service.get('Result') not in (None,'','success') else 'unknown' if not service.get('ExecMainExitTimestamp') else 'success')
-    last_mono=int(service.get('ExecMainExitTimestampMonotonic') or 0)/1000000
+    last_mono=monotonic_seconds(service.get('ExecMainExitTimestampMonotonic'))
     threshold={'daily':48*3600,'monthly':65*86400,'yearly':400*86400,'interval':48*3600,'continuous':48*3600}[row['frequency']]
     if enabled and active.get('ActiveState') not in ('active','activating'): health='stopped'
     if enabled and health=='success' and last_mono and time.monotonic()-last_mono>threshold: health='stale'

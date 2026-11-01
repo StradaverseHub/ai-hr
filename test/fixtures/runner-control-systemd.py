@@ -103,6 +103,7 @@ WantedBy=timers.target
     try:
         # Root can reach the socket but is NOT the enrolled web UID.
         assert root_request({'op':'status'})[0]==409
+        print(run('/usr/bin/systemctl','show',UNIT+'.timer','--property=NextElapseUSecRealtime','--property=NextElapseUSecMonotonic','--property=TimersMonotonic').stdout)
         _,initial=status();assert initial['installed'] and not initial['enabled']
         code,_=configure(initial,True);assert code==200
         wait_until(lambda:len(executions())>=1)

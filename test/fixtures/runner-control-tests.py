@@ -62,6 +62,11 @@ class RunnerControlTests(unittest.TestCase):
         timer['TimersMonotonic']='{ OnUnitInactiveUSec=10min ; next_elapse=100000000 }'
         with patch.object(b,'properties',side_effect=props):third=b.row_status(self.policy,row)
         self.assertNotEqual(first['revision'],third['revision'])
+    def test_native_systemd_unset_and_formatted_monotonic_values(self):
+        self.assertEqual(b.monotonic_seconds('infinity'),0)
+        self.assertEqual(b.monotonic_seconds('1min 2.5s'),62.5)
+        self.assertEqual(b.monotonic_seconds('62500000'),62.5)
+        self.assertIsNone(b.next_run({'NextElapseUSecRealtime':'n/a','NextElapseUSecMonotonic':'infinity'}))
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:
