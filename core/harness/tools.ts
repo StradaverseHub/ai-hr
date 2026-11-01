@@ -7,8 +7,11 @@
  *    toolsFor(ctx) offers this caller (module enablement), each run by its existing owner AS THE CALLER;
  *  - context tools: the phase-B owners (core/product-context/tools.ts) for this caller;
  *  - suggest_action: the caller's current action catalogue (core/product-context/actions.ts). A suggestion
- *    is a pointer to the review page where the person completes and confirms; nothing is prepared.
- * No binding writes anything. Tests may pass their own provider; production wiring will not. */
+ *    is a pointer to the review page where the person completes and confirms. For the leave cards (step 2)
+ *    the native preparer may also issue a signed proposal (core/proposals/suggested.ts) from the caller's own
+ *    records and words; it saves a review, never a change, and the person confirms on the review page.
+ * No binding changes HR data; the only write is the review custody row a native preparer saves for a proposal.
+ * Tests may pass their own provider; production wiring will not. */
 import type {SessionContext} from '../../db/client';
 import type {AiToolSpec} from '../../lib/ai/types';
 import {toolsFor} from '../assistant-tools';
@@ -19,15 +22,20 @@ import {visibleModuleCodes} from '../../lib/nav-entitlements';
 import {contextToolSpecs} from '../semantic-model/generate';
 import {SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
+import {prepareSuggestedProposal} from '../proposals/suggested';
+import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 
 export type ToolKind='read'|'context'|'suggest';
-export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggestion?:Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>}>;
+export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggestion?:Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>;
+ /** A signed proposal the native preparer issued for this suggestion (never shown to the model). */
+ proposal?:Proposal}>;
 export type ToolBinding=Readonly<{name:string;kind:ToolKind;entity:EntityId|null;spec:AiToolSpec;
  /** Inputs that take a record handle from an earlier result in this turn. */
  identifierInputs:readonly string[];
  run(input:Record<string,unknown>):Promise<ToolRun>}>;
-export type ToolScope=Readonly<{companyId:string;locale?:string}>;
+/** `personWords` is the person's own question this turn, never model text (core/proposals/suggested.ts). */
+export type ToolScope=Readonly<{companyId:string;locale?:string;personWords?:string}>;
 export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  /** Review routes the caller's catalogue names; replies may link to the one suggested this turn. */
  reviewRoutes:readonly string[];
@@ -49,7 +57,9 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:null,identifierInputs:[],
   spec:{name:HARNESS_SPEC.offer.suggestTool,description:SUGGEST_DESCRIPTION,inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
   async run(input){const result=suggestAction(catalogue,input.action,input.details);
-   if(result.suggested)return{ok:true,content:{...result,note:'The person completes and confirms this on the review page; nothing is prepared or submitted.'},suggestion:{action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard}};
+   if(result.suggested){const proposal=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);
+    return{ok:true,content:{...result,note:proposal?'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.':'The person completes and confirms this on the review page; nothing is prepared or submitted.'},
+     suggestion:{action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard},...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
  return Object.freeze({bindings:Object.freeze([...context,...reads,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
   destinations:Object.freeze(destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>row.href.split(/[?#]/)[0]))});

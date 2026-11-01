@@ -157,13 +157,16 @@ export const SEMANTIC_ACTIONS:readonly SemanticAction[]=freeze([
   preparer:'core/assistant-actions/reviewed-leave-decision-source.ts#prepareReviewedLeaveDecisionSourceTx',
   checks:[aiControls,{check:'assigned_step_current',owner:'core/assistant-actions/reviewed-leave-decision-source.ts#assertReviewedLeaveDecisionActorTx',ruleVersion:null}],
   reviewRoute:'/assistant/approvals',humanInputs:['leaveRequestId','currentStepId','decision','rejectReason','confirmAssignedDecision'],
-  nominable:[],proposal:null},
- {id:'leave.cancel',entity:'leave_request',effect:'withdraw',module:'leave',purpose:'Cancel one of your own pending leave requests.',
+  nominable:[],proposal:'core/proposals/leave-decide.ts#prepareLeaveDecideProposal'},
+ {id:'leave.cancel',entity:'leave_request',effect:'withdraw',module:'leave',purpose:'Cancel one of your own pending leave requests, or ask to give back dates of approved leave.',
   audience:'self',actor:'self',service:'packs/leave/service.ts#cancelOwnLeaveTx',guard:'core/assistant-actions/own-leave-change-source.ts#withOwnLeaveChangeSubjectTx',
   preparer:'core/assistant-actions/own-leave-change-source.ts#prepareOwnLeaveCancellationSourceTx',
-  checks:[aiControls,{check:'own_pending_request',owner:'core/assistant-actions/own-leave-change-source.ts#withOwnLeaveChangeSubjectTx',ruleVersion:null}],
+  // A pending request uses the first two; approved leave (step 2) is offered through the native /leave give-back
+  // path and uses the actor, the AI controls and the native offer (core/proposals/leave-cancel.ts).
+  checks:[aiControls,{check:'own_pending_request',owner:'core/assistant-actions/own-leave-change-source.ts#withOwnLeaveChangeSubjectTx',ruleVersion:null},
+   actorCheck,{check:'own_approved_cancellable',owner:'core/read.ts#employeeCancelOffers',ruleVersion:null}],
   reviewRoute:'/assistant/leave',humanInputs:['employmentId','leaveRequestId','cancel'],
-  nominable:[{name:'startDate',optional:true,type:'date'}],proposal:null},
+  nominable:[{name:'startDate',optional:true,type:'date'}],proposal:'core/proposals/leave-cancel.ts#prepareLeaveCancelProposal'},
 ] satisfies SemanticAction[]);
 
 export const semanticEntity=(id:string):SemanticEntity=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
