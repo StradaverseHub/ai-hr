@@ -10,6 +10,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import socketserver
@@ -61,6 +62,21 @@ def properties(unit):
 def held(policy,key):
     return policy['environment']=='production' and key in ('replacement-holidays','backups')
 
+def displayed_schedule(timer):
+    calendar=re.search(r'OnCalendar=(.*?)\s*;',timer.get('TimersCalendar',''))
+    if calendar:return calendar.group(1)
+    interval=re.search(r'OnUnitInactiveUSec=(.*?)\s*;',timer.get('TimersMonotonic',''))
+    if interval:return interval.group(1)+' after completion'
+    return None
+
+def next_run(timer):
+    real=timer.get('NextElapseUSecRealtime')
+    if real and real not in ('n/a','0'):return real
+    monotonic=int(timer.get('NextElapseUSecMonotonic') or 0)/1000000
+    if monotonic:
+        return (datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=monotonic-time.monotonic())).isoformat()
+    return None
+
 def row_status(policy,row):
     setting=policy['jobs'].get(row['id'],{'managed':False,'note':'Not commissioned; existing external schedules must be checked.'})
     service=properties(row['unit']+'.service')
@@ -74,7 +90,7 @@ def row_status(policy,row):
     threshold={'daily':48*3600,'monthly':65*86400,'yearly':400*86400,'interval':48*3600,'continuous':48*3600}[row['frequency']]
     if enabled and active.get('ActiveState') not in ('active','activating'): health='stopped'
     if enabled and health=='success' and last_mono and time.monotonic()-last_mono>threshold: health='stale'
-    result={'id':row['id'],'managed':setting['managed'],'hold':held(policy,row['id']),'note':setting['note'],'installed':installed,'enabled':enabled,'health':health,'running':service.get('ActiveState') in ('active','activating'),'lastRun':service.get('ExecMainExitTimestamp') or None,'nextRun':timer.get('NextElapseUSecRealtime') or None,'schedule':timer.get('TimersCalendar') or timer.get('TimersMonotonic') or None}
+    result={'id':row['id'],'managed':setting['managed'],'hold':held(policy,row['id']),'note':setting['note'],'installed':installed,'enabled':enabled,'health':health,'running':service.get('ActiveState') in ('active','activating'),'lastRun':service.get('ExecMainExitTimestamp') or None,'nextRun':next_run(timer),'schedule':displayed_schedule(timer)}
     # Include actual scheduler state in the revision, so stale tabs cannot overwrite another change.
     result['revision']=hashlib.sha256(json.dumps(result,sort_keys=True).encode()).hexdigest()
     return result

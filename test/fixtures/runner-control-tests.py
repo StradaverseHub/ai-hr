@@ -40,6 +40,10 @@ class RunnerControlTests(unittest.TestCase):
     def test_actual_unix_peer_uid_can_read_status(self):
         response=self.request_socket(os.getuid())
         self.assertIn(b'200',response.split(b'\r\n')[0]);self.assertIn(b'"verified": true',response)
+    def test_displays_effective_calendar_and_completion_interval(self):
+        self.assertEqual(b.displayed_schedule({'TimersCalendar':'{ OnCalendar=*-*-01 02:00:00 Asia/Kuala_Lumpur ; next_elapse=example }'}),'*-*-01 02:00:00 Asia/Kuala_Lumpur')
+        self.assertEqual(b.displayed_schedule({'TimersMonotonic':'{ OnUnitInactiveUSec=5min ; next_elapse=example }'}),'5min after completion')
+        self.assertIsNone(b.displayed_schedule({}))
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:
