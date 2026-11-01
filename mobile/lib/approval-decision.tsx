@@ -38,7 +38,7 @@ import {
 
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'replacementLeave'] as const;
+const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'replacementLeave', 'managerReview', 'hrReview'] as const;
 /** Decided in this app: the server says it may be, AND this build has the screen for it (claims no longer do). */
 export const decidesNatively = (item: Pick<TaskItemV2, 'kind' | 'nativeDecision'>) => item.nativeDecision && (NATIVE as readonly string[]).includes(item.kind);
 /** Where a web-only row opens: the server's path, or — for a kind the server still marks native (a claim) and so sends

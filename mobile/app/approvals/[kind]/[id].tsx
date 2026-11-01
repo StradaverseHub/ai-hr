@@ -1,7 +1,14 @@
 /** M08 — one task and its confirmed decision (mobile/lib/approval-decision.tsx). */
 import { useLocalSearchParams } from 'expo-router';
+import { ReviewWorkspaceScreen } from '../../../lib/review-workspace';
+import { isReviewWorkspaceKind } from '../../../../lib/mobile-api/v2/review-workspaces';
+import { identityNamespace } from '../../../lib/config';
+import { useSession } from '../../../lib/session';
+import { authGeneration } from '../../../lib/auth';
 import { ApprovalDetailScreen } from '../../../lib/approval-decision';
 export default function ApprovalDetailPage() {
+  const { employmentId } = useSession();
   const { kind, id } = useLocalSearchParams<{ kind: string; id: string }>();
+  if (typeof kind === 'string' && isReviewWorkspaceKind(kind) && typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id)) return <ReviewWorkspaceScreen key={`${identityNamespace()}:${authGeneration()}:${employmentId}:${kind}:${id}`} kind={kind} id={id}/>;
   return <ApprovalDetailScreen kind={typeof kind === 'string' ? kind : ''} id={typeof id === 'string' ? id : ''} />;
 }

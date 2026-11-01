@@ -494,3 +494,33 @@ describe('native replacement leave', () => {
     blocked=true;expect((await post(manager,'replacementLeave',id,{requestId:randomUUID(),decision:'approve',expected:{status:'pending'}})).status).toBe(401);
   });
 });
+
+
+describe('native employment review workspaces',()=>{
+ const read=()=>import('../app/api/mobile/v2/review-workspaces/[kind]/[id]/route');
+ const write=()=>import('../app/api/mobile/v2/review-workspaces/[kind]/[id]/decision/route');
+ async function seedReview(){const [r]=await owner.db.insert(schema.employmentReview).values({tenantId:base.tenantId,employmentId:employee.employmentId,personId:employee.personId,managerEmploymentId:manager.employmentId,reviewType:'probation',status:'pending_manager',endDate:MON,dueDate:TODAY}).returning({id:schema.employmentReview.id});return r.id;}
+ async function readAs(who:Person,kind:string,id:string){caller=who.ctx;const response=await (await read()).GET(new Request(`https://hr.example.com/api/mobile/v2/review-workspaces/${kind}/${id}`));return {status:response.status,body:await response.json()};}
+ async function writeAs(who:Person,kind:string,id:string,body:unknown){caller=who.ctx;const response=await (await write()).POST(new Request(`https://hr.example.com/api/mobile/v2/review-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,body:await response.json()};}
+ it('records the manager recommendation and advisory HR extension through their owners; both receipts replay',async()=>{
+  const id=await seedReview();const initial=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId));
+  const d=await readAs(manager,'managerReview',id);expect(d.body.outcome).toBe('found');expect(d.body.workspace).toMatchObject({reviewType:'probation',endDate:MON,dueDate:TODAY});
+  const first={requestId:randomUUID(),expected:d.body.workspace.expected,action:'recommend_extend',comments:'Needs more observation'};
+  const result=await writeAs(manager,'managerReview',id,first);expect(result.body).toEqual({outcome:'accepted',status:'pending_hr'});
+  expect((await writeAs(manager,'managerReview',id,first)).body).toEqual(result.body);
+  const h=await readAs(hr,'hrReview',id);expect(h.body.workspace.managerComments).toBe('Needs more observation');
+  const final={requestId:randomUUID(),expected:h.body.workspace.expected,action:'extend',extendToDate:addDays(MON,30),comments:'Advisory extension'};
+  expect((await writeAs(hr,'hrReview',id,final)).body).toEqual({outcome:'accepted',status:'completed'});
+  expect((await writeAs(hr,'hrReview',id,final)).body).toEqual({outcome:'accepted',status:'completed'});
+  const [record]=await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.id,id));expect(record).toMatchObject({status:'completed',decision:'extend',extendToDate:addDays(MON,30)});
+  const current=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId));expect(current).toEqual(initial);
+ });
+ it('refuses unrelated and self actors, wrong stages, invalid dates and forged actions without advancing the review',async()=>{
+  const id=await seedReview();expect((await readAs(colleague,'managerReview',id)).body.code).toBe('not_assigned');expect((await readAs(employee,'managerReview',id)).body.code).toBe('not_assigned');
+  expect((await readAs(manager,'hrReview',id)).body.code).toBe('not_assigned');
+  expect((await writeAs(manager,'managerReview',id,{requestId:randomUUID(),expected:{status:'pending_manager'},action:'confirm'})).body.code).toBe('stale_step');
+  expect((await writeAs(hr,'hrReview',id,{requestId:randomUUID(),expected:{status:'pending_hr'},action:'extend',extendToDate:'2026-02-30'})).status).toBe(400);
+  expect((await writeAs(manager,'managerReview',id,{requestId:randomUUID(),expected:{status:'pending_manager'},action:'make_admin'})).status).toBe(400);
+  const [r]=await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.id,id));expect(r.status).toBe('pending_manager');
+ });
+});
