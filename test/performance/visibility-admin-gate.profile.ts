@@ -32,7 +32,10 @@ async function outcome(connection:any,tenantId:string){
  catch(error){return (error as {code?:string}).code??String(error);}
 }
 it('fences matching administrator memberships before live eligibility checks with identical native outcomes and attributes',async()=>{
- await resetDb();const base=await seedBase(),foreign=await seedBase();
+ await resetDb();await owner.client`create extension if not exists pg_stat_statements`;
+ const [statistics]=await owner.client`select current_setting('shared_preload_libraries') as preload,to_regclass('public.pg_stat_statements')::text as relation`;
+ expect(statistics.preload).toContain('pg_stat_statements');expect(statistics.relation).toBe('pg_stat_statements');
+ const base=await seedBase(),foreign=await seedBase();
  for(const b of [base,foreign])await withTenant(adminCtx(b),tx=>tx.execute(sql`select app.access_configuration_initialize()`));
  const users=Array.from({length:500},()=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID()}));
  await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:base.tenantId,fullName:'Fictional administrator-candidate person '+i,primaryEmail:u.id+'@example.invalid'})));
