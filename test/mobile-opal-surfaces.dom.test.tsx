@@ -5,6 +5,7 @@ import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
+import { DAILY_SWITCH } from '../mobile/lib/daily-switch-theme';
 import { DEFAULT_MOBILE_DESIGN, mobilePalette, mobileSurfaceIsDark } from '../lib/mobile-design';
 
 function load(path: string, ports: Record<string, unknown>) {
@@ -39,8 +40,8 @@ it.each(['dark', 'light'] as const)('keeps the complete action carousel reachabl
 it('announces recorded worked time as one readable value rather than seven-segment decoration', () => {
   const ports = { react: React, 'react/jsx-runtime': jsx,
     'react-native': { View, Text, StyleSheet: { absoluteFill: {}, hairlineWidth: .5 }, Platform: { OS: 'android' } },
-    './design': { DesignText: Text, useTenantDesign: () => ({ palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
-    '../../lib/mobile-design': { mobileSurfaceIsDark },
+    './design': { DesignText: Text, useTenantDesign: () => ({ design:DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
+    '../../lib/mobile-design': { mobileSurfaceIsDark }, './daily-switch-theme':{DAILY_SWITCH},
   };
   const { TimeDisplay } = load('mobile/lib/visual.tsx', ports);
   render(<TimeDisplay seconds={29700} label="Worked today: 8h 15m" />);

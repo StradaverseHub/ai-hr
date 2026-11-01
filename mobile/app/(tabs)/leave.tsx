@@ -19,7 +19,7 @@ import { useSession } from '../../lib/session';
 import { ListRow,LoadState,Muted,Row,Screen,SectionLabel,Title,fmtDays } from '../../lib/ui';
 const STATUS:Record<string,Parameters<typeof t>[0]>={approved:'approved',pending:'pending',rejected:'rejected',cancelled:'cancelled'};
 export default function Leave(){
-  const {palette}=useTenantDesign();const {signOut,employmentId}=useSession();
+  const {palette,design}=useTenantDesign();const {signOut,employmentId}=useSession();
   const leave=useApi('leave',{employmentId:employmentId??undefined},signOut);
   const options=useApi('leave-options',{employmentId:employmentId??undefined},signOut);
   const requests=useApi('leave-requests',{employmentId:employmentId??undefined},signOut);
@@ -31,10 +31,10 @@ export default function Leave(){
   return <Screen atmospheric onRefresh={reload}>
     <Title>{t('tabLeave')}</Title>
     <LoadState loading={leave.loading} hasData={leave.data!=null} error={leave.error} onRetry={leave.reload}/>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={186} decelerationRate="fast" contentContainerStyle={{gap:12,paddingBottom:8,paddingRight:20}}>{leave.data?.cards.map(c=><Material key={c.leaveTypeId} style={{width:174,minHeight:184,padding:18,justifyContent:'space-between',gap:16}}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={design.schemaVersion === 2 ? 186 : 272} decelerationRate="fast" contentContainerStyle={{gap:12,paddingBottom:8,paddingRight:20}}>{leave.data?.cards.map(c=><Material key={c.leaveTypeId} style={{width:design.schemaVersion === 2 ? 174 : 260,minHeight:design.schemaVersion === 2 ? 184 : 220,padding:18,justifyContent:'space-between',gap:16}}>
       <View pointerEvents="none" style={{position:'absolute',inset:0,experimental_backgroundImage:`linear-gradient(145deg, ${alpha(c.color && /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : palette.accent,.20)} 0%, transparent 80%)`}}/>
       <Text style={{color:palette.text,fontSize:15,fontWeight:'500'}}>{c.leaveType}</Text>
-      <View accessible accessibilityLabel={`${c.leaveType}. ${fmtDays(cardFigure(c))}. ${c.takenOnly?t('taken'):c.isCurrentCycle?t('canApplyFor'):t('balance')}`} style={{gap:6}}><Text style={{color:palette.text,fontSize:38,fontWeight:'500',fontVariant:['tabular-nums'],letterSpacing:-1}}>{cardFigure(c)==null?'—':String(cardFigure(c))}</Text><Text style={{color:palette.muted,fontSize:12}}>{[c.takenOnly?t('taken'):c.isCurrentCycle?t('canApplyFor'):t('balance'),c.sharedPool?t('sharedPool'):null].filter(Boolean).join(' · ')}</Text></View>
+      <View accessible accessibilityLabel={`${c.leaveType}. ${fmtDays(cardFigure(c))}. ${c.takenOnly?t('taken'):c.isCurrentCycle?t('canApplyFor'):t('balance')}`} style={{gap:6}}><Text style={{color:palette.text,fontSize:design.schemaVersion === 2 ? 38 : 64,fontWeight:'500',fontVariant:['tabular-nums'],letterSpacing:-1}}>{cardFigure(c)==null?'—':String(cardFigure(c))}</Text><Text style={{color:palette.muted,fontSize:12}}>{[c.takenOnly?t('taken'):c.isCurrentCycle?t('canApplyFor'):t('balance'),c.sharedPool?t('sharedPool'):null].filter(Boolean).join(' · ')}</Text></View>
     </Material>)}</ScrollView>
     {leave.data?.cards.length===0&&<Muted>{t('noLeaveTypes')}</Muted>}
     <LoadState loading={options.loading} hasData={options.data!=null} error={options.error} onRetry={options.reload}/>

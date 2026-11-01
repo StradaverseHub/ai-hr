@@ -15,6 +15,7 @@ export const ICONS = {
   faceId: { ios: 'faceid', android: 'face' },
   touchId: { ios: 'touchid', android: 'fingerprint' },
   lock: { ios: 'lock.shield', android: 'shield_lock' },
+  arrowRight: { ios: 'arrow.right', android: 'arrow_forward' },
   eye: { ios: 'eye', android: 'visibility' },
   eyeOff: { ios: 'eye.slash', android: 'visibility_off' },
   chevron: { ios: 'chevron.right', android: 'chevron_right' },

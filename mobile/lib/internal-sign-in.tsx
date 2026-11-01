@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { fetch as nativeFetch } from 'expo/fetch';
-import { Image, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Redirect, router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { beginSignIn, assertAuthGeneration, completeInternalSignIn } from './auth';
@@ -10,13 +10,18 @@ import { config, runtimeConnections } from './config';
 import { internalAuthRequest, InternalSignInError, type InternalReply } from './internal-auth';
 import { useSession } from './session';
 import { Button, colors } from './ui';
-import { Atmosphere, useTenantDesign } from './design';
+import { useTenantDesign } from './design';
+import { SignInBackground } from './sign-in-background';
+import { Icon } from './icon';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { appLocale, t } from './i18n';
 import authCopy from './internal-auth-copy.json';
 
 export function InternalSignIn() {
   const company = useCompanyConnection(), session = useSession();
   const { palette } = useTenantDesign();
+  const insets = useSafeAreaInsets();
+  const [showPassword, setShowPassword] = useState(false);
   const styles = signInStyles(palette);
   const workplaceOrganization = company?.organization ?? '';
   const copy = authCopy[appLocale()];
@@ -53,7 +58,42 @@ export function InternalSignIn() {
   const errorText = copy.errors[error as keyof typeof copy.errors] || copy.errors.unavailable;
   const state = step?.step || 'login';
   const hasRecoveryCodes = Boolean(step?.recoveryCodes?.length);
-  return <View style={{ flex: 1, backgroundColor: palette.bg }}><Atmosphere strong /><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.wrap} keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
+  const loginDisabled = busy || !(workplaceOrganization || organization) || !username || !password;
+  if (state === 'login') return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground/>
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets contentContainerStyle={[styles.entry, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}>
+      <View style={styles.entryHeader}><Text style={styles.wordmark}>{t('appName')}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={companyCopy().change} disabled={busy} onPress={() => router.push('/company')} style={styles.workplace}>
+          <Text style={styles.workplaceText}>{company?.name || companyCopy().change}</Text><Icon name="chevron" color={palette.text} size={14}/>
+        </Pressable>
+      </View>
+      <View style={{ flex: 1, minHeight: 120 }}/>
+      <Text accessibilityRole="header" style={styles.entryTitle}>{copy.loginTitle}</Text>
+      <View style={styles.pass}>
+        {workplaceOrganization ? <Text style={styles.body}>{copy.organization}: {workplaceOrganization}</Text> : <View style={styles.passField}>
+          <Text style={styles.label}>{copy.organization}</Text><TextInput accessibilityLabel={copy.organization} autoCapitalize="none" autoCorrect={false} maxLength={64} value={organization} onChangeText={setOrganization} editable={!busy} style={styles.passInput}/>
+        </View>}
+        <View style={styles.passField}><Text style={styles.label}>{copy.username}</Text>
+          <TextInput accessibilityLabel={copy.username} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" maxLength={64} value={username} onChangeText={setUsername} editable={!busy} style={styles.passInput}/>
+        </View>
+        <View style={styles.passField}>
+          <View style={styles.fieldHeader}><Text style={styles.label}>{copy.password}</Text>
+            <Pressable accessibilityRole="link" disabled={busy} onPress={() => void WebBrowser.openBrowserAsync(config.apiUrl + '/reset-password')} style={{ minHeight: 44, justifyContent: 'center' }}><Text style={styles.recovery}>{copy.forgot}</Text></Pressable>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TextInput accessibilityLabel={copy.password} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" maxLength={128} value={password} onChangeText={setPassword} editable={!busy} style={[styles.passInput, { flex: 1 }]} returnKeyType="go" onSubmitEditing={() => { if (!loginDisabled) void submit(); }}/>
+            <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? copy.hidePassword : copy.showPassword} accessibilityState={{ checked: showPassword }} disabled={busy} onPress={() => setShowPassword(value => !value)} style={{ minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' }}><Icon name={showPassword ? 'eyeOff' : 'eye'} color={palette.muted} size={20}/></Pressable>
+          </View>
+        </View>
+        {!!error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
+        <View style={styles.passFooter}><Text style={[styles.body, { flex: 1 }]}>{busy ? copy.working : copy.signIn}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel={copy.signIn} accessibilityState={{ disabled: !!loginDisabled, busy }} disabled={!!loginDisabled} onPress={() => void submit()} style={({ pressed }) => [styles.enter, { backgroundColor: palette.button, opacity: loginDisabled ? .55 : pressed ? .75 : 1 }]}>
+            {busy ? <ActivityIndicator color={palette.onButton}/> : <Icon name="arrowRight" color={palette.onButton} size={28}/>}
+          </Pressable>
+        </View>
+      </View>
+    </ScrollView>
+  </View>;
+  return <View style={{ flex: 1, backgroundColor: palette.bg }}><SignInBackground /><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.wrap} keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets>
     <Text style={styles.brand}>{t('appName')}</Text><Text accessibilityRole="header" style={styles.title}>{state === 'complete' && hasRecoveryCodes ? copy.codesTitle : state === 'password' ? copy.passwordTitle : state === 'enroll' ? copy.enrollTitle : state === 'mfa' ? copy.mfaTitle : copy.loginTitle}</Text>
     {company && <Text style={styles.body}>{company.name} · {new URL(company.apiOrigin).hostname}</Text>}
     {error && <Text accessibilityRole="alert" style={styles.error}>{errorText}</Text>}
@@ -87,7 +127,21 @@ export function InternalSignIn() {
     <Button title={companyCopy().change} kind="quiet" disabled={busy} onPress={() => router.push('/company')}/>
   </ScrollView></View>;
 }
-const signInStyles = (palette: { bg: string; card: string; text: string; muted: string; border: string; accent: string }) => StyleSheet.create({ wrap: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingTop: 72, paddingBottom: 40, gap: 24, width: '100%', maxWidth: 520, alignSelf: 'center' },
+const signInStyles = (palette: { bg: string; card: string; text: string; muted: string; border: string; accent: string }) => StyleSheet.create({
+  entry: { flexGrow: 1, paddingHorizontal: 24, gap: 20, width: '100%', maxWidth: 520, alignSelf: 'center' },
+  entryHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' },
+  wordmark: { color: palette.text, fontSize: 28, fontWeight: '700', letterSpacing: -.7 },
+  workplace: { minHeight: 44, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: palette.card, flexDirection: 'row', gap: 6, alignItems: 'center', maxWidth: '100%' },
+  workplaceText: { color: palette.text, fontSize: 13, flexShrink: 1 },
+  entryTitle: { color: palette.text, fontSize: 48, fontWeight: '700', letterSpacing: -1.4 },
+  pass: { backgroundColor: palette.card, padding: 22, gap: 14, borderRadius: 26, borderCurve: 'continuous', boxShadow: '0px 8px 28px rgba(0,0,0,0.14)' },
+  passField: { borderBottomWidth: 1, borderColor: palette.border, gap: 2 },
+  fieldHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' },
+  passInput: { minHeight: 48, fontSize: 19, color: palette.text, paddingVertical: 10, paddingHorizontal: 0 },
+  recovery: { color: palette.accent, fontSize: 13, fontWeight: '500' },
+  passFooter: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingTop: 4 },
+  enter: { minWidth: 60, minHeight: 60, borderRadius: 30, alignItems: 'center', justifyContent: 'center', boxShadow: 'inset 0px 1px 2px rgba(255,255,255,0.45), 0px 3px 5px rgba(0,0,0,0.18)' },
+  wrap: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingTop: 72, paddingBottom: 40, gap: 24, width: '100%', maxWidth: 520, alignSelf: 'center' },
   brand: { color: palette.text, fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 16 }, title: { fontSize: 34, fontWeight: '700', letterSpacing: -0.7, color: palette.text, textAlign: 'center' },
   body: { color: palette.muted, fontSize: 15, lineHeight: 23 }, label: { color: palette.text, fontSize: 14, fontWeight: '500', marginTop: 4 }, fields: { gap: 12 }, input: { minHeight: 56, borderWidth: 1, borderColor: palette.border, borderRadius: 28, backgroundColor: palette.card, paddingVertical: 14, paddingHorizontal: 20, color: palette.text, fontSize: 16 },
   error: { color: palette.text, fontSize: 15 }, key: { color: palette.text, fontFamily: 'monospace', fontSize: 15, padding: 12, backgroundColor: palette.card }, codes: { color: palette.text, fontFamily: 'monospace', fontSize: 12, lineHeight: 28 }, qr: { width: 224, height: 224, alignSelf: 'center', backgroundColor: '#fff' } });

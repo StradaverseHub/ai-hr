@@ -19,12 +19,13 @@ function fixture(organization?: string) {
   const ports: Record<string, unknown> = {
     'expo/fetch':{fetch:vi.fn()},
     react: React, 'react/jsx-runtime': jsx,
-    'react-native': { Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
+    'react-native': { Text, Pressable:({children,accessibilityLabel,accessibilityRole,disabled,onPress}:any)=><button aria-label={accessibilityLabel} role={accessibilityRole==='link'?'link':undefined} disabled={disabled} onClick={onPress}>{typeof children==='function'?children({pressed:false}):children}</button>, ActivityIndicator:()=>null, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
     './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
     './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
     './i18n':{appLocale:()=> 'en',t:(key:string)=>key==='appName'?'OneHR+':key},'./internal-auth-copy.json':copy,
+    './sign-in-background':{SignInBackground:()=>null}, './icon':{Icon:()=>null}, 'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:0,bottom:0})},
     './design':{Atmosphere:()=>null,useTenantDesign:()=>({palette:{}})},
     './ui':{colors:{},Button:({title,disabled,onPress}:any)=><button disabled={disabled} onClick={onPress}>{title}</button>},
   };

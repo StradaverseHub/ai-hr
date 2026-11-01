@@ -6,6 +6,7 @@ import * as jsx from 'react/jsx-runtime';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as contract from '../lib/mobile-design';
+import { nativeMobilePalette } from '../mobile/lib/daily-switch-theme';
 
 function fixture() {
   let response: { config: unknown } | null = { config: { ...contract.DEFAULT_MOBILE_DESIGN, brandName: 'Tenant A', accent: 'jade' } };
@@ -18,6 +19,7 @@ function fixture() {
     if (id === 'react') return React;
     if (id === 'react/jsx-runtime') return jsx;
     if (id === '../../lib/mobile-design') return contract;
+    if (id === './daily-switch-theme') return { nativeMobilePalette };
     if (id === './session') return { useSession: () => ({ signOut }) };
     if (id === './preferences') return { useDisplayPrefs: () => ({ appearance: prefs.appearance, language: 'auto' }) };
     if (id === './api') return { useApi: (path: string, params: unknown, onAuth: unknown) => { expect(path).toBe('design'); expect(params).toEqual({ schema: '2', artwork: '1' }); expect(onAuth).toBe(signOut); return { data: response, reload }; } };
@@ -32,31 +34,31 @@ function fixture() {
 afterEach(cleanup);
 describe('store-app tenant design consumption', () => {
   it('uses a readable accent outside the authenticated design provider on the light sign-in and lock screens', () => {
-    const f = fixture(); render(<f.Probe />); expect(screen.getByText('OneHR+ #176747')).toBeTruthy();
+    const f = fixture(); render(<f.Probe />); expect(screen.getByText('OneHR+ #405400')).toBeTruthy();
   });
   it('applies phone appearance before sign-in and honors personal dark/light choices without tenant requests', () => {
     const f = fixture(), ui = render(<f.PublicView />);
-    expect(screen.getByText('OneHR+ #176747')).toBeTruthy();
+    expect(screen.getByText('OneHR+ #405400')).toBeTruthy();
     f.prefs.appearance = 'dark'; ui.rerender(<f.PublicView />);
-    expect(screen.getByText('OneHR+ #b9f3d5')).toBeTruthy();
+    expect(screen.getByText('OneHR+ #c7f51c')).toBeTruthy();
     f.prefs.appearance = 'light'; ui.rerender(<f.PublicView />);
-    expect(screen.getByText('OneHR+ #176747')).toBeTruthy();
+    expect(screen.getByText('OneHR+ #405400')).toBeTruthy();
     expect(f.reload).not.toHaveBeenCalled();
   });
   it('uses the published contract, requests a new release on return and replaces branding', () => {
     const f = fixture(), ui = render(<f.View />);
-    expect(screen.getByText('Tenant A #b9f3d5')).toBeTruthy();
+    expect(screen.getByText('Tenant A #c7f51c')).toBeTruthy();
     f.foreground('active'); expect(f.reload).toHaveBeenCalledTimes(1);
     f.set({ config: { ...contract.DEFAULT_MOBILE_DESIGN, brandName: 'Tenant B', appearance: 'system', accent: 'cobalt' } });
     ui.rerender(<f.View />); expect(screen.getByText('Tenant B #174bb5')).toBeTruthy(); expect(screen.queryByText(/Tenant A/)).toBeNull();
   });
   it('lets the person’s own Light or Dark choice win over the company appearance, and Automatic follow it again', () => {
     const f = fixture(), ui = render(<f.View />);
-    expect(screen.getByText('Tenant A #b9f3d5')).toBeTruthy(); // the company design's dark jade
+    expect(screen.getByText('Tenant A #c7f51c')).toBeTruthy(); // the company design's dark jade
     f.prefs.appearance = 'light'; ui.rerender(<f.View />);
-    expect(screen.getByText('Tenant A #176747')).toBeTruthy(); // light jade
+    expect(screen.getByText('Tenant A #405400')).toBeTruthy(); // light jade
     f.prefs.appearance = 'auto'; ui.rerender(<f.View />);
-    expect(screen.getByText('Tenant A #b9f3d5')).toBeTruthy();
+    expect(screen.getByText('Tenant A #c7f51c')).toBeTruthy();
   });
   it('never restores another account’s design after unmount or malformed configuration', () => {
     const f = fixture(), ui = render(<f.View />); ui.unmount(); f.set(null);
