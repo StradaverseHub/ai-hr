@@ -556,6 +556,23 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 
 Clean candidates across all passes that can stand alone: **Atoll, Fram, Keelson, Velor, Vorn, Hull, Prow**. A coined name is easier to register; a real word carries meaning without explanation.
 
+**Owner (2 November 2026): the shortlist is not good; new shortlist.** Seventh pass, four territories away from the ship metaphors. "HR OS" was also considered and rejected: HROS is used by several HR companies (Vienna, Hungary, an onboarding product), "HR operating system" is a category slogan (Aragorn AI, Kronjop, Shapes "PeopleOS"), and a descriptive name cannot be registered; it is kept as the tagline instead.
+
+| Territory | Name | Finding |
+| --- | --- | --- |
+| Modern coined | **Orivo** | No exact match. Near: Oriveo (a multi-model AI tool), Oryo (agent identity) |
+| Modern coined | **Velyn** | No exact match. Near: Vely, VelyxLabs |
+| Modern coined | **Lumae** (suggests light) | No exact match. Near: Lumea (digital pathology) |
+| Modern coined | **Ivara** | No exact AI match. Near: Aivar, iVERA; an older asset-management product of this name is believed to exist (not verified) |
+| Classical | Arete (excellence) | **Taken in HR:** Arete HRMS & Payroll |
+| Classical | Telos (purpose) | Crowded: Telos Corp, Telos Foundry, telosplatforms |
+| Human and work | Guild | **Taken:** Guild.ai, an AI agent control plane ($44M, 2026) |
+| Human and work | Hearth | Taken: Hearth (contractor platform), Hearth AI |
+| Agreement | Pact | Crowded, including Decagon's PACT agent-trust protocol |
+| Agreement | Accord | **Taken in HR:** AccordHRM, Accord eHR |
+
+**Finding.** Across seven passes and 82 names, almost every meaningful real word in English, Latin, Greek and the maritime vocabulary is already used by an AI or HR product. Clean options are now mostly coined words, which also register most easily. Recommendation: choose a coined name (Orivo, Velyn, Lumae) or engage a naming professional with this brief and record for a coined set screened by trademark search, and use "the AI operating system for HR" as the tagline.
+
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
 ## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)
