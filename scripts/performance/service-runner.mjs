@@ -11,7 +11,7 @@ const profiles={
  'plan-cache':'claims-plan-cache','claims-sql':'claims-query-profile','admin-gate':'visibility-admin-gate',
  'session-plan':'session-read-plan','scope-lock':'workforce-read-lock','orm-schema':'orm-schema-overhead',
  'review-queues':'review-task-groups','ess-fields':'ess-field-projection','home-role':'home-role-query',
- 'attendance-index':'attendance-assignment-index','attendance-routing':'attendance-routing','claim-preview':'claim-preview-window','claim-metadata':'claim-task-reader','profile-queue':'profile-task-reader','audit-session':'audit-session-setup',
+ 'attendance-index':['attendance-routing','attendance-assignment-index'],'attendance-routing':'attendance-routing','claim-preview':'claim-preview-window','claim-metadata':'claim-task-reader','profile-queue':'profile-task-reader','audit-session':'audit-session-setup',
 };
 const mode=process.env.PERF_SERVICE_PROFILE;assert(Object.hasOwn(profiles,mode));
 const out=join(process.env.RUNNER_TEMP,'service-performance-evidence');mkdirSync(out,{recursive:true});
@@ -30,9 +30,9 @@ function run(label,command,args){
 save();
 try{
  run('postgres','bash',['.github/ci/postgres.sh','reset']);
- const file=profiles[mode];
+ const files=[profiles[mode]].flat();report.selectedBenchmarks=files;save();
  run('profile','pnpm',['exec','vitest','run','--config','vitest.performance.config.ts','--project','performance',
-  'test/performance/'+file+'.profile.ts','--reporter=default','--reporter=json','--outputFile='+join(out,'vitest.json')]);
+  ...files.map(file=>'test/performance/'+file+'.profile.ts'),'--reporter=default','--reporter=json','--outputFile='+join(out,'vitest.json')]);
  report.exitCode=0;
 }catch(error){report.error=String(error.message);}
 finally{
