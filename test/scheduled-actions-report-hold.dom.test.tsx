@@ -7,6 +7,8 @@ import {createTranslator} from 'next-intl';
 import type {JobRunRow} from '../core/job-run';
 
 const state=vi.hoisted(()=>({locale:'en',session:vi.fn(),runs:vi.fn()}));
+vi.mock('../lib/runner-control',()=>({runnerControlSnapshot:async()=>null}));
+vi.mock('../app/admin/scheduled-actions/runner-inventory',()=>({RunnerInventory:()=>null}));
 vi.mock('../lib/session',()=>({getSession:state.session}));
 // Use the real permission predicate without importing unrelated entitlement readers.
 vi.mock('../lib/authz',()=>import('../lib/authz-model'));

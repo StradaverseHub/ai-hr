@@ -18,8 +18,9 @@ describe('operator tasks and controls',()=>{
  it('offers only installation navigation and logout, with no employee destinations',()=>{
   show(<OperatorShell name="Test Operator"><p>Customer content</p></OperatorShell>);
   const nav=screen.getByRole('navigation',{name:'Operator workspace'});
-  expect(within(nav).getAllByRole('link').map(a=>a.textContent)).toEqual(['Customers','Provisioning','Operator guide']);
+  expect(within(nav).getAllByRole('link').map(a=>a.textContent)).toEqual(['Customers','Provisioning','Operator guide','Scheduled actions']);
   expect(within(nav).getByRole('link',{name:'Customers'})).toHaveAttribute('href','/operator');
+  expect(within(nav).getByRole('link',{name:'Scheduled actions'})).toHaveAttribute('href','/admin/scheduled-actions');
   for(const name of ['Dashboard','My HR','My workspace','Payroll','Company'])expect(within(nav).queryByRole('link',{name})).toBeNull();
   expect(screen.getByRole('button',{name:'Log out'})).toBeTruthy();
  });
