@@ -1,6 +1,6 @@
 import { client } from '../../db/client';
 import { todayInKualaLumpur } from '../hr-date';
-import { connector, assertConnector } from './store';
+import { connector, assertProvisioning } from './store';
 import { EntraError, type WorkforceRecord } from './model';
 import { graphToken, upload, reconcile, confirmedDirectoryObject } from './graph';
 export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
@@ -13,7 +13,7 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
     try{
       const config=await connector(record.tenant_id);
       if(!config?.enabled||!config.provisioningEnabled)throw new EntraError('forbidden');
-      await assertConnector(config);
+      await assertProvisioning(config);
       if(record.last_status==='uncertain'&&!location){status='uncertain';delay=3600;}
       else {
         let token:string;try{token=await graphToken(config,fetcher);}catch(e){if(e instanceof EntraError&&e.code==='uncertain')throw new EntraError('unavailable',e.retryAfter);throw e;}
@@ -24,15 +24,15 @@ export async function runEntraWorker(limit=50,fetcher:typeof fetch=fetch) {
             location=null;
             if(Number(record.submitted_revision)!==Number(record.revision))status='pending';
             else directoryComplete=true;
-          }else status=result.state==='pending'?'submitted':'failed';
+          }else status=result.state==='pending'?'submitted':'rejected';
         }else if(!directoryComplete){
-          await assertConnector(config);location=await upload(config,record,token,fetcher);status='submitted';
+          await assertProvisioning(config);location=await upload(config,record,token,fetcher);status='submitted';
         }
         if(directoryComplete){
             const object=await confirmedDirectoryObject(config,record,token,fetcher);
             if(!object)status='awaiting-sync';
             else {
-              await assertConnector(config);
+              await assertProvisioning(config);
               const linked=await client.unsafe('select app.entra_auto_bind($1::uuid,$2::uuid,$3::bigint,$4::uuid,$5::uuid) linked',[record.tenant_id,record.person_id,record.revision,record.lease,object]);
               status=!record.active?'disabled':linked[0]?.linked?'ready':'awaiting-link';
             }

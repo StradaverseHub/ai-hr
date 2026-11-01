@@ -1,6 +1,6 @@
 # Proposal: Entra sign-in and HR-driven directory provisioning
 
-Status: Proposed design; implementation, testing and installation are pending.
+Status: Owner-authorized implementation candidate. Source and focused verification exist; installation and real Microsoft/AD acceptance remain pending.
 Date: 2026-11-02.
 Owner requirement: Employee creation should provision a corporate identity and support Microsoft sign-in. Cloud-managed Entra and on-premises Active Directory are both required at launch.
 
@@ -73,3 +73,23 @@ Customer setup questions: target domains/OUs, naming and immutable matching rule
 - [Authorization code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow): web/mobile code flow with PKCE and OIDC.
 - [ID token claims](https://learn.microsoft.com/en-us/entra/identity-platform/id-token-claims-reference): stable tenant/object identity and mutable email claims.
 - [Create user](https://learn.microsoft.com/en-us/graph/api/user-post-users?view=graph-rest-1.0): alternative cloud user-creation operation; not selected as the unified lifecycle route.
+
+## Implementation candidate — 2026-11-02
+
+The owner requested implementation of both directory modes and web/mobile sign-in. Candidate source
+lives in `lib/entra`, `app/login/entra`, `app/admin/settings/entra`, `mobile/lib/entra-auth.ts` and the
+uninstalled `0899_entra_workforce` migration. See [IT setup and acceptance](../../deploy/entra/README.md).
+The first implementation uses a stable generated account name and only displayName/userName/active
+plus the immutable source marker. The directory route and source-marker mapping freeze after setup;
+changing them needs reviewed migration. The optional federation leaves embedded login available.
+
+The administrator-enabled connector policy authorizes baseline employee HR-user creation only for a
+person without any HR user, after its exact newly provisioned directory object is independently
+confirmed. Existing HR accounts keep their identities/grants and require explicit linking. Linking
+cannot adopt installation operator accounts or another nonemployee account. Uncertain uploads require
+an explicit IT-reviewed recovery selection, followed by independent object verification without
+resubmission. Rejected upstream operations and transport/consent failures retain distinct retry paths.
+Technical connector setup is explicitly English pending customer-language review; employee sign-in
+controls/errors use the six existing locales. No source or hosted result establishes installed agent,
+real tenant consent/mapping, mobile device or production acceptance. IT will configure test directories
+after source verification, as confirmed by the owner.

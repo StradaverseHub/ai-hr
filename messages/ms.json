@@ -33433,7 +33433,8 @@
       "disabled": "Directory disabled",
       "failed": "Needs attention",
       "uncertain": "Outcome uncertain",
-      "awaiting-link": "Link existing HR account"
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
     },
     "sourceAnchorAttribute": "Immutable source-ID target attribute",
     "reconcile": "Check reconciled directory object",

@@ -57,3 +57,19 @@ The owner-pinned V9 application has three business senders: HR Onboarding, Human
 A binding stores a confirmed connection-version snapshot under the actual tenant and business profile. It requires the selected current connection version, the same operator's successful test within 30 minutes, explicit receipt and an unchanged sender-binding revision. Editing a saved connection leaves its working confirmed snapshot intact and visibly pending. Another binding change invalidates stale test receipts. Applying a lifecycle binding preserves the installation default used for account recovery and other email. An unbound profile follows that default. Compatibility providers do not advertise or accept this new binding operation.
 
 The private lifecycle sender chooses the frozen message profile in its actual tenant, reads only a confirmed snapshot or applied default, and rechecks its revision before committing SMTP start. The durable private proof records the actual sender address/profile and relay revision without secrets. Neither a template nor the browser posts credentials or an arbitrary From address. This is a candidate implementation amendment; testing, merge, installation and staging acceptance remain separate, and it grants no production deployment authority.
+
+
+## Optional Entra federation and workforce provisioning — 2 November 2026
+
+The owner requested Microsoft Entra login on web/mobile and HR-driven provisioning to both cloud
+Entra and on-premises AD from launch. Implement this as an optional capability alongside embedded
+HR authentication. HR still owns users, permissions, session revocation and effective employment
+eligibility. Microsoft owns its credentials and configured MFA/Conditional Access. No email-based
+adoption, Microsoft-group-to-HR-role inference or activation of the compatibility providers is allowed.
+
+An explicitly administrator-enabled provisioning policy may create baseline employee logins for
+newly provisioned people after exact immutable directory verification; it cannot adopt an existing HR
+login or grant administrative access. Existing logins require explicit ownership-verified linking.
+See the [Entra candidate decision and scope](entra-workforce-integration-proposal.md) and
+[IT setup](../../deploy/entra/README.md). Source implementation and hosted checks are separate from
+real tenant/AD acceptance and installation. No deployment authority is added by this amendment.

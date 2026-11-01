@@ -12,7 +12,7 @@ Internal login remains available; this increment does not enforce Entra-only sig
 
 An HR group administrator configures **Administration → Settings → Microsoft Entra ID**. Company-only
 admins cannot configure or link identities. Connect one Microsoft workforce tenant to one HR tenant.
-The saved directory tenant, organization code and cloud/hybrid mode are immutable; changing them
+The saved directory tenant, organization code, provisioning job, account domain, source-marker field and cloud/hybrid mode are immutable; changing them
 requires a separately reviewed migration. Credentials and revision are stored atomically, encrypted
 under the installation key. Blank password fields retain saved credentials. Saving rotates the
 connector revision and invalidates all existing Entra HR sessions. Existing internal sessions retain
@@ -105,8 +105,7 @@ bounded Retry-After. Uncertain uploads without a receipt are held for IT reconci
 blind replay; never clear that hold merely because no user appears immediately. Configure alerts for
 Needs attention and Outcome uncertain. A service restart does not imply its timer was installed.
 
-The administration queue currently shows the latest 500 rows. Failed rows expose a selected retry;
-uncertain outcomes require operator reconciliation with Microsoft logs. Do not edit queue rows or
+The administration queue currently shows the latest 500 rows. Rejected records can be resubmitted after IT repairs their mappings; other failed rows retry their retained receipt when one exists. For uncertain outcomes, IT first reconciles Microsoft logs, then uses the selected recovery action; the worker verifies the actual source-marked object without resending creation. Do not edit queue rows or
 rebind users directly in SQL to bypass that review. Secrets, access/refresh tokens, verifier codes
 and raw Graph errors must not enter logs or tickets. Queue/audit history contains identifiers and
 sanitized status, not credential payloads.
@@ -120,3 +119,5 @@ and forged tokens; state/nonce/PKCE and native return replay; secret rotation; a
 Microsoft throttling; upload timeouts; logout; retained mobile sessions and installation switching.
 Rehearse populated migration and key/database restore. Complete the required security/data release
 gate, staging acceptance and customer IT setup before claiming this integration installed or ready.
+
+The technical connector setup screen currently renders explicitly in English. Microsoft sign-in controls and errors are localized for the six existing employee languages; customer-language review of the connector instructions remains required before a localized rollout.

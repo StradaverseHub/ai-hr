@@ -60,5 +60,5 @@ export async function revokeEntraSession(token:string|undefined,native=false,ref
   const raw=native&&token?.startsWith('aihr_')?token.slice(5):native?'':token;
   let value=validOpaque(raw)?await readRecord<Identity>(client,`entra-session:${digest(raw!)}`):null;
   if(!value&&refresh?.startsWith('aihr_refresh_')&&validOpaque(refresh.slice(13)))value=await readRecord<Identity>(client,`entra-refresh:${digest(refresh.slice(13))}`);
-  if(value&&value.native===native)await authTransaction(`entra-family:${value.family}`,async tx=>{await deleteRecord(tx,`entra-family:${value!.family}`);});
+  if(value&&value.native===native)await authTransaction(`entra-family:${value.family}`,async tx=>{await deleteRecord(tx,`entra-family:${value!.family}`);await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.logged-out','user',$2::uuid,$3::jsonb)",[value!.tenantId,value!.userId,JSON.stringify({provider:'entra'})]);});
 }

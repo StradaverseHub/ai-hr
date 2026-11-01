@@ -41,3 +41,9 @@ export async function assertConnector(config: EntraConfig) {
   if (!current?.enabled || current.revision !== config.revision) throw new EntraError('forbidden');
 }
 export { readRecord, writeRecord };
+
+export async function assertProvisioning(config:EntraConfig) {
+  await assertConnector(config);
+  const rows=await client.unsafe('select app.entra_provision_allowed($1::uuid,$2::uuid) allowed',[config.tenantId,config.revision]);
+  if(!rows[0]?.allowed)throw new EntraError('forbidden');
+}

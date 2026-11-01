@@ -13,7 +13,7 @@ CREATE TABLE entra_workforce (
  lease uuid, lease_until timestamptz, attempts integer NOT NULL DEFAULT 0, next_at timestamptz NOT NULL DEFAULT now(),
  last_active boolean, submitted_revision bigint, submission_started_at timestamptz, confirmed_active boolean, last_day date,
  PRIMARY KEY(tenant_id,person_id), UNIQUE(tenant_id,object_id),
- CHECK(status IN ('pending','processing','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','uncertain'))
+ CHECK(status IN ('pending','processing','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','rejected','uncertain'))
 );
 --> statement-breakpoint
 ALTER TABLE entra_connector ENABLE ROW LEVEL SECURITY;
@@ -23,7 +23,8 @@ REVOKE ALL ON entra_connector,entra_workforce FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.entra_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
  WHERE u.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND NOT app.login_blocked(u.id)
- AND r.company_id IS NULL AND r.role IN ('super_admin','hr_admin'));
+ AND r.company_id IS NULL AND r.role IN ('super_admin','hr_admin')
+ AND NOT app.access_configuration_denied_for(u.tenant_id,u.id));
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.entra_organization(p_code text) RETURNS TABLE(tenant_id uuid) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -75,13 +76,14 @@ BEGIN
  -- Scheduled transitions are discovered even without a write on the effective date. Never infer deletion from an empty/failed source read.
  UPDATE public.entra_workforce w SET revision=w.revision+1,status='pending',next_at=now(),last_day=p_day
  FROM public.entra_connector c WHERE c.tenant_id=w.tenant_id AND c.enabled AND c.provisioning_enabled
+ AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=c.tenant_id AND t.status IN ('active','trial'))
  AND w.last_day IS DISTINCT FROM p_day AND w.lease_until IS NULL
  AND w.status IN ('ready','disabled','awaiting-sync')
  AND w.last_active IS DISTINCT FROM app.entra_active(w.tenant_id,w.person_id,p_day);
  RETURN QUERY WITH chosen AS (
  SELECT w.tenant_id,w.person_id FROM public.entra_workforce w JOIN public.entra_connector c USING(tenant_id)
- WHERE c.enabled AND c.provisioning_enabled AND w.next_at<=now() AND (w.lease_until IS NULL OR w.lease_until<now())
- AND w.status NOT IN ('ready','disabled','failed','awaiting-link')
+ WHERE c.enabled AND c.provisioning_enabled AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=c.tenant_id AND t.status IN ('active','trial')) AND w.next_at<=now() AND (w.lease_until IS NULL OR w.lease_until<now())
+ AND w.status NOT IN ('ready','disabled','failed','rejected','awaiting-link')
  ORDER BY w.next_at,w.tenant_id,w.person_id FOR UPDATE OF w SKIP LOCKED LIMIT 1
  ), claimed AS (
  UPDATE public.entra_workforce w SET submission_started_at=CASE WHEN w.last_location IS NULL AND w.status='pending' THEN now() ELSE w.submission_started_at END,lease=gen_random_uuid(),lease_until=now()+interval '2 minutes',
@@ -95,7 +97,7 @@ $$;
 CREATE FUNCTION app.entra_finish(p_tenant uuid,p_person uuid,p_revision bigint,p_lease uuid,p_status text,p_location text,p_active boolean,p_delay integer) RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF p_status NOT IN ('pending','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','uncertain') THEN RAISE EXCEPTION 'entra_invalid'; END IF;
+ IF p_status NOT IN ('pending','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','rejected','uncertain') THEN RAISE EXCEPTION 'entra_invalid'; END IF;
  UPDATE public.entra_workforce SET status=p_status,last_location=p_location,last_active=CASE WHEN p_status='submitted' THEN p_active ELSE last_active END,
  submitted_revision=CASE WHEN p_status='submitted' AND last_location IS NULL THEN p_revision ELSE submitted_revision END,
  confirmed_active=CASE WHEN p_status IN ('ready','disabled','awaiting-sync') THEN p_active ELSE confirmed_active END,
@@ -156,8 +158,9 @@ CREATE FUNCTION app.entra_retry(p_person uuid) RETURNS void LANGUAGE plpgsql SEC
 BEGIN
  IF NOT app.entra_admin() THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
  -- Uncertain creates have no safe receipt: do not blindly replay them. IT reconciles upstream first.
- UPDATE public.entra_workforce SET status=CASE WHEN last_location IS NULL THEN 'pending' ELSE 'submitted' END,next_at=now(),attempts=0
- WHERE tenant_id=app.current_tenant_id() AND person_id=p_person AND status='failed' AND lease_until IS NULL;
+ UPDATE public.entra_workforce SET status=CASE WHEN status='rejected' OR last_location IS NULL THEN 'pending' ELSE 'submitted' END,
+ last_location=CASE WHEN status='rejected' THEN NULL ELSE last_location END,next_at=now(),attempts=0
+ WHERE tenant_id=app.current_tenant_id() AND person_id=p_person AND status IN ('failed','rejected') AND lease_until IS NULL;
  IF NOT FOUND THEN RAISE EXCEPTION 'entra_conflict'; END IF;
 END;
 $$;
@@ -166,7 +169,8 @@ CREATE FUNCTION app.entra_auto_bind(p_tenant uuid,p_person uuid,p_revision bigin
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c public.entra_connector%ROWTYPE; u uuid; iss text;
 BEGIN
- SELECT * INTO c FROM public.entra_connector WHERE tenant_id=p_tenant AND enabled AND provisioning_enabled FOR SHARE;
+ SELECT * INTO c FROM public.entra_connector WHERE tenant_id=p_tenant AND enabled AND provisioning_enabled
+ AND EXISTS(SELECT 1 FROM public.tenant t WHERE t.id=p_tenant AND t.status IN ('active','trial')) FOR SHARE;
  IF NOT FOUND THEN RETURN false; END IF;
  PERFORM 1 FROM public.person p WHERE p.id=p_person AND p.tenant_id=p_tenant AND p.voided_at IS NULL FOR UPDATE;
  IF NOT FOUND THEN RETURN false; END IF;
@@ -204,5 +208,11 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_dirty(),app.entra_active(uuid,uuid,date),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) FROM PUBLIC,ai_hr_app;
-GRANT EXECUTE ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) TO ai_hr_app;
+CREATE FUNCTION app.entra_provision_allowed(p_tenant uuid,p_revision uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.entra_connector c JOIN public.tenant t ON t.id=c.tenant_id
+ WHERE c.tenant_id=p_tenant AND c.revision=p_revision AND c.enabled AND c.provisioning_enabled AND t.status IN ('active','trial'));
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_dirty(),app.entra_active(uuid,uuid,date),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_provision_allowed(uuid,uuid),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_provision_allowed(uuid,uuid),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) TO ai_hr_app;

@@ -28,7 +28,7 @@ export async function upload(config: EntraConfig, record: WorkforceRecord, token
   const location = response.headers.get('location');
   // Persist before reporting submission; absence of a receipt is an uncertain outcome, never ready.
   if (!location) throw new EntraError('uncertain');
-  return trustedGraphUrl(location).href;
+  try{return trustedGraphUrl(location).href;}catch{throw new EntraError('uncertain');}
 }
 export type ProvisioningResult = { state:'pending'|'failed'|'complete'; objectId?:string };
 export async function reconcile(config: EntraConfig, record: WorkforceRecord, token: string, fetcher: typeof fetch = fetch): Promise<ProvisioningResult> {
