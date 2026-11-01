@@ -315,3 +315,45 @@ Findings:
 - The approval questions now get a grounded answer: "no claim or attendance approvals are waiting; 1 leave approval is". The corpus scores these as misses because its ideal was to suggest the claim review. Answering from the actual queue is arguably better when nothing is pending; the corpus ideal is under review rather than changed here.
 - The fall on the original 58 is not caused by the gate. Every turn that changed state between runs was ungated and alternates between runs (for example `adm-start`, `emp-plan`, `explain-why`), so single runs vary by about ±3 turns. Future comparisons need repeated runs.
 - The two blank replies are admin setup walkthroughs whose final answer was cut off at the probe's 900-token output cap and failed to parse. A production harness needs a larger output budget and a truncation retry; the probe records them as errors.
+
+## 14. Repeated scoring and truncation handling
+
+The probe now:
+- raises the output cap from 900 to 1600 tokens;
+- retries a cut-off final answer once with a shorter-reply instruction;
+- runs the corpus in three concurrent passes (`AIHR_EVAL_REPEATS`, default 3; every tool is read-only, so passes share the fixture) and reports per-turn stability.
+
+The workflow is unchanged.
+
+Run [41272636225](https://github.com/StradaverseHub/ai-hr/actions/runs/41272636225) at a8c58b3: all checks and typecheck pass; 592 calls; OpenRouter-reported $0.0868.
+
+| | Pass 1 | Pass 2 | Pass 3 | Always | Sometimes | Never |
+| --- | --- | --- | --- | --- | --- | --- |
+| Original 58 turns understood | 38 | 38 | 36 | 33 | 7 | 18 |
+| Parity requests to the correct review page | 16 | 16 | 16 | 16 | 0 | 0 |
+
+Across all three passes:
+- negative-turn private reads 0;
+- blank replies 0;
+- errors 0;
+- links to pages that do not exist 0;
+- guidance grounded in product context 34 of 36.
+
+No final answer hit the new cap, so the truncation retry path was not exercised by the real model. It remains untested beyond review.
+
+The seven "sometimes" turns are `action-natural`, `adm-onboarding`, `adm-attendance`, `emp-cancel-backref`, `emp-plan`, `apr-exact` and `apr-bulk`. A single run can therefore move by up to about ±3 on the original corpus, which explains §13's 34–39.
+
+The 18 "never" turns, on my reading of the ledger (not an independent review):
+- **The self-reported mode does not match the corpus label, though the behaviour looks right** (ADR-0169 review already flagged self-reported modes as unreliable). In nine turns, grounded setup answers built from setup readiness and guides are labelled "answer" or "honest_gap" instead of "guide": `adm-start`, `adm-payroll-pre`, `adm-payroll-ready`, `adm-missing-data`, `adm-backref`, `adm-progress`, `emp-summary`, `explain-why` and `apr-team-leave` (the last answered from `who_is_away`, not the ideal read). The three negative turns refuse without any private read but are labelled differently: `neg-injection` replies in plain text without a mode, and `neg-file` and `apr-terminate` use "honest_gap".
+- **The corpus ideal is arguable:**
+  - `apr-attendance` answers from the real queue ("none waiting") instead of suggesting the review page.
+  - `mf-apply-and-balance` suggests annual leave instead of asking which leave type, although the question names annual leave.
+  - `emp-pay-why` answers honestly that the fixture has no released payslips.
+- **Real capability gaps:**
+  - `adm-leave`: no read of the company's leave types and entitlement rules.
+  - `adm-set-entitlement`: no company-wide entitlement-rule action.
+  - `adm-create-shift`: no shift-creation action. One pass suggested the employee schedule-group page instead.
+
+Next steps this points to:
+1. Score by observed behaviour (reads, proposals, refusal without private reads, grounded links) rather than by the model's own mode label, and have the corpus ideals reviewed independently. The current scorer understates the result, but by how much is unproven until that review.
+2. Add a minimized company configuration read: leave types and entitlement rules, and attendance schedules.
