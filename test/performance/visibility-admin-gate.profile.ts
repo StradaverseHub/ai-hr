@@ -58,7 +58,8 @@ it('materializes the identical native batch candidate set with exact coverage, l
  // retained effective payslip in company0 (without an assignment back to company0).
  await owner.client`delete from assignment where employment_id=${hired.employmentId}::uuid`;
  await owner.client`update employment set company_id=${companies[1]}::uuid where id=${hired.employmentId}::uuid`;
- await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId:hired.employmentId,companyId:companies[2],validFrom:'2020-01-01',validTo:'2021-01-01'});
+ const [historicalDepartment]=await owner.db.insert(s.department).values({tenantId:b.tenantId,companyId:companies[2],name:'Fictional historical protection department'}).returning();
+ await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId:hired.employmentId,companyId:companies[2],departmentId:historicalDepartment.id,employmentType:'full_time',validFrom:'2020-01-01',validTo:'2021-01-01'});
  await owner.db.insert(s.reportingLine).values({tenantId:b.tenantId,managerEmploymentId:users[1].employmentId,subordinateEmploymentId:hired.employmentId,lineType:'administrative',validFrom:today});
  const batches:{id:string;companyIndex:number}[]=[{id:processed.batchId,companyIndex:0}];
  for(let index=0;index<companies.length;index++)for(const month of [prior,current]){
