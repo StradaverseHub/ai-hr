@@ -3,8 +3,10 @@
  * For a pending leave request assigned to the caller to decide, four native checks run as the caller:
  *  - balance_covers: the applicant's ledger balance for the type (core/read.ts listLeaveRequests, the figure the
  *    approver already sees) against the days requested, under the leave type's negative-balance rule;
- *  - own_overlap: the applicant's other approved or pending leave on the same dates (listLeaveRequests);
- *  - team_coverage: others the caller may see away on those dates (core/read.ts plannedAbsences). No tenant
+ *  - own_overlap: the applicant's other approved or pending leave on the same dates (listLeaveRequestsPage, by the
+ *    applicant's employment and the request's date range);
+ *  - team_coverage: others the caller may see away on those dates (core/read.ts plannedAbsences, narrowed to the
+ *    people with leave on those dates). No tenant
  *    coverage minimum exists yet, so only "nobody else away" passes; anyone away is unusual for a person to judge;
  *  - policy_limits: the leave type's document rule and backdating, against the request.
  * Each check carries the rule version it ran under: the leave policy version (migration 0891) where the leave
@@ -23,16 +25,16 @@
  * `approver_recommendation`), and the approver's later choice can be appended as agreement or disagreement.
  * Runs only while the worker is switched on and the tenant is not stopped. Not imported by the production
  * Assistant. */
-import {and,eq} from 'drizzle-orm';
+import {and,desc,eq,gte,inArray,lte,ne} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
-import {leaveType as leaveTypeTable} from '../../db/schema';
-import {terasOutcomeRecord} from '../../db/teras-schema';
+import {employment,leaveApprovalStep,leaveRequest as leaveRequestTable,leaveType as leaveTypeTable} from '../../db/schema';
+import {terasOutcomeFollowup,terasOutcomeRecord} from '../../db/teras-schema';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {pendingLeaveTaskMetadata} from '../../packs/leave/service';
 import {workerRunGateTx} from '../agent-registry/controls';
 import {newRunId,recordOutcomeFollowup,writeOutcomeRecordTx,type OutcomeCheck} from '../outcome-record/record';
 import {leavePolicyVersionTx} from '../outcome-record/rule-versions';
-import {listLeaveRequests,plannedAbsences} from '../read';
+import {listLeaveRequests,listLeaveRequestsPage,plannedAbsences} from '../read';
 import {RECOMMENDATION_CHECKS,type RECOMMENDATION_RESULTS,type RECOMMENDATION_VERDICTS} from '../semantic-model/entities-recommend';
 
 export const RECOMMENDER_VERSION='leave_decision_recommender:v1';
@@ -68,7 +70,7 @@ export type LeaveDecisionFacts=Readonly<{
  leaveType:Readonly<{allowNegativeBalance:boolean;maxNegativeBalance:number|null;requiresDocument:boolean;mandatoryAfterDays:number|null}>|null;
  policyVersion:string|null;today:string}>;
 
-const OWNERS={balance:'core/read.ts#listLeaveRequests',overlap:'core/read.ts#listLeaveRequests',coverage:'core/read.ts#plannedAbsences',policy:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx'} as const;
+const OWNERS={balance:'core/read.ts#listLeaveRequests',overlap:'core/read.ts#listLeaveRequestsPage',coverage:'core/read.ts#plannedAbsences',policy:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx'} as const;
 const row=(check:RecommendationCheckName,owner:string,ruleVersion:string|null,result:RecommendationResult,blocking=false):RecommendationCheck=>Object.freeze({check,owner,ruleVersion,result,blocking});
 
 /** The four checks from the facts. Pure, so the boundary cases are testable without a database. */
@@ -102,6 +104,8 @@ export type RecommendLeaveDecisionResult=Readonly<{kind:'recommendation';recomme
 const capture=(ctx:SessionContext):SessionContext=>({...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))});
 const overlaps=(a:{startDate:string;endDate:string},b:{startDate:string;endDate:string})=>a.startDate<=b.endDate&&a.endDate>=b.startDate;
 const READ_CAP=200;
+/** How many other people on leave are enough to know team coverage is unusual; plannedAbsences loads only these. */
+const AWAY_CANDIDATES=50;
 
 /** Computes and records the recommendation for one leave request assigned to the caller. */
 export async function recommendLeaveDecision(supplied:SessionContext,input:Readonly<{leaveRequestId:string}>,now:Date=new Date()):Promise<RecommendLeaveDecisionResult>{
@@ -119,18 +123,27 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
  const reads:{tool:string;status:string;refs?:string[]}[]=[{tool:'core/read.ts#listLeaveRequests',status:'ok',refs:[request.id]}];
  let ownLeave:LeaveDecisionFacts['ownLeave']=null;
  try{
-  const [approved,pending]=await Promise.all([listLeaveRequests(ctx,undefined,READ_CAP,{status:'approved'}),listLeaveRequests(ctx,undefined,READ_CAP,{status:'pending'})]);
-  const own=(rows:typeof approved)=>rows.filter(other=>other.employmentId===request.employmentId&&other.id!==request.id&&overlaps(other,request));
-  const ownApproved=own(approved),ownPending=own(pending);
-  ownLeave={complete:approved.length<READ_CAP&&pending.length<READ_CAP,overlappingApproved:ownApproved.length,overlappingPending:ownPending.length};
-  reads.push({tool:'core/read.ts#listLeaveRequests',status:'ok',refs:[...ownApproved,...ownPending].map(other=>other.id)});
- }catch{reads.push({tool:'core/read.ts#listLeaveRequests',status:'failed'});}
+  // The applicant's own approved or pending requests on these dates, by employment and date range: never a sample
+  // of everything the caller can see, so a busy approver's history cannot make this check incomplete.
+  const {rows,total}=await listLeaveRequestsPage(ctx,{employmentIds:[request.employmentId],statuses:['approved','pending'],
+   from:request.startDate,to:request.endDate,limit:READ_CAP,offset:0});
+  const own=rows.filter(other=>other.employmentId===request.employmentId&&other.id!==request.id&&overlaps(other,request));
+  const ownApproved=own.filter(other=>other.status==='approved'),ownPending=own.filter(other=>other.status==='pending');
+  ownLeave={complete:total<=rows.length,overlappingApproved:ownApproved.length,overlappingPending:ownPending.length};
+  reads.push({tool:OWNERS.overlap,status:'ok',refs:[...ownApproved,...ownPending].map(other=>other.id)});
+ }catch{reads.push({tool:OWNERS.overlap,status:'failed'});}
  let othersAway:number|null=null;
  try{
-  const people=await plannedAbsences(ctx,undefined,{from:request.startDate,to:request.endDate});
+  // Only the people with approved or pending leave on these dates are loaded into plannedAbsences, never every
+  // employment the caller can see. Any one of them away makes the check unusual, so a bounded list suffices.
+  const candidates=await withTenant(ctx,tx=>tx.selectDistinct({personId:employment.personId}).from(leaveRequestTable)
+   .innerJoin(employment,eq(employment.id,leaveRequestTable.employmentId))
+   .where(and(inArray(leaveRequestTable.status,['approved','pending']),lte(leaveRequestTable.startDate,request.endDate),gte(leaveRequestTable.endDate,request.startDate),
+    ne(employment.personId,request.personId))).limit(AWAY_CANDIDATES));
+  const people=candidates.length?await plannedAbsences(ctx,undefined,{from:request.startDate,to:request.endDate},undefined,{personIds:candidates.map(row=>row.personId)}):[];
   othersAway=people.filter(person=>person.id!==request.personId&&person.leaves.length>0).length;
-  reads.push({tool:'core/read.ts#plannedAbsences',status:'ok'});
- }catch{reads.push({tool:'core/read.ts#plannedAbsences',status:'failed'});}
+  reads.push({tool:OWNERS.coverage,status:'ok'});
+ }catch{reads.push({tool:OWNERS.coverage,status:'failed'});}
  let leaveType:LeaveDecisionFacts['leaveType']=null,policyVersion:string|null=null;
  try{
   await withTenant(ctx,async tx=>{
@@ -187,16 +200,43 @@ export function recommendationText(recommendation:Pick<LeaveDecisionRecommendati
 /** After the approver decided on the review route: whether they followed the recommendation. Appended to the
  * recommendation's own outcome record (agreement metrics): approving after recommend_approve is accepted,
  * rejecting it is not. needs_review recommends nothing, so it records nothing. The verdict is read from the
- * record, never taken from the caller. */
+ * record, never taken from the caller, and so is the decision:
+ *  - only the approver the recommendation was computed for (the record's asker) appends, never a group
+ *    administrator or anyone else who can read the record;
+ *  - the decision is the native one: an approval step of the recommended request that this person decided
+ *    after the recommendation was computed. A supplied decision that differs from it records nothing;
+ *  - one decision per record (migration 0906 unique index): a repeat records nothing. */
 export async function recordRecommendationDecision(supplied:SessionContext,input:Readonly<{recordId:string;decision:'approved'|'rejected'}>):Promise<Readonly<{id:string}>|null>{
  const ctx=capture(supplied);
  if(input.decision!=='approved'&&input.decision!=='rejected')return null;
- const [record]=await withTenant(ctx,tx=>tx.select({outcome:terasOutcomeRecord.outcome,agentIdentity:terasOutcomeRecord.agentIdentity}).from(terasOutcomeRecord)
-  .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasOutcomeRecord.id,input.recordId))).limit(1));
- if(!record||record.agentIdentity!==RECOMMENDER_AGENT_IDENTITY)return null;
- const verdict=record.outcome.verdict;
- if(verdict!=='recommend_approve')return null;
- const followed=input.decision==='approved';
+ if(!ctx.userId||!ctx.personId||ctx.agent||typeof input.recordId!=='string')return null;
+ const bound=await withTenant(ctx,async tx=>{
+  const [record]=await tx.select({outcome:terasOutcomeRecord.outcome,agentIdentity:terasOutcomeRecord.agentIdentity,askedByUserId:terasOutcomeRecord.askedByUserId,
+   startedAt:terasOutcomeRecord.startedAt}).from(terasOutcomeRecord)
+   .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasOutcomeRecord.id,input.recordId))).limit(1);
+  if(!record||record.agentIdentity!==RECOMMENDER_AGENT_IDENTITY||record.askedByUserId!==ctx.userId)return null;
+  const outcome=record.outcome as {verdict?:unknown;leaveRequestId?:unknown};
+  if(outcome.verdict!=='recommend_approve'||typeof outcome.leaveRequestId!=='string')return null;
+  // The native decision: a step of that request decided by one of this person's employments since the recommendation.
+  const [step]=await tx.select({status:leaveApprovalStep.status}).from(leaveApprovalStep)
+   .innerJoin(employment,eq(employment.id,leaveApprovalStep.decidedByEmploymentId))
+   .where(and(eq(leaveApprovalStep.tenantId,ctx.tenantId),eq(leaveApprovalStep.leaveRequestId,outcome.leaveRequestId),
+    inArray(leaveApprovalStep.status,['approved','rejected']),eq(employment.personId,ctx.personId!),gte(leaveApprovalStep.decidedAt,record.startedAt)))
+   .orderBy(desc(leaveApprovalStep.decidedAt)).limit(1);
+  if(!step||(step.status!=='approved'&&step.status!=='rejected'))return null;
+  const [existing]=await tx.select({id:terasOutcomeFollowup.id}).from(terasOutcomeFollowup)
+   .where(and(eq(terasOutcomeFollowup.tenantId,ctx.tenantId),eq(terasOutcomeFollowup.recordId,input.recordId),eq(terasOutcomeFollowup.kind,'decision'))).limit(1);
+  if(existing)return null;
+  return{decision:step.status as 'approved'|'rejected',leaveRequestId:outcome.leaveRequestId};
+ });
+ if(!bound||bound.decision!==input.decision)return null;
+ const followed=bound.decision==='approved';
+ // A concurrent append loses on the unique index and records nothing.
  return recordOutcomeFollowup(ctx,{kind:'decision',recordId:input.recordId,decision:followed?'accepted':'rejected',humanInvolvement:'decided',
-  reference:{decision:input.decision}});
+  reference:{decision:bound.decision}}).catch(error=>{if(uniqueViolation(error))return null;throw error;});
+}
+function uniqueViolation(error:unknown):boolean{
+ let cur=error as {code?:string;cause?:unknown}|null|undefined;
+ for(let i=0;cur&&i<4;i++){if(cur.code==='23505')return true;cur=cur.cause as {code?:string;cause?:unknown}|null|undefined;}
+ return false;
 }

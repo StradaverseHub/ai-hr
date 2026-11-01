@@ -14,7 +14,7 @@ import {setMandateStopSwitch} from '../../core/mandates/mandates';
 import {recommendLeaveDecision,recordRecommendationDecision} from '../../core/recommenders/leave-decision';
 import {newRunId,writeOutcomeRecord} from '../../core/outcome-record/record';
 import {prepareSuggestedProposal} from '../../core/proposals/suggested';
-import {requestLeave} from '../../packs/leave/service';
+import {decideLeave,requestLeave} from '../../packs/leave/service';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,setModule} from '../harness';
 import {buildMatrix,nextWorkday,type Matrix} from './review-actors';
 
@@ -68,23 +68,27 @@ describe('approvals chooser from a model suggestion',()=>{
 });
 
 describe('recommendation agreement follow-ups',()=>{
- let recordId:string;
+ let recordId:string,requestId:string;
  beforeEach(async()=>{
   await setWorkerSwitch(m.groupAdmin.ctx,{workerId:'approver_recommendation',enabled:true});
-  const requestId=(await requestLeave(m.employee.ctx,{employmentId:m.employee.employmentId,leaveTypeId:m.b.annualLeaveTypeId,startDate:nextWorkday(3),endDate:nextWorkday(3),durationType:'full_day',reason:'Fictional follow-up'})).leaveRequestId;
+  requestId=(await requestLeave(m.employee.ctx,{employmentId:m.employee.employmentId,leaveTypeId:m.b.annualLeaveTypeId,startDate:nextWorkday(3),endDate:nextWorkday(3),durationType:'full_day',reason:'Fictional follow-up'})).leaveRequestId;
   const result=await recommendLeaveDecision(m.manager.ctx,{leaveRequestId:requestId});
   if(result.kind!=='recommendation'||!result.recommendation.recordId)throw Error('fixture: expected a recorded recommendation');
   // Agreement is only recorded for recommend_approve; the fixture is built so every check passes.
   expect(result.recommendation.verdict).toBe('recommend_approve');
   recordId=result.recommendation.recordId;
  });
- it('REVIEW medium: a group administrator cannot append a decision to another approver\'s recommendation record',async()=>{
+ it('fixed M4: a group administrator cannot append a decision to another approver\'s recommendation record',async()=>{
+  // Even after the approver really decided, the record's asker alone appends.
+  await decideLeave(m.manager.ctx,{leaveRequestId:requestId,decision:'approved'});
   const appended=await recordRecommendationDecision(m.groupAdmin.ctx,{recordId,decision:'rejected'}).catch(()=>null);
   expect(appended).toBeNull();
   const rows=await owner.db.select().from(terasOutcomeFollowup).where(eq(terasOutcomeFollowup.recordId,recordId));
   expect(rows).toHaveLength(0);
  });
- it('REVIEW low: one recommendation carries at most one agreement decision (metrics cannot be inflated by repeats)',async()=>{
+ it('fixed M4: one recommendation carries at most one agreement decision (metrics cannot be inflated by repeats)',async()=>{
+  // The follow-up is bound to the native decision, so the approver decides first.
+  await decideLeave(m.manager.ctx,{leaveRequestId:requestId,decision:'approved'});
   await recordRecommendationDecision(m.manager.ctx,{recordId,decision:'approved'});
   await recordRecommendationDecision(m.manager.ctx,{recordId,decision:'approved'}).catch(()=>null);
   await recordRecommendationDecision(m.manager.ctx,{recordId,decision:'approved'}).catch(()=>null);
@@ -92,6 +96,20 @@ describe('recommendation agreement follow-ups',()=>{
   expect(rows).toHaveLength(1);
   const metrics=(await listWorkers(m.groupAdmin.ctx)).find(worker=>worker.id==='approver_recommendation')!.metrics;
   expect(metrics.decided).toBe(1);
+ });
+ it('fixed M4: the database refuses a forged or repeated decision follow-up, whoever writes it',async()=>{
+  const forged=()=>withTenant(m.manager.ctx,tx=>tx.insert(terasOutcomeFollowup).values({tenantId:m.b.tenantId,recordId,kind:'decision',decision:'accepted',humanInvolvement:'decided',byUserId:m.manager.ctx.userId!}));
+  // Before any native decision, even the asker cannot append one: the policy binds it to a decided approval step.
+  await expect(forged()).rejects.toThrow();
+  await decideLeave(m.manager.ctx,{leaveRequestId:requestId,decision:'approved'});
+  // A follow-up that contradicts the native decision is refused too.
+  await expect(withTenant(m.manager.ctx,tx=>tx.insert(terasOutcomeFollowup).values({tenantId:m.b.tenantId,recordId,kind:'decision',decision:'rejected',humanInvolvement:'decided',byUserId:m.manager.ctx.userId!}))).rejects.toThrow();
+  // Straight inserts under each role's own RLS: a group administrator (not the asker) is refused at the policy...
+  await expect(withTenant(m.groupAdmin.ctx,tx=>tx.insert(terasOutcomeFollowup).values({tenantId:m.b.tenantId,recordId,kind:'decision',decision:'rejected',humanInvolvement:'decided',byUserId:m.groupAdmin.ctx.userId!}))).rejects.toThrow();
+  // ...and the asker gets one decision row at most (unique index), however it is written.
+  await forged();
+  await expect(forged()).rejects.toThrow();
+  expect(await owner.db.select().from(terasOutcomeFollowup).where(eq(terasOutcomeFollowup.recordId,recordId))).toHaveLength(1);
  });
 });
 

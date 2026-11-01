@@ -62,7 +62,7 @@ describe('recommendation at scale',()=>{
   expect(result.kind==='recommendation'&&result.recommendation.verdict).toBe('recommend_approve');
  },60_000);
 
- it('REVIEW medium: 200 visible approved requests of OTHER people do not make the applicant\'s own-overlap check "missing" (leave-decision.ts:122-125)',async()=>{
+ it('fixed H3: 200 visible approved requests of OTHER people do not make the applicant\'s own-overlap check "missing" (leave-decision.ts:122-125)',async()=>{
   // The colleague (another direct report the manager can see) has 200 approved single days in the past. None
   // overlaps the applicant's request; the applicant has no other leave at all.
   await approvedLeave(colleague.employmentId,pastWeekdays(todayInKualaLumpur(),200));
@@ -93,7 +93,7 @@ describe('large tenant (2000 employments)',()=>{
   expect(elapsed,`digestPreview took ${elapsed} ms`).toBeLessThan(10_000);
  },60_000);
 
- it('REVIEW low: teras_outcome_record has an index for the grantor and agent-identity lookups the inbox and registry run on every render',async()=>{
+ it('fixed M17: teras_outcome_record has an index for the grantor and agent-identity lookups the inbox and registry run on every render',async()=>{
   // Plans are checked with sequential scans disabled, so the answer depends on index availability, not table size.
   const plan=async(query:ReturnType<typeof sql>)=>{
    const rows=await owner.db.transaction(async tx=>{await tx.execute(sql`set local enable_seqscan=off`);return tx.execute(sql`explain (format json) ${query}`);});

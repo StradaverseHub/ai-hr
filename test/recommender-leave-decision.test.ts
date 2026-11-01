@@ -15,7 +15,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vit
 import * as schema from '../db/schema';
 import type {SessionContext} from '../db/client';
 import {hireEmployee,setReportingLine} from '../core/org';
-import {requestLeave} from '../packs/leave/service';
+import {decideLeave,requestLeave} from '../packs/leave/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {setMandateStopSwitch} from '../core/mandates/mandates';
 import {listOutcomeRecords} from '../core/outcome-record/record';
@@ -222,6 +222,11 @@ describe('approver recommendations on fictional data',()=>{
   const before=(await listWorkers(hr)).find(row=>row.id==='approver_recommendation')!;
   expect(before.metrics).toMatchObject({measured:false,acceptanceRate:null,reversalRate:null});
   expect(before.lastRunAt).toBeInstanceOf(Date);
+  // Agreement is bound to the native decision: nothing is recorded before the approver decides, nor for a decision
+  // that differs from the one they made.
+  await expect(recordRecommendationDecision(manager,{recordId:result.recommendation.recordId!,decision:'approved'})).resolves.toBeNull();
+  await decideLeave(manager,{leaveRequestId:requestId,decision:'approved'});
+  await expect(recordRecommendationDecision(manager,{recordId:result.recommendation.recordId!,decision:'rejected'})).resolves.toBeNull();
   await recordRecommendationDecision(manager,{recordId:result.recommendation.recordId!,decision:'approved'});
   const [record]=await listOutcomeRecords(manager);
   expect(record).toMatchObject({decision:'accepted',effectiveHumanInvolvement:'decided'});
