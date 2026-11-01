@@ -29,7 +29,7 @@ export async function testEntra() {
 export async function bindEntra(form:FormData) {
   const ctx=await context();let failed=false;
   try{
-    const {z}=await import('zod');const person=z.uuid().parse(form.get('personId')),user=z.uuid().parse(form.get('userId')),object=z.uuid().parse(form.get('objectId')).toLowerCase();
+    const {z}=await import('zod');const target=String(form.get('target')||'').split(':');const person=z.uuid().parse(target[0]),user=z.uuid().parse(target[1]),object=z.uuid().parse(form.get('objectId')).toLowerCase();
     if(form.get('confirmed')!=='on')throw Error();
     await withTenant(ctx,tx=>tx.execute(sql`select app.entra_bind(${person}::uuid,${user}::uuid,${object}::uuid)`));
   }catch{failed=true;}
@@ -38,5 +38,16 @@ export async function bindEntra(form:FormData) {
 export async function retryEntra(form:FormData) {
   const ctx=await context();let failed=false;
   try{const {z}=await import('zod');const person=z.uuid().parse(form.get('personId'));await withTenant(ctx,tx=>tx.execute(sql`select app.entra_retry(${person}::uuid)`));}catch{failed=true;}
+  redirect('/admin/settings/entra?'+(failed?'error=1':'saved=1'));
+}
+
+export async function reconcileEntra(form:FormData) {
+  const ctx=await context();let failed=false;
+  try{
+    const {z}=await import('zod');const person=z.uuid().parse(form.get('personId'));
+    if(form.get('confirmed')!=='on')throw Error();
+    const {todayInKualaLumpur}=await import('@/lib/hr-date');
+    await withTenant(ctx,tx=>tx.execute(sql`select app.entra_reconcile_hold(${person}::uuid,${todayInKualaLumpur()}::date)`));
+  }catch{failed=true;}
   redirect('/admin/settings/entra?'+(failed?'error=1':'saved=1'));
 }

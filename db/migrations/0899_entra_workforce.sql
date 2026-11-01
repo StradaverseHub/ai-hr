@@ -11,7 +11,7 @@ CREATE TABLE entra_workforce (
  revision bigint NOT NULL DEFAULT 1, status text NOT NULL DEFAULT 'pending',
  last_status text NOT NULL DEFAULT 'pending', last_location text, object_id uuid,
  lease uuid, lease_until timestamptz, attempts integer NOT NULL DEFAULT 0, next_at timestamptz NOT NULL DEFAULT now(),
- last_active boolean, submitted_revision bigint, confirmed_active boolean, last_day date,
+ last_active boolean, submitted_revision bigint, submission_started_at timestamptz, confirmed_active boolean, last_day date,
  PRIMARY KEY(tenant_id,person_id), UNIQUE(tenant_id,object_id),
  CHECK(status IN ('pending','processing','submitted','awaiting-sync','awaiting-link','ready','disabled','failed','uncertain'))
 );
@@ -43,7 +43,7 @@ BEGIN
  INSERT INTO public.entra_connector VALUES(t,p_org,p_directory,p_mode,p_enabled,p_provision,p_revision)
  ON CONFLICT(tenant_id) DO UPDATE SET enabled=p_enabled,provisioning_enabled=p_provision,revision=p_revision;
  INSERT INTO public.entra_workforce(tenant_id,person_id) SELECT t,p.id FROM public.person p WHERE p.tenant_id=t AND EXISTS(SELECT 1 FROM public.employment e WHERE e.person_id=p.id AND e.tenant_id=t)
- ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status='pending';
+ ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
  PERFORM app.append_auth_event(t,'entra-connector',t,'entra.configured','user',app.current_user_id(),jsonb_build_object('revision',p_revision,'enabled',p_enabled,'provisioning',p_provision));
 END;
 $$;
@@ -54,7 +54,7 @@ BEGIN
  IF TG_TABLE_NAME='person' THEN t:=NEW.tenant_id; p:=NEW.id; ELSE t:=NEW.tenant_id; p:=NEW.person_id; END IF;
  IF EXISTS(SELECT 1 FROM public.entra_connector WHERE tenant_id=t AND provisioning_enabled) THEN
  INSERT INTO public.entra_workforce(tenant_id,person_id) VALUES(t,p)
- ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status='pending';
+ ON CONFLICT(tenant_id,person_id) DO UPDATE SET revision=entra_workforce.revision+1,next_at=now(),status=CASE WHEN entra_workforce.status='uncertain' AND entra_workforce.last_location IS NULL THEN 'uncertain' ELSE 'pending' END;
  END IF;
  RETURN NEW;
 END;
@@ -69,7 +69,7 @@ CREATE FUNCTION app.entra_active(p_tenant uuid,p_person uuid,p_day date) RETURNS
  AND e.blacklisted_at IS NULL AND e.hired_on<=p_day AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL OR LEAST(e.resignation_date,e.last_working_date,e.terminated_on)>=p_day));
 $$;
 --> statement-breakpoint
-CREATE FUNCTION app.entra_claim(p_day date) RETURNS TABLE(tenant_id uuid,person_id uuid,full_name text,active boolean,revision bigint,lease uuid,mode text,last_location text,last_status text,source_key text,submitted_revision bigint,last_active boolean)
+CREATE FUNCTION app.entra_claim(p_day date) RETURNS TABLE(tenant_id uuid,person_id uuid,full_name text,active boolean,revision bigint,lease uuid,mode text,last_location text,last_status text,source_key text,submitted_revision bigint,last_active boolean,submission_started_at timestamptz)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  -- Scheduled transitions are discovered even without a write on the effective date. Never infer deletion from an empty/failed source read.
@@ -84,11 +84,11 @@ BEGIN
  AND w.status NOT IN ('ready','disabled','failed','awaiting-link')
  ORDER BY w.next_at,w.tenant_id,w.person_id FOR UPDATE OF w SKIP LOCKED LIMIT 1
  ), claimed AS (
- UPDATE public.entra_workforce w SET lease=gen_random_uuid(),lease_until=now()+interval '2 minutes',
+ UPDATE public.entra_workforce w SET submission_started_at=CASE WHEN w.last_location IS NULL AND w.status='pending' THEN now() ELSE w.submission_started_at END,lease=gen_random_uuid(),lease_until=now()+interval '2 minutes',
  last_status=CASE WHEN w.status='processing' OR (w.status='uncertain' AND w.last_location IS NULL) THEN 'uncertain' WHEN w.last_location IS NOT NULL THEN 'submitted' ELSE w.status END,status='processing',attempts=w.attempts+1,last_day=p_day
  FROM chosen s WHERE w.tenant_id=s.tenant_id AND w.person_id=s.person_id RETURNING w.*)
- SELECT w.tenant_id,w.person_id,p.full_name,app.entra_active(w.tenant_id,w.person_id,p_day),w.revision,w.lease,c.mode,w.last_location,w.last_status,'aihr:'||w.tenant_id||':'||w.person_id,w.submitted_revision,w.last_active
- FROM claimed w JOIN public.person p ON p.id=w.person_id AND p.tenant_id=w.tenant_id JOIN public.entra_connector c USING(tenant_id);
+ SELECT w.tenant_id,w.person_id,p.full_name,app.entra_active(w.tenant_id,w.person_id,p_day),w.revision,w.lease,c.mode,w.last_location,w.last_status,'aihr:'||w.tenant_id||':'||w.person_id,w.submitted_revision,w.last_active,w.submission_started_at
+ FROM claimed w JOIN public.person p ON p.id=w.person_id AND p.tenant_id=w.tenant_id JOIN public.entra_connector c ON c.tenant_id=w.tenant_id;
 END;
 $$;
 --> statement-breakpoint
@@ -105,7 +105,7 @@ BEGIN
  -- Preserve a receipt even if HR changed while the upload was in flight. Reconcile it before the newer revision.
  UPDATE public.entra_workforce SET lease=NULL,lease_until=NULL,
  last_location=CASE WHEN p_status='submitted' THEN p_location ELSE last_location END,
- submitted_revision=CASE WHEN p_status='submitted' THEN p_revision ELSE submitted_revision END,
+ submitted_revision=CASE WHEN p_status='submitted' AND last_location IS NULL THEN p_revision ELSE submitted_revision END,
  last_active=CASE WHEN p_status='submitted' THEN p_active ELSE last_active END,
  status=CASE WHEN p_status='uncertain' AND p_location IS NULL THEN 'uncertain' ELSE status END
  WHERE tenant_id=p_tenant AND person_id=p_person AND lease=p_lease;
@@ -191,5 +191,18 @@ BEGIN
 END;
 $$;
 --> statement-breakpoint
-REVOKE ALL ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_dirty(),app.entra_active(uuid,uuid,date),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) FROM PUBLIC,ai_hr_app;
-GRANT EXECUTE ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) TO ai_hr_app;
+CREATE FUNCTION app.entra_reconcile_hold(p_person uuid,p_day date) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.entra_admin() THEN RAISE EXCEPTION 'entra_forbidden' USING ERRCODE='42501'; END IF;
+ UPDATE public.entra_workforce SET status='awaiting-sync',last_active=app.entra_active(tenant_id,person_id,p_day),
+ submitted_revision=revision,next_at=now()
+ WHERE tenant_id=app.current_tenant_id() AND person_id=p_person AND status='uncertain' AND last_location IS NULL
+ AND lease_until IS NULL;
+ IF NOT FOUND THEN RAISE EXCEPTION 'entra_conflict'; END IF;
+ PERFORM app.append_auth_event(app.current_tenant_id(),'entra-workforce',p_person,'entra.reconciliation-requested','user',app.current_user_id(),NULL);
+END;
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_dirty(),app.entra_active(uuid,uuid,date),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.entra_admin(),app.entra_organization(text),app.entra_configure(text,uuid,text,boolean,boolean,uuid,uuid),app.entra_claim(date),app.entra_finish(uuid,uuid,bigint,uuid,text,text,boolean,integer),app.entra_bind(uuid,uuid,uuid),app.entra_login_allowed(uuid,uuid,uuid,date),app.entra_status(),app.entra_retry(uuid),app.entra_reconcile_hold(uuid,date),app.entra_auto_bind(uuid,uuid,bigint,uuid,uuid) TO ai_hr_app;

@@ -3,6 +3,7 @@ Description=AI HR Entra workforce provisioning
 After=network-online.target
 [Service]
 Type=oneshot
+TimeoutStartSec=5min
 User=aihr
 WorkingDirectory=/opt/ai-hr
 EnvironmentFile=/etc/ai-hr/entra-worker.env

@@ -26,6 +26,8 @@ export async function saveConnector(ctx: SessionContext, input: EntraConfig, exp
   await requireEntraAdmin(ctx);
   const config = entraConfigSchema.parse(input);
   if (config.tenantId !== ctx.tenantId) throw new EntraError('forbidden');
+  const previous=await connector(ctx.tenantId);
+  if(previous&&(['domain','servicePrincipalId','jobId','sourceAnchorAttribute'] as const).some(key=>previous[key]!==config[key]))throw new EntraError('conflict');
   // Private record and public connector revision commit together. Credentials never enter audit payloads.
   await withTenant(ctx, async tx => {
     await tx.execute(sql`select app.entra_configure(${config.organization},${config.directoryTenantId}::uuid,${config.mode},${config.enabled},${config.provisioningEnabled},${config.revision}::uuid,${expectedRevision}::uuid)`);

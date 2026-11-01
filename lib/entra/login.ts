@@ -21,6 +21,7 @@ export async function oidcConfiguration(config:EntraConfig) {
     const url=new URL(String(metadata[key]));
     if(url.origin!=='https://login.microsoftonline.com'||url.username||url.password||url.hash)throw new EntraError('invalid');
   }
+  oidc.enableNonRepudiationChecks(value);
   return value;
 }
 export async function nativeLaunch(organization:string, native:Native) {

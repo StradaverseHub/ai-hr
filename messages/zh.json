@@ -33435,6 +33435,9 @@
       "uncertain": "Outcome uncertain",
       "awaiting-link": "Link existing HR account"
     },
-    "sourceAnchorAttribute": "Immutable source-ID target attribute"
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
   }
 }

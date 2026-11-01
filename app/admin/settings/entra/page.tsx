@@ -1,15 +1,17 @@
+import { CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { sql } from 'drizzle-orm';
 import { withTenant } from '@/db/client';
 import { scopedAdmin } from '@/lib/scope';
 import { connector, requireEntraAdmin } from '@/lib/entra/store';
-import { PageHeader, Card, CardHeader, CardTitle, CardContent, Field, inputCls, btnPrimary, btnGhost } from '@/components/ui';
-import { saveEntra, testEntra, bindEntra, retryEntra } from './actions';
+import { PageHeader, Card, Field, inputCls, btnPrimary, btnGhost } from '@/components/ui';
+import { saveEntra, testEntra, bindEntra, retryEntra, reconcileEntra } from './actions';
 export default async function EntraPage({searchParams}:{searchParams:Promise<{error?:string;saved?:string;tested?:string;linked?:string}>}) {
   const {s:ctx}=await scopedAdmin();await requireEntraAdmin(ctx);
   const t=await getTranslations('entra'),config=await connector(ctx.tenantId),query=await searchParams;
   const records=await withTenant(ctx,async tx=>await tx.execute(sql`select * from app.entra_status()`) as unknown as {person_id:string;status:string;object_id:string|null;attempts:number}[]);
+  const accounts=await withTenant(ctx,async tx=>await tx.execute(sql`select u.id user_id,p.id person_id,p.full_name from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId} and u.archived_at is null order by p.full_name,u.id limit 500`) as unknown as {user_id:string;person_id:string;full_name:string}[]);
   const identifiers=['organization','directoryTenantId','clientId','provisioningClientId','servicePrincipalId','jobId','domain','sourceAnchorAttribute'] as const;
   return <div className="space-y-6" lang="en">
     <PageHeader title={t('title')} description={t('description')}/>
@@ -37,13 +39,13 @@ export default async function EntraPage({searchParams}:{searchParams:Promise<{er
     <Card><CardHeader><CardTitle>{t('linkTitle')}</CardTitle></CardHeader><CardContent>
       <p className="mb-4 text-sm text-muted-foreground">{t('linkHelp')}</p>
       <form action={bindEntra} className="space-y-4">
-        <div className="grid gap-4 sm:grid-cols-3">{['personId','userId','objectId'].map(key=><Field label={t(key)} key={key}><input className={inputCls} name={key} required minLength={36} maxLength={36}/></Field>)}</div>
+        <div className="grid gap-4 sm:grid-cols-2"><Field label={t('userId')}><select name="target" className={inputCls} required defaultValue=""><option value="" disabled>{t('selectUser')}</option>{accounts.map(account=><option key={account.user_id} value={account.person_id+':'+account.user_id}>{account.full_name} · {account.user_id}</option>)}</select></Field><Field label={t('objectId')}><input className={inputCls} name="objectId" required minLength={36} maxLength={36}/></Field></div>
         <label className="flex items-start gap-2 text-sm"><input required type="checkbox" name="confirmed"/>{t('linkConfirm')}</label>
         <button className={btnPrimary}>{t('link')}</button>
       </form>
     </CardContent></Card>
     <Card><CardHeader><CardTitle>{t('queue')}</CardTitle></CardHeader><CardContent>
-      {!records.length?<p className="text-sm text-muted-foreground">{t('empty')}</p>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">{t('personId')}</th><th className="p-3">{t('status')}</th><th className="p-3">{t('attempts')}</th><th className="p-3">{t('action')}</th></tr></thead><tbody>{records.map(row=><tr className="border-t border-border" key={row.person_id}><td className="break-all p-3">{row.person_id}</td><td className="p-3">{t(`states.${row.status}`)}</td><td className="p-3 tabular-nums">{row.attempts}</td><td className="p-3">{row.status==='failed'&&<form action={retryEntra}><input type="hidden" name="personId" value={row.person_id}/><button className={btnGhost}>{t('retry')}</button></form>}</td></tr>)}</tbody></table></div>}
+      {!records.length?<p className="text-sm text-muted-foreground">{t('empty')}</p>:<div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="p-3">{t('personId')}</th><th className="p-3">{t('status')}</th><th className="p-3">{t('attempts')}</th><th className="p-3">{t('action')}</th></tr></thead><tbody>{records.map(row=><tr className="border-t border-border" key={row.person_id}><td className="break-all p-3">{accounts.find(account=>account.person_id===row.person_id)?.full_name||row.person_id}{config&&<span className="block text-xs text-muted-foreground">hr-{row.person_id.replaceAll('-','')}@{config.domain}</span>}</td><td className="p-3">{t(`states.${row.status}`)}</td><td className="p-3 tabular-nums">{row.attempts}</td><td className="p-3">{row.status==='failed'&&<form action={retryEntra}><input type="hidden" name="personId" value={row.person_id}/><button className={btnGhost}>{t('retry')}</button></form>}{row.status==='uncertain'&&<form action={reconcileEntra} className="space-y-2"><input type="hidden" name="personId" value={row.person_id}/><label className="flex gap-2"><input type="checkbox" name="confirmed" required/>{t('reconcileConfirm')}</label><button className={btnGhost}>{t('reconcile')}</button></form>}</td></tr>)}</tbody></table></div>}
       <p className="mt-4 text-sm text-muted-foreground">{t('queueHelp')}</p>
     </CardContent></Card>
   </div>;

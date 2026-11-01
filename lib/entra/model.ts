@@ -15,7 +15,7 @@ export class EntraError extends Error {
 }
 export const issuerFor = (tenant: string) => `https://login.microsoftonline.com/${z.uuid().parse(tenant).toLowerCase()}/v2.0`;
 export const sourceId = (tenant: string, person: string) => `aihr:${z.uuid().parse(tenant)}:${z.uuid().parse(person)}`;
-export type WorkforceRecord = { tenant_id: string; person_id: string; full_name: string; active: boolean; revision: number; lease: string; mode: 'cloud'|'hybrid'; last_location: string|null; last_status: string; source_key: string; submitted_revision:number|null; last_active:boolean|null };
+export type WorkforceRecord = { tenant_id: string; person_id: string; full_name: string; active: boolean; revision: number; lease: string; mode: 'cloud'|'hybrid'; last_location: string|null; last_status: string; source_key: string; submitted_revision:number|null; last_active:boolean|null; submission_started_at:string|null };
 /** Stable identifier based naming avoids email-based adoption and rename collisions. IT maps userName to UPN. */
 export function workforcePayload(record: WorkforceRecord, config: EntraConfig) {
   if (record.tenant_id !== config.tenantId || record.mode !== config.mode) throw new EntraError('forbidden');
@@ -26,7 +26,7 @@ export function workforcePayload(record: WorkforceRecord, config: EntraConfig) {
 }
 export function trustedGraphUrl(value: string): URL {
   const url = new URL(value);
-  if (url.origin !== 'https://graph.microsoft.com' || url.username || url.password || url.hash || !/^\/v1\.0\/auditLogs\/provisioning(?:\/[^/?]+)?$/.test(url.pathname)) throw new EntraError('invalid');
+  if (url.origin !== 'https://graph.microsoft.com' || url.username || url.password || url.hash || !/^\/v1\.0\/auditLogs\/provisioning(?:\/[^/?]+)?\/?$/.test(url.pathname)) throw new EntraError('invalid');
   return url;
 }
 export function nativeRedirect(value: string) {

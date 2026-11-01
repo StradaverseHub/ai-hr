@@ -33,18 +33,27 @@ export async function upload(config: EntraConfig, record: WorkforceRecord, token
 export type ProvisioningResult = { state:'pending'|'failed'|'complete'; objectId?:string };
 export async function reconcile(config: EntraConfig, record: WorkforceRecord, token: string, fetcher: typeof fetch = fetch): Promise<ProvisioningResult> {
   if (!record.last_location) return {state:'pending'};
-  let url: string|undefined = trustedGraphUrl(record.last_location).href;
+  if(!record.submission_started_at || !Number.isFinite(new Date(record.submission_started_at).getTime()))throw new EntraError('invalid');
+  const receipt=trustedGraphUrl(record.last_location);
+  const since=new Date(record.submission_started_at).toISOString();
+  receipt.searchParams.set('$filter',`(${receipt.searchParams.get('$filter')||"jobId eq '"+config.jobId+"'"}) and sourceIdentity/id eq '${record.source_key}' and activityDateTime ge ${since}`);
+  receipt.searchParams.set('$orderby','activityDateTime desc');receipt.searchParams.set('$top','100');
+  let url: string|undefined = receipt.href;
   // Never follow an untrusted Graph-provided continuation with our bearer token.
-  for (let page=0; url && page<10; page++) {
+  for (let page=0; url && page<3; page++) {
     const body = await json(await request(url,{headers:{authorization:`Bearer ${token}`}},fetcher));
     if (!Array.isArray(body.value)) throw new EntraError('unavailable');
     for (const item of body.value) {
-      if (!item || typeof item !== 'object' || item.jobId !== config.jobId || item.servicePrincipal?.id !== config.servicePrincipalId || item.sourceIdentity?.id !== record.source_key) continue;
-      if (item.statusInfo?.status === 'failure') return {state:'failed'};
-      if (item.statusInfo?.status !== 'success') continue;
+      const principals=Array.isArray(item?.servicePrincipal)?item.servicePrincipal:[item?.servicePrincipal];
+      if (!item || typeof item !== 'object' || item.jobId !== config.jobId || !principals.some((p:{id?:string})=>p?.id===config.servicePrincipalId) || item.sourceIdentity?.id !== record.source_key || item.tenantId!==config.directoryTenantId) continue;
+      const time=new Date(item.activityDateTime).getTime();if(!Number.isFinite(time)||time<new Date(record.submission_started_at).getTime())continue;
+      const status=item.provisioningStatusInfo?.status??item.statusInfo?.status;
+      if (status === 'failure') return {state:'failed'};
+      if (status !== 'success' && status !== 'skipped') continue;
       if (config.mode === 'hybrid') return {state:'complete'}; // AD success is not Entra readiness; explicit immutable binding is still required.
       const id = item.targetIdentity?.id;
       if (typeof id === 'string' && /^[a-f0-9-]{36}$/i.test(id)) return {state:'complete',objectId:id};
+      if(status==='skipped')return {state:'complete'};
     }
     url = typeof body['@odata.nextLink'] === 'string' ? trustedGraphUrl(body['@odata.nextLink']).href : undefined;
   }
@@ -56,7 +65,7 @@ export async function confirmedDirectoryObject(config: EntraConfig, record: Work
   const upn=`hr-${record.person_id.replaceAll('-', '')}@${config.domain}`;
   const field=config.sourceAnchorAttribute.split('.')[0];
   const url=new URL('https://graph.microsoft.com/v1.0/users/'+encodeURIComponent(upn));
-  url.searchParams.set('$select',`id,onPremisesSyncEnabled,${field}`);
+  url.searchParams.set('$select',`id,displayName,accountEnabled,onPremisesSyncEnabled,${field}`);
   let response:Response;
   try{response=await fetcher(url.href,{headers:{authorization:`Bearer ${token}`},redirect:'error',signal:AbortSignal.timeout(15000),cache:'no-store'});}catch{throw new EntraError('unavailable');}
   if(response.status===404){void response.body?.cancel().catch(()=>{});return null;}
@@ -64,6 +73,7 @@ export async function confirmedDirectoryObject(config: EntraConfig, record: Work
   const object=await json(response),parts=config.sourceAnchorAttribute.split('.');
   const marker=parts.length===1?object[parts[0]]:(object[parts[0]] as Record<string,unknown>|undefined)?.[parts[1]];
   if(marker!==record.source_key||typeof object.id!=='string'||!(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(object.id)))throw new EntraError('conflict');
+  if(object.displayName!==record.full_name||object.accountEnabled!==record.active)return null;
   if(config.mode==='hybrid'&&object.onPremisesSyncEnabled!==true)return null;
   return object.id.toLowerCase();
 }
