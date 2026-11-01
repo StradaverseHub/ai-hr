@@ -2,7 +2,7 @@ import React from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import en from '../messages/en.json';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
 import ms from '../messages/ms.json';
 import ta from '../messages/ta.json';
 import th from '../messages/th.json';

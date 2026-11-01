@@ -18,13 +18,17 @@ import { aiManagementHref, availableAiManagementSections, type AiManagementSecti
 import { aiInventoryView, aiManagementAlerts, aiRunHistory } from '@/core/ai-inventory';
 import { AI_RUN_PAGE_SIZE } from '@/lib/ai/ai-inventory';
 import { AiInventorySection } from './inventory-section';
+import { AiCentreSubnav, AiCentreTabs } from '@/components/ai-centre/centre-tabs';
+import { adminGroupOf } from '@/lib/ai-centre/centre-nav';
+import { BUILT_IN_PLACEMENT, FEATURE_PLACEMENT, WORKER_FAMILIES, groupByFamily } from '@/lib/ai-centre/worker-families';
+import type { AgentStatus } from '@/core/control-domains';
 import { applyBulkAssistantAction, clearGroupAllowanceAction, setGroupAllowanceAction, clearUserAllowanceAction, setAiSpendBudgetAction, setAiAllowanceAction, setAiFeatureAction, setAiFeatureCapAction, setAssistantPermissionAction } from './actions';
 
 export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?:string;runs?:string;feature?:string;planning?:string;bulk?:string;bulkWho?:string;bulkUser?:string|string[];from?:string;to?:string;page?:string};
 
 /** One AI management section per route (app/control-tower/agents/<section>/page.tsx); the sub-menu links them.
  * Provider and Assistant pages pass their own content as children. */
-export async function AiManagementScreen({session:s,section,searchParams,children}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode}) {
+export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null}) {
   const sp = await searchParams;
   const t = await getTranslations('aiManagement');
   const f = await getFormatter();
@@ -36,6 +40,15 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   // Provider setup is tenant-wide (getAiConfigView refuses a company administrator).
   const sections = availableAiManagementSections({spend:!!view.spend,provider:isGroupAdmin(s)});
   if(!sections.includes(section)) redirect(aiManagementHref('overview'));
+  // AI centre: these sections are the administrator tabs Workers, Setup, and Spend and providers. The
+  // guard is unchanged (requireAdmin in the layout and on every page); only the chrome is shared.
+  const group = adminGroupOf(section) ?? 'setup';
+  const tc = await getTranslations('aiCentre');
+  const tTower = await getTranslations('controlTower');
+  // Workers: built-in checks are read from the system (core/control-domains.ts), never declared.
+  // The Workers page reads them (app/control-tower/agents/features/page.tsx) and passes them in.
+  const builtInShown = builtInChecks ? builtInChecks.filter(row=>row.id in BUILT_IN_PLACEMENT) : null;
+  const byFamily = groupByFamily(view.features, feature=>FEATURE_PLACEMENT[feature.id].family);
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
   // WP12 (R8, R20): the inventory section, the alert banner on every section, and paged, dated run history.
   const inventory = section==='inventory' ? await aiInventoryView(s, view) : null;
@@ -158,7 +171,9 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const filtered = !!(runFilter.state||runFilter.feature);
   const defaultUse = {daily:{used:0,limit:view.userDefault?.dailyRequests??null,level:null},tokens:{used:0,limit:view.userDefault?.monthlyTokens??null,level:null},enabled:view.userDefault?.enabled!==false,maxConcurrent:view.userDefault?.maxConcurrent??null};
   return <div className={pageWideCls}>
-    <PageHeader back={{href:'/control-tower',label:t('back')}} title={t('title')} description={t('description')}/>
+    <AiCentreTabs active={group} isAdmin />
+    <PageHeader title={tc(`titles.${group}`)} description={tc(`descriptions.${group}`)}/>
+    <AiCentreSubnav group={group} active={section==='orchestrator'?'overview':section} available={sections} hrefOf={aiManagementHref}/>
     {/* Provider and Assistant pages own their refusal wording; elsewhere the banner shows owned sentences. */}
     {section!=='provider'&&section!=='assistant'&&<ErrorBanner message={sp.error}/>}
     {/* Sticky: a save scrolls to its own row, and the outcome must stay in view there. */}
@@ -193,10 +208,13 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
       <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><caption className="sr-only">{t('inventory')}</caption>
         <thead className="border-y border-border bg-muted/40"><tr>{['feature','state','activity','control'].map(key=><th key={key} scope="col" className="px-5 py-3 font-medium">{t(key)}</th>)}</tr></thead>
-        <tbody className="divide-y divide-border">{view.features.map(feature=>{
+        {WORKER_FAMILIES.filter(family=>byFamily[family].length>0).map(family=><tbody key={family} className="divide-y divide-border" aria-labelledby={`ai-family-${family}`}>
+          <tr className="bg-muted/20"><th id={`ai-family-${family}`} colSpan={4} scope="colgroup" className="px-5 pb-2 pt-5 text-left"><span className="text-sm font-semibold">{tc(`workers.families.${family}`)}</span> <span className="text-xs font-normal text-muted-foreground">{tc(`workers.families.${family}Help`)}</span></th></tr>
+          {byFamily[family].map(feature=>{
           const activity=view.usage.find(u=>u.feature_id===feature.id);
+          const placement=FEATURE_PLACEMENT[feature.id];
           return <tr key={feature.id} id={`ai-feature-${feature.id}`} className="scroll-mt-4">
-            <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)}</p><p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">{t(`privateFeatures.${feature.id}`)}</p>{(()=>{
+            <td className="px-5 py-4"><p className="font-medium">{t(`features.${feature.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{t(`kinds.${feature.kind}`)} · {tc(`workers.triggers.${placement.trigger}`)} · {tc(`workers.effects.${placement.effect}`)}</p><p className="mt-2 max-w-md text-xs leading-relaxed text-muted-foreground">{t(`privateFeatures.${feature.id}`)}</p>{(()=>{
               // ADR-0151 §4.5 — the named agent principal runs a switched-on agent only under a named administrator's switch-on.
               const sw=view.agentSwitches[feature.id as AgentFeature];
               return sw?.state==='attributed'?<p className="mt-1 text-xs text-muted-foreground">{t('agentRunsAs',{by:sw.by??t('agentUnknownAdmin'),date:f.dateTime(sw.at,{dateStyle:'medium',timeZone:'Asia/Kuala_Lumpur'})})}</p>
@@ -206,8 +224,20 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
             <td className="px-5 py-4">{usage(activity)}{activity&&<p className="mt-1 text-xs text-muted-foreground">{t('exceptions',{blocked:numbers(activity.blocked),failed:numbers(activity.failed)})}</p>}</td>
             <td className="px-5 py-4">{feature.mayWrite?<form action={setAiFeatureAction}><input type="hidden" name="feature" value={feature.id}/><input type="hidden" name="enabled" value={String(!feature.enabled)}/><button type="submit" className={btnGhost} aria-label={`${t(feature.enabled?'pause':'enable')} · ${t(`features.${feature.id}`)}`}>{t(feature.enabled?'pause':'enable')}</button></form>:t(feature.kind==='platform'?'platformManaged':'readOnly')}</td>
           </tr>;
-        })}</tbody></table></div>
+        })}</tbody>)}</table></div>
       <p className="border-t border-border p-5 text-xs text-muted-foreground">{t('noHistory')} {t('reservationHelp')}</p>
+    </Card>}
+    {section==='features'&&<Card id="ai-built-in" className="scroll-mt-4 p-5">
+      <SectionHeader title={tc('workers.builtInTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{tc('workers.builtInHelp')}</p>
+      {builtInShown===null?<p className="mt-3 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>:<ul className="mt-3 divide-y divide-border">{builtInShown.map(row=>{const placement=BUILT_IN_PLACEMENT[row.id];return <li key={row.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+        <div className="min-w-0 max-w-3xl"><p className="font-medium">{tTower(`agent.${row.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{tc(`workers.families.${placement.family}`)} · {tc(`workers.triggers.${placement.trigger}`)} · {tc(`workers.effects.${placement.effect}`)}</p><p className="mt-1 text-xs text-muted-foreground">{tTower(`why.${row.reasonKey}`)}</p></div>
+        <span className={row.active?'text-sm text-emerald-700 dark:text-emerald-300':'text-sm text-muted-foreground'}>{row.active?tc('workers.on'):row.offByDesign?tc('workers.byDesign'):tc('workers.off')}</span>
+      </li>;})}</ul>}
+      <p className="mt-3 text-xs text-muted-foreground">{tc('workers.deciderNone')}</p>
+    </Card>}
+    {section==='features'&&isGroupAdmin(s)&&<Card id="ai-system-jobs" className="scroll-mt-4 p-5">
+      <SectionHeader title={tc('workers.systemJobsTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{tc('workers.systemJobsHelp')}</p>
+      <Link href="/admin/scheduled-actions" className="mt-2 inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline">{tc('workers.systemJobsLink')}</Link>
     </Card>}
     {section==='allowances'&&<>
     <Card id="company-limits" className="scroll-mt-4 p-5">

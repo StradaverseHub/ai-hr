@@ -8,7 +8,7 @@ import {page} from 'vitest/browser';
 import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import type {ReactNode,ComponentProps,MouseEvent} from 'react';
-import en from '../messages/en.json';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
 import geometry from './fixtures/combined-release-shell-geometry.json';
 import {NavIndexProvider,useNavIndex} from '../components/nav-index-context';
 import {UiThemeProvider} from '../components/ui-theme-context';

@@ -6,11 +6,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
+import {enWithAiCentre} from './helpers/ai-centre-messages';
 
 const data=vi.hoisted(()=>({view:undefined as unknown,groupAdmin:true}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({
-  getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace}),
+  getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:enWithAiCentre,namespace}),
   getFormatter:async()=>createFormatter({locale:'en',timeZone:'Asia/Kuala_Lumpur'}),
 }));
 vi.mock('../lib/authz',()=>({requireAdmin:async()=>({tenantId:'fixture-tenant',userId:'fixture-user',roles:['group_admin'],grants:[]}),isGroupAdmin:()=>data.groupAdmin,isAdmin:()=>true}));
@@ -107,9 +108,13 @@ describe('AI management page',()=>{
 });
 
 describe('AI management sub-menu',()=>{
-  it('has no in-page section tab row; the sidebar\u2019s AI management menu chooses the page',async()=>{
+  // AI centre (1 Nov 2026): the old per-page tab row stays retired; the one navigation is the centre's tab
+  // bar, where Workers is current, plus the Workers section switcher (all workers, inventory).
+  it('shows the AI centre tab bar with Workers current, and one section per page',async()=>{
     const {container}=await show({heldNanos:'0',confirmedNanos:null},'features');
-    expect(screen.queryByRole('navigation')).toBeNull();
+    const tabs=container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement;
+    expect(within(tabs).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/agents/features');
+    expect(screen.getAllByRole('navigation')).toHaveLength(2);
     expect(container.querySelector('#ai-features')).not.toBeNull();
     for(const other of ['#ai-map','#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
   });

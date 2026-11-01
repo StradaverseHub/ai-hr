@@ -854,6 +854,30 @@ performance owner's 0866–0872 fall below the new watermark and must be realloc
 before their own release. Re-verify the accepted V9 ledger at handback before installation. This
 reservation grants no deployment or acceptance.
 
+## Rewards access-request read policy fix — 1 November 2026
+
+Claude release owner, owner-accepted follow-up to the tax/movement bundle. The installed staging ledger is
+638 rows through `0874_payroll_tax_basis_corrections` (idx752 / when1793330000274). This fix appends
+`0875_reward_access_request_read_role` at idx753 / when1793330000275 (SQL SHA256
+`06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1`). Performance's unapplied 0866–0872
+claims are below the watermark and must be reallocated above the next accepted watermark. Re-verify the
+live ledger before installation; this reservation grants no deployment.
+
+## EPF Manual (by percentage) 0% floor — 1 November 2026
+
+Approved board item 1058ced1 (PR #175). Integrated onto alpha `1a74336e6`, whose journal ends at the
+Rewards fix `0875_reward_access_request_read_role` (idx753 / when1793330000275, in its staging window).
+A scan of every local and origin ref plus registered worktrees found no claim above when…275.
+
+| Index | Timestamp | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|754|1793330000276|0876_epf_manual_percentage_zero|e09b59c1b79628d8701bee3864ac2421bdbd1b7e4162a696dbc273e97fdca430|
+
+The source branch first appended it at idx753 on main; integration renumbers only the index above
+Rewards. Timestamp and SQL bytes are unchanged. The SQL only replaces 0682's CHECK with a looser one
+(0–1 instead of 0.01–1, both rates still NOT NULL), so every existing row satisfies it and no data
+script is needed. No table, grant or RLS change. Grants no installation or acceptance.
+
 ## ADR-0170 step 5a (Teras outcome record and work-job mandates) — 1 November 2026 (provisional source claim)
 
 Branch `claude/teras-step5a-outcome-mandates` (cut from `claude/teras-step1-harness` a87dc418, journal ending
@@ -882,3 +906,11 @@ The idx is this branch's own journal position and must be re-frozen above the th
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |755|1793330000295|0895_teras_worker_registry|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|
+
+## AI centre step 5 UI integration — 2 November 2026 (development source only)
+
+Branch `claude/ai-centre-step5-ui-20261102` (cut from `claude/teras-privacy-fixes` da4743404, normal merge of
+`claude/ai-centre-revamp-20261101`, which carries main through `0876_epf_manual_percentage_zero`). The journal
+union orders the Teras claims above main's 0875/0876 by timestamp: 0890 idx755, 0891 idx756, 0895 idx757
+(timestamps …290/…291/…295 and SQL bytes unchanged). No migration is added by the UI work. Re-freeze above
+the then-installed ledger at integration; this grants no installation.
