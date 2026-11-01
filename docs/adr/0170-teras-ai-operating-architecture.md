@@ -541,6 +541,21 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 
 **No "OS" suffix (1 November 2026).** The owner found "Atoll OS" awkward. The name stands alone and the prose describes it ("the AI operating architecture", "built on X"); features take the name as a prefix (X Connect, X mandates, Ask X). Reasons: §11.1 found every "AI OS" on the market to be a control plane plus a shell and the vocabulary scan rated every "OS" label as hype, so the suffix invites the agent-washing test this record applies to itself; and the strongest brands surveyed (Attio, Glean, Agentforce, Palantir AIP, Workday Illuminate) stand alone. If a suffix is ever wanted, names ending in a hard consonant carry it (Fram, Hull, Vorn); Atoll and Prow do not.
 
+**Owner (2 November 2026): more options needed.** Sixth pass, rare real words that hold firm, and coined words:
+
+| Name | Meaning and fit | Finding |
+| --- | --- | --- |
+| **Keelson** (2) | The beam laid over a ship's keel that holds the whole hull firm: the hidden backbone everything rests on | **No product found.** Near: Keel, a London operations-platform startup |
+| **Velor** (2, coined) | From velocity and valour: momentum with courage | **No product found.** Near: Velora (small apps) |
+| **Sinew** (2) | The tissue that connects and moves the body | No exact match (Sinequa, enterprise search, is near); some may find it too anatomical |
+| **Orvel** (2, coined) | No meaning; easy to say | No exact match, but Orvello (frontline-team management SaaS) is HR-adjacent: a real risk |
+| Cairn (1) | Stones stacked to mark the way | Crowded: Cairn Labs, a "cairn" MCP server, Kairntech |
+| Tenon (2) | The joint that holds two pieces together | Taken: Tenon (marketing software on ServiceNow) |
+| Corva (2, coined) | | Taken: Corva (oil and gas AI, with its own Copilot) |
+| Novar (2, coined) | | Taken: Novar (Honeywell building-automation brand) |
+
+Clean candidates across all passes that can stand alone: **Atoll, Fram, Keelson, Velor, Vorn, Hull, Prow**. A coined name is easier to register; a real word carries meaning without explanation.
+
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
 ## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)

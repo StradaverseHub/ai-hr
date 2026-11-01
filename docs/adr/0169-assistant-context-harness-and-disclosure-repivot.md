@@ -161,7 +161,14 @@ The owner chose **option 2, with review** ("Option 2, with review"). This settle
 - an updated data register (threat-model R21/WP12);
 - an updated threat model.
 
-**Still open:** who performs the privacy/legal review. Its approval binds to the exact source, as existing provider approvals do; a later change needs fresh approval.
+**Reviewer (owner decision, 2 November 2026):** the owner performs the privacy/legal review and gives the approval. Its approval binds to the exact source, as existing provider approvals do; a later change needs fresh approval.
+
+Recommended, and recorded so the decision is informed: the owner remains the approver, but three items are legal judgements that a qualified Malaysian privacy lawyer or data protection officer should advise on before approval:
+- the PDPA cross-border transfer assessment;
+- the data processing agreement terms (zero retention, no training, sub-processors, the intermediary question);
+- obligations under Malaysia's AI governance bill once tabled.
+
+The other items (disclosure contract, identifier denylist, data register, threat model) can be prepared by engineering for the owner's review.
 
 ## 6. Sequencing and acceptance
 
