@@ -4460,6 +4460,13 @@
       "when": 1793330000273,
       "tag": "0873_movement_exit_payroll_preservation",
       "breakpoints": true
+    },
+    {
+      "idx": 752,
+      "version": "7",
+      "when": 1793330000274,
+      "tag": "0874_payroll_tax_basis_corrections",
+      "breakpoints": true
     }
   ]
 }

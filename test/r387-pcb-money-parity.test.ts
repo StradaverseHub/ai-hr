@@ -145,7 +145,13 @@ describe('r387 complete monetary parity against original calculation',()=>{
     const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batch.batchId));
     const row=slips.find(x=>x.employmentId===e.employmentId);expect(row).toBeTruthy();
     if(!row)throw new Error('Expected the selected employee native payslip');
-    snapshots.push(nativeMoneySnapshot(row,ids));
+    // Tax recalculation adds opening-exemption provenance to the saved statutory JSON. Assert it exactly,
+    // then compare every remaining native money field against the unchanged golden.
+    const native=row.statutory as Record<string,unknown>;
+    expect(native.taxBasisOpeningExemptionYear).toBe(year);
+    expect(native.taxBasisOpeningExemptionUsed).toEqual({PCB_TRA_BUSINESS:5950});
+    const {taxBasisOpeningExemptionYear,taxBasisOpeningExemptionUsed,...statutory}=native;
+    snapshots.push(nativeMoneySnapshot({...row,statutory},ids));
   }
   if(process.env.R387_WRITE_BASELINE){writeFileSync(process.env.R387_WRITE_BASELINE,JSON.stringify(snapshots,null,2)+'\n');}
   else {

@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { Card, SectionHeader } from '@/components/ui';
 import type { ReportResult } from '@/localization/country-pack';
+import {TaxBasisCorrectionNotice} from '@/components/payroll-tax-basis-notice';
+import type {TaxBasisNoticeReference, TaxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notices';
 
 /**
  * The body of a generated statutory report: its caveats, its headline figures, the employees who would
@@ -47,6 +49,7 @@ export function StatutoryReportPanel({
   eaYear,
   eaLang,
   actions,
+  taxBasisNotice,
 }: {
   result: ReportResult;
   strings: StatutoryReportPanelStrings;
@@ -56,9 +59,11 @@ export function StatutoryReportPanel({
   eaLang?: 'en' | 'ms' | null;
   /** Download / print / record controls — owned by the screen, which knows what it can produce. */
   actions?: React.ReactNode;
+  taxBasisNotice?: {references: TaxBasisNoticeReference[]; strings: TaxBasisNoticeStrings};
 }) {
   return (
     <>
+      {taxBasisNotice && <TaxBasisCorrectionNotice {...taxBasisNotice}/>}
       {result.meta.notes?.map((note, i) => (
         <div
           key={i}

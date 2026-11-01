@@ -141,6 +141,7 @@ export default async function PayrollSetupPage({
     { key: 'schedule', href: '/admin/payroll-config' },
     { key: 'items', href: '/admin/pay-components' },
     { key: 'formulaBuilder', href: '/payroll/formula-builder' },
+    { key: 'incomeTaxRecalculation', href: '/payroll/income-tax-recalculation' },
     { key: 'payslipInformation', href: '/payroll/payslip-information' },
     { key: 'payrollPolicies', href: '/admin/payroll-policy' },
     // 'ea' card removed (Pay Items redesign, 4994a48f): the EA-line control left the Pay Items screen,

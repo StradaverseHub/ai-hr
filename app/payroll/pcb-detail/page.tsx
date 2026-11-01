@@ -1,3 +1,6 @@
+import {TaxBasisCorrectionNotice} from '@/components/payroll-tax-basis-notice';
+import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
+import {taxBasisNoticesForPayslip} from '@/packs/payroll/service';
 import { pcbExemptionDetail } from '@/core/pcb-exemptions';
 /**
  * Feedback 45df860a — PCB / MTD Calculation Detail.
@@ -60,6 +63,9 @@ export default async function PcbDetailPage({
         asOf: `${row.payPeriod}-28`,
       })
     : null;
+  const taxNotices = row ? await taxBasisNoticesForPayslip(s, {companyIds: scopeIds, payslipId: row.id}) : null;
+  const originalNoticeStrings = await taxBasisNoticeStrings('original');
+  const appliedNoticeStrings = await taxBasisNoticeStrings('applied');
   const explanation = row ? explainPcb(row.statutory, fallbackReliefs) : null;
   const prov = row ? payslipProvenance(row.statutory) : null;
 
@@ -145,6 +151,8 @@ export default async function PcbDetailPage({
         description={t('subtitle')}
         back={{ href: backHref, label: row ? t('backToPayslip') : t('backToTransactionView') }}
       />
+
+      {taxNotices && <><TaxBasisCorrectionNotice references={taxNotices.original} strings={originalNoticeStrings}/><TaxBasisCorrectionNotice references={taxNotices.applied} strings={appliedNoticeStrings}/></>}
 
       {row && (
         // ad7bc503 section 11 — the whole page as a PDF. A PLAIN LINK and not a button with an action: the

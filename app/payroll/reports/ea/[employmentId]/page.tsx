@@ -1,3 +1,6 @@
+import {TaxBasisCorrectionNotice} from '@/components/payroll-tax-basis-notice';
+import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
+import {taxBasisNoticeReferences} from '@/packs/payroll/service';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -88,6 +91,8 @@ export default async function EaStatementPage({
   const selected = employers.find((c) => c.companyId === company)?.companyId;
   const ea = await employeeEaStatement(s, { employmentId, year: yr, ...(selected ? { companyId: selected } : {}) });
   if (!ea) notFound();
+  const correctionReferences = await taxBasisNoticeReferences(s, ea.taxBasisCorrections);
+  const correctionStrings = await taxBasisNoticeStrings('applied');
 
   // The amend panel writes to ea_override, which is keyed (employment, year, field) with no company — so
   // it may only be offered on the employer whose form those rows actually overlay (the current one).
@@ -230,6 +235,7 @@ export default async function EaStatementPage({
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
+      <TaxBasisCorrectionNotice references={correctionReferences} strings={correctionStrings}/>
       <div className="flex items-start justify-between gap-4 print:hidden">
         <Link href="/payroll/reports" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
           ← {t('backToReports')}

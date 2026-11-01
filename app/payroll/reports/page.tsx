@@ -1,3 +1,5 @@
+import {taxBasisNoticeReferences} from '@/packs/payroll/service';
+import {taxBasisNoticeStrings} from '@/lib/payroll-tax-basis-notice-labels';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -37,6 +39,7 @@ export default async function ReportsPage({
   const periodKey = sp.periodKey || '';
   const canPreview = Boolean(companyId && reportId && periodKey);
   const result = canPreview ? await reportPreview(s, { companyId, reportId, periodKey }) : null;
+  const taxBasisNotice = {references: await taxBasisNoticeReferences(s, result?.meta.taxBasisCorrections), strings: await taxBasisNoticeStrings('applied')};
   const recent = companyId ? await recentReports(s, companyId) : [];
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
   const periodKind = reports.find((r) => r.id === reportId)?.periodKind ?? 'month';
@@ -129,6 +132,7 @@ export default async function ReportsPage({
       {result && result.meta.hasBatch && (
         <StatutoryReportPanel
           result={result}
+          taxBasisNotice={taxBasisNotice}
           /* `.slice(0, 4)`, NOT the raw periodKey. This link used to send `?year=2026-07` from a monthly
              report; the EA page tests the value against /^\d{4}$/ and silently fell back to the SERVER's
              current year — so in January you opened last month's EPF report and got this year's empty EA
