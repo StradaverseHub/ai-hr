@@ -22,6 +22,7 @@ describe('runner control inventory',()=>{
   expect(screen.getByText('Failed')).toBeInTheDocument();expect(screen.getByText('Disabled')).toBeInTheDocument();
   expect(screen.queryByRole('link',{name:'Replacement holidays and calendars'})).toBeNull();
   expect(screen.getByText('Replacement holidays and calendars')).toBeInTheDocument();
+  expect(screen.queryByText('AI administration and run history below')).toBeNull();
   const summary=screen.getAllByText('Configure runner')[1];fireEvent.click(summary);
   // Capture expanded actual form controls; static browser fixture does not claim authenticated mutation.
   summary.closest('details')?.setAttribute('open','');

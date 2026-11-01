@@ -26,7 +26,7 @@ export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnap
       <div><dt className="text-muted-foreground">{t('lastRun')}</dt><dd className="mt-1">{status?.lastRun??t('noEvidence')}</dd></div>
       <div><dt className="text-muted-foreground">{t('nextRun')}</dt><dd className="mt-1">{status?.nextRun??t('noEvidence')}</dd></div>
      </dl>
-     <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination&&(!canControl||entry.destination.startsWith('/operator'))?<Link className="text-primary underline underline-offset-4" href={entry.destination==='/admin/scheduled-actions'?'#recent-run-history':entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:entry.destination==='/admin/scheduled-actions'&&canControl?t('jobs.ai-retention.results'):t(`jobs.${entry.id}.results`)}</p>
+     <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination&&(!canControl||entry.destination.startsWith('/operator'))?<Link className="text-primary underline underline-offset-4" href={entry.destination==='/admin/scheduled-actions'?'#recent-run-history':entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:canControl&&(entry.destination==='/admin/scheduled-actions'||entry.id==='ai-alerts')?t('jobs.ai-retention.results'):t(`jobs.${entry.id}.results`)}</p>
      {status?.note&&<p className="mt-2 text-sm text-muted-foreground">{status.note}</p>}
      {status?.hold&&<p className="mt-2 text-sm">{t('holdNote')}</p>}
      {canControl&&status&&<RunnerControls key={status.revision} runner={status} frequency={entry.frequency}/>}
