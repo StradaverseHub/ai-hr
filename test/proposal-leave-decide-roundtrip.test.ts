@@ -124,7 +124,9 @@ describe('approvals.leave.decide proposal round trip',()=>{
 
 describe('a covering delegate the decision source admits',()=>{
  it('gets a card as themselves and records the decision once; after the delegation ends, nothing',async()=>{
-  const stand=await hire('Fictional Covering Delegate','manager'),today=todayInKualaLumpur();
+  const stand=await hire('Fictional Covering Delegate','manager'),standReport=await hire('Fictional Delegate Report'),today=todayInKualaLumpur();
+  // A stand-in must hold the delegator's approval level (core/org.ts same-level guard): a manager of their own report.
+  await setReportingLine(adminCtx(base),{subordinateEmploymentId:standReport.employmentId,managerEmploymentId:stand.employmentId,lineType:'administrative',validFrom:'2020-01-01'});
   const delegated=await setReportingLine(adminCtx(base),{subordinateEmploymentId:manager.employmentId,managerEmploymentId:stand.employmentId,lineType:'delegate',validFrom:today,scopes:[{module:'leave',taskType:'leave.application'}]});
   const me=await login(stand);
   const result=await prepareLeaveDecideProposal(me,await human());if(result.kind!=='proposal')throw Error('The covering delegate got no proposal.');
