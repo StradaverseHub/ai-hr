@@ -1,5 +1,6 @@
 /** ADR-0170 step 5a — Drizzle declarations for the outcome record, task memory and work-job mandates
- * (migration 0890), and the rule-version columns migration 0891 added to three native owners.
+ * (migration 0890), and the rule-version columns migration 0891 added to three native owners. Step 5 adds
+ * the worker switches and the manager revocation policy (migration 0895).
  *
  * WHY A SEPARATE FILE. db/schema.ts is inside the approved provider-data source closure
  * (scripts/ai-provider-data-source-manifest.mjs): any edit to it, even an additive table, changes the
@@ -28,9 +29,20 @@ export const terasMandateJobTypeEnablement=pgTable('teras_mandate_job_type_enabl
 
 export const terasMandateControl=pgTable('teras_mandate_control',{
  tenantId:uuid('tenant_id').primaryKey().references(()=>tenant.id),stopped:boolean('stopped').notNull().default(false),
+ /** 0895: whether the grantor's manager may revoke (§3.10 rule 7); default not allowed. */
+ managerMayRevoke:boolean('manager_may_revoke').notNull().default(false),
  version:integer('version').notNull().default(1),
  changedByUserId:uuid('changed_by_user_id').notNull().references(()=>appUser.id),changedAt:at('changed_at').notNull().defaultNow(),
 });
+
+/** 0895 — the per-tenant switch of a registered worker that has no existing switch of its own (closed list,
+ * core/agent-registry/workers.ts). Off unless a group administrator turned it on. */
+export type TerasSwitchedWorker='approver_recommendation'|'explainers';
+export const terasWorkerControl=pgTable('teras_worker_control',{
+ tenantId:tenantId(),workerId:text('worker_id').$type<TerasSwitchedWorker>().notNull(),enabled:boolean('enabled').notNull().default(false),
+ version:integer('version').notNull().default(1),
+ changedByUserId:uuid('changed_by_user_id').notNull().references(()=>appUser.id),changedAt:at('changed_at').notNull().defaultNow(),
+},t=>[primaryKey({columns:[t.tenantId,t.workerId]})]);
 
 export const terasMandate=pgTable('teras_mandate',{
  id:id(),tenantId:tenantId(),jobType:text('job_type').$type<WorkJobType>().notNull(),version:integer('version').notNull().default(1),
@@ -39,7 +51,7 @@ export const terasMandate=pgTable('teras_mandate',{
  scope:jsonb('scope').$type<MandateScope>().notNull(),limits:jsonb('limits').$type<MandateLimits>().notNull(),
  schedule:jsonb('schedule').$type<MandateSchedule>().notNull(),notify:text('notify').$type<'each_action'|'daily_summary'>().notNull(),
  validFrom:at('valid_from').notNull(),validUntil:at('valid_until').notNull(),
- revokedAt:at('revoked_at'),revokedByUserId:uuid('revoked_by_user_id').references(()=>appUser.id),revokedBy:text('revoked_by').$type<'grantor'|'administrator'>(),
+ revokedAt:at('revoked_at'),revokedByUserId:uuid('revoked_by_user_id').references(()=>appUser.id),revokedBy:text('revoked_by').$type<'grantor'|'administrator'|'manager'>(),
  createdAt:at('created_at').notNull().defaultNow(),
 },t=>[index('teras_mandate_grantor_idx').on(t.tenantId,t.grantorUserId)]);
 

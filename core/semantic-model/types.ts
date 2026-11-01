@@ -35,7 +35,9 @@ export type OwnerAnchor=`${string}#${string}`;
 export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public_holiday'|'absence'|'team_leave_balance'
  |'employment_profile'|'reporting_line'|'payslip'|'pay_change'|'claim_status'|'module_work'|'leave_approval_step'
  /** Step 4 explainers and setup co-pilot (./entities-explain.ts, ./entities-setup.ts). */
- |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot';
+ |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot'
+ /** Step 5 recommendations, digest, agent registry and existing worker inputs (./entities-recommend.ts). */
+ |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

@@ -17,7 +17,8 @@ import {listLeaveRequests,plannedAbsences} from '../read';
 import {prepareLeaveDecisionReview} from '../assistant-actions/leave-decision-review-store';
 import {REVIEWED_LEAVE_DECISION_ACTION} from '../../lib/assistant-actions/reviewed-leave-decision-contract';
 import {SEMANTIC_ACTIONS} from '../semantic-model/entities';
-import {assertProposalsConfigured,issueProposal,verifyProposal,type Proposal,type ProposalFacts,type ProposalRefusal} from './proposal';
+import {recommendLeaveDecision} from '../recommenders/leave-decision';
+import {assertProposalsConfigured,issueProposal,verifyProposal,type Proposal,type ProposalFacts,type ProposalRecommendation,type ProposalRefusal} from './proposal';
 
 const declared=SEMANTIC_ACTIONS.find(action=>action.id===REVIEWED_LEAVE_DECISION_ACTION)!;
 const passedChecks=()=>declared.checks.map(check=>({check:check.check,owner:check.owner,ruleVersion:null,result:'pass' as const}));
@@ -45,6 +46,12 @@ export async function prepareLeaveDecideProposal(supplied:SessionContext,input:L
   if(row){const people=await plannedAbsences(ctx,undefined,{from:request.startDate,to:request.endDate});
    facts.othersAway=people.filter(person=>person.id!==row.personId&&person.leaves.length>0).length;}
  }catch{/* context is optional; the review route still shows the request */}
+ // Step 5: the approver recommendation, when its worker is on; it never decides and its absence changes nothing.
+ let recommendation:ProposalRecommendation|undefined;
+ try{const result=await recommendLeaveDecision(ctx,{leaveRequestId:request.leaveRequestId});
+  if(result.kind==='recommendation'){const {verdict,checks,failedRules,recommenderVersion,recordId}=result.recommendation;
+   recommendation={verdict,recommenderVersion,recordId,checks:checks.map(check=>({...check})),failedRules:failedRules.map(rule=>({...rule}))};}
+ }catch{/* a recommendation is optional */}
  return Object.freeze({kind:'proposal',proposal:issueProposal({
   what:{action:REVIEWED_LEAVE_DECISION_ACTION,contractVersion:review.contractVersion,entity:declared.entity,effect:declared.effect,
    selectors:{startDate:request.startDate,decision:request.decision},reviewedDigest:review.reviewedDigest},
@@ -52,7 +59,7 @@ export async function prepareLeaveDecideProposal(supplied:SessionContext,input:L
   authority:{kind:'person',tenantId:ctx.tenantId,userId,personId},
   checks:passedChecks(),
   review:{route:declared.reviewRoute,href:`${declared.reviewRoute}?review=${review.actionId}`,reference:review.actionId},
-  facts,createdAt:review.createdAt,expiresAt:review.expiresAt})});
+  facts,...(recommendation?{recommendation}:{}),createdAt:review.createdAt,expiresAt:review.expiresAt})});
 }
 
 /** Packets the existing review command takes for a verified proposal, under the approver's own login. */

@@ -870,3 +870,15 @@ branch's own journal positions and must be re-frozen above the then-installed le
 
 Existing populated-upgrade tests pin their own tails (`test/payroll-tax-basis-upgrade.test.ts` and peers) and
 will need the integrator's usual tail update when these entries land.
+
+## ADR-0170 step 5 (Teras recommendations, digest and agent registry) — 1 November 2026 (provisional source claim)
+
+Branch `claude/teras-step5-recommend-digest-registry` (cut from `claude/teras-integration` a2a39018, journal
+ending `0891_teras_rule_version_labels` idx754 / when1793330000291). A scan of every origin ref found the highest
+claim at `0892_attendance_legacy_candidate_gate` (`codex/performance-attendance-candidate-profile-20261101`);
+0893–0894 are left for the parallel step 5c. Development source only: no installation priority, no deployment.
+The idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | SQL SHA256 |
+| ---: | ---: | --- | --- |
+|755|1793330000295|0895_teras_worker_registry|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|

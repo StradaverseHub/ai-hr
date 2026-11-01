@@ -4481,6 +4481,13 @@
       "when": 1793330000291,
       "tag": "0891_teras_rule_version_labels",
       "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1793330000295,
+      "tag": "0895_teras_worker_registry",
+      "breakpoints": true
     }
   ]
 }

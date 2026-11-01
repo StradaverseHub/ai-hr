@@ -26,13 +26,17 @@ import {newRunId,writeOutcomeRecordTx,type OutcomeCheck} from '../outcome-record
 import {MandateRefused,WORK_JOB_TYPES,WORK_JOB_TYPES_VERSION,delegableJobType,type WorkJobType} from './job-types';
 import {holdsJobAuthority,mandateAgentIdentity,mandateState,readMandateKeysTx} from './mandates';
 import {teamAbsenceWeeklySummary,type TeamAbsenceSummary,type WorkJobResult} from './team-absence-summary';
+import {dailyDigestJob} from '../digest/daily-digest';
 
 export type MandateRunOptions=Readonly<{tenantId:string;principalId:string;entitlements:EntitlementSnapshot;mandateId:string;now?:Date}>;
-export type MandateRunResult=Readonly<{status:'prepared';recordId:string;runId:string;summary:TeamAbsenceSummary}>
+/** `S` is the prepared result of the mandate's job type: the team summary by default, the digest for
+ * `daily_digest` (core/digest/daily-digest.ts runDailyDigestMandate narrows it by job type). */
+export type MandateRunResult<S=TeamAbsenceSummary>=Readonly<{status:'prepared';recordId:string;runId:string;summary:S}>
  |Readonly<{status:'stopped';recordId:string;runId:string;failed:readonly string[]}>;
 
-const JOBS:Record<WorkJobType,(grantor:SessionContext,mandate:typeof terasMandate.$inferSelect,now:Date)=>Promise<WorkJobResult>>={
+const JOBS:Record<WorkJobType,(grantor:SessionContext,mandate:typeof terasMandate.$inferSelect,now:Date)=>Promise<WorkJobResult<unknown>>>={
  team_absence_weekly_summary:(grantor,mandate,now)=>teamAbsenceWeeklySummary(grantor,mandate,now),
+ daily_digest:(grantor,mandate,now)=>dailyDigestJob(grantor,mandate,now),
 };
 const OWNER='core/mandates/run.ts#runMandate';
 /** A fingerprint of the grantor's roles and grants as resolved for this run, for the record; never the grants. */
@@ -69,7 +73,7 @@ async function stateTx(tx:Tx,tenantId:string,mandateId:string,now:Date){
  return{mandate,jobType,checks};
 }
 
-export async function runMandate(options:MandateRunOptions):Promise<MandateRunResult>{
+export async function runMandate<S=TeamAbsenceSummary>(options:MandateRunOptions):Promise<MandateRunResult<S>>{
  const now=options.now??new Date(),realStart=Date.now(),runId=newRunId();
  const agent=agentContext(options.tenantId,options.principalId,options.entitlements);
  // 1 and 2: the mandate, both keys and the grantor's current authority, read as the agent.
@@ -82,7 +86,7 @@ export async function runMandate(options:MandateRunOptions):Promise<MandateRunRe
  });
  const failed=first.checks.filter(item=>item.result!=='pass').map(item=>item.check);
  // 3: the job, under the grantor's current authority narrowed by the mandate. A refusal by an owner is a stop.
- let result:WorkJobResult|null=null;
+ let result:WorkJobResult<unknown>|null=null;
  if(!failed.length&&first.grantor&&first.jobType){
   try{result=await JOBS[first.jobType](first.grantor,first.mandate,now);}catch{failed.push('job_refused');}
  }
@@ -107,6 +111,6 @@ export async function runMandate(options:MandateRunOptions):Promise<MandateRunRe
    notice:stopped||!job?'not_applicable':job.notice,
   });
   return stopped?Object.freeze({status:'stopped' as const,recordId:record.id,runId,failed:Object.freeze([...failed])})
-   :Object.freeze({status:'prepared' as const,recordId:record.id,runId,summary:result!.summary});
+   :Object.freeze({status:'prepared' as const,recordId:record.id,runId,summary:result!.summary as S});
  });
 }

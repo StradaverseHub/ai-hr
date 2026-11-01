@@ -16,29 +16,37 @@ export type NeverDelegable=typeof NEVER_DELEGABLE[number];
 export type WorkEffect='summarise'|'prepare'|'chase';
 const WORK_EFFECTS:readonly string[]=['summarise','prepare','chase'];
 
-export type MandateScope=Readonly<{team:'direct'}>;
+/** Whose items the job covers: the grantor's direct team, or only the grantor's own items (step 5 digest). */
+export type MandateScope=Readonly<{team:'direct'|'self'}>;
 export type MandateLimits=Readonly<{maxRunsPerDay:number;maxPeople:number}>;
-/** ISO weekday, 1 = Monday. */
-export type MandateSchedule=Readonly<{weekday:1|2|3|4|5|6|7}>;
+/** ISO weekday, 1 = Monday, for a weekly job; `daily` for a job that runs once each HR day (step 5). */
+export type MandateSchedule=Readonly<{weekday:1|2|3|4|5|6|7}>|Readonly<{daily:true}>;
 
 type WorkJobDefinition=Readonly<{
  kind:'work';family:'preparer';effect:WorkEffect;
  /** What the job reads or touches; checked against NEVER_DELEGABLE. */
  categories:readonly string[];
- /** The authority the grantor must hold now, at grant and at every run (§3.10 rule 3). */
- requires:'team_manager';
+ /** The authority the grantor must hold now, at grant and at every run (§3.10 rule 3). `any_login`: a person
+  * with their own current login, for a job over only their own items (step 5 digest). */
+ requires:'team_manager'|'any_login';
  scopes:readonly MandateScope['team'][];
+ cadence:'weekly'|'daily';
  limits:Readonly<{maxPeople:number}>;
- /** Notice the affected people get by default; a summary to their own manager gives none. */
- notice:'not_given';
+ /** Notice the affected people get by default; a summary to their own manager gives none, and a summary of
+  * the grantor's own items is about nobody else. */
+ notice:'not_given'|'not_applicable';
 }>;
 export const WORK_JOB_TYPES=Object.freeze({
  /** "Every Monday, summarise who on my team is away this week." */
  team_absence_weekly_summary:{kind:'work',family:'preparer',effect:'summarise',categories:['leave'],requires:'team_manager',
-  scopes:['direct'],limits:{maxPeople:200},notice:'not_given'},
+  scopes:['direct'],cadence:'weekly',limits:{maxPeople:200},notice:'not_given'},
+ /** ADR-0170 step 5 — "every day, tell me what is waiting for me": approvals waiting, setup gaps and deadlines,
+  * as counts and links, prepared for the grantor only (core/digest/daily-digest.ts). */
+ daily_digest:{kind:'work',family:'preparer',effect:'summarise',categories:['approvals','readiness','deadlines'],requires:'any_login',
+  scopes:['self'],cadence:'daily',limits:{maxPeople:1},notice:'not_applicable'},
 } as const satisfies Record<string,WorkJobDefinition>);
 export type WorkJobType=keyof typeof WORK_JOB_TYPES;
-export const WORK_JOB_TYPES_VERSION='work_job_types:v1';
+export const WORK_JOB_TYPES_VERSION='work_job_types:v2';
 
 /** Jobs people will ask for that must never be delegated, named so the refusal says why. */
 const KNOWN_NEVER_DELEGABLE:Readonly<Record<string,NeverDelegable|'decision_job'>>=Object.freeze({
@@ -49,7 +57,7 @@ const KNOWN_NEVER_DELEGABLE:Readonly<Record<string,NeverDelegable|'decision_job'
 });
 
 export class MandateRefused extends Error{
- constructor(readonly reason:'never_delegable'|'decision_job'|'unknown_job_type'|'not_enabled'|'stopped'|'no_authority'|'invalid'|'not_found'|'not_grantor'|'not_administrator'|'revoked'|'expired'|'over_ceiling'){
+ constructor(readonly reason:'never_delegable'|'decision_job'|'unknown_job_type'|'not_enabled'|'stopped'|'no_authority'|'invalid'|'not_found'|'not_grantor'|'not_administrator'|'revoked'|'expired'|'over_ceiling'|'manager_revocation_not_allowed'){
   super('Mandate refused: '+reason);this.name='MandateRefused';
  }
 }
