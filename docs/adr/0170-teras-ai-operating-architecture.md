@@ -432,7 +432,23 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 | Vela | The sail; motion from harnessed force | Taken: Vela OS, Vela (YC W26), others |
 | Stride | Forward motion | Taken: Stride (agents), Stride.AI |
 
-**Recommendation.** **Volition**, with **Volent** as the coined fallback if the trademark search fails. Volition is the only forward-looking candidate that is clean in AI and HR, and it states the architecture's promise: people's will, carried out. "Volition Connect", "Volition mandate", "Ask Volition" all read naturally. Steward and Tiller remain on record as the conservative options.
+**Owner feedback (1 November 2026):** keep looking; one or two syllables. Third pass, short forward-looking words:
+
+| Name | Meaning and fit | Finding |
+| --- | --- | --- |
+| **Prow** (1) | The front of a ship: the part that cuts ahead and meets the water first. Forward by definition; recalls "prowess". "Prow Connect", "Prow mandate", "Ask Prow" | **No AI or HR product found**, on two searches. Near names are different words (Prowler.io, Prowly) |
+| **Forth** (1) | "Go forth", "set forth", "bring forth": outward and ahead | Nearly clean (a small dev shop, ForthClover; a 1970s programming language). Homophone of "fourth", which will cause confusion in speech |
+| **Volo** (2) | Latin: "I will", also "I fly". Will plus motion | Several small services firms named Volo; a sports-league app |
+| Spur | To urge forward | Taken: two AI companies (QA agents; support agents) |
+| Bound | "Bound for" and "within bounds": forward, and limited, in one word | Crowded (an audience platform, AIBound, Boundly) |
+| Wend | To make one's way | Too close to Wendi AI (an HR tool) and a thin "Wend AI" listing |
+| Vane | Points the way | Taken: an open-source answering engine |
+| Deed | An act done; a signed instrument of authority | Crowded (getdeed.ai, DeedAI) |
+| Writ | Authority to act | Too close to Writer (a large enterprise AI company) |
+| Elan | Vigour, momentum | Elan1.ai, ELAI |
+| Soar, Deft | Upward motion; skill | Taken (Soar Technology; Onton, formerly Deft, and others) |
+
+**Recommendation.** **Prow.** One syllable, forward by definition, clean in AI and HR, and it carries the architecture's promise without a persona: the part of the vessel that goes first, while the people on board decide where it goes. Alternates: **Forth** (if the homophone is acceptable) and **Volo**. Volition, Volent, Steward and Tiller remain on record from the earlier passes.
 
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
