@@ -35,6 +35,8 @@ let mobileCaller:SessionContext;
 vi.mock('../lib/session',async original=>({...await original<typeof import('../lib/session')>(),getMobileSession:async()=>mobileCaller}));
 const mobileRead=await import('../app/api/mobile/v2/pack-workspaces/[kind]/[id]/route');
 const mobileDecide=await import('../app/api/mobile/v2/pack-workspaces/[kind]/[id]/decision/route');
+const mobileDocument=await import('../app/api/mobile/v2/pack-workspaces/[kind]/[id]/document/route');
+async function nativeDocument(ctx:SessionContext,kind:string,id:string,attachment:string){mobileCaller=ctx;return mobileDocument.GET(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}/document?attachment=${encodeURIComponent(attachment)}`));}
 async function nativeRead(ctx:SessionContext,kind:string,id:string){mobileCaller=ctx;const r=await mobileRead.GET(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}`));expect(r.status).toBe(200);return r.json();}
 async function nativeDecision(ctx:SessionContext,kind:string,id:string,body:unknown){mobileCaller=ctx;const r=await mobileDecide.POST(new Request(`https://hr.test/api/mobile/v2/pack-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));expect(r.status).toBe(200);return r.json();}
 const nativeValues=(a:{fields:{key:string;value:unknown}[]})=>Object.fromEntries(a.fields.map(f=>[f.key,f.value]));
@@ -142,7 +144,12 @@ describe('performance work in the shared task list', () => {
     const {cycleId:standard}=await perf.createCycle(a,{name:'Standard mobile review',companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
     await perf.openCycle(a,{cycleId:standard});
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,standard),eq(schema.performanceReview.employmentId,subject.employmentId)));
+    const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kZVsAAAAASUVORK5CYII=','base64');const attachment=await perf.addPerformanceAttachment(self,{reviewId:r.id,stageKind:'year_end',fileName:'synthetic.png',mimeType:'image/png',content:png});
     const read=await nativeRead(mgr,'performanceReview',r.id);expect(read.outcome).toBe('found');
+    const file=await nativeDocument(mgr,'performanceReview',r.id,attachment.id);expect(file.status).toBe(200);expect(file.headers.get('content-type')).toBe('image/png');expect(file.headers.get('cache-control')).toBe('private, no-store');expect(Buffer.from(await file.arrayBuffer())).toEqual(png);
+    expect(await (await nativeDocument(self,'performanceReview',r.id,attachment.id)).json()).toEqual({outcome:'refused',code:'not_assigned'});
+    expect(await (await nativeDocument(mgr,'performanceReview',r.id,randomUUID())).json()).toEqual({outcome:'refused',code:'no_document'});
+    expect((await nativeDocument(mgr,'performanceReview',r.id,'invalid')).status).toBe(400);
     expect(await nativeRead(self,'performanceReview',r.id)).toMatchObject({code:'not_assigned'});
     const form=read.workspace.actions.find((a:any)=>a.id==='manager-submit');expect(form).toBeDefined();
     const rating=form.fields.find((f:any)=>f.key==='managerRating').options[0].value;

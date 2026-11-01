@@ -533,11 +533,18 @@ describe('native employment review workspaces',()=>{
 describe('native request workspaces',()=>{
  const read=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/route');
  const write=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/decision/route');
+ const requestDocument=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/document/route');
+ async function documentAs(who:Person,kind:string,id:string,attachment:string){caller=who.ctx;return (await requestDocument()).GET(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}/document?attachment=${encodeURIComponent(attachment)}`));}
  async function readAs(who:Person,kind:string,id:string){caller=who.ctx;const response=await (await read()).GET(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}`));return {status:response.status,body:await response.json()};}
  async function writeAs(who:Person,kind:string,id:string,body:unknown){caller=who.ctx;const response=await (await write()).POST(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,body:await response.json()};}
  it('accepts a resignation with its fixed last day, preserves its consequence and replays safely',async()=>{
-  const {submitResignation}=await import('../core/offboarding');const request=await submitResignation(employee.ctx,{employmentId:employee.employmentId,lastWorkingDay:addDays(MON,45),reason:'Synthetic resignation'});
-  const id=request.requestId;const seen=await readAs(hr,'resignation',id);expect(seen.body.outcome).toBe('found');expect(seen.body.workspace.lastWorkingDay).toBe(addDays(MON,45));
+  const {submitResignation,addResignationAttachment}=await import('../core/offboarding');const request=await submitResignation(employee.ctx,{employmentId:employee.employmentId,lastWorkingDay:addDays(MON,45),reason:'Synthetic resignation'});
+  const id=request.requestId,png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kZVsAAAAASUVORK5CYII=','base64');
+  const attachment=await addResignationAttachment(employee.ctx,{resignationRequestId:id,fileName:'synthetic.png',mimeType:'image/png',content:png});
+  const file=await documentAs(hr,'resignation',id,attachment.id);expect(file.status).toBe(200);expect(file.headers.get('content-type')).toBe('image/png');expect(file.headers.get('cache-control')).toBe('private, no-store');expect(Buffer.from(await file.arrayBuffer())).toEqual(png);
+  expect(await (await documentAs(colleague,'resignation',id,attachment.id)).json()).toEqual({outcome:'refused',code:'not_assigned'});
+  expect(await (await documentAs(hr,'resignation',id,randomUUID())).json()).toEqual({outcome:'refused',code:'no_document'});
+  const seen=await readAs(hr,'resignation',id);expect(seen.body.outcome).toBe('found');expect(seen.body.workspace.lastWorkingDay).toBe(addDays(MON,45));
   expect((await readAs(colleague,'resignation',id)).body.code).toBe('not_assigned');
   const body={requestId:randomUUID(),action:'approve',expected:seen.body.workspace.expected};
   const answer=await writeAs(hr,'resignation',id,body);expect(answer.body).toEqual({outcome:'accepted',status:'accepted'});
