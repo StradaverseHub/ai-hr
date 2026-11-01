@@ -418,9 +418,21 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 | Trellis, Fulcrum, Tessera, Keystone, Plinth, Rootstock, Verity, Mainstay | Structural or truth metaphors | All taken by AI or software products |
 | Teras, Kemudi, Suluh, Nadi, Rakan, Nakhoda, Akal, Onyx, Amanah | Earlier Malay and codename candidates | Withdrawn by owner direction (international name) or clashing (§9 history in git) |
 
-**Recommendation.** **Steward.** It names the behaviour the architecture guarantees, it is the market's own governance vocabulary, it is clean in AI and HR, and it reads well as "Steward Connect", "Steward mandate" and "Ask Steward". Second choice: Tiller.
+**Owner feedback (1 November 2026):** Steward reads as a back-seat name; the architecture should be named for what it makes possible, not for its safeguards. Second pass, forward-looking candidates:
 
-If the trademark search fails on Steward, the fallback is a coined word built on the same idea, chosen with a naming professional, since coined marks register more easily.
+| Name | Meaning and fit | Finding |
+| --- | --- | --- |
+| **Volition** | The power of acting by one's own will. "By your volition": the agent acts because, and only because, a person willed it, which is the mandate model stated as momentum rather than restraint. Forward, active, international | **No AI or HR product found.** Volition Capital is an investor (different class). A video-game studio of that name closed in 2023; its word mark covers game software only, status to be confirmed at USPTO |
+| **Volent** (coined, from volition) | Same idea in a coined form that registers more easily | No exact match; near names exist (Veloent marketing, Volant algorithms) |
+| Traverse | Crossing ground; moving through | Taken: Traverse (RL environments, YC W26), Traverse Automation, a TRAVERSE AI trademark |
+| Vantis | Coined, from vantage | Taken: Vantis (Hong Kong consultancy, HRMS); near Vanti, Vantiq |
+| Emissary | Sent out with authority to act for you | Taken by several AI companies |
+| Kairos | The right moment to act | Crowded (eight companies) |
+| Proxima | The next; the nearest star | Crowded |
+| Vela | The sail; motion from harnessed force | Taken: Vela OS, Vela (YC W26), others |
+| Stride | Forward motion | Taken: Stride (agents), Stride.AI |
+
+**Recommendation.** **Volition**, with **Volent** as the coined fallback if the trademark search fails. Volition is the only forward-looking candidate that is clean in AI and HR, and it states the architecture's promise: people's will, carried out. "Volition Connect", "Volition mandate", "Ask Volition" all read naturally. Steward and Tiller remain on record as the conservative options.
 
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
