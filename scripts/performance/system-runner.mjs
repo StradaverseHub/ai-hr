@@ -67,6 +67,12 @@ function summarizeNativeFailures(){
  const failures=[];
  for(const name of readdirSync(privateDir).filter(name=>/^server-[0-9]+\.log$/.test(name))){
   const text=readFileSync(join(privateDir,name),'utf8');
+  // The public-error owner logs one explicit SQLSTATE beside each generated reference.
+  // Publish that closed metadata only; never the surrounding SQL, values or stack.
+  for(const match of text.matchAll(/\[database error (DB-[A-Z]-[A-F0-9]{6})\] sqlstate=([0-9A-Z]{5}|none)/g)){
+   if(failures.length>=100)break;
+   failures.push({worker:Number(name.match(/[0-9]+/)[0]),source:'public-error',reference:match[1],sqlStates:match[2]==='none'?[]:[match[2]]});
+  }
   const markers=[...text.matchAll(/\[Draft (activate|delete) failure (DRAFT-[A-F0-9]{8})\]/g)];
   for(let i=0;i<markers.length&&failures.length<100;i++){
    const marker=markers[i],block=text.slice(marker.index,Math.min(markers[i+1]?.index??text.length,marker.index+32000));
@@ -77,7 +83,7 @@ function summarizeNativeFailures(){
     deadlockMessage:/deadlock detected/.test(block),permissionDeniedMessage:/permission denied/.test(block)});
   }
  }
- writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'SQLSTATEs and diagnostic flags in bounded log blocks following fixed native Draft markers; concurrent errors may overlap; raw logs and SQL excluded',failures},null,2));
+ writeFileSync(join(out,'server-native-failures.json'),JSON.stringify({scope:'Exact public-error reference/SQLSTATE metadata plus bounded native Draft marker blocks; Draft block errors may overlap; raw logs and SQL excluded',failures},null,2));
 }
 const apps=[],appFds=[];let proxy,upstream,dbStarted=false;
 const container=`aihr-ci-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}-db-1`;

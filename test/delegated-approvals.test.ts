@@ -113,6 +113,10 @@ describe('request-bound delegated approval effects',()=>{
   const full=await pendingClaimTaskMetadata(delegate),preview=await pendingClaimTaskSummary(delegate,undefined,25);
   expect(full.map(row=>row.id)).toContain(id);expect(preview.total).toBe(full.length);expect(preview.items).toEqual(full.slice(0,25));
   expect(await pendingClaimTaskSummary(delegate,[],25)).toEqual({items:[],total:0});
+  expect(await pendingClaimTaskMetadata(delegate,[b.companyId])).toEqual(full);
+  expect(await pendingClaimTaskSummary(delegate,[randomUUID(),b.companyId],25)).toEqual(preview);
+  expect(await pendingClaimTaskMetadata(delegate,[randomUUID()])).toEqual([]);
+  expect(await pendingClaimTaskSummary(delegate,[randomUUID()],25)).toEqual({items:[],total:0});
   await owner.db.insert(schema.reportingLineScope).values({tenantId:b.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
   expect(await pendingClaimTaskMetadata(delegate)).toEqual([]);
   expect(await pendingClaimTaskSummary(delegate,undefined,25)).toEqual({items:[],total:0});await noPersonnel();
