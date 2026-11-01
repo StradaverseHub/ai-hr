@@ -11,7 +11,7 @@ import {createClaimType,pendingClaimTaskSummary} from '../../packs/claims/servic
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('checks the actual counted Claims application summary over one million records and500subjects',async()=>{
- await resetDb();const b=await seedBase();await setModule(b.tenantId,'claims','active');const base=adminCtx(b);
+ await resetDb();await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');await owner.client`select pg_stat_statements_reset()`;const b=await seedBase();await setModule(b.tenantId,'claims','active');const base=adminCtx(b);
  const type=await createClaimType(base,{code:'PERF_META',name:'Fictional paired metadata',requiresReceipt:false,defaultTaxable:false});
  const users=Array.from({length:503},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),role:i===0?'hr_admin' as const:i===1||i===502?'manager' as const:'employee' as const}));
  await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional metadata subject '+i,primaryEmail:u.id+'@example.invalid'})));
@@ -52,7 +52,7 @@ it('checks the actual counted Claims application summary over one million record
      expect(result.items).toHaveLength(actor==='employee'?0:25);
      if(!expected.has(actor))expected.set(actor,result);else expect(result).toEqual(expected.get(actor));
     }
-    const statements=await owner.client`select queryid::text,calls,total_exec_time,rows,left(query,1800) as query from pg_stat_statements where query not ilike '%pg_stat_statements%' order by total_exec_time desc limit 8`;
+    const statements=await owner.client`select queryid::text,calls,total_exec_time,rows,left(query,1800) as query from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database()) and query not ilike '%pg_stat_%' order by total_exec_time desc limit 8`;
     const [raw]=await withClaimsTenant(ctx,tx=>tx.execute<{total:number}>(sql`select count(*)::int as total from public.claim_request`));
     expect(raw.total).toBe(actor==='hr_admin'?1000001:actor==='manager'?200001:actor==='employee'?2001:200000);
     expect(await pendingClaimTaskSummary(ctx,[],25)).toEqual({items:[],total:0});
