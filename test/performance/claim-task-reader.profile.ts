@@ -42,7 +42,7 @@ it('checks the actual counted Claims application summary over one million record
     const started=performance.now();
     const rows=await tx.execute<{id:string;employmentId:string}>(shape==='global'?sql`
      select id,employment_id as "employmentId" from public.claim_request
-     where tenant_id=${b.tenantId}::uuid and status='pending' and employment_id=ANY(${allowed}::uuid[])
+     where tenant_id=${b.tenantId}::uuid and status='pending' and employment_id=ANY(ARRAY[${sql.join(allowed.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])
      order by created_at desc,id asc limit 25
     `:sql`
      select headers.id,headers.employment_id as "employmentId"
