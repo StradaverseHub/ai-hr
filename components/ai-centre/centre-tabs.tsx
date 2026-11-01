@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { getTranslations } from 'next-intl/server';
+import { useTranslations } from 'next-intl';
 import { BookOpen, Inbox, MessageSquareText, Settings2, UserCheck, Wallet, Workflow } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { aiCentreName } from '@/lib/ai-centre/brand';
@@ -10,10 +10,11 @@ const ICONS: Readonly<Record<CentreTabKey, LucideIcon>> = {
   ask: MessageSquareText, inbox: Inbox, jobs: UserCheck, workers: Workflow, setup: Settings2, spend: Wallet, how: BookOpen,
 };
 
-/** The AI centre's one tab bar, on every centre page. Links only: each target page keeps its own guard, and
+/** Synchronous with useTranslations, so it renders from server pages and from client tests alike.
+ * The AI centre's one tab bar, on every centre page. Links only: each target page keeps its own guard, and
  * an administrator tab is hidden from a viewer whose page would refuse it. */
-export async function AiCentreTabs({ active, isAdmin, inboxCount }: { active: CentreTabKey; isAdmin: boolean; inboxCount?: number }) {
-  const t = await getTranslations('aiCentre');
+export function AiCentreTabs({ active, isAdmin, inboxCount }: { active: CentreTabKey; isAdmin: boolean; inboxCount?: number }) {
+  const t = useTranslations('aiCentre');
   const name = aiCentreName(t('genericName'));
   return (
     <nav aria-label={t('tabsLabel', { name })} data-ai-centre-tabs className="-mx-1 overflow-x-auto border-b border-border">
@@ -46,10 +47,10 @@ export async function AiCentreTabs({ active, isAdmin, inboxCount }: { active: Ce
 /** The second row for an administrator tab: the AI management sections that tab groups. `available` comes
  * from the screen's own section filter (spending only with a spend policy, provider only for a group
  * administrator), so a link never leads to a section the page would refuse. */
-export async function AiCentreSubnav({ group, active, available, hrefOf }: {
+export function AiCentreSubnav({ group, active, available, hrefOf }: {
   group: keyof typeof ADMIN_GROUPS; active: AdminSection; available: readonly string[]; hrefOf: (section: AdminSection) => string;
 }) {
-  const t = await getTranslations('aiCentre');
+  const t = useTranslations('aiCentre');
   const items = ADMIN_GROUPS[group].filter(item => available.includes(item.section));
   if (items.length < 2) return null;
   return (

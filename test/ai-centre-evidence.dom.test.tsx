@@ -71,7 +71,7 @@ afterEach(cleanup);
 describe('AI centre screens', () => {
   it.each(['en', 'zh'] as const)('%s Inbox lists decisions as cards that only link to the deciding page', async locale => {
     state.locale = locale;
-    const tabs = await AiCentreTabs({ active: 'inbox', isAdmin: true });
+    const tabs = <AiCentreTabs active="inbox" isAdmin />;
     const inbox = await AiCentreInbox({ session });
     const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6">{tabs}{inbox}</div>);
     const cards = view.container.querySelectorAll('[data-proposal-card]');
@@ -85,7 +85,7 @@ describe('AI centre screens', () => {
 
   it('employees see no administrator tabs and no findings', async () => {
     state.locale = 'en';
-    const tabs = await AiCentreTabs({ active: 'ask', isAdmin: false });
+    const tabs = <AiCentreTabs active="ask" isAdmin={false} />;
     const view = wrap('en', tabs);
     expect(screen.queryByRole('link', { name: messagesFor('en').aiCentre.tabs.workers })).toBeNull();
     expect(screen.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/assistant', '/assistant?view=inbox', '/assistant?view=jobs', '/assistant?view=how']);
@@ -109,7 +109,7 @@ describe('AI centre screens', () => {
 
   it('Delegated jobs says nothing is delegated and lists what never can be', async () => {
     state.locale = 'en';
-    const view = wrap('en', <div className="mx-auto max-w-6xl space-y-6">{await AiCentreTabs({ active: 'jobs', isAdmin: false })}{await AiCentreDelegatedJobs()}</div>);
+    const view = wrap('en', <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="jobs" isAdmin={false} />{await AiCentreDelegatedJobs()}</div>);
     expect(screen.getByText(messagesFor('en').aiCentre.jobs.leadStrong)).toBeInTheDocument();
     expect(view.container.querySelector('a[href="/delegations"]')).not.toBeNull();
     await captureAiReviewScreenshots(aiReviewDomHtml(view.container), 'en', 'ai-centre-jobs', FICTION, 'atelier');
@@ -118,7 +118,7 @@ describe('AI centre screens', () => {
   it.each(Object.keys(copies) as Locale[])('%s How it works renders the clockwork figure and steps', async locale => {
     state.locale = locale;
     const how = messagesFor(locale).aiCentre.how;
-    const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6">{await AiCentreTabs({ active: 'how', isAdmin: true })}<HowItWorks /></div>);
+    const view = wrap(locale, <div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="how" isAdmin /><HowItWorks /></div>);
     const step = within(screen.getByRole('tablist', { name: how.stepsLabel })).getAllByRole('tab').find(tab => tab.getAttribute('aria-selected') === 'true')!;
     step.focus(); fireEvent.keyDown(step, { key: 'ArrowRight' }); fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' }); fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
     expect(screen.getByRole('heading', { level: 2, name: how.steps.s3 })).toBeInTheDocument();

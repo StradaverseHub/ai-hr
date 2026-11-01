@@ -108,9 +108,13 @@ describe('AI management page',()=>{
 });
 
 describe('AI management sub-menu',()=>{
-  it('has no in-page section tab row; the sidebar\u2019s AI management menu chooses the page',async()=>{
+  // AI centre (1 Nov 2026): the old per-page tab row stays retired; the one navigation is the centre's tab
+  // bar, where Workers is current, plus the Workers section switcher (all workers, inventory).
+  it('shows the AI centre tab bar with Workers current, and one section per page',async()=>{
     const {container}=await show({heldNanos:'0',confirmedNanos:null},'features');
-    expect(screen.queryByRole('navigation')).toBeNull();
+    const tabs=container.querySelector('nav[data-ai-centre-tabs]') as HTMLElement;
+    expect(within(tabs).getByRole('link',{current:'page'})).toHaveAttribute('href','/control-tower/agents/features');
+    expect(screen.getAllByRole('navigation')).toHaveLength(2);
     expect(container.querySelector('#ai-features')).not.toBeNull();
     for(const other of ['#ai-map','#ai-attention','#company-limits','#user-limits','#ai-spend','#orchestrator','#ai-runs'])expect(container.querySelector(other),other).toBeNull();
   });
