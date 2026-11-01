@@ -462,7 +462,22 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 | Arvo (2) | Finnish: *value* | Taken: Arvo AI, Arvo (healthcare), Arvo (fitness) |
 | Kivo (2) | Coined | Taken, including an HR payroll product (Kivo.ai) |
 
-**Recommendation.** **Fram.** It means forward, it is one syllable that every language can say, and it carries a story worth telling: a vessel built for hard conditions that came through. "Fram Connect", "Fram mandate", "Ask Fram". Alternates: **Vorn** (clean, coined feel) and **Prow** (from the third pass). Earlier candidates stay on record.
+**Owner brief (1 November 2026):** a name that takes everything in, accepts everything, yet stays firm on its principles and security. Fifth pass, on that brief: enclosures that are open and still protected.
+
+| Name | Meaning and fit | Finding |
+| --- | --- | --- |
+| **Atoll** (2) | A ring of reef that lets the whole ocean in and keeps the lagoon calm: open to everything, firm at the edge, still inside. The closest single word to the brief | **No exact match.** Near names in the same space: Atolio (private enterprise AI search) and Atollogy; a trademark search must weigh Atolio |
+| **Hull** (1) | Holds everything aboard and stays watertight | Nearly clean: an older customer-data product of the same name; a UK city |
+| Fold (1) | "Within the fold": everyone welcome, yet enclosed | No exact match (Refold AI is near), but "to fold" also means to give up; avoid |
+| Haven (2) | Safe harbour | Taken: several AI companies, including a $15M "digital twin" startup |
+| Harbor (2) | Every ship may enter; calm water inside | Taken: Harbor (insurance and risk controls for AI agents, $10M, October 2026) and an open-source agent registry |
+| Cove (1) | Sheltered inlet | Taken: Cove (Sequoia-backed; team hired by Microsoft, 2026) and others |
+| Vessel (2) | Holds everything | Taken: Vessel (investor-relations AI) |
+| Ambit (2) | Everything within one's authority | Taken: Ambit AI (conversational AI) |
+| Holon (2) | A whole that contains, and is contained | Crowded and unclear |
+| Gamut (2) | The whole range | Taken: Gamut, an AI agent platform |
+
+**Recommendation on this brief.** **Atoll.** It is the one word found that says all three things at once: open to everything, firm at the boundary, calm within. Two syllables, and the word exists in most languages. The trademark search must look hard at Atolio, which is close in both spelling and field. Alternate: **Hull**. Fram, Prow and Vorn stay on record from the forward-looking passes; a final choice may combine the two briefs (for example a coined word), which is work for a naming professional.
 
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
