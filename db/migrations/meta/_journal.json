@@ -4565,6 +4565,13 @@
       "when": 1793330000297,
       "tag": "0897_administrator_candidate_work",
       "breakpoints": true
+    },
+    {
+      "idx": 771,
+      "version": "7",
+      "when": 1793330000300,
+      "tag": "0900_attendance_payroll_period_locks",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,20 @@
+## Attendance Payroll period locks — 2 November 2026 (unapplied)
+
+Owned performance source reserves `0900_attendance_payroll_period_locks`, idx771 /
+when1793330000300. Fresh all-ref/worktree scan at 18:57:23 UTC inspected 1,732 heads,
+307 journals, 387 migration trees, 444 worktrees and 751 WIP variants, with no parse
+errors. Foreign reservations0898/0899 remain excluded. All existing SQL is preserved.
+The fresh canonical ID-ordered staging ledger has640 exact rows, watermark
+1793330000276; canonical main/alpha are e1585acba. This is a source reservation only.
+
+The append adds date-bounded overloads of the existing native Attendance Payroll
+guard and its private row owner, guarded by exact donor body hashes and attribute
+comparison. Relevant drafts, former-company membership, payslip membership, fresh
+correction authority and stable exclusive batch locking remain intact. Exact cutoff
+coverage stays with core/payroll-policy-config.ts. Undated functions are unchanged.
+Native financial regressions, upgrade rehearsal, compiler and both500-user HTTP /
+browser loads remain required. No installation or deployment is authorized.
+
 ## Performance administrator candidate work — 2 November 2026 (unapplied)
 
 Owned source reserves `0897_administrator_candidate_work`, idx770 / when1793330000297,
