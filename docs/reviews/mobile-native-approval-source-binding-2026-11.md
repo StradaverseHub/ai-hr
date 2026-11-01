@@ -1,6 +1,6 @@
 # Mobile native approvals: proposed source binding
 
-This is a technical source review packet. Human approval of the binding refresh is pending. The literal approval registry is unchanged, and no server installation is authorized by this document.
+This is a technical source review packet. The repository owner explicitly answered “Approve exact binding refresh” at 2026-11-01T18:25:16Z for reviewed source 28ca1e91bc493d9261a6f57490d8e3236baa7cba and the exact proposed digest below. Only the 24 active sourceDigest values are refreshed; both pending records and all original approval metadata remain unchanged. This document does not authorize production installation.
 
 The mobile server update adds authorized in-app review/decision workspaces for the existing approval types. Three new POST entry points are classified as internal clients of the existing services; this does not register AI agent actions or grant an agent decision authority. Shared decision owners gain transaction reuse and locks so a mobile receipt commits with the existing canonical decision. Native mobile projections preserve current assignment, permissions, field policy and senior-pay redaction.
 
@@ -35,4 +35,4 @@ Added covered files:
 
 Removed covered files: 0. Every other common covered file is byte-identical.
 
-The first full server run 41334172252 is retained as failed. Its original failures include the capability inventory, generated source manifest, the mobile-route formatting guard and a lifecycle fixture under baseline investigation. Focused route/RLS/receipt and compiler/build evidence at f12a601d1 passed; that is separate from release acceptance. Do not update literal approvals or deploy while the required binding review is pending.
+The first full server run 41334172252 is retained as failed. Its original failures include the capability inventory, generated source manifest, the mobile-route formatting guard and a lifecycle fixture under baseline investigation. Focused route/RLS/receipt and compiler/build evidence at f12a601d1 passed; that is separate from release acceptance. The actual human binding approval resolves that review prerequisite. Fresh affected checks, authenticated release verification, staging arrival and installed acceptance are still required.
