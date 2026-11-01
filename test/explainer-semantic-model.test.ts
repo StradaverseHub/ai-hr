@@ -56,8 +56,11 @@ describe('step 4 capabilities in the semantic model',()=>{
   expect(terasEntity('leave_entitlement')).toBe(SEMANTIC_ENTITIES.find(row=>row.id==='leave_entitlement'));
   expect(terasEntity('module_work')).toBe(SEMANTIC_ENTITIES.find(row=>row.id==='module_work'));
   const data=terasEntity('module_work').fields.find(field=>field.name==='data')!;
-  expect(data.disclosure).toBe('minimum');expect(data.open).toBe(true);
-  expect(Object.fromEntries((data.of??[]).map(field=>[field.name,field.disclosure]))).toEqual({gross:'bands',deductions:'bands',net:'bands',amount:'bands'});
+  // Privacy fixes (November 2026): module rows are closed; every field a module reader returns is declared.
+  expect(data.disclosure).toBe('minimum');expect('open' in data).toBe(false);
+  const declared=Object.fromEntries((data.of??[]).map(field=>[field.name,field.disclosure]));
+  expect(declared).toMatchObject({gross:'bands',deductions:'bands',net:'bands',amount:'bands',employeeCode:'never',employmentId:'never',name:'minimum'});
+  expect((data.of??[]).find(field=>field.name==='name')?.type).toBe('name');
   expect('ENTITY_FIELD_EXTENSIONS' in explainModel).toBe(false);
   // The entitlement explainer's rows are the leave_entitlement declaration (less the employment handle) plus proration.
   const rows=EXPLAIN_ENTITIES.find(row=>row.id==='entitlement_explanation')!.fields.find(field=>field.name==='employments')!.of!.map(field=>field.name);

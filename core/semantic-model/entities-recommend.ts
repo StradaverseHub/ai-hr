@@ -5,11 +5,12 @@
  * readiness gaps, pending approvals and follow-up items), so every registered worker can declare its read
  * scope from this model (core/agent-registry/workers.ts checks each scope id against terasEntities()).
  * These are entities only: no read is added to the Teras tool catalogue, so the harness offers nothing new.
+ * suggested_action declares the harness's existing suggest_action result (privacy fixes, November 2026).
  * Counts are `minimum` (the person may read every row behind them) except where they describe a group of
  * other people, which are `bands`. Rule-version labels carry internal ids, so they are `never`. */
 import type {DisclosureClass,FieldType,SemanticEntity,SemanticField} from './types';
 
-const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
+const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 
 /** Owner decision, 2 November 2026: the AI never recommends rejecting a leave request. Two outcomes only. */
@@ -17,6 +18,8 @@ export const RECOMMENDATION_VERDICTS=['recommend_approve','needs_review'] as con
 export const RECOMMENDATION_CHECKS=['balance_covers','own_overlap','team_coverage','policy_limits'] as const;
 export const RECOMMENDATION_RESULTS=['pass','fail','unusual','missing'] as const;
 export const WORKER_FAMILIES=['watcher','chaser','preparer','decider','explainer'] as const;
+/** suggest_action's relative start for a pending request (core/proposals/suggested.ts pendingStarts). */
+export const PENDING_STARTS=['started','this_week','next_week','in_2_to_4_weeks','later'] as const;
 export const WORKER_EFFECTS=['none','notify','prepare','complete_under_mandate'] as const;
 const page=(meaning:string)=>f('page','label','full',meaning);
 
@@ -74,4 +77,23 @@ export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[],page:'/tasks',
   fields:[f('source','enum','full','What is followed up.',{values:['missing_clock','passport_expiry','lifecycle_step']}),f('dueOn','date','minimum','When it became due.'),
    f('itemId','id','never','Handle of the item.')]},
+ // The Teras harness's suggest_action result, disclosed under this declaration rather than as
+ // product context: with several leave requests waiting, the approver chooses between them by number. The
+ // model sees each request's ordinal, a leave type label (screened), its day count and a relative start; the
+ // applicant and the exact dates are about another person, so they leave as placeholders the person sees restored.
+ {id:'suggested_action',label:'Suggested change',
+  meaning:'A pointer to the review page where the person completes and confirms one change, or the pending leave requests an approver chooses between.',
+  module:null,sensitivity:'ordinary',audience:'assigned_approver',rls:'assigned_request',
+  owners:['core/product-context/tools.ts#suggestAction','core/proposals/suggested.ts#prepareSuggestedProposal'],
+  ruleVersion:null,relations:[{to:'leave_approval_step',kind:'one_to_many',via:'leaveRequestId'}],page:'/approvals',
+  fields:[f('suggested','boolean','full','Whether a review page was suggested.'),f('action','label','full','The action from available_actions.'),
+   f('reviewRoute','label','full','The review page.'),f('inlineCard','boolean','full','Whether the change has an inline card.'),
+   f('reason','enum','full','Why nothing was suggested.',{values:['not_available','missing_details']}),f('missing','list','full','Details still needed.'),
+   f('notListed','integer','full','Further pending requests left to the review page.'),
+   f('pending','list','full','Pending leave requests the approver chooses between, in a fixed order.',{of:[
+    f('request','integer','full','The request\'s number in this list; the approver chooses by it.'),
+    f('applicant','name','minimum','Who applied.'),f('leaveType','label','full','Leave type name.',{screen:'sensitive_label'}),
+    f('days','number','full','Day quantity; with the applicant withheld it identifies no one.'),
+    f('starts','enum','full','When it starts, relative to today.',{values:PENDING_STARTS}),
+    f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.')]})]},
 ] satisfies SemanticEntity[]);

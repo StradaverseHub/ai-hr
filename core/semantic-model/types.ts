@@ -9,8 +9,13 @@
  * Disclosure classes (ADR-0170 §2 principle 4), strictest first:
  *  - never    stays in the product: identifiers, codes, free text a person typed, private bindings.
  *  - bands    a figure that leaves only as a band or placeholder and is restored locally.
- *  - minimum  disclosed only when the question needs it, in the narrowest form (a name, a date, a label).
- *  - full     product vocabulary and calendar facts with no personal weight (a status, a holiday name). */
+ *  - minimum  the narrowest form of a personal fact. Exact only for the caller's own records and for
+ *             configuration an administrator owns. About anyone else (an entity whose audience is another
+ *             person: manager, visible_scope, assigned_approver) and for every `name` field, it leaves as an
+ *             opaque text placeholder the harness restores locally for the person (the Teras harness disclosure step).
+ *  - full     product vocabulary and calendar facts with no personal weight (a status, a holiday name).
+ * A label field marked `screen` (a leave, claim or pay item name) is checked against the harness's list of
+ * health-, religion- and similar-indicative names; a match leaves as a placeholder whatever its class. */
 import type {AiJsonSchema} from '../../lib/ai/types';
 
 export type DisclosureClass='never'|'bands'|'minimum'|'full';
@@ -18,13 +23,15 @@ export const DISCLOSURE_CLASSES:readonly DisclosureClass[]=Object.freeze(['never
 export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object';
 export type SemanticField=Readonly<{name:string;type:FieldType;disclosure:DisclosureClass;meaning:string;
  /** Closed vocabulary for `enum` fields. */values?:readonly string[];
- /** Row shape for `list`/`object` fields; each nested field carries its own class. */of?:readonly SemanticField[];
- /** With `of`: rows are module-owned and open, so an undeclared child keeps the parent's class (identifiers
-  * still swept) while each declared child takes its own. Used where rows vary by module (module_work.data). */
- open?:true}>;
+ /** Row shape for `list`/`object` fields; each nested field carries its own class. An undeclared child is
+  * removed (fail closed), however deep. */of?:readonly SemanticField[];
+ /** A label whose values may be health-, religion- or similar-indicative (a leave, claim or pay item name). */
+ screen?:'sensitive_label'}>;
 export type Sensitivity='ordinary'|'pay'|'identity';
 /** Who the entity is about, relative to the caller. Never a grant: the owner's own guard decides. */
 export type Audience='self'|'manager'|'visible_scope'|'assigned_approver'|'admin';
+/** Audiences whose rows are about another person: their `minimum` fields leave as placeholders. */
+export const OTHER_PERSON_AUDIENCES:readonly Audience[]=Object.freeze(['manager','visible_scope','assigned_approver']);
 /** Which row-level scope the native owner applies (as the caller, under tenant RLS). */
 export type RlsScope='own_employment'|'own_person'|'reporting_subordinates'|'visible_employments'|'own_holiday_calendar'|'assigned_request'|'own_module_scope'
  /** An administrator's own companies, as each readiness owner scopes them (step 4 setup co-pilot). */
@@ -37,7 +44,9 @@ export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public
  /** Step 4 explainers and setup co-pilot (./entities-explain.ts, ./entities-setup.ts). */
  |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot'
  /** Step 5 recommendations, digest, agent registry and existing worker inputs (./entities-recommend.ts). */
- |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item';
+ |'leave_decision_recommendation'|'daily_digest'|'agent_worker'|'payroll_anomaly'|'readiness_gap'|'pending_approval'|'followup_item'
+ /** The harness's suggest_action result, including the pending leave requests an approver chooses between. */
+ |'suggested_action';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;

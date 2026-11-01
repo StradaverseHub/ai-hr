@@ -27,7 +27,7 @@ import {verifyProposal,type Proposal} from '../core/proposals/proposal';
 import {leaveDecideReviewPackets,prepareLeaveDecideProposal,type LeaveDecideHumanInput} from '../core/proposals/leave-decide';
 import {PROPOSAL_CARD_KEYS,renderProposalCard} from '../core/proposals/card';
 import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
-import {prepareSuggestedProposal} from '../core/proposals/suggested';
+import {pendingStarts,prepareSuggestedProposal} from '../core/proposals/suggested';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import {scriptedModel} from './harness-ratchet/scripted-model';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
@@ -171,16 +171,25 @@ describe('harness returns the proposal for the matching suggestion',()=>{
   const secondId=(await requestLeave(await login(second),{employmentId:second.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:laterDate,endDate:laterDate,durationType:'full_day',reason:'Fictional second reason'})).leaveRequestId;
   const me=await login(manager);
   const choice=await prepareSuggestedProposal(me,'approvals.leave.decide',{},'Please approve the leave request waiting for me.');
+  const today=todayInKualaLumpur();
   expect(choice).toEqual({kind:'choose',more:0,pending:[
-   {applicant:'Fictional Decide Applicant',leaveType:'Annual Leave',startDate:date,endDate:date,days:1},
-   {applicant:'Fictional Second Applicant',leaveType:'Annual Leave',startDate:laterDate,endDate:laterDate,days:1}]});
+   {request:1,applicant:'Fictional Decide Applicant',leaveType:'Annual Leave',days:1,starts:pendingStarts(date,today),startDate:date,endDate:date},
+   {request:2,applicant:'Fictional Second Applicant',leaveType:'Annual Leave',days:1,starts:pendingStarts(laterDate,today),startDate:laterDate,endDate:laterDate}]});
   expect(JSON.stringify(choice)).not.toMatch(UUID);
-  // Through the harness: the model is sent the list and the instruction to ask; no proposal is issued.
-  const model=scriptedModel([{calls:[{name:'suggest_action',args:{action:'approvals.leave.decide'}}]},{final:{reply:'Two requests are waiting: which one would you like to approve?',mode:'clarify'}}]);
+  // Through the harness: the model is sent the numbered list and the instruction to ask; no proposal is issued.
+  // The applicants and dates are about other people: the model sees placeholders, the person sees them restored.
+  const model=scriptedModel([{calls:[{name:'suggest_action',args:{action:'approvals.leave.decide'}}]},{final:{reply:'Request 1: {{T1}}; request 2: {{T3}}. Which one would you like to approve?',mode:'clarify'}}]);
   const asked=await runTurn({enabled:HARNESS_TEST_ONLY,ctx:me,conversationId:randomUUID(),question:'Please approve the leave request waiting for me.',scope:{companyId:base.companyId,locale:'en'},model,memory:new InMemoryTaskMemoryStore()});
   expect(asked.proposals).toEqual([]);
-  const sent=JSON.stringify(model.requests[1].messages.filter(message=>message.role==='tool'));
-  expect(sent).toContain('Fictional Second Applicant');expect(sent).toContain('never choose one yourself');expect(sent).not.toContain(secondId);
+  const sent=JSON.stringify(model.requests.map(request=>request.messages));
+  expect(sent).not.toContain('Fictional Second Applicant');expect(sent).not.toContain('Fictional Decide Applicant');expect(sent).not.toContain(laterDate);
+  expect(sent).toContain('Annual Leave');expect(sent).toContain('never choose one yourself');expect(sent).not.toContain(secondId);
+  expect(asked.reply).toBe('Request 1: Fictional Decide Applicant; request 2: Fictional Second Applicant. Which one would you like to approve?');
+  // The person answers with a number: exactly that request is prepared.
+  const byNumber=await prepareSuggestedProposal(me,'approvals.leave.decide',{request:'2'},'Approve number 2.');
+  if(byNumber?.kind!=='proposal')throw Error('The chosen request was not prepared.');
+  expect(byNumber.proposal.body).toMatchObject({forWhom:{subjectId:secondId}});
+  expect(await prepareSuggestedProposal(me,'approvals.leave.decide',{request:'9'},'Approve number 9.')).toBeNull();
   // The person names one by its date: exactly that request is prepared.
   const named=await prepareSuggestedProposal(me,'approvals.leave.decide',{startDate:laterDate},'Approve the one starting '+laterDate+'.');
   if(named?.kind!=='proposal')throw Error('The named request was not prepared.');

@@ -9,12 +9,61 @@
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import type {SemanticAction,SemanticEntity,SemanticField,SemanticRead,FieldType,DisclosureClass} from './types';
 
-const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'open'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
+const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'screen'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
-/** Pay figures inside module-owned rows (step 4): the same money my_payslip_summary already bands. */
-const PAY_FIGURES:readonly SemanticField[]=[f('gross','number','bands','Gross pay.'),f('deductions','number','bands','Total deductions.'),f('net','number','bands','Net pay.'),f('amount','number','bands','A pay item amount.')];
-const LEAVE_STATUS=['pending','approved','rejected','cancelled'] as const;
+/** A leave, claim or pay item name: screened for health-, religion- and similar-indicative names. */
 const company=f('company','label','minimum','Company the record belongs to.');
+const screened=(name:string,disclosure:DisclosureClass,meaning:string)=>f(name,'label',disclosure,meaning,{screen:'sensitive_label'});
+/** Every field a module_work row may carry, from the closed projections in core/module-agent-readers.ts (one
+ * reader per module; nested containers such as balances, reportingLines, lines, steps and tables are judged by
+ * these same fields). Anything else is removed. Employee codes and record ids never leave (ids as handles); names
+ * leave as placeholders; pay item codes and other screened labels leave as placeholders when sensitive; pay and
+ * day figures leave as bands. */
+const MODULE_ROW_FIELDS:readonly SemanticField[]=[
+ // Identifiers and other people (employees, org, payroll, claims, performance, rewards, toil, notifications, system_testing).
+ f('employmentId','id','never','Handle of the caller\'s employment.'),f('payslipId','id','never','Handle of a payslip.'),f('id','id','never','Handle of a record.'),
+ f('employeeCode','code','never','Employee code.'),
+ // A `name` is always withheld as a placeholder (another person's name in org rows, a pay item name in typed pay rows).
+ f('name','name','minimum','A manager\'s name (org) or a pay item name (typed_pay_components).'),screened('code','minimum','A pay item code.'),f('leaveTypeId','id','never','Handle of a leave type.'),f('reviewId','id','never','Handle of a review.'),f('planId','id','never','Handle of a plan.'),
+ f('assignmentId','id','never','Handle of a test assignment.'),f('caseId','id','never','Handle of a test case.'),f('versionId','id','never','Handle of a test case version.'),f('executionId','id','never','Handle of a test execution.'),
+ // The caller's own work record (employees, org, leave, approvals, attendance).
+ company,f('hiredOn','date','minimum','Own hire date.'),f('terminatedOn','date','minimum','Own end date, if ended.'),f('status','label','full','Where the record stands.'),
+ f('lineType','enum','full','Kind of reporting line.'),
+ // Own leave (leave, approvals, toil).
+ screened('leaveType','minimum','Leave type name.'),f('accrued','number','bands','Days accrued.'),f('taken','number','bands','Days taken.'),f('pending','number','bands','Days awaiting approval.'),
+ f('balance','number','bands','Recorded balance.'),f('available','number','bands','Days available.'),f('sharedPoolName','label','minimum','Leave type whose pool a balance draws from.'),
+ f('withheld','boolean','full','Whether ESS visibility hid part of the row.'),f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
+ f('days','number','minimum','Day quantity of an own request.'),f('hours','number','minimum','Hour quantity of an own request.'),f('durationType','enum','full','Full day, half day or hours.'),
+ f('hasRejectedDates','boolean','full','Whether some dates were rejected.'),
+ f('active','number','bands','Replacement leave days available.'),f('expired','number','bands','Replacement leave days expired.'),f('convertedToPay','number','bands','Replacement leave days paid out.'),
+ f('soonestExpiry','date','minimum','When the next replacement leave credit expires.'),f('leaveUnit','enum','full','Days or hours.'),f('workedDate','date','minimum','Day worked for a credit.'),
+ f('expiresOn','date','minimum','When a credit expires.'),f('daysCredited','number','bands','Days credited.'),f('daysTaken','number','bands','Days used.'),f('remaining','number','bands','Days remaining.'),
+ // Readiness (ess, country-my).
+ f('employees','integer','minimum','Own employments checked.'),f('ready','integer','minimum','Own employments ready.'),f('blocks','enum','full','What a readiness gap blocks.'),f('count','integer','minimum','Own records with the gap.'),
+ // Knowledge base, notifications.
+ f('title','label','minimum','Guide title.'),f('category','label','full','Guide category.'),f('updatedAt','datetime','minimum','When the guide changed.'),
+ f('readAt','datetime','minimum','When the notification was read.'),f('createdAt','datetime','minimum','When the record was created.'),
+ // Pay (payroll, typed_pay_components, multi_cycle_payroll): the same money my_payslip_summary already bands.
+ f('payPeriod','period','full','Pay period.'),f('runType','enum','full','Regular or off-cycle run.'),f('runSeq','integer','full','Run number in the period.'),f('currency','enum','full','Currency code.'),
+ f('cycleName','label','minimum','Pay cycle name.'),f('gross','number','bands','Gross pay.'),f('deductions','number','bands','Total deductions.'),f('net','number','bands','Net pay.'),f('amount','number','bands','A pay item amount.'),
+ // Attendance.
+ f('date','date','minimum','Attendance day.'),f('workedMinutes','integer','minimum','Minutes worked.'),f('otMinutes','integer','minimum','Overtime minutes.'),
+ // Claims.
+ f('hasEmployment','boolean','full','Whether the caller has an employment.'),screened('claimType','minimum','Claim type name.'),f('incurredOn','date','minimum','Date incurred.'),
+ f('decidedAt','datetime','minimum','When it was decided.'),f('paidAt','datetime','minimum','When it was paid.'),
+ // Performance, rewards, lifecycle.
+ f('framework','enum','full','Performance framework.'),f('artifact','enum','full','Review or plan.'),f('periodEnd','date','minimum','End of the review period.'),f('released','boolean','full','Whether it was released.'),
+ f('kind','enum','full','Reward unit kind.'),f('year','integer','full','Reward year.'),f('revision','integer','full','Reward unit revision.'),f('cycle','label','minimum','Reward cycle.'),f('unit','label','minimum','Reward unit.'),
+ f('progress','number','full','Onboarding progress.'),f('key','enum','full','Onboarding step key.'),f('label','label','full','Onboarding step label.'),f('applicable','boolean','full','Whether the step applies.'),f('done','boolean','full','Whether the step is done.'),
+ // System explorer, system testing, assistant.
+ f('table','label','full','Schema table name.'),f('module','enum','full','Module code.'),f('withheldTables','integer','full','Tables withheld.'),
+ f('caseNo','code','never','Test case number.'),f('moduleCode','enum','full','Module code.'),f('ordinal','integer','full','Step order.'),
+ f('capability','enum','full','Module capability.'),f('authority','enum','full','Where authority is checked.'),f('effects','enum','full','How effects are confirmed.'),
+ f('total','integer','full','Scheduled agents.'),f('switchesOn','integer','full','Agents switched on.'),f('effectiveSwitchesOn','integer','full','Agents effectively on.'),
+ f('feature','enum','full','Agent feature.'),f('switchOn','boolean','full','Switch state.'),f('effectiveSwitchOn','boolean','full','Effective switch state.'),f('state','enum','full','Agent state.'),
+ f('attribution','enum','full','Switch attribution.'),f('managementHref','label','full','Agent management page.'),
+];
+const LEAVE_STATUS=['pending','approved','rejected','cancelled'] as const;
 
 export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'leave_balance',label:'Leave balance',meaning:'The caller\'s own balance per leave type, as shown on their own leave page (ESS visibility applies first).',
@@ -28,7 +77,7 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'leave_request',label:'Leave request',meaning:'One leave application by the caller, with its status and covered dates.',
   module:'leave',sensitivity:'ordinary',audience:'self',rls:'own_employment',owners:['core/read.ts#myEmployments','core/read.ts#leaveRequestsFor'],
   ruleVersion:null,relations:[{to:'leave_balance',kind:'many_to_one',via:'leaveTypeId'},{to:'leave_approval_step',kind:'one_to_many',via:'leaveRequestId'}],page:'/leave',
-  fields:[company,f('leaveTypeId','id','never','Handle of the leave type.'),f('leaveType','label','full','Leave type name.'),
+  fields:[company,f('leaveTypeId','id','never','Handle of the leave type.'),screened('leaveType','full','Leave type name.'),
    f('status','enum','full','Where the application stands.',{values:LEAVE_STATUS}),f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),
    f('days','number','minimum','Day quantity recorded.'),f('hours','number','minimum','Hour quantity for hourly leave.'),
    f('durationType','enum','full','Full day, half day or hours.',{values:['full_day','first_half','second_half','hours']}),
@@ -67,12 +116,12 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[{to:'employment_profile',kind:'many_to_one',via:'employmentIds'}],page:'/leave',
   fields:[f('personName','name','minimum','Name of the person away.'),f('employeeCode','code','never','Employee code.'),f('employmentIds','list','never','Handles of the person\'s employments.'),
    f('personCount','integer','bands','How many people are away when the list is too long.'),f('approvedOnFromDate','integer','bands','How many are away on the first day.'),
-   f('absences','list','minimum','Each absence in the window.',{of:[f('leaveType','label','full','Leave type name.'),f('status','enum','full','Approval status.',{values:LEAVE_STATUS}),
+   f('absences','list','minimum','Each absence in the window.',{of:[screened('leaveType','full','Leave type name.'),f('status','enum','full','Approval status.',{values:LEAVE_STATUS}),
     f('startDate','date','minimum','First day.'),f('endDate','date','minimum','Last day.'),f('days','number','minimum','Day quantity.'),f('hours','number','minimum','Hour quantity.')]})]},
  {id:'team_leave_balance',label:'Team member leave balance',meaning:'Balances and pending counts for one person who reports to the caller.',
   module:'leave',sensitivity:'ordinary',audience:'manager',rls:'reporting_subordinates',owners:['core/read.ts#subordinateLeaveSummary'],
   ruleVersion:null,relations:[{to:'employment_profile',kind:'many_to_one',via:'employmentId'}],page:'/leave',
-  fields:[f('employmentId','id','never','Handle of the report\'s employment.'),f('leaveTypeId','id','never','Handle of the leave type.'),f('leaveType','label','full','Leave type name.'),
+  fields:[f('employmentId','id','never','Handle of the report\'s employment.'),f('leaveTypeId','id','never','Handle of the leave type.'),screened('leaveType','full','Leave type name.'),
    f('balance','number','bands','Recorded balance.'),f('pendingCount','integer','minimum','Applications awaiting approval (a count, not days).'),
    f('upcomingFrom','date','minimum','Start of the next approved leave.'),f('upcomingTo','date','minimum','End of the next approved leave.')]},
  {id:'employment_profile',label:'Employment record',meaning:'Work-record details of one employee the caller may see; never personal particulars.',
@@ -98,18 +147,18 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
   ruleVersion:null,relations:[{to:'payslip',kind:'many_to_one',via:'payPeriod'}],page:'/me/payslip',
   fields:[f('period','period','full','Period explained.'),f('previousPeriod','period','full','Period compared against.'),
    f('gross','object','bands','Gross now, before and the difference.'),f('deductions','object','bands','Deductions now, before and the difference.'),f('net','object','bands','Net now, before and the difference.'),
-   f('lines','list','minimum','Pay items that moved.',{of:[f('code','label','minimum','Pay item code.'),f('name','label','minimum','Pay item name.'),
+   f('lines','list','minimum','Pay items that moved.',{of:[screened('code','minimum','Pay item code.'),screened('name','minimum','Pay item name.'),
     f('current','number','bands','Amount this period.'),f('previous','number','bands','Amount last period.'),f('change','number','bands','Difference.')]})]},
  {id:'claim_status',label:'Claim status',meaning:'The caller\'s own latest expense claim statuses; never amounts or receipts.',
   module:'claims',sensitivity:'ordinary',audience:'self',rls:'own_person',owners:['packs/claims/service.ts#ownClaimStatuses'],
   ruleVersion:null,relations:[],page:'/claims',
-  fields:[f('id','id','never','Handle of the claim.'),f('employmentId','id','never','Handle of the employment.'),f('claimType','label','full','Claim type name.'),
+  fields:[f('id','id','never','Handle of the claim.'),f('employmentId','id','never','Handle of the employment.'),screened('claimType','full','Claim type name.'),
    f('status','enum','full','Where the claim stands.'),f('incurredOn','date','minimum','Date incurred.'),f('createdAt','datetime','minimum','When the record was created.'),
    f('decidedAt','datetime','minimum','When it was decided.'),f('paidAt','datetime','minimum','When it was paid.')]},
  {id:'module_work',label:'Module work',meaning:'One module\'s current-caller canonical work summary, with the pages a person uses to act.',
   module:null,sensitivity:'pay',audience:'self',rls:'own_module_scope',owners:['core/module-agent-readers.ts#createModuleAgentReaders','lib/ai/module-specialists.ts#compactSpecialistWork'],
   ruleVersion:null,relations:[],page:'/assistant',
-  fields:[f('module','enum','full','The module read.'),f('data','list','minimum','Module-owned rows; each module projects its own allow-list. Pay figures inside them are released as bands.',{of:PAY_FIGURES,open:true}),
+  fields:[f('module','enum','full','The module read.'),f('data','list','minimum','Module-owned rows; only the declared row fields leave. Pay and day figures are released as bands.',{of:MODULE_ROW_FIELDS}),
    f('specialistWork','object','minimum','Deterministic findings over the rows; never an effect.'),f('humanActions','list','full','Fixed pages for human review.')]},
  {id:'leave_approval_step',label:'Leave approval step',meaning:'One pending step of a leave request assigned to the caller to decide.',
   module:'approvals',sensitivity:'ordinary',audience:'assigned_approver',rls:'assigned_request',owners:['core/assistant-actions/reviewed-leave-decision-source.ts#assertReviewedLeaveDecisionActorTx'],

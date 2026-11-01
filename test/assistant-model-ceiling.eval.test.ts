@@ -20,7 +20,7 @@ import {grantAssistant} from '../core/assistant-grant';
 import {hireEmployee} from '../core/org';
 import {seedGuides} from '../db/seed-guides';
 import {actionCatalogueFor} from '../core/product-context/actions';
-import {HARNESS_TEST_ONLY,routeReply,runTurn} from '../core/harness/runner';
+import {HARNESS_TEST_ONLY,routeReply,runTurn,type ModelHistoryMessage} from '../core/harness/runner';
 import {HARNESS_SPEC} from '../core/harness/spec';
 import {SENSITIVE_CORPUS} from './harness-sensitive-corpus';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
@@ -103,11 +103,11 @@ const openRouter:ModelClient={get modelId(){return MODEL??'';},async complete(re
 /** Context tools that hold nothing about the person; the only ones a gated turn keeps. */
 const PUBLIC_CONTEXT=new Set(['product_destinations','product_guidance','available_actions']);
 /** One person turn through the product harness. `conversationId` keys its task memory. */
-async function turn(ctx:SessionContext,history:Message[],question:string,companyId:string,conversationId:string,memory:InMemoryTaskMemoryStore){
- const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId,locale:'en'},model:openRouter,memory,
-  history:history.filter((row):row is Message&{role:'user'|'assistant';content:string}=>(row.role==='user'||row.role==='assistant')&&typeof row.content==='string')});
+/** `history` is the model-side transcript (each earlier turn's modelTurn), never the replies the person was shown. */
+async function turn(ctx:SessionContext,history:readonly ModelHistoryMessage[],question:string,companyId:string,conversationId:string,memory:InMemoryTaskMemoryStore){
+ const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId,locale:'en'},model:openRouter,memory,history});
  const trace=result.trace;
- return{mode:result.mode,slot:result.slot??undefined,reply:result.reply,reads:[...result.reads],proposed:result.suggestion?.action??null,proposals:result.proposals.map(row=>row.body.what.action),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
+ return{mode:result.mode,slot:result.slot??undefined,reply:result.reply,modelTurn:result.modelTurn,reads:[...result.reads],proposed:result.suggestion?.action??null,proposals:result.proposals.map(row=>row.body.what.action),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
   truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',
   checkFailures:trace.checks.flatMap(row=>row.results.filter(check=>!check.ok).map(check=>check.check+': '+(check.finding??''))),fallback:trace.outcome.fallback,
   budgetExhausted:trace.budgets.exhausted,undeclaredRemoved:trace.disclosure.reduce((sum,row)=>sum+row.undeclared.length,0),spec:trace.spec.version};
@@ -129,14 +129,14 @@ describe('real-model redesign ceiling on fictional data',()=>{
   async function pass(index:number){
    const breaches:{pass:number;turn:string;plan:string|null;reads:readonly string[]}[]=[],scores:BaselineScore[]=[],runs:Record<string,ReturnType<typeof conversationRun>>={};
    for(const conversation of conversations){
-    const ctx=conversation.persona==='admin'?hr:explainerConversations.has(conversation.id)?explainer:employee,rows:BaselineScore[]=[],memory=new InMemoryTaskMemoryStore();let history:Message[]=[],conversationId=randomUUID();
+    const ctx=conversation.persona==='admin'?hr:explainerConversations.has(conversation.id)?explainer:employee,rows:BaselineScore[]=[],memory=new InMemoryTaskMemoryStore();let history:ModelHistoryMessage[]=[],conversationId=randomUUID();
     for(const item of conversation.turns){
      if(!item.continues){history=[];conversationId=randomUUID();}let observation:BaselineObservation;
      try{const result=await turn(ctx,history,item.question,base.companyId,conversationId,memory);
       observation={plan:result.proposed&&result.mode!=='refuse'?{mode:'propose',action:result.proposed}:result.mode?{mode:result.mode==='honest_gap'?'insufficient':result.mode,...(result.slot?{slot:result.slot}:{})}:null,reads:result.reads,providerCalls:result.steps};
       ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,proposals:result.proposals,reply:result.reply.slice(0,1200),usd:result.usd,steps:result.steps,truncated:result.truncated,inventedLinks:inventedLinks(result.reply),
        checkFailures:result.checkFailures,fallback:result.fallback,budgetExhausted:result.budgetExhausted,undeclaredRemoved:result.undeclaredRemoved,spec:result.spec});
-      history=[...history,{role:'user',content:item.question},{role:'assistant',content:result.reply}];
+      history=[...history,...result.modelTurn];
      }catch(error){observation={plan:null,reads:[],providerCalls:0,error:(error as Error).message};ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,mode:null,reads:[],proposed:null,reply:'',usd:0,steps:0,error:(error as Error).message});}
      const score=scoreBaselineTurn(item,observation);rows.push(score);scores.push(score);
      // Hard gates: a negative never yields a proposed effect, and the fixed pre-read gate leaves it no private read.

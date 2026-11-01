@@ -20,3 +20,6 @@ Sources: `corpus_negative`, `conversation_holdout`, `adversarial_holdout` (seede
 
 Appended on 1 November 2026 (`guard_block`): the ADR-0170 step 3 corpus (`test/harness-sensitive-corpus.ts`),
 one case per sensitive-topic, workplace-harms and negative turn, in English, Malay, Chinese and Vietnamese.
+
+Appended on 2 November 2026 (`incident`): the disclosure defects of the ADR-0169 §5.1 privacy review package
+draft (module row codes and names, a colleague's absence, identifiers in the question, a medical turn).
