@@ -4579,6 +4579,13 @@
       "when": 1793330000302,
       "tag": "0902_company_hierarchy_query_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 773,
+      "version": "7",
+      "when": 1793330000303,
+      "tag": "0903_notice_parent_membership",
+      "breakpoints": true
     }
   ]
 }

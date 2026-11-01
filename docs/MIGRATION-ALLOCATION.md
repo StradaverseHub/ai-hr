@@ -1,3 +1,23 @@
+## Native Notice parent membership — 2 November 2026 (unapplied)
+
+Owned candidate reserves0903_notice_parent_membership,idx773/when1793330000303,
+SQL SHA2563f1e29f5724e8e7036360e2ebd7d3576474342000aacf2c907ebc44025e86405.
+Fresh21:07:44UTC all-ref/worktree inventory covers1746 heads,310 journals,390
+migration trees,461 worktrees and772 WIP variants; zero parse errors. Prior maximum
+is0902/idx772/when302. Canonical main/alpha29393c2a5 add no migration. Read-only
+21:08:20UTC live ledger verifies all640 ID-ordered hashes, watermark1793330000276.
+Authoritative queue epoch22 has no active lease; no performance lease/ticket claimed.
+
+Merge34c66da8c preserves canonical password baseline and all applied SQL bytes.
+The new append pins exact native employment/self-recipient/parent policy predecessors,
+refuses unexpected applicable restrictive policies, adds only a native own-membership
+boolean helper and changes only the parent own-read predicate. Native author/admin,
+publication, dates, tenant/current-principal and acknowledgement boundaries remain.
+Reversible diagnostic41349751244 observes populated500-reader46.50s/1.31s/45.08s
+before/candidate/restored, with flat empty reads and live identity/revocation controls.
+This is service evidence; broader migrated native, upgrade/compiler and500-user tests
+are pending. No deployment or provider-binding approval is granted.
+
 ## Native hierarchy query-plan reuse — 2 November 2026 (unapplied)
 
 Owned source reserves `0902_company_hierarchy_query_plan`, idx772 /
