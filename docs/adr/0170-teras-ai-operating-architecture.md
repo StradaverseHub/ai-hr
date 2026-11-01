@@ -596,6 +596,7 @@ Clean candidates across all passes that can stand alone: **Atoll, Fram, Keelson,
 - **Name:** Noveri (no-VAIR-ee), from *nous* (mind) and *veritas* (truth); it also reads as "new".
 - **Use:** the name stands alone; the tagline carries the category: "Noveri, the AI operating system for HR". Features take the name as a prefix (Noveri Connect, Noveri mandates, Ask Noveri).
 - **Status:** chosen, **not yet cleared**. Adoption needs the checks below; the nearest names found are Novera A.i. (an early-stage B2B AI company) and Noveo.ai.
+- **"Noveri OS" (owner, 2 November 2026):** used only where the architecture itself is explained. The How it works section is headed "How Noveri works", the line under it reads "Noveri OS: the AI operating system for HR, built around your people and your rules", and the closed clockwork face reads "Noveri OS". Everywhere else the name is "Noveri" alone.
 - **In code:** the working label "Teras" remains in identifiers and file names; user-facing copy reads one product-name constant, so the switch to Noveri is one change once clearance passes.
 
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
