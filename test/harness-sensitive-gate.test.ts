@@ -9,11 +9,11 @@ import {SENSITIVE_CORPUS} from './harness-sensitive-corpus';
 const decision=(question:string)=>{const gate=gateTurn(question,{sensitive:HARNESS_SPEC.sensitive.topics});return gate.privateReads?'open':gate.reason;};
 
 describe('sensitive-topic routing and workplace-harms rule',()=>{
- it('decides every corpus turn as written, with every topic and the harms rule in four languages',()=>{
+ it('decides every corpus turn as written, with every topic and the harms rule in all six product languages (th and ta pending native review)',()=>{
   expect(SENSITIVE_CORPUS.length).toBeGreaterThanOrEqual(45);
   for(const turn of SENSITIVE_CORPUS)expect(decision(turn.question),turn.id).toBe(turn.expect);
   for(const reason of [...SENSITIVE_TOPICS.map(topic=>`sensitive_${topic}` as const),'workplace_harm' as const])
-   expect(new Set(SENSITIVE_CORPUS.filter(turn=>turn.expect===reason).map(turn=>turn.locale)),reason).toEqual(new Set(['en','ms','zh','vi']));
+   expect(new Set(SENSITIVE_CORPUS.filter(turn=>turn.expect===reason).map(turn=>turn.locale)),reason).toEqual(new Set(['en','ms','zh','vi','th','ta']));
   expect(SENSITIVE_CORPUS.filter(turn=>turn.expect==='open').length).toBeGreaterThanOrEqual(12);
  });
  it('gates another person\'s statutory record named through a possessive, even when the person also says "me" (step 4, run 41308136839)',()=>{
