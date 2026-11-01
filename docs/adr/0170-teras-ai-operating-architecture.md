@@ -448,7 +448,21 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 | Elan | Vigour, momentum | Elan1.ai, ELAI |
 | Soar, Deft | Upward motion; skill | Taken (Soar Technology; Onton, formerly Deft, and others) |
 
-**Recommendation.** **Prow.** One syllable, forward by definition, clean in AI and HR, and it carries the architecture's promise without a persona: the part of the vessel that goes first, while the people on board decide where it goes. Alternates: **Forth** (if the homophone is acceptable) and **Volo**. Volition, Volent, Steward and Tiller remain on record from the earlier passes.
+**Owner feedback (1 November 2026):** keep looking. Fourth pass: short words from other languages meaning "forward", and coined forms.
+
+| Name | Meaning and fit | Finding |
+| --- | --- | --- |
+| **Fram** (1) | Norwegian: *forward*. The name of Nansen's polar ship, built to be held by the ice and still come through. One syllable, said the same way in every interface language | **No AI or HR product found**, on two searches. Frame AI is a different word. An automotive filter brand of the same name is believed to exist (different class; not checked here) |
+| **Vorn** (1) | German: *at the front*. Reads as coined to non-German speakers | **No match found** |
+| Vamo (2) | From Spanish *vamos*, "let's go" | Nearly clean: a ticketing app and an AI consultancy called VAMOS |
+| Avan (2) | From *avant*, forward | Crowded with near names (Avant Technologies, Avanade, Avahi) |
+| Vello (2) | From velocity | Taken: vello.ai |
+| Ando (2) | Spanish: *I go* | Taken: Ando, a messaging platform for people and AI agents ($20M, 2026) |
+| Onda (2) | Wave | Taken: Onda (hospitality AI), Ona (formerly Gitpod) |
+| Arvo (2) | Finnish: *value* | Taken: Arvo AI, Arvo (healthcare), Arvo (fitness) |
+| Kivo (2) | Coined | Taken, including an HR payroll product (Kivo.ai) |
+
+**Recommendation.** **Fram.** It means forward, it is one syllable that every language can say, and it carries a story worth telling: a vessel built for hard conditions that came through. "Fram Connect", "Fram mandate", "Ask Fram". Alternates: **Vorn** (clean, coined feel) and **Prow** (from the third pass). Earlier candidates stay on record.
 
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
