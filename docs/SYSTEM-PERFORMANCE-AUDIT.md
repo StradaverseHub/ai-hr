@@ -114,8 +114,11 @@ positive paths retain complete original request RLS and current decision guards.
 No permission/result caching, command changes or production settings are added.
 Native assigned non-admin/delegate/ordered-refusal behavior and a reversible
 scan-required control are tested through the real application entry point.
-Qualification41303017578 (16 affected files + whole compiler) and41303020809
-(exact application paired comparison + million-document index profile) are pending.
+Qualification41303017578:208 cases in16 affected files PASS (204DB-classified,4model),
+zero failures/skips; the independent whole compiler is pending. The real scan-required
+control fails without the gate, then the same native employee call avoids correction
+SELECT while HR retains the complete reader. Exact application paired comparison
+and million-document index profile41303020809 are queued.
 The canonical payroll-tax-reader session flag and both Personnel integration imports
 are preserved. Current source fingerprints regenerate without editing human approval
 literals; exact-source approval remains held before any later integration/release.
@@ -785,7 +788,8 @@ metadata source has no whole-system HTTP acceptance receipt yet.
 Coverage remains bounded:30 selected page routes, Claims draft CRUD, Leave
 create/edit/withdraw(history retained), Personnel draft CRUD, Attendance correction/
 approval, Payroll calculation/scoped CSV and100-line clocking import. Individual
-PDF transport is added to current preflights. Payroll close/publication HTTP,
+PDF transport and50-person Payroll close/publication HTTP pass current baseline
+preflights; concurrent Payroll close/publication,
 Lifecycle/Performance/Rewards mutations, large Personnel imports, report-definition
 CRUD and long document jobs are not certified. The fixture has500 employments;
 its millions are Claims/Attendance rows. Six representative loaded Chromium
@@ -793,9 +797,9 @@ contexts accompany500 HTTP principals; this is not500 real browser instances.
 The shared four-CPU diagnostic host is not the two-host acceptance environment.
 
 Generated provider source digest is
-`b5b699a57eb788a8c5c8a56c34ee6141b7f1da5d639cb7863c8b58cd25bc25ee`;
+`2932136c65294ccdb659d66705e42380d626df818107b56280485fed8c8eb2f6`;
 module-agent source digest is
-`995201926e32224b5a563be0d31439d7d72c13fb592f818c0dd28ad2ee61cdbe`.
+`ab113c26ea2e20d51b7e63b325b2f753927df22c38741d36956c26f004ff43ea`.
 Literal human approval records remain unchanged. Earlier exact-source reviews do
 not approve this newer source; the approval hold remains before integration/release.
 No provider call, release, protected integration or deployment is claimed.
