@@ -32,7 +32,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
   await checkOut(root,{employmentId:a.employmentId,date:today,time:'17:00',manual:true});
   await requestAttendanceCorrection(a.ctx,{employmentId:a.employmentId,date:today,checkIn:'09:00',checkOut:'18:00',reason:'Fictional native routing profile'});
  }
- const signatures=['app.can_see_employment(uuid)','app.is_admin_report_of(uuid,uuid)','app.can_decide_via_delegation_from(uuid,uuid,text,text)','app.attendance_workflow_v3_effective(uuid,integer)','app.attendance_workflow_v3_actor(uuid,integer,text)'];
+ const signatures=['app.can_see_employment(uuid)','app.is_admin_report_of(uuid,uuid)','app.can_decide_via_delegation_from(uuid,uuid,text,text)','app.attendance_workflow_v3_effective(uuid,integer)','app.attendance_workflow_v3_actor(uuid,integer,text)','app.heads_department_of(uuid,uuid)','app.can_decide_via_delegation(uuid,text,text)','app.unrouted_attendance_delegate(uuid)'];
  const assignmentSignature='app.attendance_workflow_v3_assigned_allowed(uuid,integer,text,text)';
  const installed=[];
  const attributes=async(signature:string)=>{
@@ -43,11 +43,12 @@ it('compares fresh request-grained routing before, during and after query-plan r
   const [row]=await owner.client`select pg_get_functiondef(${signature}::regprocedure)as definition`;
   installed.push(row.definition);expectedAttributes.set(signature,await attributes(signature));
   const name=signature.slice(4,signature.indexOf('('));
-  const file=name==='can_see_employment'||name==='is_admin_report_of'?'0109_hierarchy_visibility_rls.sql':name==='can_decide_via_delegation_from'?'0818_delegated_approvals.sql':'0592_attendance_workflow_v4.sql';
+  const file=name==='can_see_employment'||name==='is_admin_report_of'?'0109_hierarchy_visibility_rls.sql':name==='heads_department_of'?'0121_rls_leak_fixes.sql':['can_decide_via_delegation_from','can_decide_via_delegation','unrouted_attendance_delegate'].includes(name)?'0818_delegated_approvals.sql':'0592_attendance_workflow_v4.sql';
   const source=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
-  const start=source.indexOf('CREATE OR REPLACE FUNCTION app.'+name+'('),end=source.indexOf('$$;',start)+3;
+  let start=source.indexOf('CREATE OR REPLACE FUNCTION app.'+name+'(');if(start<0)start=source.indexOf('CREATE FUNCTION app.'+name+'(');
+  const end=source.indexOf('$$;',start)+3;
   expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
-  await owner.client.unsafe(source.slice(start,end));
+  await owner.client.unsafe(source.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION'));
  }
  const definitions=[];
  for(const signature of signatures){
@@ -71,13 +72,14 @@ it('compares fresh request-grained routing before, during and after query-plan r
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files']){
-   for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||phase.startsWith('routing')?d.cached:d.original);
+  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored']){
+   for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
    await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
-   if(phase==='migration-files')for(const file of ['0871_visibility_routing_plans.sql','0872_attendance_assignment_work.sql']){
+   if(phase.startsWith('migration'))for(const file of ['0871_visibility_routing_plans.sql','0872_attendance_assignment_work.sql']){
     const contents=readFileSync(new URL('../../db/migrations/'+file,import.meta.url),'utf8');
     for(const statement of contents.split('--> statement-breakpoint'))await owner.client.unsafe(statement);
    }
+   if(phase==='migration-plus-live-guard-plans')for(const d of definitions.slice(5))await owner.client.unsafe(d.cached);
    for(const signature of [...signatures,assignmentSignature])expect(await attributes(signature)).toEqual(expectedAttributes.get(signature));
    const measurements=[];
    for(let i=0;i<4;i++){

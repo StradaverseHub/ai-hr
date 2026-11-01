@@ -7,14 +7,33 @@ not release acceptance. [Draft PR 113](https://github.com/StradaverseHub/ai-hr/p
 is held; this work has not deployed to staging or production.
 
 The latest completed500-user timed mixed-workflow source is
-`1a0ed296a1ddc03afebbed627de2a1547d957f22`. Both activity levels reached500 active
-HTTP principals against one million Claims and one million attendance records,
-but both failed speed and functional acceptance on standard4-CPU hosted runners:
+`396c5d36f5b0afa599f2a4f722788e6c3e372eda` (application/SQL unchanged from4b0a8bc56).
+Both runs reached500 active HTTP principals against one million Claims and one
+million attendance records. Both failed functional and speed acceptance on
+standard4-CPU hosted runners:
 
 | Activity pause | Successful-read p95 | Successful-write p95 | Completed / failed journeys | Complete loaded browsers |
 | --- | ---: | ---: | ---: | ---: |
-| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41188713821) | 69.6s | no completed writes | 0 /500 | 0/6 |
-| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41188713828) | 38.2s | 88.5s | 226 /274 | 5/6 |
+| [1s](https://github.com/StradaverseHub/ai-hr/actions/runs/41194141433) | 70.4s | 84.1s | 83 /417 | 0/6 |
+| [5s](https://github.com/StradaverseHub/ai-hr/actions/runs/41194146086) | 66.5s | 86.2s | 52 /448 | 0/6 |
+
+All failed journeys in these two runs aborted. Both passed all six expanded baseline
+workflows, including50-person native Payroll close/employee publication. The new
+past-month batch was unavailable before release, then its real employee statement
+and PDF became available, while foreign-person/tenant requests still returned404.
+Loaded Home cards timed out, and native post-load audits passed in both tenants.
+Timed PostgreSQL CPU was1003.5s/378.3wall(1s) and985.9s/377.3wall(5s); app CPU
+was286.0s and280.1s. The largest timed query remains Attendance task metadata.
+Actual advisory waiters are classified as access-configuration keys in both tenants
+(197exclusive/21shared connection-samples in1s,136exclusive/35shared in5s).
+These are observations, not total wait durations. No audit-chain or employment-key
+waiter was seen in that bounded sample. Reusable plans improve component costs but
+do not by themselves resolve the whole-system workload. The newer standalone
+metadata reader fix was absent from these frozen runs and is qualified separately.
+
+The preceding expanded source1a0ed296a also failed:1s0/500 journeys, read p9569.6s,
+no completed writes;5s226/500 journeys, read38.2s/write88.5s. It had narrower
+publication coverage; neither difference establishes a causal speed ratio.
 
 Both passed all expanded preflight workflows: Leave create/edit/withdraw, Personnel
 draft create/edit/delete, Attendance correction/approval/applied punches, native
@@ -63,7 +82,7 @@ the exact personal-PDF route's binary header, MIME, private/no-store and attachm
 headers; HTML identity checks and native foreign-person/tenant refusals remain.
 Only affected HTTP/browser evidence reruns on harness-only source
 `396c5d36f5b0afa599f2a4f722788e6c3e372eda`:41194141433(1s)/41194146086(5s),
-currently running. Its application/SQL code is byte-identical to4b0a8bc56.
+both completed and failed after reaching500 users; see the current outcome table. Its application/SQL code is byte-identical to4b0a8bc56.
 Native/compiler receipts retain source4b0a8bc56 and are not relabelled.
 
 Measured Claims queue improvements and129 affected passing cases remain component
@@ -668,7 +687,7 @@ in12 files (145DB-classified/13model), no failures/skips, in41195110022. All sev
 native concurrency cases pass, including the three original failures. The same
 source's500-principal paired experiment41195116641 passes: triple-reader p95
 exclusive6281.9ms / shared2669.6ms / restored6222.1ms, with unchanged native
-results and archive refusals. The whole compiler remains running. This newer
+results and archive refusals. The whole compiler PASS. This newer
 metadata source has no whole-system HTTP acceptance receipt yet.
 
 Coverage remains bounded:30 selected page routes, Claims draft CRUD, Leave
