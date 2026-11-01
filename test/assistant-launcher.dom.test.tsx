@@ -4,7 +4,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
-import {enWithAiCentre} from './helpers/ai-centre-messages';
+import {enWithAiCentre,withAiCentre} from './helpers/ai-centre-messages';
 import {AI_PRODUCT_NAME} from '../lib/ai-centre/brand';
 import ms from '../messages/ms.json';
 import zh from '../messages/zh.json';
@@ -71,9 +71,9 @@ describe('floating Assistant',()=>{
   fireEvent.click(screen.getByRole('button',{name:copy.undock}));expect(screen.getByRole('dialog').className).toContain('left-4');
  });
  it.each(Object.entries({en,ms,zh,ta,th,vi:viMessages}))('%s identifies itself as AI and greets the person without claiming a human operator',(_locale,messages)=>{
-  const labels=messages.assistant.launcher;
-  render(<NextIntlClientProvider locale={_locale} messages={messages}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
-  fireEvent.click(screen.getByRole('button',{name:labels.open}));
+  const labels=messages.assistant.launcher,merged=withAiCentre(_locale,messages as never) as typeof enWithAiCentre;
+  render(<NextIntlClientProvider locale={_locale} messages={merged}><AssistantLauncher position="bottom-right" hiddenAreas={[]}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByRole('button',{name:merged.aiCentre.launcher.open.replace('{name}',AI_PRODUCT_NAME!)}));
   expect(labels.identity).toContain('AI');expect(labels.welcome).toContain('AI');
   expect(screen.getByText(labels.identity)).toBeInTheDocument();expect(screen.getByText(labels.welcome)).toBeInTheDocument();
  });
