@@ -351,7 +351,7 @@
         "tenant_setting": "Tukar pada suis ciri",
         "ai_provider": "Tukar pada suis ciri",
         "job_type": "Tukar dalam tugas diwakilkan",
-        "worker_control": "Tukar di sini"
+        "worker_control": "Ditunjukkan di sini; penukaran dari halaman ini menunggu kelulusan"
       },
       "never": "Tidak pernah",
       "accepted": "{rate} diterima",

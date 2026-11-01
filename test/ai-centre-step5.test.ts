@@ -32,29 +32,32 @@ describe('worker registry gate', () => {
     expect(page).toMatch(/isGroupAdmin\(session\) \? await Promise\.all\(\[\s*listWorkers\(session\)/);
     expect(read('core/agent-registry/views.ts')).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerRegistryRefused('not_administrator')");
   });
-  it('changes a worker switch only through the registry service', () => {
-    const action = read('app/control-tower/agents/registry-actions.ts');
-    expect(action).toContain('await setWorkerSwitch(session,');
-    expect(action).not.toMatch(/terasWorkerControl|tx\.insert|withTenant/);
-    expect(read('core/agent-registry/controls.ts')).toContain("throw new WorkerControlRefused('not_administrator')");
+  it('adds no server action: every action must be in the ADR-0151 inventory, which is inside the approved digest', () => {
+    for (const file of ['app/control-tower/agents/worker-registry.tsx', 'app/assistant/centre/recommendation.ts', 'app/assistant/centre/inbox.tsx', 'components/ai-centre/leave-recommendation.tsx'])
+      expect(read(file), file).not.toMatch(/^['"]use server['"]/m);
+    expect(fs.existsSync(path.join(ROOT, 'app/control-tower/agents/registry-actions.ts'))).toBe(false);
+    expect(read('app/control-tower/agents/worker-registry.tsx')).toContain("if (row.switch.owner === 'worker_control') return <p");
   });
 });
 
 describe('approver recommendation', () => {
-  it('is loaded on request through the recommender, never during the Inbox render', () => {
+  it('is read only when the approver opens it, through the recommender, never on an ordinary Inbox render', () => {
     const inbox = read('app/assistant/centre/inbox.tsx');
     expect(inbox).not.toContain('recommendLeaveDecision');
-    expect(inbox).toContain('<LeaveRecommendation leaveRequestId={task.id} load={loadLeaveRecommendation} />');
-    const action = read('app/assistant/centre/recommendation-action.ts');
+    // Only the one leave request the approver opened, and only if it is in their own queue.
+    expect(inbox).toContain("tasks.value.some(task => task.kind === 'leave' && task.id === recommend)");
+    expect(inbox).toContain('<LeaveRecommendationLink leaveRequestId={task.id} />');
+    expect(read('components/ai-centre/leave-recommendation.tsx')).toContain('prefetch={false}');
+    const action = read('app/assistant/centre/recommendation.ts');
     expect(action).toContain('z.guid().safeParse(leaveRequestId)');
     expect(action).toContain('await recommendLeaveDecision(session, { leaveRequestId: id.data })');
     expect(action).toContain('version: ruleVersionLabel(rule.ruleVersion)');
   });
   it('has no reject verdict and never renders the internal version reference', () => {
-    for (const file of ['components/ai-centre/leave-recommendation.tsx', 'app/assistant/centre/recommendation-action.ts', 'app/control-tower/agents/worker-registry.tsx']) {
+    for (const file of ['components/ai-centre/leave-recommendation.tsx', 'app/assistant/centre/recommendation.ts', 'app/control-tower/agents/worker-registry.tsx']) {
       const source = read(file);
       expect(source, file).not.toMatch(/recommend_reject/);
-      if (file !== 'app/assistant/centre/recommendation-action.ts') expect(source, file).not.toMatch(/ruleVersion/);
+      if (file !== 'app/assistant/centre/recommendation.ts') expect(source, file).not.toMatch(/ruleVersion/);
     }
     const copy = JSON.parse(read('messages/ai-centre/en.json')).aiCentre.recommendation;
     expect(Object.keys(copy.verdict).sort()).toEqual(['needs_review', 'recommend_approve']);

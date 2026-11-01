@@ -12,9 +12,9 @@ import { isAdmin } from '@/lib/authz';
 import { getScopeIds } from '@/lib/scope';
 import { PageHeader } from '@/components/ui';
 import { ProposalCard } from '@/components/ai-centre/proposal-card';
-import { LeaveRecommendation } from '@/components/ai-centre/leave-recommendation';
+import { LeaveRecommendationLink, RecommendationPanel } from '@/components/ai-centre/leave-recommendation';
 import { digestPreview, latestDailyDigest } from '@/core/digest/daily-digest';
-import { loadLeaveRecommendation } from './recommendation-action';
+import { readLeaveRecommendation } from './recommendation';
 
 type Finding = { key: 'exceptions' | 'proposals' | 'readiness'; count: number; blocking?: number; href: string };
 
@@ -32,7 +32,7 @@ async function settle<T>(read: () => Promise<T>): Promise<{ ok: true; value: T }
  *    exceptions, proposed actions awaiting approval, and records missing data, each linking to its
  *    existing Control Tower page.
  * Nothing is written, prepared or decided here. */
-export async function AiCentreInbox({ session }: { session: SessionContext }) {
+export async function AiCentreInbox({ session, recommend }: { session: SessionContext; recommend?: string }) {
   const t = await getTranslations('aiCentre');
   const tasksLabel = await getTranslations('notifications.task');
   const f = await getFormatter();
@@ -56,6 +56,9 @@ export async function AiCentreInbox({ session }: { session: SessionContext }) {
     admin ? settle(() => recordReadiness(session, { peopleLimit: 0 })) : null,
   ]);
   const failed = [tasks, exceptions, proposals, readiness].some(result => result && !result.ok);
+  // The one recommendation the approver asked to open, if it is a leave request in their own queue.
+  const opened = tasks.ok && recommend && tasks.value.some(task => task.kind === 'leave' && task.id === recommend)
+    ? { id: recommend, view: await readLeaveRecommendation(session, recommend) } : null;
 
   const decisions: PendingTaskItem[] = tasks.ok ? tasks.value : [];
   const findings: Finding[] = [];
@@ -117,7 +120,7 @@ export async function AiCentreInbox({ session }: { session: SessionContext }) {
                   <ProposalCard tone="decide" icon={task.kind === 'noticeAcknowledgement' ? <ListChecks /> : <CalendarCheck />} title={taskTitle(task)}
                     meta={[t('inbox.items.fromApprovals'), f.dateTime(new Date(task.createdAt), { dateStyle: 'medium', timeZone: 'Asia/Kuala_Lumpur' })]}
                     href={task.linkPath} cta={t('inbox.items.review')} awaitingLabel={t('card.awaiting')} prepared={approvalPrepared} />
-                  {task.kind === 'leave' && <LeaveRecommendation leaveRequestId={task.id} load={loadLeaveRecommendation} />}
+                  {task.kind === 'leave' && (opened?.id === task.id ? <RecommendationPanel id={`recommendation-${task.id}`} view={opened.view} /> : <LeaveRecommendationLink leaveRequestId={task.id} />)}
                 </li>
               ))}</ul>
             </section>

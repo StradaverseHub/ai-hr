@@ -351,7 +351,7 @@
         "tenant_setting": "Change on the feature switches",
         "ai_provider": "Change on the feature switches",
         "job_type": "Change in delegated jobs",
-        "worker_control": "Change here"
+        "worker_control": "Shown here; switching from this page awaits approval"
       },
       "never": "Never",
       "accepted": "{rate} accepted",

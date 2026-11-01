@@ -351,7 +351,7 @@
         "tenant_setting": "在功能开关中更改",
         "ai_provider": "在功能开关中更改",
         "job_type": "在委托任务中更改",
-        "worker_control": "在此更改"
+        "worker_control": "仅在此显示；在此页面切换尚待批准"
       },
       "never": "从未",
       "accepted": "{rate} 已接受",

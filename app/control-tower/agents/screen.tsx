@@ -33,7 +33,7 @@ export type AiManagementSearch = {error?:string;toast?:string;q?:string;refresh?
  * Provider and Assistant pages pass their own content as children. */
 export async function AiManagementScreen({session:s,section,searchParams,children,builtInChecks,registry}:{session:Awaited<ReturnType<typeof requireAdmin>>;section:AiManagementSection;searchParams:Promise<AiManagementSearch>;children?:ReactNode;builtInChecks?:readonly AgentStatus[]|null;
   /** AI centre step 5: the worker registry, for group administrators only (the features page reads it). */
-  registry?:Readonly<{rows:readonly WorkerRow[];summary:OutcomeSummary|null;detail:WorkerDetail|null;switchAction:(formData:FormData)=>Promise<void>}>|null}) {
+  registry?:Readonly<{rows:readonly WorkerRow[];summary:OutcomeSummary|null;detail:WorkerDetail|null}>|null}) {
   const sp = await searchParams;
   const t = await getTranslations('aiManagement');
   const f = await getFormatter();
@@ -209,7 +209,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
         {attention.blocked.length>0&&<section><h3 className="text-sm font-medium">{t('attentionBlocked')}</h3><ul className="mt-1 divide-y divide-border">{attention.blocked.map(b=><li key={b.id} className="py-2"><Link href={userLink(b.label)} className="break-words text-sm text-primary hover:underline">{b.label}</Link><p className="mt-1 text-xs text-muted-foreground">{t('blockedToday',{count:b.count})}{b.reason&&t.has(`reasons.${b.reason}`)?` · ${t(`reasons.${b.reason}`)}`:''}</p></li>)}</ul></section>}
       </div>}
     </Card>}
-    {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail} switchAction={registry.switchAction}/>}
+    {section==='features'&&registry&&<WorkerRegistry rows={registry.rows} summary={registry.summary} detail={registry.detail}/>}
     {section==='features'&&<Card id="ai-features" className="scroll-mt-4 overflow-hidden">
       <div className="p-5"><SectionHeader title={t('inventory')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{t('inventoryHelp')}</p>{!isGroupAdmin(s)&&<p className="mt-2 text-sm text-muted-foreground">{t('scopedNotice')}</p>}</div>
       <div className="overflow-x-auto"><table className="w-full min-w-[700px] text-left text-sm"><caption className="sr-only">{t('inventory')}</caption>

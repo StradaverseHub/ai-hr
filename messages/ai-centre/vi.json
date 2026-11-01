@@ -351,7 +351,7 @@
         "tenant_setting": "Thay đổi ở công tắc tính năng",
         "ai_provider": "Thay đổi ở công tắc tính năng",
         "job_type": "Thay đổi trong công việc ủy quyền",
-        "worker_control": "Thay đổi tại đây"
+        "worker_control": "Chỉ hiển thị ở đây; việc bật tắt từ trang này đang chờ phê duyệt"
       },
       "never": "Chưa bao giờ",
       "accepted": "{rate} được chấp nhận",

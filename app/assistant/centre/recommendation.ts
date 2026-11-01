@@ -1,6 +1,5 @@
-'use server';
 import { z } from 'zod';
-import { getBrowserCommandSession } from '@/lib/session';
+import type { SessionContext } from '@/db/client';
 import { recommendLeaveDecision, type RecommendationCheckName, type RecommendationUnavailable, type RecommendationVerdict } from '@/core/recommenders/leave-decision';
 import { ruleVersionLabel, type RuleVersionLabel } from '@/lib/ai-centre/rule-version';
 
@@ -11,15 +10,15 @@ export type LeaveRecommendationView =
   | Readonly<{ kind: 'recommendation'; verdict: RecommendationVerdict; failedRules: readonly Readonly<{ check: RecommendationCheckName; blocking: boolean; version: RuleVersionLabel | null }>[] }>
   | Readonly<{ kind: 'unavailable'; reason: RecommendationUnavailable | 'failed' }>;
 
-/** Runs when the approver explicitly opens the recommendation on a leave card, the recommender's declared
- * trigger ("an approver opens a leave request assigned to them"). The service checks the caller is the
- * assigned approver and the request is pending, records the run, and refuses otherwise; this action adds
- * no authority of its own. */
-export async function loadLeaveRecommendation(leaveRequestId: string): Promise<LeaveRecommendationView> {
+/** Runs only when the approver explicitly opens the recommendation on a leave card (the Inbox link carries
+ * `?recommend=<id>`), the recommender's declared trigger ("an approver opens a leave request assigned to
+ * them"). A server-side read during that render, not a server action: the service checks the caller is the
+ * assigned approver and the request is pending, records the run, and refuses otherwise; this adds no
+ * authority of its own. */
+export async function readLeaveRecommendation(session: SessionContext, leaveRequestId: string): Promise<LeaveRecommendationView> {
   const id = z.guid().safeParse(leaveRequestId);
   if (!id.success) return { kind: 'unavailable', reason: 'not_assigned' };
   try {
-    const session = await getBrowserCommandSession();
     const result = await recommendLeaveDecision(session, { leaveRequestId: id.data });
     if (result.kind === 'unavailable') return { kind: 'unavailable', reason: result.reason };
     const { verdict, failedRules } = result.recommendation;

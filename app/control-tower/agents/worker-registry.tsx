@@ -8,27 +8,23 @@ import { aiManagementHref } from './sections';
 
 /** AI centre › Workers for a group administrator: the registered workers (ADR-0170 §3.13) as the step 5
  * registry reports them (core/agent-registry/views.ts listWorkers). Every value is read from the system;
- * an unmeasured rate is shown with its reason, never as 0. Only the two registry-controlled workers have a
- * switch here; every other worker links to where its existing switch lives. Company administrators never
+ * an unmeasured rate is shown with its reason, never as 0. Every worker links to where its existing switch lives; the two
+ * registry-controlled switches are shown read-only until their action is approved (see switchControl). Company administrators never
  * receive these rows: the service refuses them and the page shows the feature table only. */
 const percent = (value: number) => `${Math.round(value * 100)}%`;
 const known = (t: ReturnType<typeof useTranslations>, key: string, fallback: string) => (t.has(key) ? t(key) : fallback);
 
-function switchControl(t: ReturnType<typeof useTranslations>, row: WorkerRow, switchAction: (formData: FormData) => Promise<void>) {
-  if (row.switch.owner === 'worker_control') {
-    return <form action={switchAction}>
-      <input type="hidden" name="workerId" value={row.id} /><input type="hidden" name="enabled" value={String(!row.switch.on)} />
-      <button type="submit" className={btnGhost} aria-label={`${t(row.switch.on ? 'turnOff' : 'turnOn')} · ${known(t, `workers.${row.id}`, row.label)}`}>{t(row.switch.on ? 'turnOff' : 'turnOn')}</button>
-    </form>;
-  }
+function switchControl(t: ReturnType<typeof useTranslations>, row: WorkerRow) {
+  // A registry-controlled switch needs a new server action, and every server action must be classified in
+  // the ADR-0151 capability inventory, which sits inside the approved module-agent digest. Until that change
+  // is approved the switch is shown, not changed, here.
+  if (row.switch.owner === 'worker_control') return <p className="text-xs text-muted-foreground">{t('switchOwner.worker_control')}</p>;
   const href = row.switch.owner === 'ai_provider' ? aiManagementHref('features', { anchor: '#ai-features' })
     : row.switch.owner === 'job_type' ? '/assistant?view=jobs' : aiManagementHref('features', { anchor: '#ai-features' });
   return <Link href={href} className="text-sm font-medium text-primary hover:underline">{t(`switchOwner.${row.switch.owner}`)}</Link>;
 }
 
-/** `switchAction` is passed in by the Workers page (app/control-tower/agents/registry-actions.ts), so this
- * view and the shared screen never import the registry's write path themselves. */
-export function WorkerRegistry({ rows, summary, detail, switchAction }: { rows: readonly WorkerRow[]; summary: OutcomeSummary | null; detail: WorkerDetail | null; switchAction: (formData: FormData) => Promise<void> }) {
+export function WorkerRegistry({ rows, summary, detail }: { rows: readonly WorkerRow[]; summary: OutcomeSummary | null; detail: WorkerDetail | null }) {
   const t = useTranslations('aiCentre.registry');
   const tw = useTranslations('aiCentre.workers');
   const f = useFormatter();
@@ -56,7 +52,7 @@ export function WorkerRegistry({ rows, summary, detail, switchAction }: { rows: 
                   <p className={cn('text-sm', row.gate.run ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground')}>{row.stopped ? t('stopped') : row.switch.on ? t('on') : t('off')}</p>
                   {row.switch.detail === 'unattributed' && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t('unattributed')}</p>}
                   {!row.stopHonoured && <p className="mt-1 text-xs text-muted-foreground">{t('stopPending')}</p>}
-                  <div className="mt-2">{switchControl(t, row, switchAction)}</div>
+                  <div className="mt-2">{switchControl(t, row)}</div>
                 </td>
                 <td className="px-5 py-4 text-xs tabular-nums">{when(row.lastRunAt)}</td>
                 <td className="px-5 py-4 text-xs">

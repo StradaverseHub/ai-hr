@@ -68,7 +68,7 @@ import { AiCentreInbox, aiCentreInboxCount } from './centre/inbox';
 export default async function AssistantPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
+  searchParams: Promise<{ view?: string; recommend?: string; e?: string; error?: string;job?:string;governed?:string;proposal?:string;planning?:string;importHistory?:string;nativeOutcome?:string;nativeLink?:string;historyPrivacy?:string;ownClear?:string;chatReset?:string;chatCursor?:string }>;
 }) {
   const s = await getSession();
   const t = await getTranslations('assistant');
@@ -82,7 +82,7 @@ export default async function AssistantPage({
     return (
       <div data-ai-centre={sp.view} className="mx-auto max-w-6xl space-y-6">
         <AiCentreTabs active={sp.view} isAdmin={admin} inboxCount={sp.view === 'inbox' ? undefined : await aiCentreInboxCount(s)} />
-        {sp.view === 'inbox' && <AiCentreInbox session={s} />}
+        {sp.view === 'inbox' && <AiCentreInbox session={s} recommend={typeof sp.recommend === 'string' ? sp.recommend : undefined} />}
         {sp.view === 'jobs' && <AiCentreDelegatedJobs />}
         {sp.view === 'how' && <><PageHeader title={AI_PRODUCT_NAME ? tc('titleNamed', { name: AI_PRODUCT_NAME }) : tc('title')} description={AI_ARCHITECTURE_LABEL ? tc('taglineNamed', { osName: AI_ARCHITECTURE_LABEL }) : tc('description')} /><HowItWorks adminHref={admin ? '/control-tower/how-it-works' : undefined} /></>}
       </div>

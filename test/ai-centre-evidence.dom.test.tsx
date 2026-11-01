@@ -47,7 +47,7 @@ vi.mock('../core/assistant-grant', () => ({ mayUseAssistant: async () => ({ allo
 vi.mock('../components/assistant/bank-maintenance-panel', () => ({ BankMaintenancePanel: () => null }));
 vi.mock('../app/assistant/launcher-actions', () => ({ askFromLauncherAction: vi.fn() }));
 vi.mock('../core/digest/daily-digest', () => ({ digestPreview: async () => { throw Error('fixture: digest not part of this screen'); }, latestDailyDigest: async () => null }));
-vi.mock('../app/assistant/centre/recommendation-action', () => ({ loadLeaveRecommendation: vi.fn() }));
+vi.mock('../app/assistant/centre/recommendation', () => ({ readLeaveRecommendation: vi.fn() }));
 
 import { AiCentreTabs } from '../components/ai-centre/centre-tabs';
 import { AiCentreInbox } from '../app/assistant/centre/inbox';

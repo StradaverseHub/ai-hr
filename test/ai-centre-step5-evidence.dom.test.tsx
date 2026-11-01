@@ -7,7 +7,7 @@
  *  - group administrator: the worker registry, a worker's detail and the outcome summary.
  * Screenshots are written only on the selected GitHub Actions runner. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import { aiReviewDomHtml, captureAiReviewScreenshots } from './helpers/ai-review-screenshots';
 import { enWithAiCentre } from './helpers/ai-centre-messages';
@@ -35,7 +35,7 @@ vi.mock('../core/digest/daily-digest', () => ({
     deadlines: state.admin ? { overdue: 0, dueSoon: 1, page: '/payroll/statutory-forms' } : null, text: 'fixture' }),
   latestDailyDigest: async () => (state.admin ? { recordId: 'fictional', preparedAt: new Date('2026-11-02T00:30:00Z'), digest: {} } : null),
 }));
-vi.mock('../app/assistant/centre/recommendation-action', () => ({ loadLeaveRecommendation: async () => state.recommendation }));
+vi.mock('../app/assistant/centre/recommendation', () => ({ readLeaveRecommendation: async () => state.recommendation }));
 vi.mock('../core/ai-management', () => ({
   AI_RUN_STATE_FILTERS: ['blocked', 'failed'],
   aiManagementView: async () => ({ provider: { provider: 'fictional', model: 'fictional/model' }, mayWriteUsers: true,
@@ -89,8 +89,12 @@ describe('AI centre step 5, rendered per role', () => {
   it('manager or approver: the recommendation opens on request and names the failed rule with its version', async () => {
     Object.assign(state, { admin: false, group: false, tasks: [{ id: LEAVE_ID, kind: 'leave', subjectName: 'Fictional Person C', createdAt: '2026-11-01T02:00:00.000Z', linkPath: `/approvals?kind=leave&id=${LEAVE_ID}` }],
       recommendation: { kind: 'recommendation', verdict: 'needs_review', failedRules: [{ check: 'balance_covers', blocking: true, version: { kind: 'leave_type', version: 3 } }, { check: 'team_coverage', blocking: false, version: null }] } });
-    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session })}</div>);
-    await act(async () => { fireEvent.click(view.container.querySelector('[data-recommendation-loader]')!); });
+    // Before the approver opens it: a link, never a recommendation run.
+    const closed = wrap(await AiCentreInbox({ session }));
+    expect(closed.container.querySelector('[data-recommendation-loader]')).toHaveAttribute('href', `/assistant?view=inbox&recommend=${LEAVE_ID}#recommendation-${LEAVE_ID}`);
+    expect(closed.container.querySelector('[data-recommendation]')).toBeNull();
+    closed.unmount();
+    const view = wrap(<div className="mx-auto max-w-6xl space-y-6"><AiCentreTabs active="inbox" isAdmin={false} />{await AiCentreInbox({ session, recommend: LEAVE_ID })}</div>);
     const panel = view.container.querySelector('[data-recommendation]') as HTMLElement;
     const copy = enWithAiCentre.aiCentre.recommendation;
     expect(panel).toHaveAttribute('data-recommendation', 'needs_review');
@@ -113,9 +117,8 @@ describe('AI centre step 5, rendered per role', () => {
 
   it('group administrator: the registry, a worker detail and the outcome summary', async () => {
     Object.assign(state, { admin: true, group: true });
-    const switchAction = vi.fn(async () => undefined);
     const view = wrap(await AiManagementScreen({ session, section: 'features', searchParams: Promise.resolve({ worker: 'daily_digest' }), builtInChecks: [], registry: {
-      rows: ROWS, switchAction,
+      rows: ROWS,
       summary: { tenantId: 'fictional', since: null, records: 128, byWorker: [], byFamily: { watcher: 40, chaser: 30, preparer: 18, decider: 0, explainer: 40 }, mandates: [] },
       detail: { worker: ROWS[3], recentRuns: [{ at: new Date('2026-11-02T00:30:00Z'), runId: 'r1', outcomeKind: 'prepared', humanInvolvement: 'none', decision: null, mandateId: 'm1' }],
         mandates: [{ id: 'm1', grantorUserId: 'u', grantorPersonId: 'p', agentIdentity: 'agent.daily_digest', state: 'active', validUntil: new Date('2027-01-31T00:00:00Z'), revokedBy: null, version: 1 }] },
@@ -126,9 +129,10 @@ describe('AI centre step 5, rendered per role', () => {
     expect(within(registry).getByText('82% accepted')).toBeInTheDocument();
     expect(within(registry).getAllByText(copy.notMeasured.replace('{count}', '0')).length).toBeGreaterThan(0);
     expect(within(registry).queryByText('0% accepted')).toBeNull();
-    // Only the registry-controlled worker has a switch here; the others link to where theirs lives.
-    expect(registry.querySelectorAll('form')).toHaveLength(1);
-    expect(registry.querySelector('#worker-approver_recommendation form input[name=workerId]')).toHaveAttribute('value', 'approver_recommendation');
+    // No switch is changed from the registry yet: the registry-controlled one is shown read-only (its action
+    // needs an ADR-0151 inventory entry inside the approved digest); the others link to where theirs lives.
+    expect(registry.querySelectorAll('form, button')).toHaveLength(0);
+    expect(registry.querySelector('#worker-approver_recommendation')).toHaveTextContent(copy.switchOwner.worker_control);
     expect(within(registry).getByText(copy.stopPending)).toBeInTheDocument();
     expect(view.container.querySelector('#worker-detail')).toHaveTextContent(copy.mandateState.active);
     expect(view.container.querySelector('#ai-outcomes')).toHaveTextContent('128');

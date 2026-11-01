@@ -3,7 +3,6 @@ import { agentStatuses } from '@/core/control-domains';
 import { listWorkers, workerDetail } from '@/core/agent-registry/views';
 import { outcomeSummary } from '@/core/agent-registry/export';
 import { AiManagementScreen, type AiManagementSearch } from '../screen';
-import { setWorkerSwitchAction } from '../registry-actions';
 
 /** AI centre › Workers. The built-in checks' state is read from the system here (core/control-domains.ts);
  * a failed read shows "unavailable" rather than a declared status. A group administrator also gets the
@@ -16,6 +15,6 @@ export default async function AiManagementFeaturesPage({searchParams}:{searchPar
     listWorkers(session),
     outcomeSummary(session).catch(() => null),
     typeof sp.worker === 'string' && /^[a-z_]{1,64}$/.test(sp.worker) ? workerDetail(session, sp.worker).catch(() => null) : Promise.resolve(null),
-  ]).then(([rows, summary, detail]) => ({ rows, summary, detail, switchAction: setWorkerSwitchAction })).catch(() => null) : null;
+  ]).then(([rows, summary, detail]) => ({ rows, summary, detail })).catch(() => null) : null;
   return AiManagementScreen({session,section:'features',searchParams:Promise.resolve(sp),builtInChecks,registry});
 }
