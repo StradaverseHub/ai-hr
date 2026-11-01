@@ -336,3 +336,28 @@ disposition within existing scope, not a new privacy approval, certification, ru
 acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
 requires another exact review.
 
+
+## Technical source binding — 2 November 2026, recurring password policy
+
+For the password-policy staging release, the owner explicitly approved the exact rebind
+`8d364f4c8cb03c2a61f75b168f9d80b43222f64490204a3def3508f1c165cc47` after reviewing the
+covered delta, responding “Approve this exact rebind.” This updates the same 24 provisional
+approvals; both pending contracts and every original status, reviewer, evidence anchor and human
+review timestamp remain unchanged. It is a technical binding update, not a new privacy certification.
+
+The closure grows from 1,141 to 1,143 files. Added: `lib/internal-auth/password-policy.ts` and
+`lib/password-policy.ts`. Other changed covered sources are `lib/internal-auth/credential.ts`,
+`lib/internal-auth/crypto.ts`, `lib/internal-auth/service.ts`, `lib/ai/agent-capability-inventory.ts`
+and the six `messages/*.json` dictionaries. The dictionaries change only password security labels
+and the password-policy refusal text. Authentication records remain encrypted and local; expiry
+restricts active credentials. The capability inventory classifies the settings action as
+`handoff:access_and_authentication`, granting no agent execution authority. No AI serializer,
+transport, protected data contract, raw-data variant or model calculation is added or widened.
+
+Original release gate 41336655104 retains its failed result. The additional inherited lifecycle
+fixture used a fixed last working day of 1 November; its waiting-run test now supplies a last
+working day 30 days after the HR calendar's current date. Production lifecycle behavior and the
+original assertions are unchanged. Because the existing recovery verifier refuses test-file
+repairs, the owner separately answered “Authorize the new complete gate.” The new complete gate
+must establish its own exact-source evidence before merge or staging installation. This approval
+does not authorize production deployment or claim staging acceptance.
