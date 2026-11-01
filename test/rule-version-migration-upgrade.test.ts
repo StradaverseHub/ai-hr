@@ -17,7 +17,7 @@ import {setLeaveApprovalPolicy} from '../packs/leave/service';
 import {adminCtx,closeAll,owner,resetDb,seedBase} from './harness';
 beforeAll(async()=>{await resetDb();});afterAll(closeAll);
 
-const TAIL=[['0890_teras_outcome_record_mandates','1793330000290'],['0891_teras_rule_version_labels','1793330000291']] as const;
+const TAIL=[['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325']] as const;
 it('applies the Teras tail from 0890/0891 on over populated leave policy and approval rows, versioning them at 1 without changing them',async()=>{
  const sourceUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(sourceUrl.hostname);expect(sourceUrl.pathname).toMatch(/^\/ai_hr_test/);
