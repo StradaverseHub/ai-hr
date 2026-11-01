@@ -350,7 +350,7 @@
       "switchOwner": {
         "tenant_setting": "Thay đổi ở công tắc tính năng",
         "ai_provider": "Thay đổi ở công tắc tính năng",
-        "job_type": "Thay đổi trong công việc ủy quyền",
+        "job_type": "Chưa khả dụng: phiên bản này chưa có màn hình để bật công việc ủy quyền",
         "worker_control": "Chuyển tại đây, cho mọi công ty trong tập đoàn"
       },
       "never": "Chưa bao giờ",

@@ -350,7 +350,7 @@
       "switchOwner": {
         "tenant_setting": "在功能开关中更改",
         "ai_provider": "在功能开关中更改",
-        "job_type": "在委托任务中更改",
+        "job_type": "暂不可用：此版本没有开启委托任务的界面",
         "worker_control": "在此切换，适用于集团内所有公司"
       },
       "never": "从未",
