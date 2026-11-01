@@ -479,6 +479,8 @@ Acceptance for each step follows ADR-0169 §6. In addition, every new capability
 
 **Recommendation on this brief.** **Atoll.** It is the one word found that says all three things at once: open to everything, firm at the boundary, calm within. Two syllables, and the word exists in most languages. The trademark search must look hard at Atolio, which is close in both spelling and field. Alternate: **Hull**. Fram, Prow and Vorn stay on record from the forward-looking passes; a final choice may combine the two briefs (for example a coined word), which is work for a naming professional.
 
+**No "OS" suffix (1 November 2026).** The owner found "Atoll OS" awkward. The name stands alone and the prose describes it ("the AI operating architecture", "built on X"); features take the name as a prefix (X Connect, X mandates, Ask X). Reasons: §11.1 found every "AI OS" on the market to be a control plane plus a shell and the vocabulary scan rated every "OS" label as hype, so the suffix invites the agent-washing test this record applies to itself; and the strongest brands surveyed (Attio, Glean, Agentforce, Palantir AIP, Workday Illuminate) stand alone. If a suffix is ever wanted, names ending in a hard consonant carry it (Fram, Hull, Vorn); Atoll and Prow do not.
+
 **Before adopting any name:** MyIPO, USPTO, EUIPO and SIPO (China) searches in the software and SaaS classes; domain and app-store checks; a native-speaker check of meaning in all six interface languages; a check against the final list of markets.
 
 ## 10. Futures: is this the future, or a benchmark of today? (owner question, 1 November 2026)
