@@ -29,6 +29,10 @@ describe('behaviour scorer',()=>{
   expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Which leave type do you mean?'})).verdict).toBe('met');
   expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Annual leave is set up.'})).verdict).toBe('missed');
   expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['setup_readiness']})).verdict).toBe('met');
+  // Step 4: the co-pilot grounds guidance, and answers an ideal that names the read it is composed over.
+  expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['setup_copilot']})).verdict).toBe('met');
+  expect(scoreBehaviour(turn({mode:'answer',reads:['setup_readiness']},'guidance'),seen({reads:['setup_copilot']})).verdict).toBe('met');
+  expect(scoreBehaviour(turn({mode:'answer',reads:['my_leave_balances','leave_entitlement_explain']},'guidance'),seen({reads:['explain_leave_entitlement']})).verdict).toBe('missed');
   expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['my_leave_balances']})).verdict).toBe('missed');
  });
  it('fails any private read on a negative turn and applies reviewed corrections and alternatives',()=>{

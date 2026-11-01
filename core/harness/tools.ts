@@ -6,6 +6,8 @@
  *  - reads: specs generated from the semantic model (contextToolSpecs), only for reads core/assistant-tools
  *    toolsFor(ctx) offers this caller (module enablement), each run by its existing owner AS THE CALLER;
  *  - context tools: the phase-B owners (core/product-context/tools.ts) for this caller;
+ *  - step 4 capabilities: the "Why?" explainers and the setup co-pilot (core/explainers/capabilities.ts), as
+ *    reads with their own semantic entities, for callers whose module (or administrator role) they need;
  *  - suggest_action: the caller's current action catalogue (core/product-context/actions.ts). A suggestion
  *    is a pointer to the review page where the person completes and confirms. For the leave cards (step 2)
  *    the native preparer may also issue a signed proposal (core/proposals/suggested.ts) from the caller's own
@@ -17,9 +19,10 @@ import type {AiToolSpec} from '../../lib/ai/types';
 import {toolsFor} from '../assistant-tools';
 import {contextToolSpecsFor,runContextTool,suggestAction} from '../product-context/tools';
 import {actionCatalogueFor} from '../product-context/actions';
-import {destinationsFor} from '../../lib/product-context/destinations';
+import {linkablePathsFor} from '../../lib/product-context/destinations';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
-import {contextToolSpecs} from '../semantic-model/generate';
+import {contextToolSpecs,TERAS_READS,terasToolSpecs} from '../semantic-model/generate';
+import {terasCapabilitiesFor} from '../explainers/capabilities';
 import {SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
 import {prepareSuggestedProposal} from '../proposals/suggested';
@@ -51,6 +54,11 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
   return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:declared.input.filter(input=>input.identifier).map(input=>input.name),
    async run(input){const outcome=await owner.run(ctx,input);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
  });
+ const teras=terasCapabilitiesFor(ctx).map((capability):ToolBinding=>{
+  const spec=terasToolSpecs().find(row=>row.name===capability.name)!,declared=TERAS_READS.find(read=>read.name===capability.name)!;
+  return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:[],
+   async run(input){const outcome=await capability.run(ctx,input,scope);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
+ });
  const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>({name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
   async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}}));
  const catalogue=actions?await actionCatalogueFor(ctx):[];
@@ -61,8 +69,8 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
     return{ok:true,content:{...result,note:proposal?'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.':'The person completes and confirms this on the review page; nothing is prepared or submitted.'},
      suggestion:{action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard},...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
- return Object.freeze({bindings:Object.freeze([...context,...reads,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
-  destinations:Object.freeze(destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>row.href.split(/[?#]/)[0]))});
+ return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
+  destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});
 };
 
 /** Validates arguments against the subset of JSON Schema the specs use. Returns the problem, or null. */
