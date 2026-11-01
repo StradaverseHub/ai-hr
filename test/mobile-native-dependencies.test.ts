@@ -58,6 +58,28 @@ describe('native dependency fixes — actual installed callers', () => {
     } finally { clearTimeout(watchdog); await worker.terminate(); }
   });
 
+  it('malformed links with many distinct encoded runs cannot stall the real query parser', async () => {
+    const worker = new Worker(`
+      const { parentPort, workerData } = require('node:worker_threads');
+      const load = require('node:module').createRequire(workerData);
+      let payload = '';
+      for (let i = 0; i < 32000; i++) {
+        payload += '%' + Math.floor(i / 256).toString(16).padStart(2, '0') + '%' + (i % 256).toString(16).padStart(2, '0') + 'x';
+      }
+      const parsed = load('query-string').parse('state=' + payload + '%zz');
+      parentPort.postMessage({ length: parsed.state.length, intact: parsed.state.endsWith('%zz') });
+    `, { eval: true, workerData: packagePath.pathname });
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await new Promise<{ length: number; intact: boolean }>((resolve, reject) => {
+        worker.once('message', resolve); worker.once('error', reject);
+        watchdog = setTimeout(() => reject(new Error('Distinct malformed URL runs blocked the parser for 5 seconds.')), 5000);
+      });
+      expect(result.intact).toBe(true);
+      expect(result.length).toBeGreaterThan(32000);
+    } finally { clearTimeout(watchdog); await worker.terminate(); }
+  }, 10000);
+
   it('the patched UUID module still produces the Xcode project ids Expo needs', () => {
     const xcode = nativeRequire('xcode') as { project: (path: string) => { hash: unknown; generateUuid: () => string } };
     const project = xcode.project('fixture.pbxproj');
