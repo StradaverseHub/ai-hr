@@ -13,18 +13,23 @@ Follow [repository policy](REPOSITORY-AND-ENVIRONMENTS.md) and the
 [release handoff](PRODUCTION-RELEASE-HANDOFF.md) for backend changes/acceptance.
 
 The authenticated EAS project is `@stradaverse/ai-hr-test`, ID
-`7f580e1e-293f-4ad7-9c57-bd8f992a882f`. Latest returned builds are internal 1.0.3 (4),
-from `b8a4a98a27c40bc2a68fe2bd871dcf7c1c9a3c47`, not this candidate:
+`7f580e1e-293f-4ad7-9c57-bd8f992a882f`. The city-background review builds are source
+`279ae747eedc6767321b5d57d9cfd4c575a6a94f`, version 1.0.3 (4):
 
-- Android: `7ef79f3d-7eaf-4455-bb91-12f082b94b4c`, APK, android-local-signing.
-- iOS: `ae2c00a1-2964-4143-a670-c454c097098a`, preview IPA.
+- iOS simulator: `f5da111c-91d8-4100-9b58-7ac8deb61970`, finished and installed on iPhone 17 Pro / iOS 26.5.
+- Android review APK: `007e63c6-1583-440a-9030-be15c5644b8f`, finished and installed on emulator-5554 / API 34.
 
-These builds do not prove current functionality or store eligibility. The globally installed
-EAS CLI is 10.2.2, below this project's required 24.10.0; use a compatible pinned CLI.
-The owner has both physical platforms available. Device inventory during this review found
-no attached Android device or iPhone; two iPhone simulators were booted. A simulator showed
-the existing app's lock screen and normal Face ID prompt, but its candidate identity has not
-been established. This is an observation, not candidate acceptance.
+Both package identities remain `ai.stradaverse.aihr.test`; the packaged public name is OneHR+.
+Use pinned EAS CLI 24.10.0; the globally installed 10.2.2 is below the project's requirement.
+The 188-file EAS upload archive was checked against public committed source: no untracked,
+environment, backend, signing or private configuration files. No store submission was performed.
+
+The owner requested simulator review first and explicitly authorized adb/simctl. Both installed
+builds reached the synthetic staging workplace's sign-in screen. iPhone city backgrounds were
+observed in light and dark mode. Android accessibility confirmed the sign-in controls; active screen
+capture protection blocks automated sign-in screenshots. Authentication, final repaired binaries,
+other sizes and real phones remain pending. Installed source 279 does not contain the later shared
+private-Screen session guard.
 
 ## Verification of the preparation candidate
 
@@ -77,16 +82,47 @@ regression in the newer candidate.
   zero failed/skipped (16 database files / 154 cases; 22 non-database files / 332 cases), both strict
   compilers, and iOS/Android production exports. This includes the decoder repair.
 
-The owner subsequently selected workplace/city artwork as the default and requested per-customer
-background uploads. Those later changes need their own verification. Checkpoint evidence is not
-relabelled as proof of the customer-artwork feature or its migration. The final simulator binaries,
-authenticated walkthrough, small/large screens and real-device acceptance remain pending.
+### Customer artwork and security follow-up
 
-The npm audit initially reported 18 affected mobile dependency entries (7 high, 9 moderate, 2 low),
-including propagated tooling findings. This is not 18 demonstrated app exploits. Root runtime Zod
-is already 4.6.7; nested Expo tooling uses Zod 3. Toolchain findings, final exported dependency
-reachability and exact signed native binaries still require review. No forced SDK upgrade or
-advisory suppression was used to conceal them.
+The owner selected Workplace & city as the shared default and a deeper Chin Hin / 8th & Stellar
+pair as customer artwork. Group administrators can upload separate light/dark images, preview,
+save/publish, revert to defaults and roll back. Uploading alone does not publish. Tenant-owned
+immutable image IDs are referenced by design snapshots; only own-tenant published JPEGs are sent
+to authenticated capable clients. Older schema clients retain compatible responses. Sign-in and
+lock screens use the shared default. The app reloads design on foreground/refresh. Backend and
+compatible app deployment are required; no production upload or publication was performed.
+
+Source `279ae747eedc6767321b5d57d9cfd4c575a6a94f` run
+[41302053518](https://github.com/StradaverseHub/ai-hr/actions/runs/41302053518) completed all planned
+jobs: native/root TypeScript, both native exports and Linux production build passed. Selected tests
+had one stale default-color assertion failure (110 passed, one failed across 13 files); customer
+upload, tenant isolation, RLS and compatibility tests passed. The failure is retained and repaired.
+Migration 0878 is provisional, tested in hosted test databases and not installed on an environment;
+recheck allocation and perform required release rehearsals before integration.
+
+Real shared-Screen regression and real Nodemailer JSON-transport tests at `9bc32ec` reproduced
+signed-out/locked/loading private-content rendering and recipient parser confusion in
+[41303153415](https://github.com/StradaverseHub/ai-hr/actions/runs/41303153415). No external email was sent.
+Repair `07beeff5b2380e1aa7f2b4472c865e5d831bb201` adds the Screen session boundary, patches Next to
+16.4.1 and Nodemailer to 10.1.4, and preserves exact build runtime checks with matching version pins.
+[41303947136](https://github.com/StradaverseHub/ai-hr/actions/runs/41303947136) selected tests passed:
+**111 cases in 14 files**, no failures/skips (database 38/4 files; non-database 73/10 files).
+Native TypeScript and both production exports passed; root TypeScript and Linux production build
+were still running at this documentation checkpoint. CI producer/cache-policy fixtures need their
+own hosted controller verification; focused evidence is not release authorization.
+
+The patched server production lockfile advisory scan returned zero entries. The mobile audit after
+the decoder repair reports 15 affected entries (4 high, 9 moderate, 2 low), including propagated Expo
+tooling findings. These are not 15 demonstrated app exploits. Runtime Zod is 4.6.7; nested Expo tooling
+uses Zod 3. Final binary reachability and tooling patch compatibility remain open. No forced SDK
+upgrade or advisory suppression was used to conceal findings.
+
+The source-279 APK manifest confirms target SDK 36, non-exported file providers and the public
+OneHR+ name. It also contains an unnecessary SYSTEM_ALERT_WINDOW permission and allowBackup=true.
+The next configuration blocks the overlay permission and sets allowBackup=false, retaining existing
+SecureStore exclusions. Its actual rebuilt manifest and real-device restore behavior remain unverified.
+Authenticated simulator walkthroughs, other phone sizes, physical-device push and the final design
+finish review/documentation are still pending. Store release remains HOLD.
 
 ### Native UI source audit
 
