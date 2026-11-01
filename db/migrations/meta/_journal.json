@@ -4537,6 +4537,13 @@
       "when": 1793330000287,
       "tag": "0887_attendance_task_candidate_access",
       "breakpoints": true
+    },
+    {
+      "idx": 768,
+      "version": "7",
+      "when": 1793330000292,
+      "tag": "0892_attendance_legacy_candidate_gate",
+      "breakpoints": true
     }
   ]
 }

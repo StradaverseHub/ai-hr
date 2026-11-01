@@ -1063,3 +1063,16 @@ idx766/when1793330000286. The canonical639-entry prefix remains unchanged.
 This adds pure actor-key expression indexes and a necessary-only task precheck;
 positive results retain the original authoritative reader. No live ledger queried,
 installation performed, or deployment authorized. Reconcile again before installation.
+
+## Attendance legacy candidate refinement — 1 November 2026 (unapplied)
+
+Owned performance branch reserves `0892_attendance_legacy_candidate_gate`, idx768 /
+when1793330000292. Fresh audit:2803 refs,415 worktrees,718 ref/WIP journals
+and464 allocation documents; highest foreign/source claim0891/when1793330000291,
+idx767. All timestamp prefixes were independently checked before allocation.
+Preserve all639 canonical entries/SQL bytes and the nine existing owned drafts.
+This replaces only the necessary-only precheck: historical delegates remain possible,
+administrative managers retain every pending legacy/unrouted request, and indexed
+frozen identities retain versioned work after reporting changes. Real native
+comparison41305689629 preserves both legacy and named/delegated assignments.
+No live ledger query or installation; re-freeze source/ledger before later integration.

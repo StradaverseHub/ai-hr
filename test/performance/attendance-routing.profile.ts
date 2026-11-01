@@ -1,6 +1,6 @@
 /** Paired task-read transport experiment; all native decision owners remain unchanged. */
 import {randomUUID} from 'node:crypto';
-import {writeFileSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {and,desc,eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
@@ -62,23 +62,12 @@ it('compares scalar native decisions with the exact batched application and a re
   const [row]=await owner.client`select p.proowner::regrole::text as owner,p.proacl::text as acl,p.prosecdef,p.provolatile,p.proconfig,p.proparallel,p.proisstrict,p.proleakproof,p.procost,p.prorettype::regtype::text as returns,p.proretset from pg_proc p where p.oid=${signature}::regprocedure`;return row;
  };
  const expectedAttributes=new Map<string,unknown>();for(const signature of signatures)expectedAttributes.set(signature,await attributes(signature));
- const [gate]=await owner.client`select pg_get_functiondef('app.may_have_attendance_task_metadata()'::regprocedure)as definition`;
- const marker='WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id) THEN RETURN true; END IF;';
- expect(gate.definition.split(marker)).toHaveLength(2);
- const narrowedGate=gate.definition.replace(marker,`WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id
- AND (
-  r.line_type='delegate' OR (
-   r.line_type='administrative' AND EXISTS(
-    SELECT 1 FROM public.attendance_correction c
-    WHERE c.tenant_id=caller.tenant_id AND c.status='pending'
-    AND NOT EXISTS(
-     SELECT 1 FROM public.attendance_workflow_request w
-     WHERE w.correction_id=c.id AND w.tenant_id=c.tenant_id AND w.routing_version IN(2,3,4)
-    )
-   )
-  )
- )
-) THEN RETURN true; END IF;`);
+ const [installedGate]=await owner.client`select pg_get_functiondef('app.may_have_attendance_task_metadata()'::regprocedure)as definition`;
+ const original=readFileSync(new URL('../../db/migrations/0887_attendance_task_candidate_access.sql',import.meta.url),'utf8');
+ const start=original.indexOf('CREATE FUNCTION app.may_have_attendance_task_metadata('),end=original.indexOf('$possible$;',start)+'$possible$;'.length;
+ expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start);
+ const gate={definition:original.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION')};
+ const narrowedGate=installedGate.definition;
  const phases:Record<string,unknown>={},expected=new Map<number,unknown>(),oldAudit=process.env.AUDIT_HASH_CHAIN_ENABLED;
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
@@ -136,5 +125,5 @@ it('compares scalar native decisions with the exact batched application and a re
   await owner.client.unsafe(narrowedGate);
   for(let i=0;i<4;i++)expect(await pendingAttendanceTaskMetadata(actors[i].ctx,[b.companyId])).toEqual(legacyExpected[i]);
   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-legacy-candidate.json'),JSON.stringify({nativeUnroutedRequest:true,administrativeManagerPreserved:true,allOrderedMetadataExact:true,versionedNamedAndDelegatedActorsPreserved:true},null,2));
- }finally{await owner.client.unsafe(gate.definition);if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;}
+ }finally{await owner.client.unsafe(installedGate.definition);if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;}
 },300000);
