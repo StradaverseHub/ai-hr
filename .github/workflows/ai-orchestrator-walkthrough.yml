@@ -1,5 +1,5 @@
 name: ai-orchestrator-walkthrough
-run-name: Production renderer only · ${{ inputs.candidate_ref }}
+run-name: AI surfaces capture (evidence only, never merge) · ${{ inputs.candidate_ref }}
 on:
   workflow_dispatch:
     inputs:
@@ -69,7 +69,7 @@ jobs:
           node: '20'
       - run: pnpm exec playwright install --with-deps chromium
       - name: Build and walk through the actual production renderer on fresh fictional data
-        run: node ../automation/.github/ci/orchestrator-browser.mjs "$RUNNER_TEMP/orchestrator-production-renderer"
+        run: node ../automation/.github/ci/ai-surfaces-capture.mjs "$RUNNER_TEMP/orchestrator-production-renderer"
       - name: Ensure owned database cleanup after interrupted walkthrough
         if: always()
         run: bash ../automation/.github/ci/postgres.sh stop
