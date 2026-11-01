@@ -20,16 +20,18 @@ type Chapter = (typeof HOW_CHAPTERS)[number];
 /** Autoplay interval. Never used under reduced motion: there the person steps through. */
 const AUTOPLAY_MS = 3600;
 
+const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
+function subscribeReducedMotion(onChange: () => void) {
+  const query = window.matchMedia(REDUCED_QUERY);
+  query.addEventListener('change', onChange);
+  return () => query.removeEventListener('change', onChange);
+}
+/** Read during render on the client, so a reduced-motion person never sees a closed figure snap open after
+ * hydration (review L6). The server cannot know, so its HTML assumes reduced motion: the figure is drawn open
+ * and still, and nothing moves until the client says motion is allowed. A page reached by client navigation
+ * reads the real preference from its first render and still plays the opening. */
 function usePrefersReducedMotion(): boolean {
-  const [reduced, setReduced] = React.useState(false);
-  React.useEffect(() => {
-    const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const update = () => setReduced(query.matches);
-    update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
-  }, []);
-  return reduced;
+  return React.useSyncExternalStore(subscribeReducedMotion, () => window.matchMedia(REDUCED_QUERY).matches, () => true);
 }
 
 export function HowItWorks({ adminHref }: { adminHref?: string }) {
@@ -48,7 +50,7 @@ export function HowItWorks({ adminHref }: { adminHref?: string }) {
     <div className="space-y-5" data-how-it-works>
       <div role="tablist" aria-label={t('chaptersLabel')} className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-1">
         {HOW_CHAPTERS.map((key, index) => (
-          <button key={key} ref={element => { chapterRefs.current[index] = element; }} type="button" role="tab" id={`how-tab-${key}`} aria-controls={`how-panel-${key}`}
+          <button key={key} ref={element => { chapterRefs.current[index] = element; }} type="button" role="tab" id={`how-tab-${key}`} aria-controls={chapter === key ? `how-panel-${key}` : undefined}
             aria-selected={chapter === key} tabIndex={chapter === key ? 0 : -1} onClick={() => setChapter(key)} onKeyDown={event => onChapterKey(event, index)}
             className={cn('min-h-9 rounded-md px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               chapter === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
@@ -118,7 +120,6 @@ function RequestJourney() {
     go(next, true);
   };
   const togglePlay = () => {
-    if (reduced) { go(step + 1); return; }
     if (!playing && step >= last) setStep(0);
     setPlaying(value => !value);
   };
@@ -192,7 +193,8 @@ function RequestJourney() {
         </ul>
       </div>
       <section className="rounded-2xl border border-border bg-card p-5 xl:grid xl:grid-cols-2 xl:gap-x-7">
-        <div aria-live="polite" aria-atomic="true" className="xl:col-start-1">
+        {/* The panel the step tabs control; announced politely as the step changes. */}
+        <div role="tabpanel" id="how-step-panel" aria-labelledby={`how-step-tab-${HOW_STEPS[step]}`} aria-live="polite" aria-atomic="true" className="xl:col-start-1">
           <p className="text-xs tabular-nums text-muted-foreground">{t('stepOf', { n: step + 1, total: HOW_STEPS.length })}</p>
           <h2 className="mb-2 mt-1 text-lg font-semibold leading-snug tracking-tight">{t(`steps.${HOW_STEPS[step]}`)}</h2>
           <p className="mb-3 max-w-prose text-sm">{t(`steps.${HOW_STEPS[step]}Body`)}</p>
@@ -202,14 +204,15 @@ function RequestJourney() {
         <div className="mt-4 flex flex-wrap items-center gap-2 xl:col-start-1 xl:row-start-2">
           <button type="button" onClick={() => { setPlaying(false); go(step - 1); }} disabled={step === 0}
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronLeft aria-hidden className="size-4" />{t('previous')}</button>
-          <button type="button" onClick={togglePlay} aria-pressed={playing}
+          {/* Under reduced motion nothing plays, so there is no Play button to mislabel (review L5): Next steps through. */}
+          {!reduced && <button type="button" onClick={togglePlay} aria-pressed={playing}
             className="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}{playing ? t('pause') : t('play')}</button>
+            {playing ? <Pause aria-hidden className="size-4" /> : <Play aria-hidden className="size-4" />}{playing ? t('pause') : t('play')}</button>}
           <button type="button" onClick={() => { setPlaying(false); go(step + 1); }} disabled={step === last}
             className="inline-flex min-h-9 items-center gap-1 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('next')}<ChevronRight aria-hidden className="size-4" /></button>
           <div role="tablist" aria-label={t('stepsLabel')} className="ml-auto flex">
             {HOW_STEPS.map((key, index) => (
-              <button key={key} ref={element => { dots.current[index] = element; }} type="button" role="tab" aria-selected={index === step} aria-label={t(`steps.${key}`)}
+              <button key={key} ref={element => { dots.current[index] = element; }} type="button" role="tab" id={`how-step-tab-${key}`} aria-controls="how-step-panel" aria-selected={index === step} aria-label={t(`steps.${key}`)}
                 tabIndex={index === step ? 0 : -1} onClick={() => { setPlaying(false); go(index); }} onKeyDown={onDotKey}
                 className="group inline-flex size-7 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <span aria-hidden className={cn('size-2 rounded-full transition-[background-color,transform] motion-reduce:transition-none', index === step ? 'scale-125 bg-primary' : 'bg-input group-hover:bg-muted-foreground')} />

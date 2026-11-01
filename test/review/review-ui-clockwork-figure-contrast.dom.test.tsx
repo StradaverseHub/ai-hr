@@ -23,7 +23,7 @@ const label = (name: string) => ({ name, part: `${name} part` });
 const labels: ClockworkLabels = { interfaces: label('Interfaces'), harness: label('Harness'), context: label('Context'), capabilities: label('Capabilities'), record: label('Record'), model: label('Model'), foundation: label('Foundation'), guard: label('Guard'), outcome: label('Outcome') };
 
 describe('Clockwork figure text contrast', () => {
-  it('REVIEW low: every text the figure prints reaches 4.5:1 on its own panel, dimmed or not', () => {
+  it('fixed L1 (contrast): every text the figure prints reaches 4.5:1 on its own panel, dimmed or not', () => {
     const view = render(<ClockworkFigure active="harness" labels={labels} reduced title="Fictional title" caption="Fictional caption" mark="NOVERI" label="Fictional figure" faceLabel="Noveri OS" />);
     const texts = [...view.container.querySelectorAll('p, text')].filter(node => node.textContent?.trim());
     expect(texts.length).toBeGreaterThan(10); // labels render (reduced motion opens the watch at once)
