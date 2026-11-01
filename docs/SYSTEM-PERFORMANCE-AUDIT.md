@@ -54,6 +54,32 @@ cases in11files pass in
 [41312014828](https://github.com/StradaverseHub/ai-hr/actions/runs/41312014828);
 its whole compiler also PASSes onb914a6adf. This does not certify the later full HTTP target.
 
+### Repaired frozen full runs
+
+After native/compiler qualification, frozen candidate
+`a8a09667fde233e478f0a78495e516564cc2e88f` runs both full activity levels:
+[1s41313830506](https://github.com/StradaverseHub/ai-hr/actions/runs/41313830506) /
+[5s41313833575](https://github.com/StradaverseHub/ai-hr/actions/runs/41313833575).
+Both resolve the exact candidate successfully and are in progress. The source includes
+Personnel lock ordering, indexed Claims subject existence, current client catalogs and
+main integration. App/core/db/lib bytes match qualified5a7c830b8; evidence keeps its
+original producing SHA. Same500HTTP identities,2millionretainedrows, six loaded
+Chromium contexts,5minsteady window,1worker/pool10/heap4GiB, PostgreSQL cap and
+original request/process/p95 limits. No speed acceptance yet.
+
+Initial dispatches41313715187/41313718257 FAIL exact source resolution before any
+load job: remote-only aliases still held8bee while requested SHA wasa8. The aliases
+were fetched, verified as ancestors and fast-forwarded normally before corrected
+runs. Failed originals are retained; they are not load experiments or PASS receipts.
+
+An actual application summary scale check (not the candidate-query-only prototype)
+is pending on benchmark-onlycea9e735e, identical application source:
+[41314211674](https://github.com/StradaverseHub/ai-hr/actions/runs/41314211674).
+Fixture1millionpendingClaims,502employments/500subjects andthree actual reader
+principals; it asserts exact HR/manager/employee totals1million/200000/0, bounded
+25-item preview, no-self subject constraints and empty company scope. This is not
+500simultaneous readers or full HTTP acceptance.
+
 ### Previous full attempts
 
 The preceding full HTTP/browser attempts ran source
@@ -159,7 +185,7 @@ The existing exact-source approval bindings do not approve this new closure.
   measured query shape while retaining real Claim RLS, delegated header/organization
   owners, company narrowing and fresh decision rechecks. Broad native metadata,
   delegated/company scope,1201-header uncapped queue, Home and compiler qualification:
-  [41312983801](https://github.com/StradaverseHub/ai-hr/actions/runs/41312983801):72cases in11files PASS(59DB/13model), zero failures/skips; whole compiler pending.
+  [41312983801](https://github.com/StradaverseHub/ai-hr/actions/runs/41312983801):72cases in11files PASS(59DB/13model), zero failures/skips; whole compiler PASS on5a7c830b8.
   No SQL migration, authority cache or command shortcut is introduced.
 - Next HTTP diagnostics additionally distinguish completed HTTP error responses from
   transport errors and retain exact generated public-error SQLSTATE metadata without
@@ -186,8 +212,12 @@ latest applied0876/1793330000276 is below first owned performance draft179333000
 This proves the observed ledger prefix, not permission to install the drafts.
 The shared queue status is reachable and reports an existing capturing lease;
 this task neither claims nor changes it. These are snapshots that must be refreshed
-before any separately authorized installation. Customer-runtime preflight and the
-complete exact-candidate release witness remain separate checks.
+before any separately authorized installation. The actual candidatea8 customer/runtime preflight also PASSes: customer profile,
+zero configuration errors, pinned Linux x64/Node22.23.3/ABI127/glibc2.39/Next16.3.8.
+Both GitHub deployment switches remainfalse; deployed baseline variable matches7fe8.
+The complete exact-candidate release witness remains outstanding. An unapplied
+24-binding-only source fingerprint patch is prepared; the owner question is pending.
+No approval is inferred from elapsed time, source review or a generated manifest.
 
 No staging deployment, queue lease, package publication or live data/configuration
 mutation is authorized or performed. Allocation source audits and exact mapping live
