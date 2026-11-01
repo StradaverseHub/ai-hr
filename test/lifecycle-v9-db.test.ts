@@ -38,13 +38,13 @@ it('reports retained V9 company history without granting private case access to 
   await owner.client`update role_assignment set role='employee' where tenant_id=${base.tenantId}::uuid and app_user_id=${userId}::uuid and role='hr_admin'`;
   expect(await retained(reviewer,base.companyId)).toEqual([{used:false}]);
 });
-async function prepared(lastDay = '2026-11-01') {
+async function prepared() {
   const workspace = await v9Workspace(admin), config = workspace.config!;
   config.checklists = [...config.checklists.filter(checklist => checklist.module === 'onb'), { id: 'fixture', name: 'Focused exit', module: 'off', rules: {}, tasks: [{ id: 'handover', name: 'Complete handover', by: 'employee', group: null, mode: 'manual', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed' }] }];
   config.templates.push({ id: 'fixture-form', name: 'Reviewed contact form', type: 'Form', module: 'off', rules: {}, hrStep: 'none', employeeAck: false, retired: false, versions: [{ version: 1, state: 'published', at: '', by: '', blocks: [{ id: 'body', type: 'text', text: 'Contact update for {employee.name}', section: '' }], fields: [{ id: 'mobile', label: 'Mobile', type: 'phone', owner: 'employee', pmKey: 'mobile', required: true, sensitive: false, options: [], section: 'main', when: null }, { id: 'confirm', label: 'Confirmation', type: 'checkbox', owner: 'employee', pmKey: null, required: true, sensitive: false, options: [], section: 'main', when: null }] }] });
   config.workflows = [{ id: 'fixture-release', name: 'Release form', module: 'off', status: 'published', trigger: { event: 'submitted', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'document', type: 'doc', template: 'fixture-form', release: true }, { id: 'supporting', type: 'waitFile', slot: 'fixture-support', label: 'Supporting file' }], description: '' }];
   await v9SaveConfig(admin, config.revision, config);
-  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: '2026-10-01', lastDay });
+  const id = await v9CreateOffboarding(admin, { employmentId, type: 'Resignation', noticeDate: '2026-10-01', lastDay: '2026-11-01' });
   await v9Command(admin, id, 1, { type: 'submit' });
   return (await v9Workspace(admin)).cases.find(c => c.id === id)!;
 }
@@ -772,10 +772,11 @@ it('deletes unused whole definitions but retains canonical historical delivery e
   expect((await v9Workspace(foreignAdmin)).definitionUsage).toEqual([]);
 });
 it('protects an email referenced by a frozen waiting run even before any message is queued', async () => {
-  const c=await prepared(addDays(todayInKualaLumpur(),30));let config=(await v9Workspace(admin)).config!;
+  const c=await prepared();let config=(await v9Workspace(admin)).config!;
   config.emails.push({id:'waiting-email',name:'Waiting fictional email',module:'off',active:true,sender:'hr',subject:'Fictional',body:'Fictional',cc:[],links:[],attachments:[],slots:[]});
   config.workflows.push({id:'frozen-mail',name:'Fictional frozen reference',module:'off',status:'published',trigger:{event:'beforeLWD',days:30,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'file',type:'waitFile',slot:'frozen-proof',label:'Fictional proof'},{id:'mail',type:'email',template:'waiting-email',to:'employee',cc:[]}],description:''});
-  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'runWorkflows'});
+  // This checks retained frozen definitions, not the wall-clock date-trigger window.
+  await v9SaveConfig(admin,config.revision,config);await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'frozen-mail'});
   const workspace=await v9Workspace(admin);
   expect(workspace.definitionUsage?.find(row=>row.kind==='email'&&row.definitionId==='waiting-email')).toEqual({kind:'email',definitionId:'waiting-email',messages:0,runs:1});
   config=workspace.config!;const changed=config.workflows.find(workflow=>workflow.id==='frozen-mail')!;changed.status='draft';changed.steps=[];

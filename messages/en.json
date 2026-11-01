@@ -33379,6 +33379,149 @@
     "noticeReferences": "Income-tax correction references",
     "noticeView": "View income-tax correction"
   },
+  "runnerControl": {
+    "title": "Runner controls",
+    "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
+    "environment": "Environment",
+    "environmentName": {
+      "staging": "Staging",
+      "production": "Production"
+    },
+    "unavailable": "Unavailable",
+    "refresh": "Refresh status",
+    "checkedAt": "Checked at",
+    "controllerMissing": "Live scheduler status is unavailable. Do not interpret this as disabled. The installation operator must commission the controller.",
+    "scopeNote": "Changes apply to this installation. Customer administrators can inspect status; only installation operators can change it.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "held": "On hold",
+    "external": "Not managed here",
+    "configure": "Configure runner",
+    "editSchedule": "Change schedule",
+    "minutes": "Minutes between completed runs",
+    "time": "Run time (Malaysia time)",
+    "monthlyRule": "Runs on the first day of each month. The business date cannot be changed here.",
+    "yearlyRule": "Runs on 1 April, after carry-forward expiry. The business date cannot be changed here.",
+    "effectNote": "Enabling may process overdue work immediately. Disabling prevents future runs; a transaction already in progress is allowed to finish.",
+    "confirm": "I have reviewed this runner’s purpose and the data it may change.",
+    "save": "Save configuration",
+    "saving": "Saving…",
+    "saved": "Configuration saved. Refresh to check actual status.",
+    "saveFailed": "The configuration could not be confirmed. Refresh actual status before retrying, or contact the installation operator.",
+    "schedule": "Schedule",
+    "installedSchedule": "Installed schedule; next run shown alongside",
+    "lastRun": "Last completed run",
+    "nextRun": "Next scheduled run",
+    "noEvidence": "No scheduler evidence",
+    "results": "Results",
+    "holdNote": "This production runner is held by the installation policy. A separate owner decision is required to remove the hold.",
+    "health": {
+      "missing": "Not installed",
+      "running": "Running",
+      "failed": "Failed",
+      "unknown": "Not yet verified",
+      "success": "Last run succeeded",
+      "stale": "Last success is overdue",
+      "stopped": "Scheduler stopped"
+    },
+    "jobs": {
+      "provision": {
+        "name": "Customers and modules",
+        "description": "Processes approved customer provisioning and module changes.",
+        "results": "Operator customers"
+      },
+      "accrual": {
+        "name": "Earned leave accrual",
+        "description": "Adds earned leave to employee balances and records ledger entries.",
+        "results": "Leave balances"
+      },
+      "carry-expiry": {
+        "name": "Carry-forward leave expiry",
+        "description": "Forfeits unused carry-forward leave after the configured expiry.",
+        "results": "Leave entitlements"
+      },
+      "reviews": {
+        "name": "Reviews, movements and reminders",
+        "description": "Applies due employment movements, opens reviews and creates reminders and notifications.",
+        "results": "Run history below; employee records and reviews"
+      },
+      "notifications": {
+        "name": "Workflow notifications and email",
+        "description": "Projects workflow notices and sends eligible email. May also advance enabled lifecycle and letter automation.",
+        "results": "My notifications; Email delivery for email outcomes"
+      },
+      "anomalies": {
+        "name": "Payroll anomaly checks",
+        "description": "Records findings and verdicts for review. Does not change payroll amounts.",
+        "results": "Control Tower exceptions and payroll anomalies"
+      },
+      "child-relief": {
+        "name": "Child tax-relief refresh",
+        "description": "Updates calculated child-relief projections from family records; may affect future payroll tax.",
+        "results": "Employee statutory profile"
+      },
+      "usage": {
+        "name": "Usage capture",
+        "description": "Records installation usage snapshots. Missed historical snapshots cannot be fully reconstructed.",
+        "results": "Run history below; operator usage records"
+      },
+      "entitlement-alarm": {
+        "name": "Leave entitlement coverage",
+        "description": "Checks for missing or expired leave-entitlement coverage. Records a monitoring result.",
+        "results": "Run history below"
+      },
+      "ai-alerts": {
+        "name": "AI alerts",
+        "description": "Checks AI operational alert conditions and records monitoring results.",
+        "results": "AI administration and run history below"
+      },
+      "ai-retention": {
+        "name": "AI data retention",
+        "description": "Removes expired AI custody data according to retention policy. Deletions are permanent.",
+        "results": "Protected maintenance logs"
+      },
+      "bank-import": {
+        "name": "Bank and statutory imports",
+        "description": "Processes queued imports and writes the corresponding validated records.",
+        "results": "Import progress and history"
+      },
+      "replacement-holidays": {
+        "name": "Replacement holidays",
+        "description": "Reconciles queued calendar changes and replacement-holiday allocations.",
+        "results": "Replacement holidays and calendars"
+      },
+      "reports": {
+        "name": "Scheduled reports",
+        "description": "Generates and emails due reports when report delivery is commissioned.",
+        "results": "Employee Master report schedules"
+      },
+      "mobile-push": {
+        "name": "Mobile push delivery",
+        "description": "Sends eligible queued notifications through a configured push provider.",
+        "results": "Device notifications and delivery logs"
+      },
+      "auth-cleanup": {
+        "name": "Authentication cleanup",
+        "description": "Removes expired authentication sessions and challenges.",
+        "results": "Protected authentication maintenance logs"
+      },
+      "account-email-retention": {
+        "name": "Account-email retention",
+        "description": "Retires expired account-email content according to retention policy.",
+        "results": "Email delivery and protected maintenance logs"
+      },
+      "dunning": {
+        "name": "Customer payment standing",
+        "description": "Checks customer payment standing. Applying customer suspension requires separately approved configuration.",
+        "results": "Operator customers and maintenance logs"
+      },
+      "backups": {
+        "name": "Database backups",
+        "description": "Creates database backups to an approved destination when configured.",
+        "results": "Backup storage and protected backup logs"
+      }
+    }
+  },
   "passwordPolicy": {
     "title": "Password security",
     "description": "Require users in this organization to change their password at a recurring interval.",
