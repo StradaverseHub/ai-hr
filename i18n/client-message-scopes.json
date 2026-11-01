@@ -27,6 +27,7 @@
       "operatorWorkspace",
       "ownLeaveChange",
       "pageStyleRecovery",
+      "scheduledActions",
       "topbar"
     ],
     "unknown": []
@@ -144,6 +145,7 @@
         "rewardsAccessControl",
         "rewardsConfig",
         "roster",
+        "runnerControl",
         "scheduleDrafts",
         "systemTestingWorkspace"
       ],
