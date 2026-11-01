@@ -1,3 +1,185 @@
+## Performance reconciliation after Entra — 2 November 2026 (UNAPPLIED)
+
+Canonical main/alpha are50ea247177a9fe1373d3e79d9c742f0fc399ebb7. Independent read-only
+22:32:43UTC verification matches all642 numeric-ID-ordered applied hashes and timestamps,
+watermark1793330000299. Queue epoch24 has no lease. Applied0898/0899 and every other
+canonical SQL file remain byte-identical. No performance lease or installation is claimed.
+
+The22:32:56UTC all-ref/registered-worktree scan covers1757 heads,314 journals,394
+migration trees,473 worktrees and788 WIP variants, with zero parse errors. Foreign
+0905/0906 reservations end atwhen306; maximum source index is774. All sixteen owned
+UNAPPLIED appends are moved byte-identically to0907–0922,idx775–790/when307–322.
+Their previous0879–0897/0900/0902–0904 identities are superseded development claims,
+not applied history. The independent frozen performance-tail fixture records each
+new identity and its unchanged SQL hash. No foreign reservation is integrated.
+
+New0923_overtime_formula_candidate_plan usesidx791/when1793330000323, SQL SHA256
+c3a25c73da238c7528be641e4e3d13676c8ec45e82e02d3aa21bb9a48d5d4b47.
+Its STABLE SECURITY INVOKER helper retains the exact former selection and all caller
+RLS, including case-sensitive JSON target spelling. It reuses a plan, not permission
+results. Reversible d0e9f9e21/run41357080889 passes positive/foreign/live-context
+controls; populated500-reader bursts are5.95s/2.55s/5.91s before/native/restored.
+Broader migrated, populated upgrade, compiler and500-user verification remain pending.
+No deployment, release admission or new provider-source binding approval follows.
+
+## Current qualification and installation hold — 2 November 2026
+
+The historical reservations and ledger observations below retain their original dates.
+Sourcee200 qualifies0903/0904 with233 native database and13 additional observations;
+test-only76bd passes the eight affected cases and fresh compiler. Both500-user runs
+41353805538/41353808057 FAIL; no release admission follows. Entra's owner now reports
+0898/0899 APPLIED while its final ledger/build acceptance remains in progress. Those
+SQL bytes are immutable. After verified handback, independently refresh the installed
+ledger/watermark, released source and all peer claims, then reallocate every overtaken
+owned UNAPPLIED append above the actual maximum. The old640-row baseline is no longer
+an admission witness. Preserve original frozen receipts; no performance installation
+or staging lease is authorized by this record.
+
+## Native incoming payslip parent ownership — 2 November 2026 (unapplied)
+
+Owned candidate reserves0904_attendance_draft_parent_lock,idx774/when1793330000304,
+SQL SHA256be7c125a4c808f57c5b00018447fbdf6a79c6affea48b7a07f0680ff40845fac.
+The21:32:06UTC scan found0903/idx773/when303 as the prior maximum. Final21:37:54UTC
+all-ref/worktree scan covers1749 heads,311 journals,391 migration trees,466 worktrees
+and778 WIP variants with zero parse errors;0904 is only this owned new reservation.
+Canonical refs remain29393c2a5. Read-only21:32:40UTC live ledger verifies640 exact
+ID-ordered rows at watermark1793330000276; queue epoch22 has no lease.
+
+The append pins both native financial donor body hashes and preserves all their
+non-body attributes. A private native trigger takes FOR UPDATE on the incoming
+payslip parent before INSERT or actual membership changes. Existing write RLS
+remains the effect authority. Draft Attendance coverage may then use FOR SHARE;
+processed/closed coverage keeps original FOR UPDATE. The provisional draft lock
+releases through a native exception subtransaction before stronger reacquisition
+when a waiting row changes status. No business transaction or SQL failure is retried.
+The incoming-parent scope follows the FK resource; no outgoing-parent lock is added.
+
+Reversible7f022be5e/run41352040144 passes original/advisory/parent-row/restored
+controls, real distinct Attendance inserts, physically blocked first-payslip/status
+writers, retained processed/closed exclusion and two in-flight status-change readers.
+The advisory alternative exposes actual40P01 under raw INSERT-plus-status and is
+rejected. Native originals are restored. Concrete migrated coverage, incoming
+membership-move ordering, canonical Payroll/history writers, populated upgrades,
+compiler and both500-user workloads remain pending. No deployment authority follows.
+
+## Native Notice parent membership — 2 November 2026 (unapplied)
+
+Owned candidate reserves0903_notice_parent_membership,idx773/when1793330000303,
+SQL SHA2563f1e29f5724e8e7036360e2ebd7d3576474342000aacf2c907ebc44025e86405.
+Fresh21:07:44UTC all-ref/worktree inventory covers1746 heads,310 journals,390
+migration trees,461 worktrees and772 WIP variants; zero parse errors. Prior maximum
+is0902/idx772/when302. Canonical main/alpha29393c2a5 add no migration. Read-only
+21:08:20UTC live ledger verifies all640 ID-ordered hashes, watermark1793330000276.
+Authoritative queue epoch22 has no active lease; no performance lease/ticket claimed.
+
+Merge34c66da8c preserves canonical password baseline and all applied SQL bytes.
+The new append pins exact native employment/self-recipient/parent policy predecessors,
+refuses unexpected applicable restrictive policies, adds only a native own-membership
+boolean helper and changes only the parent own-read predicate. Native author/admin,
+publication, dates, tenant/current-principal and acknowledgement boundaries remain.
+Reversible diagnostic41349751244 observes populated500-reader46.50s/1.31s/45.08s
+before/candidate/restored, with flat empty reads and live identity/revocation controls.
+This is service evidence; broader migrated native, upgrade/compiler and500-user tests
+are pending. No deployment or provider-binding approval is granted.
+
+## Native hierarchy query-plan reuse — 2 November 2026 (unapplied)
+
+Owned source reserves `0902_company_hierarchy_query_plan`, idx772 /
+when1793330000302; SQL SHA256
+`7dc2b50fd2289e886737a00fad2a15598ff62b8c066c9e9f384ed23cc7fd77ba`.
+Fresh19:52:14 UTC all-ref/worktree scan inspects1,737 heads,309 journals,389
+migration trees,452 worktrees and762 WIP variants, with zero parse errors. Prior
+claims end at0901/when301 and idx771. No foreign reservation is integrated.
+
+Both canonical refs are438bfae3d. The complete live ID-ordered640-row ledger is
+read-only verified again, with watermark1793330000276 and unchanged applied hashes.
+Canonical438 adds no migration. Mergea6a58ede2 preserves its history and the existing
+13 owned performance appends. This14th append gives654 candidate journal entries.
+
+The guard requires the exact native is_company_descendant(uuid,uuid) SQL body
+SHA2562966296c5a5c1f383e92fc88816b5dfc07c3794d78877b17d0db1d0d1668a670.
+It wraps that complete expression for per-connection query-plan reuse and verifies
+every non-language/body pg_proc attribute unchanged. No result cache, predicate,
+lock, owner, ACL, search path or volatility change. Is_admin_for is not altered.
+Reversible experiment41343026304 passes500 independent visibility/RLS oracles and
+live same-connection grant/hierarchy changes; it restores both originals. Role-level
+and planning gains do not establish a500-user system speedup. Migrated native tests,
+financial/populated upgrades, whole compiler and full-load verification are required.
+This source reservation grants no deployment or provider-source approval.
+
+## Attendance Payroll period locks — 2 November 2026 (unapplied)
+
+Owned performance source reserves `0900_attendance_payroll_period_locks`, idx771 /
+when1793330000300; SQL SHA256
+`018d4bbfdc1fc0d1b0a4957918e07e206f5a6fca1337d196c0c63fb8940b3fdb`. Fresh all-ref/worktree scan at 18:57:23 UTC inspected 1,732 heads,
+307 journals, 387 migration trees, 444 worktrees and 751 WIP variants, with no parse
+errors. Foreign reservations0898/0899 remain excluded. All existing SQL is preserved.
+The fresh canonical ID-ordered staging ledger has640 exact rows, watermark
+1793330000276; canonical main/alpha are e1585acba. This is a source reservation only.
+
+The append adds date-bounded overloads of the existing native Attendance Payroll
+guard and its private row owner, guarded by exact donor body hashes and attribute
+comparison. Relevant drafts, former-company membership, payslip membership, fresh
+correction authority and stable exclusive batch locking remain intact. Exact cutoff
+coverage stays with core/payroll-policy-config.ts. Undated functions are unchanged.
+Native financial regressions, upgrade rehearsal, compiler and both500-user HTTP /
+browser loads remain required. No installation or deployment is authorized.
+
+Source refresh at19:37:23 UTC inspects1,735 heads,308 journals,388 migration trees,
+448 worktrees and756 WIP variants, with zero parse errors. Main/alpha have advanced
+to438bfae3d while staging still verifies the exact640-row e158 prefix. Foreign0901 /
+when1793330000301 is excluded. Main438 is migration-free runner-controls/maintenance work and retains640 canonical
+entries; authentication0898/0899 are pending foreign source reservations, not part of
+that canonical journal. The existing performance reservations remain above the live
+watermark276. Refresh the live/canonical tail before admission and reallocate any
+unapplied position overtaken by a later installation. Original isolated migration/load
+receipts are not aggregate release evidence.
+
+## Performance administrator candidate work — 2 November 2026 (unapplied)
+
+Owned source reserves `0897_administrator_candidate_work`, idx770 / when1793330000297,
+SQL SHA256 `312266b1bf13ca69295776d9bed3beb08ad98a0b8c858da6c213c10919dfb2ae`.
+Fresh all-ref/worktree audit 17:03:50 UTC follows an all-ref fetch: 1,718 heads,
+303 journal blobs, 383 migration trees and 426 worktrees; no parse errors or foreign
+edits. Prior claims end at 0896/idx769/when296. Canonical main/alpha are `e1585acba`.
+Staging's complete ordered 640-row ledger was verified at 16:55:15 UTC; its watermark
+is 1793330000276. All canonical SQL bytes/journal entries and eleven prior owned
+performance appends remain exact. This append makes 652 candidate journal entries.
+
+The guard requires native `app.access_assert_administrator_for(uuid)` body SHA256
+`e1533050337da12c2e16d2d9e657bc6dcc29617648541e4c189067713839f07a`, also read-only
+verified on staging. It replaces only the matching-membership query through the
+function's own definition and verifies every other pg_proc attribute unchanged.
+Volatility, ownership, private ACL, tenant/company/group predicates and fresh
+eligibility/recovery checks remain unchanged. No lock, authority cache or index is added.
+Reversible experiment 41328889779 passes before/candidate/restored medians
+209.0/3.23/206.4 ms over 500 users, with matching outcomes and private execution.
+Actual migration, populated upgrade, complete native regression and HTTP/load
+qualification remain required. Refresh peer claims and live ledger before admission.
+This is a source reservation and grants no deployment authority.
+
+## Performance native permission work — 1 November2026 (unapplied)
+
+Owned source appends `0896_native_permission_work`, idx769 / when1793330000296,
+SQL SHA256 `a45f6362d2a10b66c14d2be0a4f8199337c7f180bf1d487290cf8ce31fea412e`. Fresh all-ref/worktree audit15:26:37UTC inspected1,704
+unique heads,302journal blobs,382migration trees and421registered worktrees,
+including both sides of a foreign conflicted journal without editing it. Source
+claims end at0895/when295; the existing ten owned performance drafts remain exact.
+Fresh canonical main/alpha are c7036d829; staging's complete640-row ordered ledger
+was independently verified15:20:05UTC and the installed native helper hash/policy
+qualifier were read-only verified before preparing this append. All640 canonical
+SQL files/journal entries remain unchanged. Other unapplied reservations are excluded.
+
+The guarded append narrows identical candidate-user work before live login checks
+and changes only regular Claims membership representation. It retains native helper
+owner/ACL/volatility/config and policy command/role/WITH CHECK attributes. Separate
+paired native prototypes pass exact outputs and restored controls. Ordinary populated
+upgrade, combined native behavior/scale and full release/load qualification remain
+required. This is a provisional source reservation, not installation permission:
+refresh all competing claims and the live ledger before admission. Do not deploy.
+
+---
+
 # Coordinated migration reservations
 
 This record owns **unapplied reservations**, not the deployed database. Refresh canonical branch
@@ -684,6 +866,136 @@ This allocation authorizes source repair only. No SQL has been applied by this r
 backup/restore, authenticated affected qualification, exact release admission, protected
 integration and the exclusive staging window remain required. Production is untouched.
 
+## Performance development reservation — 30 October 2026
+
+Owned branch `codex/system-performance-audit-20261030` reserves
+`0726_claim_history_order`, development idx684 / when1793330000055. Freshly fetched
+main/alpha retain the 569-entry prefix through0696 /1793330000031. Reachable worktree
+SQL names extend through0725 and journal sequences through1793330000054. This
+append is for isolated hosted development tests only; it is not an installation
+allocation. Reconcile all unmerged reservations, the complete actual applied ledger
+and historical byte identities before integration or deployment. No existing journal
+entry or SQL byte changes. The index changes no grants or RLS.
+
+Performance release hold: subsequent canonical2ab4f6c12 appends0721/0722 at
+idx684–685 /when1793330000050–51. The orchestrator/V9 owner reports an earlier
+release position for V9 with proposed56–63 successors. Performance keeps55 only
+for its isolated development database; it must be reallocated above the actual
+accepted watermark at its later freeze. No release application or protected-branch
+merge is authorized by this development reservation. Preserve old receipts and rerun
+affected checks after reconciliation.
+
+The same unapplied0726 development migration also fences the DISTINCT-company CTE
+in `app.visible_employment_ids()`. Measured500-employment plans push admin checks
+below DISTINCT without the fence (500 evaluations), while materialization evaluates
+one per company. All visibility arms/security attributes remain intact. This broadens
+the release impact: require current app-role visibility-equivalence, hierarchy, grants
+and module RLS checks plus load regression before release. Earlier index-only migration
+receipts remain tied to their original bytes and do not verify this revised migration.
+
+Final isolated performance source4d5b404e2 retains the revised0726 SHA256
+`0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e`.
+Hosted41013812848 passes306 permission/regression assertions plus compiler/build;
+41014984239 verifies the million-row Claims budget;41015751657 records pool comparisons;
+41016041103 verifies the final bounded-pool source. These are focused development receipts,
+not a release witness or an allocation above the actual V9 handoff. The500-user latency target
+is still unmet; no merge/deployment acceptance is claimed.
+
+HTTP performance development continuation merges published main2ab4f6c12 while
+preserving its entire571-entry journal.0726 is appended at development idx686 /when55
+only for disposable CI databases. This does not compete with V9's release allocation:
+the performance candidate remains explicitly non-deployable pending the actual V9
+handback and fresh successor allocation. No existing SQL byte or applied entry changes.
+
+## Permission plan caching — 30 October 2026, development only
+
+Read-only refresh of main/alpha plus remote refs and Git-discovered worktree journals found
+filenames through0735 and sequences through1793330000072. Reserve unapplied
+`0736_visibility_plan_cache` at sequence1793330000073 (idx687 on this development branch).
+It preserves0726's complete visibility query and changes its language to PL/pgSQL so PostgreSQL
+can retain the query plan per connection. Permission results, session identity and effective dates
+are evaluated afresh; policies and grants do not change. The paired500-principal experiment
+41022556721 motivates this change; current equivalence and HTTP tests remain required.
+
+This does not resolve0726's pre-existing filename/sequence collision with AI/V9 reservations.
+Both performance successors require reconciliation above the accepted ledger at integration.
+No staging application, branch integration, deployment or release eligibility is authorized.
+
+## Permission read work — 30 October 2026, development only
+
+Fresh main/alpha refs point to d6cb83d62; remote refs and Git-discovered worktree claims
+were checked again. Reserve `0745_permission_read_work` at idx688 on this branch / sequence1793330000082.
+SQL SHA256: `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6`. It adds the measured coarse-admin short-circuit and
+plan reuse for the unchanged pure grant predicate. Existing per-company guards, malformed
+grant failures, function security attributes, grants and applied migration bytes remain intact.
+
+This is a disposable development journal position. The complete performance prefix still needs
+reconciliation against the accepted AI/V9 handback before integration;0726/0736 are not
+release allocations above that watermark. No merge, application, installation or deployment
+is authorized. Frozen source receipts remain tied to their exact original candidates.
+
+## Session read planning — development reservation,30 October2026
+
+Main/alpha were freshly fetched atd6cb83d62. A full local-ref journal scan and Git-discovered
+worktree scan found independent Formula0800/1793330000200 and other0745–0747 claims.
+Reserve **0810_session_read_plans / idx689 on this development branch /1793330000210**
+with headroom, not a placeholder series. SQL SHA256: `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56`.
+The reversible500-principal experiment41042136707 preserves live archival/termination and
+forged-role refusals; p95 for20 repeated guard pairs falls5199→3710ms and returns5214ms
+after restoration. Only query plans persist; every login/principal fact is read afresh.
+
+This is an unapplied development reservation. Existing0726/0736/0745 collisions and the
+accepted ledger still require reconciliation before integration or application. No protected
+branch integration, target database change, deployment or release eligibility is authorized.
+
+## Performance source reconciliation — 31 October 2026, development only
+
+The isolated performance branch merges published main/alpha
+`b0907303caf7fcb75fdce7194a327d10ae209ba2`. Its complete 583-entry source journal
+through 0811 / idx697 /1793330000211 and all SQL bytes are preserved exactly.
+A read-only scan of 2,382 local/remote refs (284 distinct parseable journal blobs)
+and 344 Git-registered worktrees found filenames through0811 and sequences
+through1793330000211. The four unapplied performance drafts are renamed without
+changing their SQL bytes and appended in the same dependency order:
+
+| Index | Sequence | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 698 | 1793330000212 | 0866_claim_history_order | `0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e` |
+| 699 | 1793330000213 | 0867_visibility_plan_cache | `189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2` |
+| 700 | 1793330000214 | 0868_permission_read_work | `f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6` |
+| 701 | 1793330000215 | 0869_session_read_plans | `b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56` |
+
+This supersedes the older performance development positions above. Older receipts
+retain their original source identities and do not verify this merged candidate.
+The installed ledger/watermark was not queried in this source-only reconciliation;
+installation allocation, complete live-prefix verification and release acceptance
+remain held. No target database, protected branch or deployment changes are authorized.
+
+## Home role read guard — 31 October 2026, development only
+
+Fresh main/alpha remain `b0907303caf7fcb75fdce7194a327d10ae209ba2`. A scan of
+2406 local/remote refs (287 distinct parseable journals) and
+349 registered worktrees finds filenames through0861 and sequences
+through1793330000261. Preserve the complete existing source journal and every SQL byte.
+Append the next unapplied development successor:
+
+| Index | Sequence | Filename | SQL SHA256 |
+| ---: | ---: | --- | --- |
+| 702 | 1793330000262 | 0870_home_role_reporting_guard | `1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e` |
+
+Native experiment41107920846 (`35a9544ed`) compares100 active actual principals
+within a500-person/ten-company fixture. Necessary-edge guard p95 is98.8ms versus
+13,995.9ms before and12,373.3ms after restoration. Owner, ACL, security attributes,
+current assignments, archival, forged-grant and foreign/other-subject checks pass.
+The guard preserves the full original visibility query whenever any edge exists;
+no permission result or private record is cached. Broader native and HTTP/browser
+qualification is required on the migration candidate.
+
+This is source-only development allocation. No installed ledger or watermark was
+queried; the complete accepted ledger and all unapplied performance reservations
+still require final reconciliation. No target application, protected integration,
+release acceptance or deployment authority is granted by this record.
+
 
 ## AI review source freeze above verified Board arrival — 30 October 2026
 
@@ -871,6 +1183,89 @@ Claude release owner, owner-accepted follow-up to the tax/movement bundle. The i
 claims are below the watermark and must be reallocated above the next accepted watermark. Re-verify the
 live ledger before installation; this reservation grants no deployment.
 
+
+## Performance reconciliation — 31 October 2026
+
+Current main `70bdafbc8a7d4aa69ffa7dee5741af73f497a344` owns the complete immutable prefix. A scan of 293 unique reachable journals found maximum prefix0865, idx750 and timestamp1793330000265. The five unapplied performance drafts are now0866–0870, idx751–755, timestamps1793330000266–270, in existing dependency order. This supersedes their earlier names/indices/timestamps above. No applied SQL was edited and no installation was changed. Final release allocation still requires then-current reconciliation.
+
+
+## Attendance routing performance — 31 October 2026 (unapplied development)
+
+Fresh main/alpha `30118cc6f242df3129424bd2d44e22445931516e` retains identical
+original definitions for all six functions. The current claim audit inspected2713
+refs/294 distinct ref journals plus380 registered worktrees/673 total journals,
+including WIP; maxima were0870, idx755, when1793330000270. The paired native
+experiment41191787745 preserves exact ordered tasks and live refusal behavior.
+
+| Purpose | Tag | idx | when |
+| --- | --- | ---: | ---: |
+| Reuse five visibility/routing query plans, never results |0871_visibility_routing_plans |756 |1793330000271 |
+| Necessary named-actor/delegation-recipient denial gates |0872_attendance_assignment_work |757 |1793330000272 |
+
+No prior SQL or journal entry is rewritten. These reservations have no live-installation
+authority; exact-file native/regression/load qualification remains required, followed
+by fresh canonical and installed-ledger reconciliation before any later release.
+
+
+## Principal planning performance —1 November2026 (unapplied reservation)
+
+Fresh main2f6e5abe6/alpha1a74336e6 retain the identical0016 principal query. The
+claim audit inspected2783 refs/299 distinct ref journals and409 worktrees/707
+journals including WIP; maxima0876, idx757 and when1793330000276. Reserve
+0877_principal_query_plan atidx758/when1793330000277, version7/breakpoints:true,
+after this branch's seven unapplied performance drafts. Native experiment41297191155
+measures query-plan reuse, never result caching. Exact-file and broad native identity/
+grant/tenant qualification remain required. Earlier canonical prefixes/SQL bytes are
+untouched; main/alpha have advanced and final integration must reconcile all foreign
+entries and positions above the actual live ledger. No installation authority.
+
+
+## Performance reconciliation —1 November2026, current main integration
+
+Owned performance branch merges main/alpha `1a74336e68abf0c06067b19857ad68c8aeb93049` normally. Preserve its complete
+639-entry journal and every SQL byte. Fresh audit:2790 refs/301 distinct ref journals,
+411 worktrees/712 raw journals including WIP/conflicts; highest foreign claim0878/
+when1793330000278 and highest index758. The eight never-installed performance
+drafts move above that watermark, with byte-identical SQL bodies. Old allocations
+above are superseded; index gaps754–758 preserve other provisional source claims.
+
+| Previous draft | New tag | idx | when | SQL SHA256 |
+| --- | --- | ---: | ---: | --- |
+|0866_claim_history_order|0879_claim_history_order|759|1793330000279|0b3c2b7072e4cee09d37550af1edd855c88ceb5094d122fb1c6032c64e402d3e|
+|0867_visibility_plan_cache|0880_visibility_plan_cache|760|1793330000280|189485ba9146331bf38afa903a7e18f68fb27a3927ceef4a480c876de95165b2|
+|0868_permission_read_work|0881_permission_read_work|761|1793330000281|f828d2414577cf794cf37db0ae72979dc3f5caa1215dd324548bd85acbbfa2d6|
+|0869_session_read_plans|0882_session_read_plans|762|1793330000282|b721eb8da017a5c5b7096f6233a8a83a6bfa155d65465e3d95e440b2d802dc56|
+|0870_home_role_reporting_guard|0883_home_role_reporting_guard|763|1793330000283|1d9e2acbc583e86813d3fccbd3596d54acdc8090f9f591489beaee7f0b02998e|
+|0871_visibility_routing_plans|0884_visibility_routing_plans|764|1793330000284|bb48a1477bdc1d60ec86d21d97ff8deb83ad32074fb85ca6a74c9e5860fb9719|
+|0872_attendance_assignment_work|0885_attendance_assignment_work|765|1793330000285|c662c5501c234ba2af0f6c43c242332edcca4c2938bed5422000fdabc3f14158|
+|0877_principal_query_plan|0886_principal_query_plan|766|1793330000286|134ca805055e6b0a58b573b18ee3c89fce9bd0c9d574467dcd58f1315229f1b4|
+
+No installation, protected branch change or release is authorized. Source reservations
+still require fresh canonical/live-ledger reconciliation and full owning verification
+before a later separately authorized installation.
+
+## Attendance task candidate access — 1 November 2026 (unapplied)
+
+Owned performance branch reserves `0887_attendance_task_candidate_access`, idx767 /
+when1793330000287. Fresh source audit:2790 refs,302 distinct ref journals,411
+worktrees/713 raw journals including WIP/conflicts; previous maximum filename0886,
+idx766/when1793330000286. The canonical639-entry prefix remains unchanged.
+This adds pure actor-key expression indexes and a necessary-only task precheck;
+positive results retain the original authoritative reader. No live ledger queried,
+installation performed, or deployment authorized. Reconcile again before installation.
+
+## Attendance legacy candidate refinement — 1 November 2026 (unapplied)
+
+Owned performance branch reserves `0892_attendance_legacy_candidate_gate`, idx768 /
+when1793330000292. Fresh audit:2803 refs,415 worktrees,718 ref/WIP journals
+and464 allocation documents; highest foreign/source claim0891/when1793330000291,
+idx767. All timestamp prefixes were independently checked before allocation.
+Preserve all639 canonical entries/SQL bytes and the nine existing owned drafts.
+This replaces only the necessary-only precheck: historical delegates remain possible,
+administrative managers retain every pending legacy/unrouted request, and indexed
+frozen identities retain versioned work after reporting changes. Real native
+comparison41305689629 preserves both legacy and named/delegated assignments.
+No live ledger query or installation; re-freeze source/ledger before later integration.
 ## EPF Manual (by percentage) 0% floor — 1 November 2026
 
 Approved board item 1058ced1 (PR #175). Integrated onto alpha `1a74336e6`, whose journal ends at the
@@ -906,3 +1301,6 @@ index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / 
 This is an owned aggregate source reservation, not adoption of either member's gate evidence.
 Recheck the then-live watermark and release order before integration or installation; later accepted
 migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.
+## Performance integration of EPF/Formula main — 1 November 2026
+
+Normal merge of main/alpha `7fe8f8627f3a5ec0067f7dea777f140dd204ca5b` preserves its complete640-entry journal and all SQL bytes, including0876 atidx754/when1793330000276. The ten existing unapplied owned performance drafts follow unchanged atidx759–768/when1793330000279–287,292. No new allocation, timestamp or SQL rewrite. Source reconciliation is not a live-ledger check or installation authority.

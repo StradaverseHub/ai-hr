@@ -769,6 +769,7 @@
       "childReliefReview": "ตรวจสอบค่าลดหย่อนบุตร"
     },
     "switcher": {
+      "loadFailed": "ไม่สามารถโหลดการค้นหาพนักงานได้ กรุณาลองอีกครั้ง",
       "ariaLabel": "ค้นหาพนักงาน",
       "placeholder": "ค้นหารหัสพนักงานหรือชื่อ…",
       "resultsLabel": "ผลการค้นหาพนักงาน",
@@ -5337,7 +5338,8 @@
     "submitDecisions": "ส่ง",
     "employeeRemark": "หมายเหตุพนักงาน",
     "closeDialog": "ปิด",
-    "bulkSelectAll": "เลือกทั้งหมด",
+    "bulkSelectAll": "เลือกทั้งหมดในหน้านี้",
+    "bulkPageScopeHint": "การเลือกจะใช้เฉพาะรายการที่แสดงในหน้านี้เท่านั้น",
     "bulkSelectRow": "เลือกคำขอ",
     "bulkSelected": "เลือกแล้ว: {count, plural, other {# คำขอ}}",
     "bulkClear": "ล้าง",

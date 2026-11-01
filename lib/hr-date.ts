@@ -9,11 +9,14 @@
  * dependency-free, safe to import from leaf modules like core/employment-status.ts and from tests.
  */
 export const HR_LOCAL_TZ = 'Asia/Kuala_Lumpur';
+// Cache only immutable formatters. Each call still formats its own fresh instant, including midnight.
+const localDateFormatter=new Intl.DateTimeFormat('en-CA',{timeZone:HR_LOCAL_TZ});
+const localTimeFormatter=new Intl.DateTimeFormat('en-GB',{timeZone:HR_LOCAL_TZ,hour:'2-digit',minute:'2-digit',hour12:false});
 
 /** "Today" in the tenant's local (Asia/Kuala_Lumpur) calendar as ISO yyyy-mm-dd. */
 export function todayInKualaLumpur(now: Date = new Date()): string {
   // en-CA yields yyyy-mm-dd; the timeZone shifts the wall-clock date to MYT before formatting.
-  return new Intl.DateTimeFormat('en-CA', { timeZone: HR_LOCAL_TZ }).format(now);
+  return localDateFormatter.format(now);
 }
 
 /**
@@ -25,12 +28,7 @@ export function todayInKualaLumpur(now: Date = new Date()): string {
  * today's time. Both halves now name the timezone explicitly rather than depending on the host.
  */
 export function timeInKualaLumpur(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: HR_LOCAL_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(now);
+  return localTimeFormatter.format(now);
 }
 
 /**

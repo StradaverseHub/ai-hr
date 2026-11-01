@@ -59,6 +59,7 @@ export function NotificationCenter({
   tasks = [],
   taskNotifications = [],
   taskCount = 0,
+  claimTaskCount=0,
   readItems = [],
   history = [],
   canApprove = false,
@@ -73,6 +74,8 @@ export function NotificationCenter({
   taskNotifications?: NotificationRow[];
   /** Full open-task count (queue + action notices) — the Task tab badge. */
   taskCount?: number;
+  /** Exact claim total when the shell supplies a bounded preview. */
+  claimTaskCount?:number;
   /** Read notifications — the History tab's "past notifications" half. */
   readItems?: NotificationRow[];
   /** Recent approval decisions — the History tab's "completed activities" half (canApprove only). */
@@ -81,6 +84,7 @@ export function NotificationCenter({
 }) {
   const t = useTranslations('notifications');
   const tH = useTranslations('approvalHistory');
+  const tApprovals=useTranslations('approvals');
   const tGreeting=useTranslations('employeeHome.greetingNotification');
   const tLetter=useTranslations('letters.notifications');
   const notificationText=useCallback((item:NotificationRow)=>item.kind==='employee-home.greeting'
@@ -294,6 +298,14 @@ export function NotificationCenter({
                   {taskEntries.map((e) => (e.type === 'queue' ? taskQueueRow(e.item) : notifRow(e.item)))}
                 </ul>
               ))}
+
+            {tab==='tasks'&&claimTaskCount>tasks.filter(task=>task.kind==='claim').length&&(
+              <div className="border-t border-border px-4 py-2.5 text-center">
+                <Link href="/approvals?category=claim" onClick={()=>setOpen(false)} className="text-xs font-medium text-primary hover:underline">
+                  {tApprovals('claims')} ({claimTaskCount})
+                </Link>
+              </div>
+            )}
 
             {tab === 'history' && (
               <>

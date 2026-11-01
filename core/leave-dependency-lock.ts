@@ -3,6 +3,7 @@
  * Caller owns fresh access checks, complete dependency coverage and whole-transaction rollback on
  * refusal. Acquire before protected reads; do not catch a busy refusal and continue to write. */
 import { sql } from 'drizzle-orm';
+import {requireExclusiveDataConfigurationTx} from './access-configuration-lock';
 import { z } from 'zod';
 import type { Tx } from '../db/client';
 
@@ -39,6 +40,7 @@ export async function lockLeaveDependencyReadConfigurationTx(tx: Tx, tenantId: s
  * Existing Access/annual-role/payroll/credit/row lock order still needs complete owner integration.
  * This helper intentionally supplies no claim that a caller already owns those prerequisites. */
 export async function lockLeaveDependencyConfigurationTx(tx: Tx, tenantId: string): Promise<void> {
+  requireExclusiveDataConfigurationTx(tx);
   if (!uuid.safeParse(tenantId).success) throw new LeaveDependencyUnavailable();
   tenantId=tenantId.toLowerCase();
   await acquire(tx, tenantId, `leave-dependency-configuration:${tenantId}`, false);

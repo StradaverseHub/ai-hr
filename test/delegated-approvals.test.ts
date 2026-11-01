@@ -12,7 +12,7 @@ import {setRestDay} from '../core/roster';
 import {grantAssistant} from '../core/assistant-grant';
 import {withApprovalDelegatesTx} from '../core/notifications';
 import {withDelegatedRequestEffectTx} from '../core/delegated-request-effect';
-import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,pendingClaimTaskMetadata} from '../packs/claims/service';
+import {createClaimType,setClaimPolicy,submitClaim,decideClaim,listPendingClaims,pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {requestAttendanceCorrection,decideAttendanceCorrection,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 import {setToilPolicy,submitReplacementLeaveRequest,decideReplacementLeaveRequest,listPendingReplacementLeaveRequests,listPendingReplacementLeaveTasks} from '../packs/leave/service';
 import {claimDecisionReviews,attendanceDecisionReviews,toilDecisionReviews,readClaimDecisionChoices,readAttendanceDecisionChoices,readToilDecisionChoices} from '../core/assistant-actions/assigned-decision-review-store';
@@ -108,6 +108,19 @@ describe('request-bound delegated approval effects',()=>{
   const done=await k.store.confirm(delegate,{actionId:prepared.review.actionId,reviewedDigest:prepared.review.reviewedDigest});expect(done.kind).toBe('completed');
   await noPersonnel();
  });
+ it('keeps the counted claim preview aligned with delegated metadata outside Personnel visibility',async()=>{
+  const id=await claim();await noPersonnel();
+  const full=await pendingClaimTaskMetadata(delegate),preview=await pendingClaimTaskSummary(delegate,undefined,25);
+  expect(full.map(row=>row.id)).toContain(id);expect(preview.total).toBe(full.length);expect(preview.items).toEqual(full.slice(0,25));
+  expect(await pendingClaimTaskSummary(delegate,[],25)).toEqual({items:[],total:0});
+  expect(await pendingClaimTaskMetadata(delegate,[b.companyId])).toEqual(full);
+  expect(await pendingClaimTaskSummary(delegate,[randomUUID(),b.companyId],25)).toEqual(preview);
+  expect(await pendingClaimTaskMetadata(delegate,[randomUUID()])).toEqual([]);
+  expect(await pendingClaimTaskSummary(delegate,[randomUUID()],25)).toEqual({items:[],total:0});
+  await owner.db.insert(schema.reportingLineScope).values({tenantId:b.tenantId,reportingLineId:lineId,module:'leave',taskType:'leave.application'});
+  expect(await pendingClaimTaskMetadata(delegate)).toEqual([]);
+  expect(await pendingClaimTaskSummary(delegate,undefined,25)).toEqual({items:[],total:0});await noPersonnel();
+ });
  it('requires explicit company coverage for a stand-in in another company',async()=>{
   const id=await claim();const company=await createCompany(root,{legalName:'Fictional Other Company',country:'MY',currency:'MYR'});
   await owner.db.update(schema.employment).set({companyId:company.id}).where(eq(schema.employment.id,stand.employmentId));
@@ -171,6 +184,23 @@ describe('request-bound delegated approval effects',()=>{
   await expect(decideClaim(delegate,{claimRequestId:second,decision:'approve'})).rejects.toThrow();
   const rows=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.employmentId,subject.employmentId));
   expect(rows.find(r=>r.id===first)?.status).toBe('approved');expect(rows.find(r=>r.id===second)?.status).toBe('pending');
+ });
+ it('requires an active login for the stand-in’s own person and retains multiple-account semantics',async()=>{
+  const covers=(ctx:SessionContext=root)=>withTenant(ctx,async tx=>{
+   const [row]=await tx.execute<{covers:boolean}>(sql`select app.delegation_line_covers(${lineId}::uuid,${subject.employmentId}::uuid,'claims','claims.claim') as covers`);
+   return row.covers;
+  });
+  expect(await covers()).toBe(true);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,delegate.userId!));
+  // The active subject/manager/root logins must never keep an archived stand-in eligible.
+  expect(await covers()).toBe(false);
+  const second=await createAppUser(b.tenantId,stand.personId,'manager');
+  expect(await covers()).toBe(true);
+  await owner.db.update(schema.appUser).set({archivedAt:new Date()}).where(eq(schema.appUser.id,second));
+  expect(await covers()).toBe(false);
+  await owner.db.update(schema.appUser).set({archivedAt:null}).where(eq(schema.appUser.id,delegate.userId!));
+  expect(await covers()).toBe(true);
+  expect(await covers(adminCtx(await seedBase()))).toBe(false);
  });
  it('reads non-draft receipts without exposing drafts or their receipts',async()=>{
   const id=await claim(),[q]=await owner.db.select().from(schema.claimRequest).where(eq(schema.claimRequest.id,id));

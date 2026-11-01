@@ -7,6 +7,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import en from '../messages/en.json';
+import scopes from '../i18n/client-message-scopes.json';
+import {pickClientMessages} from '../lib/client-message-tree';
 
 const nav = vi.hoisted(() => ({ pathname: '/' }));
 vi.mock('next/navigation', () => ({ usePathname: () => nav.pathname }));
@@ -159,4 +161,12 @@ describe('idle sign-out', () => {
     await advance(60_000);
     expect(signOut).toHaveBeenCalled();
   });
+});
+
+// The real root layout sends the bounded shared catalog, rather than the complete dictionaries.
+it('renders the actual idle warning from the bounded shared shell catalog',()=>{
+ at('/leave');
+ render(<NextIntlClientProvider locale="en" messages={pickClientMessages(en,scopes.shared.prefixes)} onError={error=>{throw error;}}><SessionLifecycle idleTimeoutSeconds={300} now={()=>1_800_000_000_000} reload={vi.fn()} report={async()=>ok(300)} signOut={async()=>undefined}/></NextIntlClientProvider>);
+ expect(screen.getByText(en.sessionTimeout.warningTitle)).toBeTruthy();
+ expect(screen.getByText(en.sessionTimeout.staySignedIn)).toBeTruthy();
 });

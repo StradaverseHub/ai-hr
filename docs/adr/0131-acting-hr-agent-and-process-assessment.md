@@ -3105,3 +3105,12 @@ explain exceptions or missing baseline coverage. Ranking cannot grant authority,
 human decisions, or establish headcount savings. No new Phase 1 process is invented to make an
 unrelated entry rank. See the [WP3 verification contract](../reviews/ai-architecture-wp3-verification-2026-10.md).
 This contract alone proves no verification result, release or installation.
+
+
+## Unreleased performance candidate — ordinary-command authority, 2 November 2026
+
+[The current lock review](../reviews/system-performance-command-lock-review-20261102.md) records a tested alternative to the tenant-exclusive ordinary Leave/Attendance interval described above. Explicit database-only outer USER commands share stable Access authority, recheck the native current carrier and retain their original business/RLS checks and per-employment locks. Existing transactions, SYSTEM/agent owners and true configuration/identity writers retain their exclusive ownership. This transaction-local lock state is not a permission cache.
+
+Attendance shares Leave configuration for ordinary effects. A missing replacement catalogue or an explicit configuration demand causes complete rollback before one replay under the original exclusive owner. The replay rechecks the principal. Busy sources, SQL errors, deadlocks and validation failures are not automatically retried. No transaction is upgraded in place and no external effect can join the replay.
+
+Native interleavings and actual first-use clock-out/failure controls pass. Both500-user workload reruns still fail their speed targets, so this source decision is neither staging acceptance nor a capacity claim. No migration is installed and deployment remains on hold. The complete ordered Payroll batch protection, including drafts, remains unchanged.

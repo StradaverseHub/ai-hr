@@ -308,7 +308,9 @@ describe('the Dashboard no longer carries the calendar', () => {
     // untouched. Asserting the calendar four are absent AND that nothing else crept in is strictly
     // STRONGER than the signature check it replaces: it names what must not come back, and bounds what may
     // be there. Do not weaken this to "contains searchParams".
-    expect(dashboard).toContain('export default async function DashboardPage({');
+    expect(dashboard).toMatch(/export default function DashboardPage\(props:Parameters<typeof DashboardContent>\[0\]\)/);
+    expect(dashboard).toMatch(/<DashboardContent \{\.\.\.props\}\s*\/>/);
+    expect(dashboard).toContain('async function DashboardContent({');
     const sigMatch = dashboard.match(/searchParams\?:\s*Promise<\{([^}]*)\}>/);
     expect(sigMatch, 'DashboardPage still declares its searchParams shape inline').not.toBeNull();
     const declaredParams = (sigMatch?.[1] ?? '')

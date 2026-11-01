@@ -769,6 +769,7 @@
       "childReliefReview": "Semakan pelepasan anak"
     },
     "switcher": {
+      "loadFailed": "Carian pekerja tidak dapat dimuatkan. Cuba lagi.",
       "ariaLabel": "Cari pekerja",
       "placeholder": "Cari ID pekerja atau nama…",
       "resultsLabel": "Hasil carian pekerja",
@@ -5337,7 +5338,8 @@
     "submitDecisions": "Hantar",
     "employeeRemark": "Catatan pekerja",
     "closeDialog": "Tutup",
-    "bulkSelectAll": "Pilih semua",
+    "bulkSelectAll": "Pilih semua pada halaman ini",
+    "bulkPageScopeHint": "Pilihan hanya melibatkan rekod yang dipaparkan pada halaman ini.",
     "bulkSelectRow": "Pilih permohonan",
     "bulkSelected": "Dipilih: {count, plural, other {# permohonan}}",
     "bulkClear": "Kosongkan",

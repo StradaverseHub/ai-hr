@@ -89,7 +89,10 @@ describe('Direct Superior — UI drift guards (dce55aff)', () => {
   });
 
   it('keeps prior superiors visible read-only (history disclosure) and the header ID + name', () => {
-    expect(PAGE.includes('directSuperiorHistoryFor')).toBe(true);
+    expect(PAGE).toContain('await personnelDetailSupport(s, {employmentId, personId: emp.personId, companyId: emp.companyId})');
+    expect(PAGE).toContain('const superiorHistory = support.superiorHistory;');
+    const support=fs.readFileSync(path.resolve(__dirname,'../core/personnel-detail-support.ts'),'utf8');
+    expect(support).toContain('directSuperiorHistoryFor(ctx, employmentId)');
     expect(PAGE.includes("t('directSuperiorHistory')")).toBe(true);
     // Employee Information header card: Direct Superior Employee ID + full name.
     expect(PAGE.includes("t('headerSuperior')")).toBe(true);

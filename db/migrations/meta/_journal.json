@@ -4495,6 +4495,125 @@
       "when": 1793330000299,
       "tag": "0899_entra_workforce",
       "breakpoints": true
+    },
+    {
+      "idx": 775,
+      "version": "7",
+      "when": 1793330000307,
+      "tag": "0907_claim_history_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 776,
+      "version": "7",
+      "when": 1793330000308,
+      "tag": "0908_visibility_plan_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 777,
+      "version": "7",
+      "when": 1793330000309,
+      "tag": "0909_permission_read_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 778,
+      "version": "7",
+      "when": 1793330000310,
+      "tag": "0910_session_read_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 779,
+      "version": "7",
+      "when": 1793330000311,
+      "tag": "0911_home_role_reporting_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 780,
+      "version": "7",
+      "when": 1793330000312,
+      "tag": "0912_visibility_routing_plans",
+      "breakpoints": true
+    },
+    {
+      "idx": 781,
+      "version": "7",
+      "when": 1793330000313,
+      "tag": "0913_attendance_assignment_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 782,
+      "version": "7",
+      "when": 1793330000314,
+      "tag": "0914_principal_query_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 783,
+      "version": "7",
+      "when": 1793330000315,
+      "tag": "0915_attendance_task_candidate_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 784,
+      "version": "7",
+      "when": 1793330000316,
+      "tag": "0916_attendance_legacy_candidate_gate",
+      "breakpoints": true
+    },
+    {
+      "idx": 785,
+      "version": "7",
+      "when": 1793330000317,
+      "tag": "0917_native_permission_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 786,
+      "version": "7",
+      "when": 1793330000318,
+      "tag": "0918_administrator_candidate_work",
+      "breakpoints": true
+    },
+    {
+      "idx": 787,
+      "version": "7",
+      "when": 1793330000319,
+      "tag": "0919_attendance_payroll_period_locks",
+      "breakpoints": true
+    },
+    {
+      "idx": 788,
+      "version": "7",
+      "when": 1793330000320,
+      "tag": "0920_company_hierarchy_query_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 789,
+      "version": "7",
+      "when": 1793330000321,
+      "tag": "0921_notice_parent_membership",
+      "breakpoints": true
+    },
+    {
+      "idx": 790,
+      "version": "7",
+      "when": 1793330000322,
+      "tag": "0922_attendance_draft_parent_lock",
+      "breakpoints": true
+    },
+    {
+      "tag": "0923_overtime_formula_candidate_plan",
+      "idx": 791,
+      "when": 1793330000323,
+      "version": "7",
+      "breakpoints": true
     }
   ]
 }

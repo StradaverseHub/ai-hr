@@ -14,6 +14,7 @@
  *      the font mapping, the @theme additions and the scoped .mono/.num classes are present.
  * The six-locale render of the control lives in test/r396-theme-switch.dom.test.tsx (jsdom project).
  */
+import en from '../messages/en.json';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,7 +38,7 @@ vi.mock('next/headers', () => ({
   headers: async () => ({ get: (name: string) => (name === 'x-pathname' ? pathname : null) }),
 }));
 vi.mock('next/cache', () => ({ revalidatePath: (...args: unknown[]) => revalidatePath(...args) }));
-vi.mock('next-intl/server', () => ({ getLocale: async () => 'en' }));
+vi.mock('next-intl/server', () => ({ getLocale: async () => 'en',getMessages:async()=>en }));
 // next/font loaders require the Next compiler; record the real layout call options here.
 const fontCalls: Record<string, Record<string, unknown>> = {};
 vi.mock('next/font/google', () => {

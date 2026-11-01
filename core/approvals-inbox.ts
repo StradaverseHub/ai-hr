@@ -24,12 +24,12 @@ import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-ap
 import type {SessionContext} from '../db/client';
 import type {AssignedApprovalMetadata} from '../lib/assigned-work';
 import {pendingLeaveTaskMetadata,pendingLeaveCancellationTaskMetadata,listPendingReplacementLeaveTasks} from '../packs/leave/service';
-import {pendingClaimTaskMetadata} from '../packs/claims/service';
+import {pendingClaimTaskMetadata,pendingClaimTaskSummary} from '../packs/claims/service';
 import {pendingAttendanceTaskMetadata} from '../packs/attendance/service';
 import {pendingProfileTaskMetadata} from './profile';
 import {pendingResignationTaskMetadata} from './offboarding';
 import {pendingNoticeAcknowledgementTasks} from './notice';
-import {pendingReviewTaskMetadata} from './employment-review';
+import {pendingReviewTaskGroups} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
 import type {PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
@@ -110,18 +110,29 @@ export async function listPendingTasks(
   modules: InboxModules,
   options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
+  return (await loadPendingTasks(ctx,scopeIds,modules,options)).items;
+}
+
+/** Counted claim preview for the global shell; full task readers retain their existing semantics. */
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules){
+ return loadPendingTasks(ctx,scopeIds,modules,{claimLimit:25});
+}
+
+async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+ options:{noticeAcknowledgements?:boolean;claimLimit?:number}){
   // Each owner proves actual current assignment without selecting its private decision workspace.
   // A platform role or broad read permission alone is not an actionable task assignment.
-  const [leave,cancellations,replacement,attendance,profile,claims,resignations,managerReviews,hrReviews,noticeAcknowledgements,packTaskLists]=await Promise.all([
+  const [leave,cancellations,replacement,attendance,profile,claimResult,resignations,reviewTasks,noticeAcknowledgements,packTaskLists]=await Promise.all([
     pendingLeaveTaskMetadata(ctx,scopeIds),pendingLeaveCancellationTaskMetadata(ctx,scopeIds),
     listPendingReplacementLeaveTasks(ctx,{companyIds:scopeIds}),
     modules.attendance?pendingAttendanceTaskMetadata(ctx,scopeIds):Promise.resolve([]),
     pendingProfileTaskMetadata(ctx,scopeIds),
-    modules.claims?pendingClaimTaskMetadata(ctx,scopeIds):Promise.resolve([]),
-    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskMetadata(ctx,'manager',scopeIds),pendingReviewTaskMetadata(ctx,'hr',scopeIds),
+    modules.claims?(options.claimLimit?pendingClaimTaskSummary(ctx,scopeIds,options.claimLimit):pendingClaimTaskMetadata(ctx,scopeIds).then(items=>({items,total:items.length}))):Promise.resolve({items:[],total:0}),
+    pendingResignationTaskMetadata(ctx,scopeIds),pendingReviewTaskGroups(ctx,scopeIds),
     options.noticeAcknowledgements===false?Promise.resolve([]):pendingNoticeAcknowledgementTasks(ctx),
     Promise.all(PACK_TASK_SOURCES.map(source=>modules[source.module]?source.load(ctx,scopeIds):Promise.resolve([]))),
   ]);
+  const claims=claimResult.items;
   const packTasks:PackTaskItem[]=packTaskLists.flat();
   const iso=(value:Date|string)=>value instanceof Date?value.toISOString():new Date(value).toISOString();
   const project=(rows:readonly Pick<AssignedApprovalMetadata,'id'|'employee'|'createdAt'>[],kind:AssignedApprovalKind):PendingTaskItem[]=>
@@ -134,10 +145,12 @@ export async function listPendingTasks(
     ...project(attendance,'attendance'),
     ...profile.map(row=>({id:row.id,kind:'profile' as const,subjectName:row.employee,createdAt:iso(row.createdAt),linkPath:`/admin/personnel/profile-changes?assigned=1&requestId=${row.id}#request-${row.id}`})),
     ...project(claims,'claim'),...project(resignations,'resignation'),
-    ...project(managerReviews,'managerReview'),...project(hrReviews,'hrReview'),
+    ...project(reviewTasks.manager,'managerReview'),...project(reviewTasks.hr,'hrReview'),
     ...packTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath})),
   ];
-  return items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
+  items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
+  const omittedClaims=claimResult.total-claims.length;
+  return {items,claimTotal:claimResult.total,total:items.length+omittedClaims,approvalCount:items.filter(task=>task.linkPath.split(/[?#]/,1)[0]==='/approvals').length+omittedClaims};
 }
 
 export async function pendingApprovalsCount(

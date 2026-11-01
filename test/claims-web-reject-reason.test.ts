@@ -45,7 +45,7 @@ describe('web claim rejection reason', () => {
 
   it('the employee list shows the reason through the claims owner reader, translated in every locale', () => {
     const claims = read('app/claims/page.tsx');
-    expect(claims).toMatch(/claimRecordFacts\(s, claims\.filter\(\(c\) => c\.status === 'rejected'\)/);
+    expect(claims).toMatch(/claimRecordFacts\(s, claimPage\.filter\(c => c\.status === 'rejected'\)/);
     expect(claims).toMatch(/t\('rejectReasonShown', \{ reason:/);
     for (const locale of ['en', 'ms', 'ta', 'th', 'vi', 'zh']) {
       const catalogue = JSON.parse(read(`messages/${locale}.json`)) as { claims: Record<string, string> };

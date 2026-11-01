@@ -77,7 +77,7 @@ export async function lockPayrollForAttendanceChange(tx: Tx, employmentId: strin
   const dates=[...new Set(typeof date==='string'?[date]:date)].sort();
   // Match raw Attendance trigger/factory order: Attendance day -> source -> Payroll batch.
   for(const date of dates)await lockOvertimeDayForAttendanceWriteTx(tx, { employmentId, date });
-  const rows = await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid)`) as unknown as {
+  const rows = await tx.execute(sql`select * from app.attendance_payroll_protection(${employmentId}::uuid, ARRAY(SELECT value::date FROM jsonb_array_elements_text(${JSON.stringify(dates)}::jsonb) wanted(value)))`) as unknown as {
     batch_id: string; status: 'processed' | 'closed'; pay_period: string;
     policy_config: PayrollPolicyConfig | null; attendance_cutoff_day: number | null;
   }[];

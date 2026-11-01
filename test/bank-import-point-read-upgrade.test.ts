@@ -1,3 +1,4 @@
+import {PERFORMANCE_MIGRATION_TAIL} from './fixtures/performance-migration-tail';
 /** GHA-only populated ordinary-ledger upgrade. No CI policy swap, live DB or native-save claim. */
 import {describe,expect,it} from 'vitest';
 import {createHash,randomUUID} from 'node:crypto';
@@ -81,10 +82,11 @@ describe.skipIf(process.env.GITHUB_ACTIONS!=='true')('0691 populated ordinary up
   expect(process.env.GITHUB_ACTIONS).toBe('true');expect(process.env.CI).toBe('true');
   const started=performance.now(),deadline=started+150000;
   const budget=()=>expect(performance.now()<deadline,'150-second work budget reserves owned cleanup within 180 seconds').toBe(true);
-  const sourceJournalBytes=readFileSync('db/migrations/meta/_journal.json');
+  for(const entry of PERFORMANCE_MIGRATION_TAIL)expect(createHash('sha256').update(readFileSync('db/migrations/'+entry.tag+'.sql')).digest('hex')).toBe(entry.hash);
+ const sourceJournalBytes=readFileSync('db/migrations/meta/_journal.json');
   const sourceJournal=JSON.parse(sourceJournalBytes.toString()) as {entries:Entry[];[key:string]:unknown};
   // The tax/movement release (1 Nov 2026) appends 0873/0874, then the Rewards read-policy fix 0875 and 1058ced1's EPF 0876, after the parity tail; frozen here, not derived.
-  const releaseTail=[{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'},{idx:754,when:1793330000276,tag:'0876_epf_manual_percentage_zero'},{idx:755,when:1793330000298,tag:'0898_session_idle_timeout'},{idx:756,when:1793330000299,tag:'0899_entra_workforce'}];
+  const releaseTail=[{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'},{idx:754,when:1793330000276,tag:'0876_epf_manual_percentage_zero'},{idx:755,when:1793330000298,tag:'0898_session_idle_timeout'},{idx:756,when:1793330000299,tag:'0899_entra_workforce'},...PERFORMANCE_MIGRATION_TAIL.map(({idx,when,tag})=>({idx,when,tag}))];
   expect(PARITY_SOURCE_TAIL).toHaveLength(53);expect(sourceJournal.entries.length).toBe(583+PARITY_SOURCE_TAIL.length+releaseTail.length);
   exact(sourceJournal.entries.slice(583+PARITY_SOURCE_TAIL.length).map(({idx,when,tag})=>({idx,when,tag})),releaseTail,'The tax/movement release tail follows the parity tail');
   expect(sha(readFileSync('db/migrations/0873_movement_exit_payroll_preservation.sql'))).toBe('39b6020262382d7c68dab60135837b6fc8b132f6b94afecd3892ba87cdbad440');
