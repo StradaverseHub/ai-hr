@@ -1,3 +1,38 @@
+## Page-only selection wording: supplemental technical review — 1 November 2026
+
+Reviewed immutable source `96600d0e4a6ba219f9820f1977458a24991b8f73` against
+owner-approved `d17a977f6888911e44e8bb406960a0cf4a4d7944`. This records technical
+review and the owner's page-only product decision; it does not renew literal AI
+source approvals or grant deployment authority.
+
+The owner selected: “Select only the current page, with clear labelling”. The UI
+labels all-page selection “Select all on this page” and explains that only displayed
+records are selected. Existing native bulk commands still recheck every request;
+the rendered regression verifies exact displayed IDs, clearing old selection on a
+page change, section separation and mandatory rejection reasons. Hosted run
+41317079408 passed48 selected cases (39 unit/DOM,9 native); its unrelated test-repair
+syntax error was corrected and the whole compiler passed in41317411126.
+
+Static import traversal has the same1,142 members. Immutable Git-blob comparisons
+confirm exactly six covered files changed: messages/en.json, ms.json, ta.json,
+th.json, vi.json and zh.json. Each changes only approvals.bulkSelectAll and adds
+approvals.bulkPageScopeHint. The remaining1,136 covered files are byte-identical.
+Provider adapters, data selection, transformations, serializers, contract descriptors,
+permitted data/purposes and sensitive actions are unchanged. The new generated
+closure is `1841f158f2c594bab7903946e009cfac621f4ecc5bb6d40a79430722b7504a66`.
+
+A concrete unapplied proposal changes only the24 existing approved sourceDigest
+values from9f74efea6 to1841f158f. Both pending records and all contract IDs, statuses,
+reviewers, evidence links and original timestamps remain exact. The proposal is
+`/private/tmp/aihr-page-selection-provider-bindings.proposed.ts`; it has not been
+applied. The previous explicit fingerprint approval was limited to9f74efea6, so the
+native positive-provider controls must continue refusing1841f158f until the owner
+answers the supplemental fingerprint-only question. Generated hashes alone do not
+renew approval. No real provider call, integration, installation or deployment is
+part of this proposal.
+
+---
+
 ## Current integrated technical review — 1 November 2026
 
 Reviewed immutable candidate `5a7c830b8bc68952d655495e240f72d092195161` against
