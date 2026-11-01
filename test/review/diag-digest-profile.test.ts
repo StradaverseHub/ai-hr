@@ -25,6 +25,8 @@ import {pendingResignationTaskMetadata} from '../../core/offboarding';
 import {pendingReviewTaskMetadata} from '../../core/employment-review';
 import {pendingPerformanceTasks} from '../../packs/performance/service';
 import {pendingRewardTasks} from '../../packs/rewards/service';
+import {sql} from 'drizzle-orm';
+import {withTenant} from '../../db/client';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from '../harness';
 
 let b:Base,hr:SessionContext,timingsModules='';
@@ -51,6 +53,16 @@ describe('diagnostic',()=>{
   const time=async(name:string,run:()=>Promise<unknown>)=>{const started=Date.now();try{await run();timings[name]=Date.now()-started;}catch(error){timings[name]=`threw after ${Date.now()-started} ms: ${String(error).slice(0,120)}`;}};
   await time('listPendingTasks(no notices)',()=>listPendingTasks(hr,undefined,modules,{noticeAcknowledgements:false}));
   await time('listPendingTasks(scoped)',()=>listPendingTasks(hr,[b.companyId],modules));
+  const explain=async(name:string,query:ReturnType<typeof sql>)=>{
+   try{const rows=await withTenant(hr,tx=>tx.execute(sql`explain (analyze, buffers, format text) ${query}`));
+    console.log('AIHR_DIAG_EXPLAIN '+name+'\n'+(rows as unknown as Record<string,string>[]).map(row=>Object.values(row)[0]).join('\n'));}
+   catch(error){console.log('AIHR_DIAG_EXPLAIN '+name+' failed '+String(error).slice(0,200));}
+  };
+  const one=employments[0].id;
+  await explain('candidates',sql`select lr.id, s.person_id, s.employee from public.leave_request lr cross join lateral app.delegated_approval_subject(lr.employment_id,'leave','leave.application') s where lr.tenant_id=${b.tenantId}::uuid and lr.status='pending' and not app.is_self_person(s.person_id) order by lr.created_at desc, lr.id`);
+  await explain('employment-by-id',sql`select person_id from public.employment where id=${one}::uuid limit 1`);
+  await explain('delegation',sql`select app.can_decide_via_delegation(${one}::uuid,'leave','leave.application') as ok`);
+  await explain('principal',sql`select app.principal_snapshot_current() as ok`);
   await time('listEmployeeActivationCandidates(first)',()=>listEmployeeActivationCandidates(hr));
   await time('listEmployeeActivationCandidates(second)',()=>listEmployeeActivationCandidates(hr));
   await time('pendingLeaveTaskMetadata',()=>pendingLeaveTaskMetadata(hr));
