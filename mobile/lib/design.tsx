@@ -65,6 +65,7 @@ export function Atmosphere({ strong = false }: { strong?: boolean }) {
   const uploaded = artwork?.[dark ? 'dark' : 'light'];
   const source = uploaded && uploaded !== failed ? { uri: uploaded } : dark ? require('../assets/atmosphere/onehr-dark.png') : require('../assets/atmosphere/onehr-light.png');
   return <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
-    <Image source={source} onError={() => setFailed(uploaded ?? null)} resizeMode="cover" accessible={false} style={{ position: 'absolute', top: 0, width: '100%', height: strong ? 760 : 560, opacity: strong ? dark ? 0.36 : 0.5 : 0.12 }} />
+    <Image source={source} onError={() => setFailed(uploaded ?? null)} resizeMode="cover" accessible={false} style={{ position: 'absolute', top: 0, width: '100%', height: strong ? 660 : 480, opacity: strong ? dark ? .66 : .72 : .16 }} />
+    <View pointerEvents="none" style={{ position: 'absolute', top: 0, width: '100%', height: strong ? 660 : 480, experimental_backgroundImage: `linear-gradient(180deg, ${palette.bg}00 10%, ${palette.bg}55 38%, ${palette.bg} 92%)` }} />
   </View>;
 }

@@ -11,6 +11,7 @@ import { Redirect, router } from 'expo-router';
 import { useSession } from './session';
 import { UnavailableError } from './errors';
 import { t } from './i18n';
+import { Material, alpha } from './visual';
 
 export const colors = {
   bg: '#f3f7f4',
@@ -50,10 +51,10 @@ export function Screen({
         // A tap on a button while the keyboard is up acts at once (it used to only dismiss the keyboard, and the shifted
         // layout could put the next tap on another control).
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: 32 }]}
+        contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: footer ? 32 : 126 }]}
         refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={() => { reload(); onRefresh(); }} /> : undefined}
       >
-        {back ? <HeaderBack /> : null}<TenantBrand />{children}
+        {back ? <HeaderBack /> : null}{children}
       </ScrollView>
       {footer ?? null}
     </SafeAreaView>
@@ -72,7 +73,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
 
 export function Card({ children }: { children: ReactNode }) {
   const { palette, design } = useTenantDesign();
-  return <View style={[styles.card, { backgroundColor: palette.card, borderColor: palette.border, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 3 }]}>{children}</View>;
+  return <Material style={[styles.card, { borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 3 }]}>{children}</Material>;
 }
 
 export function Row({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
@@ -104,9 +105,9 @@ export function Button({ title, onPress, kind = 'primary', disabled = false,acce
       accessibilityState={selected === undefined ? { disabled } : { disabled, selected }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : palette.button, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 28 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.button, { backgroundColor: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? design.composition.layout.button === 'soft' ? palette.card : 'transparent' : design.schemaVersion === 2 ? palette.button : palette.card, experimental_backgroundImage: kind === 'primary' && design.schemaVersion !== 2 ? `linear-gradient(135deg, ${alpha(palette.accent, .38)} 0%, ${palette.card} 50%, ${alpha(palette.accent, .50)} 100%)` : undefined, borderColor: palette.text, borderWidth: design.schemaVersion === 2 && design.composition.layout.button === 'outline' ? 1 : 0, borderRadius: design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 28 : 6 }, kind === 'quiet' && styles.buttonQuiet, kind === 'quiet' && { borderColor: palette.border }, (pressed || disabled) && { opacity: 0.7 }]}
     >
-      <Text style={[styles.buttonText, { color: design.schemaVersion === 2 && design.composition.layout.button !== 'solid' ? palette.text : palette.onButton }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
+      <Text style={[styles.buttonText, { color: design.schemaVersion === 2 && design.composition.layout.button === 'solid' ? palette.onButton : palette.text }, kind === 'quiet' && [styles.buttonTextQuiet, { color: palette.accent }]]}>{title}</Text>
     </Pressable>
   );
 }
@@ -138,7 +139,7 @@ export function ListRow({ label, value, onPress, accessibilityLabel }: { label: 
     <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? (value ? `${label}, ${value}` : label)} onPress={onPress}
       style={({ pressed }) => [styles.listRow, { borderColor: palette.border }, pressed && { opacity: 0.6 }]}>
       <Text style={{ color: palette.text, fontSize: 16, flex: 1 }}>{label}</Text>
-      {value ? <Text style={{ color: palette.muted, fontSize: 15, fontVariant: ['tabular-nums'] }}>{value}</Text> : null}
+      {value ? <Text style={{ color: palette.muted, fontSize: 15, flexShrink: 1, textAlign: 'right', maxWidth: '48%', fontVariant: ['tabular-nums'] }}>{value}</Text> : null}
       <Text style={{ color: palette.muted, fontSize: 20 }}>›</Text>
     </Pressable>
   );
@@ -227,10 +228,10 @@ export function fmtMoney(v: string): string {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 22, paddingBottom: 36, gap: 18 },
-  title: { fontSize: 26, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  scroll: { padding: 20, paddingBottom: 126, gap: 18 },
+  title: { fontSize: 28, fontWeight: '600', color: colors.text, marginBottom: 4 },
   section: { fontSize: 17, fontWeight: '600', color: colors.muted, marginTop: 14 },
-  card: { backgroundColor: colors.card, borderRadius: 14, padding: 20, gap: 12, borderWidth: 1, borderColor: colors.border },
+  card: { backgroundColor: colors.card, borderRadius: 14, padding: 20, gap: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 },
   rowLabel: { fontSize: 15, color: colors.muted, flexShrink: 1 },
   rowValue: { fontSize: 15, flexShrink: 1, textAlign: 'right', color: colors.text, fontVariant: ['tabular-nums'] },

@@ -31,7 +31,7 @@ export function mobilePalette(design: MobileDesign, appearance: 'dark' | 'light'
   if (design.schemaVersion === 2) return design.composition.themes[appearance];
   const colors = MOBILE_ACCENTS[design.accent];
   const palette = appearance === 'dark'
-    ? { bg: '#080b09', card: '#171c19', text: '#f4f8f5', muted: '#adb9b0', border: '#354139', accent: MOBILE_ACCENTS[design.accent].dark }
+    ? { bg: '#030504', card: '#141815', text: '#f5f7f5', muted: '#a8b1ab', border: '#323b35', accent: MOBILE_ACCENTS[design.accent].dark }
     : { bg: '#f3f7f4', card: '#ffffff', text: '#14251b', muted: '#52665a', border: '#ccd8d0', accent: MOBILE_ACCENTS[design.accent].light };
   return { ...palette, button: design.accent === 'jade' && appearance === 'light' ? '#176747' : colors.button, onButton: design.accent === 'jade' && appearance === 'light' ? '#ffffff' : colors.onButton };
 }

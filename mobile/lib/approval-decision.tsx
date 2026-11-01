@@ -24,6 +24,9 @@ import { apiGetV2, apiPostV2, v2Page } from './api';
 import { assertAuthGeneration, authGeneration } from './auth';
 import { config, identityNamespace } from './config';
 import { RequestRejectedError, SignInRequiredError } from './errors';
+import { Material,StatusPill,alpha } from './visual';
+import { Icon } from './icon';
+import { Atmosphere } from './design';
 import { appLocale, t, type MessageKey } from './i18n';
 import { PagedList, usePagedResource } from './paged-list';
 import { useSession } from './session';
@@ -98,18 +101,14 @@ export function TaskRow({ item }: { item: TaskItemV2 }) {
   const { palette } = useTenantDesign();
   const summary = taskSummaryLine(item);
   const label = [t(KIND_LABEL[item.kind]), item.subject.name, summary].filter(Boolean).join(' · ');
-  const body = <><Text style={{ color: palette.text, fontSize: 17, fontWeight: '600' }}>{t(KIND_LABEL[item.kind])}</Text>{item.subject.name ? <Muted>{item.subject.name}</Muted> : null}{summary ? <Muted>{summary}</Muted> : null}</>;
-  if (decidesNatively(item)) {
-    return <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => router.push({ pathname: '/approvals/[kind]/[id]', params: { kind: item.kind, id: item.id } })}
-      style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: palette.border, gap: 6 }}>{body}</Pressable>;
-  }
-  return <View style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: palette.border, gap: 6 }}>
-    {body}
-    <Pressable accessibilityRole="link" accessibilityLabel={`${t('openOnWeb')}: ${label}`} onPress={() => openOnWeb(webPathOf(item))}
-      style={{ alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, borderWidth: 1, borderColor: palette.border, borderRadius: 999 }}>
-      <Text style={{ color: palette.accent }}>{t('openOnWeb')}</Text>
-    </Pressable>
-  </View>;
+  const body = <Material style={{padding:16,gap:12}}>
+    <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12}}><StatusPill label={t(KIND_LABEL[item.kind])}/><Icon name="chevron" color={palette.muted} size={14}/></View>
+    <Text style={{color:palette.text,fontSize:19,fontWeight:'500',letterSpacing:-.3}}>{item.subject.name??t(KIND_LABEL[item.kind])}</Text>
+    {summary?<Text style={{color:palette.muted,fontSize:14,lineHeight:21}}>{summary}</Text>:null}
+    {!decidesNatively(item)&&<Text style={{color:palette.accent,fontSize:12}}>{t('openOnWeb')}</Text>}
+  </Material>;
+  return <Pressable accessibilityRole={decidesNatively(item)?'button':'link'} accessibilityLabel={decidesNatively(item)?label:`${t('openOnWeb')}: ${label}`} onPress={()=>decidesNatively(item)?router.push({pathname:'/approvals/[kind]/[id]',params:{kind:item.kind,id:item.id}}):openOnWeb(webPathOf(item))} style={({pressed})=>({marginBottom:12,opacity:pressed?0.8:1})}>{body}</Pressable>;
+
 }
 
 /** Every pending task, the web inbox's order. Offline: the rows already shown stay, labelled stale. */
@@ -118,10 +117,12 @@ export function ApprovalsScreen() {
   const { signOut } = useSession();
   const list = usePagedResource(TASKS, {}, keyOf, signOut);
   return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
-    <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8 }}
+    <Atmosphere strong />
+    <PagedList list={list} keyOf={keyOf} emptyText={t('approvalsEmpty')} contentContainerStyle={{ padding: 20, gap: 8, paddingBottom: 40 }}
       header={<View style={{ gap: 12 }}>
         <HeaderBack />
         <Title>{t('approvalsTitle')}</Title>
+        <View style={{flexDirection:'row',gap:8,paddingBottom:12}}><StatusPill label={t('pending')}/></View>
       </View>}
       renderItem={(item) => <TaskRow item={item} />} />
   </SafeAreaView>;

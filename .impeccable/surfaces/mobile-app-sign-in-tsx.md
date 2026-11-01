@@ -13,7 +13,7 @@ Mode: Operate. Platform: adaptive (iOS and Android). Scope: all mobile routes, p
 
 THESIS: OneHR+ makes everyday employee tasks clear and calm. The user pins Opal as the visual reference for the whole app, specifically its Timer for attendance.
 
-OWN-WORLD: Two complete surfaces: near-black/charcoal with mint and white, and cool off-white/white with deep green ink. Layered workplace/city photography is the default in both appearances. Native system type, rounded grouped rows, broad pill actions and capsule navigation. Preserve explicit company branding and configured content.
+OWN-WORLD: Two complete surfaces: near-black/charcoal with mint and white, and cool off-white/white with deep green ink. Layered workplace/city photography is the default in both appearances. Native system type with regular/medium weights, compact LCD attendance numerals, translucent edge-lit materials, illuminated pill actions, image-led snapping horizontal carousels and a smaller floating capsule navigation. Opal is a structural and material reference, not a palette-only reference. Preserve explicit company branding and configured content.
 
 STORY: Employees see their verified status, read what needs attention, and finish the existing authorized journey. Errors and pending submissions stay visible and recoverable.
 
@@ -34,3 +34,9 @@ The owner selected Workplace & city as the shared default on 1 November. Chin Hi
 Extend the tenant-wide Mobile App builder with separate dark/light uploads, preview, explicit save/publish, rollback and return-to-default. Images are normalized JPEGs in immutable tenant-owned storage, referenced by id in small design snapshots. Drafts remain admin-private. Bearer responses deliver only published own-tenant artwork to capable clients; older clients receive a compatible projection. Pre-sign-in and locked screens retain the shared default and no tenant artwork is persisted across account changes.
 
 Backend and installed app support are required before customer artwork can reach production phones. This task does not publish a production design or deploy a backend.
+
+## Structural revision requested by owner
+
+The owner rejected the first native render as a wallpaper/palette reskin. Revamp Home, Clock, Leave, Approvals and Me layouts, with the same language on details and forms. Compare cards, opacity, background fade, typography/weights, transparency, carousel motion and navigation proportions element by element against Opal. The compact timer keeps actual HR worked-time semantics rather than substituting a countdown. Leave preserves every balance/masked/shared-pool value and request workflow. Approvals preserve explicit human decisions, details, assignment, rejection reasons, concurrency and receipt replay. The owner additionally requests that every approval task type be actionable on mobile; inventory canonical owners and implement full workflow forms instead of relabelling web links as native support.
+
+References retrieved from Mobbin: Home `1b3deee1-a193-4e36-93b0-7e89740f9c5c`, Timer `649f9e92-3d9e-421f-8346-610bcbecd27d`, carousel `78d2246d-f084-475c-8296-1a041feb9bb6`. First independent reviewer returned **recapture**: missing Android, light and compact device evidence. This is not approval and requires a full re-review with valid captures.

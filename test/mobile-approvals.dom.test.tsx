@@ -1,3 +1,4 @@
+import { mobileVisualPorts } from './helpers/mobile-visual-ports';
 /**
  * M08 — the shipped native approvals list and decision screen (mobile/lib/approval-decision.tsx, over the shipped
  * paged list), with only native views, transport, navigation and identity injected. The server's rules are tested
@@ -77,7 +78,7 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
     './claim-parts': claimParts, '../../lib/mobile-api/v2/claims': v2claims,
     'react-native-safe-area-context': { SafeAreaView: View }, 'expo-router': { router: { push, back } },
     'expo-crypto': { randomUUID: () => `${String(++seq).padStart(8, '0')}-bbbb-4bbb-8bbb-bbbbbbbbbbbb` },
-    './design': { DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
+    './icon': { Icon: () => null }, './visual': mobileVisualPorts, './design': { Atmosphere: () => null, DesignText: Text, useTenantDesign: () => ({ design: DEFAULT_MOBILE_DESIGN, palette: mobilePalette(DEFAULT_MOBILE_DESIGN, 'dark') }) },
     './session': { useSession: () => ({ employmentId: 'own', signOut }) },
   });
   /** Press the confirming (second) button of the Nth alert. */

@@ -8,7 +8,7 @@
  * `workedSeconds` plus the time since that answer arrived, for display only. Money arrives as text and is shown as text; the payslip amount stays hidden until tapped.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Animated, Pressable, ScrollView, View, type ColorValue } from 'react-native';
+import { ActivityIndicator, Animated, Image, Pressable, ScrollView, View, useWindowDimensions, type ColorValue } from 'react-native';
 import { ClockPanel, type HomeClockView } from './clock-panel';
 import { router, useFocusEffect, type Href } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +19,7 @@ import { cardFigure, homeBalances } from './home-cards';
 import { Icon, type IconName } from './icon';
 import { homeNeedsView, useHomeSummary } from './inbox';
 import { t, type MessageKey } from './i18n';
+import { Material, TimeDisplay, alpha } from './visual';
 import { useSession } from './session';
 import { LoadState, Muted, fmtDays, fmtMoney } from './ui';
 
@@ -68,13 +69,13 @@ export function HomeHero({ name, unread, refreshToken }: { name: string | null; 
   const greeting: MessageKey = { morning: 'greetMorning', afternoon: 'greetAfternoon', evening: 'greetEvening' }[partOfDay(Date.now())] as MessageKey;
   const on = palette.text;
   const first = name?.trim().split(/\s+/)[0] ?? null;
-  return <View style={{ backgroundColor: palette.bg, paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 24, borderBottomLeftRadius: radius, borderBottomRightRadius: radius, gap: 18 }}>
+  return <View style={{ backgroundColor: palette.bg, paddingTop: insets.top + 8, paddingHorizontal: 20, paddingBottom: 10, borderBottomLeftRadius: radius, borderBottomRightRadius: radius, gap: 14 }}>
     <Atmosphere strong />
     <TenantBrand />
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -6 }}>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={{ color: on, opacity: 0.8, fontSize: 15 }}>{t(greeting)}</Text>
-        <Text accessibilityRole="header" numberOfLines={1} style={{ color: on, fontSize: 30, fontWeight: '800', letterSpacing: -0.5 }}>{first ?? t('helloNoName')}</Text>
+        <Text accessibilityRole="header" numberOfLines={1} style={{ color: on, fontSize: 25, fontWeight: '600', letterSpacing: -0.6 }}>{first ?? t('helloNoName')}</Text>
       </View>
       <Tactile label={unread > 0 ? `${t('tabInbox')}, ${t('unreadCount', { n: unread })}` : t('tabInbox')} onPress={() => router.navigate('/inbox' as Href)}
         style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(on as string, 0.12, 'transparent') }}>
@@ -84,8 +85,8 @@ export function HomeHero({ name, unread, refreshToken }: { name: string | null; 
         </View>}
       </Tactile>
       <Tactile label={t('profileOpen')} onPress={() => router.push('/profile')}
-        style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: on }}>
-        <Text style={{ color: palette.bg, fontSize: 16, fontWeight: '800' }}>{initials(name)}</Text>
+        style={{ width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(on, .12, palette.card), borderWidth: 1, borderColor: tint(on, .18, palette.border) }}>
+        <Text style={{ color: on, fontSize: 16, fontWeight: '500' }}>{initials(name)}</Text>
       </Tactile>
     </View>
     <ClockHeroCard refreshToken={refreshToken} />
@@ -127,7 +128,7 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
   const since = today?.openSince ? clockTime(today.openSince) : null;
   const label = view.action === 'in' ? t('clockIn') : t('clockOut');
   const done = view.doneAt ? clockTime(view.doneAt) : null;
-  return <View style={{ borderRadius: 22, padding: 18, gap: 14, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border }}>
+  return <View style={{ gap: 12, paddingTop: 6 }}>
     {!today && <TenantSurface band={false} align="start"><LoadState loading={view.loading} hasData={false} error={view.error} onRetry={view.reload} /></TenantSurface>}
     {today && <>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -138,16 +139,16 @@ function ClockHeroView({ view }: { view: HomeClockView }) {
         <Text style={{ color: on, opacity: 0.75, fontSize: 13 }}>{fmtCalendarDate(today.date, false)}</Text>
       </View>
       <View style={{ gap: 20 }}>
-        <View style={{ gap: 8, alignItems: 'center', paddingVertical: 20 }}>
-          <Text accessibilityLabel={`${t('workedToday')}: ${fmtDuration(worked)}`} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={{ color: on, fontSize: 56, fontWeight: '500', letterSpacing: -1.5, fontVariant: ['tabular-nums'] }}>{`${Math.floor(worked / 3600).toString().padStart(2, '0')}:${Math.floor(worked % 3600 / 60).toString().padStart(2, '0')}`}</Text>
-          <Text style={{ color: on, opacity: 0.75, fontSize: 13 }}>{today.shift.code ? t('workedTodayShift', { shift: today.shift.code }) : t('workedToday')}</Text>
+        <View style={{ gap: 10 }}>
+          <TimeDisplay compact seconds={worked} label={`${t('workedToday')}: ${fmtDuration(worked)}`} />
+          <Text style={{ color: palette.muted, fontSize: 12, textAlign: 'center' }}>{today.shift.code ? t('workedTodayShift', { shift: today.shift.code }) : t('workedToday')}</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={t('clockOpensTab')} accessibilityState={{ disabled: view.disabled || view.busy, busy: view.busy }}
           disabled={view.disabled || view.busy} onPress={view.clock}
-          style={({ pressed }) => [{ minWidth: 112, minHeight: 52, borderRadius: 26, paddingHorizontal: 20, backgroundColor: palette.button, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+          style={({ pressed }) => [{ minWidth: 112, minHeight: 46, borderRadius: 24, paddingHorizontal: 20, backgroundColor: palette.card, borderWidth: 1, borderColor: tint(palette.text, .2, palette.border), experimental_backgroundImage: `linear-gradient(135deg, ${tint(palette.accent, .32, palette.card)} 0%, ${palette.card} 48%, ${tint(palette.accent, .45, palette.card)} 100%)`, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
             (pressed || view.disabled) && { opacity: 0.75 }, pressed && !reduceMotion && { transform: [{ scale: 0.97 }] }]}>
-          {view.busy ? <ActivityIndicator color={palette.onButton} /> : <Icon name="clock" color={palette.onButton} size={18} />}
-          <Text style={{ color: palette.onButton, fontSize: 16, fontWeight: '800' }}>{label}</Text>
+          {view.busy ? <ActivityIndicator color={palette.text} /> : <Icon name="clock" color={palette.text} size={18} />}
+          <Text style={{ color: palette.text, fontSize: 15, fontWeight: '600' }}>{label}</Text>
         </Pressable>
       </View>
       {view.busy && <Text accessibilityLiveRegion="polite" style={{ color: on, fontSize: 14 }}>{t('preparingClock')}</Text>}
@@ -175,9 +176,9 @@ export function NeedsYouBanner({ summary }: { summary: ReturnType<typeof useHome
   const v = homeNeedsView(summary);
   if (typeof v.tasks === 'number' && v.tasks > 0) {
     return <Tactile label={`${t('approvalsTitle')}, ${t('homeTasksCount', { n: v.tasks })}`} onPress={() => router.push('/approvals')}
-      style={{ flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: 20, backgroundColor: tint(palette.accent, 0.12, palette.card), borderWidth: 1, borderColor: tint(palette.accent, 0.35, palette.border) }}>
-      <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: palette.accent, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: palette.bg, fontSize: 18, fontWeight: '800' }}>{v.tasks > 99 ? '99+' : v.tasks}</Text>
+      style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 24, backgroundColor: tint(palette.card, .9, palette.card), borderWidth: 1, borderColor: tint(palette.text, .12, palette.border), experimental_backgroundImage: `linear-gradient(135deg, transparent 30%, ${tint(palette.accent, .15, palette.card)} 100%)` }}>
+      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: tint(palette.accent, .15, palette.card), alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: palette.accent, fontSize: 16, fontWeight: '600' }}>{v.tasks > 99 ? '99+' : v.tasks}</Text>
       </View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={{ color: palette.text, fontSize: 16, fontWeight: '700' }}>{t('needsYouTitle')}</Text>
@@ -202,21 +203,19 @@ export function NeedsYouBanner({ summary }: { summary: ReturnType<typeof useHome
 export type QuickAction = { key: string; icon: IconName; label: MessageKey; href: Href; badge?: number };
 
 export function QuickActions({ actions }: { actions: readonly QuickAction[] }) {
-  const { palette, design } = useTenantDesign();
-  const radius = design.schemaVersion === 2 ? design.composition.layout.radius : design.corners === 'soft' ? 24 : 6;
-  return <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 }}>
-    {actions.map((a) => <View key={a.key} style={{ width: '25%', alignItems: 'center' }}>
-      <Tactile label={a.badge ? `${t(a.label)}, ${a.badge}` : t(a.label)} onPress={() => router.push(a.href)} style={{ alignItems: 'center', gap: 8, width: '100%' }}>
-        <View style={{ width: 58, height: 58, borderRadius: radius, alignItems: 'center', justifyContent: 'center', backgroundColor: tint(palette.accent, 0.12, palette.card), borderWidth: 1, borderColor: tint(palette.accent, 0.18, palette.border) }}>
-          <Icon name={a.icon} color={palette.accent as ColorValue} size={26} />
-          {a.badge ? <View style={{ position: 'absolute', top: -5, right: -5, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: '#E5484D', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: palette.bg }}>
-            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{a.badge > 99 ? '99+' : a.badge}</Text>
-          </View> : null}
-        </View>
-        <Text style={{ color: palette.text, fontSize: 12, fontWeight: '600', textAlign: 'center', maxWidth: 82 }}>{t(a.label)}</Text>
-      </Tactile>
-    </View>)}
-  </View>;
+  const { palette } = useTenantDesign();
+  const { width } = useWindowDimensions();
+  const tileWidth = Math.min(200, Math.max(156, width * .47));
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={tileWidth + 12} snapToAlignment="start" contentContainerStyle={{ gap: 12, paddingRight: 20, paddingBottom: 4 }}>
+    {actions.map((a) => <Tactile key={a.key} label={a.badge ? `${t(a.label)}, ${a.badge}` : t(a.label)} onPress={() => router.push(a.href)} style={{ width: tileWidth, minHeight: 200, borderRadius: 26, overflow: 'hidden', backgroundColor: palette.card, borderWidth: 1, borderColor: alpha(palette.text, .12) }}>
+      <Image accessible={false} source={a.key === 'leave' || a.key === 'calendar' ? require('../assets/cards/time-away.png') : a.key === 'pay' || a.key === 'approvals' ? require('../assets/cards/intelligence.png') : require('../assets/cards/workplace.png')} resizeMode="cover" style={{ position: 'absolute', width: '100%', height: '100%', opacity: 1 }} />
+      <View pointerEvents="none" style={{ position: 'absolute', inset: 0, experimental_backgroundImage: 'linear-gradient(180deg, rgba(0,0,0,0.10) 15%, rgba(0,0,0,0.80) 100%)' }} />
+      <View style={{ flex: 1, minHeight: 200, padding: 16, justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Icon name={a.icon} color="#ffffff" size={25} />{a.badge ? <View style={{ borderRadius: 16, paddingHorizontal: 8, paddingVertical: 3, backgroundColor: '#d9f5c9' }}><Text style={{ color: '#17251a', fontSize: 12, fontWeight: '600' }}>{a.badge > 99 ? '99+' : a.badge}</Text></View> : null}</View>
+        <View style={{ gap: 10 }}><Text style={{ color: '#ffffff', fontSize: 19, fontWeight: '600', letterSpacing: -.4 }}>{t(a.label)}</Text><View style={{ alignSelf: 'flex-start', flexDirection: 'row', gap: 6, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 15, backgroundColor: '#ffffff25' }}><Icon name="chevron" color="#ffffff" size={13} /><Text style={{ color: '#ffffff', fontSize: 12 }}>{t(a.label)}</Text></View></View>
+      </View>
+    </Tactile>)}
+  </ScrollView>;
 }
 
 // ── Leave balances ────────────────────────────────────────────────────────────────────────────────────────
@@ -233,15 +232,15 @@ export function BalanceStrip({ refreshToken }: { refreshToken: number }) {
     <SectionHeader title={t('homeYourLeave')} action={leave.data ? t('allBalances') : undefined} onAction={() => router.navigate('/leave' as Href)} />
     <LoadState loading={leave.loading} hasData={leave.data != null} error={leave.error} onRetry={leave.reload} />
     {leave.data && cards.length === 0 && <Muted>{t('noLeaveTypes')}</Muted>}
-    {cards.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 8 }}>
+    {cards.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} decelerationRate="fast" snapToInterval={180} contentContainerStyle={{ gap: 12, paddingRight: 8 }}>
       {cards.map((c) => {
         const caption = c.takenOnly ? t('taken') : c.isCurrentCycle ? t('canApplyFor') : t('balance');
         const figure = cardFigure(c);
         return <Tactile key={c.leaveTypeId} label={`${c.leaveType}. ${fmtDays(figure)}. ${caption}`} onPress={() => router.navigate('/leave' as Href)}
-          style={{ width: 148, padding: 16, gap: 10, borderRadius: radius, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
-          <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: c.color && /^#[0-9a-f]{6}$/i.test(c.color) ? c.color : palette.accent }} />
+          style={{ width: 168, minHeight: 172, padding: 18, gap: 14, borderRadius: radius, backgroundColor: palette.card, borderWidth: 1, borderColor: palette.border, overflow: 'hidden' }}>
+          <View pointerEvents="none" style={{ position: 'absolute', inset: 0, experimental_backgroundImage: `linear-gradient(145deg, ${tint(c.color || palette.accent, .18, palette.card)} 0%, transparent 65%)` }} />
           <Text numberOfLines={1} style={{ color: palette.muted, fontSize: 13, fontWeight: '600' }}>{c.leaveType}</Text>
-          <Text style={{ color: palette.text, fontSize: 30, fontWeight: '800', letterSpacing: -0.5, fontVariant: ['tabular-nums'] }}>{figure == null ? '—' : String(Math.round(figure * 100) / 100)}</Text>
+          <Text style={{ color: palette.text, fontSize: 25, fontWeight: '600', letterSpacing: -0.6, fontVariant: ['tabular-nums'] }}>{figure == null ? '—' : String(Math.round(figure * 100) / 100)}</Text>
           <Text numberOfLines={2} style={{ color: palette.muted, fontSize: 12 }}>{[caption, c.sharedPool ? t('sharedPool') : null].filter(Boolean).join(' · ')}</Text>
         </Tactile>;
       })}
@@ -293,7 +292,7 @@ export function PayslipCard({ refreshToken }: { refreshToken: number }) {
 export function SectionHeader({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
   const { palette } = useTenantDesign();
   return <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 }}>
-    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 19, fontWeight: '800', letterSpacing: -0.3 }}>{title}</Text>
+    <Text accessibilityRole="header" style={{ color: palette.text, fontSize: 19, fontWeight: '600', letterSpacing: -0.4 }}>{title}</Text>
     {action && onAction ? <Pressable accessibilityRole="button" accessibilityLabel={action} hitSlop={10} onPress={onAction} style={{ minHeight: 44, justifyContent: 'center' }}>
       <Text style={{ color: palette.accent, fontSize: 15, fontWeight: '600' }}>{action}</Text>
     </Pressable> : null}

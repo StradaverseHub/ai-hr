@@ -13,6 +13,7 @@ import { SignInRequiredError,RequestRejectedError,LocationCaptureError,SessionCh
 import { useJourneyDrafts,removeLocalFile,type ClockDraft } from './journey-drafts';
 import { useSession } from './session';
 import { SlideConfirm } from './slide-confirm';
+import { TimeDisplay } from './visual';
 import { t,appLocale } from './i18n';
 import {openOwnedSignedClock} from './signed-clock';
 import {SignedClockUnavailable,type SignedClockStatus} from './signed-clock-journal';
@@ -37,7 +38,7 @@ export type HomeClockView={
  * when it reaches review with nothing left to decide, submit at once instead of waiting for the slide. Every refusal,
  * uncertainty and recovery path is the Clock tab's own; anything that needs a decision is finished there.
  */
-export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode}={}){
+export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls}:{refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
@@ -345,16 +346,13 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshTo
     {signedStatus?.status==='offline_pending'&&!offlineClocking&&<Muted>{t('signedClockOfflinePending')}</Muted>}
     {signedStatus?.status==='other_pending'&&!offline.otherExchange&&<Muted>{t('signedClockOtherPending')}</Muted>}
     {(current||coldStart)&&<>
-      {current&&<View style={{borderWidth:1,borderRadius:28,borderColor:palette.border,backgroundColor:palette.card,padding:24,gap:16}}>
-        <Text style={{color:palette.muted,fontSize:14}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text>
-        <Text style={{color:palette.text,fontSize:22,fontWeight:'600',textAlign:'center'}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text>
-        <View style={{gap:8,alignItems:'center'}}>
-          <Muted>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Muted>
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} accessibilityLabel={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})} style={{color:palette.text,fontSize:60,fontWeight:'500',letterSpacing:-1.8,textAlign:'center',fontVariant:['tabular-nums'],paddingVertical:16}}>{`${Math.floor(current.workedSeconds/3600).toString().padStart(2,'0')}:${Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')}`}</Text>
-        </View>
+      {current&&<View style={{gap:12,paddingTop:4,paddingBottom:8}}>
+        <View style={{flexDirection:'row',justifyContent:'space-between',gap:12}}><Text style={{color:palette.muted,fontSize:13}}>{current.shift.code?`${current.date} · ${current.shift.code}`:current.date}</Text><Text style={{color:palette.accent,fontSize:13}}>{current.clockedIn?t('onTheClock'):t('offTheClock')}</Text></View>
+        <TimeDisplay seconds={current.workedSeconds} label={t('workedTime',{hours:Math.floor(current.workedSeconds/3600),minutes:Math.floor(current.workedSeconds%3600/60).toString().padStart(2,'0')})}/>
+        <Text style={{color:palette.muted,fontSize:13,textAlign:'center'}}>{current.shift.start&&current.shift.end?`${current.shift.start.slice(0,5)} → ${current.shift.end.slice(0,5)}`:t('noShift')}</Text>
       </View>}
       {draft?.phase==='done'?<Card><Text accessibilityRole="header" style={{color:palette.text,fontSize:22,fontWeight:'700'}}>{t('clockRecorded')}</Text><Muted>{draft.receiptTime?new Date(draft.receiptTime).toLocaleString(appLocale(),{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'}):''}</Muted><Button title={t('backToClock')} onPress={cancel}/></Card>:<>
-        {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:52,justifyContent:'center',borderRadius:26,backgroundColor:a===action?palette.button:palette.card,borderWidth:1,borderColor:a===action?palette.button:palette.border}}><Text style={{color:a===action?palette.onButton:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
+        {(!draft||draft.phase==='idle')&&<View style={{flexDirection:'row',gap:12}}>{(['in','out'] as const).map(a=><Pressable key={a} accessibilityRole="button" accessibilityState={{selected:a===action}} onPress={()=>putClock({action:a,phase:'idle'})} style={{flex:1,minHeight:44,justifyContent:'center',borderRadius:26,backgroundColor:a===action?palette.card:'transparent',borderWidth:1,borderColor:a===action?palette.accent:palette.border}}><Text style={{color:a===action?palette.text:palette.muted,textAlign:'center',fontWeight:'600'}}>{a==='in'?t('clockIn'):t('clockOut')}</Text></Pressable>)}</View>}
         {draft?.message&&<Text accessibilityRole="alert" style={{color:palette.text,lineHeight:22}}>{draft.message}</Text>}
         {!!draft?.attemptStartedAt&&!['done','uncertain','submitting'].includes(draft.phase)&&<Card>
           <Text accessibilityRole="header" style={{color:palette.text,fontSize:19,fontWeight:'600'}}>{t('pendingAttempt')}</Text>
@@ -388,6 +386,7 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome}:{refreshTo
         {offline.mode!=='offline'&&<InfoNote short={t('onlineClockShort')} detail={t('onlineClockOnly')}/>}
       </>}
       <SavedOfflinePunches offline={offline}/>
+      {afterControls}
       {current&&<><View style={{gap:8,marginTop:8}}><Text style={{color:palette.text,fontSize:17,fontWeight:'600'}}>{t('clockHistory')}</Text>
         {current.legacy.map((c,i)=><Row key={`${c.direction}-${c.time}-${i}`} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={c.time.slice(0,5)}/>)}
         {current.captures.map(c=><Row key={c.id} label={c.direction==='in'?t('clockIn'):t('clockOut')} value={new Date(c.recordedAt).toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Kuala_Lumpur'})}/>)}

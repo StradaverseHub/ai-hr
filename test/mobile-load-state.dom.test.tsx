@@ -1,3 +1,4 @@
+import { mobileVisualPorts } from './helpers/mobile-visual-ports';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import {JsxEmit,ModuleKind,transpileModule} from 'typescript';
@@ -13,7 +14,7 @@ function fixture(){
     'react':React,'react/jsx-runtime':jsx,'expo-router':{router:{back:vi.fn()}},'react-native-safe-area-context':{SafeAreaView:Container},
     'react-native':{View:Container,ScrollView:Container,RefreshControl:()=>null,StyleSheet:{create:(v:unknown)=>v},
       ActivityIndicator:()=> <span role="progressbar"/>,Pressable:({children,onPress,disabled}:any)=><button onClick={onPress} disabled={disabled}>{children}</button>},
-    './design':{DesignText:({children}:React.PropsWithChildren)=><span>{children}</span>,TenantBrand:()=>null,
+    './visual': mobileVisualPorts, './design':{DesignText:({children}:React.PropsWithChildren)=><span>{children}</span>,TenantBrand:()=>null,
       useTenantDesign:()=>({design:{schemaVersion:1,corners:'soft'},palette:{text:'black',muted:'gray',accent:'blue'}})},
     './session':{useSession:()=>({status:'signedIn'})},
     './errors':{UnavailableError},'./i18n':{t:(key:string,values?:{seconds?:number;id?:string})=>key+(values?.seconds?' '+values.seconds:values?.id?' '+values.id:'')},

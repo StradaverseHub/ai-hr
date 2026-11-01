@@ -47,7 +47,7 @@ function BrandedHome() {
   return <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={{ paddingBottom: 36 }}
     refreshControl={<RefreshControl refreshing={me.loading && me.data != null} onRefresh={reloadAll} />}>
     <HomeHero name={me.data?.person.name ?? null} unread={unread} refreshToken={refreshToken} />
-    <View style={{ paddingHorizontal: 16, paddingTop: 20, gap: 26 }}>
+    <View style={{ paddingHorizontal: 20, paddingTop: 12, gap: 24 }}>
       {me.error && <LoadState loading={false} hasData={me.data != null} error={me.error} onRetry={me.reload} />}
       <Reveal index={0}><NeedsYouBanner summary={summary} /></Reveal>
       <Reveal index={1}><View style={{ gap: 14 }}><SectionHeader title={t('homeQuickActions')} /><QuickActions actions={actions} /></View></Reveal>
