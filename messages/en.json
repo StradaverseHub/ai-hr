@@ -33608,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "Password security",
-    "description": "Require users in this organization to change their password at a recurring interval.",
+    "description": "Configure recurring changes for HR passwords. Manage Microsoft passwords and Conditional Access in Entra.",
     "enabled": "Require recurring password changes",
     "interval": "Change every",
     "unit": "Unit",

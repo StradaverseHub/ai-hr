@@ -33608,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "Keselamatan kata laluan",
-    "description": "Wajibkan pengguna organisasi ini menukar kata laluan secara berkala.",
+    "description": "Tetapkan pertukaran berkala untuk kata laluan HR. Urus kata laluan Microsoft dan Akses Bersyarat dalam Entra.",
     "enabled": "Wajibkan penukaran kata laluan berkala",
     "interval": "Tukar setiap",
     "unit": "Unit",

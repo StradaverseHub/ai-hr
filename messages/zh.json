@@ -33608,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "密码安全",
-    "description": "要求本组织用户定期更改密码。",
+    "description": "设置 HR 密码的定期更改。在 Entra 中管理 Microsoft 密码和条件访问。",
     "enabled": "要求定期更改密码",
     "interval": "更改间隔",
     "unit": "单位",

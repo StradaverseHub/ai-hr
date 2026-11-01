@@ -481,3 +481,11 @@ not a new human privacy approval or installation acceptance. Only their `sourceD
 original human statuses, reviewers, dates and evidence anchors match the accepted baseline, and the two
 pending blocks remain identical. Generated hashes alone do not establish approval. The module source
 manifest is `55de2b0118d5fc10dd5371cf0b12d80f94376ffff3944f4d1ff30ebdc11252e6`.
+
+
+The final UI scope clarification changes only `passwordPolicy.description` in each locale: recurring
+HR password changes are configured here; Microsoft passwords and Conditional Access are managed in
+Entra. This exact follow-up review adds no payload, contract, permission or human approval event.
+The final 1150-file digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`; the same 24 record digests
+are rebound with all other fields and both pending blocks unchanged. The regenerated module digest
+is `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`.

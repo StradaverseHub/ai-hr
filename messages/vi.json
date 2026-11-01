@@ -33608,7 +33608,7 @@
   },
   "passwordPolicy": {
     "title": "Bảo mật mật khẩu",
-    "description": "Yêu cầu người dùng trong tổ chức đổi mật khẩu định kỳ.",
+    "description": "Thiết lập đổi mật khẩu HR định kỳ. Quản lý mật khẩu Microsoft và Truy nhập có điều kiện trong Entra.",
     "enabled": "Yêu cầu đổi mật khẩu định kỳ",
     "interval": "Đổi sau mỗi",
     "unit": "Đơn vị",
