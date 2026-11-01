@@ -334,3 +334,7 @@ The source-8979 APK resource table also lacks `google_app_id`, `gcm_defaultSende
 Firebase registration resources; native FCM delivery cannot be accepted until the owner-provisioned
 Firebase Android registration is supplied through the controlled build environment and rebuilt.
 Never place a service-account private key in the app.
+
+## Combined mobile review candidate — 2 November 2026
+
+The owner requested one combined build after merging the MOBILE UI contribution, rather than alternating partial installations. The owned mobile readiness branch normally merged the frozen UI source e9d67c7fb (common base 68b94ca9c), preserving the iOS widget renderer repair ef5c3e10f and all 15 approval kind implementations. The approved flat mint HR+/sideways-1 vector now owns the app/adaptive/monochrome/splash assets. Widget status/times use a minimal expiring server projection; see MOBILE-WIDGETS.md. The next native review build number is 5 on both platforms. No production, store or Firebase action is authorized by this consolidation. Staging server arrival and end-to-end acceptance of the new approval workspaces remain separate release holds.

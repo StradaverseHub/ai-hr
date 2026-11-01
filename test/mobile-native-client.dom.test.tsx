@@ -458,7 +458,7 @@ describe('profile loading after current credential revocation', () => {
       'expo-screen-capture': { preventScreenCaptureAsync: async () => {}, enableAppSwitcherProtectionAsync: async () => {} },
       'expo-web-browser': { openAuthSessionAsync: vi.fn() },
       'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
-      './auth': authPort, './session-state': { createSessionState }, './i18n': { t: (key: string) => key },
+      './auth': authPort, './attendance-widgets': { initializeAttendanceWidgets: () => {} }, './session-state': { createSessionState }, './i18n': { t: (key: string) => key },
       './protected-document': { sweepProtectedDocuments: () => {} },
       './push-core': { releasePushOnExit: async () => {} },
     };

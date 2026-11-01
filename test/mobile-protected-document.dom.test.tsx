@@ -79,7 +79,7 @@ describe('protected document custody', () => {
 
 describe('session lifecycle sweeps', () => {
   function sessionFixture() {
-    const sweep = vi.fn(), clearTokens = vi.fn(async () => undefined), listeners: Record<string, (value: string) => void> = {};
+    const clearWidgets = vi.fn(), sweep = vi.fn(), clearTokens = vi.fn(async () => undefined), listeners: Record<string, (value: string) => void> = {};
     const exports = load('mobile/lib/session.tsx', (id) => {
       if (id === 'react') return React;
       if (id === 'react/jsx-runtime') return jsx;
@@ -87,7 +87,8 @@ describe('session lifecycle sweeps', () => {
       if (id === 'expo-screen-capture') return { preventScreenCaptureAsync: async () => undefined, enableAppSwitcherProtectionAsync: async () => undefined };
       if (id === 'expo-web-browser') return { openAuthSessionAsync: vi.fn() };
       if (id === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: (type: string, fn: (value: string) => void) => { listeners[type] = fn; return { remove() {} }; } } };
-      if (id === './session-state') return { createSessionState };
+      if (id === './attendance-widgets') return { initializeAttendanceWidgets: clearWidgets };
+    if (id === './session-state') return { createSessionState };
       if (id === './i18n') return { t: (key: string) => key };
       if (id === './auth') return { subscribeAuthRevocation: () => () => {}, hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' };
       if (id === './protected-document') return { sweepProtectedDocuments: sweep };
@@ -98,7 +99,7 @@ describe('session lifecycle sweeps', () => {
     const probe: { current?: { status: string; employmentId: string | null; setEmploymentId: (id: string | null) => void; signOut: () => Promise<void> } } = {};
     function Probe() { probe.current = exports.useSession(); return <div>{probe.current!.status}</div>; }
     render(<exports.SessionProvider><Probe /></exports.SessionProvider>);
-    return { sweep, clearTokens, listeners, probe };
+    return { sweep, clearWidgets, clearTokens, listeners, probe };
   }
 
   it('sweeps on launch, on a real employment switch, on background (not on inactive) and on logout', async () => {
@@ -119,5 +120,6 @@ describe('session lifecycle sweeps', () => {
     await act(async () => { await f.probe.current!.signOut(); });
     expect(f.sweep).toHaveBeenCalledTimes(4);
     expect(f.clearTokens).toHaveBeenCalledOnce();
+    expect(f.clearWidgets).toHaveBeenCalled();
   });
 });

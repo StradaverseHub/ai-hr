@@ -66,3 +66,6 @@
 # Firebase app registration is supplied through an EAS file variable.
 **/google-services.json
 **/*service-account*.json
+
+# Local design iteration assets are not native runtime resources.
+/mobile/assets/brand-review

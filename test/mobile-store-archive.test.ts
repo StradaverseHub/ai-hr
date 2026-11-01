@@ -57,7 +57,7 @@ describe('store upload source boundary', () => {
     const privatePaths = ['package.json', 'core/mobile-attendance.ts', 'db/schema.ts', 'deploy/DEPLOY.md',
       'lib/mobile-api/handler.ts', 'lib/mobile-api/v2/profile-routes.ts',
       'mobile/google-services.json', 'mobile/firebase-service-account.json',
-      'mobile/.env.local', 'mobile/credentials.json', 'mobile/signing.p8', 'mobile/upload.keystore',
+      'mobile/assets/brand-review/widget/attendance-light-dark-concept.png', 'mobile/.env.local', 'mobile/credentials.json', 'mobile/signing.p8', 'mobile/upload.keystore',
       'mobile/android/app/build.gradle', 'mobile/ios/App/Info.plist', 'mobile/node_modules/expo/package.json'];
     expect(excluded(privatePaths).sort()).toEqual(privatePaths.sort());
   });

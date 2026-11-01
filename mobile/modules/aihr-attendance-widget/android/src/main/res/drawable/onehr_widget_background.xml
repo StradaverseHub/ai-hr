@@ -1,1 +1,1 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android"><solid android:color="@color/onehr_widget_background"/><corners android:radius="24dp"/></shape>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"><gradient android:angle="315" android:startColor="@color/onehr_widget_start" android:endColor="@color/onehr_widget_background"/><corners android:radius="24dp"/></shape>

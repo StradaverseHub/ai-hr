@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1254" height="1254" viewBox="0 0 1254 1254" role="img" aria-labelledby="title desc">
+  <title id="title">OneHR+ logo</title>
+  <desc id="desc">Mint HR with a plus at the upper right and an extended sideways numeral one behind the letters.</desc>
+  <rect width="1254" height="1254" fill="#080B09"/>
+  <!-- One shared, fully opaque fill for every part of the monogram. -->
+  <g fill="#A6F2D5">
+    <!-- Sideways numeral one, behind HR. -->
+    <path d="M133 618 L188 578 H233 V603 H1020 V567 H1085 V708 H1020 V673 H133 Z"/>
+    <!-- H -->
+    <path d="M259 413 H368 V564 H508 V413 H614 V848 H508 V683 H368 V848 H259 Z"/>
+    <!-- R, with its open counter. -->
+    <path fill-rule="evenodd" d="M640 413 H790 C886 413 945 466 945 547 C945 608 921 645 879 669 L976 848 H851 L768 687 H737 V848 H640 Z M737 500 V598 H790 C831 598 850 582 850 549 C850 517 830 500 790 500 Z"/>
+    <!-- Plus -->
+    <path d="M973 381 H1019 V422 H1058 V469 H1019 V509 H973 V469 H934 V422 H973 Z"/>
+  </g>
+</svg>

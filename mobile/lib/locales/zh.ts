@@ -3,6 +3,11 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetClockedIn: "已签到",
+  widgetClockedOut: "已签退",
+  widgetRefresh: "打开应用刷新",
+  widgetUpdated: "{date} · 更新于 {time} MYT",
+
   widgetOpenHint: "打开 OneHR+ 确认考勤",
   approvalToilSummary: "假期积分 · {days} · {hours} 小时",
   approvalToilRecalculate: "批准时将根据当前考勤和政策重新核实积分。",

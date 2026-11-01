@@ -20,6 +20,11 @@ import th from './locales/th';
 import vi from './locales/vi';
 
 const en = {
+  widgetClockedIn: "Clocked in",
+  widgetClockedOut: "Clocked out",
+  widgetRefresh: "Open app to refresh",
+  widgetUpdated: "{date} · Updated {time} MYT",
+
   widgetOpenHint: "Open OneHR+ to confirm attendance",
   approvalToilSummary: "Leave credit · {days} · {hours} hours",
   approvalToilRecalculate: "Credits are rechecked against current attendance and policy when approved.",
@@ -882,6 +887,10 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  widgetClockedIn: "Telah masuk",
+  widgetClockedOut: "Telah keluar",
+  widgetRefresh: "Buka aplikasi untuk muat semula",
+  widgetUpdated: "{date} · Dikemas kini {time} MYT",
   widgetOpenHint: "Buka OneHR+ untuk mengesahkan kehadiran",
   approvalToilSummary: "Kredit cuti · {days} · {hours} jam",
   approvalToilRecalculate: "Kredit disemak semula dengan kehadiran dan polisi semasa apabila diluluskan.",

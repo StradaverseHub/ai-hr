@@ -3,6 +3,11 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetClockedIn: "ลงเวลาเข้างานแล้ว",
+  widgetClockedOut: "ลงเวลาออกงานแล้ว",
+  widgetRefresh: "เปิดแอปเพื่อรีเฟรช",
+  widgetUpdated: "{date} · อัปเดต {time} MYT",
+
   widgetOpenHint: "เปิด OneHR+ เพื่อยืนยันการลงเวลา",
   approvalToilSummary: "เครดิตวันลา · {days} · {hours} ชั่วโมง",
   approvalToilRecalculate: "ระบบจะตรวจสอบเครดิตกับการลงเวลาและนโยบายปัจจุบันอีกครั้งเมื่ออนุมัติ",

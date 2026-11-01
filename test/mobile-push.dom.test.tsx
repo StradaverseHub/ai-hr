@@ -312,7 +312,7 @@ describe('leaving the account', () => {
       'expo-screen-capture': { preventScreenCaptureAsync: async () => undefined, enableAppSwitcherProtectionAsync: async () => undefined },
       'expo-web-browser': { openAuthSessionAsync: vi.fn() },
       'react-native': { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
-      './session-state': { createSessionState }, './i18n': { t: (k: string) => k },
+      './attendance-widgets': { initializeAttendanceWidgets: () => {} }, './session-state': { createSessionState }, './i18n': { t: (k: string) => k },
       './auth': { subscribeAuthRevocation: () => () => {}, hasStoredSession: async () => true, signOut: clearTokens, assertAuthGeneration() {}, workosLogoutUrl: () => null, redirectUri: () => 'aihr://auth/callback' },
       './protected-document': { sweepProtectedDocuments: () => {} }, './push-core': { releasePushOnExit: release },
     });

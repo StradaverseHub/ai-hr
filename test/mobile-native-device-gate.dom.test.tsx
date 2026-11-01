@@ -25,6 +25,7 @@ function deviceFixture(level: number) {
     if (id === 'expo-screen-capture') return capture;
     if (id === 'expo-web-browser') return { openAuthSessionAsync: vi.fn() };
     if (id === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } };
+    if (id === './attendance-widgets') return { initializeAttendanceWidgets: () => {} };
     if (id === './session-state') return { createSessionState };
     if (id === './protected-document') return { sweepProtectedDocuments: () => {} };
     if (id === './push-core') return { releasePushOnExit: async () => undefined };

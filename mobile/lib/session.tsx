@@ -7,6 +7,7 @@ import { assertAuthGeneration, authGeneration, hasStoredSession, redirectUri, si
 import { t } from './i18n';
 import { createSessionState, type Visibility } from './session-state';
 import { sweepProtectedDocuments } from './protected-document';
+import {initializeAttendanceWidgets} from './attendance-widgets';
 import { releasePushOnExit } from './push-core';
 
 type Controller = ReturnType<typeof createSessionState>;
@@ -62,7 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       })).success;
     },
     // Logout (explicit, failed unlock or revoked session) removes any protected document first.
-    async clearTokens() { sweepProtectedDocuments(); await clearTokens(); },
+    async clearTokens() { initializeAttendanceWidgets(); sweepProtectedDocuments(); await clearTokens(); },
   }, visibility(AppState.currentState)));
   const snapshot = useSyncExternalStore(state.subscribe, state.getSnapshot, state.getSnapshot);
 
@@ -92,7 +93,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [state]);
   // A document fetched for one employment never survives a switch to another. Stable, as before.
   const setEmploymentId = useCallback((employmentId: string | null) => {
-    if (employmentId !== state.getSnapshot().employmentId) sweepProtectedDocuments();
+    if (employmentId !== state.getSnapshot().employmentId) { initializeAttendanceWidgets(); sweepProtectedDocuments(); }
     state.setEmploymentId(employmentId);
   }, [state]);
   const value = useMemo(() => ({

@@ -1,6 +1,6 @@
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
- android:minWidth="220dp" android:minHeight="160dp" android:minResizeWidth="180dp" android:minResizeHeight="160dp"
- android:targetCellWidth="3" android:targetCellHeight="2" android:resizeMode="horizontal|vertical"
+ android:minWidth="220dp" android:minHeight="192dp" android:minResizeWidth="180dp" android:minResizeHeight="192dp"
+ android:targetCellWidth="4" android:targetCellHeight="3" android:resizeMode="horizontal|vertical"
  android:updatePeriodMillis="0" android:widgetCategory="home_screen"
  android:initialLayout="@layout/onehr_attendance_widget" android:previewLayout="@layout/onehr_attendance_widget"
  android:description="@string/onehr_widget_description" />

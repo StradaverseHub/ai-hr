@@ -3,6 +3,11 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetClockedIn: "Đã vào ca",
+  widgetClockedOut: "Đã ra ca",
+  widgetRefresh: "Mở ứng dụng để làm mới",
+  widgetUpdated: "{date} · Cập nhật {time} MYT",
+
   widgetOpenHint: "Mở OneHR+ để xác nhận chấm công",
   approvalToilSummary: "Tín dụng nghỉ phép · {days} · {hours} giờ",
   approvalToilRecalculate: "Tín dụng được kiểm tra lại theo chấm công và chính sách hiện tại khi phê duyệt.",

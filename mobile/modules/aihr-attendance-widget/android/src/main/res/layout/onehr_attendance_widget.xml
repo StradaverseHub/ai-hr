@@ -1,7 +1,21 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical" android:background="@drawable/onehr_widget_background">
- <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="OneHR+" android:textSize="18sp" android:textStyle="bold" android:textColor="@color/onehr_widget_text" android:maxLines="1" />
- <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="10dp">
-  <Button android:id="@+id/onehr_clock_in" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/onehr_widget_clock_in" android:textAllCaps="false" android:textSize="14sp" android:textColor="#FFFFFF" android:background="@drawable/onehr_widget_action" />
-  <Button android:id="@+id/onehr_clock_out" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:layout_marginStart="8dp" android:text="@string/onehr_widget_clock_out" android:textAllCaps="false" android:textSize="14sp" android:textColor="#FFFFFF" android:background="@drawable/onehr_widget_action" />
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="14dp" android:gravity="center_vertical" android:background="@drawable/onehr_widget_background">
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="OneHR+" android:textSize="15sp" android:textStyle="bold" android:textColor="@color/onehr_widget_text"/>
+  <TextView android:id="@+id/onehr_status" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:text="@string/onehr_widget_refresh" android:textSize="11sp" android:gravity="end" android:textColor="@color/onehr_widget_muted" android:maxLines="2" android:ellipsize="end"/>
  </LinearLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp">
+  <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical">
+   <TextView android:id="@+id/onehr_in_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/onehr_widget_clock_in" android:textSize="11sp" android:textColor="@color/onehr_widget_muted" android:maxLines="1" android:ellipsize="end"/>
+   <TextView android:id="@+id/onehr_in_time" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textSize="30sp" android:fontFamily="sans-serif-light" android:textColor="@color/onehr_widget_text" android:maxLines="1"/>
+  </LinearLayout>
+  <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginStart="16dp">
+   <TextView android:id="@+id/onehr_out_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/onehr_widget_clock_out" android:textSize="11sp" android:textColor="@color/onehr_widget_muted" android:maxLines="1" android:ellipsize="end"/>
+   <TextView android:id="@+id/onehr_out_time" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="—" android:textSize="30sp" android:fontFamily="sans-serif-light" android:textColor="@color/onehr_widget_text" android:maxLines="1"/>
+  </LinearLayout>
+ </LinearLayout>
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp">
+  <Button android:id="@+id/onehr_clock_in" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:padding="8dp" android:text="@string/onehr_widget_clock_in" android:textAllCaps="false" android:textSize="14sp" android:textColor="@color/onehr_widget_action_text" android:background="@drawable/onehr_widget_action" android:maxLines="2"/>
+  <Button android:id="@+id/onehr_clock_out" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:padding="8dp" android:layout_marginStart="10dp" android:text="@string/onehr_widget_clock_out" android:textAllCaps="false" android:textSize="14sp" android:textColor="@color/onehr_widget_text" android:background="@drawable/onehr_widget_secondary" android:maxLines="2"/>
+ </LinearLayout>
+ <TextView android:id="@+id/onehr_updated" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="@string/onehr_widget_description" android:textSize="10sp" android:textColor="@color/onehr_widget_muted" android:maxLines="2" android:ellipsize="end"/>
 </LinearLayout>

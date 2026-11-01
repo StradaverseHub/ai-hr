@@ -14,7 +14,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
-      "buildNumber": "4"
+      "buildNumber": "5"
     },
     "android": {
       "allowBackup": false,
@@ -30,11 +30,12 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#080b09",
-        "foregroundImage": "./assets/onehr-icon.png"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "package": "ai.stradaverse.aihr.test",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"

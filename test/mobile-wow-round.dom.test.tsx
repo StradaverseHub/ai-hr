@@ -44,6 +44,7 @@ function sessionFixture(opts: { authenticate?: () => Promise<{ success: boolean 
     if (id === 'expo-screen-capture') return capture;
     if (id === 'expo-web-browser') return { openAuthSessionAsync: vi.fn() };
     if (id === 'react-native') return { Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: (ev: string, fn: (v: string) => void) => { if (ev === 'change') appState = fn; return { remove() {} }; } } };
+    if (id === './attendance-widgets') return { initializeAttendanceWidgets: () => {} };
     if (id === './session-state') return { createSessionState };
     if (id === './protected-document') return { sweepProtectedDocuments: () => {} };
     if (id === './push-core') return { releasePushOnExit: async () => undefined };
