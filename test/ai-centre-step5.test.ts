@@ -40,7 +40,7 @@ describe('worker registry gate', () => {
     expect(fs.existsSync(path.join(ROOT, 'app/control-tower/agents/registry-actions.ts'))).toBe(false);
     const actions = read('app/control-tower/agents/actions.ts');
     expect(actions).not.toMatch(/export async function setRegistryWorkerSwitch|export const REGISTRY_SWITCHES/);
-    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers']);");
+    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation']);");
     expect(actions).toContain("if (formData.has('worker')) return setRegistryWorkerSwitch(formData);");
     expect(actions).toContain('if (!s.userId || s.agent || !isGroupAdmin(s)) throw');
     expect(read('app/control-tower/agents/worker-registry.tsx')).toContain('<form action={setAiFeatureAction} data-worker-switch={row.id}>');
@@ -60,9 +60,9 @@ describe('worker registry gate', () => {
   it('checks the group administrator, the module, and audits and records every change in the service', () => {
     const controls = read('core/agent-registry/controls.ts');
     expect(controls).toContain("if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator')");
-    expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant'})");
+    expect(controls).toContain("SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant'})");
     expect(controls).toContain("if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled')");
-    expect(controls).toContain('payload:{workerId,from,to:enabled,version:row.version}');
+    expect(controls).toContain("payload:{workerId,from,to:enabled,version:row.version,...(workerId==='conversation'?{attestedProvider}:{})}");
     expect(controls).toContain('agentIdentity:WORKER_SWITCH_IDENTITY');
   });
 });

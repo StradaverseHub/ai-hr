@@ -33,13 +33,15 @@ async function commandError(error: unknown): Promise<string> {
   return t(error instanceof AuthRequiredError ? 'denied_no_user' : 'err_provider_error');
 }
 
-/** The two registry-controlled worker switches (ADR-0170 §3.13), and nothing else, reach setWorkerSwitch
- *  through setAiFeatureAction. A closed list: any other worker value is refused before a session is read. */
-const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers']);
+/** The three registry-controlled worker switches (ADR-0170 §3.13, and the Noveri conversation switch of ADR-0169
+ *  §5.1), and nothing else, reach setWorkerSwitch through setAiFeatureAction. A closed list: any other worker
+ *  value is refused before a session is read. */
+const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation']);
 
-/** A group administrator turns approver recommendations or explainers on or off from AI centre › Workers. The
- *  action checks the closed list and the group-administrator role; the service checks the role again, the
- *  worker's module, and writes the audit event and the outcome record. */
+/** A group administrator turns approver recommendations, explainers or the Noveri conversation on or off from AI
+ *  centre › Workers. The action checks the closed list and the group-administrator role; the service checks the
+ *  role again, the worker's module, and writes the audit event and the outcome record. The conversation form may
+ *  also post the administrator's confirmation of the direct provider's zero-retention and no-training terms. */
 async function setRegistryWorkerSwitch(formData: FormData) {
   const t = await getTranslations('aiCentre.registry');
   const worker = formData.get('worker');
@@ -47,9 +49,9 @@ async function setRegistryWorkerSwitch(formData: FormData) {
     if (typeof worker !== 'string' || !REGISTRY_SWITCHES.includes(worker) || !['true','false'].includes(String(formData.get('enabled')))) throw new AiControlError(t('switchInvalid'));
     const s = await getBrowserCommandSession();
     if (!s.userId || s.agent || !isGroupAdmin(s)) throw new AiControlError(t('switchRefused'));
-    await setWorkerSwitch(s, { workerId: worker, enabled: formData.get('enabled') === 'true' });
+    await setWorkerSwitch(s, { workerId: worker, enabled: formData.get('enabled') === 'true', ...(formData.get('attestDirectProvider') === 'true' ? { attestDirectProvider: true } : {}) });
   } catch (e) {
-    redirect(failedAt('features', e instanceof WorkerControlRefused ? t(e.reason === 'module_not_enabled' ? 'switchModuleOff' : 'switchRefused') : await commandError(e)));
+    redirect(failedAt('features', e instanceof WorkerControlRefused ? t(e.reason === 'module_not_enabled' ? 'switchModuleOff' : e.reason === 'attestation_not_applicable' ? 'switchAttestation' : 'switchRefused') : await commandError(e)));
   }
   revalidatePath(PAGE, 'layout');
   redirect(aiManagementHref('features', {toast:'saved', anchor:`#worker-${worker}`}));

@@ -1,7 +1,8 @@
 /** ADR-0170 §4 and §11.3 change 4, step 1 — the turn runner: the tool-using Assistant loop as product code.
  *
  * One turn, in order, every rule read from HARNESS_SPEC (./spec.ts):
- *  1. switch: refuses unless a test enables it (no production entry point imports this module);
+ *  1. switch: refuses unless a test enables it, or the tenant's Noveri conversation switch issued a single-use
+ *     permit for this tenant and login (./permit.ts; only core/teras-wiring imports this module);
  *  2. pre-read gate (lib/product-context/request-gate.ts gateTurn) on the person's own words, with the spec's
  *     sensitive topics: a workplace-harms request ends here with the spec's fixed refusal, a crisis turn with the
  *     spec's fixed safe message and the contact route, and every other sensitive topic with the contact route,
@@ -33,14 +34,15 @@ import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disc
 import {fenceNonce,fenceUntrusted} from './fence';
 import {advanceMemory,authorityKey,emptyMemory,memoryNote,reauthoriseMemory,type TaskMemory,type TaskMemoryStore} from './memory';
 import type {HarnessMessage,HarnessToolDeclaration,ModelClient,ModelResponse} from './model-client';
+import {consumeHarnessPermit,type HarnessPermit} from './permit';
 import {checkReply,screenIdentifiers,type ReplyCheckResult} from './reply-checks';
 import {modelSide,restoreFigures} from './restore';
 import {HARNESS_SPEC,harnessSpecDigest} from './spec';
 import {invalidInput,nativeToolProvider,type ToolBinding,type ToolProvider,type ToolScope} from './tools';
 import type {BudgetExhausted,TraceCall,TraceRetry,TurnTrace} from './trace';
 
-/** The only value that enables the runner, and only inside a test process. The per-tenant switch arrives
- * with wiring, after the ADR-0169 §5.1 privacy review. */
+/** Enables the runner inside a test process only. In production the runner runs only with a permit from the
+ * per-tenant conversation switch (./permit.ts), wired after the ADR-0169 §5.1 owner sign-off of 2 November 2026. */
 export const HARNESS_TEST_ONLY='enabled-in-tests-only' as const;
 export class HarnessDisabled extends Error{constructor(){super('The Teras harness is switched off.');this.name='HarnessDisabled';}}
 const testProcess=()=>process.env.VITEST==='true'||process.env.NODE_ENV==='test';
@@ -50,7 +52,7 @@ const testProcess=()=>process.env.VITEST==='true'||process.env.NODE_ENV==='test'
 export type ModelHistoryMessage=Readonly<{role:'user'|'assistant';content:string;side:'model'}>;
 export class PersonSideHistory extends Error{constructor(){super('History must be the model-side transcript (TurnResult.modelTurn).');this.name='PersonSideHistory';}}
 export type TurnOptions=Readonly<{
- enabled:typeof HARNESS_TEST_ONLY;
+ enabled:typeof HARNESS_TEST_ONLY|HarnessPermit;
  ctx:SessionContext;conversationId:string;question:string;
  /** Earlier turns of the conversation, as the model-side transcript: the modelTurn of each earlier TurnResult. */
  history?:readonly ModelHistoryMessage[];
@@ -101,7 +103,7 @@ export function routeReply():string{
 }
 
 export async function runTurn(options:TurnOptions):Promise<TurnResult>{
- if(options.enabled!==HARNESS_TEST_ONLY||!testProcess())throw new HarnessDisabled();
+ if(options.enabled===HARNESS_TEST_ONLY?!testProcess():!consumeHarnessPermit(options.enabled,options.ctx.tenantId,options.ctx.userId))throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
  const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics}),admin=isAdmin(ctx);
  const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);

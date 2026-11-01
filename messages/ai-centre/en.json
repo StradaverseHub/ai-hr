@@ -411,11 +411,14 @@
         "approver_recommendation": "Approver recommendations",
         "explainers": "Explainers",
         "team_absence_weekly_summary": "Weekly team absence summary",
-        "daily_digest": "Daily digest"
+        "daily_digest": "Daily digest",
+        "conversation": "Noveri conversation"
       },
       "switchInvalid": "That switch cannot be changed here.",
       "switchRefused": "Only a group administrator can change this switch.",
-      "switchModuleOff": "The module this worker belongs to is not enabled."
+      "switchModuleOff": "The module this worker belongs to is not enabled.",
+      "conversationAttest": "The active direct provider account (Anthropic, OpenAI or Google) has zero data retention and no training. Not needed for OpenRouter.",
+      "switchAttestation": "The confirmation applies only while a direct provider (Anthropic, OpenAI or Google) is active."
     },
     "recommendation": {
       "show": "Show the recommendation",
@@ -454,6 +457,86 @@
       "deadlines": "Statutory deadlines",
       "deadlinesDetail": "{overdue} overdue · {dueSoon} due soon",
       "lastPrepared": "Your daily digest job last prepared this at {when}."
+    },
+    "conversation": {
+      "routed": "Sent to your HR team: this topic is not handled by the assistant.",
+      "routedCrisis": "If you are in danger, contact emergency services now.",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "review": "Review",
+      "open": "Open",
+      "expires": "Expires {time}",
+      "howPrepared": "How this was prepared",
+      "preparedBy": "Prepared by",
+      "preparedByValue": "The assistant, from the system's own checks, as you",
+      "confirmOn": "Confirmed on",
+      "confirmOnValue": "The review page. Nothing changes until you confirm there.",
+      "suggestionMeta": "Complete and confirm it on its page",
+      "readAs": "Read: {reads}, as you.",
+      "howAnswers": "How answers are made",
+      "whyLabel": "Ask why",
+      "why": {
+        "leave": "Why is my leave entitlement this many days?",
+        "leavePrompt": "Why is my leave entitlement this many days?",
+        "payslip": "Why were these statutory deductions taken?",
+        "payslipPrompt": "Why were these statutory deductions taken from my pay?"
+      },
+      "actions": {
+        "fallback": "A change ready for your review",
+        "leave_apply": "Leave application ready to review",
+        "leave_cancel": "Leave cancellation ready to review",
+        "approvals_leave_decide": "Leave decision ready to review"
+      },
+      "checks": {
+        "actor_current": "Your access is current",
+        "ai_controls_unpaused": "AI controls allow this",
+        "assigned_step_current": "The approval step is assigned to you",
+        "deduction_and_balance": "Balance covers it",
+        "leave_type_eligible": "Leave type allowed",
+        "own_approved_cancellable": "Can still be cancelled",
+        "own_pending_request": "Request still pending",
+        "review_contract": "Review page ready"
+      },
+      "outcomes": {
+        "withdrawn_now": "Withdrawn at once",
+        "give_back_requested": "Asks to give the dates back",
+        "rejection_if_confirmed": "Rejected if you confirm",
+        "step_decision_if_confirmed": "Your step is recorded",
+        "approval_if_native_checks_pass": "Approved if the checks still pass",
+        "submitted_not_approved": "Submitted for approval, not approved yet"
+      },
+      "reads": {
+        "my_leave_balances": "your leave balances",
+        "my_leave_requests": "your leave requests",
+        "my_reporting_line": "your reporting line",
+        "my_payslip_summary": "your payslip",
+        "my_pay_change": "your pay changes",
+        "my_claim_statuses": "your claims",
+        "my_module_work": "your work items",
+        "upcoming_holidays": "public holidays",
+        "team_leave_summary": "team leave",
+        "who_is_away": "who is away",
+        "approval_queue": "your approvals",
+        "product_guidance": "product guides",
+        "product_destinations": "product pages",
+        "available_actions": "available actions",
+        "setup_readiness": "setup status",
+        "company_setup": "company setup",
+        "explain_leave_entitlement": "the entitlement calculation",
+        "explain_payslip_statutory": "the statutory calculation",
+        "explain_attendance_day": "the attendance calculation",
+        "setup_copilot": "setup steps"
+      },
+      "errors": {
+        "invalid_question": "Please ask a question of up to 2,000 characters.",
+        "continuation_invalid": "This conversation can no longer continue. Start a new chat.",
+        "not_configured": "No AI provider is set up for your company. Ask your administrator.",
+        "provider_not_compliant": "Your company's AI provider is not set up for zero data retention and no training, so the assistant cannot answer. Ask your administrator.",
+        "budget_daily": "You have reached today's question limit. Try again tomorrow.",
+        "budget_monthly": "Your company has reached this month's AI limit.",
+        "ai_control": "The AI is paused or limited for you or your company right now.",
+        "protected_input": "This question could not be sent safely. Try asking it another way.",
+        "provider_error": "The assistant could not answer just now. Please try again."
+      }
     }
   }
 }

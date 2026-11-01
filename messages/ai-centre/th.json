@@ -411,11 +411,14 @@
         "approver_recommendation": "คำแนะนำสำหรับผู้อนุมัติ",
         "explainers": "ตัวอธิบาย",
         "team_absence_weekly_summary": "สรุปการขาดงานของทีมรายสัปดาห์",
-        "daily_digest": "สรุปประจำวัน"
+        "daily_digest": "สรุปประจำวัน",
+        "conversation": "การสนทนา Noveri"
       },
       "switchInvalid": "ไม่สามารถเปลี่ยนสวิตช์นั้นที่นี่ได้",
       "switchRefused": "เฉพาะผู้ดูแลระดับกลุ่มเท่านั้นที่เปลี่ยนสวิตช์นี้ได้",
-      "switchModuleOff": "โมดูลของเอเจนต์นี้ยังไม่ได้เปิดใช้งาน"
+      "switchModuleOff": "โมดูลของเอเจนต์นี้ยังไม่ได้เปิดใช้งาน",
+      "conversationAttest": "บัญชีผู้ให้บริการโดยตรงที่ใช้งานอยู่ (Anthropic, OpenAI หรือ Google) ไม่เก็บข้อมูลและไม่นำไปฝึกโมเดล ไม่จำเป็นสำหรับ OpenRouter",
+      "switchAttestation": "การยืนยันนี้ใช้ได้เฉพาะเมื่อใช้ผู้ให้บริการโดยตรง (Anthropic, OpenAI หรือ Google) เท่านั้น"
     },
     "recommendation": {
       "show": "แสดงคำแนะนำ",
@@ -454,6 +457,86 @@
       "deadlines": "กำหนดส่งตามกฎหมาย",
       "deadlinesDetail": "เกินกำหนด {overdue} · ใกล้ครบกำหนด {dueSoon}",
       "lastPrepared": "งานสรุปประจำวันของคุณเตรียมข้อมูลนี้ล่าสุดเมื่อ {when}"
+    },
+    "conversation": {
+      "routed": "ส่งต่อให้ทีม HR ของคุณแล้ว: ผู้ช่วยไม่จัดการหัวข้อนี้",
+      "routedCrisis": "หากคุณตกอยู่ในอันตราย โปรดติดต่อหน่วยฉุกเฉินทันที",
+      "days": "{count, plural, other {# วัน}}",
+      "review": "ตรวจสอบ",
+      "open": "เปิด",
+      "expires": "หมดอายุ {time}",
+      "howPrepared": "วิธีการจัดเตรียม",
+      "preparedBy": "จัดเตรียมโดย",
+      "preparedByValue": "ผู้ช่วย จากการตรวจสอบของระบบเอง ในนามของคุณ",
+      "confirmOn": "ยืนยันที่",
+      "confirmOnValue": "หน้าตรวจสอบ จะไม่มีการเปลี่ยนแปลงจนกว่าคุณจะยืนยันที่นั่น",
+      "suggestionMeta": "ทำให้เสร็จและยืนยันในหน้านั้น",
+      "readAs": "อ่านแล้ว: {reads} ในนามของคุณ",
+      "howAnswers": "คำตอบสร้างขึ้นอย่างไร",
+      "whyLabel": "ถามว่าทำไม",
+      "why": {
+        "leave": "ทำไมสิทธิ์ลาของฉันจึงมีเท่านี้วัน",
+        "leavePrompt": "ทำไมสิทธิ์ลาของฉันจึงมีเท่านี้วัน",
+        "payslip": "ทำไมจึงมีการหักตามกฎหมายเหล่านี้",
+        "payslipPrompt": "ทำไมจึงมีการหักตามกฎหมายเหล่านี้จากเงินเดือนของฉัน"
+      },
+      "actions": {
+        "fallback": "การเปลี่ยนแปลงที่พร้อมให้คุณตรวจสอบ",
+        "leave_apply": "ใบลาพร้อมให้ตรวจสอบ",
+        "leave_cancel": "การยกเลิกการลาพร้อมให้ตรวจสอบ",
+        "approvals_leave_decide": "การตัดสินใบลาพร้อมให้ตรวจสอบ"
+      },
+      "checks": {
+        "actor_current": "สิทธิ์เข้าถึงของคุณยังใช้ได้",
+        "ai_controls_unpaused": "การควบคุม AI อนุญาต",
+        "assigned_step_current": "ขั้นตอนอนุมัติมอบหมายให้คุณ",
+        "deduction_and_balance": "ยอดคงเหลือเพียงพอ",
+        "leave_type_eligible": "ประเภทการลาได้รับอนุญาต",
+        "own_approved_cancellable": "ยังยกเลิกได้",
+        "own_pending_request": "คำขอยังรออยู่",
+        "review_contract": "หน้าตรวจสอบพร้อมแล้ว"
+      },
+      "outcomes": {
+        "withdrawn_now": "ถอนทันที",
+        "give_back_requested": "ขอคืนวันที่",
+        "rejection_if_confirmed": "ถูกปฏิเสธหากคุณยืนยัน",
+        "step_decision_if_confirmed": "บันทึกขั้นตอนของคุณ",
+        "approval_if_native_checks_pass": "อนุมัติหากการตรวจสอบยังผ่าน",
+        "submitted_not_approved": "ส่งขออนุมัติแล้ว ยังไม่อนุมัติ"
+      },
+      "reads": {
+        "my_leave_balances": "ยอดวันลาของคุณ",
+        "my_leave_requests": "ใบลาของคุณ",
+        "my_reporting_line": "สายการรายงานของคุณ",
+        "my_payslip_summary": "สลิปเงินเดือนของคุณ",
+        "my_pay_change": "การเปลี่ยนแปลงเงินเดือนของคุณ",
+        "my_claim_statuses": "การเบิกของคุณ",
+        "my_module_work": "งานของคุณ",
+        "upcoming_holidays": "วันหยุดนักขัตฤกษ์",
+        "team_leave_summary": "การลาของทีม",
+        "who_is_away": "ใครลาบ้าง",
+        "approval_queue": "รายการอนุมัติของคุณ",
+        "product_guidance": "คู่มือผลิตภัณฑ์",
+        "product_destinations": "หน้าผลิตภัณฑ์",
+        "available_actions": "การดำเนินการที่ใช้ได้",
+        "setup_readiness": "สถานะการตั้งค่า",
+        "company_setup": "การตั้งค่าบริษัท",
+        "explain_leave_entitlement": "การคำนวณสิทธิ์ลา",
+        "explain_payslip_statutory": "การคำนวณตามกฎหมาย",
+        "explain_attendance_day": "การคำนวณการเข้างาน",
+        "setup_copilot": "ขั้นตอนการตั้งค่า"
+      },
+      "errors": {
+        "invalid_question": "โปรดถามคำถามไม่เกิน 2,000 ตัวอักษร",
+        "continuation_invalid": "ไม่สามารถสนทนาต่อได้ โปรดเริ่มแชตใหม่",
+        "not_configured": "บริษัทของคุณยังไม่ได้ตั้งค่าผู้ให้บริการ AI โปรดสอบถามผู้ดูแลระบบ",
+        "provider_not_compliant": "ผู้ให้บริการ AI ของบริษัทคุณไม่ได้ตั้งค่าให้ไม่เก็บข้อมูลและไม่ฝึกโมเดล ผู้ช่วยจึงตอบไม่ได้ โปรดสอบถามผู้ดูแลระบบ",
+        "budget_daily": "คุณถามครบจำนวนของวันนี้แล้ว โปรดลองใหม่พรุ่งนี้",
+        "budget_monthly": "บริษัทของคุณใช้ AI ครบโควตาของเดือนนี้แล้ว",
+        "ai_control": "ขณะนี้ AI ถูกหยุดหรือจำกัดสำหรับคุณหรือบริษัทของคุณ",
+        "protected_input": "ไม่สามารถส่งคำถามนี้ได้อย่างปลอดภัย โปรดลองถามด้วยวิธีอื่น",
+        "provider_error": "ผู้ช่วยยังตอบไม่ได้ในขณะนี้ โปรดลองอีกครั้ง"
+      }
     }
   }
 }

@@ -1,14 +1,17 @@
 /** Real-model REDESIGN CEILING probe on fictional data (Assistant conversational phase 1). Skipped
  * unless the protected evaluation secret is present, so ordinary CI never calls a model.
  *
- * This is NOT the production path and NOT an approved egress contract. Since ADR-0170 step 1 every turn runs
- * through the product turn harness (core/harness/runner.ts): its gate, offer, budgets, retries, per-call
- * authorisation, semantic-model disclosure, fencing, reply checks, restoration, task memory and trace. The
- * model may call the caller-authorized Assistant reads (executed by their real owners on the fictional test
- * database), the phase-B context tools and suggest_action, and must finish with final_answer. The model
- * client is supplied HERE, from test code: it calls OpenRouter directly, with data collection denied and
- * zero retention required, so no provider code enters the product. Nothing touches tenant configuration,
- * governance ledgers or promotion. Only fictional records exist.
+ * Since the wiring (ADR-0169 §5.1, owner sign-off 2 November 2026) every turn runs through the PRODUCTION path by
+ * default: the fictional tenant's Noveri conversation and explainers switches are turned on by its group
+ * administrator, its active provider is OpenRouter with the protected evaluation key and the allowed upstreams, and
+ * each turn is core/teras-wiring/turn.ts runConversationTurn: the real switch and permit, the gateway's admission,
+ * allowances, question budget and spend root, the reviewed teras_harness_turn_v1 privacy binding, the OpenRouter
+ * adapter (data collection denied, zero retention), task memory in the step 5a store, the outcome record and the
+ * retired accounting row. History is the signed model-side continuation. AIHR_EVAL_PATH=direct keeps the earlier
+ * probe: the product turn harness (core/harness/runner.ts) with an OpenRouter client supplied from test code.
+ * The model may call the caller-authorized Assistant reads (executed by their real owners on the fictional test
+ * database), the phase-B context tools and suggest_action, and must finish with final_answer. Nothing touches
+ * promotion. Only fictional records exist.
  * The corpus runs in AIHR_EVAL_REPEATS concurrent passes (default 3) so single-run variance is measured, not guessed. */
 import {randomUUID} from 'node:crypto';
 import {readdirSync} from 'node:fs';
@@ -33,6 +36,12 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {ASSISTANT_COMPLEX_BASELINE,ASSISTANT_PARITY_ACTIONS,ASSISTANT_PRODUCTION_BASELINE,conversationRun,scoreBaselineTurn,summarizeBaseline,type BaselineObservation,type BaselineScore} from './assistant-production-baseline-corpus';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from './harness';
 import {EXPLAINER_CONVERSATIONS,EXPLAINER_REVIEWED,explainerFixture} from './explainer-corpus';
+import {setWorkerSwitch} from '../core/agent-registry/controls';
+import {conversationRoute} from '../core/teras-wiring/switch';
+import {runConversationTurn} from '../core/teras-wiring/turn';
+import {encryptSecret} from '../lib/ai/crypto';
+/** `production` (default): core/teras-wiring/turn.ts through the gateway. `direct`: the earlier test-code client. */
+const PATH=process.env.AIHR_EVAL_PATH==='direct'?'direct':'production';
 const KEY=process.env.AIHR_EVAL_OPENROUTER_KEY?.trim(),MODEL=process.env.AIHR_EVAL_MODEL?.trim();
 const BUDGET=Math.min(50,Number(process.env.AIHR_EVAL_BUDGET_USD??'20')||20),REPEATS=Math.max(1,Math.min(5,Math.trunc(Number(process.env.AIHR_EVAL_REPEATS??'3'))||3));
 // About 200 calls per pass, plus up to two per sensitive-corpus turn (run 41305344388 hit the old cap of 250 a pass);
@@ -79,6 +88,14 @@ async function fixtures(){
  const sitiCtx:SessionContext={...await entitledCtx(base,['employee']),userId:await createAppUser(base.tenantId,siti.personId,'employee'),personId:siti.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  await requestLeave(sitiCtx,{employmentId:siti.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:leaveDate,endDate:leaveDate});
  const hr:SessionContext={...await entitledCtx(base,['hr_admin']),userId:adminUser,personId:person.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+ if(PATH==='production'){
+  // The tenant's own provider route: OpenRouter, the evaluation key, the allowed upstreams only, no fallbacks.
+  if(!ALLOWED.length)throw Error('The production path needs AIHR_EVAL_ALLOWED_PROVIDERS.');
+  await owner.db.insert(schema.aiProviderConfig).values({tenantId:base.tenantId,provider:'openrouter',model:MODEL!,apiKeyCiphertext:encryptSecret(KEY!,base.tenantId),keyLast4:KEY!.slice(-4),isActive:true,
+   providerOptions:{version:1,routing:{allowedProviders:ALLOWED,allowFallbacks:false,sort:'latency'}}});
+  // The group administrator switches the conversation (and its explainers) on, as a staging operator would.
+  await setWorkerSwitch(hr,{workerId:'conversation',enabled:true});await setWorkerSwitch(hr,{workerId:'explainers',enabled:true});
+ }
  return{employee,hr,explainer};
 }
 type Message={role:'system'|'user'|'assistant'|'tool';content:string|null;tool_calls?:unknown[];tool_call_id?:string};
@@ -104,8 +121,19 @@ const openRouter:ModelClient={get modelId(){return MODEL??'';},async complete(re
 const PUBLIC_CONTEXT=new Set(['product_destinations','product_guidance','available_actions']);
 /** One person turn through the product harness. `conversationId` keys its task memory. */
 /** `history` is the model-side transcript (each earlier turn's modelTurn), never the replies the person was shown. */
+/** Production path: the signed model-side continuation of each open conversation, keyed by the caller's conversation id. */
+const continuations=new Map<string,string>();
+async function produced(ctx:SessionContext,question:string,companyId:string,conversationId:string){
+ if(calls>=MAX_CALLS||spentUsd>=BUDGET)throw Error('evaluation_budget_exhausted');
+ const route=await conversationRoute(ctx);if(route.route!=='harness')throw Error('conversation_switch_closed');
+ const previous=continuations.get(conversationId);
+ const result=await runConversationTurn(ctx,route,{question,companyId,locale:'en',...(previous?{continuation:previous}:{})});
+ continuations.set(conversationId,result.continuation);calls+=result.trace.budgets.steps;spentUsd+=result.trace.budgets.spendUsd;
+ return result;
+}
 async function turn(ctx:SessionContext,history:readonly ModelHistoryMessage[],question:string,companyId:string,conversationId:string,memory:InMemoryTaskMemoryStore){
- const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId,locale:'en'},model:openRouter,memory,history});
+ const result=PATH==='production'?await produced(ctx,question,companyId,conversationId)
+  :await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId,locale:'en'},model:openRouter,memory,history});
  const trace=result.trace;
  return{mode:result.mode,slot:result.slot??undefined,reply:result.reply,modelTurn:result.modelTurn,reads:[...result.reads],proposed:result.suggestion?.action??null,proposals:result.proposals.map(row=>row.body.what.action),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
   truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',
@@ -192,7 +220,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
   const guidance=ledger.filter(row=>passes[row.pass].scores.find(score=>score.id===row.turn)?.ideal.mode==='guide');
   const context={inventedLinks:ledger.flatMap(row=>row.inventedLinks??[]),overclaims:ledger.flatMap(row=>{const claim=overclaim(row.reply);return claim?[row.pass+':'+row.turn+': '+claim]:[];}),guidanceTurns:guidance.length,
    guidanceGroundedInProduct:guidance.filter(row=>row.reads.some(read=>GROUNDING_READS.has(read))).length,routes:ROUTES.length};
-  process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+JSON.stringify({variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?'),stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
+  process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+JSON.stringify({variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='production'?'_production':''),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
    summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger})+'\n');
   expect(passes.every(row=>row.scores.length>0)).toBe(true);expect(breaches).toEqual([]);expect(sensitiveFindings).toEqual([]);
   expect(sensitive.errors.length,'sensitive turns that errored').toBeLessThanOrEqual(Math.floor(sensitiveRows.length*0.05));

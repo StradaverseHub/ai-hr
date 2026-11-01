@@ -13,6 +13,9 @@ import { resolvePageContext } from '@/lib/ai/page-context';
 import {assistantBrowserConversationScope} from './conversation-scope';
 import {listOwnAssistantChats,loadOwnAssistantChat} from '@/core/assistant-threads';
 import { ExchangeReply } from '@/components/assistant/exchange-reply';
+import { getLocale } from 'next-intl/server';
+import type { SessionContext } from '@/db/client';
+import type { ConversationRoute } from '@/core/teras-wiring/switch';
 
 export type LauncherReply =
   | { ok: true; exchangeId: string; answer: ReactNode; conversationToken?:string; clarificationRequired?:true }
@@ -33,6 +36,11 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
   try {
     const session = await getBrowserCommandSession();
     const conversationScope=await assistantBrowserConversationScope(session);
+    // ADR-0169 §5.1: the tenant's Noveri conversation switch (off by default) sends this caller's turn through the
+    // Teras harness. Off, or unreadable, and everything below is the closed grammar exactly as before.
+    // Loaded on demand: the closed grammar path loads only the switch reader, never the turn runner.
+    const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session)).catch(():ConversationRoute=>({route:'closed'}));
+    if(route.route==='harness')return await askThroughHarness(session,route,{question,conversationScope,clarification:input.clarificationExchangeId!==undefined,continuation:input.previousConversationToken});
     const { exchangeId, conversationToken } = await askAssistant(session, { question, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
     revalidatePath('/assistant');
     const workspace = await loadAiWorkspace(session, { selectedExchangeId: exchangeId, includeGovernance: false });
@@ -46,6 +54,25 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
     const code = error instanceof AuthRequiredError ? 'ai_control' : error instanceof AssistantError ? error.code : 'provider_error';
     return { ok: false, message: t.has(`err_${code}`) ? t(`err_${code}`) : t('err_provider_error') };
   }
+}
+
+/** One Noveri conversation turn (core/teras-wiring/turn.ts) for the floating chat and the Ask page. The reply is
+ * rendered like the AI centre (components/ai-centre/conversation-reply.tsx). The continuation the browser holds is
+ * the signed model-side transcript, sent back as `previousConversationToken`; the exchange id is a display key only.
+ * A harness reply never asks for the closed grammar's clarification form, so the next question always carries the
+ * continuation. */
+async function askThroughHarness(session:SessionContext,route:Extract<ConversationRoute,{route:'harness'}>,input:{question:string;conversationScope:string;clarification:boolean;continuation:unknown}):Promise<LauncherReply>{
+ const t=await getTranslations('aiCentre.conversation');
+ const [{ConversationTurnError,runConversationTurn},{ConversationReply}]=await Promise.all([import('@/core/teras-wiring/turn'),import('@/components/ai-centre/conversation-reply')]);
+ try{
+  if(input.clarification)throw new ConversationTurnError('continuation_invalid');
+  const companyId=(JSON.parse(input.conversationScope) as unknown[]).find((id):id is string=>typeof id==='string')??'';
+  const turn=await runConversationTurn(session,route,{question:input.question,companyId,locale:await getLocale(),...(input.continuation===undefined?{}:{continuation:input.continuation})});
+  return {ok:true,exchangeId:'teras-'+turn.turnId,answer:await ConversationReply({turn}),conversationToken:turn.continuation};
+ }catch(error){
+  const code=error instanceof ConversationTurnError?error.code:'provider_error';
+  return {ok:false,message:t.has(`errors.${code}`)?t(`errors.${code}`):t('errors.provider_error')};
+ }
 }
 
 /** Home chat has no posted page context. It uses exactly the same command and authoritative replay. */

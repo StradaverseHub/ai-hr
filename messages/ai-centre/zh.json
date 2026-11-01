@@ -411,11 +411,14 @@
         "approver_recommendation": "审批人建议",
         "explainers": "说明者",
         "team_absence_weekly_summary": "团队缺勤周报",
-        "daily_digest": "每日摘要"
+        "daily_digest": "每日摘要",
+        "conversation": "Noveri 对话"
       },
       "switchInvalid": "此开关无法在这里更改。",
       "switchRefused": "只有集团管理员可以更改此开关。",
-      "switchModuleOff": "此代理所属的模块未启用。"
+      "switchModuleOff": "此代理所属的模块未启用。",
+      "conversationAttest": "当前直连的服务商账户（Anthropic、OpenAI 或 Google）不保留数据且不用于训练。使用 OpenRouter 时无需确认。",
+      "switchAttestation": "此确认仅在启用直连服务商（Anthropic、OpenAI 或 Google）时适用。"
     },
     "recommendation": {
       "show": "显示建议",
@@ -454,6 +457,86 @@
       "deadlines": "法定截止日期",
       "deadlinesDetail": "{overdue} 项已逾期 · {dueSoon} 项即将到期",
       "lastPrepared": "您的每日摘要任务上次于 {when} 准备了此内容。"
+    },
+    "conversation": {
+      "routed": "已转给您的人事团队：助手不处理此类话题。",
+      "routedCrisis": "如果您身处危险，请立即联系紧急服务。",
+      "days": "{count, plural, other {# 天}}",
+      "review": "审核",
+      "open": "打开",
+      "expires": "{time} 过期",
+      "howPrepared": "准备方式",
+      "preparedBy": "准备者",
+      "preparedByValue": "助手，依据系统自身的检查，以您的身份",
+      "confirmOn": "确认位置",
+      "confirmOnValue": "审核页面。在您确认之前不会有任何更改。",
+      "suggestionMeta": "在其页面上完成并确认",
+      "readAs": "已读取：{reads}，以您的身份。",
+      "howAnswers": "回答是如何产生的",
+      "whyLabel": "询问原因",
+      "why": {
+        "leave": "为什么我的假期额度是这么多天？",
+        "leavePrompt": "为什么我的假期额度是这么多天？",
+        "payslip": "为什么扣除了这些法定扣款？",
+        "payslipPrompt": "为什么从我的工资中扣除了这些法定扣款？"
+      },
+      "actions": {
+        "fallback": "一项待您审核的更改",
+        "leave_apply": "请假申请待审核",
+        "leave_cancel": "取消请假待审核",
+        "approvals_leave_decide": "请假决定待审核"
+      },
+      "checks": {
+        "actor_current": "您的权限有效",
+        "ai_controls_unpaused": "AI 控制允许此操作",
+        "assigned_step_current": "审批步骤已分配给您",
+        "deduction_and_balance": "余额足够",
+        "leave_type_eligible": "假期类型允许",
+        "own_approved_cancellable": "仍可取消",
+        "own_pending_request": "申请仍待处理",
+        "review_contract": "审核页面已就绪"
+      },
+      "outcomes": {
+        "withdrawn_now": "立即撤回",
+        "give_back_requested": "申请退还这些日期",
+        "rejection_if_confirmed": "确认后将被拒绝",
+        "step_decision_if_confirmed": "记录您的审批步骤",
+        "approval_if_native_checks_pass": "若检查仍通过则批准",
+        "submitted_not_approved": "已提交审批，尚未批准"
+      },
+      "reads": {
+        "my_leave_balances": "您的假期余额",
+        "my_leave_requests": "您的请假申请",
+        "my_reporting_line": "您的汇报关系",
+        "my_payslip_summary": "您的工资单",
+        "my_pay_change": "您的薪资变动",
+        "my_claim_statuses": "您的报销",
+        "my_module_work": "您的工作事项",
+        "upcoming_holidays": "公共假期",
+        "team_leave_summary": "团队假期",
+        "who_is_away": "谁在休假",
+        "approval_queue": "您的审批",
+        "product_guidance": "产品指南",
+        "product_destinations": "产品页面",
+        "available_actions": "可用操作",
+        "setup_readiness": "设置状态",
+        "company_setup": "公司设置",
+        "explain_leave_entitlement": "额度计算",
+        "explain_payslip_statutory": "法定扣款计算",
+        "explain_attendance_day": "考勤计算",
+        "setup_copilot": "设置步骤"
+      },
+      "errors": {
+        "invalid_question": "请提出不超过 2,000 个字符的问题。",
+        "continuation_invalid": "此对话无法继续。请开始新的对话。",
+        "not_configured": "贵公司尚未设置 AI 服务商。请联系管理员。",
+        "provider_not_compliant": "贵公司的 AI 服务商未设置为不保留数据且不用于训练，因此助手无法回答。请联系管理员。",
+        "budget_daily": "您已达到今天的提问上限。请明天再试。",
+        "budget_monthly": "贵公司已达到本月的 AI 上限。",
+        "ai_control": "目前您或贵公司的 AI 已暂停或受限。",
+        "protected_input": "此问题无法安全发送。请换一种方式提问。",
+        "provider_error": "助手暂时无法回答。请重试。"
+      }
     }
   }
 }
