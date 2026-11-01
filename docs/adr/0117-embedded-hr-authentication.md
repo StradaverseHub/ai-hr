@@ -80,14 +80,15 @@ No recurring scheduler or privileged bypass session is needed.
 All subsequent password assignments (required changes, recovery, and disabled-account enrollment)
 refuse the current password and every password recorded by this feature. Bootstrap and invitation
 credentials record their assignment time; their first replacement retains the original scrypt hash.
-A random per-subject history key is encrypted in the existing private auth record store. HMAC-SHA256
-markers bind the purpose, subject and exact password; each marker persists as its own encrypted,
+A random per-subject history salt is encrypted in the existing private auth record store. History
+fingerprints run the same scrypt parameters as login, then SHA-256 for bounded record keys. Markers
+are namespaced by subject; each marker persists as its own encrypted,
 non-expiring record, permitting constant-cost indexed history lookup without plaintext, growing
 credential blobs, or trimming old passwords. The original pre-history password remains covered by
 its encrypted salted scrypt hash. History cannot recover passwords used before tracking began.
 History creation and markers share the subject-locked password transaction; rejected/replayed changes
 cannot consume recovery factors, alter history, or partially replace a credential. Session revocation
-and expired-record pruning preserve history. The per-subject history key stays encrypted across
+and expired-record pruning preserve history. The per-subject history salt stays encrypted across
 deployment-key re-encryption. As in the existing boundary, application-process/key compromise can
 expose decrypted authentication material; history markers do not claim to protect against that attacker.
 Disabling expiry preserves reuse protection. Existing recovery still requires MFA and revokes sessions.

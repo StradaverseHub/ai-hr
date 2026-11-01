@@ -27,3 +27,31 @@ describe('password expiry policy', () => {
     expect(passwordExpired(at(start), policy, at(due))).toBe(true);
   });
 });
+
+describe('password reuse history with real cryptography and encrypted storage', () => {
+  it('refuses the original and nonadjacent passwords while isolating another subject', async () => {
+    const { vi } = await import('vitest');
+    vi.stubEnv('AUTH_PUBLIC_ORIGIN', 'https://hr.test'); vi.stubEnv('AUTH_SESSION_KEY', '4'.repeat(64));
+    try {
+      const { replacePassword } = await import('../lib/internal-auth/password-policy');
+      const { passwordHash, passwordMatches } = await import('../lib/internal-auth/crypto');
+      const records = new Map<string, string>();
+      const tx = { unsafe: async (query: string, args: unknown[] = []) => {
+        if (query.includes('internal_auth_read')) return records.has(String(args[0])) ? [{ sealed: records.get(String(args[0])) }] : [];
+        if (query.includes('internal_auth_write')) { records.set(String(args[0]), String(args[2])); return []; }
+        throw new Error('Unexpected query');
+      } } as unknown as import('../lib/internal-auth/record-store').AuthSql;
+      const original = 'Original private phrase 001!', second = 'Second private phrase 002!', third = 'Third private phrase 003!';
+      const credential = { subject: 'subject-one', username: 'reader', email: 'reader@example.test', password: await passwordHash(original) } as import('../lib/internal-auth/credential').Credential;
+      await replacePassword(tx, credential, second);
+      await replacePassword(tx, credential, third);
+      for (const previous of [original, second, third]) await expect(replacePassword(tx, credential, previous)).rejects.toMatchObject({ code: 'passwordPolicy' });
+      expect(await passwordMatches(third, credential.password!)).toBe(true);
+      const another = { ...credential, subject: 'subject-two', password: null };
+      await replacePassword(tx, another, second);
+      expect(await passwordMatches(second, another.password!)).toBe(true);
+      const raw = JSON.stringify([...records]);
+      for (const password of [original, second, third]) expect(raw).not.toContain(password);
+    } finally { vi.unstubAllEnvs(); }
+  }, 20_000);
+});
