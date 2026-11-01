@@ -47,13 +47,13 @@ const ROUTES=routes();
 const inventedLinks=(reply:string)=>[...reply.matchAll(/(?:^|[\s(`"'])(\/[a-z][a-z0-9-]*(?:\/[a-z0-9-[\]]+)*)/g)].map(match=>match[1].split(/[?#]/)[0])
  .filter(path=>!ROUTES.some(route=>route.test(path)));
 let base:Base;let spentUsd=0,calls=0;
-const ledger:{pass:number;conversation:string;turn:string;question:string;gate?:string;mode:string|null;reads:string[];proposed:string|null;reply:string;usd:number;steps:number;inventedLinks?:string[];truncated?:number;error?:string;
+const ledger:{pass:number;conversation:string;turn:string;question:string;gate?:string;mode:string|null;reads:string[];proposed:string|null;proposals?:string[];reply:string;usd:number;steps:number;inventedLinks?:string[];truncated?:number;error?:string;
  /** Harness outcomes: reply-check failures (before any retry), whether the shown reply is the spec fallback, and the spec version. */
  checkFailures?:string[];fallback?:boolean;budgetExhausted?:string|null;undeclaredRemoved?:number;spec?:number}[]=[];
 beforeAll(migrateTestDb);afterAll(closeAll);
 // The optional pay and notification modules are switched on so a missing suggestion measures the model, not the fixture.
 const MODULES=['assistant','claims','notifications','multi_cycle_payroll','typed_pay_components'];
-beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-ceiling-passphrase');await resetDb();base=await seedBase();for(const code of MODULES)await setModule(base.tenantId,code,'active');await seedGuides(owner.db,base.tenantId);});
+beforeEach(async()=>{vi.stubEnv('AI_CONFIG_SECRET','fictional-ceiling-passphrase');vi.stubEnv('TERAS_PROPOSAL_SECRET','fictional-ceiling-proposal-secret-0123456789abcdef');await resetDb();base=await seedBase();for(const code of MODULES)await setModule(base.tenantId,code,'active');await seedGuides(owner.db,base.tenantId);});
 async function fixtures(){
  const admin=adminCtx(base),[medical]=await owner.db.insert(schema.leaveType).values({tenantId:base.tenantId,code:'MEDICAL',name:'Medical Leave',paid:true}).returning({id:schema.leaveType.id});
  await seedEntitlement(admin,{leaveTypeId:base.annualLeaveTypeId,annualDays:17.25,validFrom:'2020-01-01'});await seedEntitlement(admin,{leaveTypeId:medical.id,annualDays:11.5,validFrom:'2020-01-01'});
@@ -100,7 +100,7 @@ async function turn(ctx:SessionContext,history:Message[],question:string,company
  const result=await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId,locale:'en'},model:openRouter,memory,
   history:history.filter((row):row is Message&{role:'user'|'assistant';content:string}=>(row.role==='user'||row.role==='assistant')&&typeof row.content==='string')});
  const trace=result.trace;
- return{mode:result.mode,slot:result.slot??undefined,reply:result.reply,reads:[...result.reads],proposed:result.suggestion?.action??null,usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
+ return{mode:result.mode,slot:result.slot??undefined,reply:result.reply,reads:[...result.reads],proposed:result.suggestion?.action??null,proposals:result.proposals.map(row=>row.body.what.action),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
   truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',
   checkFailures:trace.checks.flatMap(row=>row.results.filter(check=>!check.ok).map(check=>check.check+': '+(check.finding??''))),fallback:trace.outcome.fallback,
   budgetExhausted:trace.budgets.exhausted,undeclaredRemoved:trace.disclosure.reduce((sum,row)=>sum+row.undeclared.length,0),spec:trace.spec.version};
@@ -114,7 +114,8 @@ describe('real-model redesign ceiling on fictional data',()=>{
  else it('runs every corpus in repeated concurrent passes under a hard spend cap',async()=>{
   const {employee,hr}=await fixtures(),catalogues={employee:(await actionCatalogueFor(employee)).map(row=>row.id),admin:(await actionCatalogueFor(hr)).map(row=>row.id)};
   const conversations=[...ASSISTANT_PRODUCTION_BASELINE,...ASSISTANT_COMPLEX_BASELINE,...ASSISTANT_PARITY_ACTIONS];
-  /** One full pass. Every tool here is read-only, so passes share the fixture and run concurrently. */
+  /** One full pass. Every tool here is read-only, except that a leave-card suggestion may save a review (custody only, never a
+   * change; ADR-0170 step 2), so passes share the fixture and run concurrently. */
   async function pass(index:number){
    const breaches:{pass:number;turn:string;plan:string|null;reads:readonly string[]}[]=[],scores:BaselineScore[]=[],runs:Record<string,ReturnType<typeof conversationRun>>={};
    for(const conversation of conversations){
@@ -123,7 +124,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
      if(!item.continues){history=[];conversationId=randomUUID();}let observation:BaselineObservation;
      try{const result=await turn(ctx,history,item.question,base.companyId,conversationId,memory);
       observation={plan:result.proposed&&result.mode!=='refuse'?{mode:'propose',action:result.proposed}:result.mode?{mode:result.mode==='honest_gap'?'insufficient':result.mode,...(result.slot?{slot:result.slot}:{})}:null,reads:result.reads,providerCalls:result.steps};
-      ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,reply:result.reply.slice(0,1200),usd:result.usd,steps:result.steps,truncated:result.truncated,inventedLinks:inventedLinks(result.reply),
+      ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,proposals:result.proposals,reply:result.reply.slice(0,1200),usd:result.usd,steps:result.steps,truncated:result.truncated,inventedLinks:inventedLinks(result.reply),
        checkFailures:result.checkFailures,fallback:result.fallback,budgetExhausted:result.budgetExhausted,undeclaredRemoved:result.undeclaredRemoved,spec:result.spec});
       history=[...history,{role:'user',content:item.question},{role:'assistant',content:result.reply}];
      }catch(error){observation={plan:null,reads:[],providerCalls:0,error:(error as Error).message};ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,mode:null,reads:[],proposed:null,reply:'',usd:0,steps:0,error:(error as Error).message});}
