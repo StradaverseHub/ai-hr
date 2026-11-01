@@ -22,6 +22,20 @@ const prefix=` IF NOT performance_has_admin AND NOT EXISTS (
    WHERE e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id());
  END IF;
 `;
+const statementPrefix=`  RETURN (
+ WITH self_candidates AS MATERIALIZED (
+  SELECT e.id,e.terminated_on FROM employment e JOIN app_user u ON u.person_id=e.person_id
+  WHERE e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id()
+ ), active_manager AS MATERIALIZED (
+  SELECT 1 FROM self_candidates me WHERE me.terminated_on IS NULL
+   AND EXISTS(SELECT 1 FROM reporting_line rl WHERE rl.manager_employment_id=me.id
+    AND rl.line_type='administrative' AND rl.superseded_at IS NULL
+    AND rl.valid_from<=current_date AND (rl.valid_to IS NULL OR rl.valid_to>current_date))
+ ) SELECT CASE WHEN NOT performance_has_admin AND NOT EXISTS(SELECT 1 FROM active_manager)
+  THEN (SELECT coalesce(array_agg(id ORDER BY id),'{}'::uuid[]) FROM self_candidates)
+  ELSE (
+WITH RECURSIVE`;
+const statementEnd='  );\nEND;';
 const hash=(v:string)=>createHash('sha256').update(v).digest('hex');
 async function catalog(){const [row]=await owner.client`select pg_get_functiondef(oid) as definition,prosrc as body,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid=${signature}::regprocedure`;return row;}
 function errorCode(error:unknown){let e=error as {code?:string;cause?:unknown};for(let i=0;e&&i<8;i++){if(e.code)return e.code;e=e.cause as typeof e;}return String(error);}
@@ -58,12 +72,15 @@ it('preserves live exact visibility while bypassing empty recursive branches for
  const read=(i:number)=>withTenant(ctx(i),async tx=>{const [row]=await tx.execute<{ids:string[]}>(sql`select app.visible_employment_ids() as ids`);expect(row.ids).toEqual(expected(i));return row.ids;});
  const malformed=async(context:SessionContext,grants:string)=>{try{return {ids:await withTenant(context,async tx=>{await tx.execute(sql`select set_config('app.grants',${grants},true)`);const [row]=await tx.execute(sql`select app.visible_employment_ids() as ids`);return row.ids;})};}catch(error){return {error:errorCode(error)};}};
  const original=await catalog();expect(original.body).toContain('performance_has_admin');expect(original.body.split(boundary)).toHaveLength(2);expect(original.definition.split(boundary)).toHaveLength(2);
+ const statementBody=original.body.replace(boundary,statementPrefix);expect(statementBody.split(statementEnd)).toHaveLength(2);
+ const caseBody=statementBody.replace(statementEnd,' ) END\n'+statementEnd);
+ const statementDefinition=original.definition.replace(original.body,caseBody);expect(statementDefinition).not.toBe(original.definition);
  const phases:Record<string,unknown>={};let malformedOracle:unknown;
  const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'self-visibility-work.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_NECESSARY_ONLY_SELF_VISIBILITY_EXPERIMENT',releaseEligible:false,measuredPrincipals:500,fixtureAccounts:501,employments:501,originalBodySha256:hash(original.body),phases},null,2));
  try{
-  for(const phase of ['before','candidate','restored']){
-   await owner.client.unsafe(phase==='candidate'?original.definition.replace(boundary,prefix+boundary):original.definition);
-   const actual=await catalog();expect(actual.attributes).toEqual(original.attributes);expect(actual.body).toBe(phase==='candidate'?original.body.replace(boundary,prefix+boundary):original.body);
+  for(const phase of ['before','candidate','candidate-statement','restored']){
+   await owner.client.unsafe(phase==='candidate-statement'?statementDefinition:phase==='candidate'?original.definition.replace(boundary,prefix+boundary):original.definition);
+   const actual=await catalog();expect(actual.attributes).toEqual(original.attributes);expect(actual.body).toBe(phase==='candidate-statement'?caseBody:phase==='candidate'?original.body.replace(boundary,prefix+boundary):original.body);
    await Promise.all(Array.from({length:20},(_,i)=>read(i)));await owner.client`select pg_stat_statements_reset()`;
    const started=performance.now(),times:number[]=[];
    const outcomes=await Promise.allSettled(users.map(async(_u,i)=>{const start=performance.now();await read(i);times.push(performance.now()-start);}));
@@ -72,10 +89,15 @@ it('preserves live exact visibility while bypassing empty recursive branches for
    const roleMedians:Record<string,number>={};
    for(const [label,index]of [['ordinary',11],['multiEmployment',8],['manager',2],['employeeManager',3],['HOD',4],['companyHR',0],['groupHR',1]] as const){const samples=[];for(let j=0;j<5;j++){const start=performance.now();await read(index);samples.push(performance.now()-start);}roleMedians[label]=samples.sort((a,b)=>a-b)[2];}
    for(const index of [0,1,2,3,4,7,8,11]){const rows=await withTenant(ctx(index),tx=>tx.execute<{id:string}>(sql`select id from employment where tenant_id=${b.tenantId}::uuid order by id`));expect(rows.map(row=>row.id)).toEqual(expected(index));}
+   const microMedians:Record<string,number>={};
+   for(const [label,index]of [['ordinary',11],['manager',2],['HOD',4],['companyHR',0],['groupHR',1]] as const){
+    const invoke=()=>withTenant(ctx(index),async tx=>{const [row]=await tx.execute<{total:string}>(sql`select sum(cardinality(app.visible_employment_ids()))::text as total from generate_series(1,200)`);expect(Number(row.total)).toBe(expected(index).length*200);});
+    await invoke();const samples=[];for(let n=0;n<3;n++){const start=performance.now();await invoke();samples.push((performance.now()-start)/200);}microMedians[label]=samples.sort((a,b)=>a-b)[1];
+   }
    const bad=[];for(const grants of ['{broken','null',JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])]){bad.push(await malformed(ctx(11),grants),await malformed(adminCtx(foreign),grants),await malformed(adminCtx(empty),grants));}
    if(malformedOracle===undefined)malformedOracle=bad;else expect(bad).toEqual(malformedOracle);
    const statements=await owner.client`select calls,total_exec_time,total_plan_time,left(query,1800) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_exec_time+total_plan_time desc limit 16`;
-   phases[phase]={mixed500ElapsedMs:elapsedMs,mixed500P95Ms:times[Math.ceil(times.length*.95)-1],roleMedians,malformedOutcomes:bad,exactAll500Sets:true,attributesIdentical:true,bodySha256:hash(actual.body),statements};save();
+   phases[phase]={mixed500ElapsedMs:elapsedMs,mixed500P95Ms:times[Math.ceil(times.length*.95)-1],roleMedians,microMsPerNativeCall:microMedians,malformedOutcomes:bad,exactAll500Sets:true,attributesIdentical:true,bodySha256:hash(actual.body),statements};save();
   }
  }finally{await owner.client.unsafe(original.definition);expect(await catalog()).toEqual(original);save();}
 },240000);
