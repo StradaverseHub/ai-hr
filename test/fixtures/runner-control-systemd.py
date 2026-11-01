@@ -22,7 +22,11 @@ UNIT='aihr-ai-alerts'
 ACTOR='11111111-1111-1111-1111-111111111111'
 
 def run(*args,**options):
-    return subprocess.run(args,check=True,text=True,capture_output=True,timeout=30,**options)
+    result=subprocess.run(args,text=True,capture_output=True,timeout=30,**options)
+    if result.returncode:
+        print(result.stdout,file=sys.stderr);print(result.stderr,file=sys.stderr)
+        result.check_returncode()
+    return result
 
 def root_request(body):
     class UnixConnection(http.client.HTTPConnection):
