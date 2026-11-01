@@ -647,8 +647,8 @@ leave(){
 
 /* ---- Exploded view of the AI core (SVG line art, isometric). Plane coords: x 0..300, y 0..200; z up. ---- */
 const XV={cx:410,cy:360,s:.74,open:0};
-const XV_Z={closed:{found:0,sor:14,capabilities:24,context:34,harness:44,interfaces:54},open:{found:0,sor:82,capabilities:154,context:226,harness:298,interfaces:372}};
-const XV_SUB={interfaces:'chat · floating chat · inbox · review pages',harness:'limits · plan · tool calls · trace',model:'proposes only · never decides',context:'guides · pages · readiness · your role',capabilities:'reads · explainers · preparers · workers',sor:'leave · payroll · people · claims',found:'guard · delegated jobs · outcome record · audit',guard:'checks before any model',outcome:'who · what was read · rules · decision'};
+const XV_Z={closed:{found:0,sor:2,capabilities:4,context:6,harness:8,interfaces:16},open:{found:0,sor:82,capabilities:154,context:226,harness:298,interfaces:372}};
+const XV_SUB={interfaces:'the screen · chat · inbox · review pages',harness:'the logic board · limits · plan · tool calls',model:'the AI chip · proposes, never decides',context:'the memory · guides · pages · your role',capabilities:'the modules · reads · explainers · preparers',sor:'the storage · leave · payroll · people · claims',found:'the frame · guard · outcome record · audit',guard:'the secure chip · checks first',outcome:'the log · who · what was read · decision'};
 const xvP=(x,y,z)=>[XV.cx+(x-y)*0.866*XV.s,XV.cy+((x+y)*0.5-z)*XV.s];
 const xvPts=a=>a.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ');
 const xvCh=(x0,y0,x1,y1,r)=>[[x0+r,y0],[x1-r,y0],[x1,y0+r],[x1,y1-r],[x1-r,y1],[x0+r,y1],[x0,y1-r],[x0,y0+r]];
@@ -661,22 +661,32 @@ function xvPlate(poly,z,t){
 const xvLine=(pts,z,cls='xv-d')=>`<polyline class="${cls}" points="${xvPts(pts.map(([x,y])=>xvP(x,y,z)))}"/>`;
 const xvRect=(x,y,w,h,z,r=6,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(xvCh(x,y,x+w,y+h,r).map(([a,b])=>xvP(a,b,z)))}"/>`;
 const xvBox=(x,y,w,h,z,t,r=5)=>xvPlate(xvCh(x,y,x+w,y+h,r),z,t);
+const xvRound=(x0,y0,x1,y1,r,n=5)=>{const pts=[],c=[[x1-r,y0+r,-90],[x1-r,y1-r,0],[x0+r,y1-r,90],[x0+r,y0+r,180]];
+  for(const [cx,cy,start] of c)for(let i=0;i<=n;i++){const t=(start+i*90/n)*Math.PI/180;pts.push([cx+r*Math.cos(t),cy+r*Math.sin(t)])}return pts;};
+const xvCircle=(cx,cy,r,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(Array.from({length:24},(_,i)=>{const t=i/24*2*Math.PI;return xvP(cx+r*Math.cos(t),cy+r*Math.sin(t),z)}))}"/>`;
+const xvRoundOutline=(x0,y0,x1,y1,r,z,cls='xv-d')=>`<polygon class="${cls}" points="${xvPts(xvRound(x0,y0,x1,y1,r).map(([x,y])=>xvP(x,y,z)))}"/>`;
+const xvRoundBox=(x0,y0,x1,y1,r,z,t)=>xvPlate(xvRound(x0,y0,x1,y1,r),z,t);
+/* A phone, taken apart. Plane coords: x 0..340 along the phone, y 0..170 across it. */
 function xvLayer(k,z){
-  if(k==='found')return xvPlate(xvCh(-34,-34,334,234,24),z,30)+xvRect(-18,-18,336,236,z,16)+
-    xvRect(118,72,64,56,z,10)+xvLine([[150,84],[150,116]],z)+xvLine([[134,100],[166,100]],z);
-  if(k==='sor')return xvPlate(xvCh(0,0,300,200,18),z,10)+[40,70,100,130,160].map(y=>xvLine([[34,y],[266,y]],z)).join('')+xvLine([[110,30],[110,172]],z);
-  if(k==='capabilities')return xvPlate(xvCh(0,0,300,200,18),z,10)+xvLine([[130,64],[170,64]],z)+xvLine([[130,136],[170,136]],z)+xvLine([[85,90],[85,110]],z)+xvLine([[215,90],[215,110]],z)+
-    xvBox(36,36,94,54,z+8,8)+xvBox(170,36,94,54,z+8,8)+xvBox(36,110,94,54,z+8,8)+xvBox(170,110,94,54,z+8,8);
-  if(k==='context')return xvPlate(xvCh(0,0,300,200,18),z,10)+xvBox(66,44,170,112,z+3,3,6)+xvBox(58,52,170,112,z+8,3,6)+xvBox(50,60,170,112,z+13,3,6)+
-    [86,102,118,134].map((y,i)=>xvLine([[72,y],[i===3?150:196,y]],z+13)).join('');
-  if(k==='harness')return xvPlate(xvCh(0,0,300,200,18),z,12)+xvRect(42,34,216,132,z,12)+
-    [86,128,170,212].map(x=>xvLine([[x,36],[x,164]],z,'xv-w')).join('')+[78,122].map(y=>xvLine([[44,y],[256,y]],z,'xv-w')).join('');
-  if(k==='interfaces')return xvPlate(xvCh(0,0,300,200,18),z,6)+xvRect(28,26,128,40,z,8)+xvRect(144,76,128,34,z,8)+xvRect(28,124,244,50,z,8)+
-    xvLine([[46,46],[124,46]],z)+xvLine([[162,93],[248,93]],z)+xvLine([[60,149],[200,149]],z);
+  if(k==='found')return xvRoundBox(-10,-10,350,180,36,z,26)+xvRoundOutline(4,4,336,166,26,z)+               // frame and case
+    xvBox(96,180,44,5,z-8,8,2)+xvBox(160,180,26,5,z-8,8,2);                                                    // side buttons
+  if(k==='sor')return xvRoundBox(28,22,312,148,20,z,8)+xvBox(70,44,150,82,z+6,6,6)+                          // storage
+    [62,78,94,110].map(y=>xvLine([[86,y],[204,y]],z+6)).join('')+xvBox(236,60,52,46,z+5,5,4);
+  if(k==='capabilities')return xvRoundBox(28,22,312,148,20,z,6)+xvRoundBox(236,34,300,98,14,z+12,12)+        // modules: camera, speaker, port
+    xvCircle(254,52,10,z+12)+xvCircle(280,78,10,z+12)+xvCircle(282,50,4,z+12)+
+    [52,62,72,82,92].map(x=>xvLine([[x,40],[x,70]],z)).join('')+xvBox(140,118,52,16,z+6,6,4)+xvCircle(214,126,6,z);
+  if(k==='context')return xvRoundBox(48,32,292,138,16,z,5)+xvBox(76,50,74,66,z+7,7,4)+xvBox(166,50,74,66,z+7,7,4)+ // memory chips
+    [62,76,90,104].map(y=>xvLine([[88,y],[138,y]],z+7)+xvLine([[178,y],[228,y]],z+7)).join('');
+  if(k==='harness')return xvRoundBox(10,10,330,160,26,z,7)+                                                   // logic board
+    xvLine([[40,40],[120,40],[120,70]],z)+xvLine([[40,130],[120,130],[120,100]],z)+xvLine([[230,85],[300,85]],z)+xvLine([[230,50],[270,50],[270,30]],z)+
+    xvBox(30,60,30,24,z+5,5,3)+xvBox(250,100,40,30,z+6,6,4)+xvBox(270,40,30,20,z+4,4,3);
+  if(k==='interfaces')return xvRoundBox(0,0,340,170,32,z,6)+xvRoundOutline(12,10,328,160,24,z)+               // the screen
+    xvRoundOutline(306,68,318,102,6,z)+xvRoundOutline(40,26,176,56,12,z)+xvRoundOutline(118,70,282,100,12,z)+xvRoundOutline(40,114,250,146,10,z)+
+    xvLine([[58,41],[150,41]],z)+xvLine([[136,85],[262,85]],z)+xvLine([[58,130],[200,130]],z);
   return '';
 }
 function spatial(T){
-  return `<div class="space" id="space"><div class="xt"><b>${T.title}</b><span>Exploded view · AI core</span></div>
+  return `<div class="space" id="space"><div class="xt"><b>${T.title}</b><span>Exploded view · like a phone</span></div>
    <svg id="xv" viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${T.L.interfaces[0]}, ${T.L.harness[0]}, ${T.L.context[0]}, ${T.L.capabilities[0]}, ${T.L.sor[0]}; ${T.L.found[0]}"><g id="xvg"></g><circle id="xvtok" r="5.5" cx="0" cy="0" fill="#fb8a4a" stroke="#0c0d0f" stroke-width="2.5" opacity="0"/></svg>
    <span class="xm">${PRODUCT.centre}</span></div>`;
 }
@@ -689,21 +699,21 @@ function placeSpatial(){
   const on=key=>key===k&&k!=='found';
   let svg='';
   // dashed alignment wires at the three outer corners, as in a teardown drawing
-  if(e>.05)for(const [x,y] of [[0,200],[300,200],[300,0]])svg+=`<line class="xv-w" x1="${xvP(x,y,Z.found)[0]}" y1="${xvP(x,y,Z.found)[1]}" x2="${xvP(x,y,Z.interfaces)[0]}" y2="${xvP(x,y,Z.interfaces)[1]}"/>`;
+  if(e>.05)for(const [x,y] of [[0,170],[340,170],[340,0]])svg+=`<line class="xv-w" x1="${xvP(x,y,Z.found)[0]}" y1="${xvP(x,y,Z.found)[1]}" x2="${xvP(x,y,Z.interfaces)[0]}" y2="${xvP(x,y,Z.interfaces)[1]}"/>`;
   for(const key of order){
-    svg+=`<g class="${on(key)?'on':''} ${key==='interfaces'?'xv-glass':''}">${xvLayer(key,Z[key])}</g>`;
+    svg+=`<g class="${on(key)?'on':''} ${key==='interfaces'&&e>.8?'xv-glass':''}">${xvLayer(key,Z[key])}</g>`;
     if(key==='found'){
-      svg+=`<g class="${k==='found'&&part==='0'?'on':''}">${xvBox(46,212,58,18,Z.found+14,14)}</g>`;   // guard gate on the front rim
-      svg+=`<g class="${k==='found'&&part==='2'?'on':''}">${xvBox(232,-30,62,16,Z.found+12,12)}</g>`; // outcome record slot at the back
+      svg+=`<g class="${k==='found'&&part==='0'?'on':''}">${xvBox(30,60,36,36,Z.found+8,8,5)}${xvLine([[42,74],[54,74],[54,86],[42,86],[42,74]],Z.found+8)}</g>`;   // guard: the secure chip in the frame
+      svg+=`<g class="${k==='found'&&part==='2'?'on':''}">${xvBox(282,112,38,30,Z.found+8,8,4)}${[120,128,136].map(y=>xvLine([[290,y],[312,y]],Z.found+8)).join('')}</g>`; // outcome record: the log
     }
-    if(key==='harness')svg+=`<g class="xv-m ${k==='harness'?'on':''}">${xvBox(112,68,76,64,Z.harness+18+e*16,12,8)}</g>`;
+    if(key==='harness')svg+=`<g class="xv-m ${k==='harness'?'on':''}">${xvBox(140,50,76,70,Z.harness+10+e*14,10,8)}${xvRoundOutline(156,64,200,106,6,Z.harness+10+e*14)}</g>`;
   }
   // labels: layers on the right, model / guard / outcome on the left
   const LX=690,rows=[];
-  for(const key of [...order].reverse()){const anchor=key==='found'?xvP(334,-34,Z.found):xvP(300,0,Z[key]);rows.push({key,side:'r',a:anchor,name:key==='found'?L.found[0]:L[key][0],sub:XV_SUB[key],on:on(key)});}
-  rows.push({key:'model',side:'l',a:xvP(112,132,Z.harness+18+e*16),name:L.model[0],sub:XV_SUB.model,on:k==='harness'});
-  rows.push({key:'guard',side:'l',a:xvP(46,230,Z.found+14),name:L.found[1][0],sub:XV_SUB.guard,on:k==='found'&&part==='0'});
-  rows.push({key:'outcome',side:'r',a:xvP(294,-30,Z.found+12),name:L.found[1][2],sub:XV_SUB.outcome,on:k==='found'&&part==='2'});
+  for(const key of [...order].reverse()){const anchor=key==='found'?xvP(350,-10,Z.found):xvP(340,0,Z[key]);rows.push({key,side:'r',a:anchor,name:key==='found'?L.found[0]:L[key][0],sub:XV_SUB[key],on:on(key)});}
+  rows.push({key:'model',side:'l',a:xvP(140,120,Z.harness+10+e*14),name:L.model[0],sub:XV_SUB.model,on:k==='harness'});
+  rows.push({key:'guard',side:'l',a:xvP(30,96,Z.found+8),name:L.found[1][0],sub:XV_SUB.guard,on:k==='found'&&part==='0'});
+  rows.push({key:'outcome',side:'r',a:xvP(320,112,Z.found+8),name:L.found[1][2],sub:XV_SUB.outcome,on:k==='found'&&part==='2'});
   const r=rows.filter(x=>x.side==='r').sort((p,q)=>p.a[1]-q.a[1]);let last=-1e9;r.forEach(x=>{x.y=Math.max(x.a[1],last+38);last=x.y});
   rows.filter(x=>x.side==='l').forEach(x=>x.y=x.a[1]);
   const sub=state.lang==='en';
@@ -716,7 +726,7 @@ function placeSpatial(){
   // the request rides the left wire to each layer's corner, or sits on the guard / outcome part
   const tok=document.getElementById('xvtok');
   if(!tgt||e<.95){tok.setAttribute('opacity',0);return}
-  const pt=k==='found'?(part==='0'?xvP(75,221,Z.found+14):xvP(263,-22,Z.found+12)):xvP(0,200,Z[k]);
+  const pt=k==='found'?(part==='0'?xvP(48,78,Z.found+8):xvP(301,127,Z.found+8)):xvP(0,170,Z[k]);
   tok.setAttribute('opacity',1);tok.style.transform=`translate(${pt[0]}px,${pt[1]}px)`;
 }
 /* The unit opens once, the first time it is shown; reduced motion shows it open. */
