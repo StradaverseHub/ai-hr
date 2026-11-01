@@ -27,6 +27,9 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { LanguageSwitcher } from '@/components/language-switcher';
 import { Toaster } from '@/components/ui/sonner';
 import { ToastFromQuery } from '@/components/ui/toast-trigger';
+import { SessionLifecycle } from '@/components/session-lifecycle';
+import { internalSelected } from '@/lib/internal-auth/config';
+import { idleTimeoutMinutesFor } from '@/lib/session-policy-server';
 import { DevIdentitySwitcher } from '@/components/dev-identity-switcher';
 import { UserMenu } from '@/components/user-menu';
 import { CompanySwitcher } from '@/components/company-switcher';
@@ -141,6 +144,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     if (e instanceof AuthRequiredError) redirect('/login');
     throw e;
   }
+  // ADR-0171: the shell shows the idle limit only where the embedded sign-in service enforces it.
+  const idleTimeoutSeconds = internalSelected() ? await idleTimeoutMinutesFor(session.tenantId) * 60 : null;
   if (isOperator(session) && !isDemoDeployment()) {
     if (pathname !== '/operator' && !pathname.startsWith('/operator/')) redirect('/operator');
     const viewer = await viewerIdentity(session);
@@ -148,6 +153,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       <body className="h-dvh overflow-hidden font-sans">
         <NextIntlClientProvider><Providers><UiThemeProvider theme={uiTheme}>
           <OperatorShell name={viewer.name}>{children}</OperatorShell>
+          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
           <OnboardingTour tours={toursForRoles(session.roles)} autoStartTourId={null}/>
           <Toaster/>
         </UiThemeProvider></Providers></NextIntlClientProvider>
@@ -486,6 +492,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
             <ToastFromQuery />
           </Suspense>
           <Toaster />
+          <SessionLifecycle idleTimeoutSeconds={idleTimeoutSeconds} />
         </UiThemeProvider>
         </Providers>
         </NextIntlClientProvider>

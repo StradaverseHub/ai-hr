@@ -26876,7 +26876,8 @@
     "switchAccountSubmit": "退出并打开邀请",
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
-    "signingInHelp": "正在进入 AIHR。"
+    "signingInHelp": "正在进入 AIHR。",
+    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。"
   },
   "aiManagement": {
     "title": "AI 管理",
@@ -33378,5 +33379,25 @@
     "noticeApplied": "此结果使用已记录的所得税基数更正。实际已扣PCB和已发放的薪资保持不变。",
     "noticeReferences": "所得税更正参考编号",
     "noticeView": "查看所得税更正"
+  },
+  "sessionTimeout": {
+    "warningTitle": "您还在吗？",
+    "warningBody": "为保障安全，由于长时间未操作，您将在 {seconds} 秒后被退出登录。",
+    "staySignedIn": "保持登录",
+    "signOutNow": "立即退出",
+    "settingsTitle": "自动退出登录",
+    "settingsDescription": "用户在网页应用中未操作达到此时长后将被退出登录。退出前会先显示一分钟的提醒。",
+    "minutesLabel": "未操作多少分钟后退出",
+    "minutesHelp": "可选择 {min} 至 {max} 分钟，默认为 15 分钟。无论如何，会话仍会在登录 8 小时后结束。",
+    "save": "保存自动退出设置",
+    "saving": "正在保存…",
+    "notEnforced": "此安装未使用内置登录，因此该时限暂未生效。",
+    "result": {
+      "saved": "自动退出设置已保存。",
+      "invalid": "请输入允许范围内的整数分钟数。",
+      "conflict": "其他人已修改此设置。请重新加载页面后再试。",
+      "forbidden": "只有集团管理员可以修改自动退出设置。",
+      "unavailable": "无法保存自动退出设置，请重试。"
+    }
   }
 }

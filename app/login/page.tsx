@@ -35,12 +35,12 @@ import { signOutUnlinkedAction } from '@/app/auth-actions';
  * true for local dev too, where the fallback still applies and this page is a courtesy rather than a
  * gate — so local dev keeps the short note and no identity list.
  */
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ signedOut?: string; returnTo?: string; organization?: string | string[] }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ signedOut?: string; returnTo?: string; organization?: string | string[]; reason?: string }> }) {
   if (internalSelected()) {
     const { currentInternalIdentity } = await import('@/lib/internal-auth/web-session');
     const query = await searchParams;
     if (await currentInternalIdentity()) redirect(safeReturnTo(query.returnTo));
-    return <InternalAuthForm organization={loginOrganization(query.organization, internalConfig().organization)} returnTo={safeReturnTo(query.returnTo)} presentation={await publicLoginPresentation()}/>;
+    return <InternalAuthForm organization={loginOrganization(query.organization, internalConfig().organization)} returnTo={safeReturnTo(query.returnTo)} idleSignedOut={query.reason === 'idle'} presentation={await publicLoginPresentation()}/>;
   }
   const t = await getTranslations('auth');
   const tCommon = await getTranslations('common');

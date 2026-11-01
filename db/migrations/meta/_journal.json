@@ -4481,6 +4481,13 @@
       "when": 1793330000276,
       "tag": "0876_epf_manual_percentage_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1793330000298,
+      "tag": "0898_session_idle_timeout",
+      "breakpoints": true
     }
   ]
 }

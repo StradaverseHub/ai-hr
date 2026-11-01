@@ -9,8 +9,10 @@ import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
-export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation }: {
+export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, idleSignedOut = false }: {
   presentation?: LoginPresentation; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
+  /** ADR-0171: arrived here because the session ended after the organization's idle limit. */
+  idleSignedOut?: boolean;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
   const router = useRouter();
@@ -65,6 +67,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         <h1 id="internal-auth-title">{state.step === 'login' ? copy('welcome') : t(title)}</h1>
         {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
       </header>
+      {idleSignedOut && state.step === 'login' && !error && <p role="status" data-idle-signed-out className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t('idleSignedOut')}</p>}
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{t(`errors.${errors.includes(error) ? error : 'unavailable'}`)}</p>}
       {state.step === 'signing-in' ? <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{t('signingInHelp')}</p>
       : state.step === 'resetDone' ? <div className="space-y-4"><p role="status" className="text-sm">{t('resetDoneHelp')}</p><a href="/login" className="text-sm underline">{t('back')}</a></div> : state.step === 'sent' ? <div className="space-y-4"><p role="status" className="text-sm leading-relaxed">{t('sentHelp')}</p><a className="text-sm underline" href="/login">{t('back')}</a></div>
