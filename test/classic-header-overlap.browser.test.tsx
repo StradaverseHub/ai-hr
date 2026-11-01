@@ -3,7 +3,7 @@ import {afterAll,afterEach,beforeAll,describe,expect,it,vi} from 'vitest';
 import {page} from 'vitest/browser';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
-import type {ComponentProps} from 'react';
+import type {ComponentProps,MouseEvent} from 'react';
 import en from '../messages/en.json';
 import geometry from './fixtures/combined-release-shell-geometry.json';
 import controls from './fixtures/classic-header-controls.json';
@@ -17,10 +17,11 @@ import '../app/atelier.css';
 
 const ports=vi.hoisted(()=>({scope:vi.fn(),locale:vi.fn(),logout:vi.fn(),uiTheme:vi.fn(),colorTheme:vi.fn(),markRead:vi.fn(),markAllRead:vi.fn(),refresh:vi.fn(),dark:false}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:ports.refresh,push:vi.fn(),replace:vi.fn()})}));
-vi.mock('next/link',async()=>{
+// Match the existing shell fixture's inert router boundary; direct next/link imports stay real.
+vi.mock('../components/intent-link',async()=>{
  const React=await import('react');
- function FixtureLink({prefetch:_prefetch,scroll:_scroll,replace:_replace,...props}:ComponentProps<'a'>&{prefetch?:boolean;scroll?:boolean;replace?:boolean}){return React.createElement('a',props);}
- return {default:FixtureLink};
+ function FixtureLink({prefetch:_prefetch,...props}:ComponentProps<'a'>&{prefetch?:boolean}){return React.createElement('a',{...props,onClick:(event:MouseEvent<HTMLAnchorElement>)=>{event.preventDefault();props.onClick?.(event);}});}
+ return {default:FixtureLink,IntentLink:FixtureLink};
 });
 vi.mock('@/app/scope-actions',()=>({setCompanyScope:ports.scope}));
 vi.mock('@/app/i18n-actions',()=>({setLocale:ports.locale}));
