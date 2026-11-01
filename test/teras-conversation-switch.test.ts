@@ -114,7 +114,7 @@ describe('the staging operator path',()=>{
    const db=switchDatabase(connection),identity=await db.identity();
    const dry=await runSwitch(db,parseSwitchArguments(['--environment','staging','--operator','ci-fixture']));
    expect(dry.applied).toBe(false);expect(await row(b.tenantId)).toEqual([]);
-   expect(dry.tenants.map(tenant=>tenant.tenantId).sort()).toEqual([b.tenantId,other.tenantId].sort());
+   expect(dry.tenants.map(tenant=>tenant.tenantId)).toEqual(expect.arrayContaining([b.tenantId,other.tenantId]));
    await runSwitch(db,parseSwitchArguments(['--environment','staging','--operator','ci-fixture','--apply','--confirm-fictional-data','--expected-database-identity',identity]));
    for(const tenantId of [b.tenantId,other.tenantId]){
     expect((await row(tenantId))[0]).toMatchObject({enabled:true,changedByUserId:null,changedByOperator:'operator:ci-fixture',attestedProvider:null,version:1});

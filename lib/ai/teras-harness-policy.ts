@@ -31,7 +31,7 @@ type Message=Readonly<{role:'system'|'user';content:string}|{role:'assistant';co
 type Declaration=Readonly<{name:string;description:string;parameters:Readonly<Record<string,unknown>>}>;
 type Source=Readonly<{version:1;messages:readonly Message[];tools:readonly Declaration[];maxOutputTokens:number;timeoutMs:number}>;
 
-const text=(value:unknown,max=LIMITS.text):string=>typeof value==='string'&&value.length<=max?value:privatePolicyRefusal();
+const text=(value:unknown,max:number=LIMITS.text):string=>typeof value==='string'&&value.length<=max?value:privatePolicyRefusal();
 const plain=(value:unknown):unknown=>JSON.parse(JSON.stringify(value));
 
 /** Strict structural capture of the harness request. Anything else is refused. */
@@ -121,6 +121,7 @@ function conversation(source:Source):ConverseArgs{
     return{id:call.id,name,input:toStrictArguments(declared.get(name),parsed(call.arguments))};});
    turns.push({role:'assistant',content:message.content??'',...(toolCalls.length?{toolCalls}:{})});continue;
   }
+  if(message.role!=='tool')return privatePolicyRefusal();
   const name=names.get(message.toolCallId);if(!name)return privatePolicyRefusal();
   const last=turns.at(-1),result={id:message.toolCallId,name,content:message.content};
   if(last?.role==='tool')last.results.push(result);else turns.push({role:'tool',results:[result]});

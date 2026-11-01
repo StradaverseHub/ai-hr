@@ -39,7 +39,7 @@ export async function askFromLauncherAction(input: { question: unknown; path: un
     // ADR-0169 §5.1: the tenant's Noveri conversation switch (off by default) sends this caller's turn through the
     // Teras harness. Off, or unreadable, and everything below is the closed grammar exactly as before.
     // Loaded on demand: the closed grammar path loads only the switch reader, never the turn runner.
-    const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session),()=>({route:'closed' as const}));
+    const route:ConversationRoute=await import('@/core/teras-wiring/switch').then(owner=>owner.conversationRoute(session)).catch(():ConversationRoute=>({route:'closed'}));
     if(route.route==='harness')return await askThroughHarness(session,route,{question,conversationScope,clarification:input.clarificationExchangeId!==undefined,continuation:input.previousConversationToken});
     const { exchangeId, conversationToken } = await askAssistant(session, { question, conversationScope,...(input.clarificationExchangeId===undefined?{}:{clarificationExchangeId:input.clarificationExchangeId as string}), ...(input.previousExchangeId === undefined ? {} : {previousExchangeId: input.previousExchangeId as string,previousConversationToken: input.previousConversationToken as string}) });
     revalidatePath('/assistant');
