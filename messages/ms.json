@@ -26877,7 +26877,8 @@
     "switchAccountSubmit": "Log keluar dan buka jemputan",
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
-    "signingInHelp": "Membawa anda ke AIHR."
+    "signingInHelp": "Membawa anda ke AIHR.",
+    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan."
   },
   "aiManagement": {
     "title": "Pengurusan AI",
@@ -33440,5 +33441,25 @@
     "reconcile": "Check reconciled directory object",
     "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
     "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "Adakah anda masih di sana?",
+    "warningBody": "Untuk keselamatan anda, anda akan dilog keluar dalam {seconds} saat kerana tidak aktif.",
+    "staySignedIn": "Kekal log masuk",
+    "signOutNow": "Log keluar sekarang",
+    "settingsTitle": "Log keluar automatik",
+    "settingsDescription": "Log keluar pengguna daripada aplikasi web apabila mereka tidak aktif selama tempoh ini. Mereka akan melihat amaran satu minit terlebih dahulu.",
+    "minutesLabel": "Log keluar selepas (minit tidak aktif)",
+    "minutesHelp": "Pilih antara {min} hingga {max} minit. Lalai ialah 15 minit. Sesi tetap tamat 8 jam selepas log masuk.",
+    "save": "Simpan log keluar automatik",
+    "saving": "Menyimpan…",
+    "notEnforced": "Pemasangan ini tidak menggunakan log masuk terbina dalam, jadi had ini belum digunakan.",
+    "result": {
+      "saved": "Log keluar automatik disimpan.",
+      "invalid": "Masukkan bilangan minit dalam julat yang dibenarkan.",
+      "conflict": "Orang lain telah mengubah tetapan ini. Muat semula halaman dan cuba lagi.",
+      "forbidden": "Hanya pentadbir kumpulan boleh mengubah log keluar automatik.",
+      "unavailable": "Log keluar automatik tidak dapat disimpan. Cuba lagi."
+    }
   }
 }

@@ -9,8 +9,8 @@ import type { LoginPresentation } from '@/lib/login-presentation';
 import { useTranslations,useLocale } from 'next-intl';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; error?: string };
-export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false }: {
-  presentation?: LoginPresentation; entraError?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
+export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
+  presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
   const entra=useTranslations('entra');
@@ -67,6 +67,7 @@ export function InternalAuthForm({ organization = '', returnTo = '/', mode = 'lo
         <h1 id="internal-auth-title">{state.step === 'login' ? copy('welcome') : t(title)}</h1>
         {state.step === 'login' && <p>{copy('signInSubtitle')}</p>}
       </header>
+      {idleSignedOut && state.step === 'login' && !error && <p role="status" data-idle-signed-out className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t('idleSignedOut')}</p>}
       {entraError && state.step==='login' && <p role="alert" className="text-sm text-destructive">{entra('loginError')}</p>}
       {error && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{t(`errors.${errors.includes(error) ? error : 'unavailable'}`)}</p>}
       {state.step === 'signing-in' ? <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{t('signingInHelp')}</p>

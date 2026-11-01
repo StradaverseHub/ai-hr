@@ -5,6 +5,14 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Idle sign-out policy — 2 November 2026 (provisional source claim)
+
+`claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /
+when1793330000298 on its own branch. Claims observed on 2 November 2026 ran to file0897, idx770 and
+when1793330000297 across remote branches and registered worktrees, so the timestamp sits above all of them.
+This is unapplied source only: re-freeze above the then-live ordered ledger, relocate the idx with the
+competing claims and keep the timestamp above every earlier-applied migration before integration.
+
 ## V9 coordinated staging successor — 30 October 2026
 
 The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.
@@ -887,3 +895,14 @@ journals additionally include foreign0898/…298 (auto-logout). Those foreign cl
 Recheck competing reservations, the accepted journal and the live installation watermark before
 integration; adjust the unapplied index to the aggregate journal. This is source allocation only,
 not installation or release evidence.
+
+
+## PR #194 / PR #196 authentication integration — 2 November 2026
+
+The Entra candidate integrates the frozen idle-session contract from PR #196 at
+`2dd7fc4d7152e3f91a99b3586be3593edd41136c`. Its uninstalled `0898` body and timestamp `1793330000298`
+remain unchanged. The uninstalled `0899` Entra migration follows at timestamp `1793330000299` and journal
+index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / index 754 is preserved.
+This is an owned aggregate source reservation, not adoption of either member's gate evidence.
+Recheck the then-live watermark and release order before integration or installation; later accepted
+migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.

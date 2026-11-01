@@ -121,3 +121,19 @@ Rehearse populated migration and key/database restore. Complete the required sec
 gate, staging acceptance and customer IT setup before claiming this integration installed or ready.
 
 The technical connector setup screen currently renders explicitly in English. Microsoft sign-in controls and errors are localized for the six existing employee languages; customer-language review of the connector instructions remains required before a localized rollout.
+
+
+## Shared idle-session contract (PR #196)
+
+The integrated candidate uses the same organization idle limit as embedded login (default15 minutes,
+configured5–480). Microsoft web sessions record user activity in their own encrypted session store;
+ordinary page reads/polling do not extend that clock. The existing activity endpoint resolves the actual
+provider before refusing a cookie, so a fresh Microsoft session is not cleared by the embedded-credential
+lookup. Family locking serializes activity and expiry; expired sessions cannot be revived. Sessions
+created before activity tracking start their idle clock once on first read. Native sessions retain the
+existing access/refresh and absolute-lifetime contract and do not use the web-only idle timer.
+
+The merged candidate preserves0898 before0899 and requires its own complete gate. Password-policy
+PR #193 remains separate: local credential version changes revoke Microsoft HR sessions, while
+Microsoft owns its own credential-expiry/MFA policy. Integration against any changed release baseline
+must revalidate these auth boundaries and both migration identities.

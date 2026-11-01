@@ -336,3 +336,59 @@ disposition within existing scope, not a new privacy approval, certification, ru
 acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
 requires another exact review.
 
+
+## Technical source binding — 2 November 2026, configurable idle sign-out (ADR-0171)
+
+Branch `claude/idle-session-timeout` (configurable idle sign-out for the web app) moves the provider closure
+from 1141 files / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d` to 1143 files /
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664`.
+
+Closure membership grows by two policy sources reached through `db/schema.ts` and the embedded sign-in
+service: `lib/session-policy.ts` (bounds and defaults) and `lib/session-policy-server.ts` (reads only the
+idle limit through `app.session_idle_timeout_minutes`). Changed covered files: `db/schema.ts`,
+`lib/internal-auth/service.ts`, the two new files above and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file
+  changed.
+- Dictionaries: 16 new leaves per locale under `sessionTimeout.*` plus `internalAuth.idleSignedOut`; no
+  `assistant.*`, `onehr.*` or `aiManagement.*` leaf changed.
+- `db/schema.ts` only adds the `session_policy` table (tenant, idle minutes 5–480, revision, timestamp).
+- `lib/internal-auth/service.ts` records last reported activity on web sessions, revokes and audits a session
+  idle past its organization's limit, and adds `touchSession`; it reads no employee or HR data.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original human
+status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`670c4af684ef5bbf240c93e9f7930925618941fbb71bb09e7cf013cb4c712979` (no approval binds it).
+
+The release owner (human) approved this technical re-binding in the implementation session on 2 November
+2026 ("Yes, approve rebind") after reviewing the changed-file list above. This is a technical disposition
+within existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Fresh
+exact-source hosted qualification remains required. Any further covered-byte change requires another exact
+review.
+
+## Technical source review — 2 November 2026, PR #194 with shared idle policy
+
+The PR review and required security/data gate include an exact technical source review of the
+combined Entra and PR #196 idle-policy candidate. The closure is 1146 files at
+`bb2514a8ef4722f03d02a755dcec4fa591f7c2c8ba7cce7455fd0a9861cedc98`.
+Compared with accepted main, covered changes are `db/schema.ts`,
+`lib/ai/agent-capability-inventory.ts`, `lib/entra/{model,sessions,store}.ts`,
+`lib/internal-auth/{service,web-session}.ts`, `lib/permissions.ts`, `lib/session.ts`,
+`lib/session-policy{,-server}.ts` and the six locale dictionaries.
+
+The added sources hold directory configuration, explicit identity bindings and session validation;
+credentials remain in the existing encrypted internal-auth store. The provider serializers,
+transports, prompts, spend controls and approval validation are unchanged. New administration and
+login actions are classified as access/authentication handoffs, not agent effects. Dictionary changes
+are Entra setup/login and session-timeout copy. The schema adds only the shared tenant idle policy;
+Entra operational tables are private SQL interfaces, not new AI provider payloads. No protected
+purpose, raw-data variant, contract or autonomous sensitive effect is added.
+
+This agent technical review rebinds only `sourceDigest` on the same 24 approved records within the
+requested review/fix/gate scope. Original human reviewers, dates, statuses and evidence anchors are
+preserved; the two pending records remain identical and blocked. It does not assert a new human
+privacy approval, live tenant acceptance or release PASS. The generated module manifest is
+`a9b6438d2470065e9f73e31ec17eaa5a8cc2b6799b03501e939d20997b81515f`.
+Further covered source changes require exact review again.

@@ -6,13 +6,15 @@ import { digest, opaque, validOpaque, passwordHash, passwordMatches, validatePas
 import { authTransaction, readRecord, writeRecord, deleteRecord, revokeCredentialsSessions, type AuthSql } from './store';
 import { InternalAuthError } from './errors';
 import { assertActiveCredential, type Credential } from './credential';
+import { idleTimeoutMinutesFor } from '../session-policy-server';
 export { InternalAuthError } from './errors';
 export { assertActiveCredential } from './credential';
 export type { Credential } from './credential';
 
 type Challenge = { subject: string; version: string; phase: 'password' | 'enroll' | 'mfa'; attempts: number; native: boolean; expiresAt: number;
   secret?: string; mfaPassed?: boolean; invitation?: string };
-type Session = { subject: string; version: string; family: string; native: boolean; absoluteExpiry: number };
+/** lastActivity (web only, ADR-0171): the last reported user activity; absent on sessions created before idle sign-out. */
+type Session = { subject: string; version: string; family: string; native: boolean; absoluteExpiry: number; lastActivity?: number };
 type Refresh = Session & { used: boolean };
 export type Organization = { code: string; tenantId: string; name: string };
 export type AuthReply = { step: 'password' | 'enroll' | 'mfa'; challenge: string; secret?: string; account?: string } |
@@ -37,15 +39,15 @@ export async function takeRate(scope: string, limit: number, window = 15 * 60_00
   });
   if (!ok) throw new InternalAuthError('rateLimited');
 }
-async function audit(tx: AuthSql, c: Credential, event: string, refused = false) {
+async function audit(tx: AuthSql, c: Credential, event: string, refused = false, system = false) {
   const rows = await tx.unsafe('select app_user_id from app.principal_by_identity($1,$2)', [c.issuer, c.subject]);
   if (rows[0]) await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,$3,$4,$5::uuid,NULL)",
-    [c.tenantId, rows[0].app_user_id, event, refused ? 'external' : 'user', refused ? null : rows[0].app_user_id]);
+    [c.tenantId, rows[0].app_user_id, event, system ? 'system' : refused ? 'external' : 'user', refused || system ? null : rows[0].app_user_id]);
 }
 async function makeSession(tx: AuthSql, c: Credential, native: boolean, recoveryCodes?: string[]): Promise<AuthReply> {
   await assertActiveCredential(tx, c);
   const raw = opaque(), family = randomUUID(), expiry = Date.now() + SESSION_LIFE;
-  const value: Session = { subject: c.subject, version: c.version, family, native, absoluteExpiry: expiry };
+  const value: Session = { subject: c.subject, version: c.version, family, native, absoluteExpiry: expiry, ...(native ? {} : { lastActivity: Date.now() }) };
   await writeRecord(tx, `family:${family}`, { subject: c.subject }, c.subject, expiry);
   await writeRecord(tx, `session:${digest(raw)}`, value, c.subject, native ? Date.now() + ACCESS_LIFE : expiry);
   let refresh: string | undefined;
@@ -179,7 +181,8 @@ export async function verifyMfa(raw: string, code: string, native = false): Prom
     return makeSession(tx, c, ch.native, codes);
   });
 }
-export async function readSession(token: string | undefined, native = false) {
+/** Web sessions also end after the organization's idle limit (ADR-0171); that check revokes and audits them. */
+async function loadSession(token: string | undefined, native: boolean) {
   if (native && !token?.startsWith('aihr_')) return null;
   const raw = native ? token!.slice(5) : token;
   if (!validOpaque(raw)) return null;
@@ -188,8 +191,43 @@ export async function readSession(token: string | undefined, native = false) {
   const c = await readRecord<Credential>(client, credentialKey(session.subject));
   if (!c || c.version !== session.version || !await readRecord(client, `family:${session.family}`)) return null;
   try { await assertActiveCredential(client, c); } catch (e) { if (e instanceof InternalAuthError) return null; throw e; }
+  if (native) return { key, session, c, idleMs: null };
+  const idleMs = await idleTimeoutMinutesFor(c.tenantId) * 60_000;
+  if (session.lastActivity === undefined) {
+    // Created before idle sign-out existed: start its idle clock now rather than ending it on deployment.
+    const started = { ...session, lastActivity: Date.now() };
+    await authTransaction(key, tx => writeRecord(tx, key, started, c.subject, session.absoluteExpiry));
+    return { key, session: started, c, idleMs };
+  }
+  if (Date.now() - session.lastActivity > idleMs) {
+    await authTransaction(`family:${session.family}`, async tx => {
+      await deleteRecord(tx, `family:${session.family}`);
+      await deleteRecord(tx, key);
+      await audit(tx, c, 'app-user.session-idle-expired', false, true);
+    });
+    return null;
+  }
+  return { key, session, c, idleMs };
+}
+export async function readSession(token: string | undefined, native = false) {
+  const loaded = await loadSession(token, native);
+  if (!loaded) return null;
+  const { key, session, c } = loaded;
   return { subject: c.subject, issuer: c.issuer, email: c.email, emailVerified: c.emailVerified, family: session.family,
     credential: c, sessionKey: key };
+}
+/** Real user activity reported by the shell. Writes at most every 30 seconds; returns the remaining idle allowance. */
+export async function touchSession(token: string | undefined): Promise<{ idleTimeoutSeconds: number; remainingSeconds: number } | null> {
+  const loaded = await loadSession(token, false);
+  if (!loaded || loaded.idleMs === null) return null;
+  const { key, session, c, idleMs } = loaded;
+  let last = session.lastActivity!;
+  if (Date.now() - last >= 30_000) {
+    last = Date.now();
+    await authTransaction(key, tx => writeRecord(tx, key, { ...session, lastActivity: last }, c.subject, session.absoluteExpiry));
+  }
+  const remaining = Math.min(last + idleMs, session.absoluteExpiry) - Date.now();
+  return { idleTimeoutSeconds: idleMs / 1000, remainingSeconds: Math.max(0, Math.floor(remaining / 1000)) };
 }
 export async function rotateRefresh(token: string): Promise<AuthReply> {
   const raw = token.startsWith('aihr_refresh_') ? token.slice(13) : '';

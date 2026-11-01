@@ -4485,6 +4485,13 @@
     {
       "idx": 755,
       "version": "7",
+      "when": 1793330000298,
+      "tag": "0898_session_idle_timeout",
+      "breakpoints": true
+    },
+    {
+      "idx": 756,
+      "version": "7",
       "when": 1793330000299,
       "tag": "0899_entra_workforce",
       "breakpoints": true
