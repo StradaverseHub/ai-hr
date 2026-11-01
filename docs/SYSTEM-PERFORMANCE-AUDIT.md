@@ -46,8 +46,30 @@ were not convincingly better. That bundle is not promoted. Follow-up experiment
 41296762228 on source94353cade instead measures delaying subject metadata until
 after the unchanged request decision proof; it passed exact task/refusal checks but has uneven performance (manager137.9→113.9ms,
 employee88.7→91.8ms, HR86.1→86.3ms, delegate164.7→162.9ms versus its restored
-baseline). It is not promoted. The next reversible experiment targets repeated
-principal/grant query planning, with no authorization-result cache.
+baseline). It is not promoted. The subsequent principal/grant experiment41297191155 on sourcee52d9ae18
+passed. Candidate/restored medians(ms): assigned HR75.1/87.0, delegate144.5/151.3,
+manager124.7/130.1, employee75.8/87.6. These modest component gains preserve exact
+ordered tasks and existing expiry/archive/person refusals, not500-user capacity.
+Unapplied draft0877 copies the complete original principal query into a reusable
+PL/pgSQL query plan; no result is cached. Frozen candidate7b93d22e4 undergoes
+exact-file/whole-compiler41297609428 and12 affected identity/tenant/RLS files
+41297616183. Exact-file41297609428 PASS: identical task results and owner/ACL/security attributes,
+unknown user returns no row, actual grant changes appear immediately and stale
+claimed HR grants refuse. The whole compiler is still running. All220 affected
+cases in12 files41297616183 PASS, zero failures/skips.
+
+The two metadata-source workloads41296295314/41296304113 failed before load at
+clocking import; no500-user timing exists for that source. Native code refuses
+clockings inside closed payroll. The1 November fixture's prior-month closed slips
+overlap the recent-day import dates; the UI therefore never offers100 valid
+records. The original failures are retained. A shared fixture calendar now puts
+closed history before a90-day import window, including month/year/leap boundaries.
+The real100-line native validation is checked for both tenant fixtures before
+building, to fail cheaply on dates/mapping/permissions. A workflow-only diagnostic
+uses100k Claims/90k Attendance instead of2m records, with the same500 identities,
+50-person Payroll batches and all workflow assertions. Full-load fixtures retain
+one million Claims plus requested Attendance volume. Single preflight recovery
+precedes any further full-load run.
 No later speed pass is claimed. These new fixtures derive their business dates from
 the native date owner; the current-month boundary differs from31 October tests,
 so cross-run performance changes must not be treated as controlled causal ratios.

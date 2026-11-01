@@ -1,6 +1,7 @@
 /** Real built browser actions, replayed over HTTPS; owner DB access is a read-only oracle. */
 import assert from 'node:assert/strict';
 import {setTimeout as pause} from 'node:timers/promises';
+import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,db,request,base,report,save,thinkTimeMs}){
  const templates={},evidence=[];report.mixedWorkflows={baseline:evidence,completed:{leave:0,personnel:0,attendance:0,payroll:0,payrollExport:0,clockingImport:0},failures:[],capturedTransport:[],captureProtocol:'new click request and response headers; UI and persisted outcomes checked separately'};
  async function capture(page,click,kind){
@@ -194,8 +195,8 @@ export async function prepareMixedWorkflows({context,visit,fixture,employee,hr,d
    evidence.push({workflow:'payroll close and employee publication',persisted:true,employees:50,unpublishedRefused:true,ownPublishedStatement:true,foreignDocumentRefusals:2});save();
   }finally{await employeeContext.close();}
  }
- const importDate=offset=>new Date(Date.parse(fixture.today+'T12:00:00Z')-offset*86400000).toISOString().slice(0,10);
- const importText=(user,date)=>{const [year,month,day]=date.split('-');return fixture.users.filter(actor=>actor.tenant===user.tenant&&actor.company===user.company).flatMap(actor=>[['08','31','IN'],['16','31','OUT']].map(parts=>['PERF'+String(actor.index).padStart(4,'0'),day,month,year,...parts].join(','))).join('\n');};
+ const {importDate}=performanceFixtureCalendar(fixture.today);
+ const importText=(user,date)=>clockingFixtureText(fixture.users,user.tenant,user.company,date);
  async function assertImported(user,fileName,date){
   const rows=await db`select id,total_lines,imported_lines,failure_reason from clocking_import_run where tenant_id=${fixture.tenants[user.tenant].tenantId}::uuid and file_name=${fileName}`;
   assert.equal(rows.length,1);const row=rows[0];assert.equal(row.failure_reason,null);assert.equal(row.total_lines,100);assert.equal(row.imported_lines,100);

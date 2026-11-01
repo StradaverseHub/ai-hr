@@ -4,6 +4,7 @@ import {randomUUID,randomBytes} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {fixtureAuditCounts,assertFixtureAudit} from './fixture-audit.ts';
+import {performanceFixtureCalendar,clockingFixtureText} from './fixture-workload.mjs';
 assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.AUTH_PROVIDER,'internal');
 for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
  const url=new URL(process.env[key]);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5433');assert.equal(url.pathname,'/ai_hr_system_perf');
@@ -19,7 +20,7 @@ for(const key of ['DATABASE_URL','MIGRATION_DATABASE_URL']){
 }
 const s=await import('../../db/schema.ts');
 const {hireEmployee}=await import('../../core/org.ts');
-const {createClockingMapping}=await import('../../packs/attendance/service.ts');
+const {createClockingMapping,validateClockingImport}=await import('../../packs/attendance/service.ts');
 const {createClaimType}=await import('../../packs/claims/service.ts');
 const {saveAttendanceWorkflow,setAttendanceWorkflowEnabled}=await import('../../core/attendance-workflow.ts');
 const {createBatch,generatePayslips,closeBatch}=await import('../../packs/payroll/service.ts');
@@ -30,9 +31,9 @@ const {writeRecord}=await import('../../lib/internal-auth/record-store.ts');
 const {internalIssuer}=await import('../../lib/internal-auth/config.ts');
 const {generateSecret}=await import('otplib');
 const today=todayInKualaLumpur(),month=today.slice(0,7),password='Synthetic-'+randomBytes(24).toString('hex');
-const historicalMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-2,1)).toISOString().slice(0,7);
-const publicationMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7))-3,1)).toISOString().slice(0,7);
+const {historicalMonth,publicationMonth,importDate}=performanceFixtureCalendar(today);
 const attendanceDays=Number(process.env.PERF_ATTENDANCE_DAYS||180);assert([180,2000].includes(attendanceDays));
+const claimsPerEmployee=process.env.PERF_HTTP_SUITE==='workflow-preflight'?200:2000;
 // Retained attendance must not predate employment; preserve the old 180-day fixture's hire date.
 const hiredOn=attendanceDays===180?'2025-01-01':new Date(Date.parse(today+'T12:00:00Z')-(attendanceDays+1)*86400000).toISOString().slice(0,10);
 const hash=await passwordHash(password),users=[],tenants=[];
@@ -89,7 +90,7 @@ try{
   const historyStarted=performance.now();
   await owner.client`insert into claim_request(tenant_id,employment_id,claim_type_id,amount,incurred_on,status,created_at)
     select ${b.tenantId}::uuid,e.id,${type.id}::uuid,1,${today}::date,'pending',now()-n*interval '1 minute'
-    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(1,2000)n`;
+    from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(1,${claimsPerEmployee}::integer)n`;
   await owner.client`insert into attendance(tenant_id,employment_id,attendance_date,check_in_at,check_out_at,status,worked_minutes,ot_minutes)
     select ${b.tenantId}::uuid,e.id,${today}::date-n,'09:00'::time,'17:00'::time,'present',480,0
     from unnest(${cohort.map(u=>u.employmentId)}::uuid[]) e(id)cross join generate_series(0,${attendanceDays-1}::integer)n`;
@@ -107,7 +108,7 @@ try{
  }
  for(const table of ['claim_request','attendance','employment','person','app_user','role_assignment','assignment','reporting_line','payslip'])await owner.client.unsafe('analyze '+table);
  const counts=await owner.client`select (select count(*)::int from claim_request)as claims,(select count(*)::int from attendance)as attendance,(select count(*)::int from payslip)as payslips`;
- assert.equal(counts[0].claims,1000000);assert.equal(users.length,500);
+ assert.equal(counts[0].claims,500*claimsPerEmployee);assert.equal(users.length,500);
  assert.equal(counts[0].attendance,users.length*attendanceDays);assert.equal(counts[0].payslips,500);
  const [attendanceBounds]=await owner.client`select count(*) filter(where a.attendance_date=${today}::date)::int as current_rows,
   count(*) filter(where a.attendance_date<e.hired_on)::int as before_hire
@@ -118,9 +119,23 @@ try{
  writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'audit-fixture.json'),JSON.stringify(auditCounts,null,2));
  assertFixtureAudit(audit,tenants.map(tenant=>tenant.tenantId));
  for(const tenant of tenants)tenant.auditUnchainedPrefix=audit.find(row=>row.tenant_id===tenant.tenantId).initialization_prefix;
+ // Fail before the expensive production build if payroll dates or mapping reject the real file.
+ const importPreflights=[];
+ for(const [tenantIndex,tenant]of tenants.entries()){
+  const hr=users.find(user=>user.tenant===tenantIndex&&user.role==='companyHR');
+  const entitlements=(await entitledCtx({tenantId:tenant.tenantId,adminUserId:hr.userId})).entitlements;
+  const context={tenantId:tenant.tenantId,userId:hr.userId,personId:hr.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:hr.companyId}],entitlements};
+  const preview=await validateClockingImport(context,tenant.clockingMappingId,clockingFixtureText(users,tenantIndex,hr.company,importDate(2)));
+  const result={tenant:tenantIndex,date:importDate(2),counts:preview.counts,refusalKinds:[...new Set(preview.errorRows.map(row=>row.result))]};
+  importPreflights.push(result);writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture-import-preflight.json'),JSON.stringify(importPreflights,null,2));
+  assert.equal(preview.counts.total,100);assert.equal(preview.counts.valid,100,'native clocking fixture preview refused: '+result.refusalKinds.join(','));
+  assert.equal(preview.counts.employees,50);assert.equal(preview.errorRows.length,0);
+  const expected=new Set(users.filter(user=>user.tenant===tenantIndex&&user.company===hr.company).map(user=>user.employmentId));
+  assert(preview.validRows.every(row=>expected.has(row.employmentId)),'clocking fixture crossed company/tenant');
+ }
  const modules=await owner.client`select tenant_id,array_agg(module_code order by module_code)as modules from tenant_module where tenant_id=any(${tenants.map(t=>t.tenantId)}::uuid[])and status='active'group by tenant_id`;
 
  writeFileSync(join(process.env.PERF_PRIVATE_DIR,'fixture.json'),JSON.stringify({today,month,users,tenants}),{mode:0o600});
- writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,historicalMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
+ writeFileSync(join(process.env.PERF_EVIDENCE_DIR,'fixture.json'),JSON.stringify({fictional:true,operationTimingScope:'sequential fictional native fixture commands, not HTTP concurrency',operationTimings:Object.fromEntries(Object.entries(operationTimings).map(([key,values])=>[key,timingSummary(values)])),tenants:2,companies:10,users:500,claimsPerEmployee,fixtureVolumeKind:claimsPerEmployee===2000?'full-load':'workflow-preflight-only',historicalMonth,publicationMonth,monthlyBasicSalary:5000,fixtureCommandContext:'native database-resolved entitlements',payslipFixture:'500 native-generated/closed historical slips; current processing drafts start empty',attendanceDays,attendanceBounds,roles:Object.fromEntries(['employee','manager','companyHR','groupHR'].map(role=>[role,users.filter(u=>u.role===role).length])),counts:counts[0],authentication:'canonical encrypted internal sessions; normal HTTP session validation; not 500 account-enrollment throughput',auditHashChainRequested:process.env.AUDIT_HASH_CHAIN_ENABLED==='true',auditHashChain:audit.every(row=>row.chained>0&&row.events===row.chained+row.initialization_prefix),auditPolicy:'All post-initialization events chained; one canonical initialization prefix per tenant',auditCounts,explicitActiveModules:tenants.map((t,index)=>({tenant:index,modules:modules.find(row=>row.tenant_id===t.tenantId)?.modules??[]})),coreModules:MODULE_CATALOG.filter(m=>m.isCore).map(m=>m.code)},null,2));
  console.log('[system-perf-fixture] complete; private sessions are outside artifact directory');
 }finally{await closeAll();}
