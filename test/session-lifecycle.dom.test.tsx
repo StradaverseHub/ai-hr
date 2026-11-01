@@ -5,7 +5,7 @@
  */
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import en from '../messages/en.json';
 
 const nav = vi.hoisted(() => ({ pathname: '/' }));
@@ -18,12 +18,13 @@ const cover = () => document.querySelector('[data-auth-route-reload]');
 const warning = () => document.querySelector<HTMLDialogElement>('[data-idle-warning]');
 const ok = (remainingSeconds: number) => new Response(JSON.stringify({ step: 'active', idleTimeoutSeconds: 300, remainingSeconds }), { status: 200 });
 
-function mount(props: Partial<SessionLifecycleProps> & { idleTimeoutSeconds: number | null }) {
+type Report = Mock<() => Promise<Response>>;
+function mount(props: Omit<Partial<SessionLifecycleProps>, 'report'> & { idleTimeoutSeconds: number | null; report?: Report }) {
   let now = 1_800_000_000_000;
   const clock = { now: () => now, advance: async (ms: number) => { for (let i = 0; i < ms; i += 1000) { now += 1000; await act(() => vi.advanceTimersByTimeAsync(1000)); } } };
   const reload = vi.fn(), signOut = vi.fn(async () => undefined);
-  const report = vi.fn(async () => ok(props.idleTimeoutSeconds ?? 0));
-  const all = { reload, signOut, report, now: clock.now, ...props };
+  const report: Report = props.report ?? vi.fn(async () => ok(props.idleTimeoutSeconds ?? 0));
+  const all = { reload, signOut, now: clock.now, ...props, report };
   render(<NextIntlClientProvider locale="en" messages={en}><SessionLifecycle {...all} /></NextIntlClientProvider>);
   return { ...clock, ...all };
 }
@@ -112,7 +113,7 @@ describe('idle sign-out', () => {
   });
 
   it('a server that already ended the session sends the tab straight to the login page', async () => {
-    const report = vi.fn(async () => new Response(JSON.stringify({ error: 'expired' }), { status: 401 }));
+    const report: Report = vi.fn(async () => new Response(JSON.stringify({ error: 'expired' }), { status: 401 }));
     const { signOut, reload, advance } = mount({ idleTimeoutSeconds: 300, report });
     await advance(1_000);
     expect(signOut).toHaveBeenCalledTimes(1);
@@ -127,8 +128,18 @@ describe('idle sign-out', () => {
     expect(reload).toHaveBeenCalledWith(expect.stringMatching(/^\/login\?reason=idle/));
   });
 
+  it("never ends a new session because of an earlier session's stored activity", async () => {
+    window.localStorage.setItem('aihr-session-activity', JSON.stringify({ input: 1, reportedAt: 1, serverDeadline: 2 }));
+    const { signOut, reload, report, advance } = mount({ idleTimeoutSeconds: 300 });
+    await advance(5_000);
+    expect(signOut).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(warning()?.open).toBe(false);
+  });
+
   it("uses the server's earlier deadline when it has not heard of the latest activity", async () => {
-    const report = vi.fn(async () => ok(90));
+    const report: Report = vi.fn(async () => ok(90));
     const { signOut, advance } = mount({ idleTimeoutSeconds: 300, report });
     await advance(1_000);
     await advance(30_000);

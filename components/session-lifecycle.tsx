@@ -116,8 +116,11 @@ function IdleSignOut({ idleTimeoutSeconds, reload, now, report, signOut }: Requi
   }, [leave, now, report]);
 
   useEffect(() => {
+    // Loading the document is activity. Storage can hold an earlier session's figures (signed out yesterday, or
+    // in another account); they must never end this one, so its server deadline is dropped until the first report.
     const shared = readShared();
-    if (shared) state.current = shared; else writeShared(state.current);
+    state.current = { input: Math.max(shared?.input ?? 0, now()), reportedAt: shared?.reportedAt ?? 0, serverDeadline: null };
+    writeShared(state.current);
     let lastWrite = 0;
     const onInput = () => {
       const at = now(), warning = dialog.current?.open === true;
