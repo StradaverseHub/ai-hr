@@ -48,13 +48,13 @@ export function Screen({
   const { status } = useSession();
   if (status !== 'signedIn') return <Redirect href="/sign-in" />;
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={design.schemaVersion === 2 && design.composition.navigation.style === 'top' ? [] : ['top']}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: palette.bg }]} edges={[]}>
       <Atmosphere strong={atmospheric} />
       <ScrollView
         // A tap on a button while the keyboard is up acts at once (it used to only dismiss the keyboard, and the shifted
         // layout could put the next tap on another control).
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: footer ? 32 : 126 }]}
+        contentContainerStyle={[styles.scroll, design.schemaVersion === 2 && { padding: design.composition.layout.padding, gap: design.composition.layout.gap, paddingBottom: 32 }]}
         refreshControl={onRefresh ? <RefreshControl refreshing={refreshing} onRefresh={() => { reload(); onRefresh(); }} /> : undefined}
       >
         {back ? <HeaderBack /> : null}{children}
@@ -233,7 +233,7 @@ export function fmtMoney(v: string): string {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: 20, paddingBottom: 126, gap: 18 },
+  scroll: { padding: 20, paddingBottom: 32, gap: 18 },
   title: { fontSize: 28, fontWeight: '600', color: colors.text, marginBottom: 4 },
   section: { fontSize: 17, fontWeight: '600', color: colors.muted, marginTop: 14 },
   card: { borderRadius: 14, padding: 20, gap: 12 },

@@ -87,7 +87,7 @@ export function LeaveHistoryScreen() {
   const { signOut, employmentId } = useSession();
   const [status, setStatus] = useState<(typeof FILTERS)[number]>(undefined);
   const list = usePagedResource(LEAVE_REQUESTS, { employmentId: employmentId ?? undefined, status }, keyOf, signOut);
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <PagedList list={list} keyOf={keyOf} emptyText={t('noRequests')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
         <HeaderBack />

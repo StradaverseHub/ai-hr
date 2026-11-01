@@ -14,7 +14,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ai.stradaverse.aihr.test",
-      "buildNumber": "6"
+      "buildNumber": "7"
     },
     "android": {
       "allowBackup": false,
@@ -35,7 +35,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "ai.stradaverse.aihr.test",
-      "versionCode": 6,
+      "versionCode": 7,
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"

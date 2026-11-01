@@ -52,7 +52,7 @@ export function AttendanceApplicationsScreen() {
   const list = usePagedResource(ATTENDANCE_APPLICATIONS, { employmentId: employmentId ?? undefined, status }, keyOf, signOut);
   // The chips' counts: the first page's own counts, read once per employment (one row, no filter).
   const counts = useApiV2('v2/attendance/applications', AttendanceApplicationsPageV2, { employmentId: employmentId ?? undefined, limit: '1' }, signOut).data?.counts;
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <PagedList list={list} keyOf={keyOf} emptyText={t('attNoApplications')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
         <HeaderBack />

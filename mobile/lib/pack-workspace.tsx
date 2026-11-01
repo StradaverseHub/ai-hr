@@ -48,8 +48,8 @@ export function PackWorkspaceScreen({kind,id}:{kind:PackWorkspaceKind;id:string}
   {pending?.uncertain&&<Card><Muted>{t('approvalUncertain')}</Muted><Button title={t('approvalRetry')} onPress={()=>void send(pending.body)}/></Card>}{pending&&!pending.uncertain&&<Muted>{t('approvalSending')}</Muted>}
  </View>;
  if(status!=='signedIn')return <Redirect href="/sign-in"/>;
- return <SafeAreaView edges={['top']} style={{flex:1,backgroundColor:palette.bg}}><Atmosphere/>
-  <FlatList data={w?.blocks??[]} keyExtractor={b=>b.id} contentContainerStyle={{padding:20,paddingBottom:126,gap:16}} refreshing={read.loading&&!!read.data} onRefresh={read.reload}
+ return <SafeAreaView edges={[]} style={{flex:1,backgroundColor:palette.bg}}><Atmosphere/>
+  <FlatList data={w?.blocks??[]} keyExtractor={b=>b.id} contentContainerStyle={{padding:20,paddingBottom:40,gap:16}} refreshing={read.loading&&!!read.data} onRefresh={read.reload}
    ListHeaderComponent={<View style={{gap:16}}><HeaderBack/><LoadState loading={read.loading} hasData={read.data!=null} error={read.error} onRetry={read.reload}/>{notice&&<Text accessibilityRole="alert">{notice}</Text>}{read.data?.outcome==='refused'&&<Muted>{t('approvalRefusalNotAssigned')}</Muted>}{w&&<Title>{w.title}</Title>}{w?.navigation&&<Card><Muted>{w.navigation.offset+1}–{Math.min(w.navigation.offset+25,w.navigation.total)} / {w.navigation.total}</Muted>{w.navigation.people.map(p=><Chip key={p.id} title={p.name} selected={w.navigation!.focus===p.id} disabled={!!pending} onPress={()=>navigate(p.id)}/>)}{w.navigation.offset>0&&<Button title="Previous people" disabled={!!pending} onPress={()=>navigate(undefined,Math.max(0,offset-25))}/>} {w.navigation.hasMore&&<Button title="Next people" disabled={!!pending} onPress={()=>navigate(undefined,offset+25)}/>}</Card>}</View>}
    renderItem={({item:b})=><Card><Text style={{color:palette.text,fontSize:18,fontWeight:'600'}}>{b.title}</Text>{b.rows.map((r,i)=><Row key={i} label={r.label} value={r.value}/>)}</Card>}
    ListFooterComponent={form}/>

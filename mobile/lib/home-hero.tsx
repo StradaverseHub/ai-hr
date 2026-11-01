@@ -6,8 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ActivityIndicator, Animated, Image, Pressable, ScrollView, View, useWindowDimensions, type ColorValue } from 'react-native';
 import { ClockPanel, type HomeClockView } from './clock-panel';
 import { router, useFocusEffect, type Href } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Atmosphere, DesignText as Text, TenantBrand, TenantSurface, useTenantDesign } from './design';
+import { Atmosphere, DesignText as Text, TenantSurface, useTenantDesign } from './design';
 import { useApi } from './api';
 import { fmtCalendarDate } from './attendance-format';
 import { cardFigure, homeBalances } from './home-cards';
@@ -59,18 +58,16 @@ export function Tactile({ children, onPress, label, hint, style }: { children: R
 
 export function HomeHero({ name, unread, refreshToken }: { name: string | null; unread: number; refreshToken: number }) {
   const { palette } = useTenantDesign();
-  const insets = useSafeAreaInsets();
   const greeting = {morning:'greetMorning',afternoon:'greetAfternoon',evening:'greetEvening'}[partOfDay(Date.now())] as MessageKey;
   const first = name?.trim().split(/\s+/)[0] ?? null;
-  return <View style={{ backgroundColor: palette.bg, paddingTop: insets.top + 12, paddingHorizontal: 20, gap: 16 }}>
+  return <View style={{ backgroundColor: palette.bg, paddingTop: 12, paddingHorizontal: 20, gap: 16 }}>
     <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between'}}>
-      <TenantBrand />
+      <Text style={{color:palette.muted,fontSize:16,flex:1}}>{first ? `${t(greeting).replace(/[,，]$/, '')}, ${first}` : t('helloNoName')}</Text>
       <Tactile label={t('tabInbox')} onPress={() => router.navigate('/inbox' as Href)} style={{minWidth:48,minHeight:48,alignItems:'center',justifyContent:'center'}}>
         <Icon name="bell" color={palette.text} size={24}/>
         {unread>0&&<View style={{position:'absolute',right:6,top:6,width:8,height:8,borderRadius:4,backgroundColor:palette.accent}}/>}
       </Tactile>
     </View>
-    <Text style={{color:palette.muted,fontSize:16}}>{first ? `${t(greeting).replace(/[,，]$/, '')}, ${first}` : t('helloNoName')}</Text>
     <ClockHeroCard refreshToken={refreshToken} />
   </View>;
 }

@@ -158,7 +158,7 @@ export function LeaveRequestForm({options,today,onSubmitted,notices={},cards=[]}
     }catch(e){putLeave({...draft,message:t('leaveUncertain')},draft.command.requestId);if(e instanceof SignInRequiredError)void signOut();}
     finally{flight.current=false;}
   }
-  const frame=(body:ReactNode,footer?:ReactNode)=><Screen footer={footer} footerInset={96}>
+  const frame=(body:ReactNode,footer?:ReactNode)=><Screen footer={footer} footerInset={0}>
     <View style={{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12}}>
       <View style={{flexShrink:1}}><Title>{t('requestLeave')}</Title></View>
       {draft&&!picking&&(draft.phase==='edit'||draft.phase==='previewing')&&<Button title={t('cancel')} disabled={!!pending} kind="quiet" onPress={()=>{removeLocalFile(draft.document);putLeave(null);}}/>}

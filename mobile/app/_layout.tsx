@@ -1,3 +1,4 @@
+import { SignedInShell } from '../lib/app-shell';
 import {WidgetLaunchObserver} from '../lib/widget-launch';
 import { JourneyDraftProvider } from '../lib/journey-drafts';
 import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnection } from '../lib/company-connection';
@@ -25,7 +26,7 @@ function ThemedStatusBar() {
 function ThemedStack() {
   const { palette, reduceMotion } = useTenantDesign();
   useEffect(() => { const path = takeReopenAfterLanguage(); if (path) setTimeout(() => router.push(path), 0); }, []);
-  return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><Stack screenOptions={{ headerShown: false, animation: reduceMotion ? 'fade' : 'default' }} /></>;
+  return <><StatusBar style={colorContrast(palette.bg, '#000000') > colorContrast(palette.bg, '#ffffff') ? 'dark' : 'light'} /><PushLifecycle /><SignedInShell><Stack screenOptions={{ headerShown: false, animation: reduceMotion ? 'fade' : 'default' }} /></SignedInShell></>;
 }
 
 function Gate() {

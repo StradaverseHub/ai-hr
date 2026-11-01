@@ -548,10 +548,11 @@ describe('offline clocking switch off (the default)',()=>{
   for(const spy of Object.values(f.engine))expect(spy).not.toHaveBeenCalled();
   expect(f.anchorRead).not.toHaveBeenCalled();expect(f.openSigned.mock.calls.every(call=>(call as unknown[])[0]==='own')).toBe(true);
  });
- it('keeps the session-employment check unchanged when no employment is picked (the offline relaxation is switch-on only)',async()=>{
-  const f=fixture();f.session.employmentId=null as unknown as string;render(<f.App kind="clock"/>);
-  fireEvent.click(screen.getByText('slidePrepare'));await waitFor(()=>expect(f.drafts().clock?.phase).toBe('idle'));
-  expect(f.capture).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
+ it('uses the server default online without enabling the offline engine when no employment is picked',async()=>{
+  const f=fixture();f.session.employmentId=null;render(<f.App kind="clock"/>);
+  fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+  expect(f.capture).toHaveBeenCalledOnce();expect(f.post).not.toHaveBeenCalled();
+  expect(f.anchorRead).not.toHaveBeenCalled();
   for(const spy of Object.values(f.engine))expect(spy).not.toHaveBeenCalled();
  });
 });

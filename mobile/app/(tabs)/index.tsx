@@ -31,7 +31,7 @@ function BrandedHome() {
   ];
   const unread = typeof needs.inbox === 'number' ? needs.inbox : 0;
 
-  return <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={{ paddingBottom: 130 }}
+  return <ScrollView style={{ flex: 1, backgroundColor: palette.bg }} contentContainerStyle={{ paddingBottom: 32 }}
     refreshControl={<RefreshControl refreshing={me.loading && me.data != null} onRefresh={reloadAll} />}>
     <HomeHero name={me.data?.person.name ?? null} unread={unread} refreshToken={refreshToken} />
     <View style={{ paddingHorizontal: 20, paddingTop: 12, gap: 24 }}>

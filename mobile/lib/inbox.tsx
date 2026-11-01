@@ -133,7 +133,7 @@ export function InboxScreen({ prompt }: { prompt?: ReactNode } = {}) {
 
   const read = readIds?.scope === scope ? readIds.ids : null;
   const shownNotice = notice?.scope === scope ? notice.key : null;
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <PagedList list={list} keyOf={itemKey} emptyText={enabled === false ? t('notificationsOff') : t('inboxEmpty')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
         <Title>{t('tabInbox')}</Title>

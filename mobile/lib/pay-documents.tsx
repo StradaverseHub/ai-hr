@@ -237,7 +237,7 @@ export function PayslipsScreen() {
     ? { ...list, items: [], stale: false, empty: false, error: offline ? null : list.error }
     : list;
   const starts = useMemo(() => groupStarts(shown.items), [shown.items]);
-  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={['top']}>
+  return <SafeAreaView style={{ flex: 1, backgroundColor: palette.bg }} edges={[]}>
     <PagedList list={shown} keyOf={itemKey} emptyText={enabled === false ? t('payrollOff') : t('noPayslips')} contentContainerStyle={{ padding: 20, gap: 8 }}
       header={<View style={{ gap: 12 }}>
         <HeaderBack />

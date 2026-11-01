@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { SymbolView } from 'expo-symbols';
 import { DesignText as Text, useTenantDesign } from './design';
 import { t } from './i18n';
+import { dailyDestinationForPath } from './navigation-routes';
 
 const destinations = [
   { path: '/', label: 'tabHome', icon: { ios: 'house.fill', android: 'home' } },
@@ -14,10 +15,10 @@ const destinations = [
 ] as const;
 
 /** The approved default shell. Published schema-2 navigation retains its own renderer. */
-export function DailyNavigation() {
+export function DailyNavigation({ inline = false }: { inline?: boolean } = {}) {
   const { palette, appearance } = useTenantDesign();
-  const path = usePathname();
-  return <SafeAreaView edges={['bottom']} style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'transparent' }}>
+  const path = dailyDestinationForPath(usePathname());
+  return <SafeAreaView edges={['bottom']} style={inline ? { backgroundColor: palette.bg } : { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'transparent' }}>
     <View style={{ marginHorizontal: 12, marginBottom: 6, padding: 5, maxWidth: 560, width: '94%', alignSelf: 'center', flexDirection: 'row', borderRadius: 27, borderCurve: 'continuous', borderWidth: 1, borderColor: palette.border, backgroundColor: palette.card, boxShadow: '0px 4px 16px rgba(0,0,0,0.10)' }}>
       {destinations.map(item => {
         const selected = path === item.path;

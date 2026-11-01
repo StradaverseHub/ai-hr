@@ -50,8 +50,8 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
   const flight=useRef(false),offlineRoute=useRef<string|null>(null);
   const mounted=useRef(true),session=useRef({employmentId,status:sessionStatus,resolvedEmploymentId:clock.data?.employmentId});
   session.current={employmentId,status:sessionStatus,resolvedEmploymentId:clock.data?.employmentId};
-  /** Switch on only: a session that has not picked an employment acts as the employment on screen (an offline cold start
-   * has no `me` to pick from). Switch off: exactly the session's own employment, as before. */
+  /** Explicit selection stays authoritative; otherwise use the current server-default employment.
+   * Only the offline build may use its anchored subject when no server answer exists. */
   function sessionHolds(selected:string|null|undefined){
     const value=session.current.employmentId;
     // A null selection uses this screen's server-authorized default; it is not an unlocked session failure.
