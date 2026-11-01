@@ -406,6 +406,27 @@ describe('2 · the plan LANDS when the day is worked', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 describe('3 · *** the replacement-leave credit survives pre-approval ***', () => {
+  it.each([false,true])('replays missing replacement catalogue atomically through actual clock-out (late SQL failure: %s)',async failLate=>{
+    const {employmentId}=await hire();await setModule(b.tenantId,'toil','active');const a=await entitledCtx(b);
+    await setAttendancePolicy(a,{...BASE_POLICY(b.companyId),otApprovalCalculation:'requested'});
+    await setToilPolicy(a,toilPolicyInput(b.companyId));await setRestDay(a,{employmentId,shiftDate:FUTURE_REST});
+    const {correctionId}=await filePlan(a,employmentId,FUTURE_REST,240,{reason:'Fictional catalogue replay'});
+    await decideAttendanceCorrection(a,{correctionId,decision:'approved'});
+    await checkIn(a,{employmentId,date:FUTURE_REST,time:'08:00'});
+    // An enabled policy can survive an owner-restored catalogue gap. Ordinary clock-out must
+    // replay its whole transaction rather than creating configuration under shared ownership.
+    await owner.client`delete from leave_type where tenant_id=${b.tenantId}::uuid and (role='replacement' or lower(code)='replacement')`;
+    if(failLate)await owner.client.unsafe(`create function public.test_catalogue_replay_refusal() returns trigger language plpgsql as $body$ begin if new.event_type='attendance.checked-out' and new.subject_employment_id='${employmentId}'::uuid then raise exception 'Fictional late catalogue refusal';end if;return new;end $body$;create trigger test_catalogue_replay_refusal before insert on domain_event for each row execute function public.test_catalogue_replay_refusal()`);
+    try{
+      const action=checkOut(a,{employmentId,date:FUTURE_REST,time:'17:00'});
+      if(failLate)await expect(action).rejects.toThrow();else await action;
+    }finally{if(failLate)await owner.client.unsafe('drop trigger test_catalogue_replay_refusal on domain_event;drop function public.test_catalogue_replay_refusal()');}
+    const [stored]=await owner.client`select (select count(*)::int from leave_type where tenant_id=${b.tenantId}::uuid and (role='replacement' or lower(code)='replacement')) as types,(select count(*)::int from toil_accrual where employment_id=${employmentId}::uuid) as accruals,(select count(*)::int from attendance_punch where employment_id=${employmentId}::uuid and voided_at is null) as punches,(select count(*)::int from domain_event where subject_employment_id=${employmentId}::uuid and event_type='attendance.checked-out') as checked_out_events`;
+    expect(stored).toEqual(failLate?{types:0,accruals:0,punches:1,checked_out_events:0}:{types:1,accruals:1,punches:2,checked_out_events:1});
+    expect((await attendanceRow(employmentId,FUTURE_REST))?.checkOutAt).toBe(failLate?null:'17:00:00');
+    if(!failLate)expect(await replacementBalance(employmentId)).toBe(0.5);
+  });
+
   it('a pre-approved REST-DAY plan mints the RL credit when the day is worked, dated to the REQUEST', async () => {
     const { employmentId } = await hire(); // hiring is fixture work and runs on adminCtx inside hire()
     await setModule(b.tenantId, 'toil', 'active');
