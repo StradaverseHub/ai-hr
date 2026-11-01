@@ -1393,6 +1393,11 @@ export const SCREENS: readonly ScreenEntry[] = [
       // /payroll/transaction-view uses for `?tab=`.
       '/payroll/statutory-adjustment',
       '/payroll/setup',
+      // 929ea296 (PR126): Recalculate Income Tax Value — the setup card's preview/confirm screen and one batch's
+      // detail. Same scopedAdmin payroll key as the hub (requirePayrollAccess); it shows per-employee taxable
+      // income and records tax-basis corrections. Registered for test/function-access.test.ts reverse completeness.
+      '/payroll/income-tax-recalculation',
+      '/payroll/income-tax-recalculation/[id]',
       '/payroll/payslip-information',
       // R17 59178702: Transaction View promoted to a top-level Payroll tab (scopedAdmin, same guard
       // as the hub). The old /payroll/transactions/view path is now a guard-free redirect stub.

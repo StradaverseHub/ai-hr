@@ -314,22 +314,6 @@
     },
     {
       "tag": "input",
-      "context": "employmentHistoryCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by employmentHistoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
-      "context": "employmentHistoryCard",
-      "hidden": true,
-      "occurrences": 1,
-      "name": "movementId",
-      "reason": "Guarded action record/subject pointer (movementId) used by employmentHistoryCard; the server owner checks subject/record scope. This does not edit a Personnel fact."
-    },
-    {
-      "tag": "input",
       "context": "employmentInfoCard",
       "hidden": true,
       "occurrences": 2,
@@ -822,6 +806,24 @@
       "hidden": false,
       "occurrences": 2,
       "reason": "Finite choice between the existing operational workflow and information-only correction; it controls presentation and never submits an employee fact."
+    }
+  ],
+  "app/admin/personnel/[employmentId]/movement-history-actions.tsx": [
+    {
+      "tag": "input",
+      "context": "MovementHistoryActions",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "employmentId",
+      "reason": "Guarded action record/subject pointer (employmentId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact."
+    },
+    {
+      "tag": "input",
+      "context": "MovementHistoryActions",
+      "hidden": true,
+      "occurrences": 1,
+      "name": "movementId",
+      "reason": "Guarded action record/subject pointer (movementId) used by MovementHistoryActions (Employment History Roll Back); the server owner checks subject/record scope. This does not edit a Personnel fact."
     }
   ]
 }

@@ -286,3 +286,15 @@ recording this technical re-binding for the combined source ("I approve steps 1-
 for me later on"). This is a technical disposition within existing scope, not a new privacy approval,
 certification, runtime PASS or staging acceptance. Fresh exact-source hosted qualification remains
 required. Any further covered-byte change requires another exact review.
+
+### Repair addendum — 1 November 2026, after full gate 41273967202
+
+The full gate on `35b4b0bc` failed on registry/pin tests the four PRs predated (original failure retained).
+The repair changes three covered files, all declarative and none on a provider path: `lib/permissions.ts`
+(two income-tax recalculation routes added to the payroll screen column), `lib/ai/agent-capability-inventory.ts`
+(the four tax-basis actions classified: preview `backlog:approve`, confirm/continue/recover
+`handoff:payroll_reversal`, so no agent can drive them) and `core/company-refs.ts` (the four tax-basis
+tables declared as payroll evidence that refuses a company delete). Membership is unchanged at 1139 files;
+the digest moves `818f55d1…` → `bf995db494112a143c0f22b5513f124f04e0e9e5608660956949d305ecaf9d13` and the same
+24 records are rebound under the same advance owner approval. Module-agent manifest regenerated to
+`21338737bf9ccf5d9ad221b59a5609750882fdb77829d5bee775f93f9addbcf6`.

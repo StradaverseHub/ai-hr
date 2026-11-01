@@ -22,6 +22,9 @@ const unchanged=['db/client.ts','scripts/bank-import-runner.ts','core/bank-impor
 // still receives and verifies the COMPLETE immutable 968 db/client, including its original type.
 const WORKER_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage'; userId: string; eventId: string };";
 const WEB_AGENT_ENABLEMENT = "export type AgentEnablement = { feature: 'readiness_reminders' | 'claims_triage' | 'approval_chasers' | 'review_chasers' | 'clock_reminders' | 'document_reminders' | 'lifecycle_chasers'; userId: string; eventId: string };";
+// 929ea296 (PR126): web transactions declare the correction-aware income-tax reader. Without it a reader fails
+// closed only on payslips that carry a tax-basis correction; the old worker's owners never read payslip.
+const WEB_TAX_BASIS_READER = ", set_config('app.payroll_tax_basis_reader', '1', true)";
 
 // Only the exact independently reviewed Bank changes may differ in the new web source.
 // The executed old worker still receives its own immutable original bytes below.
@@ -43,7 +46,9 @@ it('runs immutable 968 worker Git source under the corrected V2 root policy agai
  expect(workerClient.split(WORKER_AGENT_ENABLEMENT)).toHaveLength(2);
  expect(webClient.split(WEB_AGENT_ENABLEMENT)).toHaveLength(2);
  // No arbitrary type/comment stripping: ANY other runtime, import, context, transaction or type delta fails.
- expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT)).toBe(workerClient);
+ expect(webClient.split(WEB_TAX_BASIS_READER)).toHaveLength(2);
+ expect(webClient.replace(WEB_AGENT_ENABLEMENT,WORKER_AGENT_ENABLEMENT).replace(WEB_TAX_BASIS_READER,'')).toBe(workerClient);
+ for(const path of unchanged.filter(path=>path!=='db/client.ts'))expect(execFileSync('git',['show',WORKER_SOURCE+':'+path],{encoding:'utf8'}),path+' never reads payslip').not.toMatch(/payslip/i);
  expect(execFileSync('git',['diff','--name-only',WORKER_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim().split('\n').sort()).toEqual([...reviewedChanges].sort());
  expect(execFileSync('git',['diff','--name-only',REVIEWED_BANK_SOURCE,'HEAD','--',...reviewedChanges],{encoding:'utf8'}).trim()).toBe('');
  // PR61 adds the explicit validator/server marker deltas. The later guarded migration entry

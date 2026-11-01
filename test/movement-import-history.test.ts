@@ -134,7 +134,7 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   const detail=(await getImportAttempt(a,checked.attemptId))!;expect(detail.events.at(-1)?.kind).toBe('revert_failed');
  });
 
- it('refuses the revert when a closed payroll relied on a movement, or the movement type cannot be rolled back',async()=>{
+ it('refuses the revert when a closed payroll relied on a movement, and admits a Join Date Change through its verified inverse',async()=>{
   const effective=day(-2),period=effective.slice(0,7);
   const{checked}=await importRows(a,[['ACME','AC001','',effective,'transfer','departmentId','Finance','Operations']]);
   const[pp]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:s.payPeriod.id});
@@ -145,8 +145,10 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   const joinDate=day(-30);
   const{checked:join,result}=await importRows(a,[['ACME','AC002','',joinDate,'joinDateChange','remarks','','Fictional join date correction']]);
   expect(result.imported).toBe(1);
+  // 646355e5 revision 2 (ADR-0164) gives Join Date Change its own verified inverse, so its import revert is
+  // now eligible through the same rollback guards (see movement-corrections: "has its own verified inverse").
   const review=await previewImportRevertForAttempt(a,join.attemptId);
-  expect(review.eligible).toBe(false);expect(review.blockers[0].reason).toMatch(/cannot be rolled back/);
+  expect(review.blockers).toEqual([]);expect(review.eligible).toBe(true);
  });
 
  it('keeps another company\'s import out of sight and out of reach of a company-scoped administrator',async()=>{
