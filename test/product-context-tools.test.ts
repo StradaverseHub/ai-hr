@@ -27,8 +27,8 @@ const scope=()=>({companyId:base.companyId,locale:'en'});
 describe('Assistant context layer tools',()=>{
  it('offers setup readiness to administrators only and refuses it otherwise',async()=>{
   const {employee,hr}=await people();
-  expect(contextToolSpecsFor(employee).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions']);
-  expect(contextToolSpecsFor(hr).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions','setup_readiness']);
+  expect(contextToolSpecsFor(employee).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions','approval_queue']);
+  expect(contextToolSpecsFor(hr).map(spec=>spec.name)).toEqual(['product_destinations','product_guidance','available_actions','approval_queue','setup_readiness']);
   expect(await runContextTool(employee,'setup_readiness',{},scope())).toEqual({ok:false,refusal:'not_offered'});
   expect(await runContextTool(hr,'unknown_tool',{},scope())).toEqual({ok:false,refusal:'not_offered'});
  });
@@ -65,7 +65,7 @@ describe('Assistant context layer tools',()=>{
   expect(new Set(names).size).toBe(names.length);
   for(const tool of ASSISTANT_TOOLS)expect(registry.find(row=>row.name===tool.spec.name)?.effect).toBe('read');
   for(const action of ASSISTANT_PROPOSABLE_ACTIONS){const row=registry.find(item=>item.name===action);expect(row?.effect).toBe('prepare_review');expect(row?.reviewRoute).toMatch(/^\/assistant\//);}
-  expect(registry.filter(row=>row.effect==='context').map(row=>row.name)).toEqual(['product_destinations','product_guidance','setup_readiness','available_actions']);
+  expect(registry.filter(row=>row.effect==='context').map(row=>row.name)).toEqual(['product_destinations','product_guidance','setup_readiness','available_actions','approval_queue']);
   expect(registry.filter(row=>row.effect==='prepare_review').map(row=>row.name)).toEqual(SUGGESTABLE_ACTIONS.map(action=>action.id));
  });
  it('names missing required details before any proposal can be shown',()=>{

@@ -1,6 +1,7 @@
 /** ADR-0169 phase B — the Assistant's context and capability layer, as typed tools.
  *
- * Three context tools (product destinations, product guidance, setup readiness) run as the caller over
+ * Five context tools (product destinations, product guidance, available actions, the approval queue, setup
+ * readiness) run as the caller over
  * existing owners, plus a capability registry that classifies every existing Assistant read and proposable
  * action by effect, and a deterministic proposal check that reuses the native hint schema. Nothing here
  * changes data, prepares a review or sends anything to a provider. Not imported by the production
@@ -16,6 +17,7 @@ import {destinationsFor} from '../../lib/product-context/destinations';
 import {productGuidance} from './guides';
 import {setupReadiness,SetupReadinessRefused} from './setup-readiness';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS,actionCatalogueFor,type SuggestableAction} from './actions';
+import {approvalQueueFor} from './approval-queue';
 import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import vi from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
 const NAV_LABELS:Readonly<Record<string,Record<string,string>>>={en:en.nav,ms:ms.nav,zh:zh.nav,vi:vi.nav,ta:ta.nav,th:th.nav};
 
@@ -24,10 +26,11 @@ export type Capability=Readonly<{name:string;effect:CapabilityEffect;module:stri
  audience:'everyone'|'admin';purpose:string;reviewRoute?:string;requiredDetails?:readonly string[]}>;
 
 const object=(properties:Record<string,unknown>,required:string[]=[])=>({type:'object' as const,properties,required,additionalProperties:false});
-export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_guidance'|'setup_readiness'|'available_actions',AiToolSpec>>=Object.freeze({
+export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_guidance'|'setup_readiness'|'available_actions'|'approval_queue',AiToolSpec>>=Object.freeze({
  product_destinations:{name:'product_destinations',description:'Real places in this product that the signed-in person can open, with their labels and addresses. Name or link only these.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  product_guidance:{name:'product_guidance',description:'Search this company\'s published product guides for how a feature works or how to set it up. Returns authored guide sections with links.',inputSchema:object({query:{type:'string',maxLength:200}},['query']) as AiToolSpec['inputSchema']},
  available_actions:{name:'available_actions',description:'Changes this person may be pointed to in the product, each with its purpose, its review page and the details that page collects. Suggest only these; the person completes and confirms each change on its page.',inputSchema:object({}) as AiToolSpec['inputSchema']},
+ approval_queue:{name:'approval_queue',description:'How many requests are waiting for the signed-in person\'s own decision, by kind, with the page where they review them and the matching review action. Counts only, no names.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  setup_readiness:{name:'setup_readiness',description:'Administrators only: whether this company\'s payroll is configured to run this month and how many employee records lack required information. Counts and statuses only.',inputSchema:object({}) as AiToolSpec['inputSchema']},
 });
 /** Every capability the Assistant could offer, classified. Context tools are admin-only where marked. */
@@ -38,6 +41,7 @@ export function capabilityRegistry():readonly Capability[]{
   Object.freeze({name:'product_guidance',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.product_guidance.description}),
   Object.freeze({name:'setup_readiness',effect:'context' as const,module:null,sensitivity:'configuration' as const,audience:'admin' as const,purpose:CONTEXT_TOOL_SPECS.setup_readiness.description}),
   Object.freeze({name:'available_actions',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.available_actions.description}),
+  Object.freeze({name:'approval_queue',effect:'context' as const,module:null,sensitivity:'ordinary' as const,audience:'everyone' as const,purpose:CONTEXT_TOOL_SPECS.approval_queue.description}),
   // Every human-confirmed registry action is suggestable; the seven inline-card actions keep their hint schema.
   ...SUGGESTABLE_ACTIONS.map(action=>{const inline=isAssistantProposableAction(action.id);return Object.freeze({name:action.id,effect:'prepare_review' as const,module:action.module,
    sensitivity:'ordinary' as const,audience:action.permission.actor==='self'?'everyone' as const:'admin' as const,purpose:ACTION_PURPOSE[action.id]??action.id,
@@ -45,9 +49,10 @@ export function capabilityRegistry():readonly Capability[]{
    ...(inline?{requiredDetails:Object.freeze(ASSISTANT_PROPOSAL_HINT_KEYS[action.id as AssistantProposableAction].filter(key=>!key.endsWith('?')))}:{})});}),
  ]);
 }
-/** Context tool specs this caller may be offered (setup readiness for administrators only). */
+/** Context tool specs this caller may be offered (setup readiness for administrators only). Anyone can hold an
+ * assigned approval (named attendance participants, reporting assignments), so the queue is offered to everyone. */
 export function contextToolSpecsFor(ctx:SessionContext):readonly AiToolSpec[]{
- return Object.freeze([CONTEXT_TOOL_SPECS.product_destinations,CONTEXT_TOOL_SPECS.product_guidance,CONTEXT_TOOL_SPECS.available_actions,...(isAdmin(ctx)?[CONTEXT_TOOL_SPECS.setup_readiness]:[])]);
+ return Object.freeze([CONTEXT_TOOL_SPECS.product_destinations,CONTEXT_TOOL_SPECS.product_guidance,CONTEXT_TOOL_SPECS.available_actions,CONTEXT_TOOL_SPECS.approval_queue,...(isAdmin(ctx)?[CONTEXT_TOOL_SPECS.setup_readiness]:[])]);
 }
 export type ContextToolResult=Readonly<{ok:true;content:unknown}>|Readonly<{ok:false;refusal:'not_offered'|'invalid_input'|'not_permitted'}>;
 /** Runs one context tool as the caller. `companyId` is the caller's current company scope. */
@@ -62,6 +67,7 @@ export async function runContextTool(ctx:SessionContext,name:string,input:unknow
   if(typeof value.query!=='string'||!value.query.trim()||value.query.length>200)return{ok:false,refusal:'invalid_input'};
   return{ok:true,content:await productGuidance(ctx,value.query,scope.locale)};
  }
+ if(name==='approval_queue')return{ok:true,content:await approvalQueueFor(ctx,scope.companyId)};
  if(name==='available_actions')return{ok:true,content:(await actionCatalogueFor(ctx)).map(({id,purpose,reviewRoute,humanInputs})=>({id,purpose,reviewRoute,collects:humanInputs}))};
  try{return{ok:true,content:await setupReadiness(ctx,scope.companyId)};}
  catch(error){if(error instanceof SetupReadinessRefused)return{ok:false,refusal:'not_permitted'};throw error;}
