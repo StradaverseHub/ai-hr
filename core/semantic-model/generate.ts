@@ -11,7 +11,9 @@
  * the production Assistant, whose specs still come from lib/ai/assistant-tool-catalogue.ts. */
 import type {AiJsonSchema,AiToolSpec} from '../../lib/ai/types';
 import {SEMANTIC_ACTIONS,SEMANTIC_ENTITIES,SEMANTIC_READS,semanticEntity} from './entities';
-import {DISCLOSURE_CLASSES,type CapabilityRow,type ConnectToolSpec,type DisclosureClass,type SemanticAction,type SemanticField,type SemanticRead} from './types';
+import {DISCLOSURE_CLASSES,type CapabilityRow,type ConnectToolSpec,type DisclosureClass,type EntityId,type SemanticAction,type SemanticEntity,type SemanticField,type SemanticRead} from './types';
+import {EXPLAIN_ENTITIES,EXPLAIN_READS} from './entities-explain';
+import {SETUP_ENTITIES,SETUP_READS} from './entities-setup';
 
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 const object=(properties:Record<string,unknown>,required:string[]=Object.keys(properties)):AiJsonSchema=>({type:'object',properties,required,additionalProperties:false});
@@ -25,7 +27,7 @@ export function disclosureOf(fields:readonly SemanticField[]):Readonly<Record<Di
 }
 /** Leaves that may leave the product. A `never` parent hides its children too. */
 const disclosable=(fields:readonly SemanticField[]):SemanticField[]=>fields.filter(field=>field.disclosure!=='never');
-const inputSchema=(read:SemanticRead)=>object(Object.fromEntries(read.input.map(input=>[input.name,{...input.schema}])));
+const inputSchema=(read:SemanticRead)=>object(Object.fromEntries(read.input.map(input=>[input.name,{...input.schema}])),read.input.filter(input=>!input.optional).map(input=>input.name));
 
 let registry:readonly CapabilityRow[]|undefined;
 export function capabilityRegistry():readonly CapabilityRow[]{
@@ -42,8 +44,8 @@ export function capabilityRegistry():readonly CapabilityRow[]{
 }
 
 const CLASS_WORDS:Readonly<Record<Exclude<DisclosureClass,'never'>,string>>={full:'Returns',minimum:'Returns only when the question needs it',bands:'Figures, released as bands'};
-function describe(read:SemanticRead):string{
- const entity=semanticEntity(read.entity),classes=disclosureOf(disclosable(entity.fields));
+function describe(read:SemanticRead,entity:SemanticEntity=semanticEntity(read.entity)):string{
+ const classes=disclosureOf(disclosable(entity.fields));
  const parts=DISCLOSURE_CLASSES.filter((key):key is Exclude<DisclosureClass,'never'>=>key!=='never'&&classes[key].length>0)
   .map(key=>`${CLASS_WORDS[key]}: ${classes[key].join(', ')}.`);
  const handles=read.input.filter(input=>input.identifier).map(input=>input.name);
@@ -67,9 +69,12 @@ function outputProperty(field:SemanticField):Record<string,unknown>{
  return{type:JSON_TYPE[field.type],...(field.values?{enum:[...field.values]}:{}),...tag};
 }
 /** A read that needs an identifier handle is not Connect-eligible: identifiers never leave the product,
- * and no opaque per-client handle exists yet. An action without a proposal preparer is not migrated. */
+ * and no opaque per-client handle exists yet. An action without a proposal preparer is not migrated, and a
+ * migrated action reaches Connect only once its legal review (ADR-0170 §3.9) admits it: step 2 gave
+ * leave.cancel and approvals.leave.decide preparers without widening Connect. */
+export const CONNECT_REVIEWED_ACTIONS:readonly string[]=Object.freeze(['leave.apply']);
 export const connectEligibleRead=(read:SemanticRead)=>read.input.every(input=>!input.identifier);
-export const connectEligibleAction=(action:SemanticAction)=>action.proposal!==null;
+export const connectEligibleAction=(action:SemanticAction)=>action.proposal!==null&&CONNECT_REVIEWED_ACTIONS.includes(action.id);
 let connect:readonly ConnectToolSpec[]|undefined;
 export function connectToolSpecs():readonly ConnectToolSpec[]{
  if(connect)return connect;
@@ -89,3 +94,29 @@ export function connectToolSpecs():readonly ConnectToolSpec[]{
 }
 /** Every page a generated output names: entity pages and review routes. */
 export const referencedPages=():readonly string[]=>Object.freeze([...new Set([...SEMANTIC_ENTITIES.map(entity=>entity.page),...SEMANTIC_ACTIONS.map(action=>action.reviewRoute)])]);
+
+/** ADR-0170 step 4 — the model as the Teras harness reads it: the declared entities (step 4's field additions
+ * are declared in ./entities.ts since integration), plus the explainer and setup co-pilot entities. The
+ * production catalogue outputs above are unchanged; the Teras harness disclosure (disclosure.ts) discloses by these. */
+let terasModel:readonly SemanticEntity[]|undefined;
+export function terasEntities():readonly SemanticEntity[]{
+ terasModel??=freeze([...SEMANTIC_ENTITIES,...EXPLAIN_ENTITIES,...SETUP_ENTITIES]);
+ return terasModel;
+}
+export const terasEntity=(id:EntityId):SemanticEntity=>{const entity=terasEntities().find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
+/** The step 4 capabilities: harness-only reads, never in the production catalogue. */
+export const TERAS_READS:readonly SemanticRead[]=Object.freeze([...EXPLAIN_READS,...SETUP_READS]);
+let terasSpecs:readonly AiToolSpec[]|undefined;
+export function terasToolSpecs():readonly AiToolSpec[]{
+ terasSpecs??=freeze(TERAS_READS.map(read=>({name:read.name,description:describe(read,terasEntity(read.entity)),inputSchema:inputSchema(read)})));
+ return terasSpecs;
+}
+let terasRegistry:readonly CapabilityRow[]|undefined;
+/** capabilityRegistry(), plus one row per step 4 capability. */
+export function terasCapabilityRegistry():readonly CapabilityRow[]{
+ terasRegistry??=freeze([...capabilityRegistry(),
+  ...TERAS_READS.map((read):CapabilityRow=>{const entity=terasEntity(read.entity);
+   return{name:read.name,effect:'read',entity:entity.id,module:entity.module,sensitivity:entity.sensitivity,audience:entity.audience,rls:entity.rls,
+    purpose:read.purpose,owners:entity.owners,disclosure:disclosureOf(entity.fields)};})]);
+ return terasRegistry;
+}

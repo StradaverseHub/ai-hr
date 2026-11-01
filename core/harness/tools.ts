@@ -6,28 +6,39 @@
  *  - reads: specs generated from the semantic model (contextToolSpecs), only for reads core/assistant-tools
  *    toolsFor(ctx) offers this caller (module enablement), each run by its existing owner AS THE CALLER;
  *  - context tools: the phase-B owners (core/product-context/tools.ts) for this caller;
+ *  - step 4 capabilities: the "Why?" explainers and the setup co-pilot (core/explainers/capabilities.ts), as
+ *    reads with their own semantic entities, for callers whose module (or administrator role) they need;
  *  - suggest_action: the caller's current action catalogue (core/product-context/actions.ts). A suggestion
- *    is a pointer to the review page where the person completes and confirms; nothing is prepared.
- * No binding writes anything. Tests may pass their own provider; production wiring will not. */
+ *    is a pointer to the review page where the person completes and confirms. For the leave cards (step 2)
+ *    the native preparer may also issue a signed proposal (core/proposals/suggested.ts) from the caller's own
+ *    records and words; it saves a review, never a change, and the person confirms on the review page.
+ * No binding changes HR data; the only write is the review custody row a native preparer saves for a proposal.
+ * Tests may pass their own provider; production wiring will not. */
 import type {SessionContext} from '../../db/client';
 import type {AiToolSpec} from '../../lib/ai/types';
 import {toolsFor} from '../assistant-tools';
 import {contextToolSpecsFor,runContextTool,suggestAction} from '../product-context/tools';
 import {actionCatalogueFor} from '../product-context/actions';
-import {destinationsFor} from '../../lib/product-context/destinations';
+import {linkablePathsFor} from '../../lib/product-context/destinations';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
-import {contextToolSpecs} from '../semantic-model/generate';
+import {contextToolSpecs,TERAS_READS,terasToolSpecs} from '../semantic-model/generate';
+import {terasCapabilitiesFor} from '../explainers/capabilities';
 import {SEMANTIC_READS} from '../semantic-model/entities';
 import type {EntityId} from '../semantic-model/types';
+import {prepareSuggestedProposal} from '../proposals/suggested';
+import type {Proposal} from '../proposals/proposal';
 import {HARNESS_SPEC} from './spec';
 
 export type ToolKind='read'|'context'|'suggest';
-export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggestion?:Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>}>;
+export type ToolRun=Readonly<{ok:boolean;content:unknown;refusal?:string;suggestion?:Readonly<{action:string;reviewRoute:string;inlineCard:boolean}>;
+ /** A signed proposal the native preparer issued for this suggestion (never shown to the model). */
+ proposal?:Proposal}>;
 export type ToolBinding=Readonly<{name:string;kind:ToolKind;entity:EntityId|null;spec:AiToolSpec;
  /** Inputs that take a record handle from an earlier result in this turn. */
  identifierInputs:readonly string[];
  run(input:Record<string,unknown>):Promise<ToolRun>}>;
-export type ToolScope=Readonly<{companyId:string;locale?:string}>;
+/** `personWords` is the person's own question this turn, never model text (core/proposals/suggested.ts). */
+export type ToolScope=Readonly<{companyId:string;locale?:string;personWords?:string}>;
 export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
  /** Review routes the caller's catalogue names; replies may link to the one suggested this turn. */
  reviewRoutes:readonly string[];
@@ -36,6 +47,7 @@ export type ToolCandidates=Readonly<{bindings:readonly ToolBinding[];
 export type ToolProvider=(ctx:SessionContext,scope:ToolScope,actions:boolean)=>Promise<ToolCandidates>;
 
 const SUGGEST_DESCRIPTION='Point the person to the page where they complete and confirm one change from available_actions. Nothing is prepared or submitted.';
+const CHOOSE_NOTE='Several leave requests are waiting for this person\'s decision, listed in pending. Nothing is prepared. List them (applicant, leave type and dates) and ask which one they want to approve; never choose one yourself. When they say which, suggest again with that request\'s startDate in details. Requests not listed are on the review page.';
 export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
  const owners=new Map(toolsFor(ctx).map(tool=>[tool.spec.name,tool]));
  const reads=contextToolSpecs().filter(spec=>owners.has(spec.name)).map((spec):ToolBinding=>{
@@ -43,16 +55,27 @@ export const nativeToolProvider:ToolProvider=async(ctx,scope,actions)=>{
   return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:declared.input.filter(input=>input.identifier).map(input=>input.name),
    async run(input){const outcome=await owner.run(ctx,input);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
  });
+ const teras=terasCapabilitiesFor(ctx).map((capability):ToolBinding=>{
+  const spec=terasToolSpecs().find(row=>row.name===capability.name)!,declared=TERAS_READS.find(read=>read.name===capability.name)!;
+  return{name:spec.name,kind:'read',entity:declared.entity,spec,identifierInputs:[],
+   async run(input){const outcome=await capability.run(ctx,input,scope);return outcome.ok?{ok:true,content:outcome}:{ok:false,content:outcome,refusal:outcome.refusal};}};
+ });
  const context=contextToolSpecsFor(ctx).map((spec):ToolBinding=>({name:spec.name,kind:'context',entity:null,spec,identifierInputs:[],
   async run(input){const result=await runContextTool(ctx,spec.name,input,scope);return result.ok?{ok:true,content:result.content}:{ok:false,content:result,refusal:result.refusal};}}));
  const catalogue=actions?await actionCatalogueFor(ctx):[];
  const suggest:ToolBinding[]=catalogue.length?[{name:HARNESS_SPEC.offer.suggestTool,kind:'suggest',entity:null,identifierInputs:[],
   spec:{name:HARNESS_SPEC.offer.suggestTool,description:SUGGEST_DESCRIPTION,inputSchema:{type:'object',properties:{action:{type:'string',enum:catalogue.map(row=>row.id)},details:{type:'object',additionalProperties:{type:'string'}}},required:['action'],additionalProperties:false} as AiToolSpec['inputSchema']},
   async run(input){const result=suggestAction(catalogue,input.action,input.details);
-   if(result.suggested)return{ok:true,content:{...result,note:'The person completes and confirms this on the review page; nothing is prepared or submitted.'},suggestion:{action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard}};
+   if(result.suggested){const outcome=await prepareSuggestedProposal(ctx,result.action,input.details,scope.personWords);
+    const suggestion={action:result.action,reviewRoute:result.reviewRoute,inlineCard:result.inlineCard};
+    // Several pending: the person chooses; the model lists them and asks, and nothing is prepared (ADR-0170 §3.15).
+    if(outcome?.kind==='choose')return{ok:true,content:{...result,pending:outcome.pending,...(outcome.more?{notListed:outcome.more}:{}),note:CHOOSE_NOTE},suggestion};
+    const proposal=outcome?.kind==='proposal'?outcome.proposal:null;
+    return{ok:true,content:{...result,note:proposal?'A review item is ready; the person checks and confirms it on the review page. Nothing is submitted until they do.':'The person completes and confirms this on the review page; nothing is prepared or submitted.'},
+     suggestion,...(proposal?{proposal}:{})};}
    return{ok:false,refusal:result.reason,content:{...result,note:result.reason==='missing_details'?'Ask the person for the missing details. Do not say anything is prepared.':'This change is not available to this person here.'}};}}]:[];
- return Object.freeze({bindings:Object.freeze([...context,...reads,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
-  destinations:Object.freeze(destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>row.href.split(/[?#]/)[0]))});
+ return Object.freeze({bindings:Object.freeze([...context,...reads,...teras,...suggest]),reviewRoutes:Object.freeze(catalogue.map(row=>row.reviewRoute)),
+  destinations:linkablePathsFor(ctx,visibleModuleCodes(ctx)??undefined)});
 };
 
 /** Validates arguments against the subset of JSON Schema the specs use. Returns the problem, or null. */

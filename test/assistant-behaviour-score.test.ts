@@ -1,7 +1,8 @@
 /** The probe's behaviour scorer judges observable behaviour, never the model's own mode label. */
 import {describe,expect,it} from 'vitest';
 import {overclaim,scoreBehaviour,summarizeBehaviour,type Behaviour} from './assistant-behaviour-score';
-import type {BaselineIdeal} from './assistant-production-baseline-corpus';
+import {ASSISTANT_COMPLEX_BASELINE,type BaselineIdeal} from './assistant-production-baseline-corpus';
+import {REVIEWED_OUTCOMES} from './assistant-corpus-review';
 const turn=(ideal:BaselineIdeal,category:'negative'|'action'|'guidance'='action')=>({id:'t',category,ideal});
 const seen=(over:Partial<Behaviour>={}):Behaviour=>({reads:[],proposed:null,reply:'A plain reply.',inventedLinks:[],...over});
 describe('behaviour scorer',()=>{
@@ -29,6 +30,10 @@ describe('behaviour scorer',()=>{
   expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Which leave type do you mean?'})).verdict).toBe('met');
   expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Annual leave is set up.'})).verdict).toBe('missed');
   expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['setup_readiness']})).verdict).toBe('met');
+  // Step 4: the co-pilot grounds guidance, and answers an ideal that names the read it is composed over.
+  expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['setup_copilot']})).verdict).toBe('met');
+  expect(scoreBehaviour(turn({mode:'answer',reads:['setup_readiness']},'guidance'),seen({reads:['setup_copilot']})).verdict).toBe('met');
+  expect(scoreBehaviour(turn({mode:'answer',reads:['my_leave_balances','leave_entitlement_explain']},'guidance'),seen({reads:['explain_leave_entitlement']})).verdict).toBe('missed');
   expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['my_leave_balances']})).verdict).toBe('missed');
  });
  it('fails any private read on a negative turn and applies reviewed corrections and alternatives',()=>{
@@ -39,6 +44,14 @@ describe('behaviour scorer',()=>{
   expect(scoreBehaviour(cancel,seen({reads:['my_leave_requests']}),review)).toMatchObject({verdict:'met',partiallyObservable:false});
   expect(scoreBehaviour(cancel,seen({reply:'Which request do you mean?'}),review)).toMatchObject({verdict:'met',partiallyObservable:true});
   expect(scoreBehaviour(cancel,seen({reads:['my_leave_requests'],reply:''}),review).verdict).toBe('failed');
+ });
+ it('accepts the entitlement explainer alone for mf-entitlement-why under review, leaving the corpus ideal unchanged (ADR-0170 §3.15)',()=>{
+  const why=ASSISTANT_COMPLEX_BASELINE.flatMap(conversation=>conversation.turns).find(row=>row.id==='mf-entitlement-why')!;
+  expect(why.ideal).toEqual({mode:'answer',reads:['leave_entitlement_explain']});
+  const review=REVIEWED_OUTCOMES['mf-entitlement-why'];
+  expect(scoreBehaviour(why,seen({reads:['explain_leave_entitlement']}),review)).toMatchObject({verdict:'met',partiallyObservable:false});
+  expect(scoreBehaviour(why,seen({reads:['my_leave_balances','leave_entitlement_explain']}),review).verdict).toBe('met');
+  expect(scoreBehaviour(why,seen({reads:['my_leave_balances']}),review).verdict).toBe('missed');
  });
  it('reports partly observable met turns separately',()=>{
   const rows=[scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['product_guidance']})),scoreBehaviour(turn({mode:'propose',action:'leave.apply'}),seen({proposed:'leave.apply'}))];

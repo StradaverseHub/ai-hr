@@ -14,7 +14,12 @@ import {overclaim} from '../core/harness/reply-checks';
 /** Context tools that hold nothing about the person (lib/product-context gate's public set). */
 export const PUBLIC_READS:ReadonlySet<string>=new Set(['product_destinations','product_guidance','available_actions']);
 /** Reads that ground product guidance in this company's product, guides or setup state. */
-export const GROUNDING_READS:ReadonlySet<string>=new Set(['product_guidance','setup_readiness','product_destinations']);
+export const GROUNDING_READS:ReadonlySet<string>=new Set(['product_guidance','setup_readiness','product_destinations','setup_copilot']);
+/** ADR-0170 step 4: a capability composed over an ideal's read answers what that read answers (decided from the
+ * composition, before any run): the co-pilot returns setup readiness's own verdicts in order, and the entitlement
+ * explainer returns leave_entitlement_explain's breakdown without needing a handle. */
+export const ANSWERED_BY:Readonly<Record<string,readonly string[]>>={setup_readiness:['setup_copilot'],leave_entitlement_explain:['explain_leave_entitlement']};
+const answered=(read:string,reads:readonly string[])=>reads.includes(read)||(ANSWERED_BY[read]??[]).some(alternative=>reads.includes(alternative));
 
 export type Behaviour=Readonly<{reads:readonly string[];proposed:string|null;reply:string;inventedLinks:readonly string[];error?:string}>;
 export type BehaviourVerdict='met'|'missed'|'failed';
@@ -52,7 +57,7 @@ export function scoreBehaviour(turn:Pick<BaselineTurn,'id'|'category'|'ideal'>,b
   case 'propose':
    return behaviour.proposed===ideal.action?result('met','suggested '+ideal.action):result('missed',behaviour.proposed?'suggested '+behaviour.proposed:'no suggestion');
   case 'answer':{
-   const missing=ideal.reads.filter(read=>!behaviour.reads.includes(read));
+   const missing=ideal.reads.filter(read=>!answered(read,behaviour.reads));
    // An answer that needs no read (a summary of the conversation) is only partly observable: content is not checked.
    return missing.length?result('missed','did not read '+missing.join(', ')):result('met',ideal.reads.length?'read '+ideal.reads.join(', '):'answered without a new read',!ideal.reads.length);}
   case 'clarify':

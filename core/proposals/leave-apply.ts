@@ -38,6 +38,8 @@ export async function prepareLeaveApplyProposal(supplied:SessionContext,input:Re
   authority:{kind:'person',tenantId:ctx.tenantId,userId,personId},
   checks:passedChecks(),
   review:{route:declared.reviewRoute,href:`${declared.reviewRoute}?review=${review.actionId}`,reference:review.actionId},
+  facts:{leaveType:review.leaveTypeName.slice(0,64),startDate:review.date,endDate:review.date,days:review.deductionDays,
+   ...(review.estimatedAvailableAfter===null?{}:{balanceAfter:review.estimatedAvailableAfter}),outcome:'submitted_not_approved'},
   createdAt:review.createdAt,expiresAt:review.expiresAt})});
 }
 

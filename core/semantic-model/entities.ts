@@ -9,8 +9,10 @@
 import {AGENT_MODULE_CODES} from '../../lib/ai/module-agents';
 import type {SemanticAction,SemanticEntity,SemanticField,SemanticRead,FieldType,DisclosureClass} from './types';
 
-const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
+const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'|'open'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
+/** Pay figures inside module-owned rows (step 4): the same money my_payslip_summary already bands. */
+const PAY_FIGURES:readonly SemanticField[]=[f('gross','number','bands','Gross pay.'),f('deductions','number','bands','Total deductions.'),f('net','number','bands','Net pay.'),f('amount','number','bands','A pay item amount.')];
 const LEAVE_STATUS=['pending','approved','rejected','cancelled'] as const;
 const company=f('company','label','minimum','Company the record belongs to.');
 
@@ -48,7 +50,14 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
    f('forfeitedThisCycle','number','bands','Days forfeited.'),f('carryForwardExpiryDate','date','minimum','When carried days expire.'),
    f('totalAvailable','number','bands','Days available.'),f('withheld','boolean','full','Whether ESS visibility hid part of the breakdown.'),
    f('transactions','list','minimum','Recent ledger rows behind the figure.',{of:[f('effectiveOn','date','minimum','Ledger date.'),f('entryType','enum','full','Ledger entry kind.'),
-    f('days','number','bands','Day quantity.'),f('sourceRequestId','id','never','Handle of the leave request.'),f('reason','text','never','Free text recorded on the entry.')]})]},
+    f('days','number','bands','Day quantity.'),f('sourceRequestId','id','never','Handle of the leave request.'),f('reason','text','never','Free text recorded on the entry.')]}),
+   // Step 4: the breakdown fields the Mine projection already returns (run 41302596155). The caller's own day
+   // counts, like displayEntitlementDays and totalAvailable, so they are bands.
+   f('eligibleDays','number','bands','Full-year allowance of the entitlement table that applied, before proration, carry, adjustments or use.'),
+   f('currentYearEntitlement','number','bands','Earned to date this cycle, exact.'),f('currentYearEntitlementRounded','number','bands','Earned to date as the leave type\'s rounding shows it.'),
+   f('monthlyAccruedToDate','number','bands','Earned leave only: accrued to date this cycle.'),f('carriedForward','number','bands','Days carried into the cycle, after the carry cap.'),
+   f('carryForwardRemaining','number','bands','Carried days not yet used.'),f('configAdjustments','number','bands','HR\'s own adjustments this cycle.'),
+   f('systemAdjustments','number','bands','Automatic corrections this cycle.'),f('balance','number','bands','Ledger balance as at the date asked.')]},
  {id:'public_holiday',label:'Public holiday',meaning:'A public holiday the caller actually observes under their company, work state and calendar.',
   module:'org',sensitivity:'ordinary',audience:'self',rls:'own_holiday_calendar',owners:['core/read.ts#myEmployment','core/read.ts#upcomingHolidays','core/read.ts#holidayDatesForEmployment'],
   ruleVersion:null,relations:[],page:'/leave',
@@ -100,7 +109,7 @@ export const SEMANTIC_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'module_work',label:'Module work',meaning:'One module\'s current-caller canonical work summary, with the pages a person uses to act.',
   module:null,sensitivity:'pay',audience:'self',rls:'own_module_scope',owners:['core/module-agent-readers.ts#createModuleAgentReaders','lib/ai/module-specialists.ts#compactSpecialistWork'],
   ruleVersion:null,relations:[],page:'/assistant',
-  fields:[f('module','enum','full','The module read.'),f('data','list','minimum','Module-owned rows; each module projects its own allow-list.'),
+  fields:[f('module','enum','full','The module read.'),f('data','list','minimum','Module-owned rows; each module projects its own allow-list. Pay figures inside them are released as bands.',{of:PAY_FIGURES,open:true}),
    f('specialistWork','object','minimum','Deterministic findings over the rows; never an effect.'),f('humanActions','list','full','Fixed pages for human review.')]},
  {id:'leave_approval_step',label:'Leave approval step',meaning:'One pending step of a leave request assigned to the caller to decide.',
   module:'approvals',sensitivity:'ordinary',audience:'assigned_approver',rls:'assigned_request',owners:['core/assistant-actions/reviewed-leave-decision-source.ts#assertReviewedLeaveDecisionActorTx'],
@@ -157,13 +166,16 @@ export const SEMANTIC_ACTIONS:readonly SemanticAction[]=freeze([
   preparer:'core/assistant-actions/reviewed-leave-decision-source.ts#prepareReviewedLeaveDecisionSourceTx',
   checks:[aiControls,{check:'assigned_step_current',owner:'core/assistant-actions/reviewed-leave-decision-source.ts#assertReviewedLeaveDecisionActorTx',ruleVersion:null}],
   reviewRoute:'/assistant/approvals',humanInputs:['leaveRequestId','currentStepId','decision','rejectReason','confirmAssignedDecision'],
-  nominable:[],proposal:null},
- {id:'leave.cancel',entity:'leave_request',effect:'withdraw',module:'leave',purpose:'Cancel one of your own pending leave requests.',
+  nominable:[],proposal:'core/proposals/leave-decide.ts#prepareLeaveDecideProposal'},
+ {id:'leave.cancel',entity:'leave_request',effect:'withdraw',module:'leave',purpose:'Cancel one of your own pending leave requests, or ask to give back dates of approved leave.',
   audience:'self',actor:'self',service:'packs/leave/service.ts#cancelOwnLeaveTx',guard:'core/assistant-actions/own-leave-change-source.ts#withOwnLeaveChangeSubjectTx',
   preparer:'core/assistant-actions/own-leave-change-source.ts#prepareOwnLeaveCancellationSourceTx',
-  checks:[aiControls,{check:'own_pending_request',owner:'core/assistant-actions/own-leave-change-source.ts#withOwnLeaveChangeSubjectTx',ruleVersion:null}],
+  // A pending request uses the first two; approved leave (step 2) is offered through the native /leave give-back
+  // path and uses the actor, the AI controls and the native offer (core/proposals/leave-cancel.ts).
+  checks:[aiControls,{check:'own_pending_request',owner:'core/assistant-actions/own-leave-change-source.ts#withOwnLeaveChangeSubjectTx',ruleVersion:null},
+   actorCheck,{check:'own_approved_cancellable',owner:'core/read.ts#employeeCancelOffers',ruleVersion:null}],
   reviewRoute:'/assistant/leave',humanInputs:['employmentId','leaveRequestId','cancel'],
-  nominable:[{name:'startDate',optional:true,type:'date'}],proposal:null},
+  nominable:[{name:'startDate',optional:true,type:'date'}],proposal:'core/proposals/leave-cancel.ts#prepareLeaveCancelProposal'},
 ] satisfies SemanticAction[]);
 
 export const semanticEntity=(id:string):SemanticEntity=>{const entity=SEMANTIC_ENTITIES.find(row=>row.id===id);if(!entity)throw Error('Unknown semantic entity.');return entity;};
