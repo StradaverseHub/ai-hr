@@ -1,10 +1,24 @@
-## Latest qualified source change
+## Latest qualified source change and full-load results
 
-The physical empty overtime-marker UPDATE is eliminated on4431661b7. Native
-run41336968478 passes155 database/8 additional checks plus the whole compiler;
-the original native red control and stale-marker cleanup are retained. No permission
-or financial guard is removed. Full500-user verification of this additional fix is
-still pending; the failed172f workload receipts below are not relabeled.
+Unapplied0900 adds a date-bounded Attendance Payroll guard while retaining relevant
+draft locks and the canonical cutoff owner. Source82cf0ec69 has successful native,
+financial and three populated-upgrade observations with explicit focused test-only
+recovery; its fresh whole compiler passes41340838746. The physical empty-marker
+fix is also retained. Original failures and frozen source identities remain recorded.
+
+Both500-user reruns on identical application/SQL source9ca1056b3 FAIL. At1s,
+41339834763 exceeds the original600s parent budget; its last traffic snapshot has
+295 completed,1 failed and204 active, so final latency/audit/browser acceptance is
+incomplete. At5s,41339843517 settles495 completed/5 failed with read p9557.16s and
+write p9587.15s. All six browser journeys complete, but three loaded Home cards
+report timeouts. Both audit chains validate. That run also exceeds its600s parent
+budget. The target remains **0/2 accepted**; there is no staging-readiness claim.
+
+Resources and thresholds remain unchanged. Relevant current-month Payroll draft
+row contention persists; removing unrelated historical locks does not remove it.
+The [current lock review](reviews/system-performance-command-lock-review-20261102.md)
+records the native oracles, original failures, complete/incomplete distinctions and
+remaining bottlenecks. No changes have been deployed.
 
 ## Native administrator write-path work — qualified source
 
@@ -22,7 +36,10 @@ Guarded `0897_administrator_candidate_work` applies exactly that measured body
 change and preserves640 applied SQL identities plus eleven earlier performance
 appends. Source29441db04 passed161 database/45 additional checks and a whole compiler
 in41330043716, and all three populated-upgrade rehearsals in41330047235. No
-migration is installed. Canonical main/alpha remain at freshly fetchede1585acba.
+migration is installed. That qualification uses the e1585acba baseline. Fresh19:37 UTC main/alpha are
+438bfae3d; the installed ledger still verifies the unchanged640-row e158 prefix.
+The development candidate must reconcile the newer canonical source/journal before
+aggregate release admission; no old receipt is relabeled.
 
 ## Current verification status — 2 November 2026
 
@@ -37,7 +54,7 @@ while retaining native current-principal, scope, per-employment and configuratio
 exclusion. Existing transactions, SYSTEM/agent owners and true configuration writers
 retain original ownership.
 
-Both unchanged-resource five-minute500-user reruns failed. At1s,41332662698 has
+The earlier unchanged-resource172f five-minute500-user reruns also failed. At1s,41332662698 has
 complete accounting:386 completed/114 failed versus234/266 on32c; read p9567.76s,
 write p9587.25s and loaded browsers1/6. Both audit chains are valid. At5s,
 41332665509 exceeded the original600s HTTP parent budget; its last traffic snapshot

@@ -1,7 +1,8 @@
 ## Attendance Payroll period locks — 2 November 2026 (unapplied)
 
 Owned performance source reserves `0900_attendance_payroll_period_locks`, idx771 /
-when1793330000300. Fresh all-ref/worktree scan at 18:57:23 UTC inspected 1,732 heads,
+when1793330000300; SQL SHA256
+`018d4bbfdc1fc0d1b0a4957918e07e206f5a6fca1337d196c0c63fb8940b3fdb`. Fresh all-ref/worktree scan at 18:57:23 UTC inspected 1,732 heads,
 307 journals, 387 migration trees, 444 worktrees and 751 WIP variants, with no parse
 errors. Foreign reservations0898/0899 remain excluded. All existing SQL is preserved.
 The fresh canonical ID-ordered staging ledger has640 exact rows, watermark
@@ -14,6 +15,15 @@ correction authority and stable exclusive batch locking remain intact. Exact cut
 coverage stays with core/payroll-policy-config.ts. Undated functions are unchanged.
 Native financial regressions, upgrade rehearsal, compiler and both500-user HTTP /
 browser loads remain required. No installation or deployment is authorized.
+
+Source refresh at19:37:23 UTC inspects1,735 heads,308 journals,388 migration trees,
+448 worktrees and756 WIP variants, with zero parse errors. Main/alpha have advanced
+to438bfae3d while staging still verifies the exact640-row e158 prefix. Foreign0901 /
+when1793330000301 is excluded. This development candidate retains its frozen e158
+lineage; before aggregate integration, reconcile the newer canonical journal and
+reallocate every still-unapplied performance append above the then-live/claimed tail.
+Do not append lower timestamps behind the newer canonical authentication migrations.
+Original isolated migration/load receipts are not aggregate release evidence.
 
 ## Performance administrator candidate work — 2 November 2026 (unapplied)
 

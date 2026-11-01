@@ -1,6 +1,6 @@
 # Ordinary-command lock review — 2 November 2026
 
-Development candidate only. No installation, integration or deployment authority.
+Development candidate only. No protected-branch integration, installation or deployment.
 
 ## Reproduced defect
 
@@ -46,6 +46,33 @@ The traces show fewer Access-exclusive wait samples, but repeated native visibil
 Source4431661b7 conditionally removes an overtime marker only when that JSON key exists. An empty refresh previously performed a physical Attendance UPDATE and fired row/source/financial triggers without changing the stored value. The native regression41336682983 failed precisely on that write while its stale-key cleanup control passed. Corrected run41336968478 passes155 database and8 additional checks plus the whole compiler, including source/financial ownership, workflows, real clock-out replay and actual cleanup. Existing markers still follow every original row guard. No migration or permission predicate changes. This source has not yet repeated the full500-user workloads; the172f results above retain their original source identity.
 
 The subsequent reversible Attendance-to-Payroll candidate-set rewrite passed exact native lock/scope oracles but showed no useful gain (3.87ms original,3.83ms candidate,3.59ms restored). It is rejected and excluded from the application. A separate visibility experiment remains diagnostic only.
+
+## Date-bounded Attendance Payroll locks — qualified source; targets unmet
+
+Native red source c69e64973, run41339198062, reproduces a second lock defect through the actual restricted transaction and guard. A draft six months before today blocks an unrelated employee's current Attendance command. Both commands remain valid after release, and the same-period exclusion control passes. This is a physical batch-row wait, independent of audit appends.
+
+The full-load fixture includes June/July2026 historical Payroll, current-month processing drafts and November Attendance. All sampled backends executing its financial protection helper are waiting on transaction/tuple locks. Excluding unrelated historical months does not remove contention on relevant current-month drafts; their protection must remain intact. The rejected candidate-set rewrite retained the original row-lock set.
+
+Unapplied0900 adds two guarded native overloads. The public overload repeats the exact existing correction-authority check; its private owner retains current/former-company and effective-payslip membership, stable exclusive FOR UPDATE ordering, and draft protection before the first payslip. For actual Attendance dates it excludes only canonical pay periods outside the date-month through the month after the last date. The canonical cutoff owner still determines exact coverage. Tests compare its calendar, anchor1–28 and frequency/type overrides over leap/year boundaries against that conservative bound. Malformed legacy period strings and unusual/empty native date arguments retain conservative protection.
+
+Only lockPayrollForAttendanceChange passes its already validated dates. Undated schedule/calendar functions, own-removal guard and raw canonical-source trigger protection are unchanged. Native donor bodies and every non-signature function attribute are pinned; original unary functions remain unchanged. No applied SQL bytes, tenant boundaries, authority caches, timeouts or resource budgets change.
+
+Candidate529923a8f passes75 native and one cutoff-bound check (41339533476); its whole compiler fails only on missing element types in the new batches/employees test arrays. Test-expanded9ca1056b3 passes132/133 native and nine other checks in41339652437, including all three populated upgrades. The sole new authority assertion incorrectly matched the query wrapper instead of its native cause; PostgreSQL independently records the expected correction-authority refusal. Test-only repair82cf0ec69 adds explicit array element types and exact nested native denial matching. Its four affected native cases and fresh whole compiler PASS in41340838746. Runtime, SQL and manifest bytes remain identical to9ca. Across these development receipts,187 distinct native checks in12 files and nine other checks in two files have successful observations after the focused repair; original failed workflow conclusions remain unchanged. This is development recovery, not an authenticated release witness.
+
+Both immutable500-user reruns use9ca and FAIL:
+
+|Activity|Run|Observed outcome|
+|---|---|---|
+|1s|[41339834763](https://github.com/StradaverseHub/ai-hr/actions/runs/41339834763)|Original600s parent budget exceeded. Last480.02s traffic snapshot:295 completed,1 failed,204 active;732 iterations. Accounting, final p95, browser and audit acceptance incomplete.|
+|5s|[41339843517](https://github.com/StradaverseHub/ai-hr/actions/runs/41339843517)|Traffic accounting complete:495 completed/5 failed,539 iterations in443.69s. Final aggregate read p9557.16s/write87.15s. Six browser journeys completed, zero runtime errors, but three loaded Home-card failures. Both audit chains valid. Original600s parent budget also exceeded; no target acceptance.|
+
+Four five-second failures are native Personnel draft-delete busy refusals; one journey aborts. One Attendance POST is observed at the original90s request limit. One-second incomplete progress must not be compared as a final latency improvement. The prior172f five-second run also lacks final accounting, so it cannot supply a valid final before/after percentage. Resources, budgets and SLOs are unchanged;0/2 activity levels accepted. Artifacts are retained under `/private/tmp/aihr-period-one-9ca1-attempt1` and `/private/tmp/aihr-period-five-9ca1-attempt1`.
+
+Relevant batch-row contention persists:24/18 sampled protection-helper backends respectively wait on native tuple/transaction locks. The complete five-second SQL snapshot reports221.31s of planning and zero JIT compilation time. PostgreSQL consumes973.56 CPU seconds and the app384.68 over443.79s; host IO wait is0.44s and PostgreSQL has no CPU throttling. These counters overlap and cannot be added to host totals. Next hypotheses must preserve financial exclusion, rather than weakening draft or first-payslip protection.
+
+## Changed canonical baseline
+
+Fresh19:37 UTC main/alpha are438bfae3d,21 commits beyond the e158 development baseline. Staging still read-only verifies the exact640-row e158 applied ledger. The frozen load sources and financial receipts remain original development evidence. Aggregate source/journal integration, reallocation of all unapplied performance migrations above the then-current tail and exact aggregate verification are still required. No lease or release ticket is claimed.
 
 ## AI source approval boundary
 
