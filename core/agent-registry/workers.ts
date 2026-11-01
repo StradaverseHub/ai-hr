@@ -21,7 +21,8 @@
 import type {AgentFeature} from '../agent-principal';
 import type {ProposalTypeId} from '../agent-proposal';
 import type {WorkJobType} from '../mandates/job-types';
-import {terasEntities} from '../semantic-model/generate';
+import {TERAS_READS,terasEntities} from '../semantic-model/generate';
+import {SEMANTIC_READS} from '../semantic-model/entities';
 import {WORKER_EFFECTS,WORKER_FAMILIES} from '../semantic-model/entities-recommend';
 import type {EntityId,OwnerAnchor} from '../semantic-model/types';
 import type {TerasSwitchedWorker} from '../../db/teras-schema';
@@ -130,9 +131,18 @@ const DECLARATIONS:readonly WorkerDeclaration[]=[
   trigger:{kind:'request',detail:'A person asks the Assistant why a figure is what it is'},
   readScope:['statutory_explanation','entitlement_explanation','attendance_day_explanation'],effect:'none',
   authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'explainers'},
-  stop:{honoured:false,pending:'Explainers run inside Assistant turns, which are not wired to production yet; the turn will consult the gate when it is.'},
+  // Explainers run only inside Noveri conversation turns. The conversation's gate (below) includes the tenant stop
+  // switch, so a stopped tenant's chat goes back to the closed grammar and no explainer runs.
+  stop:{honoured:true},
   record:{kind:'outcome_record',agentIdentity:'teras.assistant',tools:['explain_payslip_statutory','explain_leave_entitlement','explain_attendance_day']},
   metrics:{kind:'not_measurable',reason:'An explanation has no accept or decline.'}},
+ {id:'conversation',label:'Noveri conversation',family:'preparer',
+  owners:['core/teras-wiring/turn.ts#runConversationTurn'],trigger:{kind:'request',detail:'A person asks a question in the Assistant chat'},
+  // Any read the caller is offered in a turn, and the leave cards it may prepare for the person to confirm.
+  readScope:[...new Set([...SEMANTIC_READS,...TERAS_READS].map(read=>read.entity)),'suggested_action'],effect:'prepare',
+  authority:{kind:'tenant_switch',actsAs:'requester'},switch:{kind:'worker_control',workerId:'conversation'},stop:{honoured:true},
+  record:{kind:'outcome_record',agentIdentity:'teras.assistant'},
+  metrics:{kind:'not_measurable',reason:'A conversation turn has no accept or decline; each prepared card is decided, and measured, on its own review page.'}},
  {id:'team_absence_weekly_summary',label:'Weekly team absence summary',family:'preparer',owners:['core/mandates/team-absence-summary.ts#teamAbsenceWeeklySummary'],
   trigger:{kind:'schedule',detail:'Weekly, on the weekday the grantor chose'},readScope:['absence'],effect:'prepare',
   authority:{kind:'mandate',jobType:'team_absence_weekly_summary'},switch:{kind:'job_type',jobType:'team_absence_weekly_summary'},stop:{honoured:true},

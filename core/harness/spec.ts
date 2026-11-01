@@ -6,8 +6,8 @@
  * HARNESS_SPEC.version is raised and the new digest is recorded in HARNESS_SPEC_DIGESTS. So a behaviour
  * change is always a new spec version, which the trace and (step 5a) the outcome record carry.
  *
- * Pure data and one pure digest: no session, read, provider or effect. Not imported by any production entry
- * point (test/teras-harness-switch.test.ts pins it); the runner refuses unless a test enables it. */
+ * Pure data and one pure digest: no session, read, provider or effect. Imported in production only through
+ * core/teras-wiring (test/teras-wiring-boundary.test.ts pins it); the runner refuses without a test flag or a permit. */
 import {createHash} from 'node:crypto';
 import {canonicalJson} from '../proposals/proposal';
 

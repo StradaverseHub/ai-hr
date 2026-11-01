@@ -8,7 +8,7 @@
  *
  * Erased with the transcript: retiring or deleting the login's Assistant exchanges deletes its task memory
  * in the database (0890 trigger), whichever path retired them; delete() removes one conversation now.
- * Not wired: the runner stays off until the ADR-0169 §5.1 review. */
+ * Wired by core/teras-wiring/turn.ts, keyed by the conversation, when the tenant's Noveri conversation switch is on. */
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
 import {terasTaskMemory} from '../../db/teras-schema';

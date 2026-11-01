@@ -10,7 +10,7 @@
  * involvement yet: a later decision on a suggestion is appended as a follow-up (core/outcome-record).
  *
  * The record is written as the caller, in the caller's own transaction scope; a trace whose caller is not
- * the session is refused. Not wired: the runner stays off until the ADR-0169 §5.1 review. */
+ * the session is refused. Written for every live-chat turn by core/teras-wiring/turn.ts. */
 import {createHash} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
 import {writeOutcomeRecord,type NoticeState,type OutcomeCheck,type OutcomeRecordInput,type OutcomeRead} from '../outcome-record/record';

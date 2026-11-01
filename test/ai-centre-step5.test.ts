@@ -40,7 +40,7 @@ describe('worker registry gate', () => {
     expect(fs.existsSync(path.join(ROOT, 'app/control-tower/agents/registry-actions.ts'))).toBe(false);
     const actions = read('app/control-tower/agents/actions.ts');
     expect(actions).not.toMatch(/export async function setRegistryWorkerSwitch|export const REGISTRY_SWITCHES/);
-    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers']);");
+    expect(actions).toContain("const REGISTRY_SWITCHES: readonly string[] = Object.freeze(['approver_recommendation', 'explainers', 'conversation']);");
     expect(actions).toContain("if (formData.has('worker')) return setRegistryWorkerSwitch(formData);");
     expect(actions).toContain('if (!s.userId || s.agent || !isGroupAdmin(s)) throw');
     expect(read('app/control-tower/agents/worker-registry.tsx')).toContain('<form action={setAiFeatureAction} data-worker-switch={row.id}>');

@@ -36,12 +36,15 @@ export const terasMandateControl=pgTable('teras_mandate_control',{
 });
 
 /** 0895 — the per-tenant switch of a registered worker that has no existing switch of its own (closed list,
- * core/agent-registry/workers.ts). Off unless a group administrator turned it on. */
-export type TerasSwitchedWorker='approver_recommendation'|'explainers';
+ * core/agent-registry/workers.ts). Off unless a group administrator turned it on. 0901 adds the Noveri
+ * conversation switch, the direct-provider attestation and the staging operator attribution (conversation only). */
+export type TerasSwitchedWorker='approver_recommendation'|'explainers'|'conversation';
+export type TerasAttestedProvider='anthropic'|'openai'|'google';
 export const terasWorkerControl=pgTable('teras_worker_control',{
  tenantId:tenantId(),workerId:text('worker_id').$type<TerasSwitchedWorker>().notNull(),enabled:boolean('enabled').notNull().default(false),
  version:integer('version').notNull().default(1),
- changedByUserId:uuid('changed_by_user_id').notNull().references(()=>appUser.id),changedAt:at('changed_at').notNull().defaultNow(),
+ changedByUserId:uuid('changed_by_user_id').references(()=>appUser.id),changedAt:at('changed_at').notNull().defaultNow(),
+ attestedProvider:text('attested_provider').$type<TerasAttestedProvider>(),changedByOperator:text('changed_by_operator'),
 },t=>[primaryKey({columns:[t.tenantId,t.workerId]})]);
 
 export const terasMandate=pgTable('teras_mandate',{

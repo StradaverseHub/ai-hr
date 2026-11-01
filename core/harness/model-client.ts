@@ -3,8 +3,8 @@
  * Product code must not import a provider, gateway or OpenRouter module: that would pull the harness into
  * the approved provider-data closure (scripts/ai-provider-data-source-manifest.mjs). So the harness speaks
  * only this neutral interface. Tests pass a scripted fake (test/harness-ratchet/scripted-model.ts); the
- * real-model probe supplies an OpenRouter client from test code; production wiring, after the privacy
- * review, will supply an adapter over the governed gateway. Types only. */
+ * real-model probe can supply an OpenRouter client from test code; production wiring (core/teras-wiring/model-client.ts)
+ * supplies an adapter over the governed gateway. Types only. */
 
 export type HarnessToolCall=Readonly<{id:string;name:string;arguments:string}>;
 export type HarnessMessage=Readonly<

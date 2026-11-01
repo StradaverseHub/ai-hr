@@ -28,7 +28,7 @@ import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,
 
 const root=new URL('../',import.meta.url).pathname;
 const IDS=['payroll_anomaly_narrator','claims_triage','readiness_nudges','approval_chasers','review_chasers','clock_reminders','document_reminders','lifecycle_chasers',
- 'approver_recommendation','explainers','team_absence_weekly_summary','daily_digest'];
+ 'approver_recommendation','explainers','conversation','team_absence_weekly_summary','daily_digest'];
 
 describe('one contract for every worker',()=>{
  it('registers every automated worker with every field, in one family, scoped by the semantic model',async()=>{

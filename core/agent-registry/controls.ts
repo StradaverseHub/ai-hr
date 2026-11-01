@@ -11,7 +11,7 @@
 import {and,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
-import {terasMandateControl,terasWorkerControl,type TerasSwitchedWorker} from '../../db/teras-schema';
+import {terasMandateControl,terasWorkerControl,type TerasAttestedProvider,type TerasSwitchedWorker} from '../../db/teras-schema';
 import {isGroupAdmin} from '../../lib/authz-model';
 import {agentSwitchStatesTx} from '../agent-principal';
 import {resolveActiveAiConfig} from '../ai-config';
@@ -20,10 +20,11 @@ import {readMandateKeysTx} from '../mandates/mandates';
 import {newRunId,writeOutcomeRecordTx} from '../outcome-record/record';
 import {registeredWorker,registeredWorkers,type WorkerDeclaration} from './workers';
 
-export class WorkerControlRefused extends Error{constructor(readonly reason:'not_administrator'|'not_switchable_here'|'module_not_enabled'|'invalid'){super('Worker control refused: '+reason);this.name='WorkerControlRefused';}}
-const SWITCHED:readonly TerasSwitchedWorker[]=Object.freeze(['approver_recommendation','explainers']);
+export class WorkerControlRefused extends Error{constructor(readonly reason:'not_administrator'|'not_switchable_here'|'module_not_enabled'|'invalid'|'attestation_not_applicable'){super('Worker control refused: '+reason);this.name='WorkerControlRefused';}}
+const SWITCHED:readonly TerasSwitchedWorker[]=Object.freeze(['approver_recommendation','explainers','conversation']);
 /** The module each registry-controlled worker belongs to, checked on every switch change. */
-const SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant'});
+const SWITCHED_MODULE:Readonly<Record<TerasSwitchedWorker,string>>=Object.freeze({approver_recommendation:'leave',explainers:'assistant',conversation:'assistant'});
+const DIRECT_PROVIDERS:readonly TerasAttestedProvider[]=Object.freeze(['anthropic','openai','google']);
 /** The outcome-record identity of an administrator's switch change. It is not a worker run, so the outcome
  * summary leaves it out of the run counts (./export.ts). */
 export const WORKER_SWITCH_IDENTITY='worker-control.switch';
@@ -74,30 +75,43 @@ export async function registryGates(ctx:SessionContext):Promise<Readonly<Record<
 
 /** A group administrator turns a teras_worker_control worker on or off, while the worker's module is enabled.
  * The change is audited (actor, time, worker, state before and after) and recorded as an outcome. Workers
- * with an existing switch are changed where that switch lives, never here. */
-export async function setWorkerSwitch(supplied:SessionContext,input:Readonly<{workerId:unknown;enabled:unknown}>){
+ * with an existing switch are changed where that switch lives, never here.
+ *
+ * The Noveri conversation switch may also carry `attestDirectProvider`: the administrator confirms that the
+ * tenant's active direct upstream provider account (Anthropic, OpenAI or Google) has zero data retention and no
+ * training terms. The attestation is recorded for that provider only; switching off or switching on without it
+ * clears it. It is refused for any other worker. */
+export async function setWorkerSwitch(supplied:SessionContext,input:Readonly<{workerId:unknown;enabled:unknown;attestDirectProvider?:unknown}>){
  const ctx:SessionContext={...supplied,roles:supplied.roles?.slice(),grants:supplied.grants?.map(grant=>({...grant}))};
  if(!ctx.userId||ctx.agent||!isGroupAdmin(ctx))throw new WorkerControlRefused('not_administrator');
- if(typeof input.enabled!=='boolean'||typeof input.workerId!=='string')throw new WorkerControlRefused('invalid');
+ if(typeof input.enabled!=='boolean'||typeof input.workerId!=='string'||(input.attestDirectProvider!==undefined&&typeof input.attestDirectProvider!=='boolean'))throw new WorkerControlRefused('invalid');
  const worker=registeredWorker(input.workerId);
  if(!worker||worker.switch.kind!=='worker_control'||!SWITCHED.includes(worker.switch.workerId))throw new WorkerControlRefused('not_switchable_here');
- const workerId=worker.switch.workerId,enabled=input.enabled;
+ const workerId=worker.switch.workerId,enabled=input.enabled,attest=input.attestDirectProvider===true;
+ if(attest&&workerId!=='conversation')throw new WorkerControlRefused('attestation_not_applicable');
  if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled');
  return withTenant(ctx,async tx=>{
   const startedAt=new Date();
   const [before]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
    .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,workerId))).limit(1).for('update');
   const from=before?.enabled===true;
-  const values={enabled,changedByUserId:ctx.userId!,changedAt:sql`now()`};
+  // The attestation names the provider active now; a later change of provider is not covered by it.
+  let attestedProvider:TerasAttestedProvider|null=null;
+  if(attest&&enabled){
+   const active=(await resolveActiveAiConfig(tx,ctx,'hr_assistant'))?.provider;
+   if(!active||!(DIRECT_PROVIDERS as readonly string[]).includes(active))throw new WorkerControlRefused('attestation_not_applicable');
+   attestedProvider=active as TerasAttestedProvider;
+  }
+  const values={enabled,changedByUserId:ctx.userId!,changedByOperator:null,changedAt:sql`now()`,...(workerId==='conversation'?{attestedProvider}:{})};
   const [row]=await tx.insert(terasWorkerControl).values({tenantId:ctx.tenantId,workerId,...values})
    .onConflictDoUpdate({target:[terasWorkerControl.tenantId,terasWorkerControl.workerId],set:values}).returning();
   // Audit: who (the event actor), when (the event time), which worker, and the state before and after.
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-worker',aggregateId:ctx.tenantId,
-   eventType:enabled?'teras-worker.enabled':'teras-worker.disabled',actor:actorOf(ctx),payload:{workerId,from,to:enabled,version:row.version}});
+   eventType:enabled?'teras-worker.enabled':'teras-worker.disabled',actor:actorOf(ctx),payload:{workerId,from,to:enabled,version:row.version,...(workerId==='conversation'?{attestedProvider}:{})}});
   await writeOutcomeRecordTx(tx,ctx,{runId:newRunId(),runKind:'turn',startedAt,finishedAt:new Date(Math.max(Date.now(),startedAt.getTime())),
    authority:{kind:'person',askedByUserId:ctx.userId!},agentIdentity:WORKER_SWITCH_IDENTITY,reads:[],checks:[],
    replay:{model:null,provider:null,instructionSet:null,specVersion:null,specDigest:null,toolCatalogue:null},
-   outcomeKind:'done',outcome:{workerId,from,to:enabled,version:row.version},humanInvolvement:'decided',notice:'not_applicable'});
+   outcomeKind:'done',outcome:{workerId,from,to:enabled,version:row.version,...(workerId==='conversation'?{attestedProvider}:{})},humanInvolvement:'decided',notice:'not_applicable'});
   return Object.freeze(row);
  });
 }

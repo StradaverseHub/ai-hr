@@ -22,6 +22,13 @@ function switchControl(t: ReturnType<typeof useTranslations>, row: WorkerRow) {
     <form action={setAiFeatureAction} data-worker-switch={row.id}>
       <input type="hidden" name="worker" value={row.id} />
       <input type="hidden" name="enabled" value={String(!row.switch.on)} />
+      {row.id === 'conversation' && !row.switch.on && (
+        // Only needed for a direct upstream provider; an OpenRouter route sends zero-retention and no-training on every request.
+        <label className="mb-2 flex max-w-xs items-start gap-2 text-xs text-muted-foreground">
+          <input type="checkbox" name="attestDirectProvider" value="true" className="mt-0.5" />
+          <span>{t('conversationAttest')}</span>
+        </label>
+      )}
       <button type="submit" className={btnGhost} aria-label={`${t(row.switch.on ? 'turnOff' : 'turnOn')} · ${known(t, `workers.${row.id}`, row.label)}`}>{t(row.switch.on ? 'turnOff' : 'turnOn')}</button>
       <p className="mt-1 text-xs text-muted-foreground">{t('switchOwner.worker_control')}</p>
     </form>

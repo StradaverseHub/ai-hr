@@ -41,10 +41,12 @@ describe('switch',()=>{
   vi.stubEnv('VITEST','');vi.stubEnv('NODE_ENV','production');
   await expect(runTurn({enabled:HARNESS_TEST_ONLY,ctx:employee,conversationId:'c',question:'Hi',scope:SCOPE,model:scriptedModel([]),memory:new InMemoryTaskMemoryStore()})).rejects.toBeInstanceOf(HarnessDisabled);
  });
- it('is imported by no production entry point',()=>{
-  const offenders:string[]=[],harness=join(process.cwd(),'core','harness');
+ // Wiring (ADR-0169 §5.1): only core/teras-wiring may name the harness; test/teras-wiring-boundary.test.ts pins
+ // who may import the wiring and who may issue a permit.
+ it('is imported by no production entry point except the conversation wiring',()=>{
+  const offenders:string[]=[],harness=join(process.cwd(),'core','harness'),wiring=join(process.cwd(),'core','teras-wiring');
   const walk=(path:string)=>{
-   if(path===harness||/node_modules|\.next/.test(path))return;
+   if(path===harness||path===wiring||/node_modules|\.next/.test(path))return;
    const stat=statSync(path,{throwIfNoEntry:false});if(!stat)return;
    if(stat.isDirectory()){for(const name of readdirSync(path))walk(join(path,name));return;}
    if(/\.(ts|tsx|mjs|js)$/.test(path)&&/core\/harness\/|['"]\.\.?\/harness\//.test(readFileSync(path,'utf8')))offenders.push(path);

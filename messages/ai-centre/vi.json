@@ -411,11 +411,14 @@
         "approver_recommendation": "Gợi ý cho người duyệt",
         "explainers": "Bộ diễn giải",
         "team_absence_weekly_summary": "Tóm tắt vắng mặt hằng tuần của nhóm",
-        "daily_digest": "Bản tóm tắt hằng ngày"
+        "daily_digest": "Bản tóm tắt hằng ngày",
+        "conversation": "Hội thoại Noveri"
       },
       "switchInvalid": "Không thể thay đổi công tắc đó tại đây.",
       "switchRefused": "Chỉ quản trị viên tập đoàn mới có thể thay đổi công tắc này.",
-      "switchModuleOff": "Mô-đun của tác tử này chưa được bật."
+      "switchModuleOff": "Mô-đun của tác tử này chưa được bật.",
+      "conversationAttest": "Tài khoản nhà cung cấp trực tiếp đang dùng (Anthropic, OpenAI hoặc Google) không lưu giữ dữ liệu và không dùng để huấn luyện. Không cần cho OpenRouter.",
+      "switchAttestation": "Xác nhận này chỉ áp dụng khi đang dùng nhà cung cấp trực tiếp (Anthropic, OpenAI hoặc Google)."
     },
     "recommendation": {
       "show": "Xem gợi ý",
@@ -454,6 +457,86 @@
       "deadlines": "Hạn chót theo luật định",
       "deadlinesDetail": "{overdue} quá hạn · {dueSoon} sắp đến hạn",
       "lastPrepared": "Công việc tóm tắt hằng ngày của bạn chuẩn bị mục này lần gần nhất lúc {when}."
+    },
+    "conversation": {
+      "routed": "Đã chuyển đến nhóm nhân sự của bạn: trợ lý không xử lý chủ đề này.",
+      "routedCrisis": "Nếu bạn đang gặp nguy hiểm, hãy liên hệ dịch vụ khẩn cấp ngay.",
+      "days": "{count, plural, other {# ngày}}",
+      "review": "Xem xét",
+      "open": "Mở",
+      "expires": "Hết hạn {time}",
+      "howPrepared": "Cách chuẩn bị",
+      "preparedBy": "Chuẩn bị bởi",
+      "preparedByValue": "Trợ lý, từ các kiểm tra của chính hệ thống, với tư cách của bạn",
+      "confirmOn": "Xác nhận tại",
+      "confirmOnValue": "Trang xem xét. Không có gì thay đổi cho đến khi bạn xác nhận ở đó.",
+      "suggestionMeta": "Hoàn tất và xác nhận trên trang của nó",
+      "readAs": "Đã đọc: {reads}, với tư cách của bạn.",
+      "howAnswers": "Cách tạo câu trả lời",
+      "whyLabel": "Hỏi tại sao",
+      "why": {
+        "leave": "Tại sao số ngày phép của tôi là bấy nhiêu?",
+        "leavePrompt": "Tại sao số ngày phép được hưởng của tôi là bấy nhiêu?",
+        "payslip": "Tại sao có các khoản khấu trừ bắt buộc này?",
+        "payslipPrompt": "Tại sao các khoản khấu trừ bắt buộc này bị trừ vào lương của tôi?"
+      },
+      "actions": {
+        "fallback": "Một thay đổi sẵn sàng để bạn xem xét",
+        "leave_apply": "Đơn nghỉ phép sẵn sàng để xem xét",
+        "leave_cancel": "Hủy nghỉ phép sẵn sàng để xem xét",
+        "approvals_leave_decide": "Quyết định nghỉ phép sẵn sàng để xem xét"
+      },
+      "checks": {
+        "actor_current": "Quyền truy cập của bạn còn hiệu lực",
+        "ai_controls_unpaused": "Kiểm soát AI cho phép",
+        "assigned_step_current": "Bước phê duyệt được giao cho bạn",
+        "deduction_and_balance": "Số dư đủ",
+        "leave_type_eligible": "Loại phép được phép",
+        "own_approved_cancellable": "Vẫn có thể hủy",
+        "own_pending_request": "Đơn vẫn đang chờ",
+        "review_contract": "Trang xem xét đã sẵn sàng"
+      },
+      "outcomes": {
+        "withdrawn_now": "Rút lại ngay",
+        "give_back_requested": "Yêu cầu trả lại các ngày",
+        "rejection_if_confirmed": "Bị từ chối nếu bạn xác nhận",
+        "step_decision_if_confirmed": "Bước của bạn được ghi nhận",
+        "approval_if_native_checks_pass": "Được duyệt nếu các kiểm tra vẫn đạt",
+        "submitted_not_approved": "Đã gửi để phê duyệt, chưa được duyệt"
+      },
+      "reads": {
+        "my_leave_balances": "số dư phép của bạn",
+        "my_leave_requests": "đơn nghỉ phép của bạn",
+        "my_reporting_line": "tuyến báo cáo của bạn",
+        "my_payslip_summary": "phiếu lương của bạn",
+        "my_pay_change": "thay đổi lương của bạn",
+        "my_claim_statuses": "yêu cầu thanh toán của bạn",
+        "my_module_work": "việc của bạn",
+        "upcoming_holidays": "ngày lễ",
+        "team_leave_summary": "nghỉ phép của nhóm",
+        "who_is_away": "ai đang nghỉ",
+        "approval_queue": "phê duyệt của bạn",
+        "product_guidance": "hướng dẫn sản phẩm",
+        "product_destinations": "trang sản phẩm",
+        "available_actions": "hành động có sẵn",
+        "setup_readiness": "trạng thái thiết lập",
+        "company_setup": "thiết lập công ty",
+        "explain_leave_entitlement": "cách tính ngày phép",
+        "explain_payslip_statutory": "cách tính khấu trừ bắt buộc",
+        "explain_attendance_day": "cách tính chấm công",
+        "setup_copilot": "các bước thiết lập"
+      },
+      "errors": {
+        "invalid_question": "Vui lòng đặt câu hỏi tối đa 2.000 ký tự.",
+        "continuation_invalid": "Cuộc trò chuyện này không thể tiếp tục. Hãy bắt đầu cuộc trò chuyện mới.",
+        "not_configured": "Công ty bạn chưa thiết lập nhà cung cấp AI. Hãy hỏi quản trị viên.",
+        "provider_not_compliant": "Nhà cung cấp AI của công ty bạn chưa được thiết lập để không lưu dữ liệu và không huấn luyện, nên trợ lý không thể trả lời. Hãy hỏi quản trị viên.",
+        "budget_daily": "Bạn đã đạt giới hạn câu hỏi hôm nay. Hãy thử lại vào ngày mai.",
+        "budget_monthly": "Công ty bạn đã đạt giới hạn AI tháng này.",
+        "ai_control": "AI hiện đang tạm dừng hoặc bị giới hạn cho bạn hoặc công ty bạn.",
+        "protected_input": "Không thể gửi câu hỏi này một cách an toàn. Hãy thử hỏi theo cách khác.",
+        "provider_error": "Trợ lý chưa thể trả lời lúc này. Vui lòng thử lại."
+      }
     }
   }
 }
