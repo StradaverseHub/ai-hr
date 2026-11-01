@@ -4,12 +4,12 @@ import { useTranslations } from 'next-intl';
 import { Ban, Bell, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, HelpCircle, Pause, Play, Scale, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiCentreName } from '@/lib/ai-centre/brand';
-import { ClockworkFigure, type ClockworkLabels } from './clockwork-figure';
+import { ClockworkFigure, type ClockworkLabels, type ClockworkTarget } from './clockwork-figure';
 
 /** The nine steps of one request (ADR-0170 §4), and which layer each lights. `guard` and `outcome` are parts
  * of the foundation; the others are layers. Fixed: this walkthrough explains the design and reads nothing. */
 export const HOW_STEPS = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'] as const;
-export const HOW_STEP_TARGET: readonly (Target | null)[] = [null, 'interfaces', 'guard', 'harness', 'context', 'capabilities', 'record', 'outcome', 'interfaces'];
+export const HOW_STEP_TARGET: readonly (ClockworkTarget | null)[] = [null, 'interfaces', 'guard', 'harness', 'context', 'capabilities', 'record', 'outcome', 'interfaces'];
 type Layer = 'interfaces' | 'harness' | 'context' | 'capabilities' | 'record';
 type Part = 'guard' | 'jobs' | 'outcome' | 'audit';
 type Target = Layer | Part;

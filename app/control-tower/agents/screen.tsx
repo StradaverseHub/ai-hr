@@ -47,7 +47,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
   const tTower = await getTranslations('controlTower');
   // Workers: built-in checks are read from the system (core/control-domains.ts), never declared.
   // The Workers page reads them (app/control-tower/agents/features/page.tsx) and passes them in.
-  const builtIn = builtInChecks ? builtInChecks.filter(row=>row.id in BUILT_IN_PLACEMENT) : null;
+  const builtInShown = builtInChecks ? builtInChecks.filter(row=>row.id in BUILT_IN_PLACEMENT) : null;
   const byFamily = groupByFamily(view.features, feature=>FEATURE_PLACEMENT[feature.id].family);
   const queue = section==='orchestrator' ? await orchestrationQueue(s) : null;
   // WP12 (R8, R20): the inventory section, the alert banner on every section, and paged, dated run history.
@@ -229,7 +229,7 @@ export async function AiManagementScreen({session:s,section,searchParams,childre
     </Card>}
     {section==='features'&&<Card id="ai-built-in" className="scroll-mt-4 p-5">
       <SectionHeader title={tc('workers.builtInTitle')}/><p className="mt-1 max-w-4xl text-sm text-muted-foreground">{tc('workers.builtInHelp')}</p>
-      {builtIn===null?<p className="mt-3 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>:<ul className="mt-3 divide-y divide-border">{builtIn.map(row=>{const placement=BUILT_IN_PLACEMENT[row.id];return <li key={row.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+      {builtInShown===null?<p className="mt-3 text-sm text-muted-foreground">{t('inv.alerts.unavailable')}</p>:<ul className="mt-3 divide-y divide-border">{builtInShown.map(row=>{const placement=BUILT_IN_PLACEMENT[row.id];return <li key={row.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
         <div className="min-w-0 max-w-3xl"><p className="font-medium">{tTower(`agent.${row.id}`)}</p><p className="mt-1 text-xs text-muted-foreground">{tc(`workers.families.${placement.family}`)} · {tc(`workers.triggers.${placement.trigger}`)} · {tc(`workers.effects.${placement.effect}`)}</p><p className="mt-1 text-xs text-muted-foreground">{tTower(`why.${row.reasonKey}`)}</p></div>
         <span className={row.active?'text-sm text-emerald-700 dark:text-emerald-300':'text-sm text-muted-foreground'}>{row.active?tc('workers.on'):row.offByDesign?tc('workers.byDesign'):tc('workers.off')}</span>
       </li>;})}</ul>}

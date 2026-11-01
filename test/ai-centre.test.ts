@@ -118,7 +118,12 @@ describe('AI centre messages', () => {
   type Dict = { [key: string]: string | Dict };
   const flat = (value: Dict, prefix = ''): [string, string][] =>
     Object.entries(value).flatMap(([key, child]) => typeof child === 'string' ? [[prefix + key, child] as [string, string]] : flat(child, `${prefix}${key}.`));
-  const placeholders = (text: string) => [...text.matchAll(/\{(\w+)(?:,\s*plural)?/g)].map(match => match[1]).sort().join(',');
+  // Plural arms ({Today}, {# days}) are translated text, not placeholders: drop them before collecting names.
+  const placeholders = (text: string) => {
+    let rest = text, previous = '';
+    while (rest !== previous) { previous = rest; rest = rest.replace(/(=\d+|zero|one|two|few|many|other)\s*\{[^{}]*\}/g, ''); }
+    return [...rest.matchAll(/\{(\w+)/g)].map(match => match[1]).sort().join(',');
+  };
   const catalogue = (locale: string) => new Map(flat(JSON.parse(read(`messages/ai-centre/${locale}.json`))));
   const en = catalogue('en');
 

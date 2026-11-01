@@ -74,9 +74,10 @@ describe('How it works walkthrough', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: how.play }));
     expect(screen.getByRole('button', { name: how.pause })).toHaveAttribute('aria-pressed', 'true');
-    act(() => { vi.advanceTimersByTime(3600 * 2 + 10); });
+    // Each step schedules the next after it renders, so time advances one step at a time.
+    for (let i = 0; i < 2; i++) act(() => { vi.advanceTimersByTime(3600); });
     expect(selectedStep()).toHaveAccessibleName(how.steps.s2);
-    act(() => { vi.advanceTimersByTime(3600 * 10); });
+    for (let i = 0; i < 10; i++) act(() => { vi.advanceTimersByTime(3600); });
     expect(selectedStep()).toHaveAccessibleName(how.steps.s8);
     expect(screen.getByRole('button', { name: how.play })).toHaveAttribute('aria-pressed', 'false');
   });
