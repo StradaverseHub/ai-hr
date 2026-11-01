@@ -10,6 +10,7 @@ import { InternalAuthError, startLogin, changeInitialPassword, verifyMfa, rotate
 import { requestRecovery, completeRecovery } from '@/lib/internal-auth/recovery';
 import { startInvitation, acceptInternalInvitation } from '@/lib/internal-auth/invitations';
 import { readBoundedBody } from '@/lib/bounded-body';
+import { recordWebActivity } from '@/lib/session-activity';
 import { createRequestAdmission, createScopedAdmission, RequestBudgetExceeded, takeRequestBudget, trustedRequestSource } from '@/lib/request-budget';
 const admit = createRequestAdmission(8);
 const admitSource = createScopedAdmission(4);
@@ -22,13 +23,17 @@ async function reportActivity(request: NextRequest) {
     release = admitActivity();
     const source = trustedRequestSource(request);
     if (source) await takeRequestBudget(['auth-source', source, 'activity'], 600, 60);
-    const token=request.cookies.get(INTERNAL_SESSION_COOKIE)?.value;
-    const allowance = await touchSession(token) || await touchEntraSession(token);
-    if (!allowance) {
+    const activity = await recordWebActivity(request.cookies.get(INTERNAL_SESSION_COOKIE)?.value, {
+      recorders: [touchSession, touchEntraSession],
+      liveIdentity: async () => (await import('@/lib/internal-auth/web-session')).currentInternalIdentity(),
+    });
+    if (activity.status === 'expired') {
       const expired = NextResponse.json({ error: 'expired' }, { status: 401, headers: responseHeaders });
       expired.cookies.set(INTERNAL_SESSION_COOKIE, '', { httpOnly: true, secure: true, sameSite: 'lax', path: '/', maxAge: 0 });
       return expired;
     }
+    if (activity.status === 'not-enforced') return NextResponse.json({ step: 'not-enforced' }, { headers: responseHeaders });
+    const { status: _status, ...allowance } = activity;
     return NextResponse.json({ step: 'active', ...allowance }, { headers: responseHeaders });
   } catch (error) {
     if (error instanceof RequestBudgetExceeded) return NextResponse.json({ error: 'rateLimited' }, { status: 429,

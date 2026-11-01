@@ -55,6 +55,7 @@
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
     "signingInHelp": "Taking you to AIHR.",
+    "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue.",
     "microsoft": "Continue with Microsoft",
     "microsoftError": "Microsoft sign-in could not complete. Check your organization and linked account, then try again."
   },
@@ -114,6 +115,7 @@
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
     "signingInHelp": "Membawa anda ke AIHR.",
+    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan.",
     "microsoft": "Teruskan dengan Microsoft",
     "microsoftError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi."
   },
@@ -173,6 +175,7 @@
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
     "signingInHelp": "正在进入 AIHR。",
+    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。",
     "microsoft": "使用 Microsoft 继续",
     "microsoftError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。"
   },
@@ -232,6 +235,7 @@
     "workplaceLoginHelp": "உங்கள் பணியிடம் தேர்ந்தெடுக்கப்பட்டது. பயனர்பெயர் மற்றும் கடவுச்சொல்லை உள்ளிடவும்.",
     "signingInTitle": "உள்நுழைகிறது…",
     "signingInHelp": "AIHR-க்கு அழைத்துச் செல்கிறது.",
+    "idleSignedOut": "சிறிது நேரம் செயலற்று இருந்ததால் நீங்கள் வெளியேற்றப்பட்டீர்கள். தொடர மீண்டும் உள்நுழையவும்.",
     "microsoft": "Microsoft மூலம் தொடரவும்",
     "microsoftError": "Microsoft உள்நுழைவு நிறைவடையவில்லை. உங்கள் நிறுவனத்தையும் இணைக்கப்பட்ட கணக்கையும் சரிபார்த்து மீண்டும் முயலவும்."
   },
@@ -291,6 +295,7 @@
     "workplaceLoginHelp": "เลือกที่ทำงานของคุณแล้ว กรอกชื่อผู้ใช้และรหัสผ่าน",
     "signingInTitle": "กำลังเข้าสู่ระบบ…",
     "signingInHelp": "กำลังพาคุณไปยัง AIHR",
+    "idleSignedOut": "คุณถูกออกจากระบบเนื่องจากไม่มีการใช้งานเป็นระยะเวลาหนึ่ง โปรดเข้าสู่ระบบอีกครั้งเพื่อดำเนินการต่อ",
     "microsoft": "ดำเนินการต่อด้วย Microsoft",
     "microsoftError": "ไม่สามารถลงชื่อเข้าใช้ Microsoft ได้ โปรดตรวจสอบองค์กรและบัญชีที่เชื่อมโยง แล้วลองอีกครั้ง"
   },
@@ -350,6 +355,7 @@
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
     "signingInHelp": "Đang đưa bạn đến AIHR.",
+    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục.",
     "microsoft": "Tiếp tục với Microsoft",
     "microsoftError": "Không thể hoàn tất đăng nhập Microsoft. Hãy kiểm tra tổ chức và tài khoản đã liên kết, rồi thử lại."
   }

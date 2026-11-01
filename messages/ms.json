@@ -11215,7 +11215,8 @@
         "importHistory": "Menyenaraikan import apabila anda mempunyai kebenaran lihat Tenaga Kerja bagi sekurang-kurangnya satu syarikatnya, dan hanya memaparkan pekerja syarikat yang boleh anda lihat. Fail asal memerlukan kebenaran lihat bagi setiap syarikat di dalamnya; Kembalikan memerlukan kebenaran penyelenggaraan Tenaga Kerja bagi setiap syarikat di dalamnya.",
         "securityCenter": "Tersedia kepada pentadbir atau individu dengan kebenaran mengkonfigurasi akses.",
         "createLogin": "Pentadbir seluruh kumpulan sahaja. Persediaan manual juga memerlukan penyedia log masuk yang disokong dan sesi pentadbir yang disahkan.",
-        "inviteUser": "Pentadbir seluruh kumpulan sahaja."
+        "inviteUser": "Pentadbir seluruh kumpulan sahaja.",
+        "entra": "Pentadbir kumpulan sahaja. Konfigurasikan log masuk Microsoft dan penyediaan akaun pekerja untuk organisasi sendiri. Pautan identiti sedia ada memerlukan pengesahan jelas."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -26878,7 +26879,9 @@
     "workplaceLoginHelp": "Tempat kerja anda telah dipilih. Masukkan nama pengguna dan kata laluan.",
     "signingInTitle": "Mendaftar masuk…",
     "signingInHelp": "Membawa anda ke AIHR.",
-    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan."
+    "idleSignedOut": "Anda telah dilog keluar selepas tempoh tidak aktif. Log masuk semula untuk meneruskan.",
+    "microsoft": "Teruskan dengan Microsoft",
+    "microsoftError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi."
   },
   "aiManagement": {
     "title": "Pengurusan AI",
@@ -33423,8 +33426,6 @@
     "action": "Action",
     "retry": "Retry",
     "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
-    "microsoft": "Teruskan dengan Microsoft",
-    "loginError": "Log masuk Microsoft tidak dapat diselesaikan. Semak organisasi dan akaun yang dipautkan, kemudian cuba lagi.",
     "states": {
       "pending": "Pending",
       "processing": "Processing",

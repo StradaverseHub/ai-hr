@@ -11215,7 +11215,8 @@
         "importHistory": "当您对导入中至少一家公司拥有人员查看权限时会列出该导入，并且只显示您可查看公司的员工。下载原始文件需要对其中每家公司拥有查看权限；撤销需要对其中每家公司拥有人员维护权限。",
         "securityCenter": "管理员或具有访问配置权限的人员可以使用。",
         "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
-        "inviteUser": "仅限集团级管理员。"
+        "inviteUser": "仅限集团级管理员。",
+        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -26878,7 +26879,9 @@
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
     "signingInHelp": "正在进入 AIHR。",
-    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。"
+    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。",
+    "microsoft": "使用 Microsoft 继续",
+    "microsoftError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。"
   },
   "aiManagement": {
     "title": "AI 管理",
@@ -33423,8 +33426,6 @@
     "action": "Action",
     "retry": "Retry",
     "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
-    "microsoft": "使用 Microsoft 继续",
-    "loginError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。",
     "states": {
       "pending": "Pending",
       "processing": "Processing",

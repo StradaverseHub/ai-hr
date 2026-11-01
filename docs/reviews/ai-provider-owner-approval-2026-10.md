@@ -392,3 +392,22 @@ preserved; the two pending records remain identical and blocked. It does not ass
 privacy approval, live tenant acceptance or release PASS. The generated module manifest is
 `2fd3bef631acf8e7cd6e7d7bb1d15b4e5dc1d0c15c8cf690b8603ecdde74b73b`.
 Further covered source changes require exact review again.
+
+## Exact technical re-review — PR #194 integration repairs
+
+The post-gate source review covers closure 1148 /
+`45853c97aad334596470becb7e16d4d35562fe5f0ff7457ccdae365436a43d22`.
+Against frozen candidate `c6cd46f1cb6715371f27942e5bae51d228b1840d`, the only changed
+provider-covered files are the six locale dictionaries. The existing employee Microsoft login label
+and refusal text move from `entra` into canonical `internalAuth`; their localized values are
+unchanged. `admin.users.scope.entra` now explains the existing group-administrator restriction.
+No `assistant`, `onehr` or `aiManagement` subtree changes. Native copy is regenerated from the
+canonical authentication vocabulary, including the existing idle-sign-out message.
+
+The shared activity helper and shell contract from PR #196 `90346adf0` are integrated with Entra as
+an enforcing recorder. These add no AI provider payload, access purpose, contract or autonomous
+sensitive effect. Serializers, transports, prompts, spend controls and approval validation remain
+unchanged. This agent technical review changes only `sourceDigest` on the same 24 approved records;
+original human provenance and both pending blocks remain unchanged. It asserts neither new human
+privacy approval nor runtime acceptance. The regenerated module source manifest is
+`1be15b76da3e43106bfe07af40929cdb321666ee7844038d8c060487b41b79fa`.

@@ -11215,7 +11215,8 @@
         "importHistory": "Lists an import when you have Workforce view for at least one of its companies, and shows only the employees of companies you can view. The original file needs view for every company in it; Revert needs Workforce maintain for every company in it.",
         "securityCenter": "Available to administrators or people with permission to configure access.",
         "createLogin": "Group-wide administrators only. Manual setup also requires a supported login provider and a verified administrator session.",
-        "inviteUser": "Group-wide administrators only."
+        "inviteUser": "Group-wide administrators only.",
+        "entra": "Group administrators only. Configure Microsoft sign-in and employee provisioning for their own organization. Linking existing identities requires explicit confirmation."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -26878,7 +26879,9 @@
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
     "signingInHelp": "Taking you to AIHR.",
-    "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue."
+    "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue.",
+    "microsoft": "Continue with Microsoft",
+    "microsoftError": "Microsoft sign-in could not complete. Check your organization and linked account, then try again."
   },
   "aiManagement": {
     "title": "AI management",
@@ -33423,8 +33426,6 @@
     "action": "Action",
     "retry": "Retry",
     "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
-    "microsoft": "Continue with Microsoft",
-    "loginError": "Microsoft sign-in could not complete. Check your organization and linked account, then try again.",
     "states": {
       "pending": "Pending",
       "processing": "Processing",

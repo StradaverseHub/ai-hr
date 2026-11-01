@@ -54,3 +54,26 @@ IT will configure the non-production Entra tenant and hybrid AD environment afte
 Live cloud/hybrid provisioning, enterprise conditional access and physical mobile Microsoft login
 acceptance remain unverified until that environment is available. No live directory call, privileged
 setup, production deployment or store submission is asserted by this source review.
+
+## Complete-gate findings and final contract integration
+
+Original full run [41342509559](https://github.com/StradaverseHub/ai-hr/actions/runs/41342509559)
+qualifies only frozen `c6cd46f1cb6715371f27942e5bae51d228b1840d`; its failures remain original evidence.
+All application chunks finished before repairs were prepared in a separate worktree. Findings:
+missing shared loading boundary, undeclared Entra sidebar row, missing scope explanation,
+authentication vocabulary split between web/native, missing Entra dependency ports in existing
+HTTP/native fixtures, and four explicit historical source-tail expectations needing the two new
+migration identities. Repairs preserve historical prefix hashes, fixed predecessor cuts, retained-data
+and authority assertions, and explicitly pin the new SQL bytes.
+
+The final shared provider contract from PR #196 `90346adf0` adds the `active`, `not-enforced` and
+`expired` outcomes. Entra registers its enforcing recorder before live-identity fallback; an expired
+Microsoft session is removed and audited before fallback runs. Tests exercise the real activity
+endpoint with a fresh Microsoft cookie and after its configured idle limit, plus native Microsoft
+selection through the shipped screen without submitting a local password.
+
+This integration adds `test/session-activity.test.ts` to the complete test inventory. The existing
+cross-source recovery policy requires identical suite/unit inventories and therefore cannot adopt
+this aggregate using the original plan. The changed authentication contract and complete-inventory
+identity require fresh aggregate qualification, rather than relabelling old artifacts. Failed and
+successful original evidence is retained; focused repair passes alone grant no release authority.

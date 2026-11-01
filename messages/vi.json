@@ -11215,7 +11215,8 @@
         "importHistory": "Liệt kê lần nhập khi bạn có quyền xem Nhân sự cho ít nhất một công ty trong đó, và chỉ hiển thị nhân viên của các công ty bạn được xem. Tệp gốc cần quyền xem mọi công ty trong tệp; Hoàn tác cần quyền duy trì Nhân sự cho mọi công ty trong tệp.",
         "securityCenter": "Dành cho quản trị viên hoặc người có quyền cấu hình truy cập.",
         "createLogin": "Chỉ dành cho quản trị viên toàn nhóm. Thiết lập thủ công cũng yêu cầu nhà cung cấp đăng nhập được hỗ trợ và phiên quản trị viên đã xác minh.",
-        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm."
+        "inviteUser": "Chỉ dành cho quản trị viên toàn nhóm.",
+        "entra": "Chỉ quản trị viên cấp tập đoàn. Cấu hình đăng nhập Microsoft và cấp tài khoản nhân viên cho tổ chức của mình. Liên kết danh tính hiện có cần được xác nhận rõ ràng."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -26878,7 +26879,9 @@
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
     "signingInHelp": "Đang đưa bạn đến AIHR.",
-    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục."
+    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục.",
+    "microsoft": "Tiếp tục với Microsoft",
+    "microsoftError": "Không thể hoàn tất đăng nhập Microsoft. Hãy kiểm tra tổ chức và tài khoản đã liên kết, rồi thử lại."
   },
   "aiManagement": {
     "title": "Quản lý AI",
@@ -33423,8 +33426,6 @@
     "action": "Action",
     "retry": "Retry",
     "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
-    "microsoft": "Tiếp tục với Microsoft",
-    "loginError": "Không thể hoàn tất đăng nhập Microsoft. Hãy kiểm tra tổ chức và tài khoản đã liên kết, rồi thử lại.",
     "states": {
       "pending": "Pending",
       "processing": "Processing",

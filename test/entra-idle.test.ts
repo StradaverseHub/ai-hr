@@ -12,10 +12,12 @@ import {readRecord,writeRecord} from '../lib/internal-auth/store';
 import {saveSessionPolicy} from '../core/session-policy';
 import {forgetIdleTimeout} from '../lib/session-policy-server';
 import {POST} from '../app/login/api/[operation]/route';
+const requestCookie=vi.hoisted(()=>({token:undefined as string|undefined}));
+vi.mock('next/headers',()=>({cookies:async()=>({get:(name:string)=>name==='__Host-aihr_internal'&&requestCookie.token?{value:requestCookie.token}:undefined})}));
 let base:Base,config:EntraConfig,object:string,now:number;
 beforeAll(migrateTestDb);
 beforeEach(async()=>{
- await resetDb();base=await seedBase();forgetIdleTimeout(base.tenantId);
+ requestCookie.token=undefined;await resetDb();base=await seedBase();forgetIdleTimeout(base.tenantId);
  vi.stubEnv('AUTH_PROVIDER','internal');vi.stubEnv('AUTH_PUBLIC_ORIGIN','https://hr.test');vi.stubEnv('AUTH_SESSION_KEY','6'.repeat(64));vi.stubEnv('AIHR_TRUST_REQUEST_SOURCE','0');
  await provisionEntraTestOrganization(base,'acme');
  config={tenantId:base.tenantId,organization:'acme',directoryTenantId:randomUUID(),clientId:randomUUID(),clientSecret:'fixture',provisioningClientId:'',provisioningClientSecret:'',servicePrincipalId:'',jobId:'',sourceAnchorAttribute:'',domain:'',mode:'cloud',enabled:true,provisioningEnabled:false,immutableMatchingConfirmed:false,revision:randomUUID()};
@@ -32,6 +34,14 @@ describe('combined Microsoft sign-in and shared idle-session policy',()=>{
   const response=await POST(new NextRequest('https://hr.test/login/api/activity',{method:'POST',headers:{origin:'https://hr.test','content-type':'application/json',cookie:`__Host-aihr_internal=${session.access_token}`},body:'{}'}),{params:Promise.resolve({operation:'activity'})});
   expect(response.status).toBe(200);expect(await response.json()).toEqual({step:'active',idleTimeoutSeconds:900,remainingSeconds:895});
   expect(response.cookies.get('__Host-aihr_internal')).toBeUndefined();expect(await readEntraSession(session.access_token)).not.toBeNull();
+ });
+ it('returns expired through the shared provider contract after Microsoft reaches the organization limit',async()=>{
+  const session=await createEntraSession(config,object,false);requestCookie.token=session.access_token;advance(16);
+  const response=await POST(new NextRequest('https://hr.test/login/api/activity',{method:'POST',headers:{origin:'https://hr.test',cookie:`__Host-aihr_internal=${session.access_token}`}}),{params:Promise.resolve({operation:'activity'})});
+  expect(response.status).toBe(401);expect(await response.json()).toEqual({error:'expired'});
+  expect(response.cookies.get('__Host-aihr_internal')?.value).toBe('');expect(await readEntraSession(session.access_token)).toBeNull();
+  const events=await owner.client`select event_type from domain_event where tenant_id=${base.tenantId} and event_type='app-user.session-idle-expired'`;
+  expect(events).toEqual([{event_type:'app-user.session-idle-expired'}]);
  });
  it('touches only on reported activity and atomically expires and audits the Microsoft family once',async()=>{
   const session=await createEntraSession(config,object,false);advance(10);

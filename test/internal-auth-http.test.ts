@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-const service = vi.hoisted(() => ({ startLogin: vi.fn(), changeInitialPassword: vi.fn(), verifyMfa: vi.fn(), rotateRefresh: vi.fn(), revokeSession: vi.fn() }));
+const service = vi.hoisted(() => ({ startLogin: vi.fn(), changeInitialPassword: vi.fn(), verifyMfa: vi.fn(), rotateRefresh: vi.fn(), revokeSession: vi.fn(), touchSession: vi.fn() }));
+const entra = vi.hoisted(() => ({ rotateEntraRefresh: vi.fn(), revokeEntraSession: vi.fn(), touchEntraSession: vi.fn() }));
+vi.mock('../lib/entra/sessions', () => entra);
 const intl=vi.hoisted(()=>({getLocale:vi.fn(async()=> 'en')}));
 vi.mock('next-intl/server',()=>({getLocale:intl.getLocale}));
 const recovery = vi.hoisted(() => ({ requestRecovery: vi.fn(), completeRecovery: vi.fn() }));
@@ -17,7 +19,7 @@ const access = 'aihr_' + 'a'.repeat(43), refresh = 'aihr_refresh_' + 'b'.repeat(
 function request(operation: string, body: unknown, headers: Record<string, string> = {}) {
   return POST(new NextRequest(`https://hr.test/login/api/${operation}`, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: typeof body === 'string' ? body : JSON.stringify(body) }), { params: Promise.resolve({ operation }) });
 }
-beforeEach(() => { vi.stubEnv('AUTH_PROVIDER', 'internal'); vi.stubEnv('AUTH_PUBLIC_ORIGIN', 'https://hr.test'); vi.stubEnv('AUTH_SESSION_KEY', 'a'.repeat(64)); vi.clearAllMocks();intl.getLocale.mockResolvedValue('en'); });
+beforeEach(() => { vi.stubEnv('AUTH_PROVIDER', 'internal'); vi.stubEnv('AUTH_PUBLIC_ORIGIN', 'https://hr.test'); vi.stubEnv('AUTH_SESSION_KEY', 'a'.repeat(64)); vi.clearAllMocks(); service.touchSession.mockResolvedValue(null); entra.touchEntraSession.mockResolvedValue(null); identity.currentInternalIdentity.mockResolvedValue(null); intl.getLocale.mockResolvedValue('en'); });
 afterEach(() => vi.unstubAllEnvs());
 describe('embedded auth HTTP trust and credential carriers', () => {
   it('refuses missing or foreign browser Origin before attempting a password check', async () => {
@@ -89,7 +91,22 @@ describe('embedded auth HTTP trust and credential carriers', () => {
   it('native logout ignores any browser cookie and revokes only its explicit native credential', async () => {
     const response = await request('logout', { refresh_token: refresh }, { 'x-aihr-client': 'native', cookie: '__Host-aihr_internal=browser-value' });
     expect(response.status).toBe(200); expect(service.revokeSession).toHaveBeenCalledWith(undefined, true, refresh);
+    expect(entra.revokeEntraSession).toHaveBeenCalledWith(undefined, true, refresh);
     expect(response.headers.get('set-cookie')).toBeNull();
+  });
+  it('records Microsoft activity before any non-enforcing fallback and retains the browser cookie', async () => {
+    entra.touchEntraSession.mockResolvedValue({ idleTimeoutSeconds: 900, remainingSeconds: 880 });
+    const response = await request('activity', {}, { origin: 'https://hr.test', cookie: '__Host-aihr_internal=microsoft-token' });
+    expect(response.status).toBe(200); expect(await response.json()).toEqual({ step: 'active', idleTimeoutSeconds: 900, remainingSeconds: 880 });
+    expect(entra.touchEntraSession).toHaveBeenCalledWith('microsoft-token');
+    expect(identity.currentInternalIdentity).not.toHaveBeenCalled(); expect(response.headers.get('set-cookie')).toBeNull();
+  });
+  it('keeps a live non-enforcing session and clears only a genuinely expired session', async () => {
+    identity.currentInternalIdentity.mockResolvedValueOnce({ subject: 'live-provider' });
+    const live = await request('activity', {}, { origin: 'https://hr.test', cookie: '__Host-aihr_internal=federated-token' });
+    expect(live.status).toBe(200); expect(await live.json()).toEqual({ step: 'not-enforced' }); expect(live.headers.get('set-cookie')).toBeNull();
+    const expired = await request('activity', {}, { origin: 'https://hr.test', cookie: '__Host-aihr_internal=expired-token' });
+    expect(expired.status).toBe(401); expect(expired.cookies.get('__Host-aihr_internal')?.value).toBe('');
   });
   it('rejects malformed JSON, non-object values, oversized bodies and form posts without calling auth', async () => {
     for (const [body, headers] of [ ['{', {}], [[], {}], ['x'.repeat(8200), {}], ['username=user', { 'content-type': 'application/x-www-form-urlencoded' }] ] as const) {
