@@ -60,15 +60,16 @@ it('independently compares native concurrency and first-slip/status exclusion be
  };
  const restore=async()=>{for(const original of originals)await owner.client.unsafe(String(original.definition));await owner.client.unsafe('drop trigger if exists a_perf_draft_first_slip_barrier on payslip; drop function if exists public.perf_draft_first_slip_barrier()');};
  try{
-  for(const phase of ['before','candidate','restored']){
+  for(const [phaseIndex,phase]of ['before','candidate','restored'].entries()){
+   const phaseDate=month+'-'+String(15+phaseIndex);
    if(phase==='candidate')await install();if(phase==='restored')await restore();
    const entered=barrier(),release=barrier();
-   const first=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[0].employmentId,today)).toEqual([]);entered.resolve();await release.promise;await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[0].employmentId,attendanceDate:today,status:'present'}).onConflictDoNothing();}));
+   const first=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[0].employmentId,phaseDate)).toEqual([]);entered.resolve();await release.promise;await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[0].employmentId,attendanceDate:phaseDate,status:'present'}).onConflictDoNothing();}));
    let other:ReturnType<typeof settle>|undefined,slip:ReturnType<typeof settle>|undefined,status:ReturnType<typeof settle>|undefined;
    let overlap=false,firstSlipBlocked=false,statusBlocked=false;
    try{
     expect(await Promise.race([entered.promise.then(()=>true),first.then(()=>false),delay(3000).then(()=>false)])).toBe(true);
-    other=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[1].employmentId,today)).toEqual([]);await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[1].employmentId,attendanceDate:today,status:'present'}).onConflictDoNothing();}));
+    other=settle(withDataCommand(ctx,async tx=>{expect(await lockPayrollForAttendanceChange(tx,people[1].employmentId,phaseDate)).toEqual([]);await tx.insert(s.attendance).values({tenantId:b.tenantId,employmentId:people[1].employmentId,attendanceDate:phaseDate,status:'present'}).onConflictDoNothing();}));
     overlap=await Promise.race([other.then(outcome=>outcome.ok),delay(250).then(()=>false)]);expect(overlap).toBe(phase==='candidate');
     slip=settle(owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:people[2].employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'}));
     firstSlipBlocked=await Promise.race([slip.then(()=>false),delay(200).then(()=>true)]);expect(firstSlipBlocked).toBe(true);
@@ -77,7 +78,32 @@ it('independently compares native concurrency and first-slip/status exclusion be
     status=settle(owner.db.update(s.payrollBatch).set({status:'processed'}).where(eq(s.payrollBatch.id,batch.id)));
     statusBlocked=await Promise.race([status.then(()=>false),delay(200).then(()=>true)]);expect(statusBlocked).toBe(true);expect(await nativeWait('update "payroll_batch"'),'native status writer is physically blocked').toBe(true);
    }finally{release.resolve();const outcomes=await Promise.all([first,...(other?[other]:[]),...(slip?[slip]:[]),...(status?[status]:[])]);report[phase]={overlap,firstSlipBlocked,statusBlocked,outcomes};save();expect(outcomes.every(row=>row.ok)).toBe(true);}
+
+   const physical=await owner.db.select().from(s.attendance).where(eq(s.attendance.attendanceDate,phaseDate));expect(physical).toHaveLength(2);
    await owner.db.delete(s.payslip).where(eq(s.payslip.batchId,batch.id));await owner.db.update(s.payrollBatch).set({status:'draft'}).where(eq(s.payrollBatch.id,batch.id));
+   if(phase==='candidate'){
+    await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:people[0].employmentId,basicSalary:'0',grossPay:'0',statutory:{},totalDeductions:'0',netPay:'0',employerCost:'0'});
+    const nonDraft=[];
+    for(const state of ['processed','closed'] as const){
+     await owner.db.update(s.payrollBatch).set({status:state}).where(eq(s.payrollBatch.id,batch.id));
+     await withDataCommand(ctx,async tx=>{
+      const rows=await lockPayrollForAttendanceChange(tx,people[0].employmentId,phaseDate);expect(rows).toEqual([{batchId:batch.id,status:state}]);
+      let denied=false;try{await owner.client.begin(connection=>connection`select id from payroll_batch where id=${batch.id}::uuid for share nowait`);}catch(error){expect((error as {code:string}).code).toBe('55P03');denied=true;}expect(denied).toBe(true);nonDraft.push({state,exclusive:true});
+     });
+    }
+    await owner.db.update(s.payrollBatch).set({status:'draft'}).where(eq(s.payrollBatch.id,batch.id));
+    const changed=barrier(),commit=barrier();
+    const writer=owner.client.begin(async connection=>{await connection`update payroll_batch set status='processed' where id=${batch.id}::uuid`;changed.resolve();await commit.promise;});
+    await changed.promise;
+    const readers=people.slice(0,2).map(person=>settle(withDataCommand(ctx,tx=>lockPayrollForAttendanceChange(tx,person.employmentId,phaseDate))));
+    let twoNativeWaiters=false;
+    try{const until=Date.now()+2500;while(Date.now()<until){const [row]=await owner.client`select count(*)::int as n from pg_stat_activity where wait_event_type='Lock' and position('app.attendance_payroll_protection(' in query)>0 and cardinality(pg_blocking_pids(pid))>0`;if(row.n>=2){twoNativeWaiters=true;break;}await delay(10);}expect(twoNativeWaiters,'both real guards wait on the uncommitted draft-to-processed status change').toBe(true);}
+    finally{commit.resolve();await writer;}
+    const race=await Promise.all(readers);expect(race).toEqual([{ok:true,value:[{batchId:batch.id,status:'processed'}]},{ok:true,value:[]}]);
+    report.candidateExtra={physicalRows:physical.length,nonDraft,twoNativeWaiters,statusChangedAfterDraftRead:race,subtransactionReacquisition:true};save();
+    await owner.db.delete(s.payslip).where(eq(s.payslip.batchId,batch.id));await owner.db.update(s.payrollBatch).set({status:'draft'}).where(eq(s.payrollBatch.id,batch.id));
+   }
+
   }
  }finally{await restore();restored=true;save();}
 },120000);
