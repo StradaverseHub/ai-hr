@@ -336,3 +336,74 @@ disposition within existing scope, not a new privacy approval, certification, ru
 acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
 requires another exact review.
 
+
+## Technical source binding — 2 November 2026, configurable idle sign-out (ADR-0171)
+
+Branch `claude/idle-session-timeout` (configurable idle sign-out for the web app) moves the provider closure
+from 1141 files / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d` to 1143 files /
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664`.
+
+Closure membership grows by two policy sources reached through `db/schema.ts` and the embedded sign-in
+service: `lib/session-policy.ts` (bounds and defaults) and `lib/session-policy-server.ts` (reads only the
+idle limit through `app.session_idle_timeout_minutes`). Changed covered files: `db/schema.ts`,
+`lib/internal-auth/service.ts`, the two new files above and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file
+  changed.
+- Dictionaries: 16 new leaves per locale under `sessionTimeout.*` plus `internalAuth.idleSignedOut`; no
+  `assistant.*`, `onehr.*` or `aiManagement.*` leaf changed.
+- `db/schema.ts` only adds the `session_policy` table (tenant, idle minutes 5–480, revision, timestamp).
+- `lib/internal-auth/service.ts` records last reported activity on web sessions, revokes and audits a session
+  idle past its organization's limit, and adds `touchSession`; it reads no employee or HR data.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original human
+status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`670c4af684ef5bbf240c93e9f7930925618941fbb71bb09e7cf013cb4c712979` (no approval binds it).
+
+The release owner (human) approved this technical re-binding in the implementation session on 2 November
+2026 ("Yes, approve rebind") after reviewing the changed-file list above. This is a technical disposition
+within existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Fresh
+exact-source hosted qualification remains required. Any further covered-byte change requires another exact
+review.
+
+## Technical source binding — 2 November 2026, idle sign-out capability classification (ADR-0171)
+
+Full Alpha CI on `90346adf09492efef7dcfeee231f5390b6d54b8e` (run 41341875026) required classifying the new
+server action. `lib/ai/agent-capability-inventory.ts` adds only
+`saveSessionPolicyAction: handoff:access_and_authentication`, the same classification as the neighbouring
+`saveLoginPresentationAction`; the action is not agent-available. The closure stays at 1143 files and moves from
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664` to
+`f1e34f8e2d3d41a8a78575d16285937642ff442415d1ea0dfdec6e126e6ae966`. No other covered file changed since the
+previous binding above.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive effect is
+admitted. The SAME 24 approved records receive only this sourceDigest; every original human status, reviewer,
+evidence anchor and timestamp is preserved, and both pending blocks remain byte-identical.
+`lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`021756692396454e90b5a53e65797ba09f9d5a9032bf9c94f2383fc38573d334` (no approval binds it).
+
+This re-binding was made by the implementation session under the owner's standing authorization relayed by the
+release orchestrator on 2 November 2026 ("All sessions can auto approve and release without me"). No human
+reviewed this specific changed-file list; it is recorded here for review. It is a technical disposition within
+existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Any further
+covered-byte change requires another exact review.
+
+## Technical source binding — 2 November 2026, idle sign-out merged with Runner Operator (PR188)
+
+Merging main `438bfae3d9f5b71f54f7fc258959e91249c4f597` (PR188, Runner Operator, bound on main to
+`5bd1ea76f2fd1ac7610d12422b492eb2d54d0a774581ee8c0f4225803b1215f8`) into the idle sign-out branch combines both
+closures: 1145 files / `f52ec0333649aaede27b12406e1f7467f50cab6eac2f0ab47e82f187dec9d5bf`. The idle sign-out
+contribution is exactly the changed covered files listed in the two entries above; nothing in PR188's covered
+bytes was edited, and the dictionaries were merged key-by-key (main's catalogue plus `sessionTimeout.*` and
+`internalAuth.idleSignedOut`).
+
+The SAME 24 approved records receive only this sourceDigest; every original human status, reviewer, evidence
+anchor and timestamp is preserved, and both pending blocks remain byte-identical.
+`lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`f130d5996e8b4fa5f353b2a81fa63da2087ff1350fba24f975e4807570a4d3c5` (no approval binds it).
+
+Made by the implementation session under the owner's standing authorization relayed on 2 November 2026 ("All
+sessions can auto approve and release without me"); no human reviewed this combined list. Technical disposition
+within existing scope only, not a new privacy approval, certification, runtime PASS or staging acceptance.

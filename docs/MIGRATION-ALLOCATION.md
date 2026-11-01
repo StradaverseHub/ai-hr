@@ -5,6 +5,14 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Idle sign-out policy — 2 November 2026 (provisional source claim)
+
+`claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /
+when1793330000298 on its own branch. Claims observed on 2 November 2026 ran to file0897, idx770 and
+when1793330000297 across remote branches and registered worktrees, so the timestamp sits above all of them.
+This is unapplied source only: re-freeze above the then-live ordered ledger, relocate the idx with the
+competing claims and keep the timestamp above every earlier-applied migration before integration.
+
 ## V9 coordinated staging successor — 30 October 2026
 
 The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.

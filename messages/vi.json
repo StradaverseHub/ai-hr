@@ -26876,7 +26876,8 @@
     "switchAccountSubmit": "Đăng xuất và mở lời mời",
     "workplaceLoginHelp": "Nơi làm việc đã được chọn. Nhập tên người dùng và mật khẩu.",
     "signingInTitle": "Đang đăng nhập…",
-    "signingInHelp": "Đang đưa bạn đến AIHR."
+    "signingInHelp": "Đang đưa bạn đến AIHR.",
+    "idleSignedOut": "Bạn đã bị đăng xuất sau một thời gian không hoạt động. Hãy đăng nhập lại để tiếp tục."
   },
   "aiManagement": {
     "title": "Quản lý AI",
@@ -33520,6 +33521,26 @@
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
       }
+    }
+  },
+  "sessionTimeout": {
+    "warningTitle": "Bạn vẫn còn ở đó chứ?",
+    "warningBody": "Vì lý do bảo mật, bạn sẽ bị đăng xuất sau {seconds} giây do không hoạt động.",
+    "staySignedIn": "Tiếp tục đăng nhập",
+    "signOutNow": "Đăng xuất ngay",
+    "settingsTitle": "Tự động đăng xuất",
+    "settingsDescription": "Đăng xuất người dùng khỏi ứng dụng web khi họ không hoạt động trong khoảng thời gian này. Họ sẽ thấy cảnh báo trước một phút.",
+    "minutesLabel": "Đăng xuất sau (số phút không hoạt động)",
+    "minutesHelp": "Chọn từ {min} đến {max} phút. Mặc định là 15 phút. Phiên vẫn kết thúc 8 giờ sau khi đăng nhập.",
+    "save": "Lưu cài đặt tự động đăng xuất",
+    "saving": "Đang lưu…",
+    "notEnforced": "Bản cài đặt này không dùng đăng nhập tích hợp nên giới hạn này chưa được áp dụng.",
+    "result": {
+      "saved": "Đã lưu cài đặt tự động đăng xuất.",
+      "invalid": "Nhập số phút nguyên trong phạm vi cho phép.",
+      "conflict": "Người khác đã thay đổi cài đặt này. Hãy tải lại trang và thử lại.",
+      "forbidden": "Chỉ quản trị viên nhóm mới có thể thay đổi cài đặt tự động đăng xuất.",
+      "unavailable": "Không thể lưu cài đặt tự động đăng xuất. Hãy thử lại."
     }
   }
 }

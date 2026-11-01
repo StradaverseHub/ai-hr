@@ -26876,7 +26876,8 @@
     "switchAccountSubmit": "Sign out and open invitation",
     "workplaceLoginHelp": "Your workplace is selected. Enter your username and password.",
     "signingInTitle": "Signing you in…",
-    "signingInHelp": "Taking you to AIHR."
+    "signingInHelp": "Taking you to AIHR.",
+    "idleSignedOut": "You were signed out after a period of inactivity. Sign in again to continue."
   },
   "aiManagement": {
     "title": "AI management",
@@ -33520,6 +33521,26 @@
         "description": "Creates database backups to an approved destination when configured.",
         "results": "Backup storage and protected backup logs"
       }
+    }
+  },
+  "sessionTimeout": {
+    "warningTitle": "Are you still there?",
+    "warningBody": "For your security, you will be signed out in {seconds} seconds because of inactivity.",
+    "staySignedIn": "Stay signed in",
+    "signOutNow": "Sign out now",
+    "settingsTitle": "Automatic sign-out",
+    "settingsDescription": "Sign people out of the web app when they have been inactive for this long. They see a one-minute warning first.",
+    "minutesLabel": "Sign out after (minutes of inactivity)",
+    "minutesHelp": "Choose between {min} and {max} minutes. The default is 15 minutes. Sessions still end 8 hours after sign-in.",
+    "save": "Save automatic sign-out",
+    "saving": "Saving…",
+    "notEnforced": "This installation does not use the built-in sign-in, so this limit is not applied yet.",
+    "result": {
+      "saved": "Automatic sign-out saved.",
+      "invalid": "Enter a whole number of minutes within the allowed range.",
+      "conflict": "Someone else changed this setting. Reload the page and try again.",
+      "forbidden": "Only a group administrator can change automatic sign-out.",
+      "unavailable": "Automatic sign-out could not be saved. Try again."
     }
   }
 }
