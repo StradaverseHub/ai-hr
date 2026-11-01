@@ -96,6 +96,19 @@ flowchart TB
   T -.governs.- K
 ```
 
+**Presentation view (owner feedback, 1 November 2026: the eight parts below are too many to explain).** For customers and the team, the same architecture is shown as five layers on one foundation:
+
+| Shown as | Contains (engineering parts below) |
+| --- | --- |
+| 1. Interfaces | Surfaces (§3.1) and Connect (§3.9) |
+| 2. Agentic harness | Harness (§3.3), with the LLM inside |
+| 3. Context and knowledge | Context (§3.4) |
+| 4. HR capabilities | Capabilities (§3.5) and Proactive (§3.7) |
+| 5. HR system of record | Native owners (§3.6) |
+| Foundation: Trust and governance | Guard (§3.2) and Trust and learning (§3.8) |
+
+The engineering parts stay separate where safety depends on it. The Guard is code that runs before the model and cannot be skipped by it. The system of record is the only place money and permissions are decided. Elsewhere they may share packages.
+
 Status key: **Prod** = in production; **Branch** = built on PR 170, fictional data only, not imported by production; **Build** = to build; **Review** = blocked on the ADR-0169 §5.1 privacy/legal review.
 
 ### 3.1 Surfaces: where people meet Teras
