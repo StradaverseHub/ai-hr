@@ -43,6 +43,43 @@ async function metadataAfterDecision(ctx:SessionContext,companyIds:string[]){
    .orderBy(desc(s.attendanceCorrection.createdAt),s.attendanceCorrection.id);
  });
 }
+const possibleAssignmentSql=`
+CREATE FUNCTION app.perf_possible_attendance_work() RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $possible$
+DECLARE caller public.app_user; stage_user jsonb; stage_person jsonb; actor_user jsonb; actor_person jsonb;
+BEGIN
+ SELECT u.* INTO caller FROM public.app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL;
+ -- Unknown identity/configuration always falls through to the original authoritative reader.
+ IF NOT FOUND OR caller.person_id IS NULL OR NOT app.principal_snapshot_current() THEN RETURN true; END IF;
+ IF EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=caller.tenant_id AND r.app_user_id=caller.id AND r.role::text IN ('hr_admin','super_admin')) THEN RETURN true; END IF;
+ -- Include historical, inactive and every line kind. False positives are deliberately harmless.
+ IF EXISTS(SELECT 1 FROM public.reporting_line r JOIN public.employment e ON e.id=r.manager_employment_id AND e.tenant_id=r.tenant_id
+  WHERE r.tenant_id=caller.tenant_id AND e.person_id=caller.person_id) THEN RETURN true; END IF;
+ actor_user:=lower(jsonb_build_object('userId',caller.id::text)::text)::jsonb;
+ actor_person:=lower(jsonb_build_object('personId',caller.person_id::text)::text)::jsonb;
+ stage_user:=jsonb_build_array(jsonb_build_object('approvers',jsonb_build_array(actor_user)));
+ stage_person:=jsonb_build_array(jsonb_build_object('approvers',jsonb_build_array(actor_person)));
+ IF EXISTS(SELECT 1 FROM public.attendance_workflow_request w WHERE w.tenant_id=caller.tenant_id AND w.routing_version IN (2,3,4)
+  AND (lower(w.stages::text)::jsonb @> stage_user OR lower(w.stages::text)::jsonb @> stage_person)) THEN RETURN true; END IF;
+ IF EXISTS(SELECT 1 FROM public.attendance_workflow_reassignment r WHERE r.tenant_id=caller.tenant_id
+  AND (lower(r.approvers::text)::jsonb @> jsonb_build_array(actor_user) OR lower(r.approvers::text)::jsonb @> jsonb_build_array(actor_person))) THEN RETURN true; END IF;
+ IF EXISTS(SELECT 1 FROM public.attendance_workflow_participant_reassignment r WHERE r.tenant_id=caller.tenant_id
+  AND (lower(r.assigned::text)::jsonb @> actor_user OR lower(r.assigned::text)::jsonb @> actor_person)) THEN RETURN true; END IF;
+ RETURN false;
+END;
+$possible$;
+REVOKE ALL ON FUNCTION app.perf_possible_attendance_work() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.perf_possible_attendance_work() TO ai_hr_app;
+`;
+async function metadataWithPossibleAssignment(ctx:SessionContext,companyIds:string[]){
+ const possible=await withTenant(ctx,async tx=>{
+  await assertAssignedWorkPrincipalTx(tx,ctx);
+  const [row]=await tx.execute<{possible:boolean}>(sql`select app.perf_possible_attendance_work()as possible`);return row.possible;
+ });
+ // This experiment retains the whole original positive path and its fresh transaction/guards.
+ // Production promotion would put this check in the owner's existing transaction, never cache it.
+ return possible?pendingAttendanceTaskMetadata(ctx,companyIds):[];
+}
 it('compares fresh request-grained routing before, during and after query-plan reuse and necessary denial gates',async()=>{
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'attendance','active');
  const root=adminCtx(b),today=todayInKualaLumpur();
@@ -104,7 +141,8 @@ it('compares fresh request-grained routing before, during and after query-plan r
  process.env.AUDIT_HASH_CHAIN_ENABLED='true';
  try{
   const [audit]=await withTenant(actors[0].ctx,tx=>tx.execute<{armed:string}>(sql`select current_setting('app.audit_hash_chain',true)as armed`));expect(audit.armed).toBe('on');
-  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored','migration-metadata-after-decision','migration-metadata-restored','migration-principal-plan','migration-principal-restored','migration-principal-file']){
+  await owner.client.unsafe(possibleAssignmentSql);
+  for(const phase of ['original-before','cached-plans','cached-plans-and-denial-gates','routing-plans-and-denial-gates','original-after','migration-files','migration-plus-live-guard-plans','migration-files-restored','migration-metadata-after-decision','migration-metadata-restored','migration-principal-plan','migration-principal-restored','migration-principal-file','migration-possible-assignment','migration-possible-restored']){
    for(const [index,d]of definitions.entries())await owner.client.unsafe((phase.startsWith('cached')&&index<3)||(phase.startsWith('routing')&&index<5)?d.cached:d.original);
    await owner.client.unsafe(phase.endsWith('denial-gates')?guarded:assignment.original);
    if(phase.startsWith('migration'))for(const file of ['0871_visibility_routing_plans.sql','0872_attendance_assignment_work.sql']){
@@ -125,7 +163,7 @@ it('compares fresh request-grained routing before, during and after query-plan r
     expect(changed.grants).toEqual([{role:'employee',companyId:null}]);
     await expect(pendingAttendanceTaskMetadata(actors[0].ctx,[b.companyId])).rejects.toThrow();
    }finally{await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,actors[0].ctx.userId!));}
-   const read=phase==='migration-metadata-after-decision'?metadataAfterDecision:pendingAttendanceTaskMetadata;
+   const read=phase==='migration-metadata-after-decision'?metadataAfterDecision:phase==='migration-possible-assignment'?metadataWithPossibleAssignment:pendingAttendanceTaskMetadata;
    const measurements=[];
    for(let i=0;i<4;i++){
     const times=[];
@@ -150,7 +188,19 @@ it('compares fresh request-grained routing before, during and after query-plan r
    phases[phase]={measurements,expiredDelegationRefused:true,archivedAssignedActorRefused:true,forgedPersonRefused:true,securityAttributesOwnerAndAclUnchanged:true};
    writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-routing.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_ATTENDANCE_ROUTING',releaseEligible:false,pendingRequests:32,realLinkedPrincipals:35,auditGucVerified:'on',phases},null,2));
   }
+  try{
+   for(const a of actors.slice(0,2))await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,a.ctx.userId!));
+   for(const a of actors.slice(0,2)){
+    const ctx:SessionContext={...a.ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+    const original=await pendingAttendanceTaskMetadata(ctx,[b.companyId]);expect(original).toHaveLength(32);
+    expect(await metadataWithPossibleAssignment(ctx,[b.companyId])).toEqual(original);
+   }
+   expect(await metadataWithPossibleAssignment({...actors[3].ctx,personId:randomUUID()},[b.companyId]).then(()=>false,()=>true)).toBe(true);
+   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'attendance-possible-assignment.json'),JSON.stringify({namedNonAdminActor:true,nonAdminDelegate:true,orderedMetadataExact:true,forgedPersonRefused:true,noApplicationChange:true},null,2));
+  }finally{for(const a of actors.slice(0,2))await owner.db.update(s.roleAssignment).set({role:'hr_admin'}).where(eq(s.roleAssignment.appUserId,a.ctx.userId!));}
+
  }finally{
+  await owner.client.unsafe('DROP FUNCTION IF EXISTS app.perf_possible_attendance_work()');
   for(const definition of installed)await owner.client.unsafe(definition);
   if(oldAudit===undefined)delete process.env.AUDIT_HASH_CHAIN_ENABLED;else process.env.AUDIT_HASH_CHAIN_ENABLED=oldAudit;
  }
