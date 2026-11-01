@@ -412,7 +412,7 @@
         "explainers": "Explainers",
         "team_absence_weekly_summary": "Weekly team absence summary",
         "daily_digest": "Daily digest",
-        "conversation": "Noveri conversation"
+        "conversation": "Live chat conversation"
       },
       "switchInvalid": "That switch cannot be changed here.",
       "switchRefused": "Only a group administrator can change this switch.",

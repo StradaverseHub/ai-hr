@@ -412,7 +412,7 @@
         "explainers": "说明者",
         "team_absence_weekly_summary": "团队缺勤周报",
         "daily_digest": "每日摘要",
-        "conversation": "Noveri 对话"
+        "conversation": "实时聊天对话"
       },
       "switchInvalid": "此开关无法在这里更改。",
       "switchRefused": "只有集团管理员可以更改此开关。",
