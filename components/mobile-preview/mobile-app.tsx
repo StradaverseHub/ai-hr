@@ -181,6 +181,7 @@ export function MobileApp({ data, design = DEFAULT_MOBILE_DESIGN, designOnly = f
     </div>
     <div className={styles.controlPicker}><label htmlFor="mobile-clock-control">{t('live.clockLayout')}</label><select id="mobile-clock-control" disabled={captureLocked} value={control} onChange={e => setControl(e.target.value as 'flow' | 'punch' | 'rail')}><option value="flow">Monolith Flow</option><option value="punch">{t('live.punchCard')}</option><option value="rail">{t('live.timeRail')}</option></select></div>
     </>}<div className={styles.phone} aria-label={t('title')} aria-busy={refreshing}>
+      <img className={styles.artwork} alt="" aria-hidden="true" src={design.schemaVersion === 2 && design.backgrounds?.[shownAppearance] ? `/mobile-preview/artwork/${design.backgrounds[shownAppearance]}` : `/mobile-artwork/city-${shownAppearance}.png`} />
       <div className={styles.status} aria-hidden="true"><span>{time(data.loadedAt)}</span><span><Signal size={13} /><Wifi size={13} /><BatteryFull size={17} /></span></div>
       <div className={styles.context}><span className={styles.brand}>{design.logo && <img src={design.logo} alt="" />}{design.brandName}<span className={styles.mark}>.</span></span><span>{data.employment?.company ?? t('live.account')}</span></div>
       <div ref={bodyRef} className={styles.body}><div key={`${tab}:${selectedId ?? ''}`} className={styles.scene}>{content}</div></div>

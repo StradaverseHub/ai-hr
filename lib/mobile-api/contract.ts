@@ -14,7 +14,7 @@
  * arithmetic on it. Instants are ISO-8601 strings; calendar dates are `YYYY-MM-DD`.
  */
 import { z } from 'zod';
-import { parseMobileDesign, type MobileDesign } from '../mobile-design';
+import { parseMobileDesign, mobileArtworkValid, type MobileBackgrounds, type MobileDesign } from '../mobile-design';
 
 export const MOBILE_API_VERSION = 'v1' as const;
 
@@ -144,6 +144,7 @@ export type ErrorResponse = z.infer<typeof ErrorResponse>;
 export const MobileDesignResponse = z.object({
   tenantId: z.string().uuid(), revision: z.number().int().nonnegative(), publishedAt: z.string(),
   config: z.custom<MobileDesign>(value => { try { parseMobileDesign(value); return true; } catch { return false; } }),
+  artwork: z.custom<MobileBackgrounds>(mobileArtworkValid).optional(),
 });
 export type MobileDesignResponse = z.infer<typeof MobileDesignResponse>;
 

@@ -88,3 +88,26 @@ composer renderer before customers can see its new capabilities on native device
 
 Cloud/on-premise organization connections and fully internal identity are a separate security boundary
 (ADR-0098, proposed). Tenant presentation never supplies an API origin, identity issuer or credential.
+
+
+## OneHR+ customer backgrounds — 1 November 2026
+
+Owner direction: the shared default is a workplace/city image, with complete dark and light
+appearances. Chin Hin can publish its own 8th & Stellar artwork through the tenant-wide
+builder. This is presentation only; HR behavior and company scope do not change.
+
+Background uploads are normalized server-side to bounded metadata-free JPEGs, stored as
+immutable tenant assets under RLS, and referenced by id in design drafts/releases. Keeping
+bytes outside configuration avoids multiplying image payloads across version history.
+Only group administrators upload or publish; drafts are private, while own-tenant users
+can read published artwork. The library has a serialized 32 MiB per-tenant bound and
+content-hash deduplication. Existing save/publish revision checks, audit and rollback remain
+authoritative. No arbitrary image URL, SVG, script or caller-provided tenant is accepted.
+
+Native clients opt into `artwork=1` alongside `schema=2`; their authenticated design response
+contains only that tenant's published JPEGs. Earlier schema-1/2 clients receive the previous
+contract projection. Artwork stays in authenticated provider memory and is discarded with
+the account/lock boundary. Sign-in and lock use the shared default. Missing or failed artwork
+falls back to it. Changing an image after this capability is installed needs design publication,
+not a new store binary. Initial backend migration and compatible app distribution still require
+their normal acceptance and release steps; source implementation is not production arrival.

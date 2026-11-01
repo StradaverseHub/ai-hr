@@ -55,10 +55,38 @@ is synthetic. The native lock screen hid HR content and presented the normal Fac
 After simulator biometric completion, My profile rendered in dark mode with an activity spinner;
 tapping Back and trying the left-edge back gesture produced no observed route change. No HR write
 was performed. Root cause is unverified: repeat with the frozen candidate, known backend and clean
-navigation, and verify that loading terminates in data or an actionable error. The current shared
-HeaderBack also calls `router.back()` without a `canGoBack` fallback, so cold-entry navigation needs
+navigation, and verify that loading terminates in data or an actionable error. At the initial source audit, shared
+HeaderBack called `router.back()` without a `canGoBack` fallback, so cold-entry navigation needs
 specific coverage. This observation blocks acceptance of the installed build, without asserting a
 regression in the newer candidate.
+
+### Regression repairs and redesign checkpoint
+
+- Back navigation: failing cold-entry regression was captured at `630692d`; the repair at
+  `b3fc441` passed hosted run [41298503443](https://github.com/StradaverseHub/ai-hr/actions/runs/41298503443).
+- Profile loading: real authentication/API/session controllers reproduced the stranded spinner
+  for v1 and v2 after current refresh revocation at `b360389`; `5dbf19a` passed selected regressions
+  and native TypeScript in [41299374958](https://github.com/StradaverseHub/ai-hr/actions/runs/41299374958).
+- URL decoder: a fresh npm advisory review found the vendored 0.5.0 decoder affected by
+  [GHSA-qr28-fpjm-wq7f](https://github.com/advisories/GHSA-qr28-fpjm-wq7f). The actual query parser
+  exceeded its five-second watchdog at `8f8b299` in
+  [41300227040](https://github.com/StradaverseHub/ai-hr/actions/runs/41300227040); the other five cases passed.
+  `e712b6b` updates the integrity-checked CommonJS repack to official 0.5.1.
+- The Opal-inspired UI checkpoint `bc1cd8887a5ba86bc343f138f0fe194e807348b3` passed
+  [41300598303](https://github.com/StradaverseHub/ai-hr/actions/runs/41300598303): **486 tests in 38 files**,
+  zero failed/skipped (16 database files / 154 cases; 22 non-database files / 332 cases), both strict
+  compilers, and iOS/Android production exports. This includes the decoder repair.
+
+The owner subsequently selected workplace/city artwork as the default and requested per-customer
+background uploads. Those later changes need their own verification. Checkpoint evidence is not
+relabelled as proof of the customer-artwork feature or its migration. The final simulator binaries,
+authenticated walkthrough, small/large screens and real-device acceptance remain pending.
+
+The npm audit initially reported 18 affected mobile dependency entries (7 high, 9 moderate, 2 low),
+including propagated tooling findings. This is not 18 demonstrated app exploits. Root runtime Zod
+is already 4.6.7; nested Expo tooling uses Zod 3. Toolchain findings, final exported dependency
+reachability and exact signed native binaries still require review. No forced SDK upgrade or
+advisory suppression was used to conceal them.
 
 ### Native UI source audit
 

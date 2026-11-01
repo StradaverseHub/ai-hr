@@ -16288,7 +16288,14 @@
           "users": "People",
           "arrow": "Arrow"
         }
-      }
+      },
+      "backgrounds": "App backgrounds",
+      "backgroundHelp": "Upload a dark and a light image for this customer. Save the draft and publish to update employee phones. Without an image, the default city background is used.",
+      "backgroundDark": "Dark background",
+      "backgroundLight": "Light background",
+      "backgroundDefault": "Use default city background",
+      "backgroundInvalid": "Choose a PNG or JPEG smaller than 4 MB. The image must be readable and no larger than 6000 pixels on either side.",
+      "backgroundLimit": "The background library is full. Contact support before uploading more artwork."
     }
   },
   "reports": {

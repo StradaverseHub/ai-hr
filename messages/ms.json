@@ -16288,7 +16288,14 @@
           "users": "Orang ramai",
           "arrow": "Anak panah"
         }
-      }
+      },
+      "backgrounds": "Latar belakang aplikasi",
+      "backgroundHelp": "Muat naik imej gelap dan cerah untuk pelanggan ini. Simpan draf dan terbitkan untuk mengemas kini telefon pekerja. Jika tiada imej, latar bandar lalai digunakan.",
+      "backgroundDark": "Latar gelap",
+      "backgroundLight": "Latar cerah",
+      "backgroundDefault": "Gunakan latar bandar lalai",
+      "backgroundInvalid": "Pilih PNG atau JPEG kurang daripada 4 MB, boleh dibaca dan tidak melebihi 6000 piksel pada setiap sisi.",
+      "backgroundLimit": "Pustaka latar belakang penuh. Hubungi sokongan sebelum memuat naik imej lagi."
     }
   },
   "reports": {

@@ -11654,3 +11654,9 @@ export const payrollTaxBasisEvent=pgTable('payroll_tax_basis_event',{
 export const payrollTaxBasisRevision=pgTable('payroll_tax_basis_revision',{
  id:id(),tenantId:tenantId(),companyId:uuid('company_id').notNull().references(()=>company.id),employmentId:uuid('employment_id').notNull().references(()=>employment.id),payslipId:uuid('payslip_id').notNull().references(()=>payslip.id),period:text('period').notNull(),sourceHash:text('source_hash').notNull(),ordinal:integer('ordinal').notNull(),batchId:uuid('batch_id').notNull().references(()=>payrollTaxBasisBatch.id),basis:jsonb('basis').notNull().$type<import('../lib/payroll-tax-basis').TaxBasisValue>(),supersedes:uuid('supersedes').array().notNull().default(sql`'{}'::uuid[]`),createdAt:createdAt(),
 },t=>[uniqueIndex('payroll_tax_basis_revision_payslip_id_ordinal_key').on(t.payslipId,t.ordinal),uniqueIndex('payroll_tax_basis_revision_batch_id_payslip_id_key').on(t.batchId,t.payslipId)]);
+
+/** Immutable normalized artwork owned by the tenant mobile design publisher. */
+export const mobileDesignAsset = pgTable('mobile_design_asset', {
+  id: id(), tenantId: tenantId(), content: bytea('content').notNull(), sha256: text('sha256').notNull(),
+  sizeBytes: integer('size_bytes').notNull(), uploadedBy: uuid('uploaded_by').notNull(), createdAt: createdAt(),
+}, t => [uniqueIndex('mobile_design_asset_tenant_sha_unique').on(t.tenantId, t.sha256)]);

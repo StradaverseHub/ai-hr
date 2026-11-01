@@ -14,7 +14,8 @@ export type MobileDesignV1 = {
   homeOrder: ('clock' | 'tasks' | 'leave' | 'team')[];
   navigationOrder: ('clock' | 'requests' | 'inbox')[];
 };
-export type MobileDesignV2 = Omit<MobileDesignV1, 'schemaVersion'> & { schemaVersion: 2; composition: MobileComposition };
+export type MobileBackgrounds = { light: string | null; dark: string | null };
+export type MobileDesignV2 = Omit<MobileDesignV1, 'schemaVersion'> & { schemaVersion: 2; composition: MobileComposition; backgrounds?: MobileBackgrounds };
 export type MobileDesign = MobileDesignV1 | MobileDesignV2;
 export const DEFAULT_MOBILE_DESIGN: MobileDesignV1 = {
   schemaVersion: 1, brandName: 'OneHR+', logo: null, accent: 'jade', appearance: 'dark',
@@ -38,6 +39,43 @@ export function mobilePalette(design: MobileDesign, appearance: 'dark' | 'light'
 export function mobileSurfaceIsDark(palette: { bg: string }): boolean {
   return colorContrast(palette.bg, '#ffffff') > colorContrast(palette.bg, '#000000');
 }
+/** Only bounded inline JPEGs, never URLs or executable image formats. Server writes also decode/re-encode them. */
+export function mobileBackgroundImageValid(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== 'string' || value.length > 330000 || !/^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]*={0,2}$/.test(value)) return false;
+  const data = value.slice('data:image/jpeg;base64,'.length);
+  if (data.length % 4) return false;
+  const decode = (chunk: string) => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const out: number[] = [];
+    for (let i = 0; i < chunk.length; i += 4) {
+      const n = alphabet.indexOf(chunk[i]) << 18 | alphabet.indexOf(chunk[i + 1]) << 12 | Math.max(0, alphabet.indexOf(chunk[i + 2])) << 6 | Math.max(0, alphabet.indexOf(chunk[i + 3]));
+      out.push(n >>> 16 & 255); if (chunk[i + 2] !== '=') out.push(n >>> 8 & 255); if (chunk[i + 3] !== '=') out.push(n & 255);
+    }
+    return out;
+  };
+  const tail = decode(data.slice(-8));
+  if (tail.at(-2) !== 255 || tail.at(-1) !== 217) return false;
+  const bytes = decode(data.slice(0, 2048));
+  for (let i = 2; i + 8 < bytes.length;) {
+    if (bytes[i] !== 255) return false;
+    const marker = bytes[i + 1], size = bytes[i + 2] * 256 + bytes[i + 3];
+    if (size < 2) return false;
+    if (marker === 192 || marker === 194) {
+      const height = bytes[i + 5] * 256 + bytes[i + 6], width = bytes[i + 7] * 256 + bytes[i + 8];
+      return width > 0 && height > 0 && width <= 1440 && height <= 2560;
+    }
+    i += size + 2;
+  }
+  return false;
+}
+/** Immutable tenant-owned asset ids only; bytes travel separately in the authenticated response. */
+function backgroundsValid(value: unknown): value is MobileBackgrounds {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort().join(',') === 'dark,light' && Object.values(value).every(id => id === null || typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id));
+}
+export function mobileArtworkValid(value: unknown): value is MobileBackgrounds {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).sort().join(',') === 'dark,light' && Object.values(value).every(mobileBackgroundImageValid);
+}
 const oneOf = (v: unknown, values: readonly string[]) => typeof v === 'string' && values.includes(v);
 const permutation = (v: unknown, values: readonly string[]) => Array.isArray(v) && v.length === values.length && new Set(v).size === values.length && v.every(x => values.includes(x));
 /** Bound decoded raster dimensions too. This tiny base64 header reader works in web, Node and React Native. */
@@ -58,10 +96,10 @@ function logoValid(value: unknown): boolean {
 export function parseMobileDesign(value: unknown): MobileDesign {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid_design');
   const v = value as Record<string, unknown>;
-  const expected = [...Object.keys(DEFAULT_MOBILE_DESIGN), ...(v.schemaVersion === 2 ? ['composition'] : [])];
+  const expected = [...Object.keys(DEFAULT_MOBILE_DESIGN), ...(v.schemaVersion === 2 ? ['composition', ...(Object.hasOwn(v, 'backgrounds') ? ['backgrounds'] : [])] : [])];
   if (Object.keys(v).sort().join(',') !== expected.sort().join(',') ||
     (typeof v.schemaVersion !== 'number' || ![1, 2].includes(v.schemaVersion)) || typeof v.brandName !== 'string' || !v.brandName.trim() || v.brandName.length > 32 || /[\u0000-\u001f\u007f]/.test(v.brandName) ||
-    !logoValid(v.logo) ||
+    !logoValid(v.logo) || (Object.hasOwn(v, 'backgrounds') && (v.schemaVersion !== 2 || !backgroundsValid(v.backgrounds))) ||
     !oneOf(v.accent, ['coral', 'cobalt', 'jade']) || !oneOf(v.appearance, ['dark', 'light', 'system']) ||
     !oneOf(v.clockLayout, ['flow', 'punch', 'rail']) || !oneOf(v.leaveLayout, ['ledger', 'list']) ||
     !oneOf(v.corners, ['crisp', 'soft']) || !oneOf(v.motion, ['standard', 'reduced']) ||
@@ -71,7 +109,7 @@ export function parseMobileDesign(value: unknown): MobileDesign {
   let bytes = 0; for (const char of encoded) { const n = char.codePointAt(0)!; bytes += n < 128 ? 1 : n < 2048 ? 2 : n < 65536 ? 3 : 4; }
   if (bytes > 110000) throw new Error('invalid_design');
   const composition = v.schemaVersion === 2 ? parseMobileComposition(v.composition) : undefined;
-  return { ...(v as MobileDesign), ...(composition ? { composition } : {}), brandName: v.brandName.trim(), homeOrder: [...v.homeOrder as MobileDesign['homeOrder']], navigationOrder: [...v.navigationOrder as MobileDesign['navigationOrder']] };
+  return { ...(v as MobileDesign), ...(composition ? { composition } : {}), ...(v.backgrounds ? { backgrounds: { ...(v.backgrounds as MobileBackgrounds) } } : {}), brandName: v.brandName.trim(), homeOrder: [...v.homeOrder as MobileDesign['homeOrder']], navigationOrder: [...v.navigationOrder as MobileDesign['navigationOrder']] };
 }
 export function resolveMobileDesign(value: unknown): MobileDesign {
   try { return parseMobileDesign(value); } catch { return parseMobileDesign(DEFAULT_MOBILE_DESIGN); }
@@ -81,7 +119,7 @@ export type MobileBuilderState = { tenantName: string; draft: MobileDesign; draf
 
 /** Explicit compatibility projection for older installed clients. Version 2 is opt-in. */
 export function legacyMobileDesign(value: MobileDesign): MobileDesignV1 {
-  const { composition: _composition, ...legacy } = value as MobileDesignV2;
+  const { composition: _composition, backgrounds: _backgrounds, ...legacy } = value as MobileDesignV2;
   return parseMobileDesign({ ...legacy, schemaVersion: 1 }) as MobileDesignV1;
 }
 export function composeMobileDesign(value: MobileDesign): MobileDesignV2 {
@@ -97,6 +135,7 @@ export function composeMobileDesign(value: MobileDesign): MobileDesignV2 {
 export type MobileTemplate = 'monolith' | 'studio' | 'editorial' | 'vivid';
 export function mobileDesignTemplate(name: MobileTemplate, source: MobileDesign = DEFAULT_MOBILE_DESIGN): MobileDesignV2 {
   const d = composeMobileDesign({ ...legacyMobileDesign(source), corners: name === 'monolith' || name === 'editorial' ? 'crisp' : 'soft' });
+  if (source.schemaVersion === 2 && source.backgrounds) d.backgrounds = { ...source.backgrounds };
   const c = d.composition;
   if (name === 'studio') {
     c.themes.light = { bg: '#f4f6fc', card: '#ffffff', text: '#17213c', muted: '#505c76', border: '#b5bfd4', accent: '#3048a5', button: '#3048a5', onButton: '#ffffff' };
@@ -115,4 +154,11 @@ export function mobileDesignTemplate(name: MobileTemplate, source: MobileDesign 
   }
   c.pages[0].blocks.forEach(b => { if (b.kind === 'clock') b.surface = name === 'monolith' || name === 'editorial' ? 'plain' : 'card'; if (b.kind === 'leave') b.detail = name === 'monolith' ? 'compact' : 'expanded'; });
   return parseMobileDesign(d) as MobileDesignV2;
+}
+
+/** Preserve strict older installed clients without rewriting stored snapshots. */
+export function mobileDesignWithoutBackgrounds(value: MobileDesign): MobileDesign {
+  if (value.schemaVersion !== 2) return value;
+  const { backgrounds: _backgrounds, ...compatible } = value;
+  return compatible;
 }

@@ -13,7 +13,7 @@ import th from '../messages/th.json';
 import ta from '../messages/ta.json';
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/mobile-preview/actions', () => ({ changeMobileDesignAction: vi.fn() }));
+vi.mock('../app/mobile-preview/actions', () => ({ changeMobileDesignAction: vi.fn(), uploadMobileBackgroundAction: vi.fn() }));
 const { MobileBuilder } = await import('../components/mobile-preview/mobile-builder');
 const { changeMobileDesignAction } = await import('../app/mobile-preview/actions');
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.mocked(changeMobileDesignAction).mockReset(); });
@@ -96,7 +96,7 @@ describe('tenant mobile builder in a real browser', () => {
     expect(phone.dataset.navigation).toBe('top');
     expect(phone.style.getPropertyValue('--app-font')).toBe('Georgia, serif');
     expect(getComputedStyle(ui.getByRole('heading', { name: 'Hello, Test.' })).fontSize).toBe('38px');
-    fireEvent.click(ui.getByRole('button', { name: 'Undo' })); expect(phone.dataset.navigation).toBe('bar');
+    fireEvent.click(ui.getByRole('button', { name: 'Undo' })); expect(phone.dataset.navigation).toBe('dock');
     fireEvent.click(ui.getByRole('button', { name: 'Redo' })); expect(phone.dataset.navigation).toBe('top');
     fireEvent.change(ui.getByRole('textbox', { name: 'New screen name' }), { target: { value: 'Our benefits' } });
     fireEvent.click(ui.getByRole('button', { name: 'Add screen' }));

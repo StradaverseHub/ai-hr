@@ -984,7 +984,7 @@
         "placement": "bottom",
         "text": {
           "title": "Review design and history",
-          "body": "Use the inspector for branding, typography, colours and supported layouts. Review appearance and release history before publication.",
+          "body": "Use the inspector for branding, typography, colours and layouts. Upload separate dark and light customer backgrounds, or return to the default city image. Preview both appearances and review release history before publication.",
           "lang": "en"
         },
         "roles": [

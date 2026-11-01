@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, mobilePalette, parseMobileDesign, resolveMobileDesign } from '../lib/mobile-design';
+import { composeMobileDesign, DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, mobilePalette, parseMobileDesign, resolveMobileDesign } from '../lib/mobile-design';
 import { MobileDesignResponse } from '../lib/mobile-api/contract';
 
 describe('shared tenant mobile presentation contract', () => {
@@ -14,6 +14,18 @@ describe('shared tenant mobile presentation contract', () => {
     expect(resolveMobileDesign({ schemaVersion: 999 })).toEqual(DEFAULT_MOBILE_DESIGN);
     const owned = parseMobileDesign(DEFAULT_MOBILE_DESIGN); owned.homeOrder.reverse();
     expect(DEFAULT_MOBILE_DESIGN.homeOrder).toEqual(['clock', 'tasks', 'leave', 'team']);
+  });
+  it('accepts owned background references only in the capable schema, with no URLs or embedded data', () => {
+    const design = composeMobileDesign(DEFAULT_MOBILE_DESIGN);
+    design.backgrounds = { light: null, dark: '11111111-1111-4111-8111-111111111111' };
+    const parsed = parseMobileDesign(design);
+    expect(parsed).toEqual(design);
+    design.backgrounds.dark = null;
+    expect(parsed.schemaVersion === 2 && parsed.backgrounds?.dark).toBe('11111111-1111-4111-8111-111111111111');
+    for (const backgrounds of [{ dark: 'https://evil.test/a.jpg', light: null }, { dark: 'data:image/svg+xml,script', light: null }, { dark: null }, { dark: null, light: null, tenantId: 'other' }]) {
+      expect(() => parseMobileDesign({ ...design, backgrounds })).toThrow('invalid_design');
+    }
+    expect(() => parseMobileDesign({ ...DEFAULT_MOBILE_DESIGN, backgrounds: { dark: null, light: null } })).toThrow('invalid_design');
   });
   it('accepts a bounded PNG but refuses oversized decoded raster headers', () => {
     const header = Buffer.alloc(33); Buffer.from([137,80,78,71,13,10,26,10]).copy(header); header.writeUInt32BE(13,8); header.write('IHDR',12); header.writeUInt32BE(96,16); header.writeUInt32BE(96,20);

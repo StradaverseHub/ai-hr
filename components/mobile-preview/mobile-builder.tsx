@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Check, Clock, Files, Home, Inbox, Moon, Save, Send, ShieldCheck, Smartphone, Sun, Undo2, UserRound, Users } from 'lucide-react';
-import { changeMobileDesignAction } from '@/app/mobile-preview/actions';
+import { changeMobileDesignAction, uploadMobileBackgroundAction } from '@/app/mobile-preview/actions';
 import { UNSAVED_GUARD_IGNORE_SELECTOR } from '@/lib/unsaved-changes';
 import { DEFAULT_MOBILE_DESIGN, MOBILE_ACCENTS, type MobileBuilderState, composeMobileDesign, parseMobileDesign, type MobileDesignV2 } from '@/lib/mobile-design';
 import { CompositionNavigator, CompositionInspector, StyleControls } from './composer-controls';
@@ -82,6 +82,18 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
       edit('logo', value);
     } catch { setError('logoInvalid'); } finally { URL.revokeObjectURL(src); locked.current = false; setPending(false); }
   }
+  async function background(appearance: 'light' | 'dark', file: File | undefined) {
+    if (!file || locked.current) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type) || !file.size || file.size > 4 * 1024 * 1024) { setError('backgroundInvalid'); return; }
+    locked.current = true; setPending(true); setError(''); setMessage('');
+    try {
+      const form = new FormData(); form.set('file', file);
+      const result = await uploadMobileBackgroundAction(form);
+      if (!result.ok) { setError(result.error); return; }
+      edit('backgrounds', { light: design.backgrounds?.light ?? null, dark: design.backgrounds?.dark ?? null, [appearance]: result.asset.id });
+    } catch { setError('unavailable'); }
+    finally { locked.current = false; setPending(false); }
+  }
   const screens = [{ id: 'home', icon: Home }, { id: 'clock', icon: Clock }, { id: 'leave', icon: Files }, { id: 'team', icon: Users }, { id: 'requests', icon: Send }, { id: 'inbox', icon: Inbox }, { id: 'me', icon: UserRound }] as const;
   return <section data-mobile-builder className={styles.builder} aria-label={t('title')}>
     <header className={styles.header}><div><h1>{t('title')}</h1><p><strong>{state.tenantName}</strong> · {t('tenantOnly')}</p></div><div data-tour="mobile-publication" className={styles.actions}>
@@ -111,6 +123,12 @@ export function MobileBuilder({ initial, data }: { initial: MobileBuilderState; 
           <section><h2>{t('branding')}</h2><label>{t('brandName')}<input value={design.brandName} maxLength={32} onChange={e => edit('brandName', e.target.value)} /></label>
             <label>{t('logo')}<input type="file" accept="image/png,image/jpeg" onChange={e => void logo(e.target.files?.[0])} /></label>{design.logo && <button type="button" className={styles.textButton} onClick={() => edit('logo', null)}>{t('removeLogo')}</button>}
             <span className={styles.label}>{t('accent')}</span><div className={styles.swatches} role="group" aria-label={t('accent')}>{(Object.keys(MOBILE_ACCENTS) as MobileDesignV2['accent'][]).map(value => <button type="button" key={value} aria-pressed={design.accent === value} aria-label={t(value)} style={{ background: MOBILE_ACCENTS[value].button }} onClick={() => edit('accent', value)}>{design.accent === value && <Check size={17} />}</button>)}</div>
+          </section>
+          <section><h2>{t('backgrounds')}</h2><p className={styles.help}>{t('backgroundHelp')}</p>
+            {(['dark', 'light'] as const).map(value => <div key={value}>
+              <label>{t(value === 'dark' ? 'backgroundDark' : 'backgroundLight')}<input type="file" accept="image/png,image/jpeg" onChange={event => { void background(value, event.target.files?.[0]); event.target.value = ''; }} /></label>
+              {design.backgrounds?.[value] && <><img alt="" src={`/mobile-preview/artwork/${design.backgrounds[value]}`} style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 12 }} /><button type="button" className={styles.textButton} onClick={() => edit('backgrounds', { light: design.backgrounds?.light ?? null, dark: design.backgrounds?.dark ?? null, [value]: null })}>{t('backgroundDefault')}</button></>}
+            </div>)}
           </section>
           <section><h2>{t('appearance')}</h2>{(['appearance', 'clockLayout', 'leaveLayout', 'motion'] as const).map(key => <label key={key}>{t(key)}<select value={design[key]} onChange={e => edit(key, e.target.value as MobileDesignV2[typeof key])}>{({ appearance: ['dark', 'light', 'system'], clockLayout: ['flow', 'punch', 'rail'], leaveLayout: ['ledger', 'list'], corners: ['crisp', 'soft'], motion: ['standard', 'reduced'] }[key]).map(value => <option key={value} value={value}>{t(value)}</option>)}</select></label>)}</section>
           <button type="button" className={styles.textButton} onClick={() => { setDesign(composeMobileDesign(DEFAULT_MOBILE_DESIGN)); setReview(null); }}>{t('reset')}</button>

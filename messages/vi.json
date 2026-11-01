@@ -16288,7 +16288,14 @@
           "users": "Mọi người",
           "arrow": "Mũi tên"
         }
-      }
+      },
+      "backgrounds": "Hình nền ứng dụng",
+      "backgroundHelp": "Tải lên hình nền tối và sáng cho khách hàng này. Lưu bản nháp rồi xuất bản để cập nhật điện thoại nhân viên. Nếu không có ảnh, ứng dụng dùng hình nền thành phố mặc định.",
+      "backgroundDark": "Hình nền tối",
+      "backgroundLight": "Hình nền sáng",
+      "backgroundDefault": "Dùng hình nền thành phố mặc định",
+      "backgroundInvalid": "Chọn ảnh PNG hoặc JPEG hợp lệ dưới 4 MB, mỗi chiều không quá 6000 pixel.",
+      "backgroundLimit": "Thư viện hình nền đã đầy. Vui lòng liên hệ bộ phận hỗ trợ trước khi tải thêm ảnh."
     }
   },
   "reports": {

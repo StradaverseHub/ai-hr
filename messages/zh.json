@@ -16288,7 +16288,14 @@
           "users": "人员",
           "arrow": "箭头"
         }
-      }
+      },
+      "backgrounds": "应用背景",
+      "backgroundHelp": "为此客户上传深色和浅色背景。保存草稿并发布后，员工手机才会更新。未设置图片时使用默认城市背景。",
+      "backgroundDark": "深色背景",
+      "backgroundLight": "浅色背景",
+      "backgroundDefault": "使用默认城市背景",
+      "backgroundInvalid": "请选择小于 4 MB 的有效 PNG 或 JPEG 图片，任一边不得超过 6000 像素。",
+      "backgroundLimit": "背景图库已满。请联系支持团队后再上传。"
     }
   },
   "reports": {

@@ -1,10 +1,10 @@
 /** One tenant-wide design owner. All writes lock the draft and compare its revision. Published snapshots are append-only. */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { appendEvent, actorOf } from '../db/events';
-import { mobileDesignDraft, mobileDesignRelease, tenant } from '../db/schema';
+import { mobileDesignAsset, mobileDesignDraft, mobileDesignRelease, tenant } from '../db/schema';
 import { isGroupAdmin } from '../lib/authz-model';
-import { DEFAULT_MOBILE_DESIGN, parseMobileDesign, resolveMobileDesign, type MobileBuilderState, type MobileDesign, type MobileDesignRelease } from '../lib/mobile-design';
+import { DEFAULT_MOBILE_DESIGN, parseMobileDesign, resolveMobileDesign, type MobileBuilderState, type MobileDesign, type MobileDesignRelease, type MobileBackgrounds } from '../lib/mobile-design';
 
 export class MobileDesignError extends Error {
   constructor(public readonly reason: 'forbidden' | 'conflict' | 'invalid_design' | 'missing_release') { super(reason); }
@@ -14,10 +14,18 @@ function revision(value: unknown): number {
   if (!Number.isSafeInteger(value) || Number(value) < 0) throw new MobileDesignError('invalid_design');
   return Number(value);
 }
-export async function publishedMobileDesign(ctx: SessionContext): Promise<MobileDesignRelease & { tenantId: string }> {
+export async function publishedMobileDesign(ctx: SessionContext, includeArtwork = false): Promise<MobileDesignRelease & { tenantId: string; artwork?: MobileBackgrounds }> {
   return withTenant(ctx, async tx => {
     const [r] = await tx.select().from(mobileDesignRelease).where(eq(mobileDesignRelease.tenantId, ctx.tenantId)).orderBy(desc(mobileDesignRelease.revision)).limit(1);
-    return { tenantId: ctx.tenantId, revision: r?.revision ?? 0, publishedAt: r?.publishedAt.toISOString() ?? '', config: resolveMobileDesign(r?.config ?? DEFAULT_MOBILE_DESIGN) };
+    const config = resolveMobileDesign(r?.config ?? DEFAULT_MOBILE_DESIGN);
+    let artwork: MobileBackgrounds | undefined;
+    if (includeArtwork && config.schemaVersion === 2 && config.backgrounds) {
+      const ids = Object.values(config.backgrounds).filter((id): id is string => id !== null);
+      const assets = ids.length ? await tx.select({ id: mobileDesignAsset.id, content: mobileDesignAsset.content }).from(mobileDesignAsset).where(and(eq(mobileDesignAsset.tenantId, ctx.tenantId), inArray(mobileDesignAsset.id, ids))) : [];
+      const image = (id: string | null) => { const asset = assets.find(a => a.id === id); return asset ? 'data:image/jpeg;base64,' + asset.content.toString('base64') : null; };
+      artwork = { light: image(config.backgrounds.light), dark: image(config.backgrounds.dark) };
+    }
+    return { tenantId: ctx.tenantId, revision: r?.revision ?? 0, publishedAt: r?.publishedAt.toISOString() ?? '', config, ...(artwork ? { artwork } : {}) };
   });
 }
 export async function mobileBuilderState(ctx: SessionContext): Promise<MobileBuilderState> {
@@ -48,6 +56,11 @@ export async function changeMobileDesign(ctx: SessionContext, command: 'save' | 
       const [old] = await tx.select().from(mobileDesignRelease).where(and(eq(mobileDesignRelease.tenantId, ctx.tenantId), eq(mobileDesignRelease.revision, rollbackRevision)));
       if (!old) throw new MobileDesignError('missing_release');
       next = parseMobileDesign(old.config);
+    }
+    if (next.schemaVersion === 2 && next.backgrounds) {
+      const ids = [...new Set(Object.values(next.backgrounds).filter((id): id is string => id !== null))];
+      const owned = ids.length ? await tx.select({ id: mobileDesignAsset.id }).from(mobileDesignAsset).where(and(eq(mobileDesignAsset.tenantId, ctx.tenantId), inArray(mobileDesignAsset.id, ids))) : [];
+      if (owned.length !== ids.length) throw new MobileDesignError('invalid_design');
     }
     let releaseRevision: number | null = null;
     if (command !== 'save') {

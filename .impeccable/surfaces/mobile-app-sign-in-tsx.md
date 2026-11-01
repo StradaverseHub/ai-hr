@@ -2,7 +2,7 @@
 version: 1
 slug: "mobile-app-sign-in-tsx"
 primary_target: "mobile/app/sign-in.tsx"
-related_targets: ["mobile/lib/ui.tsx","mobile/lib/design.tsx","mobile/lib/home-hero.tsx","mobile/lib/clock-panel.tsx","mobile/app/settings.tsx"]
+related_targets: ["mobile/lib/ui.tsx","mobile/lib/design.tsx","mobile/lib/home-hero.tsx","mobile/lib/clock-panel.tsx","mobile/app/settings.tsx","components/mobile-preview/mobile-builder.tsx"]
 ---
 
 # OneHR+ mobile redesign
@@ -13,7 +13,7 @@ Mode: Operate. Platform: adaptive (iOS and Android). Scope: all mobile routes, p
 
 THESIS: OneHR+ makes everyday employee tasks clear and calm. The user pins Opal as the visual reference for the whole app, specifically its Timer for attendance.
 
-OWN-WORLD: Two complete surfaces: near-black/charcoal with mint and white, and cool off-white/white with deep green ink. Native system type, rounded grouped rows, broad pill actions and capsule navigation. Preserve explicit company branding and configured content.
+OWN-WORLD: Two complete surfaces: near-black/charcoal with mint and white, and cool off-white/white with deep green ink. Layered workplace/city photography is the default in both appearances. Native system type, rounded grouped rows, broad pill actions and capsule navigation. Preserve explicit company branding and configured content.
 
 STORY: Employees see their verified status, read what needs attention, and finish the existing authorized journey. Errors and pending submissions stay visible and recoverable.
 
@@ -26,3 +26,11 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 ## Acceptance
 
 After redesign, complete functional, responsive, notification and security review. Record exact builds and observed results. Exercise access boundaries, expired/revoked sessions, sensitive storage and logs, network trust, deep links and offline recovery. Physical-device checks follow simulators. No claim of zero bugs or immunity from attacks; unresolved risks block readiness as appropriate.
+
+## Confirmed background direction
+
+The owner selected Workplace & city as the shared default on 1 November. Chin Hin / 8th & Stellar is customer-specific artwork; the revised concept adds foreground framing, reflections and atmospheric depth. Original natural and AI options remain unchosen explorations.
+
+Extend the tenant-wide Mobile App builder with separate dark/light uploads, preview, explicit save/publish, rollback and return-to-default. Images are normalized JPEGs in immutable tenant-owned storage, referenced by id in small design snapshots. Drafts remain admin-private. Bearer responses deliver only published own-tenant artwork to capable clients; older clients receive a compatible projection. Pre-sign-in and locked screens retain the shared default and no tenant artwork is persisted across account changes.
+
+Backend and installed app support are required before customer artwork can reach production phones. This task does not publish a production design or deploy a backend.

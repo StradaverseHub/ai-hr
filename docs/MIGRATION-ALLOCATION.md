@@ -853,3 +853,15 @@ are renamed byte-identical and appended above every known claim. If this bundle 
 performance owner's 0866–0872 fall below the new watermark and must be reallocated above when…274
 before their own release. Re-verify the accepted V9 ledger at handback before installation. This
 reservation grants no deployment or acceptance.
+
+
+## Tenant mobile backgrounds — 1 November provisional source reservation
+
+`codex/mobile-store-readiness-20261101` reserves `0878_tenant_mobile_background_assets`,
+idx753 / version7 / when1793330000278 / breakpoints:true. Fresh main/alpha were inspected;
+a scan of 1,659 reachable ref journals plus 410 registered worktree journals found claims through
+0877 / when1793330000277. This append adds immutable tenant-owned normalized artwork and
+RLS; it preserves every historical SQL byte and the candidate journal prefix.
+This is unapplied development source only. The installed ledger was not queried for this
+reservation. Refresh the accepted ledger, peer claims and final index before integration or
+installation; this record grants no deployment or production publication.

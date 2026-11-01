@@ -22,3 +22,20 @@ The builder changes presentation within supported components. It does not grant 
 Open the explicitly identified live experience when testing real HR actions. For administrators, the live preview is available at [Mobile live experience](/mobile-preview?live=1). Treat its clocking and submission actions as real changes to records.
 
 Publishing a design is not evidence of app-store distribution or physical-device acceptance. Confirm the installation/distribution route with your platform team before directing employees to install an app.
+
+
+## Customer backgrounds
+
+In **Mobile App → Design → App backgrounds**, upload a dark image and a light image for
+your customer. Preview both appearances, save the draft, then review and publish.
+**Use default city background** removes the selected draft override; it takes effect only
+after saving and publishing. Version history can restore an earlier published design.
+
+Use PNG or JPEG files smaller than 4 MB, with each side at most 6000 pixels. The system
+creates a clean portrait image for phones. Crop the subject with room for controls and
+check readability in the preview. Uploads stay within your customer; an unfinished draft
+is visible only to tenant-wide administrators.
+
+Employee phones need the compatible OneHR+ version and updated server. Published artwork
+refreshes when the app reloads its design, including on return to the foreground. Before
+sign-in and while locked, the app uses the shared city background.

@@ -20,7 +20,7 @@ function fixture() {
     if (id === '../../lib/mobile-design') return contract;
     if (id === './session') return { useSession: () => ({ signOut }) };
     if (id === './preferences') return { useDisplayPrefs: () => ({ appearance: prefs.appearance, language: 'auto' }) };
-    if (id === './api') return { useApi: (path: string, params: unknown, onAuth: unknown) => { expect(path).toBe('design'); expect(params).toEqual({ schema: '2' }); expect(onAuth).toBe(signOut); return { data: response, reload }; } };
+    if (id === './api') return { useApi: (path: string, params: unknown, onAuth: unknown) => { expect(path).toBe('design'); expect(params).toEqual({ schema: '2', artwork: '1' }); expect(onAuth).toBe(signOut); return { data: response, reload }; } };
     if (id === 'react-native') return { useColorScheme: () => 'light', AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) }, AppState: { addEventListener: (_: string, callback: typeof foreground) => { foreground = callback; return { remove() {} }; } } };
     throw new Error('Unexpected native design dependency: ' + id);
   } });
