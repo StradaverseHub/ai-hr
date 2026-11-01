@@ -23,6 +23,11 @@ import {MODULE_CODES_WITH_NAV} from '@/lib/nav-entitlements';
 import type {SessionContext} from '@/db/client';
 
 export type DestinationAudience='everyone'|'manager'|'admin';
+/** What a destination is for, where its label alone could mislead (review B3: the model sent a harassment report to
+ * Feedback, the product feedback board read by the software team). Shown to the model beside the label. */
+export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
+ '/feedback':'Product feedback to the software team about this application: problems, ideas and new functions. Never for workplace concerns, complaints about people or personal matters; those go to the person\'s HR team.',
+});
 export type ProductDestination=Readonly<{href:string;labelKey:string;audience:DestinationAudience;module:string|null;source:'pack'|'lifecycle_v9'|'security'|'sidebar'}>;
 
 // The sidebar's own literal rows (components/sidebar.tsx GROUPS, node children and additional rows),

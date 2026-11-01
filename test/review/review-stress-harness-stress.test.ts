@@ -43,7 +43,7 @@ describe('harness volume (no database)',()=>{
   }
  },60_000);
 
- it('REVIEW medium: one model step cannot dispatch an unbounded number of tool calls; the turn stays recordable (runner.ts:177-205, record.ts:46)',async()=>{
+ it('fixed M7: one model step cannot dispatch an unbounded number of tool calls; the turn stays recordable (runner.ts:177-205, record.ts:46)',async()=>{
   const {provider,dispatched}=fakeTools(),memory=new InMemoryTaskMemoryStore();
   const flood=Array.from({length:100},(_,i)=>({name:'product_guidance',args:{query:'fictional query '+i}}));
   const model=scriptedModel([{calls:flood},{final:{reply:'Open Leave and choose Apply.',mode:'answer'}}]);
@@ -51,9 +51,11 @@ describe('harness volume (no database)',()=>{
   // The outcome record admits at most 64 reads; a turn whose trace exceeds it cannot be recorded at all.
   expect(dispatched.length,'tool executions from one model step').toBeLessThanOrEqual(64);
   expect(OutcomeRecordInput.safeParse(outcomeRecordFromTrace(result.trace)).success).toBe(true);
+  // Fixed: the spec's per-step cap runs at most that many and counts the rest.
+  expect(dispatched.length).toBe(HARNESS_SPEC.budgets.maxCallsPerStep);expect(result.trace.budgets.refusedCalls).toBe(100-HARNESS_SPEC.budgets.maxCallsPerStep);
  },60_000);
 
- it('REVIEW low: a single model call is never sent more history than the turn\'s own token budget (runner.ts:112,130)',async()=>{
+ it('fixed M8: a single model call is never sent more history than the turn\'s own token budget (runner.ts:112,130)',async()=>{
   const {provider}=fakeTools(),memory=new InMemoryTaskMemoryStore();
   // 300 earlier turns of ~2,000 characters each (~600k characters, far above maxTotalTokens of input).
   const history:ModelHistoryMessage[]=Array.from({length:600},(_,i)=>({role:i%2?'assistant':'user',content:'Fictional earlier text. '.repeat(85)+i,side:'model'}));

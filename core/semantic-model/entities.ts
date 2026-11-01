@@ -173,7 +173,7 @@ const isoDate=(description:string)=>({type:'string',description});
 const handle=(description:string)=>({type:'string',description});
 export const SEMANTIC_READS:readonly SemanticRead[]=freeze([
  {name:'my_leave_balances',entity:'leave_balance',purpose:'The asking person\'s own leave balances, one block per active employment.',input:[]},
- {name:'my_leave_requests',entity:'leave_request',purpose:'The asking person\'s own leave applications, most recent first.',
+ {name:'my_leave_requests',entity:'leave_request',purpose:'The asking person\'s own leave applications (requests they made), most recent first. Not requests waiting for their approval: those are approval_queue.',
   input:[{name:'limit',identifier:false,schema:limit(25,'How many of the most recent applications to return.')}]},
  {name:'leave_entitlement_explain',entity:'leave_entitlement',purpose:'How one of the asking person\'s own entitlements was arrived at; every figure is already computed.',
   input:[{name:'leave_type_id',identifier:true,schema:handle('A leaveTypeId taken from a my_leave_balances result. Do not guess one.')},

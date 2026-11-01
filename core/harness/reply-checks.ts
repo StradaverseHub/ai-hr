@@ -3,6 +3,8 @@
  *  - non_blank: no empty reply ever reaches the person;
  *  - destination_links: every product path or web address in the reply is a destination this caller has
  *    (the destination registry, plus the review route of a suggestion made in this turn);
+ *  - workplace_channel (review B3): the reply never sends the person to Feedback, the product feedback board read by
+ *    the software team, unless the person's own words are about the product itself (a problem, an idea, feedback);
  *  - overclaim: no claim that a change was already made (moved here from test/assistant-behaviour-score.ts,
  *    which now imports it, so the probe scores with the product's own rule);
  *  - identifiers: no IC, passport, bank account, tax, EPF or SOCSO number, phone number, email address or
@@ -72,10 +74,24 @@ export function inventedLinks(reply:string,allowed:ReadonlySet<string>):readonly
  return linksIn(reply).filter(link=>!(link.startsWith('/')&&allowed.has(link.replace(/\/$/,'')||'/')));
 }
 
+/** Review B3 (run 41343676782, emp-harassment-split): Feedback is the product feedback board (app/feedback: issue,
+ * enhancement, new function), read by the software team and the improvement loop, not HR. A link to it, or the page
+ * named as a place to go, is refused unless the person is talking about the product. English and Malay page names;
+ * every language through the link. */
+const FEEDBACK_LINK=/(?:^|[\s(`"'[<])\/feedback(?![a-z0-9/-])/i;
+const FEEDBACK_NAME=/\*\*(?:Feedback|Maklum Balas)\*\*|\b(?:use|open|go to|submit|post|send|report|raise|log|via|through|under|on|in)\s+(?:it\s+(?:in|on|via)\s+)?(?:the\s+)?(?:Feedback|Maklum Balas)\b|\b(?:Feedback|Maklum Balas)\s+(?:page|board|form|section|menu|tab|link|in the app|feature|option)\b/;
+const ABOUT_PRODUCT=/\b(bugs?|glitch\w*|crash\w*|error\s+messages?|not\s+working|doesn'?t\s+work|isn'?t\s+working|broken|features?|enhancements?|feedback|suggest(ion|ions)?|ideas?|improve\s+the\s+(app|system|product|software)|(the|this)\s+(app|application|system|software|website|site|page|screen|button|menu|tool)|new\s+function\w*|maklum\s+balas|cadangan|ralat|pepijat)\b|(反馈|建议|错误|故障|功能|系统|bug)|(phản hồi|góp ý|lỗi|tính năng)|(ข้อเสนอแนะ|บั๊ก|ข้อผิดพลาด|ระบบ)|(கருத்து|பிழை|அம்சம்)/i;
+/** True when the reply points to the product feedback board. */
+export const pointsToFeedback=(reply:string)=>FEEDBACK_LINK.test(reply)||FEEDBACK_NAME.test(reply);
+/** True when the person's words are about the product itself, the one thing Feedback is for. */
+export const asksAboutProduct=(question:string)=>ABOUT_PRODUCT.test(question.normalize('NFKC'));
+
 export type ReplyCheckResult=Readonly<{check:ReplyCheckName;ok:boolean;finding?:string}>;
+export type ReplyCheckContext=Readonly<{question?:string}>;
 /** Runs every check in the spec's order; all results are returned for the trace. */
-export function checkReply(reply:string,allowedPaths:ReadonlySet<string>,order:readonly ReplyCheckName[]):readonly ReplyCheckResult[]{
+export function checkReply(reply:string,allowedPaths:ReadonlySet<string>,order:readonly ReplyCheckName[],context:ReplyCheckContext={}):readonly ReplyCheckResult[]{
  return order.map((check):ReplyCheckResult=>{
+  if(check==='workplace_channel')return pointsToFeedback(reply)&&!asksAboutProduct(context.question??'')?{check,ok:false,finding:'feedback channel'}:{check,ok:true};
   if(check==='non_blank')return reply.trim()?{check,ok:true}:{check,ok:false,finding:'blank reply'};
   if(check==='destination_links'){const links=inventedLinks(reply,allowedPaths);return links.length?{check,ok:false,finding:links.length+(links.length===1?' link':' links')}:{check,ok:true};}
   if(check==='overclaim')return overclaim(reply)?{check,ok:false}:{check,ok:true};

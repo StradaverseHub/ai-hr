@@ -237,6 +237,10 @@ describe('task memory',()=>{
   await turn('How much leave do I have?',[{calls:[{name:'my_leave_balances'}]},{final:{reply:'You have {{F5}} days.'}}],{memory:store});
   const {result,model}=await turn('and pending?',[{final:{reply:'Ok.'}}],{memory:store,ctx:{...employee,roles:['employee','manager']}});
   expect(result.trace.memory.authorityChanged).toBe(true);expect(result.trace.memory.droppedReads).toEqual(['my_leave_balances']);
-  expect(model.requests[0].messages[0].content).toContain('Conversation goal (the person\'s words): "How much leave do I have?"');
+  // Review H2: the goal travels fenced as data in the person's message, never in the system text.
+  expect(model.requests[0].messages[0].content).not.toContain('How much leave do I have?');
+  const last=model.requests[0].messages.at(-1)!;
+  expect(last.role).toBe('user');expect(last.content).toMatch(/<<untrusted-data tool="conversation_goal" nonce="[^"]+">>\n\{"goal":"How much leave do I have\?"\}\n<<end-untrusted-data/);
+  expect(String(last.content).endsWith('and pending?')).toBe(true);
  });
 });

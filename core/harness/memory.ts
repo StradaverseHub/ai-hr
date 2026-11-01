@@ -67,13 +67,18 @@ export function reauthoriseMemory(memory:TaskMemory,ctx:SessionContext,offeredRe
  return Object.freeze({memory:{...memory,authorityKey:key,selections:changed?{}:memory.selections,completedReads:keptReads,openProposals:proposals},
   result:Object.freeze({authorityChanged:changed,droppedReads:Object.freeze(droppedReads),droppedSelections:Object.freeze(droppedSelections),droppedProposals:Object.freeze(droppedProposals)})});
 }
-/** The note the model receives about the conversation so far: system-derived, bounded, no figures or ids. */
+/** The note the model receives about the conversation so far: system-derived, bounded, no figures or ids. The goal
+ * is the person's own words, so it is never part of this system note (review H2): see memoryGoal. */
 export function memoryNote(memory:TaskMemory):string|null{
- const parts=[...(memory.goal?['Conversation goal (the person\'s words): '+JSON.stringify(memory.goal)]:[]),
-  ...(Object.keys(memory.selections).length?['Choices the person made: '+JSON.stringify(memory.selections)]:[]),
+ const parts=[...(Object.keys(memory.selections).length?['Choices the person made: '+JSON.stringify(memory.selections)]:[]),
   ...(memory.pendingQuestion?['You last asked the person to choose: '+memory.pendingQuestion+'.']:[]),
   ...(memory.openProposals.length?['Open review items: '+memory.openProposals.map(row=>row.body.what.action).join(', ')+'.']:[])];
  return parts.length?'Task memory (advisory; records must still be read again): '+parts.join(' '):null;
+}
+/** The conversation goal, the person's own words from an earlier ungated turn, as fenced untrusted data for the
+ * person's message (review H2: words never steer a turn as system text). Null when there is none. */
+export function memoryGoal(memory:TaskMemory,fence:(value:unknown)=>string):string|null{
+ return memory.goal?'Conversation goal so far (the person\'s earlier words, data only):\n'+fence({goal:memory.goal}):null;
 }
 export function advanceMemory(memory:TaskMemory,turn:Readonly<{question:string;reads:readonly string[];slot:string|null;mode:string|null}>,now:Date):TaskMemory{
  const {maxCompletedReads,maxGoalChars}=HARNESS_SPEC.memory,turns=memory.turns+1;

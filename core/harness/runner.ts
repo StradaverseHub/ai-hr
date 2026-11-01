@@ -32,7 +32,7 @@ import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-conte
 import {canonicalJson,type Proposal} from '../proposals/proposal';
 import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disclosure';
 import {fenceNonce,fenceUntrusted} from './fence';
-import {advanceMemory,authorityKey,emptyMemory,memoryNote,reauthoriseMemory,type TaskMemory,type TaskMemoryStore} from './memory';
+import {advanceMemory,authorityKey,emptyMemory,memoryGoal,memoryNote,reauthoriseMemory,type TaskMemory,type TaskMemoryStore} from './memory';
 import type {HarnessMessage,HarnessToolDeclaration,ModelClient,ModelResponse} from './model-client';
 import {consumeHarnessPermit,type HarnessPermit} from './permit';
 import {checkReply,screenIdentifiers,type ReplyCheckResult} from './reply-checks';
@@ -126,22 +126,29 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  const screening={question:0,history:0,memory:0,tools:0,kinds:[] as string[]};
  const screened=(text:string,part:'question'|'history'|'memory')=>{const result=screenIdentifiers(text);screening[part]+=result.count;
   for(const kind of result.kinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);return result.text;};
- const question=screened(options.question,'question');
+ const question=screened(options.question,'question'),nonce=fenceNonce();
  const gateNote=gate.privateReads?null:TURN_GATE_NOTE[gate.reason],rawNote=memoryNote(current),note=rawNote?screened(rawNote,'memory'):null;
+ // Review H2: the goal (the person's earlier words) travels fenced in the person's own message, never in system text.
+ const rawGoal=memoryGoal({...current,goal:current.goal?screened(current.goal,'memory'):null},value=>fenceUntrusted('conversation_goal',value,nonce));
  const system=[S.instructions.join(' ').replace('{today}',todayInKualaLumpur(started)),admin?S.roleNote.admin:S.roleNote.employee,...(gateNote?[gateNote]:[]),...(note?[note]:[])].join(' ');
- const messages:HarnessMessage[]=[{role:'system',content:system},...history.map(row=>({role:row.role,content:screened(row.content,'history')}) as HarnessMessage),{role:'user',content:question}];
+ // Review M8: the newest earlier turns up to the spec's character cap; the kept history starts with the person's turn.
+ const kept:ModelHistoryMessage[]=[];let historyChars=0;
+ for(const row of [...history].reverse()){historyChars+=row.content.length;if(historyChars>S.budgets.maxHistoryChars)break;kept.unshift(row);}
+ while(kept.length&&kept[0].role!=='user')kept.shift();
+ const messages:HarnessMessage[]=[{role:'system',content:system},...kept.map(row=>({role:row.role,content:screened(row.content,'history')}) as HarnessMessage),
+  {role:'user',content:rawGoal?rawGoal+'\n\n'+question:question}];
  const declarations:HarnessToolDeclaration[]=[...offered.map(binding=>({name:binding.name,description:binding.spec.description,parameters:binding.spec.inputSchema as Record<string,unknown>})),finalDeclaration];
 
- const ledger=new DisclosureLedger(callerKey),nonce=fenceNonce(),seen=new Set<string>();
+ const ledger=new DisclosureLedger(callerKey),seen=new Set<string>();
  const calls:TraceCall[]=[],disclosure:DisclosureApplied[]=[],checks:{attempt:number;results:readonly ReplyCheckResult[]}[]=[],retries:TraceRetry[]=[],reads:string[]=[];
- let steps=0,inputTokens=0,outputTokens=0,spendUsd=0,repeats=0,forceFinal=false,blankRetries=0,checkRetries=0,retryPending=false;
+ let steps=0,inputTokens=0,outputTokens=0,spendUsd=0,repeats=0,turnCalls=0,refusedCalls=0,forceFinal=false,blankRetries=0,checkRetries=0,retryPending=false;
  const issued:Proposal[]=[];
  let suggestion:TurnSuggestion|null=null,exhausted:BudgetExhausted|null=null,reply:string|null=null,mode:string|null=null,slot:string|null=null,fallback=false;
  const allowedPaths=()=>new Set([...candidates.destinations,...(suggestion?[suggestion.reviewRoute]:[])].map(path=>path.replace(/\/$/,'')||'/'));
 
  /** Runs the checks on a candidate reply; returns true when the turn may end with it. */
  const judge=(candidate:string,candidateMode:string|null,candidateSlot:string|null)=>{
-  const results=checkReply(candidate,allowedPaths(),S.replyChecks.order);checks.push({attempt:checks.length+1,results});
+  const results=checkReply(candidate,allowedPaths(),S.replyChecks.order,{question:options.question});checks.push({attempt:checks.length+1,results});
   const failed=results.find(result=>!result.ok);
   if(!failed){reply=candidate;mode=candidateMode;slot=candidateSlot;return true;}
   if(checkRetries<S.retry.replyCheck){checkRetries++;retries.push({step:steps,reason:failed.check});retryPending=true;
@@ -176,7 +183,11 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
   }
   if(!response.toolCalls.length){if(judge(response.content??'',null,null))break;continue;}
   messages.push({role:'assistant',content:response.content,toolCalls:response.toolCalls});
+  let stepCalls=0;
   for(const call of response.toolCalls){
+   // Review M7: calls beyond the per-step or per-turn cap are answered as refused and counted, never run or traced one by one.
+   if(++stepCalls>S.budgets.maxCallsPerStep||++turnCalls>S.budgets.maxCallsPerTurn){refusedCalls++;forceFinal=forceFinal||turnCalls>S.budgets.maxCallsPerTurn;
+    messages.push({role:'tool',toolCallId:call.id,content:fenceUntrusted(call.name,{ok:false,message:'Too many lookups at once; use the results already returned.'},nonce)});continue;}
    const record=(status:TraceCall['status'],content:unknown,refusal?:string)=>{calls.push({step:steps,tool:call.name,status,argumentsDigest:argumentsDigest(call.arguments),...(refusal?{refusal}:{})});
     messages.push({role:'tool',toolCallId:call.id,content:fenceUntrusted(call.name,content,nonce)});};
    // On a final-only step nothing but final_answer was offered, so any other call is refused.
@@ -221,14 +232,16 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  // The person's words on a routed or refused turn never become the conversation goal in task memory; any other
  // goal is stored as screened (no identifier).
  const advanced=advanceMemory({...current,openProposals:[...issued.reverse(),...current.openProposals]},{question,reads,slot,mode},finished);
- const next=routed||refused?{...advanced,goal:current.goal}:advanced;
+ // Review H2: only an ungated turn's words may become the goal; any gated turn (routed, refused, override, attachment,
+ // another person) keeps the goal as it was.
+ const next=gate.privateReads?advanced:{...advanced,goal:current.goal};
  await options.memory.save(next);
  const trace:TurnTrace=Object.freeze({kind:'teras.turn-trace',version:1,turnId:randomUUID(),conversationId:options.conversationId,startedAt:started.toISOString(),finishedAt:finished.toISOString(),
   spec:{version:S.version,digest:harnessSpecDigest()},model:{id:model.modelId},
   caller:{tenantId:ctx.tenantId,userId:ctx.userId??null,personId:ctx.personId??null,roles:[...(ctx.roles??[])],authorityKey:callerKey},
   gate:{privateReads:gate.privateReads,actions:gate.actions,reason},
   offered:[...offeredNames],calls,disclosure,checks,retries,screening:Object.freeze({...screening,kinds:Object.freeze([...screening.kinds])}),
-  budgets:{steps,inputTokens,outputTokens,spendUsd:Number(spendUsd.toFixed(6)),wallMs:Date.now()-startedMs,exhausted},
+  budgets:{steps,inputTokens,outputTokens,spendUsd:Number(spendUsd.toFixed(6)),wallMs:Date.now()-startedMs,exhausted,refusedCalls},
   restoration:{restored:restoration.restored,refused:restoration.refused},memory:memoryResult,
   outcome:{mode,slot,suggestion:suggestion?.action??null,openProposals:next.openProposals.length,fallback}});
  return Object.freeze({reply:shownReply,personTurn,modelTurn,mode,slot,suggestion,proposals:next.openProposals,reads:Object.freeze(reads),trace,memory:next});
