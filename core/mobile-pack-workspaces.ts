@@ -7,7 +7,7 @@ import {listPendingTasks} from './approvals-inbox';
 import {isModuleEnabled} from './entitlements';
 import {prepareMobilePerformanceReview,getPerformanceAttachment,PerfError} from '../packs/performance/service';
 import {prepareMobileRewardReview,RewardError} from '../packs/rewards/service';
-import {validPackValues,type PreparedPackReview} from '../lib/mobile-api/pack-form';
+import {validPackValues,projectPackPeople,type PreparedPackReview} from '../lib/mobile-api/pack-form';
 import {PackWorkspace,PackWorkspaceDecisionResult,type PackWorkspaceKind,type PackWorkspaceCommand} from '../lib/mobile-api/v2/pack-workspaces';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {decisionRefusal,type TaskDocument} from './mobile-approvals';
@@ -19,9 +19,13 @@ async function prepare(ctx:SessionContext,kind:PackWorkspaceKind,id:string,tx?:T
  const task=(await listPendingTasks(ctx,undefined,modules)).find(t=>t.kind===kind&&t.id===id);if(!task)return null;
  const p=kind==='rewardReview'?await prepareMobileRewardReview(ctx,id,tx):await prepareMobilePerformanceReview(ctx,kind,id,task.linkPath,tx);if(!p)return null;
  const base={...p.view,kind,id,today:todayInKualaLumpur()},digest=createHash('sha256').update(canonicalJson(base)).digest('hex');
- return {...p,workspace:PackWorkspace.parse({...base,expected:{digest}})};
+ return {...p,workspace:{...base,expected:{digest}}};
 }
-export async function readPackWorkspace(ctx:SessionContext,kind:PackWorkspaceKind,id:string){const p=await prepare(ctx,kind,id);return p?{outcome:'found' as const,workspace:p.workspace}:refused('not_assigned');}
+export async function readPackWorkspace(ctx:SessionContext,kind:PackWorkspaceKind,id:string,navigation:{focus?:string;offset:number}={offset:0}){
+ const p=await prepare(ctx,kind,id);if(!p)return refused('not_assigned');
+ const w=projectPackPeople(p.workspace,p.people??[],navigation);if(!w)return refused('not_assigned');
+ return {outcome:'found' as const,workspace:PackWorkspace.parse(w)};
+}
 export async function decidePackWorkspace(ctx:SessionContext,kind:PackWorkspaceKind,id:string,c:PackWorkspaceCommand){
  const me=await myEmployment(ctx);if(!me)return {outcome:'refused' as const,code:'employment_required' as const};
  try{return await withMobileCommandReceipt(ctx,{kind:'pack.decision',requestId:c.requestId,actorEmploymentId:me.employmentId,response:PackWorkspaceDecisionResult,intent:{kind,id,action:c.action,values:c.values,expected:c.expected}},async(tx:Tx)=>{

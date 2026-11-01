@@ -1654,7 +1654,7 @@ export async function prepareMobileRewardReview(ctx:SessionContext,unitId:string
    return [action(a,a[0].toUpperCase()+a.slice(1),`Move this ${v.companyName} / ${v.name} review from ${u.status} to ${next}. The canonical reward checks still apply.`,fields)];
   }catch{return [];}
  });
- return {view:{title:`${v.companyName} · ${v.name}`,revision:u.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
+ return {people:v.rows.map(r=>({id:r.id,name:r.source.name})),view:{title:`${v.companyName} · ${v.name}`,revision:u.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
   await decideRewardUnitTx(tx,ctx,unitId,u.revision,z.enum(['submit','approve','return','reject','withdraw']).parse(a),String(values.reason??''),values.acknowledged===true);return 'recorded';
  }};
 }

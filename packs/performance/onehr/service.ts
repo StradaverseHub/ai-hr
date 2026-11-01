@@ -284,6 +284,7 @@ export async function saveOnehrKpisTx(tx:Tx,ctx:SessionContext,reviewId:string,e
     return r.row.revision+1;
 }
 export async function approveOnehrScorecard(ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {
+  note.parse(remark);
   return withPerformanceTenant(ctx,tx=>approveOnehrScorecardTx(tx,ctx,reviewId,expected,approve,remark));
 }
 export async function approveOnehrScorecardTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,approve:boolean,remark:string) {

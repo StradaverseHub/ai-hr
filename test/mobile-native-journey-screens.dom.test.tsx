@@ -59,13 +59,24 @@ function fixture(platform:'ios'|'android'='ios'){
   const {ClockPanel}=load('mobile/lib/clock-panel.tsx',shared),{LeaveRequestForm}=load('mobile/lib/leave-request-form.tsx',shared),{TeamPanel}=load('mobile/lib/team-panel.tsx',shared);
   function Probe(){drafts=provider.useJourneyDrafts();return null;}
   const options={employmentId:'own',items:[{id:'annual',name:'Annual leave',durations:['full_day','half_day_am','hourly'],allowedMimeTypes:[],maxDocBytes:10485760,requiresDocument:false,emergencySplit:false}]};
-  function App({kind,refreshToken=0,visible=true,notices,cards,opts=options}:{kind:'clock'|'leave'|'team'|'homeClock';refreshToken?:number;visible?:boolean;notices?:Record<string,{label:string;detail:string|null}>;cards?:any[];opts?:any}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='homeClock'?<ClockPanel variant="home" refreshToken={refreshToken} renderHome={(v:any)=><div><button disabled={v.disabled||v.busy} onClick={v.clock}>{'home:'+v.action}</button>{v.busy&&<span>homeBusy</span>}{v.doneAt&&<span>{'homeDone:'+v.doneAt}</span>}{v.message&&<span role="alert">{v.message}</span>}{v.finishOnClockTab&&<span>finishOnClockTab</span>}</div>}/>:kind==='clock'?<ClockPanel refreshToken={refreshToken}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={opts} today="2026-01-01" onSubmitted={reload} notices={notices} cards={cards}/>}</provider.JourneyDraftProvider>;}
+  function App({kind,refreshToken=0,visible=true,notices,cards,opts=options,widgetAction,widgetIntent}:{kind:'clock'|'leave'|'team'|'homeClock';refreshToken?:number;visible?:boolean;widgetAction?:'in'|'out';widgetIntent?:string;notices?:Record<string,{label:string;detail:string|null}>;cards?:any[];opts?:any}){return <provider.JourneyDraftProvider><Probe/>{!visible?null:kind==='homeClock'?<ClockPanel variant="home" refreshToken={refreshToken} renderHome={(v:any)=><div><button disabled={v.disabled||v.busy} onClick={v.clock}>{'home:'+v.action}</button>{v.busy&&<span>homeBusy</span>}{v.doneAt&&<span>{'homeDone:'+v.doneAt}</span>}{v.message&&<span role="alert">{v.message}</span>}{v.finishOnClockTab&&<span>finishOnClockTab</span>}</div>}/>:kind==='clock'?<ClockPanel refreshToken={refreshToken} initialAction={widgetAction} widgetIntent={widgetIntent}/>:kind==='team'?<TeamPanel refreshToken={refreshToken}/>:<LeaveRequestForm options={opts} today="2026-01-01" onSubmitted={reload} notices={notices} cards={cards}/>}</provider.JourneyDraftProvider>;}
   return {App,androidOpen,engine,anchorRead,session,post,signed,openSigned,alert,hasSignedAttempt,setSignedState:(value:SignedClockStatus)=>{signedState=value;},restoreClock:(value:unknown)=>{restoredClock=value;},preview,get,capture,reload,stage,resolve,prepareClock,reportAttempt,remove,teamState,clockState,photo,attemptsState,reloadAttempts,drafts:()=>drafts};
 }
 afterEach(cleanup);
 /** Start a request and choose its type in the leave-type list (nothing is pre-selected). */
 function startRequest(name='Annual leave'){fireEvent.click(screen.getByText('requestLeave'));fireEvent.click(screen.getByRole('button',{name:'leaveType, chooseLeaveType'}));fireEvent.click(screen.getByRole('radio',{name:new RegExp('^'+name)}));}
 describe('native clock job',()=>{
+  it('a widget only selects a direction; it does not capture location, photos, prepare or submit',async()=>{
+    const f=fixture();render(<f.App kind="clock" widgetAction="out" widgetIntent="launch-1"/>);
+    await waitFor(()=>expect(f.drafts().clock).toMatchObject({action:'out',phase:'idle'}));
+    expect(f.capture).not.toHaveBeenCalled();expect(f.photo).not.toHaveBeenCalled();expect(f.prepareClock).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();expect(f.stage).not.toHaveBeenCalled();
+  });
+  it('a new widget launch preserves an attendance request already under review',async()=>{
+    const f=fixture(),ui=render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    const saved=f.drafts().clock;expect(saved.action).toBe('in');expect(saved.requestId).toBeTruthy();
+    ui.rerender(<f.App kind="clock" widgetAction="out" widgetIntent="launch-2"/>);
+    await act(async()=>{});expect(f.drafts().clock).toBe(saved);expect(f.post).not.toHaveBeenCalled();expect(f.prepareClock).toHaveBeenCalledOnce();
+  });
   it('allows an approximate fix when the shared site rule passes and keeps permission metadata out of the strict preview body',async()=>{
     const f=fixture();f.clockState.state.geofencingRequired=true;
     f.capture.mockImplementationOnce(async()=>({lat:3,lng:101,accuracy:500,sampledAt:Date.now(),permissionAccuracy:'approximate' as const}));

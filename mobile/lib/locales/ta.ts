@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetOpenHint: "வருகையை உறுதிப்படுத்த OneHR+ ஐத் திறக்கவும்",
   approvalToilSummary: "விடுப்பு வரவு · {days} · {hours} மணிநேரம்",
   approvalToilRecalculate: "ஒப்புதல் அளிக்கும்போது தற்போதைய வருகை மற்றும் கொள்கையுடன் வரவு மீண்டும் சரிபார்க்கப்படும்.",
   approvalToilExtended: "நீட்டிக்கப்பட்ட வேலை நேரம்",

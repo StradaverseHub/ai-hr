@@ -22,7 +22,7 @@ class PrivatePDFView: ExpoView, UIScrollViewDelegate {
   private var sourceURI = ""
   private var document: PDFDocument?
   private var pageIndex = 0
-  required init(appContext: AppContext) {
+  required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     scroll.delegate = self
     scroll.minimumZoomScale = 1
@@ -41,7 +41,7 @@ class PrivatePDFView: ExpoView, UIScrollViewDelegate {
   func load(_ uri: String) {
     sourceURI = uri
     document = nil; image.image = nil
-    guard let url = URL(string: uri), url.isFileURL,
+    guard let url = URL(string: uri), url.isFileURL, (url.host ?? "").isEmpty,
       let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { fail(); return }
     let file = url.resolvingSymlinksInPath().standardizedFileURL
     let root = cache.appendingPathComponent("aihr-protected").resolvingSymlinksInPath().standardizedFileURL.path + "/"

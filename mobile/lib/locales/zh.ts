@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetOpenHint: "打开 OneHR+ 确认考勤",
   approvalToilSummary: "假期积分 · {days} · {hours} 小时",
   approvalToilRecalculate: "批准时将根据当前考勤和政策重新核实积分。",
   approvalToilExtended: "延长工作时间",

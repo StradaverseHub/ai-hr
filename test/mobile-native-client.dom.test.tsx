@@ -34,6 +34,7 @@ function clientFixture(credentialState?: ReturnType<typeof createAuthState>) {
   const output = { exports: {} as { apiGet: (path: string, params?: Record<string, string>,signal?:AbortSignal) => Promise<unknown>; apiPost: (path:string,body:unknown,params?:Record<string,string>,operation?:{assertCurrent():void})=>Promise<unknown>;
     useApi: (path: string, params: Record<string, string>, onSignInRequired: () => void) => { data: { person: {name:string} } | null; loading: boolean };
     useApiV2: (path: string, schema: z.ZodType, params: Record<string, string>, onSignInRequired: () => void) => { data: unknown; loading: boolean };
+    apiGetV2:(path:string,schema:z.ZodType,params?:Record<string,string>)=>Promise<unknown>;
     v2Page: (path:string,item:z.ZodType)=>unknown; v2Download: (path:string,maxBytes?:number)=>unknown;
     apiGetPage: (resource:unknown,cursor:string|null,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{items:unknown[];nextCursor:string|null}>;
     apiDownload: (resource:unknown,params?:Record<string,string>,signal?:AbortSignal)=>Promise<{outcome:string;code?:string;document?:{uri:string}}> } };
@@ -302,6 +303,12 @@ describe('native response safety and refresh resilience',()=>{
   it('caps actual streamed response bytes even without Content-Length',async()=>{
     const f=clientFixture(),cancel=vi.fn();f.response.mockResolvedValueOnce(new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(1024*1024+1));},cancel})));
     await expect(f.api.apiGet('me')).rejects.toBeInstanceOf(UnavailableError);expect(cancel).toHaveBeenCalledOnce();
+  });
+  it('reads a large, schema-checked review while retaining a finite review-specific streaming ceiling',async()=>{
+    const f=clientFixture(),path='v2/pack-workspaces/assessmentWork/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',schema=z.object({evidence:z.string()});
+    f.response.mockResolvedValueOnce(Response.json({evidence:'x'.repeat(1024*1024+1)}));expect(await f.api.apiGetV2(path,schema)).toEqual({evidence:'x'.repeat(1024*1024+1)});
+    const cancel=vi.fn();f.response.mockResolvedValueOnce(new Response(new ReadableStream({start(c){c.enqueue(new Uint8Array(16*1024*1024+1));},cancel})));
+    await expect(f.api.apiGetV2(path,schema,{fresh:'1'})).rejects.toBeInstanceOf(UnavailableError);expect(cancel).toHaveBeenCalledOnce();
   });
   it('keeps the deadline alive when headers arrive but the body stalls',async()=>{
     vi.useFakeTimers();const f=clientFixture(),cancel=vi.fn();

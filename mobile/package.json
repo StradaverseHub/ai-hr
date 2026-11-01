@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "expo-router/entry",
   "dependencies": {
+    "@expo/ui": "~57.0.21",
     "@noble/curves": "2.4.0",
     "@react-native-community/datetimepicker": "9.1.0",
     "decode-uri-component": "file:vendor/decode-uri-component",
@@ -29,6 +30,7 @@
     "expo-symbols": "~57.0.3",
     "expo-system-ui": "~57.0.4",
     "expo-web-browser": "~57.0.3",
+    "expo-widgets": "~57.0.22",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",

@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetOpenHint: "เปิด OneHR+ เพื่อยืนยันการลงเวลา",
   approvalToilSummary: "เครดิตวันลา · {days} · {hours} ชั่วโมง",
   approvalToilRecalculate: "ระบบจะตรวจสอบเครดิตกับการลงเวลาและนโยบายปัจจุบันอีกครั้งเมื่ออนุมัติ",
   approvalToilExtended: "ชั่วโมงทำงานเพิ่มเติม",

@@ -20,6 +20,7 @@ import th from './locales/th';
 import vi from './locales/vi';
 
 const en = {
+  widgetOpenHint: "Open OneHR+ to confirm attendance",
   approvalToilSummary: "Leave credit · {days} · {hours} hours",
   approvalToilRecalculate: "Credits are rechecked against current attendance and policy when approved.",
   approvalToilExtended: "Extended working hours",
@@ -881,6 +882,7 @@ const en = {
 export type MessageKey = keyof typeof en;
 
 const ms: Record<MessageKey, string> = {
+  widgetOpenHint: "Buka OneHR+ untuk mengesahkan kehadiran",
   approvalToilSummary: "Kredit cuti · {days} · {hours} jam",
   approvalToilRecalculate: "Kredit disemak semula dengan kehadiran dan polisi semasa apabila diluluskan.",
   approvalToilExtended: "Waktu kerja lanjutan",

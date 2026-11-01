@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n';
 import type { CompanyCopy } from '../company-connection';
 
 const messages: Record<MessageKey, string> = {
+  widgetOpenHint: "Mở OneHR+ để xác nhận chấm công",
   approvalToilSummary: "Tín dụng nghỉ phép · {days} · {hours} giờ",
   approvalToilRecalculate: "Tín dụng được kiểm tra lại theo chấm công và chính sách hiện tại khi phê duyệt.",
   approvalToilExtended: "Giờ làm việc kéo dài",

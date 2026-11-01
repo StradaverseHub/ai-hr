@@ -244,6 +244,7 @@ describe('Rewards work in the shared task list', () => {
     const actors: Record<string, SessionContext> = {};
     for (const role of ['bu', 'bg', 'ctro', 'ec', 'pbp'] as const) {
       const p=await hire(`${role} reviewer`);
+      await owner.db.update(schema.assignment).set({businessUnitId:bu.id}).where(eq(schema.assignment.employmentId,p.employmentId));
       const userId = await createAppUser(b.tenantId, p.personId, 'employee');
       actors[role] = { ...a, userId, personId: p.personId, roles: ['employee'], grants: undefined };
       await setRewardMember(a, unitId, (await view()).unit.revision, userId, role);

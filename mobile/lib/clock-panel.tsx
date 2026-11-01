@@ -38,7 +38,7 @@ export type HomeClockView={
  * when it reaches review with nothing left to decide, submit at once instead of waiting for the slide. Every refusal,
  * uncertainty and recovery path is the Clock tab's own; anything that needs a decision is finished there.
  */
-export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls}:{refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
+export function ClockPanel({refreshToken=0,variant='full',renderHome,afterControls,initialAction,widgetIntent}:{initialAction?:'in'|'out';widgetIntent?:string;refreshToken?:number;variant?:'full'|'home';renderHome?:(view:HomeClockView)=>ReactNode;afterControls?:ReactNode}={}){
   const {employmentId,status:sessionStatus,signOut}=useSession();
   const clock=useApi('clock',{employmentId:employmentId??undefined},signOut);
   const attempts=useApi('clock-attempts',{employmentId:employmentId??undefined},signOut);
@@ -99,6 +99,14 @@ export function ClockPanel({refreshToken=0,variant='full',renderHome,afterContro
     })().catch(()=>{if(!disposed)setSignedStatus(null);});
     return()=>{disposed=true;};
   },[identity,recovery.ready]);
+  const consumedWidget=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!initialAction||!widgetIntent||consumedWidget.current===widgetIntent||!recovery.ready||!identity||sessionStatus!=='signedIn')return;
+    consumedWidget.current=widgetIntent;
+    // An unsubmitted preparation, uncertain response or saved command always takes precedence.
+    if(flight.current||draft&&(draft.phase!=='idle'||draft.requestId||draft.geo||draft.photo)||signedStatus?.status==='pending')return;
+    putClock({employmentId:identity,action:initialAction,phase:'idle'});
+  },[initialAction,widgetIntent,recovery.ready,identity,sessionStatus,draft,signedStatus,putClock]);
   const pending=draft?.phase==='preparing'||draft?.phase==='submitting';
   /** Home asked for a one-tap clock: submit as soon as the journey reaches review with nothing left to decide. */
   const quick=useRef(false);

@@ -1,0 +1,11 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'ai.stradaverse.widgets'
+version = '1.0.0'
+android {
+  namespace 'ai.stradaverse.widgets'
+  defaultConfig { versionCode 1; versionName '1.0.0' }
+  lint { abortOnError = true }
+}

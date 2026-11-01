@@ -74,6 +74,50 @@
           "defaultChannel": "aihr-updates",
           "enableBackgroundRemoteNotifications": false
         }
+      ],
+      [
+        "expo-widgets",
+        {
+          "enablePushNotifications": false,
+          "enableAndroid": false,
+          "widgets": [
+            {
+              "name": "OneHRClockIn",
+              "displayName": "OneHR+ Clock in",
+              "description": "Open OneHR+ to confirm clock in",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "accessoryCircular"
+                ]
+              },
+              "android": null
+            },
+            {
+              "name": "OneHRClockOut",
+              "displayName": "OneHR+ Clock out",
+              "description": "Open OneHR+ to confirm clock out",
+              "ios": {
+                "supportedFamilies": [
+                  "systemSmall",
+                  "accessoryCircular"
+                ]
+              },
+              "android": null
+            },
+            {
+              "name": "OneHRAttendance",
+              "displayName": "OneHR+ Attendance",
+              "description": "Clock in and clock out with OneHR+",
+              "ios": {
+                "supportedFamilies": [
+                  "systemMedium"
+                ]
+              },
+              "android": null
+            }
+          ]
+        }
       ]
     ],
     "scheme": "aihr",

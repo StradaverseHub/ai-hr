@@ -1,0 +1,7 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="16dp" android:gravity="center_vertical" android:background="@drawable/onehr_widget_background">
+ <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="OneHR+" android:textSize="18sp" android:textStyle="bold" android:textColor="@color/onehr_widget_text" android:maxLines="1" />
+ <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="10dp">
+  <Button android:id="@+id/onehr_clock_in" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/onehr_widget_clock_in" android:textAllCaps="false" android:textSize="14sp" android:textColor="#FFFFFF" android:background="@drawable/onehr_widget_action" />
+  <Button android:id="@+id/onehr_clock_out" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:minHeight="48dp" android:layout_marginStart="8dp" android:text="@string/onehr_widget_clock_out" android:textAllCaps="false" android:textSize="14sp" android:textColor="#FFFFFF" android:background="@drawable/onehr_widget_action" />
+ </LinearLayout>
+</LinearLayout>

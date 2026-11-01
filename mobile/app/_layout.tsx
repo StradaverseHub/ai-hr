@@ -1,3 +1,4 @@
+import {WidgetLaunchObserver} from '../lib/widget-launch';
 import { JourneyDraftProvider } from '../lib/journey-drafts';
 import { CompanyConnectionProvider, WorkplaceReviewBoundary, useCompanyConnection } from '../lib/company-connection';
 import { Atmosphere, PublicDesignProvider, TenantDesignProvider, useTenantDesign } from '../lib/design';
@@ -74,7 +75,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <StatusBar style="dark" />
       <PublicDesignProvider><ThemedStatusBar /><CompanyConnectionProvider><SessionProvider>
-        <PushSessionWatcher />
+        <PushSessionWatcher /><WidgetLaunchObserver />
         {/* A language change re-renders every screen in the new language: the screens below the session remount (the
             session, its lock and any draft above them are kept), and Settings reopens itself. */}
         <JourneyDraftProvider><WorkplaceReviewBoundary><Gate key={language} /></WorkplaceReviewBoundary></JourneyDraftProvider>

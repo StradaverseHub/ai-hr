@@ -63,7 +63,7 @@ async function prepareCalibration(ctx:SessionContext,id:string,tx?:Tx):Promise<P
   }
  }
  for(const axis of ['performance','potential'] as const){const pm=axis==='performance';if(v.isReviewer&&v.canLockCohort&&(pm?v.canSubmit.pm:v.canSubmit.pot))actions.push(action(`lock:${axis}`,`Lock cohort ${axis}`,`Finalize the ${axis} decisions for this cohort at the ${v.session.tier} tier.`,[textField('reason','Distribution override reason (when permitted and required)')]));}
- return {view:{title:`Calibration · ${v.cycle.name}`,revision:v.session.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
+ return {people:v.rows.map(r=>({id:r.entry.reviewId,name:r.name})),view:{title:`Calibration · ${v.cycle.name}`,revision:v.session.revision,blocks,documents:[],actions},run:async(tx,a,values)=>{
   const [verb,axis,reviewId]=a.split(':');const parsed=z.enum(['performance','potential']).parse(axis);
   if(verb==='lock')await lockOnehrCalibrationTx(tx,ctx,id,v.session.revision,str(values.reason),parsed);
   else if(verb==='save')await saveOnehrCalibrationTx(tx,ctx,id,v.session.revision,{reviewId:z.uuid().parse(reviewId),axis:parsed,performance:parsed==='performance'?z.enum(pmBands).parse(values.band):null,potential:parsed==='potential'?z.enum(potentialBands).parse(values.band):null,performanceNote:parsed==='performance'?str(values.reason):'',potentialNote:parsed==='potential'?str(values.reason):''});

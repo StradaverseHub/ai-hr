@@ -86,7 +86,6 @@ export async function withdrawResignation(ctx: SessionContext, p: { requestId: s
     const [req] = await tx.select().from(resignationRequest).where(and(ownPersonPredicate(ctx),eq(resignationRequest.id, p.requestId))).limit(1);
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
-    if(p.expectedLastWorkingDay!==undefined&&p.expectedLastWorkingDay!==req.lastWorkingDay)throw new ResignationError('That resignation changed; review it again.');
     if (!ctx.personId || req.personId !== ctx.personId) {
       throw new ResignationError('Only the employee can withdraw their own resignation.');
     }
@@ -142,6 +141,7 @@ export async function decideResignation(
     }
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
+    if(p.expectedLastWorkingDay!==undefined&&p.expectedLastWorkingDay!==req.lastWorkingDay)throw new ResignationError('That resignation changed; review it again.');
     await assertResignationDecisionAuthorityTx(tx,ctx,req.employmentId);
 
     if (p.decision === 'accepted') {

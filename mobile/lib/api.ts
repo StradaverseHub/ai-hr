@@ -160,7 +160,9 @@ async function apiRequest<T>(path:string,params:Record<string,string|undefined>,
         if (!file.byteLength) throw new UnavailableError('Invalid server response.');
         return {status:response.status,data:{outcome:'file',bytes:file,mimeType:type}};
       }
-      const bytes = await readBoundedBody(response, 1024 * 1024, 15_000, controller.signal);
+      // Full competency evidence can exceed the ordinary 1 MiB JSON limit; cohort people are paged.
+      const jsonLimit=/^v2\/pack-workspaces\/(performanceReview|assessmentWork|careerPlan|calibration|rewardReview)\/[0-9a-f-]{36}$/i.test(path)?16*1024*1024:1024*1024;
+      const bytes = await readBoundedBody(response, jsonLimit, 15_000, controller.signal);
       assertCurrent();
       const text = new TextDecoder('utf-8', {fatal:true}).decode(bytes);
       const responseSchema=path==='v2/integrity/keys'&&resource==='integrity/keys'?IntegrityKeysResult:schema;
