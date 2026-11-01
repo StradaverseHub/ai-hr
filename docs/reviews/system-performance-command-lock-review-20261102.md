@@ -20,10 +20,26 @@ The read-only Access helper remains reserved for fully read-only transactions. O
 
 ## Verification status
 
-Original native red result preserved under /private/tmp/aihr-data-command-red-0795-attempt1.
-Hosted run 41332094287 qualifies the initial candidate 79cf59bf9 against the native interleaving, revocation, rollback, read-only contract and existing Leave/Attendance/TOIL behavior, plus the whole compiler. Results must be recorded after terminal completion; no pass is presumed here.
+The original native red result is preserved under `/private/tmp/aihr-data-command-red-0795-attempt1` ([41331746162](https://github.com/StradaverseHub/ai-hr/actions/runs/41331746162)).
 
-Additional native same-subject coverage and UUID-key normalization follow in a separately identified candidate. Full 500-user comparisons must use frozen exact source identities and the original 1s/5s activity, 5-minute hold, 500 identities, 30 routes, six mixed workflows, two million retained Claims/Attendance rows and unchanged worker/pool/heap/PostgreSQL limits. Preserve failures and report completed/failed users as well as latency.
+Initial qualification on 79cf59bf9 failed only in a new rollback fixture missing person.primary_email (186 native checks passed; the compiler reported the same fixture error). Expanded 1fab controls passed126 database and60 additional checks except the same fixture. Those failures remain recorded rather than relabeled.
+
+Corrected frozen source172f78860778c9f2a1a342902672f82f5a3459bb passed205 database and20 additional checks and the whole-repository compiler ([41332635520](https://github.com/StradaverseHub/ai-hr/actions/runs/41332635520)). Native controls cover concurrent real creates/edits, same-employment refusal, native account revocation, complete rollback before one exclusive replay, actual read-only refusal and canonical PostgreSQL UUID lock aliases.
+
+Two further real clock-out controls passed in the complete47-case Plan OT suite on test-only source d987990d7 ([41333481368](https://github.com/StradaverseHub/ai-hr/actions/runs/41333481368)); its application files are identical to172f. Success creates one replacement catalogue, one credit, two punches and one clock-out event. A deliberately injected late SQL failure is observed in PostgreSQL and leaves no new catalogue, credit or clock-out. Only that passing test commit is integrated; separate failing Payroll diagnostic files are excluded.
+
+### Both 500-user reruns failed
+
+Both immutable aliases use source/controller172f, one worker, total pool10/heap4GiB, durable PostgreSQL with the original approximately2GiB cap, a standard four-CPU host, 500 identities, two million retained Claims/Attendance rows and a five-minute hold. These remain development tests, not production-equivalent acceptance. The previous comparator is32c, not installed staging.
+
+| Activity | Previous32c | Current172f | Outcome |
+| --- | --- | --- | --- |
+|1s|234 completed/266 failed; read p9565.87s, write p9588.16s|386 completed/114 failed; read p9567.76s, write p9587.25s;438.04s traffic elapsed|Complete accounting; target FAIL; loaded browsers1/6; both audit chains valid |
+|5s|184 completed/316 failed; read p9562.70s, write p9588.18s|Original600s HTTP parent budget exceeded; last traffic snapshot475.01s:131 completed,2 failed,367 active,538 iterations|Incomplete accounting; target FAIL; no final p95/browser/audit acceptance |
+
+Exact runs: [1s41332662698](https://github.com/StradaverseHub/ai-hr/actions/runs/41332662698), [5s41332665509](https://github.com/StradaverseHub/ai-hr/actions/runs/41332665509). Artifacts: `/private/tmp/aihr-data-command-one-172f-attempt1` and `/private/tmp/aihr-data-command-five-172f-attempt1`. No timeout, SLO or budget was relaxed. Partial five-second snapshots cannot establish an overall speedup percentage. At1s there are fewer failed users and more completed workflows, but p95 latency remains unacceptable.
+
+The traces show fewer Access-exclusive wait samples, but repeated native visibility checks, Attendance-to-Payroll row protection and audit-chain waits remain. The actual0602 attendance_payroll_protection_rows function locks ALL matching batches, including drafts, before returning processed/closed coverage. Any optimization must preserve that complete membership and ordered FOR UPDATE ownership. A separate native Payroll/Leave write-overlap probe remains red; an actual employee Home identity reader already overlaps Payroll, ruling out a direct Access lock in that reader. No Payroll authority relaxation is promoted on these observations.
 
 ## AI source approval boundary
 
