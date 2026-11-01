@@ -128,8 +128,10 @@ describe('the proposal carries the recommendation',()=>{
   expect(verified.ok).toBe(true);
   expect(proposal.body.recommendation).toMatchObject({verdict:'needs_review',failedRules:[{check:'balance_covers',blocking:true,ruleVersion:'leave_type:fixture@v1'}]});
   expect(proposal.body.checks.every(check=>check.result!=='fail')).toBe(true);
-  // Tampering with the verdict breaks the signature.
-  const tampered=JSON.parse(JSON.stringify(proposal));tampered.body.recommendation.verdict='recommend_approve';
+  // Turning it into an approve while a rule failed is refused by the schema; any other edit breaks the signature.
+  const approve=JSON.parse(JSON.stringify(proposal));approve.body.recommendation.verdict='recommend_approve';
+  expect(verifyProposal(approve,caller,now)).toEqual({ok:false,reason:'malformed'});
+  const tampered=JSON.parse(JSON.stringify(proposal));tampered.body.recommendation.failedRules[0].blocking=false;
   expect(verifyProposal(tampered,caller,now)).toEqual({ok:false,reason:'signature'});
   expect(renderProposalCard(JSON.parse(JSON.stringify(proposal)),caller,now).ok).toBe(true);
  });
