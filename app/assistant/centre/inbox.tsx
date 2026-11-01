@@ -47,9 +47,9 @@ export async function AiCentreInbox({ session, recommend }: { session: SessionCo
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
   })) : scope;
   // Step 5: "Your day". One owner and one scope for what waits on the viewer (review M9): the approvals count
-  // is this Inbox's own list below, handed to the digest rather than read again, and the administrator's
-  // setup and deadline counts cover the same companies as that list (the company switcher's scope). Computed
-  // as the viewer and not recorded; the viewer's last prepared digest, if any, is read beside it.
+  // is this Inbox's own list below, handed to the digest rather than read again. The administrator's setup and
+  // deadline counts come from today's prepared digest (review H4: never recomputed on a view), covering every
+  // administered company as of that run. Not recorded; the viewer's last prepared digest is read beside it.
   const [digest, lastDigest] = await Promise.all([
     settle(() => digestPreview(session, { approvals: tasks.ok ? tasks.value : [], companyIds: scope.ok ? scope.value : undefined })),
     settle(() => latestDailyDigest(session)),

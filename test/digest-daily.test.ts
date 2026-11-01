@@ -56,6 +56,10 @@ describe('daily digest',()=>{
   // The applicant has nothing to decide; their own request is not a task.
   expect((await prepareDailyDigest(applicant)).approvals).toMatchObject({total:0,byKind:[]});
   // An administrator also gets setup gaps and deadlines, as counts.
+  // Review H4: a view does not recompute an administrator's setup or deadlines; without a digest prepared today
+  // the preview carries the approvals only.
+  const viewed=await digestPreview(hr);
+  expect(viewed.setup).toBeNull();expect(viewed.deadlines).toBeNull();
   const admin=await prepareDailyDigest(hr);
   expect(admin.setup).toMatchObject({page:DIGEST_PAGES.setup});
   expect(admin.setup!.companies+admin.setup!.unknown).toBeGreaterThanOrEqual(1);expect(typeof admin.setup!.blocked).toBe('number');expect(admin.deadlines).toMatchObject({page:DIGEST_PAGES.deadlines});

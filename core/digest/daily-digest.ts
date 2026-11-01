@@ -63,14 +63,21 @@ async function inBatches<T,R>(items:readonly T[],size:number,run:(item:T)=>Promi
  for(let i=0;i<items.length;i+=size)out.push(...await Promise.all(items.slice(i,i+size).map(run)));
  return out;
 }
-async function prepare(ctx:SessionContext,today:string,view:DigestViewInput={}):Promise<Prepared>{
+async function prepare(ctx:SessionContext,today:string,view:DigestViewInput={},setupFrom:'compute'|'prepared'='compute'):Promise<Prepared>{
  const modules={attendance:isModuleEnabled(ctx,'attendance'),claims:isModuleEnabled(ctx,'claims'),performance:isModuleEnabled(ctx,'performance'),rewards:isModuleEnabled(ctx,'rewards')};
  const tasks=view.approvals??await listPendingTasks(ctx,undefined,modules,{noticeAcknowledgements:false});
  const counts=new Map<string,number>();for(const task of tasks)counts.set(task.kind,(counts.get(task.kind)??0)+1);
  const byKind=[...counts].map(([kind,count])=>Object.freeze({kind,count})).sort((a,b)=>b.count-a.count||a.kind.localeCompare(b.kind));
  const reads:OutcomeRead[]=[{tool:'core/approvals-inbox.ts#listPendingTasks',status:'ok',refs:tasks.map(task=>task.id).filter(id=>REF.test(id)).slice(0,200)}];
  let setup:DailyDigest['setup']=null,deadlines:DailyDigest['deadlines']=null;
- if(isAdmin(ctx)){
+ if(isAdmin(ctx)&&setupFrom==='prepared'){
+  // Review H4: a view never recomputes setup and deadlines (several native reads over every employment, per
+  // company: 17 s for a 2000-employment administrator in run 41358551609). They come from today's prepared digest
+  // (the scheduled daily_digest run, all administered companies); without one the tiles are simply absent.
+  const prepared=await latestDailyDigest(ctx).catch(()=>null);
+  if(prepared&&prepared.digest.asOf===today){setup=prepared.digest.setup;deadlines=isModuleEnabled(ctx,'payroll')?prepared.digest.deadlines:null;}
+ }
+ else if(isAdmin(ctx)){
   const scope=view.companyIds;
   const companies=scope&&scope.length===0?[]:await withTenant(ctx,tx=>tx.select({id:company.id}).from(company)
    .where(and(sql`app.is_admin_for(${company.id})`,scope?inArray(company.id,[...scope]):undefined)).orderBy(company.id).limit(DIGEST_COMPANY_LIMIT));
@@ -104,11 +111,13 @@ export async function prepareDailyDigest(ctx:SessionContext,today:string=todayIn
 }
 /** Read service for the interface: what the caller's digest would say right now, without a mandate or a record.
  * The Inbox passes its own approvals list and company scope (DigestViewInput), so "Your day" and the list
- * below it have one owner and one scope (PR 198 review M9) and the queue is read once per view (H4). */
+ * below it have one owner and one scope (PR 198 review M9) and the queue is read once per view (H4). An
+ * administrator's setup and deadline counts are read from today's prepared digest, never recomputed on a view (H4);
+ * they cover every administered company as of that run. */
 export async function digestPreview(ctx:SessionContext,options:DigestViewInput&Readonly<{today?:string}>={}):Promise<DailyDigest>{
  if(!ctx.userId||!ctx.personId||ctx.agent)throw Error('The daily digest is prepared for a person.');
  const {today=todayInKualaLumpur(),...view}=options;
- return (await prepare(ctx,today,view)).digest;
+ return (await prepare(ctx,today,view,'prepared')).digest;
 }
 
 /** The `daily_digest` job, run by core/mandates/run.ts under the grantor's current authority. */
