@@ -1,3 +1,4 @@
+import { internalIssuer } from '../internal-auth/config';
 import { randomUUID } from 'node:crypto';
 import { client } from '../../db/client';
 import { authTransaction, readRecord, writeRecord, deleteRecord, type AuthSql } from '../internal-auth/store';
@@ -5,9 +6,13 @@ import { opaque, digest, validOpaque } from '../internal-auth/crypto';
 import { todayInKualaLumpur } from '../hr-date';
 import { EntraError, issuerFor, type EntraConfig } from './model';
 import { connector } from './store';
-type Identity = { tenantId:string; revision:string; objectId:string; userId:string; family:string; native:boolean; expiry:number };
+type Identity = { tenantId:string; revision:string; objectId:string; userId:string; family:string; native:boolean; expiry:number; localVersions?:{subject:string;version:string|null}[] };
 export type EntraTokens = { step:'complete'; access_token:string; refresh_token?:string; expires_in:number };
 async function allowed(tx: AuthSql, value:Identity) {
+  for(const reference of value.localVersions||[]){
+    const credential=await readRecord<{version:string}>(tx,`credential:${reference.subject}`);
+    if((credential?.version??null)!==reference.version)throw new EntraError('forbidden');
+  }
   const config = await connector(value.tenantId);
   if (!config?.enabled || config.revision!==value.revision || value.expiry<=Date.now()) throw new EntraError('forbidden');
   const principal = await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[issuerFor(config.directoryTenantId),value.objectId]);
@@ -26,6 +31,9 @@ export async function createEntraSession(config:EntraConfig,objectId:string,nati
     const rows=await tx.unsafe('select app_user_id,tenant_id from app.principal_by_identity($1,$2)',[issuerFor(config.directoryTenantId),objectId]);
     if(rows[0]?.tenant_id!==config.tenantId)throw new EntraError('forbidden');
     const value:Identity={tenantId:config.tenantId,revision:config.revision,objectId,userId:rows[0].app_user_id,family:randomUUID(),native,expiry:Date.now()+8*3600_000};
+    const locals=await tx.unsafe('select subject from app.entra_local_bindings($1::uuid,$2)',[value.userId,internalIssuer(config.tenantId)]);
+    value.localVersions=[];
+    for(const local of locals){const c=await readRecord<{version:string}>(tx,`credential:${local.subject}`);value.localVersions.push({subject:local.subject,version:c?.version??null});}
     await allowed(tx,value);
     await writeRecord(tx,`entra-family:${value.family}`,value,null,value.expiry);
     await tx.unsafe("select app.append_auth_event($1::uuid,'app-user',$2::uuid,'app-user.logged-in','user',$2::uuid,$3::jsonb)",[value.tenantId,value.userId,JSON.stringify({provider:'entra'})]);

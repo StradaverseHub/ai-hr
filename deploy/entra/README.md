@@ -85,7 +85,7 @@ nonemployee accounts cannot be adopted by another administrator. Missing/bad lin
 
 HR authorization and effective offboarding are checked on every Entra HR session read, including
 mobile access and refresh, independently of Microsoft availability. Disabling the connector or
-changing its revision invalidates its sessions. Microsoft MFA/Conditional Access is handled by the
+changing its revision invalidates its sessions. A local credential reset/version change also invalidates Microsoft HR sessions issued while that credential was bound, preserving the existing recovery revocation rule. Microsoft MFA/Conditional Access is handled by the
 Microsoft sign-in flow; HR never captures the Microsoft password or claims to revoke Microsoft-wide
 sessions at HR logout. Local HR logout revokes the opaque HR session family.
 

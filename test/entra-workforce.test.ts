@@ -57,4 +57,13 @@ describe('Entra actual app-role and durable lifecycle',()=>{
   await revokeEntraSession(tokens.access_token);expect(await readEntraSession(tokens.access_token)).toBeNull();
   const second=await createEntraSession(config,object,false);await saveConnector(adminCtx(base),{...config,enabled:false,revision:randomUUID()},config.revision);expect(await readEntraSession(second.access_token)).toBeNull();
  });
+ it('invalidates a Microsoft HR session when an existing local credential version changes during recovery',async()=>{
+  const object=randomUUID(),local=randomUUID();
+  const {internalIssuer}=await import('../lib/internal-auth/config');const {writeRecord}=await import('../lib/internal-auth/store');
+  await owner.client`insert into app_external_identity(issuer,subject,app_user_id) values(${issuerFor(config.directoryTenantId)},${object},${base.adminUserId}),(${internalIssuer(base.tenantId)},${local},${base.adminUserId})`;
+  await writeRecord(client,`credential:${local}`,{version:'before-recovery'},local);
+  const session=await createEntraSession(config,object,false);expect(await readEntraSession(session.access_token)).not.toBeNull();
+  await writeRecord(client,`credential:${local}`,{version:'after-recovery'},local);expect(await readEntraSession(session.access_token)).toBeNull();
+ });
+
 });
