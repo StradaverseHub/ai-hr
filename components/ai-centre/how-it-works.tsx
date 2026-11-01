@@ -3,6 +3,8 @@ import * as React from 'react';
 import { useTranslations } from 'next-intl';
 import { Ban, Bell, Check, ChevronLeft, ChevronRight, ClipboardList, Eye, HelpCircle, Pause, Play, Scale, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { aiCentreName } from '@/lib/ai-centre/brand';
+import { ClockworkFigure, type ClockworkLabels } from './clockwork-figure';
 
 /** The nine steps of one request (ADR-0170 §4), and which layer each lights. `guard` and `outcome` are parts
  * of the foundation; the others are layers. Fixed: this walkthrough explains the design and reads nothing. */
@@ -140,9 +142,18 @@ function RequestJourney() {
     : step === 8 ? <p className="mb-3 inline-flex items-center gap-2.5 rounded-lg border border-input px-3 py-2 text-sm font-medium"><span aria-hidden className="atelier-mark size-6 rounded-full bg-amber-900/10 shadow-[inset_0_0_0_2px_rgb(138_90_46)]" />{t('steps.s8Mark')}</p>
     : null;
 
+  const tc = useTranslations('aiCentre');
+  const part = (key: 'interfaces' | 'harness' | 'context' | 'capabilities' | 'record' | 'model' | 'foundation' | 'guard' | 'outcome') => ({ name: t(`layers.${key}`), part: t(`parts.${key}`) });
+  const labels: ClockworkLabels = { interfaces: part('interfaces'), harness: part('harness'), context: part('context'), capabilities: part('capabilities'), record: part('record'), model: part('model'), foundation: part('foundation'), guard: part('guard'), outcome: part('outcome') };
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-      <div ref={map} role="img" aria-label={t('mapLabel')} className="relative rounded-2xl border border-border bg-card p-4 sm:p-5">
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:grid-cols-1">
+      {/* Wide screens: the clockwork figure. Below that width its labels would be too small, so the same
+          layers show as the stacked list. Either way the step text below carries the meaning. */}
+      <div className="hidden xl:block">
+        <ClockworkFigure active={target} labels={labels} reduced={reduced} label={t('mapLabel')}
+          title={t('title')} caption={t('figureCaption')} mark={aiCentreName(tc('genericName'))} />
+      </div>
+      <div ref={map} role="img" aria-label={t('mapLabel')} className="relative rounded-2xl border border-border bg-card p-4 sm:p-5 xl:hidden">
         <span aria-hidden data-how-token className={cn('pointer-events-none absolute left-0 top-0 z-10 size-3.5 rounded-full bg-primary shadow-[0_0_0_4px_color-mix(in_srgb,var(--primary)_22%,transparent),0_2px_6px_rgb(0_0_0/0.18)]',
           reduced ? 'transition-opacity duration-200' : 'transition-[transform,opacity] duration-[650ms] ease-[cubic-bezier(.16,1,.3,1)]')}
           style={{ opacity: token ? 1 : 0, transform: token ? `translate(${token.x}px, ${token.y}px)` : undefined }} />
@@ -180,14 +191,15 @@ function RequestJourney() {
           <li className="inline-flex items-center gap-1.5"><span aria-hidden className="size-3 rounded-full shadow-[inset_0_0_0_2px_rgb(138_90_46)]" />{t('legend.person')}</li>
         </ul>
       </div>
-      <section className="rounded-2xl border border-border bg-card p-5">
-        <div aria-live="polite" aria-atomic="true">
+      <section className="rounded-2xl border border-border bg-card p-5 xl:grid xl:grid-cols-2 xl:gap-x-7">
+        <div aria-live="polite" aria-atomic="true" className="xl:col-start-1">
           <p className="text-xs tabular-nums text-muted-foreground">{t('stepOf', { n: step + 1, total: HOW_STEPS.length })}</p>
           <h2 className="mb-2 mt-1 text-lg font-semibold leading-snug tracking-tight">{t(`steps.${HOW_STEPS[step]}`)}</h2>
           <p className="mb-3 max-w-prose text-sm">{t(`steps.${HOW_STEPS[step]}Body`)}</p>
-          {extra}
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        {/* The step's checks sit beside the text on wide screens; announced with it. */}
+        <div aria-live="polite" className="xl:col-start-2 xl:row-span-2 xl:row-start-1">{extra}</div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 xl:col-start-1 xl:row-start-2">
           <button type="button" onClick={() => { setPlaying(false); go(step - 1); }} disabled={step === 0}
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronLeft aria-hidden className="size-4" />{t('previous')}</button>
           <button type="button" onClick={togglePlay} aria-pressed={playing}

@@ -281,7 +281,19 @@
         "n6Body": "IC、护照、银行和税务号码绝不外传。"
       },
       "adminLink": "查看贵公司已开启的功能",
-      "walkthroughLink": "一步步跟随一个申请走完 AI 流程"
+      "walkthroughLink": "一步步跟随一个申请走完 AI 流程",
+      "figureCaption": "分解图 · 如同腕表机芯",
+      "parts": {
+        "interfaces": "表盘 · 对话 · 收件箱 · 审核页面",
+        "harness": "擒纵机构 · 一次只走一步",
+        "model": "摆轮 · 不做任何决定",
+        "context": "日历圈 · 指南 · 页面 · 你的角色",
+        "capabilities": "齿轮组 · 读取 · 说明 · 准备",
+        "record": "发条 · 休假 · 薪资 · 人员",
+        "foundation": "表壳 · 防护层 · 结果记录 · 审计",
+        "guard": "表冠 · 任何改动前先检查",
+        "outcome": "后盖刻字 · 谁 · 什么 · 何时"
+      }
     },
     "launcher": {
       "inbox": "您的收件箱",

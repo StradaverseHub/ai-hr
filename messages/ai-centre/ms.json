@@ -281,7 +281,19 @@
         "n6Body": "Nombor IC, pasport, bank dan cukai tidak pernah keluar."
       },
       "adminLink": "Lihat apa yang dihidupkan untuk syarikat anda",
-      "walkthroughLink": "Ikuti satu permohonan melalui AI, langkah demi langkah"
+      "walkthroughLink": "Ikuti satu permohonan melalui AI, langkah demi langkah",
+      "figureCaption": "Pandangan terurai · seperti mekanisme jam tangan",
+      "parts": {
+        "interfaces": "muka jam · sembang · peti masuk · halaman semakan",
+        "harness": "eskapmen · satu langkah pada satu masa",
+        "model": "roda imbangan · tidak memutuskan apa-apa",
+        "context": "gelang kalendar · panduan · halaman · peranan anda",
+        "capabilities": "rangkaian gear · bacaan · penerang · penyusun",
+        "record": "pegas utama · cuti · gaji · pekerja",
+        "foundation": "bekas jam · pengawal · rekod hasil · audit",
+        "guard": "mahkota · disemak sebelum apa-apa bergerak",
+        "outcome": "ukiran penutup belakang · siapa · apa · bila"
+      }
     },
     "launcher": {
       "inbox": "Peti masuk anda",

@@ -281,7 +281,19 @@
         "n6Body": "IC, passport, bank and tax numbers never leave."
       },
       "adminLink": "See what is switched on for your company",
-      "walkthroughLink": "Follow a request through the AI, step by step"
+      "walkthroughLink": "Follow a request through the AI, step by step",
+      "figureCaption": "Exploded view · like a watch movement",
+      "parts": {
+        "interfaces": "the dial · chat · inbox · review pages",
+        "harness": "the escapement · one step at a time",
+        "model": "the balance wheel · decides nothing",
+        "context": "the calendar ring · guides · pages · your role",
+        "capabilities": "the gear train · reads · explainers · preparers",
+        "record": "the mainspring · leave · payroll · people",
+        "foundation": "the case · guard · outcome record · audit",
+        "guard": "the crown · checked before anything moves",
+        "outcome": "the engraved caseback · who · what · when"
+      }
     },
     "launcher": {
       "inbox": "Your Inbox",

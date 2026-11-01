@@ -281,7 +281,19 @@
         "n6Body": "Số IC, hộ chiếu, tài khoản ngân hàng và mã số thuế không bao giờ bị gửi ra ngoài."
       },
       "adminLink": "Xem những gì đang bật cho công ty bạn",
-      "walkthroughLink": "Theo dõi một yêu cầu đi qua AI, từng bước một"
+      "walkthroughLink": "Theo dõi một yêu cầu đi qua AI, từng bước một",
+      "figureCaption": "Hình tách lớp · như bộ máy đồng hồ",
+      "parts": {
+        "interfaces": "mặt số · trò chuyện · hộp thư · trang xem xét",
+        "harness": "bộ thoát · mỗi lần một bước",
+        "model": "bánh xe cân bằng · không quyết định gì",
+        "context": "vòng lịch · hướng dẫn · trang · vai trò của bạn",
+        "capabilities": "bộ bánh răng · đọc · giải thích · chuẩn bị",
+        "record": "dây cót · nghỉ phép · lương · nhân sự",
+        "foundation": "vỏ đồng hồ · lớp bảo vệ · bản ghi kết quả · kiểm toán",
+        "guard": "núm vặn · kiểm tra trước khi có gì thay đổi",
+        "outcome": "nắp lưng khắc chữ · ai · gì · khi nào"
+      }
     },
     "launcher": {
       "inbox": "Hộp thư công việc của bạn",
