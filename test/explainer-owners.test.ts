@@ -131,7 +131,8 @@ describe('attendance day explainer',()=>{
   const malay=await explainOwnAttendanceDay(employee,{date:WORKDAY},'ms') as unknown as {lateness:{steps:string[]}};
   expect(malay.lateness.steps).not.toEqual(out.lateness.steps);expect(malay.lateness.steps.join(' ')).toContain('09:20');
   expect(await explainOwnAttendanceDay(employee,{date:'2099-01-01'})).toMatchObject({ok:false,refusal:'out_of_range'});
-  expect(await explainOwnAttendanceDay(employee,{date:'2026-07-02'})).toMatchObject({ok:false});
+  // A working day with no clocking: the owner returns the day itself (absent), with no stored working to explain.
+  expect(await explainOwnAttendanceDay(employee,{date:'2026-07-02'})).toMatchObject({ok:true,status:'absent',explained:false,unavailableReason:'no-trace'});
   const {result}=await turn(employee,'Why was I marked late on 1 July?',[{calls:[{name:'explain_attendance_day',args:{date:WORKDAY}}]},{final:{reply:'You clocked in after the grace time.'}}]);
   expect(result.trace.calls[0].status).toBe('ok');expect(result.trace.disclosure[0].undeclared).toEqual([]);
  });
