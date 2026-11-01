@@ -1,3 +1,18 @@
+## Completed d91 whole-system pair — targets still unmet
+
+Frozen application/controller `d91ce204deae2f8ff77ae8f28987944c218430ce` completes both unchanged-resource workloads within their original600s HTTP parent budgets. Both FAIL; **0/2 targets accepted; no deployment**.
+
+|Activity|Completed/failed users|Read/write p95|Browsers|HTTP stage|
+|---|---|---|---|---|
+|1s [41359936082](https://github.com/StradaverseHub/ai-hr/actions/runs/41359936082)|390/110; zero active|64.80s/85.03s|5/6|575.82s; no parent timeout|
+|5s [41359938197](https://github.com/StradaverseHub/ai-hr/actions/runs/41359938197)|484/16; zero active|58.57s/87.92s|6/6|598.28s; no parent timeout|
+
+All126 recorded journey errors are aborts; both audit chains validate in each run. Three loaded Home-card failures remain in each. The five-second p95 change versus e200 is only0.30% read/0.03% write, establishing no meaningful latency improvement. The earlier one-second result is incomplete and cannot support a final percentage comparison. Original receipts remain preserved. The standard four-CPU runner, one app worker, pool10, heap4GiB, approximately2GiB durable PostgreSQL, two million retained Claims/Attendance rows,500 HTTP identities,30 routes, six workflows and six browser contexts are unchanged. This does not establish production-equivalent capacity or500 browsers.
+
+Native overtime root samples fall, but audit and Access locks persist. Actual clocking imports still hold exclusive tenant authority across batch processing; a native concurrency reproduction is the next qualification step. Sampled database visibility also precedes HTTP completion by tens of seconds, so removing one lock cannot alone establish page speed. No resource or timeout increase is proposed.
+
+Native qualification on5f52 passes432 checks and the whole compiler, retaining two original bounded-catalog failures. Exact d91 recovery41358961945 passes40 affected checks and a fresh whole compiler. Canonical642 applied SQL bytes remain exact. The combined AI source remains unapproved and provider egress blocked.
+
 # Ordinary-command lock review — 2 November 2026
 
 Development candidate only. No protected-branch integration, installation or deployment.
