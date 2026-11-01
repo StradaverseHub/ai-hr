@@ -52,7 +52,7 @@ const unmodelledReads=(names:readonly string[])=>names.filter(name=>!SEMANTIC_RE
 const unaccountedActions=(ids:readonly string[])=>ids.filter(id=>!SEMANTIC_ACTIONS.some(row=>row.id===id)&&!NOT_YET_MODELLED_ACTIONS.includes(id));
 
 describe('semantic model covers every live Assistant read and registry action',()=>{
- const readNames=ASSISTANT_TOOLS.map(tool=>tool.spec.name),actionIds=AGENT_ACTIONS.map(action=>action.id);
+ const readNames=ASSISTANT_TOOLS.map(tool=>tool.spec.name),actionIds:readonly string[]=AGENT_ACTIONS.map(action=>action.id);
  it('declares the twelve reads, one each, in registry order',()=>{
   expect(readNames).toHaveLength(12);
   expect(SEMANTIC_READS.map(row=>row.name)).toEqual(readNames);

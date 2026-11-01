@@ -28,13 +28,14 @@ export async function prepareLeaveApplyProposal(supplied:SessionContext,input:Re
  const prepared=await withTenant(ctx,tx=>prepareOwnLeaveReviewTx(tx,ctx,input.nomination,input.selection,input.humanText,locale));
  if(prepared.kind!=='prepared')return Object.freeze({kind:prepared.kind});
  // The preparer bound the review to this person and this nominated employment; anything else is refused.
- if(!nomination.success||!ctx.personId||prepared.review.date!==nomination.data.date)return Object.freeze({kind:'unavailable'});
+ const personId=ctx.personId;
+ if(!nomination.success||!personId||prepared.review.date!==nomination.data.date)return Object.freeze({kind:'unavailable'});
  const review=prepared.review;
  return Object.freeze({kind:'proposal',proposal:issueProposal({
   what:{action:OWN_LEAVE_ACTION,contractVersion:review.contractVersion,entity:declared.entity,effect:declared.effect,
    selectors:{date:review.date,durationType:review.durationType},reviewedDigest:review.reviewedDigest},
   forWhom:{tenantId:ctx.tenantId,subject:'own_employment',subjectId:nomination.data.employmentId},
-  authority:{kind:'person',tenantId:ctx.tenantId,userId:ctx.userId,personId:ctx.personId},
+  authority:{kind:'person',tenantId:ctx.tenantId,userId:ctx.userId,personId},
   checks:passedChecks(),
   review:{route:declared.reviewRoute,href:`${declared.reviewRoute}?review=${review.actionId}`,reference:review.actionId},
   createdAt:review.createdAt,expiresAt:review.expiresAt})});
