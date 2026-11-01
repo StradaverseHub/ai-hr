@@ -125,10 +125,11 @@ describe('disclosure from the semantic model',()=>{
   const text=JSON.stringify(value);
   expect(text).not.toContain('17.25');expect(text).not.toContain('typed free text');expect(text).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
   expect(applied.removed).toEqual(['employments[0].transactions.rows[0].reason']);
-  expect(applied.undeclared).toEqual(['leaveTypeId','employments[0].currentYearEntitlement']);
-  expect(applied.banded).toEqual(['employments[0].totalEntitlement','employments[0].transactions.rows[0].days']);
+  // Step 4 declared the Mine projection's breakdown fields (bands); only the handle input stays undeclared.
+  expect(applied.undeclared).toEqual(['leaveTypeId']);
+  expect(applied.banded).toEqual(['employments[0].totalEntitlement','employments[0].currentYearEntitlement','employments[0].transactions.rows[0].days']);
   expect(text).toContain('{{F1}} (between 10 and 20)');expect(applied.handles).toBe(2);
-  expect([...ledger.figures.values()].map(row=>row.value)).toEqual([17.25,17.25]);
+  expect([...ledger.figures.values()].map(row=>row.value)).toEqual([17.25,17.25,17.25]);
   expect(bandOf(-3)).toBe('below 0');expect(bandOf(100_000)).toBe('at least 100000');expect(bandOf(4422.25)).toBe('between 2000 and 5000');
  });
  it('resolves a handle back to its record only for the caller it was issued to',async()=>{

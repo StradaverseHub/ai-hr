@@ -18,17 +18,24 @@ export const DISCLOSURE_CLASSES:readonly DisclosureClass[]=Object.freeze(['never
 export type FieldType='id'|'code'|'text'|'name'|'label'|'date'|'datetime'|'time'|'period'|'number'|'integer'|'boolean'|'enum'|'list'|'object';
 export type SemanticField=Readonly<{name:string;type:FieldType;disclosure:DisclosureClass;meaning:string;
  /** Closed vocabulary for `enum` fields. */values?:readonly string[];
- /** Row shape for `list`/`object` fields; each nested field carries its own class. */of?:readonly SemanticField[]}>;
+ /** Row shape for `list`/`object` fields; each nested field carries its own class. */of?:readonly SemanticField[];
+ /** With `of`: rows are module-owned and open, so an undeclared child keeps the parent's class (identifiers
+  * still swept) while each declared child takes its own. Used where rows vary by module (module_work.data). */
+ open?:true}>;
 export type Sensitivity='ordinary'|'pay'|'identity';
 /** Who the entity is about, relative to the caller. Never a grant: the owner's own guard decides. */
 export type Audience='self'|'manager'|'visible_scope'|'assigned_approver'|'admin';
 /** Which row-level scope the native owner applies (as the caller, under tenant RLS). */
-export type RlsScope='own_employment'|'own_person'|'reporting_subordinates'|'visible_employments'|'own_holiday_calendar'|'assigned_request'|'own_module_scope';
+export type RlsScope='own_employment'|'own_person'|'reporting_subordinates'|'visible_employments'|'own_holiday_calendar'|'assigned_request'|'own_module_scope'
+ /** An administrator's own companies, as each readiness owner scopes them (step 4 setup co-pilot). */
+ |'administered_scope';
 /** `path#export` of a native owner, relative to the repository root. Drift tests import and check it. */
 export type OwnerAnchor=`${string}#${string}`;
 
 export type EntityId='leave_balance'|'leave_request'|'leave_entitlement'|'public_holiday'|'absence'|'team_leave_balance'
- |'employment_profile'|'reporting_line'|'payslip'|'pay_change'|'claim_status'|'module_work'|'leave_approval_step';
+ |'employment_profile'|'reporting_line'|'payslip'|'pay_change'|'claim_status'|'module_work'|'leave_approval_step'
+ /** Step 4 explainers and setup co-pilot (./entities-explain.ts, ./entities-setup.ts). */
+ |'statutory_explanation'|'entitlement_explanation'|'attendance_day_explanation'|'setup_copilot';
 export type SemanticRelation=Readonly<{to:EntityId;kind:'many_to_one'|'one_to_many';via:string}>;
 
 export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;module:string|null;sensitivity:Sensitivity;
@@ -41,7 +48,9 @@ export type SemanticEntity=Readonly<{id:EntityId;label:string;meaning:string;mod
  /** The product page where a person sees this subject themselves. */page:string}>;
 
 /** One input parameter of a read. `identifier` marks a handle taken from an earlier result. */
-export type SemanticInput=Readonly<{name:string;schema:Readonly<Record<string,unknown>>;identifier:boolean}>;
+export type SemanticInput=Readonly<{name:string;schema:Readonly<Record<string,unknown>>;identifier:boolean;
+ /** Not required. The twelve catalogue reads require every input; step 4 capabilities may default one. */
+ optional?:true}>;
 /** `name` is the Assistant read (core/assistant-tools.ts ASSISTANT_TOOLS) that projects the owner's rows. */
 export type SemanticRead=Readonly<{name:string;entity:EntityId;purpose:string;input:readonly SemanticInput[]}>;
 

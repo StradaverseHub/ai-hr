@@ -6,11 +6,12 @@
  *  - bands:   every figure becomes a placeholder (`{{F1}}`) plus the band it falls in; the exact figure stays
  *             in the turn's ledger and is restored only for a caller who may see it (./restore.ts);
  *  - minimum, full: kept.
- * Undeclared keys are removed (fail closed) unless they are spec envelope keys or containers, whose children
+ * Undeclared keys are removed (fail closed) unless they are spec envelope keys, children of an `open` row shape
+ * (which take their parent's class), or containers, whose children
  * are judged in turn; every removal is listed for the trace. Context tools have no entity: their product
  * vocabulary passes. In every case a string that is an internal record id becomes a handle. Pure apart from
  * the ledger it writes. */
-import {SEMANTIC_ENTITIES} from '../semantic-model/entities';
+import {terasEntity} from '../semantic-model/generate';
 import type {DisclosureClass,EntityId,SemanticField} from '../semantic-model/types';
 import {HARNESS_SPEC} from './spec';
 
@@ -47,7 +48,8 @@ export function bandOf(value:number):string{
 }
 const ENVELOPE:ReadonlySet<string>=new Set<string>(HARNESS_SPEC.disclosure.envelopeKeys);
 const fieldMap=(fields:readonly SemanticField[])=>new Map(fields.map(field=>[field.name,field]));
-const entityFields=(entity:EntityId)=>{const found=SEMANTIC_ENTITIES.find(row=>row.id===entity);if(!found)throw Error('Unknown semantic entity.');return fieldMap(found.fields);};
+// The model with its step 4 extensions and capabilities (core/semantic-model/generate.ts terasEntities).
+const entityFields=(entity:EntityId)=>fieldMap(terasEntity(entity).fields);
 
 type Walk={tool:string;ledger:DisclosureLedger;removed:string[];banded:string[];undeclared:string[];handles:number};
 /** Strings that are record ids become handles wherever they appear. */
@@ -77,8 +79,9 @@ function apply(disclosure:DisclosureClass,field:SemanticField,value:unknown,path
  }
  return{keep:true,value:sweep(value,path,walk)};
 }
-function walkObject(value:unknown,fields:ReadonlyMap<string,SemanticField>,path:string,walk:Walk):unknown{
- if(Array.isArray(value))return value.map((item,index)=>walkObject(item,fields,path+'['+index+']',walk));
+/** `open` is the declared parent of an `open` row shape: an undeclared leaf takes its class instead of being removed. */
+function walkObject(value:unknown,fields:ReadonlyMap<string,SemanticField>,path:string,walk:Walk,open:SemanticField|null=null):unknown{
+ if(Array.isArray(value))return value.map((item,index)=>walkObject(item,fields,path+'['+index+']',walk,open));
  if(!value||typeof value!=='object')return sweep(value,path,walk);
  const out:Record<string,unknown>={};
  for(const [key,child] of Object.entries(value)){
@@ -86,12 +89,13 @@ function walkObject(value:unknown,fields:ReadonlyMap<string,SemanticField>,path:
   if(field){
    // A declared list or object with its own row shape is walked against that shape; the parent's class
    // still governs when it is `never` (a never parent hides its children too).
-   if(field.of&&field.disclosure!=='never'){out[key]=walkObject(child,fieldMap(field.of),at,walk);continue;}
+   if(field.of&&field.disclosure!=='never'){out[key]=walkObject(child,fieldMap(field.of),at,walk,field.open?field:null);continue;}
    const result=apply(field.disclosure,field,child,at,walk);if(result.keep)out[key]=result.value;continue;
   }
   if(ENVELOPE.has(key)){out[key]=sweep(child,at,walk);continue;}
   // An undeclared container (employments, balances, rows, employee) is judged by its children.
-  if(child&&typeof child==='object'){out[key]=walkObject(child,fields,at,walk);continue;}
+  if(child&&typeof child==='object'){out[key]=walkObject(child,fields,at,walk,open);continue;}
+  if(open){const result=apply(open.disclosure,open,child,at,walk);if(result.keep)out[key]=result.value;continue;}
   walk.undeclared.push(at);
  }
  return out;
