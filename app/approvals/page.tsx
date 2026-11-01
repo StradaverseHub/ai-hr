@@ -949,6 +949,7 @@ export default async function ApprovalsPage({
       {visible('claims') && (
       <Card className="overflow-hidden">
         <SectionHeader title={t('claims')} count={claimResult.page.total} />
+        {!focus&&<p className="px-4 pb-2 text-xs text-muted-foreground">{t('bulkPageScopeHint')}</p>}
         {!focus&&<Pager basePath="/approvals" params={{category:categoryParam,sort:sortParam}} paramNames={{page:'claimsPage',size:'claimsSize'}} state={claimResult.page} />}
         {claims.length === 0 ? (
           <p className="px-4 py-5 text-center text-sm text-muted-foreground">{t('noPendingClaims')}</p>
