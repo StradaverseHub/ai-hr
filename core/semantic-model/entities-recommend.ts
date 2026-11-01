@@ -12,7 +12,8 @@ import type {DisclosureClass,FieldType,SemanticEntity,SemanticField} from './typ
 const f=(name:string,type:FieldType,disclosure:DisclosureClass,meaning:string,extra:Partial<Pick<SemanticField,'values'|'of'>>={}):SemanticField=>({name,type,disclosure,meaning,...extra});
 const freeze=<T>(value:T):T=>{if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;};
 
-export const RECOMMENDATION_VERDICTS=['recommend_approve','needs_review','recommend_reject'] as const;
+/** Owner decision, 2 November 2026: the AI never recommends rejecting a leave request. Two outcomes only. */
+export const RECOMMENDATION_VERDICTS=['recommend_approve','needs_review'] as const;
 export const RECOMMENDATION_CHECKS=['balance_covers','own_overlap','team_coverage','policy_limits'] as const;
 export const RECOMMENDATION_RESULTS=['pass','fail','unusual','missing'] as const;
 export const WORKER_FAMILIES=['watcher','chaser','preparer','decider','explainer'] as const;
@@ -21,11 +22,13 @@ const page=(meaning:string)=>f('page','label','full',meaning);
 
 export const RECOMMEND_ENTITIES:readonly SemanticEntity[]=freeze([
  {id:'leave_decision_recommendation',label:'Approver recommendation',
-  meaning:'For a leave request assigned to the caller to decide: recommend approve, needs review or recommend reject, computed only from native checks (balance, overlap with the applicant\'s own leave, team coverage, leave policy limits), each with its rule version. The approver always decides; the model only words it.',
+  meaning:'For a leave request assigned to the caller to decide: recommend approve or needs review (never reject), computed only from native checks (balance, overlap with the applicant\'s own leave, team coverage, leave policy limits), each with its rule version. The approver always decides; the model only words it.',
   module:'approvals',sensitivity:'ordinary',audience:'assigned_approver',rls:'assigned_request',
   owners:['core/recommenders/leave-decision.ts#recommendLeaveDecision','core/recommenders/leave-decision.ts#evaluateLeaveDecision'],
   ruleVersion:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx',relations:[{to:'leave_approval_step',kind:'many_to_one',via:'leaveRequestId'}],page:'/approvals',
-  fields:[f('verdict','enum','full','The recommendation; needs_review whenever any check is missing, unusual or failed without a blocking rule.',{values:RECOMMENDATION_VERDICTS}),
+  fields:[f('verdict','enum','full','The recommendation; needs_review unless all four checks pass.',{values:RECOMMENDATION_VERDICTS}),
+   f('failedRules','list','full','Each failed rule and whether the leave rules themselves refuse on it, so the approver sees why.',{of:[f('check','enum','full','Which check.',{values:RECOMMENDATION_CHECKS}),
+    f('blocking','boolean','full','A failure the leave rules themselves would refuse on.'),f('ruleVersion','code','never','The rule version the check ran under.')]}),
    f('checks','list','full','Every native check, in order.',{of:[f('check','enum','full','Which check.',{values:RECOMMENDATION_CHECKS}),
     f('result','enum','full','pass, fail, unusual or missing (could not be read).',{values:RECOMMENDATION_RESULTS}),
     f('blocking','boolean','full','A failure the leave rules themselves would refuse on.'),

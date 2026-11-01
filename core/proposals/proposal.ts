@@ -45,13 +45,16 @@ export const ProposalFacts=z.object({
  /** What confirming does, in the owner's own terms. */outcome:z.enum(['withdrawn_now','give_back_requested','rejection_if_confirmed','step_decision_if_confirmed','approval_if_native_checks_pass','submitted_not_approved']),
 }).partial().strict();
 export type ProposalFacts=z.infer<typeof ProposalFacts>;
-/** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Its own
- * checks may fail (a blocking failure is what recommends rejection); the proposal's `checks` still may not.
- * The approver decides; this only informs the card. */
+/** Step 5 (§3.5): the approver recommendation from native checks, when the recommender worker ran. Two verdicts
+ * only, recommend approve or needs review (owner decision, 2 November 2026: never reject). Its own checks may
+ * fail and `failedRules` names them; the proposal's `checks` still may not fail. The approver decides. */
 export const ProposalRecommendation=z.object({verdict:z.enum(RECOMMENDATION_VERDICTS),recommenderVersion:z.string().regex(/^[a-z0-9_.:-]{1,80}$/),
  checks:z.array(z.object({check:z.enum(RECOMMENDATION_CHECKS),owner:anchor,ruleVersion:z.string().min(1).max(200).nullable(),
   result:z.enum(RECOMMENDATION_RESULTS),blocking:z.boolean()}).strict()).length(RECOMMENDATION_CHECKS.length),
- recordId:z.guid().nullable()}).strict();
+ failedRules:z.array(z.object({check:z.enum(RECOMMENDATION_CHECKS),blocking:z.boolean(),ruleVersion:z.string().min(1).max(200).nullable()}).strict()).max(RECOMMENDATION_CHECKS.length),
+ recordId:z.guid().nullable()}).strict()
+ // approve only when nothing failed; a failed rule always reads needs_review.
+ .refine(value=>value.verdict==='needs_review'||(value.failedRules.length===0&&value.checks.every(check=>check.result==='pass')));
 export type ProposalRecommendation=z.infer<typeof ProposalRecommendation>;
 export const ProposalBody=z.object({
  kind:z.literal('teras.proposal'),version:z.literal(PROPOSAL_VERSION),id:z.guid(),

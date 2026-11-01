@@ -10,13 +10,14 @@
  * Each check carries the rule version it ran under: the leave policy version (migration 0891) where the leave
  * type's rules decide, otherwise this recommender's own version.
  *
- * The verdict is code, never the model (§3.10 rule 4):
- *  - needs_review is the default: any check missing (could not be read), unusual, or failed without a blocking
- *    rule gives needs_review;
- *  - recommend_reject only when every check was read, none is unusual, and a check failed on a rule the leave
- *    engine itself refuses on (the balance below the type's floor, or an overlap with the applicant's own
- *    approved leave);
- *  - recommend_approve only when all four pass.
+ * The verdict is code, never the model (§3.10 rule 4), and has two values only (owner decision, 2 November
+ * 2026: the AI never recommends rejecting a leave request):
+ *  - recommend_approve only when all four checks pass;
+ *  - needs_review otherwise: any check missing (could not be read), unusual, or failed. A failure on a rule the
+ *    leave engine itself refuses on (the balance below the type's floor, an overlap with the applicant's own
+ *    approved leave) is still needs_review, and `failedRules` names each failed rule with its rule version so
+ *    the approver sees why.
+ * There is no reject value in the type, the semantic model or the signed proposal schema.
  * The approver always decides; nothing here records a decision. A model may only word the result; the wording
  * below is a deterministic template. Every computation writes one outcome record (worker
  * `approver_recommendation`), and the approver's later choice can be appended as agreement or disagreement.
@@ -41,20 +42,22 @@ export type RecommendationVerdict=(typeof RECOMMENDATION_VERDICTS)[number];
 export type RecommendationCheckName=(typeof RECOMMENDATION_CHECKS)[number];
 export type RecommendationResult=(typeof RECOMMENDATION_RESULTS)[number];
 export type RecommendationCheck=Readonly<{check:RecommendationCheckName;owner:string;ruleVersion:string|null;result:RecommendationResult;
- /** A failure the leave engine itself refuses on; only a blocking failure can recommend rejection. */blocking:boolean}>;
+ /** A failure the leave engine itself refuses on. It is named to the approver; it never recommends rejection. */blocking:boolean}>;
+/** A failed rule, named with the version it ran under. */
+export type FailedRule=Readonly<{check:RecommendationCheckName;blocking:boolean;ruleVersion:string|null}>;
 export type LeaveDecisionRecommendation=Readonly<{kind:'teras.recommendation';version:1;action:'approvals.leave.decide';
- verdict:RecommendationVerdict;checks:readonly RecommendationCheck[];recommenderVersion:string;recordId:string|null}>;
+ verdict:RecommendationVerdict;checks:readonly RecommendationCheck[];failedRules:readonly FailedRule[];recommenderVersion:string;recordId:string|null}>;
 
 /** The verdict from the checks alone. Any check absent from the list counts as missing. */
 export function evaluateLeaveDecision(checks:readonly RecommendationCheck[]):RecommendationVerdict{
  const byName=RECOMMENDATION_CHECKS.map(name=>checks.filter(check=>check.check===name));
  if(byName.some(rows=>rows.length!==1))return'needs_review';
  const rows=byName.map(found=>found[0]);
- if(rows.some(row=>row.result==='missing'||row.result==='unusual'))return'needs_review';
- if(rows.some(row=>row.result==='fail'&&!row.blocking))return'needs_review';
- if(rows.some(row=>row.result==='fail'))return'recommend_reject';
  return rows.every(row=>row.result==='pass')?'recommend_approve':'needs_review';
 }
+/** The failed rules, in check order, each with its rule version. */
+export const failedRules=(checks:readonly RecommendationCheck[]):readonly FailedRule[]=>
+ Object.freeze(checks.filter(check=>check.result==='fail').map(check=>Object.freeze({check:check.check,blocking:check.blocking,ruleVersion:check.ruleVersion})));
 
 /** What the native reads returned, or null where a read could not be made. */
 export type LeaveDecisionFacts=Readonly<{
@@ -143,7 +146,7 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
  }catch{leaveType=null;policyVersion=null;reads.push({tool:'core/outcome-record/rule-versions.ts#leavePolicyVersionTx',status:'failed'});}
  const checks=leaveDecisionChecks({request:{startDate:request.startDate,endDate:request.endDate,days,hasDocument:request.hasDocument===true},
   balanceNow:Number.isFinite(balance)?balance:null,ownLeave,othersAway,leaveType,policyVersion,today});
- const verdict=evaluateLeaveDecision(checks);
+ const verdict=evaluateLeaveDecision(checks),failed=failedRules(checks);
  // The record is written only while the worker may still run: a switch-off or stop in between ends it unrecorded.
  const recordId=await withTenant(ctx,async tx=>{
   if(!(await workerRunGateTx(tx,ctx,RECOMMENDER_WORKER)).run)return null;
@@ -152,17 +155,18 @@ export async function recommendLeaveDecision(supplied:SessionContext,input:Reado
    checks:checks.map((check):OutcomeCheck=>({check:check.check,owner:check.owner,ruleVersion:check.ruleVersion,
     result:check.result==='pass'?'pass':check.result==='fail'?'fail':'needs_review'})),
    replay:{model:null,provider:null,instructionSet:RECOMMENDER_VERSION,specVersion:null,specDigest:null,toolCatalogue:null},
-   outcomeKind:'suggested',outcome:{action:'approvals.leave.decide',verdict,leaveRequestId:request.id,checks:checks.map(check=>`${check.check}:${check.result}`)},
+   outcomeKind:'suggested',outcome:{action:'approvals.leave.decide',verdict,leaveRequestId:request.id,checks:checks.map(check=>`${check.check}:${check.result}`),
+    failedRules:failed.map(rule=>`${rule.check}:${rule.blocking?'blocking':'non_blocking'}`)},
    humanInvolvement:'none',notice:'not_given'});
   return record.id;
  });
  if(recordId===null)return unavailable('stopped');
  return Object.freeze({kind:'recommendation' as const,recommendation:Object.freeze({kind:'teras.recommendation' as const,version:1 as const,
-  action:'approvals.leave.decide' as const,verdict,checks,recommenderVersion:RECOMMENDER_VERSION,recordId})});
+  action:'approvals.leave.decide' as const,verdict,checks,failedRules:failed,recommenderVersion:RECOMMENDER_VERSION,recordId})});
 }
 
 const VERDICT_TEXT:Readonly<Record<RecommendationVerdict,string>>={recommend_approve:'Recommend approve: every check passed.',
- needs_review:'Needs your review: at least one check could not be confirmed.',recommend_reject:'Recommend reject: a leave rule would refuse this request.'};
+ needs_review:'Needs your review: at least one check could not be confirmed.'};
 const CHECK_TEXT:Readonly<Record<RecommendationCheckName,Readonly<Record<RecommendationResult,string>>>>={
  balance_covers:{pass:'The balance covers the days requested.',fail:'The balance does not cover the days, and the leave type does not allow going that far negative.',
   unusual:'The balance covers the days only by going negative, which the leave type allows.',missing:'The balance could not be read.'},
@@ -175,12 +179,15 @@ const CHECK_TEXT:Readonly<Record<RecommendationCheckName,Readonly<Record<Recomme
 };
 /** Deterministic wording. A model may rephrase it, never change the verdict or a check. */
 export function recommendationText(recommendation:Pick<LeaveDecisionRecommendation,'verdict'|'checks'>):string{
- return [VERDICT_TEXT[recommendation.verdict],...recommendation.checks.map(check=>CHECK_TEXT[check.check][check.result])].join(' ');
+ const blocking=recommendation.checks.some(check=>check.result==='fail'&&check.blocking);
+ return [VERDICT_TEXT[recommendation.verdict],...(blocking?['A leave rule would refuse this request as it stands; you decide.']:[]),
+  ...recommendation.checks.map(check=>CHECK_TEXT[check.check][check.result])].join(' ');
 }
 
 /** After the approver decided on the review route: whether they followed the recommendation. Appended to the
- * recommendation's own outcome record (agreement metrics). needs_review recommends nothing, so it records
- * nothing. The verdict is read from the record, never taken from the caller. */
+ * recommendation's own outcome record (agreement metrics): approving after recommend_approve is accepted,
+ * rejecting it is not. needs_review recommends nothing, so it records nothing. The verdict is read from the
+ * record, never taken from the caller. */
 export async function recordRecommendationDecision(supplied:SessionContext,input:Readonly<{recordId:string;decision:'approved'|'rejected'}>):Promise<Readonly<{id:string}>|null>{
  const ctx=capture(supplied);
  if(input.decision!=='approved'&&input.decision!=='rejected')return null;
@@ -188,8 +195,8 @@ export async function recordRecommendationDecision(supplied:SessionContext,input
   .where(and(eq(terasOutcomeRecord.tenantId,ctx.tenantId),eq(terasOutcomeRecord.id,input.recordId))).limit(1));
  if(!record||record.agentIdentity!==RECOMMENDER_AGENT_IDENTITY)return null;
  const verdict=record.outcome.verdict;
- if(verdict!=='recommend_approve'&&verdict!=='recommend_reject')return null;
- const followed=(verdict==='recommend_approve')===(input.decision==='approved');
+ if(verdict!=='recommend_approve')return null;
+ const followed=input.decision==='approved';
  return recordOutcomeFollowup(ctx,{kind:'decision',recordId:input.recordId,decision:followed?'accepted':'rejected',humanInvolvement:'decided',
   reference:{decision:input.decision}});
 }

@@ -1,8 +1,8 @@
 /** ADR-0170 §3.5 step 5 — approver recommendations for a leave decision, on fictional data.
  *
- *  1. The verdict is code: recommend approve only when all four native checks pass; needs review whenever any
- *     check is missing, unusual or failed without a blocking rule; recommend reject only on a blocking failure
- *     with every check read.
+ *  1. The verdict is code with two values (owner decision, 2 November 2026): recommend approve only when all
+ *     four native checks pass, needs review otherwise. A blocking failure is needs review naming the failed
+ *     rule with its rule version. No input, type or signed proposal can carry a reject.
  *  2. Off by default (the worker switch), halted by the tenant-wide stop switch, and only for a request
  *     assigned to the caller.
  *  3. Each computation writes one outcome record with each check's rule version; the approver's choice is
@@ -21,10 +21,11 @@ import {setMandateStopSwitch} from '../core/mandates/mandates';
 import {listOutcomeRecords} from '../core/outcome-record/record';
 import {setWorkerSwitch} from '../core/agent-registry/controls';
 import {listWorkers} from '../core/agent-registry/views';
-import {issueProposal,verifyProposal} from '../core/proposals/proposal';
+import {ProposalRecommendation,issueProposal,verifyProposal} from '../core/proposals/proposal';
+import {RECOMMENDATION_CHECKS,RECOMMENDATION_RESULTS,RECOMMENDATION_VERDICTS} from '../core/semantic-model/entities-recommend';
 import {renderProposalCard} from '../core/proposals/card';
-import {RECOMMENDER_AGENT_IDENTITY,evaluateLeaveDecision,leaveDecisionChecks,recommendLeaveDecision,recommendationText,recordRecommendationDecision,
- type LeaveDecisionFacts,type RecommendationCheck} from '../core/recommenders/leave-decision';
+import {RECOMMENDER_AGENT_IDENTITY,evaluateLeaveDecision,failedRules,leaveDecisionChecks,recommendLeaveDecision,recommendationText,recordRecommendationDecision,
+ type LeaveDecisionFacts,type RecommendationCheck,type RecommendationVerdict} from '../core/recommenders/leave-decision';
 import {adminCtx,closeAll,createAppUser,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 const today='2026-11-02';
@@ -57,11 +58,17 @@ describe('the verdict is code',()=>{
   expect(evaluateLeaveDecision(leaveDecisionChecks(facts({balanceNow:0,leaveType:{allowNegativeBalance:true,maxNegativeBalance:3,requiresDocument:false,mandatoryAfterDays:null}})))).toBe('needs_review');
   expect(evaluateLeaveDecision(leaveDecisionChecks(facts({request:{startDate:'2026-10-30',endDate:'2026-10-30',days:1,hasDocument:false}})))).toBe('needs_review');
  });
- it('recommends reject only on a blocking failure with every check read; a non-blocking failure needs review',()=>{
+ it('a blocking failure with every check read needs review and names the failed rule with its version',()=>{
   const short=leaveDecisionChecks(facts({balanceNow:0.5}));
-  expect(results(short).balance_covers).toEqual(['fail',true]);expect(evaluateLeaveDecision(short)).toBe('recommend_reject');
-  expect(evaluateLeaveDecision(leaveDecisionChecks(facts({balanceNow:0,leaveType:{allowNegativeBalance:true,maxNegativeBalance:0.5,requiresDocument:false,mandatoryAfterDays:null}})))).toBe('recommend_reject');
-  expect(evaluateLeaveDecision(leaveDecisionChecks(facts({ownLeave:{complete:true,overlappingApproved:1,overlappingPending:0}})))).toBe('recommend_reject');
+  expect(results(short).balance_covers).toEqual(['fail',true]);expect(evaluateLeaveDecision(short)).toBe('needs_review');
+  expect(failedRules(short)).toEqual([{check:'balance_covers',blocking:true,ruleVersion:'leave_type:fixture@v1'}]);
+  expect(recommendationText({verdict:'needs_review',checks:short})).toContain('A leave rule would refuse this request as it stands; you decide.');
+  const floor=leaveDecisionChecks(facts({balanceNow:0,leaveType:{allowNegativeBalance:true,maxNegativeBalance:0.5,requiresDocument:false,mandatoryAfterDays:null}}));
+  expect(evaluateLeaveDecision(floor)).toBe('needs_review');expect(failedRules(floor).map(rule=>rule.check)).toEqual(['balance_covers']);
+  const overlap=leaveDecisionChecks(facts({ownLeave:{complete:true,overlappingApproved:1,overlappingPending:0}}));
+  expect(evaluateLeaveDecision(overlap)).toBe('needs_review');
+  expect(failedRules(overlap)).toEqual([{check:'own_overlap',blocking:true,ruleVersion:'leave_decision_recommender:v1'}]);
+  expect(failedRules(leaveDecisionChecks(facts()))).toEqual([]);
   // The same blocking failure with another check missing or unusual: a person reviews it.
   expect(evaluateLeaveDecision(leaveDecisionChecks(facts({balanceNow:0.5,othersAway:null})))).toBe('needs_review');
   expect(evaluateLeaveDecision(leaveDecisionChecks(facts({balanceNow:0.5,othersAway:1})))).toBe('needs_review');
@@ -71,6 +78,31 @@ describe('the verdict is code',()=>{
   expect(results(leaveDecisionChecks(facts({request:{startDate:'2026-11-10',endDate:'2026-11-12',days:3,hasDocument:false},
    leaveType:{allowNegativeBalance:false,maxNegativeBalance:null,requiresDocument:false,mandatoryAfterDays:2}}))).policy_limits).toEqual(['fail',false]);
   expect(results(leaveDecisionChecks(facts({balanceNow:1}))).balance_covers).toEqual(['pass',false]);
+ });
+ it('can never produce reject: not in the type, the model, the schema, or any check combination',()=>{
+  expect(RECOMMENDATION_VERDICTS).toEqual(['recommend_approve','needs_review']);
+  // @ts-expect-error reject is not a verdict
+  const reject:RecommendationVerdict='recommend_reject';expect(RECOMMENDATION_VERDICTS).not.toContain(reject);
+  // Every combination of the four checks, each with every result and both blocking values (8^4 = 4096), plus
+  // each check absent or duplicated.
+  const options=RECOMMENDATION_CHECKS.map(check=>RECOMMENDATION_RESULTS.flatMap(result=>[false,true].map(blocking=>({check,owner:'core/read.ts#listLeaveRequests',ruleVersion:'fixture@v1',result,blocking}))));
+  let seen=0;
+  const walk=(index:number,picked:RecommendationCheck[])=>{
+   if(index===options.length){seen++;const verdict=evaluateLeaveDecision(picked);
+    expect(RECOMMENDATION_VERDICTS).toContain(verdict);
+    expect(verdict==='recommend_approve').toBe(picked.every(check=>check.result==='pass'));
+    if(picked.some(check=>check.result==='fail'))expect(failedRules(picked).length).toBeGreaterThan(0);
+    for(const subset of [picked.slice(1),[...picked,picked[0]]])expect(evaluateLeaveDecision(subset)).toBe('needs_review');
+    return;}
+   for(const option of options[index])walk(index+1,[...picked,option]);
+  };
+  walk(0,[]);expect(seen).toBe(4096);
+  // The signed proposal's schema refuses a reject, and an approve that names a failed rule.
+  const checks=leaveDecisionChecks(facts()).map(check=>({...check}));
+  const base={recommenderVersion:'leave_decision_recommender:v1',recordId:null,checks,failedRules:[]};
+  expect(ProposalRecommendation.safeParse({...base,verdict:'recommend_approve'}).success).toBe(true);
+  expect(ProposalRecommendation.safeParse({...base,verdict:'recommend_reject'}).success).toBe(false);
+  expect(ProposalRecommendation.safeParse({...base,verdict:'recommend_approve',failedRules:[{check:'balance_covers',blocking:true,ruleVersion:null}]}).success).toBe(false);
  });
  it('words the result deterministically, naming no person or figure',()=>{
   const text=recommendationText({verdict:'needs_review',checks:leaveDecisionChecks(facts({othersAway:3}))});
@@ -88,12 +120,13 @@ describe('the proposal carries the recommendation',()=>{
    forWhom:{tenantId,subject:'assigned_request',subjectId:randomUUID()},authority:{kind:'person',tenantId,userId,personId},
    checks:[{check:'ai_controls_unpaused',owner:'core/assistant-action-pause.ts#assertAssistantActionUnpaused',ruleVersion:null,result:'pass'}],
    review:{route:'/assistant/approvals',href:`/assistant/approvals?review=${randomUUID()}`,reference:randomUUID()},
-   recommendation:{verdict:evaluateLeaveDecision(checks),recommenderVersion:'leave_decision_recommender:v1',recordId:randomUUID(),checks:checks.map(check=>({...check}))},
+   recommendation:{verdict:evaluateLeaveDecision(checks),recommenderVersion:'leave_decision_recommender:v1',recordId:randomUUID(),checks:checks.map(check=>({...check})),
+    failedRules:failedRules(checks).map(rule=>({...rule}))},
    createdAt:now.toISOString(),expiresAt:new Date(now.getTime()+600_000).toISOString()});
   const caller={tenantId,userId,personId,roles:['manager']} as SessionContext;
   const verified=verifyProposal(JSON.parse(JSON.stringify(proposal)),caller,now);
   expect(verified.ok).toBe(true);
-  expect(proposal.body.recommendation).toMatchObject({verdict:'recommend_reject'});
+  expect(proposal.body.recommendation).toMatchObject({verdict:'needs_review',failedRules:[{check:'balance_covers',blocking:true,ruleVersion:'leave_type:fixture@v1'}]});
   expect(proposal.body.checks.every(check=>check.result!=='fail')).toBe(true);
   // Tampering with the verdict breaks the signature.
   const tampered=JSON.parse(JSON.stringify(proposal));tampered.body.recommendation.verdict='recommend_approve';
@@ -154,7 +187,7 @@ describe('approver recommendations on fictional data',()=>{
   const review=await recommend(manager);
   expect(review.kind==='recommendation'&&review.recommendation.verdict).toBe('needs_review');
   expect(review.kind==='recommendation'&&review.recommendation.checks.find(check=>check.check==='team_coverage')!.result).toBe('unusual');
-  // Coverage restored, balance below what the type allows: every check read, one blocking failure.
+  // Coverage restored, balance below what the type allows: every check read, one blocking failure, still needs review.
   await owner.db.delete(schema.leaveRequestDate).where(eq(schema.leaveRequestDate.leaveRequestId,away.id));
   await owner.db.delete(schema.leaveRequest).where(eq(schema.leaveRequest.id,away.id));
   await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:applicant.employmentId,leaveTypeId:b.annualLeaveTypeId,entryType:'adjustment',days:'-10',effectiveOn:todayInKualaLumpur()});
@@ -163,8 +196,11 @@ describe('approver recommendations on fictional data',()=>{
   const reject=await recommend(manager);
   expect(reject.kind==='recommendation'&&Object.fromEntries(reject.recommendation.checks.map(check=>[check.check,check.result])))
    .toEqual({balance_covers:'fail',own_overlap:'pass',team_coverage:'pass',policy_limits:'pass'});
-  expect(reject.kind==='recommendation'&&reject.recommendation.verdict).toBe('recommend_reject');
-  expect(reject.kind==='recommendation'&&reject.recommendation.checks.find(check=>check.check==='balance_covers')).toMatchObject({result:'fail',blocking:true});
+  expect(reject.kind==='recommendation'&&reject.recommendation.verdict).toBe('needs_review');
+  expect(reject.kind==='recommendation'&&reject.recommendation.failedRules).toEqual([{check:'balance_covers',blocking:true,ruleVersion:expect.stringMatching(new RegExp(`^leave_type:${b.annualLeaveTypeId}@v\\d+$`))}]);
+  const records=await listOutcomeRecords(manager);
+  expect(records[0].outcome).toMatchObject({verdict:'needs_review',failedRules:['balance_covers:blocking']});
+  expect(records[0].checks).toContainEqual(expect.objectContaining({check:'balance_covers',result:'fail'}));
  });
 
  it('serves only the assigned approver, and the stop switch halts it',async()=>{

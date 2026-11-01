@@ -49,8 +49,8 @@ export async function prepareLeaveDecideProposal(supplied:SessionContext,input:L
  // Step 5: the approver recommendation, when its worker is on; it never decides and its absence changes nothing.
  let recommendation:ProposalRecommendation|undefined;
  try{const result=await recommendLeaveDecision(ctx,{leaveRequestId:request.leaveRequestId});
-  if(result.kind==='recommendation'){const {verdict,checks,recommenderVersion,recordId}=result.recommendation;
-   recommendation={verdict,recommenderVersion,recordId,checks:checks.map(check=>({...check}))};}
+  if(result.kind==='recommendation'){const {verdict,checks,failedRules,recommenderVersion,recordId}=result.recommendation;
+   recommendation={verdict,recommenderVersion,recordId,checks:checks.map(check=>({...check})),failedRules:failedRules.map(rule=>({...rule}))};}
  }catch{/* a recommendation is optional */}
  return Object.freeze({kind:'proposal',proposal:issueProposal({
   what:{action:REVIEWED_LEAVE_DECISION_ACTION,contractVersion:review.contractVersion,entity:declared.entity,effect:declared.effect,
