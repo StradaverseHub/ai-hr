@@ -1,5 +1,6 @@
-import {useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import {AppState,Image,View,useWindowDimensions,type ViewProps} from 'react-native';
+import {useFocusEffect} from 'expo-router';
 import {requireNativeView} from 'expo';
 import type {ProtectedDocument} from './protected-document';
 import type {MobileRefusal} from '../../lib/mobile-api/v2/common';
@@ -14,20 +15,21 @@ const words={en:['View','Close','Previous page','Next page','Page'],ms:['Lihat',
 /** Only a bearer-authorized download may supply a protected temporary document. No remote PDF or export path. */
 export function ApprovalDocument({name,open,onSignInRequired}:{name:string;open:()=>Promise<{outcome:'file';document:ProtectedDocument}|MobileRefusal>;onSignInRequired:()=>void}){
  const [state,setState]=useState<'closed'|'loading'|'open'|'error'>('closed'),[doc,setDoc]=useState<ProtectedDocument|null>(null),[page,setPage]=useState(0),[pages,setPages]=useState(0);
- const live=useRef(true),visible=useRef(AppState.currentState==='active'),held=useRef<ProtectedDocument|null>(null),flight=useRef(false),epoch=useRef(0);
+ const focused=useRef(true),live=useRef(true),visible=useRef(AppState.currentState==='active'),held=useRef<ProtectedDocument|null>(null),flight=useRef(false),epoch=useRef(0);
  const size=useWindowDimensions(),copy=words[appLocale()];
- function close(){epoch.current++;held.current?.delete();held.current=null;setDoc(null);setState('closed');setPage(0);setPages(0);}
+ function close(){if(!live.current)return;epoch.current++;held.current?.delete();held.current=null;setDoc(null);setState('closed');setPage(0);setPages(0);}
  useEffect(()=>{live.current=true;const sub=AppState.addEventListener('change',next=>{visible.current=next==='active';if(!visible.current)close();});return()=>{live.current=false;epoch.current++;sub.remove();held.current?.delete();held.current=null;};},[]);
- async function show(){if(flight.current||!visible.current)return;flight.current=true;const owner=authGeneration(),ticket=++epoch.current;setState('loading');
+ useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;close();};},[]));
+ async function show(){if(flight.current||!visible.current||!focused.current)return;flight.current=true;const owner=authGeneration(),ticket=++epoch.current;setState('loading');
   try{const result=await open();if(result.outcome!=='file'){if(live.current&&ticket===epoch.current)setState('error');return;}
-   if(!live.current||!visible.current||owner!==authGeneration()||ticket!==epoch.current){result.document.delete();return;}
+   if(!live.current||!visible.current||!focused.current||owner!==authGeneration()||ticket!==epoch.current){result.document.delete();return;}
    held.current?.delete();held.current=result.document;setDoc(result.document);setPage(0);setPages(0);setState('open');
   }catch(e){if(e instanceof SignInRequiredError)onSignInRequired();if(live.current&&ticket===epoch.current)setState('error');}finally{flight.current=false;}}
  return <View style={{gap:10}}>
   <Muted>{name}</Muted>
   {state==='open'&&doc?<>
    {doc.mimeType==='application/pdf'?<>
-    <PDF key={doc.uri} uri={doc.uri} page={page} accessibilityLabel={`${name} · ${copy[4]} ${page+1}`} onDocumentLoad={e=>setPages(e.nativeEvent.pages)} onDocumentError={()=>{held.current?.delete();held.current=null;setDoc(null);setState('error');}} style={{width:'100%',height:Math.max(260,Math.min(650,size.height*.65))}}/>
+    <PDF key={doc.uri} uri={doc.uri} page={page} accessibilityLabel={`${name} · ${copy[4]} ${page+1}`} onDocumentLoad={e=>{if(held.current?.uri===doc.uri)setPages(e.nativeEvent.pages);}} onDocumentError={()=>{if(held.current?.uri!==doc.uri)return;held.current?.delete();held.current=null;setDoc(null);setState('error');}} style={{width:'100%',height:Math.max(260,Math.min(650,size.height*.65))}}/>
     {pages>0&&<><Muted>{`${copy[4]} ${page+1} / ${pages}`}</Muted><View style={{flexDirection:'row',gap:10}}><View style={{flex:1}}><Button title={copy[2]} disabled={page===0} onPress={()=>setPage(p=>p-1)}/></View><View style={{flex:1}}><Button title={copy[3]} disabled={page>=pages-1} onPress={()=>setPage(p=>p+1)}/></View></View></>}
    </>:<Image accessibilityLabel={name} source={{uri:doc.uri}} resizeMode="contain" style={{width:'100%',height:Math.max(260,Math.min(650,size.height*.65))}}/>}
    <Button title={copy[1]} kind="quiet" onPress={close}/>

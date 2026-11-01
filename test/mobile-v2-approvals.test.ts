@@ -15,6 +15,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
+import { setRestDay } from '../core/roster';
 import { setCompensation } from '../core/comp';
 import { endReportingLine, hireEmployee, setReportingLine } from '../core/org';
 import { setLeaveApprovalPolicy } from '../core/leave-approval-policy';
@@ -481,7 +482,11 @@ describe('native replacement leave', () => {
     const id=await request();
     await setCompensation(adminCtx(base),{employmentId:employee.employmentId,basicSalary:8000,monthlyAllowance:0,effectiveFrom:'2024-01-01'});
     await setToilPolicy(adminCtx(base),{companyId:base.companyId,enabled:true,accrualBasis:'hours_worked',expiryDays:90,onExpiry:'convert_to_pay',allowFirstScheduleEligible:false,autoAccrueOnApproval:false,carryForwardAtYearEnd:false,employeeRequestEnabled:true});
-    const requestId=randomUUID();const answer=await decide(manager,'replacementLeave',id,{requestId});
+    const requestId=randomUUID();const refused=await decide(manager,'replacementLeave',id,{requestId});
+    expect(refused.body).toMatchObject({outcome:'refused',code:'decision_refused'});
+    expect(await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId))).toHaveLength(0);
+    await setRestDay(adminCtx(base),{employmentId:employee.employmentId,shiftDate:WORKED});
+    const answer=await decide(manager,'replacementLeave',id,{requestId});
     expect(answer.body).toEqual({outcome:'accepted',status:'approved'});
     const replay=await post(manager,'replacementLeave',id,{requestId,decision:'approve',expected:{status:'pending'}});expect(replay.body).toEqual(answer.body);
     const credits=await owner.db.select().from(schema.toilAccrual).where(eq(schema.toilAccrual.employmentId,employee.employmentId));expect(credits).toHaveLength(1);
@@ -522,5 +527,40 @@ describe('native employment review workspaces',()=>{
   expect((await writeAs(hr,'hrReview',id,{requestId:randomUUID(),expected:{status:'pending_hr'},action:'extend',extendToDate:'2026-02-30'})).status).toBe(400);
   expect((await writeAs(manager,'managerReview',id,{requestId:randomUUID(),expected:{status:'pending_manager'},action:'make_admin'})).status).toBe(400);
   const [r]=await owner.db.select().from(schema.employmentReview).where(eq(schema.employmentReview.id,id));expect(r.status).toBe('pending_manager');
+ });
+});
+
+describe('native request workspaces',()=>{
+ const read=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/route');
+ const write=()=>import('../app/api/mobile/v2/request-workspaces/[kind]/[id]/decision/route');
+ async function readAs(who:Person,kind:string,id:string){caller=who.ctx;const response=await (await read()).GET(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}`));return {status:response.status,body:await response.json()};}
+ async function writeAs(who:Person,kind:string,id:string,body:unknown){caller=who.ctx;const response=await (await write()).POST(new Request(`https://hr.example.com/api/mobile/v2/request-workspaces/${kind}/${id}/decision`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));return {status:response.status,body:await response.json()};}
+ it('accepts a resignation with its fixed last day, preserves its consequence and replays safely',async()=>{
+  const {submitResignation}=await import('../core/offboarding');const request=await submitResignation(employee.ctx,{employmentId:employee.employmentId,lastWorkingDay:addDays(MON,45),reason:'Synthetic resignation'});
+  const id=request.requestId;const seen=await readAs(hr,'resignation',id);expect(seen.body.outcome).toBe('found');expect(seen.body.workspace.lastWorkingDay).toBe(addDays(MON,45));
+  expect((await readAs(colleague,'resignation',id)).body.code).toBe('not_assigned');
+  const body={requestId:randomUUID(),action:'approve',expected:seen.body.workspace.expected};
+  const answer=await writeAs(hr,'resignation',id,body);expect(answer.body).toEqual({outcome:'accepted',status:'accepted'});
+  expect((await writeAs(hr,'resignation',id,body)).body).toEqual(answer.body);
+  const [e]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee.employmentId));expect(e.terminatedOn).toBe(addDays(MON,45));
+ });
+ it('shows full versioned notice text, acknowledges only its recipient and replays its receipt',async()=>{
+  const {createNotice,publishNotice}=await import('../core/notice');
+  const {id:noticeId}=await createNotice(adminCtx(base),{title:'Synthetic safety notice',body:'Full notice body\n\nSecond paragraph.',startOn:TODAY,endOn:addDays(TODAY,30),targetMode:'individual',employmentIds:[employee.employmentId],requiresAcknowledgement:true});await publishNotice(adminCtx(base),noticeId);
+  const [n]=await owner.db.select().from(schema.notice).where(eq(schema.notice.id,noticeId));const id=`${noticeId}:${employee.employmentId}:${n.contentVersion}`;
+  const seen=await readAs(employee,'noticeAcknowledgement',id);expect(seen.body.workspace.body).toBe('Full notice body\n\nSecond paragraph.');
+  expect((await readAs(colleague,'noticeAcknowledgement',id)).body.code).toBe('not_assigned');
+  const body={requestId:randomUUID(),action:'acknowledge',expected:seen.body.workspace.expected};const answer=await writeAs(employee,'noticeAcknowledgement',id,body);expect(answer.body).toEqual({outcome:'accepted',status:'acknowledged'});expect((await writeAs(employee,'noticeAcknowledgement',id,body)).body).toEqual(answer.body);
+ });
+ it('shows before/after profile values and applies the canonical approval once',async()=>{
+  const {saveProfileVisibilityPolicy}=await import('../core/profile-edit-policy');const {essVisibleFields}=await import('../lib/personnel-ess-contract');const {readOwnProfileWorkspace,submitOwnProfileEdit}=await import('../core/profile-edit');
+  const field='profile.contact_and_permanent_address.phone';
+  await saveProfileVisibilityPolicy({...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]},{policy:{version:5,fields:Object.fromEntries(essVisibleFields().map(f=>[f.id,f.ess.binding&&['immediate','approval'].includes(f.ess.edit)?'editable':'viewOnly'])),primaryOnly:[],groups:{},approvals:{[field]:{required:true,attachmentRequired:false}}},withdrawnReason:'Synthetic policy'});
+  const w=await readOwnProfileWorkspace(employee.ctx,{employmentId:employee.employmentId});const result=await submitOwnProfileEdit(employee.ctx,{employmentId:employee.employmentId,proposal:{v:2,fields:[{fieldId:field,before:w.baselines[field],value:'0123456789'}],registers:[]}});
+  const id=result.requestId!;const seen=await readAs(hr,'profile',id);expect(seen.body.outcome).toBe('found');expect(seen.body.workspace.lines[0].after).toBe('0123456789');
+  expect((await readAs(colleague,'profile',id)).body.code).toBe('not_assigned');expect((await readAs(employee,'profile',id)).body.code).toBe('not_assigned');
+  const rejected=await writeAs(hr,'profile',id,{requestId:randomUUID(),action:'reject',expected:seen.body.workspace.expected});expect(rejected.body.code).toBe('reason_required');
+  const body={requestId:randomUUID(),action:'approve',expected:seen.body.workspace.expected};expect((await writeAs(hr,'profile',id,body)).body).toEqual({outcome:'accepted',status:'approved'});expect((await writeAs(hr,'profile',id,body)).body).toEqual({outcome:'accepted',status:'approved'});
+  const [p]=await owner.db.select().from(schema.person).where(eq(schema.person.id,employee.personId));expect(p.phone).toBe('0123456789');
  });
 });

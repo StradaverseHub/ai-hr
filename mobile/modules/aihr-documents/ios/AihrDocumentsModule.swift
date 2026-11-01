@@ -19,6 +19,7 @@ class PrivatePDFView: ExpoView, UIScrollViewDelegate {
   let onDocumentError = EventDispatcher()
   private let scroll = UIScrollView()
   private let image = UIImageView()
+  private var sourceURI = ""
   private var document: PDFDocument?
   private var pageIndex = 0
   required init(appContext: AppContext) {
@@ -38,6 +39,7 @@ class PrivatePDFView: ExpoView, UIScrollViewDelegate {
   }
   func viewForZooming(in scrollView: UIScrollView) -> UIView? { image }
   func load(_ uri: String) {
+    sourceURI = uri
     document = nil; image.image = nil
     guard let url = URL(string: uri), url.isFileURL,
       let cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { fail(); return }
@@ -68,6 +70,6 @@ class PrivatePDFView: ExpoView, UIScrollViewDelegate {
     image.accessibilityLabel = String((page.string ?? "").prefix(50000))
     scroll.setZoomScale(1, animated: false); setNeedsLayout()
   }
-  private func fail() { document = nil; image.image = nil; onDocumentError(["code": "unavailable"]) }
-  override func didMoveToWindow() { super.didMoveToWindow(); if window == nil { document = nil; image.image = nil } }
+  private func fail() { document = nil; image.image = nil; image.accessibilityLabel = nil; onDocumentError(["code": "unavailable"]) }
+  override func didMoveToWindow() { super.didMoveToWindow(); if window == nil { document = nil; image.image = nil; image.accessibilityLabel = nil } else if document == nil && !sourceURI.isEmpty { load(sourceURI) } }
 }

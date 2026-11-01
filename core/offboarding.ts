@@ -86,6 +86,7 @@ export async function withdrawResignation(ctx: SessionContext, p: { requestId: s
     const [req] = await tx.select().from(resignationRequest).where(and(ownPersonPredicate(ctx),eq(resignationRequest.id, p.requestId))).limit(1);
     if (!req) throw new ResignationError('Resignation not found (or not visible).');
     if (req.status !== 'pending') throw new ResignationError(`This resignation is already ${req.status}.`);
+    if(p.expectedLastWorkingDay!==undefined&&p.expectedLastWorkingDay!==req.lastWorkingDay)throw new ResignationError('That resignation changed; review it again.');
     if (!ctx.personId || req.personId !== ctx.personId) {
       throw new ResignationError('Only the employee can withdraw their own resignation.');
     }
@@ -110,10 +111,11 @@ export async function withdrawResignation(ctx: SessionContext, p: { requestId: s
  *  last working day, reason) in the same transaction — so it can't be half-applied. */
 export async function decideResignation(
   ctx: SessionContext,
-  p: { requestId: string; decision: 'accepted' | 'rejected'; deciderEmploymentId?: string },
+  p: { requestId: string; decision: 'accepted' | 'rejected'; deciderEmploymentId?: string; expectedLastWorkingDay?:string },
+  outerTx?:Tx,
 ) {
   p = { ...p };
-  return withTenant(ctx, async (tx) => {
+  const run = async (tx:Tx) => {
     let nominatedEmployment: string | undefined;
     if (p.decision === 'accepted') {
       // Acceptance changes employment/assignment/reporting dependencies as well as leave state.
@@ -183,7 +185,8 @@ export async function decideResignation(
       payload: { decision: p.decision, lastWorkingDay: req.lastWorkingDay, deciderEmploymentId: p.deciderEmploymentId ?? null },
     });
     return { status: p.decision };
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }
 
 /** Admin inbox — pending resignations, RLS-scoped. Recent first. */

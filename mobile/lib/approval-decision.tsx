@@ -36,7 +36,7 @@ import {
 
 export const TASKS = v2Page('v2/tasks', TaskItemV2);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'claim', 'replacementLeave', 'managerReview', 'hrReview'] as const;
+const NATIVE = ['leave', 'leaveCancellation', 'attendance', 'claim', 'replacementLeave', 'managerReview', 'hrReview', 'profile', 'resignation', 'noticeAcknowledgement'] as const;
 /** Decided in this app: the server says it may be, AND this build has the screen for it (claims no longer do). */
 export const decidesNatively = (item: Pick<TaskItemV2, 'kind' | 'nativeDecision'>) => item.nativeDecision && (NATIVE as readonly string[]).includes(item.kind);
 /** Where a web-only row opens: the server's path, or — for a kind the server still marks native (a claim) and so sends
@@ -44,7 +44,7 @@ export const decidesNatively = (item: Pick<TaskItemV2, 'kind' | 'nativeDecision'
 const webPathOf = (item: TaskItemV2) => item.webPath ?? (item.nativeDecision ? '/approvals' : null);
 /** The only path the app builds: a natively decided kind and a validated UUID. */
 export function taskPath(kind: string, id: string, action?: 'decision' | 'document'): `v2/${string}` {
-  if (!(NATIVE as readonly string[]).includes(kind) || !UUID.test(id)) throw new Error('Invalid task reference');
+  if (!(['leave','leaveCancellation','attendance','claim','replacementLeave'] as readonly string[]).includes(kind) || !UUID.test(id)) throw new Error('Invalid task reference');
   return `v2/tasks/${kind}/${id.toLowerCase()}${action ? `/${action}` : ''}`;
 }
 /** A server-given relative web path, opened on the connected company's own origin only. */
@@ -181,7 +181,8 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
   const [done, setDone] = useState<'approved' | 'rejected' | 'pending_next_step' | null>(null);
   const [reason, setReason] = useState('');
   const [checked, setChecked] = useState<string[] | null>(null);
-  const flight = useRef(false);
+  const flight = useRef(false),live = useRef(true);
+  useEffect(()=>{live.current=true;return()=>{live.current=false;};},[]);
   const task = detail.data?.outcome === 'found' ? detail.data.task : null;
   // Online only: a decision needs a fresh answer from the server, never a stale copy.
   const online = !!task && !detail.error && !detail.loading;
@@ -196,7 +197,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
   const needsReasonToReject = !!task?.reasonRequiredToReject;
 
   async function send(body: Body) {
-    if (flight.current) return;
+    if (flight.current || !live.current) return;
     flight.current = true; const owner = authGeneration();
     setSent({ body, phase: 'sending' }); setNotice(null);
     try {
@@ -223,9 +224,10 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
       if (partial) { body.reason = trimmed; message = t('approvalConfirmPartial', { name, approve: body.dates.join(', '), reject: pendingDates.filter((d) => !approving.includes(d)).join(', '), reason: trimmed }); }
       else message = t('approvalConfirmApprove', { name, what });
     } else message = t('approvalConfirmApprove', { name, what });
+    const generation=authGeneration();
     Alert.alert(t('approvalConfirmTitle'), message, [
       { text: t('cancel'), style: 'cancel' },
-      { text: decision === 'approve' ? t('approvalApprove') : t('approvalReject'), style: decision === 'reject' ? 'destructive' : 'default', onPress: () => void send(body) },
+      { text: decision === 'approve' ? t('approvalApprove') : t('approvalReject'), style: decision === 'reject' ? 'destructive' : 'default', onPress: () => {if(live.current&&authGeneration()===generation)void send(body);} },
     ]);
   }
   const toggle = (date: string) => setChecked((prior) => { const now = prior ?? pendingDates; return now.includes(date) ? now.filter((d) => d !== date) : [...now, date]; });
@@ -234,7 +236,7 @@ export function ApprovalDetailScreen({ kind, id }: { kind: string; id: string })
 
   if (done) return <Screen>
     <Text accessibilityRole="alert" style={{ color: palette.text, fontSize: 18, lineHeight: 26 }}>{t(done === 'approved' ? 'approvalDoneApproved' : done === 'rejected' ? 'approvalDoneRejected' : 'approvalDoneNext')}</Text>
-    <Button title={t('approvalsBack')} onPress={() => router.back()} />
+    <Button title={t('approvalsBack')} onPress={() => router.replace('/approvals')} />
   </Screen>;
 
   return <Screen back onRefresh={detail.reload} footer={task && !sent ? <Material style={{marginHorizontal:16,marginBottom:20,padding:14,gap:8}}>

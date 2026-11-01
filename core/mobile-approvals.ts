@@ -47,6 +47,7 @@ import { MobileCommandOwnerRequired, withMobileCommandReceipt } from './mobile-c
 import * as leave from '../packs/leave/service';
 import * as claims from '../packs/claims/service';
 import { claimAnswers, currenciesOfClaims, currencyOfClaim, decimalText, receiptFile } from './mobile-claims';
+import { isRequestWorkspaceKind } from '../lib/mobile-api/v2/request-workspaces';
 import { isReviewWorkspaceKind } from '../lib/mobile-api/v2/review-workspaces';
 import { moneyText } from '../lib/mobile-api/money-text';
 import { getAttendanceCorrectionAttachment, dayTypesForPairs, decideAttendanceCorrection, listAttendanceCorrections, MissingAttendanceRejectReasonError } from '../packs/attendance/service';
@@ -128,7 +129,7 @@ export async function tasksPageV2(ctx: SessionContext, q: { limit: number; curso
   const summaries = await summariesFor(ctx, rows, locale);
   return {
     items: rows.map((t: Pending) => {
-      const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
+      const native = q.expandedNative === true ? isNativeTaskKind(t.kind) || isReviewWorkspaceKind(t.kind) || isRequestWorkspaceKind(t.kind) : isNativeTaskKind(t.kind) && t.kind !== 'replacementLeave';
       return { id: t.id, kind: t.kind, subject: { name: t.subjectName, code: null }, createdAt: t.createdAt, nativeDecision: native, webPath: native ? null : t.linkPath,
         summary: native ? summaries.get(`${t.kind}:${t.id}`) ?? null : null };
     }),
@@ -367,6 +368,7 @@ export function decisionRefusal(e: unknown): TaskDecisionRefusal {
     if (e.message === CLAIM_NOT_FOUND) return refused('not_assigned');
     return { ...refused('decision_refused'), message: publicErrorMessage(e).slice(0, 4000) };
   }
+  if (e instanceof leave.ToilDisabledError || e instanceof leave.ToilNotEligibleError || e instanceof leave.ToilNoOvertimeError || e instanceof leave.ToilAlreadyAccruedError) return {...refused('decision_refused'),message:publicErrorMessage(e).slice(0,4000)};
   if (e instanceof leave.ReplacementRequestNotPendingError) return refused('already_decided');
   if (e instanceof leave.ReplacementRequestInvalidError) return {...refused('decision_refused'),message:publicErrorMessage(e).slice(0,4000)};
   const sentence = e instanceof AttendanceWorkflowError || e instanceof LeavePayrollBusyError || e instanceof LeavePayrollClosedError || isLeaveDomainError(e)
@@ -424,7 +426,8 @@ export async function decideTaskV2(ctx: SessionContext, kind: NativeTaskKind, id
       if (kind === 'replacementLeave') {
         if (row.status !== 'pending') throw new TaskRefused('already_decided');
         const out = await leave.decideReplacementLeaveRequestTx(tx,ctx,{requestId:id,decision,note:reason});
-        return {outcome:'accepted' as const,status:out.status};
+        if(out.status!==decision)throw new TaskRefused('decision_refused');
+        return {outcome:'accepted' as const,status:decision};
       }
       if (kind === 'claim') {
         // One step, no chain: the only state the approver can have seen is `pending` (the expected state); a reason is

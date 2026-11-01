@@ -400,3 +400,10 @@ describe('replacement leave review',()=>{
     expect((screen.getByRole('button',{name:'approvalReject'}) as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+
+describe('approval confirmation lifecycle',()=>{
+ it('does not send a retained confirmation after leaving its detail',async()=>{
+  const f=fixture();const ui=render(<f.ApprovalDetailScreen kind="leave" id={ID}/>);await screen.findByText('Aisyah · E001');fireEvent.click(screen.getByRole('button',{name:'approvalApprove'}));ui.unmount();await f.confirm();expect(f.apiPostV2).not.toHaveBeenCalled();
+ });
+});

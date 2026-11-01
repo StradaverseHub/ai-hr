@@ -44,6 +44,7 @@ class PrivatePDFView(context: Context, appContext: AppContext) : ExpoView(contex
       return true
     }
   })
+  private var sourceURI = ""
   private var renderer: PdfRenderer? = null
   private var descriptor: ParcelFileDescriptor? = null
   private var bitmap: Bitmap? = null
@@ -71,6 +72,7 @@ class PrivatePDFView(context: Context, appContext: AppContext) : ExpoView(contex
     renderer = null; descriptor = null
   }
   fun load(uri: String) {
+    sourceURI = uri
     cleanup()
     try {
       val parsed = Uri.parse(uri)
@@ -102,5 +104,6 @@ class PrivatePDFView(context: Context, appContext: AppContext) : ExpoView(contex
     } catch (_: Exception) { fail() }
   }
   private fun fail() { cleanup(); onDocumentError(mapOf("code" to "unavailable")) }
+  override fun onAttachedToWindow() { super.onAttachedToWindow(); if (renderer == null && sourceURI.isNotEmpty()) load(sourceURI) }
   override fun onDetachedFromWindow() { cleanup(); super.onDetachedFromWindow() }
 }

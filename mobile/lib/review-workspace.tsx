@@ -46,7 +46,7 @@ export function ReviewWorkspaceScreen({kind,id}:{kind:ReviewWorkspaceKind;id:str
   {notice&&<Text accessibilityRole="alert">{notice}</Text>}
   {detail.data?.outcome==='refused'&&<Muted>{t('approvalRefusalNotAssigned')}</Muted>}
   {workspace&&<>
-   <Title>{workspace.subject.name}</Title><Muted>{t(kind==='managerReview'?'task_managerReview':'task_hrReview')}</Muted>
+   <Title>{workspace.subject.name}</Title>{workspace.subject.code&&<Muted>{workspace.subject.code}</Muted>}<Muted>{t(kind==='managerReview'?'task_managerReview':'task_hrReview')}</Muted>
    <Card><Row label={copy.type} value={workspace.reviewType}/><Row label={t('endDate')} value={workspace.endDate}/><Row label={copy.due} value={workspace.dueDate}/></Card>
    <Muted>{copy.advisory}</Muted>
    {kind==='hrReview'&&<Card><Row label={copy.recommendation} value={workspace.managerRecommendation&&workspace.managerRecommendation in copy?copy[workspace.managerRecommendation as keyof typeof copy]:workspace.managerRecommendation??'—'}/><Row label={copy.managerComments} value={workspace.managerComments??'—'}/></Card>}
