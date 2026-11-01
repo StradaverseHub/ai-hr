@@ -117,7 +117,9 @@ async function databaseSnapshot(label){
  const active=await db`select pid,state,wait_event_type,wait_event,extract(epoch from(clock_timestamp()-query_start))as age_seconds,left(query,4000)as query from pg_stat_activity where datname=current_database()and pid<>pg_backend_pid()`;
  writeFileSync(join(out,'database-'+label+'.json'),JSON.stringify({settings,statements,active},null,2));
 }
+let nativeAuditClient;
 async function verifyAudit(){
+ nativeAuditClient=(await import('../../db/client.ts')).client;
  const {verifyTenantChain}=await import('../../core/audit-chain.ts');
  report.auditVerification=[];
  for(const actor of fixture.users.filter(user=>user.role==='groupHR')){
@@ -438,6 +440,14 @@ try{
  report.concurrentHomeApiCoverage=report.homeApiTraffic.templates.flatMap(({role,requests})=>requests.map(({path})=>({role,path,requests:loaded.filter(sample=>sample.role===role&&sample.method==='GET'&&sample.route===path).length})));
  await databaseSnapshot('loaded');await verifyAudit();save();if(suite==='whole-system')assert(report.concurrentHomeApiCoverage.length>0&&report.concurrentHomeApiCoverage.every(row=>row.requests>0),'observed Home fetches missing from concurrent traffic');if(runMixedWorkflow)assert(Object.values(report.mixedWorkflows.completed).every(count=>count>0),'a required mixed mutation/processing scenario did not complete');if(suite==='whole-system')assert(report.concurrentRouteCoverage.every(route=>route.requests>0),'wider concurrent route coverage incomplete');assert.equal(report.functionalErrors.length,0,'HTTP journey failures');assert.equal(report.homeCardFailures.length,0,'loaded Home card/summary failures');assert.equal(report.browserErrors.length,0,'browser runtime errors');assert.equal(report.browserLoad.errors.length,0,'loaded browser journeys');assert(report.latencyTargetMet,'500-user HTTP p95 latency target was not met');
 }catch(error){report.browserPendingRequests??=[...(pendingBrowserRequests.get(lastPage)?.values()??[])].map(row=>({...row,elapsedMs:performance.now()-row.startedMs}));if(lastPage&&!lastPage.isClosed())await lastPage.screenshot({path:join(out,'browser-failure.png'),fullPage:false}).catch(()=>{});report.error=String(error.message).slice(0,350);writeFileSync(join(out,'http-samples.json'),JSON.stringify(samples));await databaseSnapshot('failure').catch(()=>{});save();throw error;}
-finally{if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);if(browser)await browser.close();agent.destroy();await db.end();save();}
+finally{
+ if(browserDiagnosticTimer)clearInterval(browserDiagnosticTimer);if(progressTimer)clearInterval(progressTimer);if(sampling)clearInterval(sampling);
+ report.shutdown={browserClosed:false,nativeAuditPoolClosed:nativeAuditClient===undefined,driverPoolClosed:false};
+ if(browser)await browser.close();report.shutdown.browserClosed=true;agent.destroy();save();
+ // verifyTenantChain imports the canonical application pool as well as this driver's observer pool.
+ // Both belong only to this isolated child. Leave no live native pool after a successful preflight.
+ if(nativeAuditClient)await nativeAuditClient.end({timeout:5});report.shutdown.nativeAuditPoolClosed=true;save();
+ await db.end({timeout:5});report.shutdown.driverPoolClosed=true;save();
+}
 }
 await main();
