@@ -9,7 +9,7 @@ import {expect,it} from 'vitest';
 it('retains real CPU samples on controlled shutdown while preserving refusal outside hosted profiling',async()=>{
  const directory=mkdtempSync(join(tmpdir(),'aihr-profile-exit-'));
  const hook=resolve('scripts/performance/profile-exit.mjs');
- const program="function cpuFixtureHotLoop(){let n=0;for(let i=0;i<100000;i++)n+=Math.sqrt(i);return n;} setInterval(cpuFixtureHotLoop,1);process.stdout.write('ready\\n');";
+ const program="globalThis.cpuFixtureSink=0;function cpuFixtureHotLoop(){const end=performance.now()+20;let n=globalThis.cpuFixtureSink;while(performance.now()<end)n+=Math.sqrt(Math.random());globalThis.cpuFixtureSink=n;} setInterval(cpuFixtureHotLoop,1);process.stdout.write('ready\\n');";
  const results=[];
  try{
   for(const phase of ['signal-only','controlled-exit']){
@@ -18,14 +18,15 @@ it('retains real CPU samples on controlled shutdown while preserving refusal out
    let error='';child.stderr.on('data',data=>{error+=String(data);});const exited=once(child,'exit');
    try{
     await Promise.race([once(child.stdout,'data'),exited.then(()=>{throw Error('Profiler fixture exited before ready: '+error);}),pause(3000).then(()=>{throw Error('Profiler fixture startup timeout');})]);
-    await pause(250);child.kill(phase==='controlled-exit'?'SIGUSR2':'SIGTERM');
+    await pause(600);child.kill(phase==='controlled-exit'?'SIGUSR2':'SIGTERM');
     const [code,signal]=await Promise.race([exited,pause(3000).then(()=>{throw Error('Profiler fixture shutdown timeout');})]);
     const files=readdirSync(directory).filter(name=>name===phase+'.cpuprofile');
     if(phase==='signal-only'){expect(signal).toBe('SIGTERM');expect(files).toEqual([]);}
     else{
      expect(code,error).toBe(0);expect(signal).toBeNull();expect(files).toHaveLength(1);
      const profile=JSON.parse(readFileSync(join(directory,files[0]),'utf8'));expect(profile.samples.length).toBeGreaterThan(0);
-     expect(profile.nodes.some((node:{callFrame:{functionName:string}})=>node.callFrame.functionName==='cpuFixtureHotLoop')).toBe(true);
+     const hotNodes=new Set(profile.nodes.filter((node:{id:number;callFrame:{functionName:string}})=>node.callFrame.functionName==='cpuFixtureHotLoop').map((node:{id:number})=>node.id));
+     expect(profile.samples.filter((id:number)=>hotNodes.has(id)).length,'Controlled profile must contain samples of the observable busy loop').toBeGreaterThan(0);
     }
     results.push({phase,code,signal,profileFiles:files.length});
    }finally{if(child.exitCode===null&&child.signalCode===null){child.kill('SIGKILL');await exited;}}
