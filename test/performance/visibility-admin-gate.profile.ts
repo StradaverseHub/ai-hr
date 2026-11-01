@@ -1,73 +1,72 @@
-/** Reversible canonical coarse-admin gate experiment; no permissions or results persist between calls. */
-import {randomUUID} from 'node:crypto';
+/** Reversible native last-administrator candidate experiment. Never a migration or HTTP witness. */
+import {randomUUID,createHash} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../../db/client';
+import {withTenant} from '../../db/client';
 import * as s from '../../db/schema';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase} from '../harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
-it('compares mixed-principal visibility and malformed-context outcomes before, during and after a coarse gate',async()=>{
- await resetDb();const b=await seedBase(),foreign=await seedBase(),base=adminCtx(b);
- const companies=[b.companyId];
- for(let i=1;i<5;i++){const [company]=await owner.db.insert(s.company).values({tenantId:b.tenantId,country:'MY',legalName:'Fictional gate company '+i}).returning();companies.push(company.id);}
- const users=Array.from({length:500},(_,i)=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),companyId:companies[i%5],role:(i<2?'hr_admin':i===2?'manager':'employee') as 'hr_admin'|'manager'|'employee'}));
- await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:b.tenantId,fullName:'Fictional gate person '+i,primaryEmail:u.id+'@example.invalid'})));
- await owner.db.insert(s.employment).values(users.map(u=>({id:u.employmentId,tenantId:b.tenantId,personId:u.personId,companyId:u.companyId,hiredOn:'2025-01-01'})));
- await owner.db.insert(s.appUser).values(users.map(u=>({id:u.id,tenantId:b.tenantId,personId:u.personId,workosUserId:'gate_'+u.id})));
- await owner.db.insert(s.roleAssignment).values(users.map((u,i)=>({tenantId:b.tenantId,appUserId:u.id,role:u.role,companyId:i===1?null:u.companyId})));
- const reports=users.filter((u,i)=>i>2&&u.companyId===users[2].companyId).slice(0,10);
- await owner.db.insert(s.reportingLine).values(reports.map(u=>({tenantId:b.tenantId,managerEmploymentId:users[2].employmentId,subordinateEmploymentId:u.employmentId,lineType:'administrative' as const,validFrom:'2025-01-01'})));
- const [otherPerson]=await owner.db.insert(s.person).values({tenantId:foreign.tenantId,fullName:'Fictional other tenant',primaryEmail:randomUUID()+'@example.invalid'}).returning();
- await owner.db.insert(s.employment).values({tenantId:foreign.tenantId,personId:otherPerson.id,companyId:foreign.companyId,hiredOn:'2025-01-01'});
- for(const table of ['employment','person','app_user','role_assignment','reporting_line'])await owner.client.unsafe('analyze '+table);
- const [roleDefinition]=await owner.client`select pg_get_functiondef('app.grants_have_role_for(jsonb,text,uuid)'::regprocedure)as original,prosrc as body from pg_proc where oid='app.grants_have_role_for(jsonb,text,uuid)'::regprocedure`;
- const cachedRole=`CREATE OR REPLACE FUNCTION app.grants_have_role_for(grants jsonb,wanted_role text,wanted_company uuid) RETURNS boolean LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $role_plan$ BEGIN RETURN (${roleDefinition.body.trim().replace(/;$/,'')}); END; $role_plan$`;
- const [definition]=await owner.client`select pg_get_functiondef('app.visible_employment_ids()'::regprocedure)as original,prosrc as body from pg_proc where oid='app.visible_employment_ids()'::regprocedure`;
- const marker='SELECT DISTINCT e.company_id FROM employment e WHERE e.tenant_id = app.current_tenant_id()';
- expect(definition.body.split(marker)).toHaveLength(2);
- const gated=definition.body.replace('BEGIN',`DECLARE performance_has_admin boolean := false;
-BEGIN
- IF EXISTS(SELECT 1 FROM employment WHERE tenant_id=app.current_tenant_id()) THEN
-  -- Preserve malformed company-grant errors before short-circuiting their later company checks.
-  PERFORM g.company_id FROM app.current_grants() g;
-  performance_has_admin := app.is_admin();
- END IF;`).replace(marker,marker+' AND performance_has_admin');
- const ctx=(u:typeof users[number],i:number):SessionContext=>({...base,userId:u.id,personId:u.personId,roles:[u.role],grants:[{role:u.role,companyId:i===1?null:u.companyId}]});
- const phases:Record<string,unknown>={};let baselineErrors:unknown,baselineMatrix:unknown;
- const outcome=async(context:SessionContext,grants:string)=>{
-  try{return {ids:(await withTenant(context,async tx=>{await tx.execute(sql`select set_config('app.grants',${grants},true)`);return tx.execute(sql`select app.visible_employment_ids() as ids`);}))[0].ids};}
-  catch(error){let cause=error as {code?:string;cause?:unknown};while(cause&&!cause.code)cause=cause.cause as typeof cause;return {error:cause?.code??String(error)};}
- };
+const signature='app.access_assert_administrator_for(uuid)';
+const previous=`SELECT 1 FROM public.access_group g JOIN public.access_effective_membership m ON m.group_id=g.id AND m.tenant_id=g.tenant_id
+  WHERE g.tenant_id=p_tenant AND g.system_administrator AND g.retired_at IS NULL
+   AND m.company_id IS NULL
+   AND app.access_allowed_for_tenant(p_tenant,m.user_id,'access.system_admin',NULL)
+   AND app.access_allowed_for_tenant(p_tenant,m.user_id,'access.configure',NULL)
+   AND app.access_recovery_available(m.user_id)`;
+const candidate=`WITH candidate_administrators AS MATERIALIZED (
+ SELECT m.user_id FROM public.access_group g JOIN public.access_effective_membership m ON m.group_id=g.id AND m.tenant_id=g.tenant_id
+ WHERE g.tenant_id=p_tenant AND g.system_administrator AND g.retired_at IS NULL AND m.company_id IS NULL
+ ) SELECT 1 FROM candidate_administrators m
+ WHERE app.access_allowed_for_tenant(p_tenant,m.user_id,'access.system_admin',NULL)
+ AND app.access_allowed_for_tenant(p_tenant,m.user_id,'access.configure',NULL)
+ AND app.access_recovery_available(m.user_id)`;
+const hash=(value:string)=>createHash('sha256').update(value).digest('hex');
+async function catalog(){
+ const [row]=await owner.client`select pg_get_functiondef(oid) as definition,prosrc as body,to_jsonb(p)-'prosrc' as attributes from pg_proc p where oid=${signature}::regprocedure`;
+ return row;
+}
+async function outcome(connection:any,tenantId:string){
+ try{await connection.savepoint(async(sp:any)=>{await sp`select app.access_assert_administrator_for(${tenantId}::uuid)`;});return 'allowed';}
+ catch(error){return (error as {code?:string}).code??String(error);}
+}
+it('fences matching administrator memberships before live eligibility checks with identical native outcomes and attributes',async()=>{
+ await resetDb();const base=await seedBase(),foreign=await seedBase();
+ for(const b of [base,foreign])await withTenant(adminCtx(b),tx=>tx.execute(sql`select app.access_configuration_initialize()`));
+ const users=Array.from({length:500},()=>({id:randomUUID(),personId:randomUUID(),employmentId:randomUUID()}));
+ await owner.db.insert(s.person).values(users.map((u,i)=>({id:u.personId,tenantId:base.tenantId,fullName:'Fictional administrator-candidate person '+i,primaryEmail:u.id+'@example.invalid'})));
+ await owner.db.insert(s.employment).values(users.map(u=>({id:u.employmentId,tenantId:base.tenantId,personId:u.personId,companyId:base.companyId,hiredOn:'2020-01-01'})));
+ await owner.db.insert(s.appUser).values(users.map(u=>({id:u.id,tenantId:base.tenantId,personId:u.personId,workosUserId:'admin_candidate_'+u.id})));
+ await owner.db.insert(s.roleAssignment).values(users.map(u=>({tenantId:base.tenantId,appUserId:u.id,role:'employee' as const,companyId:base.companyId})));
+ const [membership]=await owner.client`select count(*)::int as total,count(*) filter(where g.system_administrator)::int as administrators from access_effective_membership m join access_group g on g.id=m.group_id and g.tenant_id=m.tenant_id where m.tenant_id=${base.tenantId}::uuid`;
+ expect(membership.total).toBeGreaterThanOrEqual(501);expect(membership.administrators).toBe(1);
+ for(const table of ['app_user','person','employment','role_assignment','access_group','access_configuration'])await owner.client.unsafe('analyze '+table);
+ const original=await catalog();expect(original.body.split(previous)).toHaveLength(2);expect(original.definition.split(previous)).toHaveLength(2);
+ const phases:Record<string,unknown>={},untouched=randomUUID();let baselineOutcomes:unknown;
+ const save=()=>writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'administrator-candidate-work.json'),JSON.stringify({kind:'REVERSIBLE_NATIVE_ADMINISTRATOR_CANDIDATE_EXPERIMENT',releaseEligible:false,users:500,membership,originalBodySha256:hash(original.body),phases},null,2));
  try{
-  for(const phase of ['baseline','candidate','candidate-grant-plan','baseline-after']){
-   await owner.client.unsafe(phase==='candidate-grant-plan'?cachedRole:roleDefinition.original);
-   await owner.client.unsafe(phase.startsWith('candidate')?`CREATE OR REPLACE FUNCTION app.visible_employment_ids() RETURNS uuid[] LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public AS $gate$ ${gated} $gate$`:definition.original);
-   const started=performance.now(),times:number[]=[];
-   const results=await Promise.allSettled(users.map(async(u,i)=>{
-    const before=performance.now(),rows=await withTenant(ctx(u,i),tx=>tx.execute(sql`select app.visible_employment_ids() as ids,app.can_admin_payroll_for(${u.companyId}::uuid) as payroll_admin,app.has_role_for('hr_admin',${u.companyId}::uuid) as hr_admin`));
-    expect(rows[0].payroll_admin).toBe(i<2);expect(rows[0].hr_admin).toBe(i<2);
-    const expected=i===0?users.filter(row=>row.companyId===u.companyId).map(row=>row.employmentId):i===1?users.map(row=>row.employmentId):i===2?[u.employmentId,...reports.map(row=>row.employmentId)]:[u.employmentId];
-    expect(rows[0].ids).toEqual(expected.sort());times.push(performance.now()-before);
-   }));
-   const errors=results.flatMap(result=>result.status==='rejected'?[String(result.reason)]:[]);
-   times.sort((a,b)=>a-b);
-   const malformed=[await outcome(ctx(users[4],4),JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])),await outcome(ctx(users[4],4),'{broken'),await outcome(adminCtx(foreign),'{broken')];
-   if(phase==='baseline')baselineErrors=malformed;else expect(malformed).toEqual(baselineErrors);
-   const matrix=[];
-   for(const grants of [null,'null','{}','[]',JSON.stringify([{role:'hr_admin',companyId:null}]),JSON.stringify([{role:'hr_admin',companyId:companies[0]}]),JSON.stringify([{role:'employee',companyId:'invalid-uuid'}])]){
-    for(const role of ['employee','hr_admin','super_admin'])for(const companyId of [companies[0],companies[1],null]){
-     try{const rows=await withTenant(ctx(users[4],4),tx=>tx.execute(sql`select app.grants_have_role_for(${grants}::jsonb,${role},${companyId}::uuid) as value`));matrix.push({value:rows[0].value});}
-     catch(error){let cause=error as {code?:string;cause?:unknown};while(cause&&!cause.code)cause=cause.cause as typeof cause;matrix.push({error:cause?.code??String(error)});}
-    }
-   }
-   if(phase==='baseline')baselineMatrix=matrix;else expect(matrix).toEqual(baselineMatrix);
-   expect(matrix.some(row=>row.value===true)).toBe(true);expect(matrix.some(row=>row.value===false)).toBe(true);
-
-   phases[phase]={cases:500,elapsedMs:performance.now()-started,p50Ms:times[249],p95Ms:times[474],maxMs:times.at(-1),errors,malformed,grantCases:matrix.length};
-   writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR!,'visibility-admin-gate.json'),JSON.stringify({kind:'REVERSIBLE_VISIBILITY_EXPERIMENT',releaseEligible:false,phases},null,2));
-   expect(errors).toEqual([]);
+  for(const phase of ['before','candidate','restored']){
+   const body=phase==='candidate'?original.body.replace(previous,candidate):original.body;
+   await owner.client.unsafe(phase==='candidate'?original.definition.replace(previous,candidate):original.definition);
+   const actual=await catalog();expect(actual.body).toBe(body);expect(actual.attributes).toEqual(original.attributes);
+   const [permission]=await owner.client`select has_function_privilege('ai_hr_app',${signature},'EXECUTE') as app_can_execute`;
+   expect(permission.app_can_execute).toBe(false);
+   await owner.client`select app.access_assert_administrator_for(${base.tenantId}::uuid)`;
+   await owner.client`select pg_stat_statements_reset()`;
+   const elapsedMs:number[]=[];
+   for(let i=0;i<3;i++){const start=performance.now();await owner.client`select app.access_assert_administrator_for(${base.tenantId}::uuid)`;elapsedMs.push(performance.now()-start);}
+   const statements=await owner.client`select calls,total_exec_time,total_plan_time,left(query,1800) as normalized_query from pg_stat_statements where query not like '%pg_stat_%' order by total_exec_time+total_plan_time desc limit 14`;
+   const outcomes=[];
+   for(const tenantId of [base.tenantId,foreign.tenantId,untouched])outcomes.push(await owner.client.begin(tx=>outcome(tx,tenantId)));
+   const rollback=new Error('Rollback isolated native refusal fixture');let archivedOutcome:string|undefined;
+   try{await owner.client.begin(async tx=>{await tx`update app_user set archived_at=now() where id=${base.adminUserId}::uuid`;archivedOutcome=await outcome(tx,base.tenantId);throw rollback;});}
+   catch(error){if(error!==rollback)throw error;}
+   expect(archivedOutcome).toBe('23514');outcomes.push(archivedOutcome);
+   expect(outcomes.slice(0,3)).toEqual(['allowed','allowed','allowed']);
+   if(baselineOutcomes===undefined)baselineOutcomes=outcomes;else expect(outcomes).toEqual(baselineOutcomes);
+   const [restoredUser]=await owner.client`select archived_at from app_user where id=${base.adminUserId}::uuid`;expect(restoredUser.archived_at).toBeNull();
+   phases[phase]={elapsedMs,medianMs:[...elapsedMs].sort((a,b)=>a-b)[1],outcomes,attributesIdentical:true,appExecuteDenied:true,bodySha256:hash(body),statements};save();
   }
- }finally{await owner.client.unsafe(definition.original);await owner.client.unsafe(roleDefinition.original);}
-},90000);
+ }finally{await owner.client.unsafe(original.definition);const restored=await catalog();expect(restored).toEqual(original);save();}
+},240000);
