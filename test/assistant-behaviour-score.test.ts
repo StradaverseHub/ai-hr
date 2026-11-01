@@ -27,7 +27,7 @@ describe('behaviour scorer',()=>{
   expect(scoreBehaviour(turn({mode:'answer',reads:['my_leave_balances','upcoming_holidays']}),seen({reads:['my_leave_balances']})).verdict).toBe('missed');
   expect(scoreBehaviour(turn({mode:'answer',reads:['my_leave_balances']}),seen({reads:['my_leave_balances']})).verdict).toBe('met');
   expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Which leave type do you mean?'})).verdict).toBe('met');
-  expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Done.'})).verdict).toBe('missed');
+  expect(scoreBehaviour(turn({mode:'clarify',slot:'leave_type'}),seen({reply:'Annual leave is set up.'})).verdict).toBe('missed');
   expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['setup_readiness']})).verdict).toBe('met');
   expect(scoreBehaviour(turn({mode:'guide'},'guidance'),seen({reads:['my_leave_balances']})).verdict).toBe('missed');
  });
