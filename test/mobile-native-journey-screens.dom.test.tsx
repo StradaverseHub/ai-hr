@@ -100,6 +100,17 @@ describe('native clock job',()=>{
     await screen.findByText('Synthetic location unavailable');expect(screen.queryByText('attemptSavedNotSent')).toBeNull();
     expect(f.reportAttempt).not.toHaveBeenCalled();expect(f.post).not.toHaveBeenCalled();
   });
+  it('passes the real durable ClockCommand contract when no optional device registration exists',async()=>{
+    const f=fixture();f.session.employmentId=null;
+    f.stage.mockImplementationOnce(async(command:string,file?:unknown)=>{
+      contract.ClockCommand.parse(JSON.parse(command));return {command,file};
+    });
+    render(<f.App kind="clock"/>);fireEvent.click(screen.getByText('slidePrepare'));await screen.findByText('slideRecord');
+    f.post.mockResolvedValueOnce({outcome:'accepted',receipt:contract.ClockReceipt.parse({id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',direction:'in',date:'2026-01-01',recordedAt:'2026-01-01T08:00:00.000Z',photoAvailable:false})});
+    fireEvent.click(screen.getByText('slideRecord'));await screen.findByText('clockRecorded');
+    const command=JSON.parse(f.stage.mock.calls[0][0]);expect(command).not.toHaveProperty('deviceToken');
+    expect(f.reportAttempt).toHaveBeenCalledBefore(f.post);expect(f.post).toHaveBeenCalledOnce();
+  });
   it('a widget only selects a direction; it does not capture location, photos, prepare or submit',async()=>{
     const f=fixture();render(<f.App kind="clock" widgetAction="out" widgetIntent="launch-1"/>);
     await waitFor(()=>expect(f.drafts().clock).toMatchObject({action:'out',phase:'idle'}));
