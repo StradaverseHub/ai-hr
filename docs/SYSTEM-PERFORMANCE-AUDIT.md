@@ -30,7 +30,7 @@ two bounded log blocks also contain40P01 (concurrent errors may overlap). Native
 source inspection confirms ordinary discard synchronizes onboarding (audit lock)
 before the native delete port acquires Access, unlike Personnel create/save. New
 native regression source328ca52dd forces the actual pending discard and probes that
-its audit lock remains available; hosted red qualification41311671992 is pending.
+its audit lock remains available; red qualification41311671992 FAILS as expected, followed by the verified repair below.
 No authorization barrier or500ms native lock ceiling is relaxed.
 
 [Five-second41309713200](https://github.com/StradaverseHub/ai-hr/actions/runs/41309713200)
@@ -148,10 +148,13 @@ Current development integration normally merges main/alpha
 all640canonical journal entries and SQL bytes, including0876, followed by ten
 unchanged, never-installed owned performance drafts0879–0887/0892. Foreign
 claims0888–0891 are not included. No protected branch or installation changed.
-Incoming human approval literals are preserved byte-identically. Latest5a7c830b8 provider
-closure9f74efea6ae0ee912f602dc263429bf1e238e13ff4ed0cf9d1d83cd0d1e3f8e8;
-agentfa72c8a397bd254e23d1f4f608d73171f6631494e8599346678f344421825c6b.
-The existing exact-source approval bindings do not approve this new closure.
+Provider closure9f74efea6ae0ee912f602dc263429bf1e238e13ff4ed0cf9d1d83cd0d1e3f8e8
+remains unchanged from qualified5a7c830b8. The owner explicitly authorized its24
+fingerprint bindings on1November;2ce14aa1a applies only those digest replacements,
+retaining all other literal fields and pending records. Regenerated agent digest
+8692061f92ac387fbb8b03252f3153ac5d07f4e843086f85a80edd28db0f975e binds that
+registry change. Earlier stale-source failures retain their original identity.
+Synthetic privacy/protocol/approval/capability controls41314414156 are pending on2ce14aa1a.
 
 ### Staging preparation holds
 
