@@ -73,6 +73,7 @@ export default async function ScheduledActionsPage() {
       <PageHeader title={t('title')} description={t('description')} />
 
       <RunnerInventory snapshot={snapshot} canControl={isOperator(s)} />
+      {isGroupAdmin(s) && <section id="recent-run-history" className="space-y-3">
       <SectionHeader title={t('historyTitle')} />
 
       <div className="space-y-3">
@@ -87,11 +88,8 @@ export default async function ScheduledActionsPage() {
                     <div className="min-w-0">
                       <div className="font-medium">{t(`jobs.${job.i18nKey}.name`)}</div>
                       <p className="mt-0.5 text-sm text-muted-foreground">{t(`jobs.${job.i18nKey}.description`)}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {job.key === 'reports.employee-master.deliver' && !reportEmailEnabled
-                          ? reportSchedule('unavailable')
-                          : <>{t('scheduleLabel')}: {job.schedule}</>}
-                      </p>
+                      {job.key === 'reports.employee-master.deliver' && !reportEmailEnabled &&
+                        <p className="mt-1 text-xs text-muted-foreground">{reportSchedule('unavailable')}</p>}
                     </div>
                     {last ? (
                       <Badge variant={outcomeVariant(last.outcome)}>{outcomeLabel(last.outcome)}</Badge>
@@ -171,6 +169,7 @@ export default async function ScheduledActionsPage() {
           );
         })}
       </div>
+      </section>}
     </div>
   );
 }

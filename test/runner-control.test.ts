@@ -6,7 +6,7 @@ import type {SessionContext} from '../db/client';
 describe('installation runner control',()=>{
  it('executes broker refusal, schedule, audit and in-flight transaction cases',()=>{
   const result=spawnSync('python3',['-I','-B','test/fixtures/runner-control-tests.py'],{encoding:'utf8'});
-  expect(result.status,result.stdout+result.stderr).toBe(0);expect(result.stderr).toMatch(/Ran 11 tests/);
+  expect(result.status,result.stdout+result.stderr).toBe(0);expect(result.stderr).toMatch(/Ran 12 tests/);
  });
  it('rejects arbitrary runner, unit, target and schedule inputs',()=>{
   const valid={id:'reviews',revision:'a'.repeat(64),enabled:true,schedule:{time:'03:00'}};

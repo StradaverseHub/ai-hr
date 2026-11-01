@@ -91,8 +91,9 @@ def row_status(policy,row):
     if enabled and active.get('ActiveState') not in ('active','activating'): health='stopped'
     if enabled and health=='success' and last_mono and time.monotonic()-last_mono>threshold: health='stale'
     result={'id':row['id'],'managed':setting['managed'],'hold':held(policy,row['id']),'note':setting['note'],'installed':installed,'enabled':enabled,'health':health,'running':service.get('ActiveState') in ('active','activating'),'lastRun':service.get('ExecMainExitTimestamp') or None,'nextRun':next_run(timer),'schedule':displayed_schedule(timer)}
-    # Include actual scheduler state in the revision, so stale tabs cannot overwrite another change.
-    result['revision']=hashlib.sha256(json.dumps(result,sort_keys=True).encode()).hexdigest()
+    # Configuration-only revision: execution timestamps advance independently of operator edits.
+    configuration={key:result[key] for key in ('id','managed','hold','installed','enabled','schedule')}
+    result['revision']=hashlib.sha256(json.dumps(configuration,sort_keys=True).encode()).hexdigest()
     return result
 
 def schedule(row,value):

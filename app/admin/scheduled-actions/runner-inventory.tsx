@@ -19,14 +19,14 @@ export async function RunnerInventory({snapshot,canControl}:{snapshot:RunnerSnap
     const status=snapshot?.runners.find(row=>row.id===entry.id);
     return <div key={entry.id} className="p-4 sm:p-5">
      <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-medium">{t(`jobs.${entry.id}.name`)}</h3><p className="mt-1 max-w-prose text-sm text-muted-foreground">{t(`jobs.${entry.id}.description`)}</p></div>
-      <div className="flex flex-wrap gap-2"><Badge variant={status?.hold?'warning':'default'}>{!status?t('unavailable'):status.hold?t('held'):!status.managed?t('external'):status.enabled?t('enabled'):t('disabled')}</Badge>{status&&<Badge variant={status.health==='failed'?'danger':status.health==='success'?'success':'default'}>{t(`health.${status.health}`)}</Badge>}</div>
+      <div className="flex flex-wrap gap-2"><Badge variant="default">{!status?t('unavailable'):!status.installed?(status.managed?t('health.missing'):t('unavailable')):status.enabled?t('enabled'):t('disabled')}{status&&!status.managed&&status.installed?' · systemd':''}</Badge>{status?.hold&&<Badge variant="warning">{t('held')}</Badge>}{status&&!status.managed&&<Badge variant="default">{t('external')}</Badge>}{status&&<Badge variant={status.health==='failed'?'danger':status.health==='success'?'success':'default'}>{t(`health.${!status.managed&&status.health==='missing'?'unknown':status.health}`)}</Badge>}</div>
      </div>
      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
       <div><dt className="text-muted-foreground">{t('schedule')}</dt><dd className="mt-1 break-words">{status?.schedule??t('unavailable')}</dd></div>
       <div><dt className="text-muted-foreground">{t('lastRun')}</dt><dd className="mt-1">{status?.lastRun??t('noEvidence')}</dd></div>
       <div><dt className="text-muted-foreground">{t('nextRun')}</dt><dd className="mt-1">{status?.nextRun??t('noEvidence')}</dd></div>
      </dl>
-     <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination?<Link className="text-primary underline underline-offset-4" href={entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:t(`jobs.${entry.id}.results`)}</p>
+     <p className="mt-3 text-sm"><span className="text-muted-foreground">{t('results')}: </span>{entry.destination&&(!canControl||entry.destination.startsWith('/operator'))?<Link className="text-primary underline underline-offset-4" href={entry.destination==='/admin/scheduled-actions'?'#recent-run-history':entry.destination}>{t(`jobs.${entry.id}.results`)}</Link>:entry.destination==='/admin/scheduled-actions'&&canControl?t('jobs.ai-retention.results'):t(`jobs.${entry.id}.results`)}</p>
      {status?.note&&<p className="mt-2 text-sm text-muted-foreground">{status.note}</p>}
      {status?.hold&&<p className="mt-2 text-sm">{t('holdNote')}</p>}
      {canControl&&status&&<RunnerControls key={status.revision} runner={status} frequency={entry.frequency}/>}

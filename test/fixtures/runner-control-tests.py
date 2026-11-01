@@ -50,6 +50,18 @@ class RunnerControlTests(unittest.TestCase):
             with self.assertRaises(b.Refused):b.separate_capability(row)
         with patch.object(b,'command',return_value='ExecStart={ argv[]=/opt/node22/bin/node --import tsx scripts/provision-only-runner.ts ; }'):
             b.separate_capability(row)
+    def test_interval_revision_is_stable_across_runtime_updates_but_changes_with_configuration(self):
+        row=next(row for row in CATALOG if row['id']=='notifications')
+        service={'LoadState':'loaded','Result':'success','ActiveState':'inactive','ExecMainExitTimestamp':'Sun 2026-11-01 03:00:00 +08','ExecMainExitTimestampMonotonic':'1000000'}
+        timer={'LoadState':'loaded','UnitFileState':'enabled','ActiveState':'active','TimersMonotonic':'{ OnUnitInactiveUSec=5min ; next_elapse=100000000 }','NextElapseUSecMonotonic':'100000000'}
+        def props(unit):return service if unit.endswith('.service') else timer
+        with patch.object(b,'properties',side_effect=props),patch.object(b.time,'monotonic',side_effect=[10,10,20,20]):
+            first=b.row_status(self.policy,row);second=b.row_status(self.policy,row)
+        self.assertNotEqual(first['nextRun'],second['nextRun'])
+        self.assertEqual(first['revision'],second['revision'])
+        timer['TimersMonotonic']='{ OnUnitInactiveUSec=10min ; next_elapse=100000000 }'
+        with patch.object(b,'properties',side_effect=props):third=b.row_status(self.policy,row)
+        self.assertNotEqual(first['revision'],third['revision'])
     def test_production_holds_override_commissioned_policy(self):
         policy={**self.policy,'environment':'production'}
         for key in ['replacement-holidays','backups']:

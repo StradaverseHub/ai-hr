@@ -48,15 +48,15 @@ describe('Scheduled Actions respects the report email release hold',()=>{
   expect(within(history).getByText(messages.scheduledActions.outcome.success)).toBeTruthy();
   for(const job of JOBS.filter(job=>job.key!==reportJob.key)){
    const other=screen.getByText(messages.scheduledActions.jobs[job.i18nKey].name).closest('details');
-   expect(other?.textContent).toContain(job.schedule);
+   expect(other?.textContent).not.toContain(job.schedule);
   }
   expect(card.querySelectorAll('button,input,select,form')).toHaveLength(0);
   expect(state.runs).toHaveBeenCalledWith(admin,10);
  });
- it('restores the ordinary frequency only for exact explicit opt-in',async()=>{
+ it('removes held availability on exact opt-in without advertising a static schedule',async()=>{
   vi.stubEnv('EMPLOYEE_MASTER_SCHEDULED_EMAIL_ENABLED','true');const messages=catalog('en');render(await Page());
   const card=reportCard(messages);
-  expect(card.textContent).toContain(reportJob.schedule);
+  expect(card.textContent).not.toContain(reportJob.schedule);
   expect(card.textContent).not.toContain(messages.employeeMasterReports.schedule.unavailable);
   expect(within(card).getByRole('table',{hidden:true})).toBeTruthy();
  });
@@ -65,6 +65,12 @@ describe('Scheduled Actions respects the report email release hold',()=>{
   const card=reportCard(messages);
   expect(card.textContent).toContain(messages.employeeMasterReports.schedule.unavailable);
   expect(card.textContent).not.toContain(reportJob.schedule);
+ });
+ it('does not turn operator-only unqueried history into a false Never run claim',async()=>{
+  state.session.mockResolvedValue({...admin,roles:['operator'],grants:[{role:'operator',companyId:null}]});
+  render(await Page());expect(state.runs).not.toHaveBeenCalled();
+  expect(screen.queryByText(catalog('en').scheduledActions.neverRun)).toBeNull();
+  expect(document.getElementById('recent-run-history')).toBeNull();
  });
  it('retains the group-admin page gate before reading job history',async()=>{
   state.session.mockResolvedValue({...admin,grants:[{role:'hr_admin',companyId:'fictional-company'}]});

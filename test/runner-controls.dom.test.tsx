@@ -1,6 +1,6 @@
 /** Real controls with a synthetic scheduler snapshot; no host command or production access. */
 import {afterEach,describe,it,expect,vi} from 'vitest';
-import {render,screen,cleanup,fireEvent} from '@testing-library/react';
+import {render,screen,cleanup,fireEvent,within} from '@testing-library/react';
 import {NextIntlClientProvider,createTranslator} from 'next-intl';
 import en from '../messages/en.json';
 import {RUNNERS,type RunnerSnapshot} from '../lib/runner-control-model';
@@ -20,7 +20,8 @@ describe('runner control inventory',()=>{
   expect(screen.getAllByRole('heading',{level:3})).toHaveLength(19);
   fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));expect(router.refresh).toHaveBeenCalled();
   expect(screen.getByText('Failed')).toBeInTheDocument();expect(screen.getByText('Disabled')).toBeInTheDocument();
-  expect(screen.getByRole('link',{name:'Replacement holidays and calendars'})).toHaveAttribute('href','/admin/holidays/replacements');
+  expect(screen.queryByRole('link',{name:'Replacement holidays and calendars'})).toBeNull();
+  expect(screen.getByText('Replacement holidays and calendars')).toBeInTheDocument();
   const summary=screen.getAllByText('Configure runner')[1];fireEvent.click(summary);
   // Capture expanded actual form controls; static browser fixture does not claim authenticated mutation.
   summary.closest('details')?.setAttribute('open','');
@@ -28,12 +29,21 @@ describe('runner control inventory',()=>{
   await captureAiReviewScreenshots(document.body.innerHTML,'en','runner-controls-dark','real components; synthetic scheduler snapshot; no live operation','atelier','dark');
  },60000);
  it('offers no write controls to customer administrators',async()=>{
-  await view(snapshot(),false);expect(screen.queryByText('Configure runner')).toBeNull();expect(screen.queryByRole('button',{name:'Save configuration'})).toBeNull();
+  await view(snapshot(),false);expect(screen.getByRole('link',{name:'Replacement holidays and calendars'})).toHaveAttribute('href','/admin/holidays/replacements');
+  expect(screen.getByRole('link',{name:'Run history below'})).toHaveAttribute('href','#recent-run-history');
+  expect(screen.queryByText('Configure runner')).toBeNull();expect(screen.queryByRole('button',{name:'Save configuration'})).toBeNull();
  });
  it('keeps production replacement holidays and backups held even in an otherwise commissioned snapshot',async()=>{
   await view(snapshot('production'),true);
   expect(screen.getAllByText('On hold')).toHaveLength(2);
+  const held=screen.getByRole('heading',{name:'Replacement holidays'}).parentElement!.parentElement!.parentElement!;
+  expect(within(held).getByText('Enabled')).toBeInTheDocument();expect(within(held).getByText('On hold')).toBeInTheDocument();
   expect(screen.getAllByText('Configure runner')).toHaveLength(17);
+ });
+ it('qualifies observed unmanaged services without claiming an absent service means an external cron is off',async()=>{
+  const value=snapshot();value.runners[0].managed=false;
+  await view(value,true);
+  expect(screen.getByText('Enabled · systemd')).toBeInTheDocument();expect(screen.getByText('Not managed here')).toBeInTheDocument();
  });
  it('reports an unavailable controller without pretending runners are disabled',async()=>{
   await view(null,true);
