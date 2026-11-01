@@ -321,6 +321,24 @@ This view is the evidence for rule 8 above, and for audits.
 - enable a delegable job type;
 - release without the evaluation suites passing.
 
+### 3.13 Agent families and one management surface (owner question, 1 November 2026)
+
+The Assistant is the visible part. Behind it run detectors, chasers, narrators and, later, mandated jobs. Today they are managed in several places (feature switches, Control Tower sections, module settings, the orchestrator). They become **one registry with one contract**, shown on one page.
+
+**Five families.** Every automated worker belongs to exactly one:
+
+| Family | What it does | Model's role | Examples (existing or planned) |
+| --- | --- | --- | --- |
+| **Watchers** | Deterministic detectors that raise findings | Wording only | Payroll anomalies, readiness gaps, holiday minimum, rule expiry, compliance deadlines |
+| **Chasers** | Send reminders a person could send | Wording only | Approval, document, clock and lifecycle chasers; readiness nudges |
+| **Preparers** | Work-job mandates: prepare, draft, summarise; complete nothing | Plans within the mandate; wording | Payroll-input preparation, onboarding task drafts, weekly summaries, daily digest |
+| **Deciders** | Decision-job mandates: complete an action when every native condition passes | None in the decision; wording of the record | Small leave approvals within conditions (after legal review and acceptance evidence) |
+| **Explainers** | On demand: explain a native result | Wording from native facts | Statutory deductions, entitlement, attendance day, anomaly narration |
+
+**One contract for all five:** a deterministic trigger (schedule, event or request); a declared read scope from the semantic model; a declared effect (none, notify, prepare, complete-under-mandate); the authority it runs under (tenant switch, or a mandate id); an outcome record per run; a per-tenant switch, off by default; the tenant-wide stop switch; and acceptance and reversal metrics. A worker that cannot state all of these is not registered and cannot run.
+
+**One surface.** The Control Tower (`/control-tower/agents/*`) becomes that page: every registered worker with its family, owner, switch, last run, what it read and did, and its acceptance and reversal rates (the existing agreement view, extended). Mandates appear there as rows with their grantor. The exportable agent registry for customers' own control towers (§11.3 change 6) is generated from the same list.
+
 ## 4. A turn, end to end
 
 1. **Surface.** The person asks in chat, or opens a card or a "Why?".
