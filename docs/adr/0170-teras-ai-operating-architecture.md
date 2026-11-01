@@ -162,7 +162,7 @@ Status key: **Prod** = in production; **Branch** = built on PR 170, fictional da
 | --- | --- | --- |
 | Own-scope reads | Leave, payslip, claims, profile, team leave, approval queue | Prod 12 + Branch approval queue |
 | **Explainers** | Statutory deductions, attendance day, entitlement | Owners Prod; tools **Build** |
-| **Recommenders** | Approver card: *recommend approve / needs review / recommend reject*, from native checks (balance, overlap, coverage, policy version); the model only words it; "needs review" is the default | **Build** (Ramp pattern) |
+| **Recommenders** | Approver card: *recommend approve* or *needs review* (never *reject*, owner decision 2 November 2026, §3.15), from native checks (balance, overlap, coverage, policy version); the model only words it; "needs review" is the default | **Build** (Ramp pattern) |
 | Change preparers | Every human-confirmed registry action, pre-filled, rejected when fields are missing | Prod (registry + review pages); Branch (suggest any action) |
 | **What-if previews** | "If Annual Leave becomes 16 days, who is affected?", using native dry runs | **Build**, only where a native preview exists |
 | **Compliance watch** | Holiday minimum (exists), statutory filing deadlines, rule expiry, in plain language | **Build** on deterministic detectors |
@@ -378,6 +378,7 @@ The owner delegated ordinary design questions to the coordinating session ("go w
 | Spend up about 25% (1) | Accepted; revisit if a later spec version grows it further |
 | Destination registry too narrow (1) | Settled in step 4: every page the caller's role may open is linkable, pinned by a drift test |
 | Sensitive-topic categories a tenant may switch off (3) | Self-harm and crisis: never. Others: only through an audited override by a group administrator. The setting is built with production wiring |
+| Approver recommendation outcomes (5); **owner decision, 2 November 2026** | The AI **never recommends rejecting** a request. Outcomes are *recommend approve* or *needs review*. A blocking rule failure shows as *needs review* with the failed rule and its version; the approver decides |
 | Connect identifiers via opaque per-client handles (0b) | **Reserved for the Connect legal review** (§3.9) |
 
 ## 4. A turn, end to end
