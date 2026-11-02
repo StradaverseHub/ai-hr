@@ -906,3 +906,13 @@ index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / 
 This is an owned aggregate source reservation, not adoption of either member's gate evidence.
 Recheck the then-live watermark and release order before integration or installation; later accepted
 migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.
+
+## Approved board data scope reader bypasses — 2 November 2026 (coordinated source claim)
+
+The approved-board security owner reserved `0936_data_permission_profiles` at idx758 /
+when1793330000336 and its central row-policy successor0938 at idx760 /when1793330000338.
+The delegated reader/worker work reserves `0937_data_permission_reader_bypasses` at idx759 /
+when1793330000337, between those dependencies. Its isolated branch is
+`codex/approved-board-bypasses-20261102`; it must be integrated with0936 and0938 before hosted
+migration/behavior checks. This is unapplied source only, requires the normal aggregate migration
+and release evidence, and grants no deployment authority. Existing applied SQL is unchanged.
