@@ -753,7 +753,8 @@ BEGIN
  PERFORM app.access_workforce_write_lock();
  IF NOT app.access_workforce_action_company(p_company,'add') OR NOT app.function_action_allowed('workforceDrafts','execute',p_company) THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO d FROM public.employee_draft WHERE id=p_draft AND tenant_id=app.current_tenant_id() AND company_id=p_company FOR UPDATE;
- IF NOT FOUND OR NOT app.data_permission_draft_matches(d.tenant_id,app.current_user_id(),to_jsonb(d)) THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
+ IF NOT FOUND OR NOT app.data_permission_draft_read(d.id)
+  OR NOT app.workforce_draft_purpose_allowed(d.company_id,d.created_by_person_id,'view') THEN RAISE EXCEPTION 'Hire source unavailable' USING ERRCODE='42501';END IF;
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
  IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
  DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
@@ -2438,3 +2439,36 @@ END $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_purpose_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER aaa_workforce_draft_access BEFORE INSERT OR UPDATE OR DELETE ON public.employee_draft FOR EACH STATEMENT EXECUTE FUNCTION app.workforce_write_order_fence();
 CREATE TRIGGER aaa_workforce_draft_purpose BEFORE INSERT OR UPDATE OR DELETE ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_purpose_guard();
+
+--> statement-breakpoint
+-- Display exactly the purposes admitted for the signed-in principal and the
+-- stored draft. Writes still repeat their native checks under the write fence.
+CREATE FUNCTION app.workforce_draft_actions_current(p_draft uuid)
+RETURNS TABLE(can_edit boolean,can_discard boolean,can_activate boolean)
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.workforce_draft_purpose_allowed(d.company_id,d.created_by_person_id,'edit')
+ AND (app.access_workforce_draft_action(d.company_id,'edit') OR (
+  app.access_profile_request_own(d.created_by_person_id)
+  AND NOT EXISTS(SELECT 1 FROM public.access_user_override o
+    WHERE o.user_id=app.current_user_id() AND o.tenant_id=d.tenant_id AND o.retired_at IS NULL
+     AND o.effect='deny' AND o.capability_id IN ('workforce.edit','workforce.view','workforce.maintain')
+     AND app.access_scope_covers(o.company_id,d.company_id,d.tenant_id)))),
+ app.access_workforce_draft_delete_allowed(d.id),
+ d.company_id IS NOT NULL AND app.access_workforce_action_company(d.company_id,'add')
+  AND app.function_action_allowed('workforceDrafts','execute',d.company_id)
+ FROM public.employee_draft d
+ WHERE d.id=p_draft AND d.tenant_id=app.current_tenant_id()
+  AND app.data_permission_draft_read(d.id)
+  AND app.workforce_draft_purpose_allowed(d.company_id,d.created_by_person_id,'view');
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_actions_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_actions_current(uuid) TO ai_hr_app;
+
+CREATE FUNCTION app.workforce_draft_create_current(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_company IS NOT NULL AND app.access_workforce_company(p_company,'workforce.add')
+  AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.tenant_id=app.current_tenant_id() AND a.id=app.current_user_id()
+   AND app.workforce_draft_purpose_allowed(p_company,a.person_id,'add'));
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_create_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_create_current(uuid) TO ai_hr_app;

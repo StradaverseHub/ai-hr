@@ -340,8 +340,26 @@ export function listEmployeeDrafts(ctx: SessionContext, scope: DraftListScope): 
   });
 }
 
+export type EmployeeDraftActions = {canEdit:boolean;canDiscard:boolean;canActivate:boolean};
+
+async function assertDraftCreateCompanyTx(tx:Tx,companyId:string):Promise<void> {
+  if(!UUID_RE.test(companyId))throw new Error('Draft creation is unavailable.');
+  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_draft_create_current(${companyId}::uuid) as allowed`);
+  if(row?.allowed!==true)throw new Error('Draft creation is unavailable.');
+}
+
+export function employeeDraftCreateCompanies(ctx:SessionContext):Promise<string[]> {
+  return withTenant(ctx,async tx=>{
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
+    const rows=await tx.execute<{id:string}>(sql`select id from public.company
+      where tenant_id=app.current_tenant_id() and app.workforce_draft_create_current(id)`);
+    return rows.map(row=>row.id);
+  });
+}
+
 export type EmployeeDraftDetail = {
   id: string;
+  actions: EmployeeDraftActions;
   data: EmployeeDraftData;
   currentStep: number;
   companyId: string | null;
@@ -351,7 +369,9 @@ export type EmployeeDraftDetail = {
 };
 
 export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<EmployeeDraftDetail | null> {
+  if(!UUID_RE.test(id))return Promise.resolve(null);
   return withTenant(ctx, async (tx) => {
+    await lockAccessConfigurationTx(tx,ctx.tenantId);
     const [row] = await tx
       .select({
         id: employeeDraft.id,
@@ -363,9 +383,13 @@ export function getEmployeeDraft(ctx: SessionContext, id: string): Promise<Emplo
       .from(employeeDraft)
       .where(eq(employeeDraft.id, id))
       .limit(1);
-    return row
+    if(!row)return null;
+    const [actions]=await tx.execute<{can_edit:boolean;can_discard:boolean;can_activate:boolean}>(
+      sql`select * from app.workforce_draft_actions_current(${row.id}::uuid)`);
+    return actions
       ? {
           id: row.id,
+          actions:{canEdit:actions.can_edit===true,canDiscard:actions.can_discard===true,canActivate:actions.can_activate===true},
           data: asData(row.data),
           currentStep: row.currentStep,
           companyId: row.companyId,
@@ -491,13 +515,19 @@ export async function employeeIdRuleFor(ctx: SessionContext, companyId: string,o
 export async function isEmployeeCodeTaken(
   ctx: SessionContext,
   raw: string,
-  opts: { excludeDraftId?: string } = {},
+  opts: { excludeDraftId?: string; createCompanyId?: string } = {},
 ): Promise<boolean> {
   const code = normalizeEmployeeCode(raw);
   if (!code) return false;
   return withTenant(
     ctx,
-    async (tx) => (await findEmployeeCodeClaim(tx, ctx.tenantId, code, opts)) !== null,
+    async (tx) => {
+      if(opts.createCompanyId!==undefined){
+        await lockAccessConfigurationTx(tx,ctx.tenantId);
+        await assertDraftCreateCompanyTx(tx,opts.createCompanyId);
+      }
+      return (await findEmployeeCodeClaim(tx, ctx.tenantId, code, opts)) !== null;
+    },
   );
 }
 
@@ -561,6 +591,7 @@ export async function createEmployeeDraftWithReservedCode(
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
     await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
+    await assertDraftCreateCompanyTx(tx,companyId);
     let code: string;
     let configId: string | null = null;
     let number: number | null = null;

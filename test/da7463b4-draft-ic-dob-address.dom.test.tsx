@@ -90,6 +90,7 @@ function open(data: EmployeeDraftData) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">
       <EmployeeWizard
+        actions={{canEdit:true,canDiscard:true,canActivate:true}}
         today={TODAY}
         draftId="draft-1"
         reservedEmployeeCode="ABC00100"

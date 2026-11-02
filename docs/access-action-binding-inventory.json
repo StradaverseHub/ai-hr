@@ -1,7 +1,7 @@
 {
   "kind": "SOURCE_INVENTORY_NOT_ENFORCEMENT_ATTESTATION",
   "registeredScreens": 109,
-  "registeredEntries": 2176,
+  "registeredEntries": 2177,
   "screens": [
     {
       "screenKey": "accessConfiguration",
@@ -16753,7 +16753,7 @@
         {
           "path": "app/admin/personnel/new/page.tsx",
           "entry": "CreateEmployeePage",
-          "line": 54,
+          "line": 55,
           "surface": "route",
           "owners": [
             "app.cost_allocation_label_in_use",
@@ -16763,6 +16763,8 @@
             "app.login_blocked",
             "app.organisation_settings_function_allowed",
             "app.principal_snapshot_current",
+            "app.workforce_draft_actions_current",
+            "app.workforce_draft_create_current",
             "app/admin/personnel/new/page.tsx:requireAdmin",
             "app/admin/personnel/new/page.tsx:scopedSession"
           ],
@@ -16800,6 +16802,8 @@
         "app.organisation_settings_function_allowed",
         "app.people_general_read",
         "app.principal_snapshot_current",
+        "app.workforce_draft_actions_current",
+        "app.workforce_draft_create_current",
         "app.workforce_full_import_allowed",
         "app.workforce_section_import_allowed",
         "app/admin/personnel/import/page.tsx:requireAdmin",
@@ -18670,6 +18674,7 @@
             "app.list_preferences_get",
             "app.organisation_settings_function_allowed",
             "app.principal_snapshot_current",
+            "app.workforce_draft_create_current",
             "app/admin/personnel/page.tsx:requireWorkforceAccess",
             "lib/personnel-ess-contract.ts:effectiveProfileFieldPermission",
             "lib/personnel-ess-contract.ts:fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='editable'&&resolveEssVisibleIds(raw).has(field.id)).map",
@@ -18718,6 +18723,7 @@
         "app.own_reporting_managers",
         "app.principal_snapshot_current",
         "app.proven_company_date_points",
+        "app.workforce_draft_create_current",
         "app/admin/personnel/[employmentId]/page.tsx:requireWorkforceAccess",
         "app/admin/personnel/page.tsx:requireWorkforceAccess",
         "core/employment-cost-allocations.ts:assertWorkforceCompanyTx",
@@ -30671,7 +30677,7 @@
     {
       "path": "app/admin/personnel/new/actions.ts",
       "entry": "createDraftAction",
-      "line": 34,
+      "line": 35,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_company",
@@ -30690,6 +30696,7 @@
         "app.onboarding_v9_checklists",
         "app.organisation_allocate_employee_code",
         "app.organisation_settings_function_allowed",
+        "app.workforce_draft_create_current",
         "app/admin/personnel/new/actions.ts:requireAdmin",
         "core/employee-draft.ts:assertWorkforceCompanyTx",
         "core/employee-draft.ts:requireEmployeeCode"
@@ -30716,7 +30723,7 @@
     {
       "path": "app/admin/personnel/new/actions.ts",
       "entry": "saveDraftAction",
-      "line": 48,
+      "line": 49,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -30753,10 +30760,11 @@
     {
       "path": "app/admin/personnel/new/actions.ts",
       "entry": "checkEmployeeCodeAction",
-      "line": 67,
+      "line": 68,
       "surface": "server-action",
       "owners": [
         "app.employee_code_claim",
+        "app.workforce_draft_create_current",
         "app/admin/personnel/new/actions.ts:requireAdmin"
       ],
       "tables": [],
@@ -30768,7 +30776,7 @@
     {
       "path": "app/admin/personnel/new/actions.ts",
       "entry": "discardDraftAction",
-      "line": 85,
+      "line": 86,
       "surface": "server-action",
       "owners": [
         "app.current_tenant_id",
@@ -30806,8 +30814,94 @@
     },
     {
       "path": "app/admin/personnel/new/actions.ts",
+      "entry": "activateStoredDraftAction",
+      "line": 96,
+      "surface": "server-action",
+      "owners": [
+        "app.access_compensation_action",
+        "app.access_family_relief_sync",
+        "app.access_profile_policy_write_lock",
+        "app.access_workforce_company",
+        "app.access_workforce_employment",
+        "app.access_workforce_initial_employment",
+        "app.access_workforce_initial_person",
+        "app.access_workforce_person",
+        "app.access_workforce_prepare_hire_source",
+        "app.access_workforce_write_lock",
+        "app.current_tenant_id",
+        "app.current_user_id",
+        "app.employee_code_claim",
+        "app.employment_confirmation_date",
+        "app.employment_status_on",
+        "app.is_admin_for",
+        "app.is_group_admin",
+        "app.lock_system_label_criteria",
+        "app.login_blocked",
+        "app.onboarding_next_case_number",
+        "app.onboarding_sync_active_draft",
+        "app.onboarding_sync_discarded_draft",
+        "app.onboarding_sync_saved_draft",
+        "app.onboarding_task_actors",
+        "app.onboarding_v9_checklists",
+        "app.organisation_allocate_employee_code",
+        "app.organisation_settings_function_allowed",
+        "app.principal_snapshot_current",
+        "app.profile_direct_subject",
+        "app.profile_option_value_allowed",
+        "app.profile_task_effect_source",
+        "app.profile_task_store_person",
+        "app/admin/personnel/new/actions.ts:requireAdmin",
+        "core/employee-draft.ts:requireEmployeeCode",
+        "core/employee-draft.ts:requirePackFor",
+        "core/org.ts:assertWorkforceCompanyTx",
+        "core/org.ts:assertWorkforceEmploymentTx",
+        "core/org.ts:assertWorkforcePersonTx",
+        "core/org.ts:requireEmployeeCode",
+        "core/workforce-commands.ts:assertWorkforceEmploymentTx",
+        "core/workforce-commands.ts:assertWorkforcePersonTx"
+      ],
+      "tables": [
+        "assignment",
+        "cases",
+        "company",
+        "compensation",
+        "configs",
+        "dep",
+        "department",
+        "domainEvent",
+        "employeeDependent",
+        "employeeDraft",
+        "employeeIdConfig",
+        "employeeStatutoryMy",
+        "employment",
+        "entitlementEligibilityRule",
+        "entitlementTemplate",
+        "jobGrade",
+        "leaveLedger",
+        "leaveType",
+        "movementEventType",
+        "payComponent",
+        "payrollPolicy",
+        "payslip",
+        "person",
+        "personEmergencyContact",
+        "privateRevisions",
+        "profileOption",
+        "reportingLine",
+        "revisions",
+        "secrets",
+        "table",
+        "tenantCounter"
+      ],
+      "boundaries": [
+        "db/client.ts#withTenant",
+        "lib/session.ts#getSession"
+      ]
+    },
+    {
+      "path": "app/admin/personnel/new/actions.ts",
       "entry": "createEmployeeAction",
-      "line": 99,
+      "line": 113,
       "surface": "server-action",
       "owners": [
         "app.access_compensation_action",
@@ -30893,7 +30987,7 @@
     {
       "path": "app/admin/personnel/new/page.tsx",
       "entry": "CreateEmployeePage",
-      "line": 54,
+      "line": 55,
       "surface": "route",
       "owners": [
         "app.cost_allocation_label_in_use",
@@ -30903,6 +30997,8 @@
         "app.login_blocked",
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
+        "app.workforce_draft_actions_current",
+        "app.workforce_draft_create_current",
         "app/admin/personnel/new/page.tsx:requireAdmin",
         "app/admin/personnel/new/page.tsx:scopedSession"
       ],
@@ -30947,6 +31043,7 @@
         "app.list_preferences_get",
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
+        "app.workforce_draft_create_current",
         "app/admin/personnel/page.tsx:requireWorkforceAccess",
         "lib/personnel-ess-contract.ts:effectiveProfileFieldPermission",
         "lib/personnel-ess-contract.ts:fields.filter(field=>effectiveProfileFieldPermission(raw,field)==='editable'&&resolveEssVisibleIds(raw).has(field.id)).map",

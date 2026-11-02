@@ -4,12 +4,12 @@ import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import {readFileSync} from 'node:fs';
 import type {DraftActivateActionResult,DraftDeleteActionResult} from '../lib/draft-action-result';
-const mocks=vi.hoisted(()=>({save:vi.fn(),remove:vi.fn(),activate:vi.fn(),push:vi.fn(),refresh:vi.fn()}));
+const mocks=vi.hoisted(()=>({save:vi.fn(),remove:vi.fn(),activate:vi.fn(),activateStored:vi.fn(),push:vi.fn(),refresh:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:mocks.push,refresh:mocks.refresh,replace:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
-vi.mock('../app/admin/personnel/new/actions',()=>({saveDraftAction:mocks.save,discardDraftAction:mocks.remove,createEmployeeAction:mocks.activate}));
+vi.mock('../app/admin/personnel/new/actions',()=>({saveDraftAction:mocks.save,discardDraftAction:mocks.remove,createEmployeeAction:mocks.activate,activateStoredDraftAction:mocks.activateStored}));
 const {EmployeeWizard}=await import('../app/admin/personnel/new/wizard');
 const catalog=(locale='en')=>JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8'));
-const props={today:'2026-10-16',draftId:'fictional-draft-94b0-a',reservedEmployeeCode:'DEMO94B0001',initialStep:1,
+const props={actions:{canEdit:true,canDiscard:true,canActivate:true},today:'2026-10-16',draftId:'fictional-draft-94b0-a',reservedEmployeeCode:'DEMO94B0001',initialStep:1,
   initialData:{profile:{fullName:'Fictional Draft A',primaryEmail:'draft-a@example.test',employeeCode:'DEMO94B0001'},employment:{companyId:'fictional-company',departmentId:'fictional-department',employmentType:'full_time',hiredOn:'2026-10-16'},payroll:{basicSalary:'2000'}},
   companies:[{id:'fictional-company',label:'Fictional Board Company'}],departments:[{id:'fictional-department',label:'Fictional Department',companies:'fictional-company'}],businessUnits:[],positions:[],costCenters:[],grades:[],managers:[],nationalityOptions:[],profileOptions:{salutation:[],religion:[],race:[]},relationshipOptions:[],countryOptions:[],stateOptions:[]};
 const wrap=(locale='en',subject=props)=>render(<NextIntlClientProvider locale={locale} messages={catalog(locale)}><EmployeeWizard key={subject.draftId} {...subject}/></NextIntlClientProvider>);
@@ -82,4 +82,16 @@ describe('safe activation outcomes on the retained Draft',()=>{
     await waitFor(()=>expect(screen.getByRole('button',{name:words.activate})).toBeEnabled(),{timeout:5000});
     await user.click(screen.getByRole('button',{name:words.activate}));expect(mocks.activate).toHaveBeenCalledTimes(2);await waitFor(()=>expect(mocks.push).toHaveBeenCalledWith('/admin/personnel/fictional-employment?from=personnel'));expect(mocks.refresh).toHaveBeenCalledTimes(1);
   });
+});
+
+it('activates the stored draft without calling Save when Edit and Discard are refused',async()=>{
+  const user=userEvent.setup(),words=catalog().people.wizard;
+  mocks.activateStored.mockResolvedValueOnce({ok:true,employmentId:'fictional-employment'});
+  wrap('en',{...props,actions:{canEdit:false,canDiscard:false,canActivate:true}});
+  expect(screen.getByRole('button',{name:words.saveDraft})).toBeDisabled();
+  expect(screen.getByRole('button',{name:words.deleteRecord})).toBeDisabled();
+  await user.click(screen.getByRole('button',{name:words.activate}));
+  expect(mocks.activateStored).toHaveBeenCalledExactlyOnceWith(props.draftId);
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.activate).not.toHaveBeenCalled();
 });

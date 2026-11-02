@@ -118,9 +118,9 @@ export function CreateEmployeeFields({
     const code = raw.trim();
     setDupCode(null);
     setFreeCode(null);
-    if (code === '') return;
+    if (code === '' || !companyId) return;
     setChecking(true);
-    void checkEmployeeCodeAction(code)
+    void checkEmployeeCodeAction(code,companyId)
       .then((res) => (res.taken ? setDupCode(res.code) : setFreeCode(res.code)))
       .catch(() => {
         /* Advisory only: a failed look-ahead must never block typing. Create still refuses. */
