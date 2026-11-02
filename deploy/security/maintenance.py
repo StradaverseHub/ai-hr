@@ -225,7 +225,8 @@ def main():
     agent=base64.b64decode(AGENT_BASE64,validate=True);require(0<len(agent)<=24000000 and digest(agent)==AGENT_SHA256,'Embedded protected bundle differs')
     trusted_directory(NODE_SOURCE.parent)
     node=regular(NODE_SOURCE,134217728);require(digest(node)==NODE_SHA256 and command(str(NODE_SOURCE),'--version')=='v22.23.3','Protected runtime source differs')
-    with operation_guard(), lease_guard(credential,plan) as fence:
+    operation=operation_guard() if args.apply or args.rollback_backup else contextlib.nullcontext()
+    with operation, lease_guard(credential,plan) as fence:
         if args.rollback_backup:
             require(not args.apply,'Choose apply or rollback, not both');backup=Path(args.rollback_backup)
             require(backup.parent==Path('/var/backups/aihr-security-maintenance') and re.fullmatch('[a-f0-9-]{36}',backup.name),'Known private backup location required');trusted_directory(backup)
