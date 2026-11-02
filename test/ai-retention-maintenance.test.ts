@@ -241,7 +241,7 @@ describe('out-of-band expired AI custody maintenance', () => {
     expect(first.oldestExpiredAgeSeconds).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(first)).not.toContain(base.tenantId);
     for (const id of ids) expect(JSON.stringify(first)).not.toContain(id);
-    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0, backlog: false, oldestExpiredAgeSeconds: null });
+    expect(await runAiRetentionTick(owner)).toEqual({ tenants: 1, busy: 0, reviews: 1, feedback: 0,jobs:0,jobFeedback:0,candidateProvenance:0,plans:0,importAssistance:0,importEvaluations:0,nativeOutcomes:0,nativeSources:0,conversationArms:0,conversationUses:0,conversationIntents:0,transcripts:0,chats:0, backlog: false, oldestExpiredAgeSeconds: null });
     const after=await state();expect(after.reviews).toHaveLength(101);
     expect(after.reviews.every(row=>row.state==='expired'&&row.ciphertext===null&&row.intent_digest===null&&row.reviewed_digest===null)).toBe(true);
   });
