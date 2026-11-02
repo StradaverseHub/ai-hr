@@ -74,7 +74,7 @@ describe('unit inputs SQL custody, independent checks and stale snapshots',()=>{
   await confirmRewardGovernance(checker,unitId,(await view()).unit.revision,'exemption');
   for(const actor of [gr,checker,bu,ctro,payroll]){
    const expected=await getRewardUnitGovernance(actor,unitId),[result]=await owner.withTenant(actor,tx=>tx.execute<{value:Record<string,unknown>&{history:Record<string,unknown>[];branches:string[]}}>(sql`select app.reward_governance_review(${unitId}::uuid)as value`));
-   const normalize=(value:typeof expected|typeof result.value)=>({...value,branches:[...value.branches].sort(),history:value.history.map(row=>{const {actorName:_name,...rest}=row;return {...rest,createdAt:new Date(String(row.createdAt)).toISOString()};})});
+   const normalize=(value:typeof expected|typeof result.value)=>({...value,branches:[...value.branches].sort(),history:value.history.map(row=>{const {actorName:_name,...rest}=row;return {...rest,createdAt:row.createdAt instanceof Date?row.createdAt.toISOString():new Date(String(row.createdAt)).toISOString()};})});
    expect(normalize(result.value)).toEqual(normalize(expected));
    if(actor===gr)expect(result.value.history.length).toBeGreaterThan(0);else if(actor!==checker){expect(result.value.history).toEqual([]);expect(result.value).toMatchObject({inputs:null,selection:null,exemption:null,legacyInputs:null});}
    await expect(withTenant(actor,tx=>tx.execute(sql`select app.reward_governance_review(${unitId}::uuid)`))).rejects.toThrow();
