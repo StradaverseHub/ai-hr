@@ -61,6 +61,7 @@ BEGIN
  IF st.id IS NOT NULL AND owners&&ARRAY['bank','identity','passport','registration','taxLegacy'] THEN
   SELECT coalesce(jsonb_object_agg(binding.field_name,to_jsonb(st)->binding.column_name),'{}'::jsonb) INTO stat FROM app.access_profile_value_bindings()binding WHERE binding.owner=ANY(owners) AND binding.owner IN ('bank','identity','passport','registration','taxLegacy');
   stat:=stat||jsonb_build_object('id',st.id,'tenantId',st.tenant_id,'personId',st.person_id,'updatedAt',st.updated_at);
+  IF 'passport'=ANY(owners) THEN stat:=stat||jsonb_build_object('passportRemark',st.passport_remark);END IF;
   IF 'taxLegacy'=ANY(owners) THEN stat:=stat||jsonb_build_object('taxResidency',st.tax_residency,'isResident',st.is_resident,'taxApplicabilityEpoch',st.tax_applicability_epoch,'taxCircumstance',st.tax_circumstance,'childReliefMode',st.child_relief_mode,'childReliefTable',st.child_relief_table,'employerBearsTax',st.employer_bears_tax,'disabledIndividual',st.disabled_individual,'disabledSpouse',st.disabled_spouse);END IF;
  END IF;
  -- Only explicitly selected register records are task facts. Other family/qualification rows remain hidden.
@@ -156,7 +157,7 @@ BEGIN
  SELECT coalesce(jsonb_object_agg(d.key,d.value),'{}'::jsonb) INTO delta FROM jsonb_each(patch)d WHERE d.value IS DISTINCT FROM before_row->d.key;
  IF q.proposed->'v'='2'::jsonb THEN fields:=q.proposed->'fields';ELSE SELECT coalesce(jsonb_agg(jsonb_build_object('fieldId',b.field_id,'value',v.value)),'[]'::jsonb) INTO fields FROM jsonb_each(q.proposed)v JOIN app.access_profile_value_bindings()b ON b.legacy_key=v.key AND b.owner IN ('person','compliance');END IF;
  FOR grouped IN SELECT binding.owner,jsonb_object_agg(d.key,d.value) AS values FROM jsonb_each(delta-'marital_status_source_request_id')d LEFT JOIN app.access_profile_value_bindings()binding ON binding.column_name=d.key AND binding.owner IN ('person','compliance') GROUP BY binding.owner LOOP
-  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,false,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
+  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,inserted,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
  END LOOP;
  IF delta ? 'marital_status_source_request_id' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(fields)f WHERE f->>'fieldId'='profile.personal_details.maritalstatus' AND app.access_profile_value_normalized(f->'value')=app.access_profile_value_normalized(coalesce(patch->'marital_status',before_row->'marital_status'))) THEN RAISE EXCEPTION 'Profile effect field unavailable' USING ERRCODE='42501';END IF;
  SELECT string_agg(format('%I=(jsonb_populate_record(NULL::public.person,$1)).%I',key,key),',') INTO sets FROM jsonb_object_keys(patch)key;
@@ -270,7 +271,7 @@ BEGIN
  FOR entry IN SELECT key,value FROM jsonb_each(p_values) LOOP
   SELECT binding.column_name INTO column_name FROM app.access_profile_value_bindings() binding WHERE binding.field_name=entry.key AND binding.owner IN ('bank','identity','passport','registration','taxLegacy') LIMIT 1;
   IF column_name IS NULL THEN
-   column_name:=CASE entry.key WHEN 'taxCircumstance' THEN 'tax_circumstance' WHEN 'taxApplicabilityEpoch' THEN 'tax_applicability_epoch' WHEN 'taxResidency' THEN 'tax_residency' WHEN 'isResident' THEN 'is_resident' WHEN 'childReliefMode' THEN 'child_relief_mode' WHEN 'childReliefTable' THEN 'child_relief_table' WHEN 'employerBearsTax' THEN 'employer_bears_tax' WHEN 'disabledIndividual' THEN 'disabled_individual' WHEN 'disabledSpouse' THEN 'disabled_spouse' END;
+   column_name:=CASE entry.key WHEN 'passportRemark' THEN 'passport_remark' WHEN 'taxCircumstance' THEN 'tax_circumstance' WHEN 'taxApplicabilityEpoch' THEN 'tax_applicability_epoch' WHEN 'taxResidency' THEN 'tax_residency' WHEN 'isResident' THEN 'is_resident' WHEN 'childReliefMode' THEN 'child_relief_mode' WHEN 'childReliefTable' THEN 'child_relief_table' WHEN 'employerBearsTax' THEN 'employer_bears_tax' WHEN 'disabledIndividual' THEN 'disabled_individual' WHEN 'disabledSpouse' THEN 'disabled_spouse' END;
    IF column_name IS NULL THEN RAISE EXCEPTION 'Profile effect field unavailable' USING ERRCODE='42501';END IF;
   END IF;
   patch:=patch||jsonb_build_object(column_name,entry.value);
@@ -283,9 +284,10 @@ BEGIN
  IF patch ? 'tax_category' AND expected_key<>'"none"'::jsonb AND (
   expected_key='"single"'::jsonb AND patch->'tax_category'<>'1'::jsonb OR expected_key='"spouse_not_working"'::jsonb AND patch->'tax_category'<>'2'::jsonb
   OR expected_key IN ('"spouse_working"'::jsonb,'"widow_divorced"'::jsonb) AND patch->'tax_category'<>'3'::jsonb) THEN expected_key:='null'::jsonb;END IF;
+ IF delta ? 'passport_remark' AND NOT(inserted AND delta->'passport_remark'='null'::jsonb) THEN RAISE EXCEPTION 'Profile passport preservation unavailable' USING ERRCODE='42501';END IF;
  IF delta ? 'tax_circumstance' AND delta->'tax_circumstance' IS DISTINCT FROM expected_key OR delta ? 'tax_applicability_epoch' AND delta->'tax_applicability_epoch' IS DISTINCT FROM before_row->'tax_applicability_epoch' THEN RAISE EXCEPTION 'Profile tax effect unavailable' USING ERRCODE='42501';END IF;
- FOR grouped IN SELECT binding.owner,jsonb_object_agg(d.key,d.value) AS values FROM jsonb_each(delta-ARRAY['tax_circumstance','tax_applicability_epoch'])d LEFT JOIN app.access_profile_value_bindings()binding ON binding.column_name=d.key AND binding.owner IN ('bank','identity','passport','registration','taxLegacy') GROUP BY binding.owner LOOP
-  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,false,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
+ FOR grouped IN SELECT binding.owner,jsonb_object_agg(d.key,d.value) AS values FROM jsonb_each(delta-ARRAY['passport_remark','tax_circumstance','tax_applicability_epoch'])d LEFT JOIN app.access_profile_value_bindings()binding ON binding.column_name=d.key AND binding.owner IN ('bank','identity','passport','registration','taxLegacy') GROUP BY binding.owner LOOP
+  IF grouped.owner IS NULL OR NOT app.access_profile_value_delta_matches(grouped.owner,grouped.values,fields,inserted,false) THEN RAISE EXCEPTION 'Profile effect differs from approved values' USING ERRCODE='42501';END IF;
  END LOOP;
  IF inserted THEN
   SELECT string_agg(format('%I',key),','),string_agg(format('(jsonb_populate_record(NULL::public.employee_statutory_my,$1)).%I',key),',') INTO columns,values_sql FROM jsonb_object_keys(patch)key;
@@ -404,7 +406,7 @@ REVOKE ALL ON FUNCTION app.profile_task_family_sync(uuid) FROM PUBLIC,ai_hr_app;
 DO $$ DECLARE definition text; BEGIN
  definition:=pg_get_functiondef('app.access_family_relief_sync(uuid)'::regprocedure);
  IF position('DECLARE direct boolean;' IN definition)=0 OR position('BEGIN' IN definition)=0 THEN RAISE EXCEPTION 'Family sync owner changed';END IF;
- definition:=replace(definition,'BEGIN','BEGIN'||E'\n result:=app.profile_task_family_sync(p_person);IF result IS NOT NULL THEN RETURN result;END IF;');
+ definition:=substring(definition FROM 1 FOR position('BEGIN' IN definition)+4)||E'\n result:=app.profile_task_family_sync(p_person);IF result IS NOT NULL THEN RETURN result;END IF;'||substring(definition FROM position('BEGIN' IN definition)+5);
  EXECUTE definition;
 END $$;
 --> statement-breakpoint

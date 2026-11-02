@@ -262,6 +262,7 @@ function emergencyInput(values:Record<string,unknown>){
 }
 async function applyRegisterTx(tx:Tx,ctx:SessionContext,subject:{id:string;personId:string},row:EssRegisterChange){
  const values=patch(row.fields);
+ if(row.kind==='dependent'&&values.childReliefPercentage!==undefined&&values.childReliefPercentage!==null)values.childReliefPercentage=number(values,'childReliefPercentage')??null;
  const task=await profileTaskEffectSourceTx(tx,subject.personId,subject.id);
  if(task){
   const existing=row.kind==='dependent'?task.dependents.find(item=>item.record.id===row.id)?.record:row.kind==='qualification'?task.qualifications.find(item=>item.id===row.id):task.emergency.find(item=>item.id===row.id);
