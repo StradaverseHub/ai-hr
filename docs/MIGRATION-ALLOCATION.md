@@ -1131,7 +1131,7 @@ This source depends on root942 witness89bc7e9da and requires hosted failed/affec
 ### Current permissions repair source identities (unapplied)
 
 - `0938_data_permission_enforcement.sql`: `cef45c7d9ee037e3b7ff1e5b2d3578eb35c3a96083ffd29e830119421cf52c73`.
-- `0939_workforce_action_permissions.sql`: `4f8a588cadbb76850f202b916a93ef685300d8ef266d0192942da52f97c03278`.
+- `0939_workforce_action_permissions.sql`: `9160e336cd8eeed83440465788945ec7baa66e0057f7f48818c4aebd04090c3f`.
 - `0941_financial_letter_actions.sql`: `0f381b3461b17a5de5c052ae7d94d2d6570744bca95070a8b73d253298aa9b1e`.
 - `0942_organisation_settings_actions.sql`: `1160474bb42ffdbeb6e24169940b34fdfbb5c028038172df590f18652bc79a03`.
 - `0943_leave_attendance_claim_actions.sql`: `faac3b990891f862397f06d2bd49928d442de1418052607dcfc4fe418a73c31a`.

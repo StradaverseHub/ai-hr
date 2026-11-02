@@ -77140,6 +77140,14 @@
       ]
     },
     {
+      "table": "employee_draft",
+      "policy": "workforce_draft_function_read",
+      "source": "db/migrations/0939_workforce_action_permissions.sql",
+      "owners": [
+        "app.workforce_draft_view_current"
+      ]
+    },
+    {
       "table": "employee_home_configuration_revision",
       "policy": "employee_home_configuration_insert",
       "source": "db/migrations/0942_organisation_settings_actions.sql",
