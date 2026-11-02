@@ -12,7 +12,7 @@ import type { SessionContext } from '@/db/client';
 // `toil` module (the page's quiet form — an entitlement incident reads as "no", i.e. the findings as before) AND
 // the type is the replacement one, asked with the engine's own role-first predicate.
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
-import { leaveTypeIs } from '@/core/leave';
+import { healthLeaveType } from '@/core/leave-config-health-input';
 import {
   eligibilityRuleCountsByTemplate,
   entitlementDeleteBlocks,
@@ -55,9 +55,6 @@ import { EligibilityRuleForm } from '@/components/leave/eligibility-rule-form';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 // 3a4efe9f — the ONE address that edits entitlement tables, named where every save already returns to it.
 import { ENTITLEMENT_TEMPLATES } from '@/app/admin/_redirects';
-// r299 (3de1453a) — the engine's own predicates, so the Balance Health finding for an earned method on a type
-// that is not Annual Leave is decided exactly where the sweep decides it. Server module; plain boolean out.
-import { isEarnedAccrualType, isEarnedMethod } from '@/core/leave';
 // ee6b7c69 — "which tables and rules are this leave type's", pure and tested on its own.
 // 3a4efe9f — and "which leave type is in view", host-bound or operator-chosen, decided in the same pure
 // module so the two kinds of scope cannot come to mean two different slices.
@@ -257,33 +254,12 @@ export async function loadEntitlementTablesData(s: SessionContext): Promise<Enti
   const leaveCreditLive = isModuleEnabledOrFalse(s, 'toil');
 
   return {
+    // The health input fields come from the one projection the Assistant's setup readiness also uses
+    // (core/leave-config-health-input.ts, which carries the 76ffdcf2 / r299 notes on why each is required).
     leaveTypes: leaveTypes.map((x) => ({
-      id: x.id,
-      name: x.name,
-      archived: !!x.archivedAt,
-      accrualMethod: x.accrualMethod ?? null,
-      accrualUnconfigured: x.accrualUnconfigured != null,
-      // 3fb1a611 (r299 fix pass) — REQUIRED on HealthLeaveType; `listLeaveTypes` projects `role`, which
-      // `leaveTypeIs` asks first. False for every type on a tenant without Leave Credit.
-      daysFromLeaveCreditOnly: leaveCreditLive && leaveTypeIs(x, 'replacement'),
+      ...healthLeaveType(x, leaveCreditLive),
       eligibility: (x.eligibility ?? null) as LeaveTypeEligibility | null,
       probationEligibility: (x.probationEligibility ?? null) as 'confirmed_only' | 'probation_only' | null,
-      /**
-       * 76ffdcf2 — ⚠️ THIS FIELD WAS PROJECTED BY `listLeaveTypes` AND DROPPED HERE, and that one omission
-       * made four of the item's promises inert behind a green suite: the Default badge never rendered, the
-       * Covers cell called the default table "No benefit scheme names this table" (the exact claim this
-       * item exists to delete), `leaveConfigHealthAll` saw `undefined` so the stale blocking findings kept
-       * firing, and A SAVED DEFAULT READ BACK AS "No default" ON EVERY RELOAD.
-       *
-       * The lesson is the one this projection list has already learned three times over (see the
-       * `MUST be projected` notes in core/read.ts): an explicit field literal silently drops whatever is
-       * added upstream. `HealthLeaveType.defaultEntitlementTemplateLineageId` is therefore REQUIRED, not
-       * optional, so the compiler is what catches the next reshape rather than a rendered page.
-       */
-      defaultEntitlementTemplateLineageId: x.defaultEntitlementTemplateLineageId ?? null,
-      // r299 (3de1453a) — REQUIRED on HealthLeaveType for the reason the note above gives. `listLeaveTypes`
-      // projects `role`, which `isEarnedAccrualType` asks first.
-      earnedMethodNotAnnualLeave: isEarnedMethod(x.accrualMethod) && !isEarnedAccrualType(x),
     })),
     templates,
     rules,

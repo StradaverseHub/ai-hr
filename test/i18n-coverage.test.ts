@@ -7,6 +7,9 @@
  *   B. Namespace existence — every getTranslations/useTranslations('ns') in code resolves to en.json.
  *   C. Static-key resolution — every literal t('a.b') in a single-namespace file resolves in en.json.
  *
+ * "en.json" means the catalogue the app serves: i18n/request.ts merges messages/ai-centre/<locale>.json over
+ * messages/<locale>.json, so the catalogue file list is read from that file rather than restated here.
+ *
  * NOTE: dynamic keys (t(`status.${x}`)) can't be checked statically — that class is covered by the
  * periodic agent audit, not this test.
  */
@@ -19,7 +22,33 @@ const MESSAGES = path.resolve(__dirname, '../messages');
 const LOCALES = ['ms', 'ta', 'th', 'vi', 'zh'] as const;
 
 type Dict = Record<string, unknown>;
-const load = (loc: string): Dict => JSON.parse(fs.readFileSync(path.join(MESSAGES, `${loc}.json`), 'utf8'));
+const ROOT = path.resolve(__dirname, '..');
+const readJson = (file: string): Dict => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+// Every catalogue i18n/request.ts imports, as `messages/…/<locale>.json` templates, in its merge order (main first).
+function runtimeCatalogues(requestSource: string): string[] {
+  const out: string[] = [];
+  for (const m of requestSource.matchAll(/['"`]\.\.\/(messages\/(?:[a-z-]+\/)?)(?:en|\$\{locale\})\.json['"`]/g)) {
+    const template = `${m[1]}{locale}.json`;
+    if (!out.includes(template)) out.push(template);
+  }
+  return out;
+}
+const CATALOGUES = runtimeCatalogues(fs.readFileSync(path.join(ROOT, 'i18n/request.ts'), 'utf8'));
+
+// Later catalogues overlay earlier ones key by key. Unlike the runtime's English fallback, nothing fills a gap,
+// so check A still sees a locale's own missing or blank keys.
+function overlay(base: Dict, over: Dict): Dict {
+  const out: Dict = { ...base };
+  for (const [k, v] of Object.entries(over)) {
+    const b = out[k];
+    out[k] = v && typeof v === 'object' && !Array.isArray(v) && b && typeof b === 'object' && !Array.isArray(b)
+      ? overlay(b as Dict, v as Dict) : v;
+  }
+  return out;
+}
+const load = (loc: string): Dict =>
+  CATALOGUES.reduce<Dict>((acc, template) => overlay(acc, readJson(path.join(ROOT, template.replace('{locale}', loc)))), {});
 
 function flatten(obj: Dict, prefix = '', out: Record<string, unknown> = {}): Record<string, unknown> {
   for (const [k, v] of Object.entries(obj)) {
@@ -54,6 +83,36 @@ function sourceFiles(): string[] {
 
 const en = load('en');
 
+type Source = { file: string; src: string };
+const sources = (): Source[] => sourceFiles().map((f) => ({ file: path.relative(ROOT, f), src: fs.readFileSync(f, 'utf8') }));
+const NAMESPACE = /use(?:Translations)\(\s*['"]([^'"]+)['"]\s*\)|getTranslations\(\s*['"]([^'"]+)['"]\s*\)/g;
+
+function namespaceOrphans(files: Source[], catalogue: Dict): string[] {
+  const orphans: string[] = [];
+  for (const { file, src } of files) {
+    for (const m of src.matchAll(NAMESPACE)) {
+      const ns = m[1] ?? m[2];
+      const node = getPath(catalogue, ns);
+      if (node == null || typeof node !== 'object') orphans.push(`${ns}  (${file})`);
+    }
+  }
+  return [...new Set(orphans)];
+}
+
+function missingStaticKeys(files: Source[], catalogue: Dict): string[] {
+  const missing: string[] = [];
+  for (const { file, src } of files) {
+    const uniq = [...new Set([...src.matchAll(NAMESPACE)].map((m) => m[1] ?? m[2]))];
+    if (uniq.length !== 1) continue; // multi-namespace files: skip (can't attribute keys statically)
+    const ns = uniq[0];
+    for (const key of staticTranslationKeys(src)) {
+      const full = `${ns}.${key}`;
+      if (getPath(catalogue, full) === undefined) missing.push(`${full}  (${file})`);
+    }
+  }
+  return [...new Set(missing)];
+}
+
 describe('i18n coverage', () => {
   it('A. every en.json key exists in every locale (no missing/blank fallbacks)', () => {
     const enFlat = flatten(en);
@@ -66,17 +125,29 @@ describe('i18n coverage', () => {
     expect(report, report.join('\n')).toEqual([]);
   });
 
+  it('loads exactly the catalogues the app serves, in its merge order', () => {
+    expect(CATALOGUES).toEqual(['messages/{locale}.json', 'messages/ai-centre/{locale}.json']);
+    for (const loc of ['en', ...LOCALES]) for (const t of CATALOGUES) expect(fs.existsSync(path.join(ROOT, t.replace('{locale}', loc))), `${t} ${loc}`).toBe(true);
+    // The AI centre's keys come only from its own catalogue, so they resolve here only through the merge.
+    expect(getPath(readJson(path.join(MESSAGES, 'en.json')), 'aiCentre')).toBeUndefined();
+    expect(typeof getPath(en, 'aiCentre.tabsLabel')).toBe('string');
+  });
+
   it('B. every translation namespace referenced in code exists in en.json', () => {
-    const orphans: string[] = [];
-    for (const f of sourceFiles()) {
-      const src = fs.readFileSync(f, 'utf8');
-      for (const m of src.matchAll(/use(?:Translations)\(\s*['"]([^'"]+)['"]\s*\)|getTranslations\(\s*['"]([^'"]+)['"]\s*\)/g)) {
-        const ns = m[1] ?? m[2];
-        const node = getPath(en, ns);
-        if (node == null || typeof node !== 'object') orphans.push(`${ns}  (${path.relative(path.resolve(__dirname, '..'), f)})`);
-      }
-    }
-    expect([...new Set(orphans)], orphans.join('\n')).toEqual([]);
+    const orphans = namespaceOrphans(sources(), en);
+    expect(orphans, orphans.join('\n')).toEqual([]);
+  });
+
+  it('B and C still fail for a namespace or key missing from both catalogues', () => {
+    const files: Source[] = [
+      { file: 'synthetic/missing-namespace.tsx', src: `const t = useTranslations('aiCentreMissingNamespace'); t('title');` },
+      { file: 'synthetic/missing-key.tsx', src: `const t = useTranslations('aiCentre'); t('tabsLabel'); t('keyInNeitherCatalogue');` },
+    ];
+    expect(namespaceOrphans(files, en)).toEqual(['aiCentreMissingNamespace  (synthetic/missing-namespace.tsx)']);
+    expect(missingStaticKeys(files, en)).toEqual([
+      'aiCentreMissingNamespace.title  (synthetic/missing-namespace.tsx)',
+      'aiCentre.keyInNeitherCatalogue  (synthetic/missing-key.tsx)',
+    ]);
   });
 
   it('distinguishes complete static literals from dynamic prefixes without hiding missing keys', () => {
@@ -121,20 +192,7 @@ describe('i18n coverage', () => {
   });
 
   it('C. every static t() key in a single-namespace file resolves in en.json', () => {
-    const missing: string[] = [];
-    for (const f of sourceFiles()) {
-      const src = fs.readFileSync(f, 'utf8');
-      const namespaces = [
-        ...src.matchAll(/use(?:Translations)\(\s*['"]([^'"]+)['"]\s*\)|getTranslations\(\s*['"]([^'"]+)['"]\s*\)/g),
-      ].map((m) => m[1] ?? m[2]);
-      const uniq = [...new Set(namespaces)];
-      if (uniq.length !== 1) continue; // multi-namespace files: skip (can't attribute keys statically)
-      const ns = uniq[0];
-      for (const key of staticTranslationKeys(src)) {
-        const full = `${ns}.${key}`;
-        if (getPath(en, full) === undefined) missing.push(`${full}  (${path.relative(path.resolve(__dirname, '..'), f)})`);
-      }
-    }
-    expect([...new Set(missing)], missing.join('\n')).toEqual([]);
+    const missing = missingStaticKeys(sources(), en);
+    expect(missing, missing.join('\n')).toEqual([]);
   });
 });

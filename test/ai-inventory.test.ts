@@ -244,10 +244,12 @@ describe('static wiring', () => {
     expect(src).toContain("PERFORM pg_advisory_xact_lock(hashtext('ai-control'),hashtext(tid::text));");
     expect(src).toContain('REFERENCES app.assistant_action_kind(id)');
   });
-  it('lists the inventory page in the permission registry and first in the AI management menu', () => {
+  it('lists the inventory page in the permission registry and under Workers, the first AI centre administration row', () => {
     expect(read('lib/permissions.ts')).toContain("'/control-tower/agents/inventory'");
     expect(read('app/control-tower/agents/inventory/page.tsx')).toContain('requireAdmin');
     const sidebar = read('components/sidebar.tsx'), node = sidebar.slice(sidebar.indexOf('const AI_MANAGEMENT_NODE'));
-    expect(node.indexOf('/control-tower/agents/inventory')).toBeLessThan(node.indexOf("'/control-tower/agents', labelKey"));
+    // AI centre: Workers owns the inventory section, and Workers comes before Setup.
+    expect(node).toMatch(/'\/control-tower\/agents\/features'[^\n]*ownedSubpaths: \['\/control-tower\/agents\/inventory'\]/);
+    expect(node.indexOf("'/control-tower/agents/features'")).toBeLessThan(node.indexOf("'/control-tower/agents', labelKey"));
   });
 });

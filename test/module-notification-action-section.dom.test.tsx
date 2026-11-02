@@ -40,7 +40,7 @@ describe('current-principal Notification action composition',()=>{
   source.choices.mockResolvedValue({kind:'choices',employments:[choices().employments[0],choices().employments[0]]});const result=await ModuleNotificationActionSection();expect(allElements(result).some(node=>(node.props as {role?:string}).role==='alert')).toBe(true);expect((result.props as {choices?:unknown}).choices).toBeUndefined();
  });
  it('keeps GET page composition on the existing Notifications agent/manual path and does not execute an action',async()=>{
-  const page=await AssistantNotificationPreferencesPage({searchParams:Promise.resolve({review})}),elements=allElements(page);expect(elements.some(node=>(node.props as {href?:string}).href==='/assistant?job=notifications')).toBe(true);expect(elements.some(node=>node.type===ModuleNotificationActionSection&&(node.props as {resumeActionId?:unknown}).resumeActionId===review)).toBe(true);expect(source.session).not.toHaveBeenCalled();expect(source.choices).not.toHaveBeenCalled();
+  const page=await AssistantNotificationPreferencesPage({searchParams:Promise.resolve({review})}),elements=allElements(page);expect(elements.some(node=>(node.props as {back?:{href?:string}}).back?.href==='/assistant?job=notifications')).toBe(true);expect(elements.some(node=>node.type===ModuleNotificationActionSection&&(node.props as {resumeActionId?:unknown}).resumeActionId===review)).toBe(true);expect(source.session).not.toHaveBeenCalled();expect(source.choices).not.toHaveBeenCalled();
  });
 });
 
