@@ -1276,14 +1276,56 @@ $$;
 
 
 --> statement-breakpoint
+-- Approval-template writes keep the native ANY-HR tenant course; Leave Types' group-only
+-- maintenance parent would remove the real company-HR template constructor.
+CREATE FUNCTION app.leave_approval_template_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NULL AND cap IN ('function.leaveApproval.templates.view','function.leaveApproval.templates.add','function.leaveApproval.templates.edit','function.leaveApproval.templates.delete')
+ AND EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id))
+ AND(cap='function.leaveApproval.templates.view' OR app.module_action_legacy_allowed(t,u,'leave_configuration.'||split_part(cap,'.',4),NULL));
+$$;
+CREATE FUNCTION app.leave_approval_template_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.leave_approval_template_native_allowed(t,u,cap,co)
+ AND(cap='function.leaveApproval.templates.view' OR app.is_admin());
+$$;
+REVOKE ALL ON FUNCTION app.leave_approval_template_native_allowed(uuid,uuid,text,uuid),app.leave_approval_template_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add','edit','delete'] LOOP
+  PERFORM app.register_function_action('leaveApproval.templates',operation,'tenant',NULL,'app.leave_approval_template_current_native_allowed','{"moduleKey":"leave","labelKey":"leaveApproval.templateCreationTitle","kind":"native_acl","course":"administrative","screenKey":"leaveApproval","href":"/admin/leave-config/approval-chains","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.leave_approval_template_allowed(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.leave_approval_template_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.leaveApproval.templates.'||p_operation,NULL)
+ AND app.function_action_allowed('leaveApproval.templates','view',NULL) AND app.function_action_allowed('leaveApproval.templates',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.leave_approval_template_allowed(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_approval_template_allowed(text) TO ai_hr_app;
+CREATE FUNCTION app.leave_approval_template_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF TG_OP='UPDATE' AND OLD.active AND NOT NEW.active THEN operation:='delete';END IF;
+ IF coalesce(NEW.tenant_id,OLD.tenant_id) IS DISTINCT FROM app.current_tenant_id() OR TG_OP='UPDATE' AND ROW(OLD.id,OLD.tenant_id) IS DISTINCT FROM ROW(NEW.id,NEW.tenant_id)
+ OR NOT app.leave_approval_template_allowed(operation) THEN RAISE EXCEPTION 'Leave approval template action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_approval_template_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER module_leave_approval_template_lock BEFORE INSERT OR UPDATE OR DELETE ON public.leave_approval_template FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+CREATE TRIGGER module_leave_approval_template_action BEFORE INSERT OR UPDATE OR DELETE ON public.leave_approval_template FOR EACH ROW EXECUTE FUNCTION app.leave_approval_template_guard();
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 

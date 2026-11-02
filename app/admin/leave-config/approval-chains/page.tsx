@@ -9,6 +9,7 @@ import { previewApprovalChain } from '@/core/leave';
 import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
 import {
   listApprovalTemplates,
+  approvalTemplateActionAccess,
   listEligibilityRuleScopes,
   listTemplateAssignments,
 } from '@/core/leave-approval-template';
@@ -102,6 +103,7 @@ export default async function LeaveConfigApprovalChainsPage({
   searchParams: Promise<{ error?: string; previewEmployment?: string; previewLeaveType?: string }>;
 }) {
   const { s, scopeIds } = await scopedSession();
+  const [templateAdd,templateEdit,templateDelete]=await Promise.all((['add','edit','delete'] as const).map(operation=>approvalTemplateActionAccess(s,operation)));
   const t = await getTranslations('leaveApproval');
   const tr = await getTranslations('admin.leaveConfigApprovalChains');
   // r304 fix 3 — the template drawer's footer says the plain common "Save" (the approved plan and mockup:
@@ -386,6 +388,7 @@ export default async function LeaveConfigApprovalChainsPage({
               <p className="text-xs text-muted-foreground">{t('templateCreationHint')}</p>
             </div>
             <ApprovalTemplateManager
+              access={{add:templateAdd,edit:templateEdit,delete:templateDelete}}
               templates={templates}
               employees={employeeSearchOptions}
               endedEmploymentIds={endedEmploymentIds}

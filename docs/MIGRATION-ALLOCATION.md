@@ -1219,3 +1219,16 @@ is excluded from the submitted changes; Mileage retains its values in a disabled
 writers still recheck their current exact controls and logical course. New database projection and
 rendered control cases are authored, not executed here; genuine supported component publication and
 all remaining native Leave/Attendance/Claim source closure are still required.
+
+### Leave Approval templates: independent native course (unapplied chapter)
+
+`leaveApproval.templates` has exact View/Add/Edit/Delete with no group-only Leave Types parent.
+Its real tenant-member reference View and ANY-HR constructor/edit/delete floor preserve the scoped
+company-HR route exception; current admission repeats actual stored roles/login and claimed native
+HR. Constructors, duplication, reactivation, default changes, archive/deletion and raw table writes
+consume the same exact course. Archive is Delete; reactivation/default changes are Edit. The template
+manager receives actual read-only Add/Edit/Delete projections, defaults missing projections to false,
+and refuses an unauthorized drawer/save path. Native routing references remain independent of the
+maintenance list's View. Native company-HR/member/raw-refusal and rendered course cases are authored
+but unrun. Company assignment/escalation controls and live Leave operations remain unfinished; this
+chapter does not complete or publish the Leave component.

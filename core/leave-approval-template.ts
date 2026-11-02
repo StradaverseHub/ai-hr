@@ -136,6 +136,7 @@ function assignmentBucketFilter(
 /** List the tenant's templates (active first, then by name), each with its live assignment count. */
 export async function listApprovalTemplates(ctx: SessionContext): Promise<ApprovalTemplate[]> {
   return withTenant(ctx, async (tx) => {
+    await assertApprovalTemplateActionTx(tx,'view');
     const rows = await tx
       .select({
         id: leaveApprovalTemplate.id,
@@ -294,6 +295,7 @@ export async function createApprovalTemplate(ctx: SessionContext, p: ApprovalTem
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     let row: { id: string };
     try {
@@ -324,6 +326,7 @@ export async function updateApprovalTemplate(ctx: SessionContext, id: string, p:
   const c = cleanTemplate(p);
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx
       .select({ levels: leaveApprovalTemplate.levels, name: leaveApprovalTemplate.name })
@@ -358,6 +361,7 @@ export async function duplicateApprovalTemplate(ctx: SessionContext, id: string)
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({
@@ -405,6 +409,7 @@ export async function setApprovalTemplateActive(ctx: SessionContext, id: string,
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,active?'edit':'delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     if (!active) {
       // Block deactivation while any ACTIVE rule references the template — admin must reassign first
@@ -438,6 +443,7 @@ export async function deleteApprovalTemplate(ctx: SessionContext, id: string) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Hard delete only when NO policy row (active OR archived) references it — the FK enforces this too,
     // but a pre-check gives a friendly error instead of a raw constraint failure.
@@ -467,6 +473,7 @@ export async function setTenantDefaultTemplate(ctx: SessionContext, id: string |
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await tx.execute(sql`select app.access_workforce_write_lock()`);
+    await assertApprovalTemplateActionTx(tx,'edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // Clear whoever currently holds the flag (there is at most one).
     await tx
@@ -853,4 +860,14 @@ export async function unassignApprovalTemplate(ctx: SessionContext, ruleId: stri
     });
     return { id: ruleId };
   });
+}
+
+
+async function assertApprovalTemplateActionTx(tx:Tx,operation:'view'|'add'|'edit'|'delete'){
+ const [admission]=await tx.execute<{allowed:boolean}>(sql`select app.leave_approval_template_allowed(${operation}) as allowed`);
+ if(admission?.allowed!==true)throw new ApprovalTemplateRefusedError('Leave approval template action unavailable');
+}
+/** Read-only presentation of the exact native template course. */
+export function approvalTemplateActionAccess(ctx:SessionContext,operation:'view'|'add'|'edit'|'delete'){
+ return withTenant(ctx,async tx=>{const [row]=await tx.execute<{allowed:boolean}>(sql`select app.leave_approval_template_allowed(${operation}) as allowed`);return row?.allowed===true;});
 }
