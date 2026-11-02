@@ -41,6 +41,9 @@ export type ClaimTypeFormField = {
  * screen, so moving the screen moved nothing that was load-bearing.
  */
 export function ClaimTypePanel({
+  canAdd,
+  canEdit,
+  canDelete,
   id,
   code,
   name,
@@ -63,6 +66,9 @@ export function ClaimTypePanel({
   moveFieldAction,
   archiveFieldAction,
 }: {
+  canAdd: boolean;
+  canEdit: boolean;
+  canDelete: boolean;
   id: string;
   code: string;
   name: string;
@@ -123,7 +129,7 @@ export function ClaimTypePanel({
       {expanded && (
         <div className="space-y-3 border-t border-border/60 bg-muted/20 px-4 py-3">
           {/* type-level edit — master data only (no limits) */}
-          <form action={updateAction} className="grid gap-3 rounded-lg bg-background p-3 sm:grid-cols-2">
+          <fieldset disabled={canEdit !== true} className="contents"><form action={updateAction} className="grid gap-3 rounded-lg bg-background p-3 sm:grid-cols-2">
             <input type="hidden" name="id" value={id} />
             <Field label={t('nameLabel')}>
               <input name="name" defaultValue={name} className={`${inputCls} w-full`} />
@@ -155,7 +161,7 @@ export function ClaimTypePanel({
               <Button type="submit" size="sm" className="ml-auto">{t('save')}</Button>
             </div>
             <p className="text-xs text-muted-foreground sm:col-span-2">{t('isMileageHint')}</p>
-          </form>
+          </form></fieldset>
 
           {/* dependent Claim Items sub-list */}
           <div className="space-y-2 rounded-lg bg-background p-3">
@@ -164,25 +170,25 @@ export function ClaimTypePanel({
               <ul className="divide-y divide-border/60">
                 {items.map((it) => (
                   <li key={it.id} className="flex flex-wrap items-end gap-2 py-2">
-                    <form action={updateItemAction} className="flex items-end gap-2">
+                    <fieldset disabled={canEdit !== true} className="contents"><form action={updateItemAction} className="flex items-end gap-2">
                       <input type="hidden" name="id" value={it.id} />
                       <span className="self-center font-mono text-xs text-muted-foreground">{it.code}</span>
                       <Field label={t('itemNameLabel')}>
                         <input name="name" defaultValue={it.name} className={`${inputCls} w-44`} />
                       </Field>
                       <Button type="submit" size="sm" variant="ghost">{t('save')}</Button>
-                    </form>
-                    <form action={archiveItemAction}>
+                    </form></fieldset>
+                    <fieldset disabled={canDelete !== true} className="contents"><form action={archiveItemAction}>
                       <input type="hidden" name="id" value={it.id} />
                       <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('itemArchiveConfirmTitle')} description={t('itemArchiveConfirmDescription')} confirmLabel={t('itemArchiveConfirmLabel')}>
                         {t('archive')}
                       </ConfirmSubmit>
-                    </form>
+                    </form></fieldset>
                   </li>
                 ))}
               </ul>
             )}
-            <form action={createItemAction} className="flex flex-wrap items-end gap-2">
+            <fieldset disabled={canAdd !== true} className="contents"><form action={createItemAction} className="flex flex-wrap items-end gap-2">
               <input type="hidden" name="claimTypeId" value={id} />
               <Field label={t('itemCodeLabel')}>
                 <input name="code" required placeholder="MILEAGE" className={`${inputCls} w-32 font-mono uppercase`} />
@@ -191,7 +197,7 @@ export function ClaimTypePanel({
                 <input name="name" required placeholder="Mileage" className={`${inputCls} w-44`} />
               </Field>
               <Button type="submit" size="sm">{t('newItem')}</Button>
-            </form>
+            </form></fieldset>
           </div>
 
           {/* THE CLAIM FORM for this type — what the employee is asked when they file one. */}
@@ -227,7 +233,7 @@ export function ClaimTypePanel({
                 <ul className="mt-1.5 divide-y divide-border/60">
                   {formFields.map((f, i) => (
                     <li key={f.id} className="space-y-2 py-2">
-                      <form action={updateFieldAction} className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
+                      <fieldset disabled={canEdit !== true} className="contents"><form action={updateFieldAction} className="grid gap-2 sm:grid-cols-[1fr_9rem_auto]">
                         <input type="hidden" name="id" value={f.id} />
                         <input type="hidden" name="claimTypeId" value={id} />
                         <input name="label" defaultValue={f.label} required className={`${inputCls} w-full`} />
@@ -253,31 +259,31 @@ export function ClaimTypePanel({
                         ) : (
                           <input type="hidden" name="options" value={f.options.join('\n')} />
                         )}
-                      </form>
+                      </form></fieldset>
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-xs text-muted-foreground">{f.fieldKey}</span>
                         <span className="ml-auto flex gap-1">
                           {i > 0 ? (
-                            <form action={moveFieldAction}>
+                            <fieldset disabled={canEdit !== true} className="contents"><form action={moveFieldAction}>
                               <input type="hidden" name="id" value={f.id} />
                               <input type="hidden" name="claimTypeId" value={id} />
                               <input type="hidden" name="direction" value="up" />
                               <Button type="submit" size="sm" variant="ghost" aria-label={t('moveUp')}>↑</Button>
-                            </form>
+                            </form></fieldset>
                           ) : null}
                           {i < formFields.length - 1 ? (
-                            <form action={moveFieldAction}>
+                            <fieldset disabled={canEdit !== true} className="contents"><form action={moveFieldAction}>
                               <input type="hidden" name="id" value={f.id} />
                               <input type="hidden" name="claimTypeId" value={id} />
                               <input type="hidden" name="direction" value="down" />
                               <Button type="submit" size="sm" variant="ghost" aria-label={t('moveDown')}>↓</Button>
-                            </form>
+                            </form></fieldset>
                           ) : null}
-                          <form action={archiveFieldAction}>
+                          <fieldset disabled={canDelete !== true} className="contents"><form action={archiveFieldAction}>
                             <input type="hidden" name="id" value={f.id} />
                             <input type="hidden" name="claimTypeId" value={id} />
                             <Button type="submit" size="sm" variant="ghost">{t('removeField')}</Button>
-                          </form>
+                          </form></fieldset>
                         </span>
                       </div>
                     </li>
@@ -286,7 +292,7 @@ export function ClaimTypePanel({
               )}
             </div>
 
-            <form action={createFieldAction} className="grid gap-2 border-t border-border/60 pt-3 sm:grid-cols-2">
+            <fieldset disabled={canAdd !== true} className="contents"><form action={createFieldAction} className="grid gap-2 border-t border-border/60 pt-3 sm:grid-cols-2">
               <input type="hidden" name="claimTypeId" value={id} />
               <Field label={t('fieldLabelLabel')}>
                 <input name="label" required placeholder={t('fieldLabelHint')} className={`${inputCls} w-full`} />
@@ -311,24 +317,24 @@ export function ClaimTypePanel({
                 </label>
                 <Button type="submit" size="sm" className="ml-auto">{t('addField')}</Button>
               </div>
-            </form>
+            </form></fieldset>
             <p className="text-xs text-muted-foreground">{t('formsFooterHint')}</p>
           </div>
 
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>{t('typeLabel')}</span>
-            <form action={archiveAction}>
+            <fieldset disabled={canDelete !== true} className="contents"><form action={archiveAction}>
               <input type="hidden" name="id" value={id} />
               <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('archiveConfirmTitle')} description={t('archiveConfirmDescription')} confirmLabel={t('archiveConfirmLabel')}>
                 {t('archive')}
               </ConfirmSubmit>
-            </form>
-            <form action={deleteAction}>
+            </form></fieldset>
+            <fieldset disabled={canDelete !== true} className="contents"><form action={deleteAction}>
               <input type="hidden" name="id" value={id} />
               <ConfirmSubmit size="sm" variant="ghost" className="text-destructive hover:text-destructive" title={t('deleteConfirmTitle')} description={t('deleteConfirmDescription')} confirmLabel={t('deleteConfirmLabel')}>
                 {t('delete')}
               </ConfirmSubmit>
-            </form>
+            </form></fieldset>
           </div>
         </div>
       )}
