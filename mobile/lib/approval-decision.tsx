@@ -158,8 +158,8 @@ type Sent = { body: Body; phase: 'sending' | 'uncertain' };
 
 /** What the task asks, in one line: type · dates · days, or the attendance application's own facts. */
 export function taskLine(task: TaskDetailV2): string {
-  // Never loaded here (taskPath refuses a claim); kept so the server's union stays exhaustively handled.
-  if (task.kind === 'claim') return t('task_claim');
+  // These kinds open on the web in this build; narrow the shared server union before reading native facts.
+  if (task.kind === 'claim' || task.kind === 'replacementLeave') return t(KIND_LABEL[task.kind]);
   // fmtDays already carries its unit ("5 days"); the summary templates add none (a "{days} days" template doubled it).
   if (task.kind === 'leave') return t('approvalLeaveSummary', { type: task.leaveType, dates: span(task.startDate, task.endDate), days: fmtDays(task.days) })
     + (task.durationType === 'half_day_am' || task.durationType === 'half_day_pm' ? ` · ${t(HALF_DAY[task.durationType])}` : '')
