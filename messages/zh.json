@@ -34394,6 +34394,10 @@
     }
   },
   "contractManagement": {
+    "retryFiling": "重试归档至 P-file",
+    "generationPending": "正在准备合同 PDF。当前文档准备就绪后，方可继续审批和签署。",
+    "generationFailed": "合同 PDF 需要审核。People Ops 可检查当前条款并重试生成。",
+    "retryGeneration": "重试生成 PDF",
     "pfilePending": "正在等待经过核验的个人档案归档。记录真实文件回执后方可移交离职流程。",
     "declinedStatus": "已拒绝",
     "assignmentRevoked": "已撤销",
@@ -34592,6 +34596,7 @@
       "skipped": "不需要"
     },
     "effect": {
+      "generation": "合同 PDF",
       "personnel": "人事更新",
       "payroll": "薪酬更新",
       "verification": "People Ops核验",

@@ -34394,6 +34394,10 @@
     }
   },
   "contractManagement": {
+    "retryFiling": "Cuba pemfailan P-file semula",
+    "generationPending": "PDF kontrak sedang disediakan. Kelulusan dan tandatangan akan diteruskan apabila dokumen semasa siap.",
+    "generationFailed": "PDF kontrak memerlukan semakan. People Ops boleh menyemak terma semasa dan mencuba penyediaan semula.",
+    "retryGeneration": "Cuba sediakan PDF semula",
     "pfilePending": "Menunggu pemfailan p-file yang disahkan. Offboarding tersedia selepas penerimaan dokumen sebenar direkodkan.",
     "declinedStatus": "Ditolak",
     "assignmentRevoked": "Dibatalkan",
@@ -34592,6 +34596,7 @@
       "skipped": "Tidak diperlukan"
     },
     "effect": {
+      "generation": "PDF kontrak",
       "personnel": "Kemas kini Personel",
       "payroll": "Kemas kini bayaran",
       "verification": "Pengesahan People Ops",

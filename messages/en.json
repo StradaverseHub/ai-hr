@@ -34394,6 +34394,10 @@
     }
   },
   "contractManagement": {
+    "retryFiling": "Retry P-file filing",
+    "generationPending": "The contract PDF is being prepared. Approval and signing will continue when the current document is ready.",
+    "generationFailed": "The contract PDF needs review. People Ops can check the current terms and retry preparation.",
+    "retryGeneration": "Retry PDF preparation",
     "pfilePending": "Awaiting verified p-file filing. Offboarding is available after the actual document receipt is recorded.",
     "declinedStatus": "Declined",
     "assignmentRevoked": "Revoked",
@@ -34592,6 +34596,7 @@
       "skipped": "Not required"
     },
     "effect": {
+      "generation": "Contract PDF",
       "personnel": "Personnel update",
       "payroll": "Pay update",
       "verification": "People Ops verification",

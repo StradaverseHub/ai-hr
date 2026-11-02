@@ -8,7 +8,7 @@ import {useRouter} from 'next/navigation';
 import {runContractCommand,type ContractCommand} from './actions';
 export function ContractNavigation({configure=false,templates=false,intake=false}:{configure?:boolean;templates?:boolean;intake?:boolean}){
  const t=useTranslations('contractManagement'),path=usePathname();
- const links=[{href:'/lifecycle/contracts',label:'cases'},...(templates?[{href:'/lifecycle/contracts/templates',label:'templates'}]:[]),...(configure?[{href:'/lifecycle/contracts/settings',label:'settings'}]:[]),...(configure||intake?[{href:'/lifecycle/contracts/intake',label:'intake'}]:[])];
+ const links=[{href:'/lifecycle/contracts',label:'cases'},...(templates?[{href:'/lifecycle/contracts/templates',label:'templates'}]:[]),...(configure?[{href:'/lifecycle/contracts/settings',label:'settings'}]:[]),...(intake?[{href:'/lifecycle/contracts/intake',label:'intake'}]:[])];
  return <nav className="v9-tabs" aria-label={t('title')}>{links.map(item=><Link className={'v9-button'+(path===item.href?' v9-button-primary':'')} aria-current={path===item.href?'page':undefined} key={item.href} href={item.href}>{t(item.label)}</Link>)}</nav>;
 }
 export const contractMoney=(cents:string|null|undefined)=>cents==null?'—':new Intl.NumberFormat('en-MY',{style:'currency',currency:'MYR'}).format(Number(cents)/100);

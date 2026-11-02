@@ -34394,6 +34394,10 @@
     }
   },
   "contractManagement": {
+    "retryFiling": "Thử lưu vào hồ sơ nhân sự lại",
+    "generationPending": "Đang chuẩn bị PDF hợp đồng. Việc phê duyệt và ký sẽ tiếp tục khi tài liệu hiện tại đã sẵn sàng.",
+    "generationFailed": "PDF hợp đồng cần được xem xét. People Ops có thể kiểm tra điều khoản hiện tại và thử chuẩn bị lại.",
+    "retryGeneration": "Thử chuẩn bị lại PDF",
     "pfilePending": "Đang chờ lưu hồ sơ nhân viên được xác minh. Chỉ bàn giao nghỉ việc sau khi ghi nhận chứng từ tài liệu thực tế.",
     "declinedStatus": "Đã từ chối",
     "assignmentRevoked": "Đã thu hồi",
@@ -34592,6 +34596,7 @@
       "skipped": "Không bắt buộc"
     },
     "effect": {
+      "generation": "PDF hợp đồng",
       "personnel": "Cập nhật nhân sự",
       "payroll": "Cập nhật thu nhập",
       "verification": "Xác minh của People Ops",
