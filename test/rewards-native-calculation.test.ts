@@ -179,3 +179,13 @@ it('keeps the private payroll Senior override equal to the native post-purpose c
  }
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_post_senior('{}','{}','{}')`))).rejects.toThrow();
 });
+
+it('preserves the native Number.toFixed money conversion after IEEE754 payroll bonus addition',async()=>{
+ const amounts=[0,0.0049,0.005,0.0149,0.015,0.025,0.105,1.005,1.015,2.675,1000000000.005,9999999999.99,Number.MIN_VALUE];
+ for(const value of amounts){const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_fixed_money(${String(value)}::double precision)as value`);expect({input:value,value:row.value}).toEqual({input:value,value:value.toFixed(2)});}
+ for(const before of [0,0.01,0.29,55.55,1000000000.01,9000000000.99])for(const awardCents of [0,1,29,123400,99999999]){
+  const actual=before+awardCents/100,[row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_fixed_money(${String(before)}::double precision+${awardCents}::double precision/100::double precision)as value`);expect({before,awardCents,value:row.value}).toEqual({before,awardCents,value:actual.toFixed(2)});
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_fixed_money(1)`))).rejects.toThrow();
+ for(const invalid of ['NaN','Infinity','-Infinity','-1','1e21'])await expect(owner.db.execute(sql`select app.reward_calc_fixed_money(${invalid}::double precision)`)).rejects.toMatchObject({code:'22003'});
+});

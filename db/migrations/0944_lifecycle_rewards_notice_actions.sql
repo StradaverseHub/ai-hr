@@ -2680,8 +2680,30 @@ BEGIN
     IF jsonb_array_length(provenance)>100 THEN RAISE EXCEPTION 'This payroll input has too many historical reward sources.' USING ERRCODE='42501';END IF;
    END IF;
   END IF;
-  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',to_jsonb(grade),'promotionGrade',to_jsonb(target_grade),'payrollInputBefore',to_jsonb(pay_input),'newBasicCents',item->'newBasicCents','awardCents',amount,'rewardProvenance',provenance));
+  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',to_jsonb(grade),'promotionGrade',to_jsonb(target_grade),'payrollInputBefore',to_jsonb(pay_input),'newBasicCents',item->'newBasicCents','newBasicSalary',app.reward_calc_fixed_money((item->>'newBasicCents')::double precision/100::double precision),'awardCents',amount,'newBonusAmount',CASE WHEN(amount<>0 OR is_senior)AND p_batch IS NOT NULL THEN app.reward_calc_fixed_money(greatest(0::double precision,coalesce(pay_input.bonus_amount,0)::double precision+amount::double precision/100::double precision))ELSE NULL END,'rewardProvenance',provenance));
  END LOOP;
  RETURN admission||jsonb_build_object('sourcePlan',effects,'transactionId',pg_current_xact_id()::text);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_post_sources(uuid,integer,uuid)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Native setCompensation/setPayrollInput persist Number.toFixed(2), after the exact cents
+-- engine has completed. Decode the actual IEEE754 value rather than round its shortest
+-- decimal text (1.005 is the familiar counterexample). Private, finite money preparation.
+CREATE FUNCTION app.reward_calc_fixed_money(p double precision)RETURNS text
+LANGUAGE plpgsql IMMUTABLE STRICT SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE bytes bytea;bits integer;binary_exponent integer;mantissa numeric;denominator numeric:=1;numerator numeric;cents numeric;n integer;
+BEGIN
+ IF p<0 OR p>=1e21 OR p::text IN('NaN','Infinity','-Infinity')THEN RAISE EXCEPTION 'Native Rewards money unavailable' USING ERRCODE='22003';END IF;
+ IF p=0 THEN RETURN'0.00';END IF;
+ bytes:=float8send(p);bits:=(get_byte(bytes,0)%128)*16+get_byte(bytes,1)/16;
+ mantissa:=get_byte(bytes,1)%16;
+ FOR n IN 2..7 LOOP mantissa:=mantissa*256+get_byte(bytes,n);END LOOP;
+ IF bits=0 THEN binary_exponent:=-1074;ELSE mantissa:=mantissa+4503599627370496;binary_exponent:=bits-1023-52;END IF;
+ numerator:=mantissa*100;
+ IF binary_exponent>=0 THEN numerator:=numerator*power(2::numeric,binary_exponent);ELSE denominator:=power(2::numeric,-binary_exponent);END IF;
+ -- ECMA toFixed chooses the larger integer on an exact tie for a nonnegative input.
+ cents:=div(numerator*2+denominator,denominator*2);
+ RETURN div(cents,100)::text||'.'||lpad(mod(cents,100)::text,2,'0');
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_fixed_money(double precision)FROM PUBLIC,ai_hr_app;
