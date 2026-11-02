@@ -519,6 +519,15 @@ label[data-edited-field='true'] > span:first-child::after {
        well as the .75rem inset, so scrolled rows cannot peek through above the pinned header. */
     top: .75rem; background: var(--background); box-shadow: 0 -2.5rem 0 var(--background); animation: none;
   }
+  /* AI centre pages (components/ai-centre/centre-tabs.tsx): the tab bar is the page's top, so the title below it stays
+     in flow. Pinned, it painted over the tabs: Atelier's upward cover reached into the tab row before any scroll, and
+     on scroll the title slid over it (staging acceptance, 3 November 2026). Higher specificity than both rules above. */
+  main :has([data-ai-centre-tabs]) [data-page-header],
+  main :has([data-ai-centre-tabs]) :has(> [data-page-header]:only-child),
+  :root[data-ui-theme='atelier'] main :has([data-ai-centre-tabs]) [data-page-header],
+  :root[data-ui-theme='atelier'] main :has([data-ai-centre-tabs]) :has(> [data-page-header]:only-child) {
+    position: static; box-shadow: none; animation: none;
+  }
 }
 
 /* AI centre How it works (components/ai-centre/how-it-works.tsx): a check arriving in the step's list.
