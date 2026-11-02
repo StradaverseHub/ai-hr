@@ -3627,7 +3627,7 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  AND CASE p_course WHEN'facts'THEN'gr'=ANY(p_roles)AND p_after->'recommendation'=p_before->'recommendation'
  WHEN'save'THEN(p_roles&&ARRAY['bu','gr']OR p_kind<>'annual'AND'bg'=ANY(p_roles)OR p_before->'facts'->>'confidentiality'='ec'AND p_roles&&ARRAY['gr','ctro','ec'])
  AND(p_before->'facts'->>'confidentiality'='ec'OR p_after->'recommendation'->'bonusCents'='null'::jsonb)
- AND(p_after->'facts'=p_before->'facts'OR'gr'=ANY(p_roles)OR'bu'=ANY(p_roles)AND(p_after->'facts'-ARRAY['erDecision','pipDecision','caseReason'])=(p_before->'facts'-ARRAY['erDecision','pipDecision','caseReason']))ELSE false END,false);
+ AND(p_after->'facts'=p_before->'facts'OR'gr'=ANY(p_roles)OR'bu'=ANY(p_roles)AND((p_after->'facts')-ARRAY['erDecision','pipDecision','caseReason'])=((p_before->'facts')-ARRAY['erDecision','pipDecision','caseReason']))ELSE false END,false);
 $$;
 -- Both logical unit and per-entry chains are finite same-root actual command receipts. Later
 -- posting may legitimately add enacted_compensation_id; only its reviewed physical entry
