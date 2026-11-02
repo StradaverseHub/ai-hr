@@ -1,3 +1,45 @@
+## Current status — 3 November 2026
+
+**Not staging-ready;0/2 original500-user activity targets accepted. Nothing deployed.**
+
+The first three missing security contracts were already published under aggregate
+**e3b24107**, rather than the stale security-branch alias. That discovery error is now
+corrected. Isolated integration **ada0ea0fe** preserves current-main648 SQL files/journal
+entries, appends11 byte-identical published security migrations and includes the
+qualified Personnel app fixes. Its whole compiler passes;47 non-DB and55 native checks
+pass,23 native checks fail.22 stop at full installation prerequisites, including the
+absent **app.access_all_function_bindings_complete()**; one independent grade-owner
+positive fails. The human authorized direct security-owner coordination, now active.
+No guard, assertion, scope, approved binding or native owner function is bypassed.
+See [published integration review](reviews/system-performance-security-published-integration-20261103.md).
+
+Private read requalification **948726615 /41500272641** passes26 projection/37target-date
+controls, live authority/error/rollback/APP-denial and public-definition/ACL preservation
+on that actual published integration. At8,192 records, same-run means8,888.10→486.60ms
+wide /318.08ms bounded. This remains a private component, awaiting the native owner's
+permanent API and compatible Access/audit contract; it is not500-user acceptance.
+
+New language report: app **329c870ac** removes broad layout/data invalidation and
+same-language rewrites, prevents duplicate submissions and indicates pending work.
+**19 affected checks and whole compiler pass**. Authenticated six-language browser
+timing remains unverified: strict migration/fixture setup now passes, but baseline
+41506755351 fails at the build compiler’s6144-MiB heap. The existing guarded8192-MiB
+build allowance and RSS measurement are applied to baseline **41509413854**, now running.
+The application runtime stays4GiB/pool10. No timing gain is inferred from unit checks.
+See [language review](reviews/system-performance-language-switch-20261103.md).
+
+Next: consume a compatible corrected frozen native owner source, pass actual
+installation/auth/scope/audit/rollback/processing controls, then rerun the original
+500-user1s/5s pair with unchanged workloads, limits and all browser/CRUD controls.
+System Optimization remains outside release admission; BOARD then both LOGIN items
+retain priority. No full500 retry has started in this phase.
+
+## Retained earlier results
+
+The records below retain their original source, environment and date. They do not
+identify today's installed source, supersede the current status above or transfer
+PASS evidence across commits.
+
 ## Current-main Personnel search: eager population removed; scoped checks pass
 
 Separate candidate `1c0d1f52e` has exact app source `b95f5feab`; it extends the
@@ -41,7 +83,7 @@ changes; application/SQL/locks/resources/240s timeout remain unchanged. Compiler
 proof stays on3eab/41488356642 rather than being relabelled. This is retained-data
 component scaling evidence, not rendered-page or500-user/million-Personnel acceptance.
 
-## Current result: Personnel read qualified; whole-system500-user target remains unmet
+## Retained result: Personnel read qualified; whole-system500-user target remains unmet
 
 The Personnel page now reuses one existing authorized Workforce projection for its
 rows, exact total and status facets. Ownedbb8a2bfdf /41450897584 passes137 affected
@@ -113,7 +155,7 @@ Both generated manifests pass under task-scoped metadata authority. Literal prov
 approval bindings remain unchanged and egress blocked. System Optimization remains
 outside release admission; no merge to main/alpha, queue entry, lease or deployment.
 
-## Current result: feedback-only500 qualification fails; release admission remains held
+## Retained result: feedback-only500 qualification fails; release admission remains held
 
 **Not staging-ready;0/2 activity targets accepted.** Isolated feedback-only source
 f2b9e4e9a6cf6c0888470b99b4ddaca26a213250 excludes the unsuccessful authentication,
