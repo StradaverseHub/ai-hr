@@ -28,8 +28,11 @@ it('returns exactly the five existing recipient views while admitting one applic
  await owner.client.unsafe('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
  const [actor]=await client`select current_user as role`;expect(actor.role).toBe('ai_hr_app');
  const setups=async()=>{const [row]=await owner.client`select coalesce(sum(calls),0)::int as n from pg_stat_statements where dbid=(select oid from pg_database where datname=current_database())and lower(query)~'^select[[:space:]]+set_config.*set_config'`;return row.n as number;};
- await owner.client`select pg_stat_statements_reset()`;expect(await legacy()).toEqual(expected);expect(await setups()).toBe(5);
- await owner.client`select pg_stat_statements_reset()`;expect(await notificationBellState(ctx)).toEqual(expected);const actualSetups=await setups();if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/notification-bell-transactions.json',JSON.stringify({legacySetups:5,actualSetups,recipientParity:true}));expect(actualSetups).toBe(1);
+ const evidence:{role:string;track:string;legacySetups?:number;actualSetups?:number;recipientParity:boolean}={role:actor.role,track:'',recipientParity:true};
+ const save=()=>{if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/notification-bell-transactions.json',JSON.stringify(evidence));};
+ const [tracking]=await owner.client`select current_setting('pg_stat_statements.track')as mode`;evidence.track=tracking.mode;
+ await owner.client`select pg_stat_statements_reset()`;expect(await legacy()).toEqual(expected);evidence.legacySetups=await setups();save();expect(evidence.legacySetups).toBe(5);
+ await owner.client`select pg_stat_statements_reset()`;expect(await notificationBellState(ctx)).toEqual(expected);evidence.actualSetups=await setups();save();expect(evidence.actualSetups).toBe(1);
  for(const opts of [{letterCompanyIds:[]},{letterCompanyIds:[b.companyId]},{letterCompanyIds:[foreign.companyId]}])expect(await notificationBellState(ctx,opts)).toEqual(await legacy(opts));
  await markNotificationRead(ctx,infos[16].id);const after=await notificationBellState(ctx);expect(after).toEqual(await legacy());expect(after.unread).toBe(16);expect(after.history).toHaveLength(3);
  expect([...after.items,...after.taskItems,...after.history].some(row=>row.id===secret.id)).toBe(false);
