@@ -10,6 +10,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {expect,it} from 'vitest';
 import {createDb} from '../db/client';
 import {expectedMigrationLedger,validateMigrationLedgerRows} from '../.github/ci/staging-migration-ledger.mjs';
+import {migrationProblems} from '../.github/ci/check-migration-order.mjs';
 import {AGENT_ACTIONS} from '../lib/ai/agent-action-registry';
 import witness from './fixtures/ai-dev-applied-ledger-20261030.json';
 
@@ -186,13 +187,18 @@ function reviewRecords(value:unknown):Record<string,unknown>[] {
 
 it('upgrades the exact observed populated Board prefix without rewriting applied history, payroll, settings or sealed reviews',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as Journal;
+ const ratified=journal.entries.slice(0,642);expect(ratified).toHaveLength(642);
+ const sourceSql=(tag:string)=>readFileSync('db/migrations/'+tag+'.sql');
+ const identity=(entry:Entry)=>({...entry,hash:hash(sourceSql(entry.tag))});
+ expect(hash(Buffer.from(JSON.stringify(ratified.map(identity))))).toBe('8a7ff8a713128919f60b910c8e6558ade5a862a85e4eeb797a65290d2a6e74b7');
+ expect(migrationProblems(ratified,journal.entries,sourceSql,sourceSql)).toEqual([]);
  const prefix=journal.entries.findIndex(entry=>entry.tag===TAIL[0].tag);
  expect(prefix).toBe(568);expect(witness.rows).toHaveLength(prefix);
  expect(witness.source).toBe('f752ac7f5d0323c5eae2280c3830af05b6da465f');
  expect(witness.buildId).toBe('Cvj9_lgd4fATCyUYRwWz_');expect(witness.observedAt).toBe('2026-10-29T21:09:26.134Z');
  expect(journal.entries[prefix-1]).toEqual({idx:682,version:'7',when:1793330000030,tag:'0698_information_only_corrections',breakpoints:true});
- // The tax/movement release (1 Nov 2026) appends exactly 0873/0874 after this tail; this fixture upgrades to 0865 only.
- expect(journal.entries.slice(prefix+TAIL.length).map(({tag,idx,when})=>({tag,idx,when}))).toEqual([{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'},{idx:754,when:1793330000276,tag:'0876_epf_manual_percentage_zero'},{idx:755,when:1793330000298,tag:'0898_session_idle_timeout'},{idx:756,when:1793330000299,tag:'0899_entra_workforce'}]);
+ // Pin the ratified six successors without binding this historical0865 fixture to the future tail.
+ expect(journal.entries.slice(prefix+TAIL.length,642).map(({tag,idx,when})=>({tag,idx,when}))).toEqual([{idx:751,when:1793330000273,tag:'0873_movement_exit_payroll_preservation'},{idx:752,when:1793330000274,tag:'0874_payroll_tax_basis_corrections'},{idx:753,when:1793330000275,tag:'0875_reward_access_request_read_role'},{idx:754,when:1793330000276,tag:'0876_epf_manual_percentage_zero'},{idx:755,when:1793330000298,tag:'0898_session_idle_timeout'},{idx:756,when:1793330000299,tag:'0899_entra_workforce'}]);
  const upgradeEntries=journal.entries.slice(0,prefix+TAIL.length);
  expect(journal.entries.slice(prefix,prefix+TAIL.length).map(({tag,idx,when})=>({tag,idx,when}))).toEqual(TAIL);
  expect(upgradeEntries.at(-1)).toEqual({idx:750,version:'7',when:1793330000265,tag:'0865_assistant_company_retention_references',breakpoints:true});
