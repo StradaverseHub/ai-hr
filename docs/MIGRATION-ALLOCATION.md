@@ -1221,3 +1221,15 @@ selected Item's tenant/parent at creation and reference changes, including raw a
 historical archived references for unchanged decision/financial effects. Authored negative cases use
 actual foreign-tenant catalogue and wrong-parent Item rows and assert source/audit rollback; hosted
 qualification remains required. This adds no native actor course or publication completion marker.
+
+### Frozen e3 settings recovery
+
+The whole compiler passed at e3b24107. The original settings reports retain 83 database and 51 DOM
+passes, 17 database and one DOM failure. Native import admission now reads only the two existing
+policy flags through its independent native reader; settings View still protects the editor. The
+configuration refusal retains its AiConfigError contract. The scope-choice DOM assertion targets the
+actual scope select independently of the separate status select. Fixed synthetic protocol tests use
+a test-only review fixture for precisely two fixed synthetic contracts and add a pending-review
+refusal before transport/admission; production approval records remain unchanged. The unmocked
+review gate verifies actual current/stale records and the pending formula contract, rather than
+assuming a changed source still carries an old approval. This source grants no production approval.
