@@ -29,7 +29,7 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
   it(`${locale}: the whole form gives duration-only Full Flexi guidance and switches fixed/Semi guidance with the live type`,async()=>{
     catalog.locale=locale;catalog.messages=messages as typeof en;
     const notes=messages.admin.attendancePolicy;
-    render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await ShiftForm({shift,otWindows:[],ruleOptions:[]})}</NextIntlClientProvider>);
+    render(<NextIntlClientProvider locale={locale} messages={messages} onError={error=>{throw error;}}>{await ShiftForm({shift,canWrite:true,otWindows:[],ruleOptions:[]})}</NextIntlClientProvider>);
     expect(screen.getByText(messages.boardSchedule.fullFlexiHint)).toBeVisible();
     expect(screen.getByText(notes.clockingWindowCutoffNote)).toBeVisible();
     expect(screen.queryByText(notes.shiftTypeFullFlexiNote)).toBeNull();
@@ -53,3 +53,12 @@ for(const [locale,messages] of [['en',en],['ms',ms],['zh',zh],['ta',ta],['th',th
     }
   });
 }
+
+
+it('keeps the actual Shift form values but disables all mutation controls for View only',async()=>{
+ catalog.locale='en';catalog.messages=en;
+ const {container}=render(<NextIntlClientProvider locale="en" messages={en}>{await ShiftForm({shift,canWrite:false,otWindows:[],ruleOptions:[]})}</NextIntlClientProvider>);
+ const controls=Array.from(container.querySelectorAll('#shift-form input:not([type="hidden"]),#shift-form select,#shift-form textarea,#shift-form button'));expect(controls.length).toBeGreaterThan(10);
+ for(const control of controls)expect(control.matches(':disabled')).toBe(true);
+ expect(screen.getByDisplayValue('Fictional Full Flexi')).toBeTruthy();
+});

@@ -11598,6 +11598,7 @@
       "breakMismatchNote": "Break windows shown for reference; the hours calculation deducts {minutes} min (the saved break total).",
       "breakMismatchBadge": "uses {minutes} min",
       "editShift": "Edit",
+      "viewShift": "View shift",
       "duplicate": "Duplicate",
       "archiveShift": "Archive",
       "shiftName": "Shift name",

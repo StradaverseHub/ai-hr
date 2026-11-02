@@ -1395,3 +1395,35 @@ Attendance configuration/Schedule delegation floor; actual stored/current ordina
 remain ANY-HR. Dated rotation's genuine group-only service/RLS floor is retained. Company-HR ordinary
 constructor/edit/copy and stored/current parity versus actual dated-rotation refusal/copy rollback
 cases are authored, not executed or relabeled as installed default/recipient evidence.
+
+### Shared Shift native function chapter (unapplied)
+
+`attendancePolicy.shifts` retains the actual 0197 ANY-HR tenant library and inherits canonical global
+Attendance configuration operations/View plus its own exact View. Actual create/copy, edit/pay settings,
+archive/delete and reactivation writers repeat the exact purpose; raw parent and OT-window guards
+repeat tenant/reference custody. New/copy window initialization is Add only over actual actor/XID
+parent birth; existing replacement is Edit; a cascading removal is Delete only over actual consumed
+parent removal. Shared routing/payroll/employee metadata getters retain independent native references;
+explicit maintenance facades use exact View without configuration write locks. Native list/new/edit
+screens project exact Add/Edit/Delete, with missing/denied flags disabling actual controls.
+
+A private actual Shift AFTER INSERT birth/full-source/stamp can admit only its original first group
+membership. Actual child before/after images complete it; pre-use parent mutation invalidates it.
+Additional, neighbor or changed memberships retain their Group owner. No posted flag, generic Group
+Edit grant or borrowed native-positive group default is introduced. Current-XID completed contexts
+are rechecked on actual control epoch changes after early constraint flush. APP native source/child
+window/copy and reference/refusal cases are authored; owner-held exact-predicate simulations are
+explicitly not strict APP-login qualification. Supported-deny/default/recipient tests still require
+genuine full component publication. Dated rotations, remaining settings/imports and operational
+Attendance/Leave/Claim closure remain open; this chapter adds no completion sentinel.
+
+Dated rotations now have exact `attendancePolicy.rotations` View/Edit under their actual Schedule
+parent, with stored/current/delegation native group-admin write floors. Actual save, raw immutable
+version INSERT and the editor repeat this distinct course; ordinary company-HR Group/Shift remains
+unchanged. A real new Group copy may initialize dated versions under actual Group Add plus the
+original stronger group-admin role, not a fabricated Rotation Edit grant. Standard remains excluded
+as in the native setter. The editor uses exact View/Edit and preserves the stored date in read-only
+mode; shared week/payroll routing keeps native references. Native role/parity/raw-refusal and DOM
+read-only cases are authored, unrun. This role/action guard does not certify the full direct-raw
+rotation temporal/payroll-effect constructor contract; remaining native transaction/source closure
+and genuine component publication are still required.

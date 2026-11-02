@@ -731,14 +731,14 @@ async function prepareApprovalTemplateAssignmentTx(tx:Tx,p:ApprovalTemplateAssig
       return out;
     };
 
- return {companyIds,leaveTypeIds,minDays,maxDays,scopesFor};
+ return {companyIds,leaveTypeIds,eligibilityRuleIds,minDays,maxDays,scopesFor};
 }
 export async function assignApprovalTemplate(ctx:SessionContext,p:ApprovalTemplateAssignmentInput){
  p=structuredClone(p);ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
  return withTenant(ctx,async tx=>{
   await tx.execute(sql`select app.access_workforce_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
-  const {companyIds,leaveTypeIds,minDays,maxDays,scopesFor}=await prepareApprovalTemplateAssignmentTx(tx,p);
+  const {companyIds,leaveTypeIds,eligibilityRuleIds,minDays,maxDays,scopesFor}=await prepareApprovalTemplateAssignmentTx(tx,p);
     const ruleIds: string[] = [];
     for (const companyId of companyIds) {
       for (const leaveTypeId of leaveTypeIds) {

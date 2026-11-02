@@ -1,3 +1,4 @@
+import {assertModuleFunctionTx,moduleFunctionAccess} from './module-action-access';
 import { assertDutyRosterWriteTx } from './schedule-group-controls';
 import { rotationVersionOn, weekPatternWorkingDayCount } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
@@ -800,6 +801,7 @@ export async function createShift(ctx: SessionContext, p: ShiftInput) {
   const flexibleBreakMinutes = n.flexibleBreakMinutes ?? null;
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await assertRotationPoolWriteTx(tx,null,n.ruleId);
     let row: { id: string };
@@ -886,6 +888,7 @@ export async function updateShift(ctx: SessionContext, p: { shiftId: string } & 
   const n = normalizeShiftInput(p);
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     // r429 (f6819e19) · D4 — READ THE STORED SWITCH FIRST. Two things need it, and neither can be answered
     // by this request's own input alone: (1) "turning it ON" is a REFUSAL, and whether this save turns it
@@ -1030,6 +1033,7 @@ export async function copyShift(ctx: SessionContext, p: { shiftId: string }): Pr
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','add');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).limit(1);
     if (!src) throw new Error('Shift not found (or not visible)');
@@ -1181,6 +1185,7 @@ export async function deleteShift(ctx: SessionContext, p: { shiftId: string }): 
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, companyId: shift.companyId, name: shift.name, code: shift.code })
@@ -1243,6 +1248,7 @@ export async function archiveShift(ctx: SessionContext, p: { shiftId: string }) 
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','delete');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     await tx.update(shift).set({ archivedAt: new Date(), updatedAt: new Date() }).where(eq(shift.id, p.shiftId));
     await appendEvent(tx, {
@@ -1276,6 +1282,7 @@ export async function unarchiveShift(ctx: SessionContext, p: { shiftId: string }
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [src] = await tx
       .select({ id: shift.id, name: shift.name, code: shift.code, archivedAt: shift.archivedAt })
@@ -1359,11 +1366,11 @@ export type ShiftOtWindowInput = {
 
 /** Every overtime window of one shift, in grid order. Read by the settings screen AND (through the engine's
  *  own query) by attendance derivation — one ordering, so what HR sees is what the engine applied. */
-export function listShiftOtWindows(ctx: SessionContext, shiftId: string) {
-  return withTenant(ctx, (tx) =>
-    tx.select().from(shiftOtWindow).where(eq(shiftOtWindow.shiftId, shiftId)).orderBy(asc(shiftOtWindow.sortOrder)),
-  );
+function shiftOtWindowsTx(tx:Tx,shiftId:string){
+ return tx.select().from(shiftOtWindow).where(eq(shiftOtWindow.shiftId,shiftId)).orderBy(asc(shiftOtWindow.sortOrder));
 }
+export function listShiftOtWindows(ctx:SessionContext,shiftId:string){return withTenant(ctx,tx=>shiftOtWindowsTx(tx,shiftId));}
+export function listShiftOtWindowsForMaintenance(ctx:SessionContext,shiftId:string){return withTenant(ctx,async tx=>{await assertShiftMaintenanceViewTx(tx);return shiftOtWindowsTx(tx,shiftId);});}
 
 /**
  * Replace a shift's whole overtime grid in one write — the same shape as the break rows on the General tab,
@@ -1379,6 +1386,7 @@ export async function replaceShiftOtWindows(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     return replaceShiftOtWindowsTx(tx, ctx, p);
   });
@@ -3509,6 +3517,7 @@ export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; wi
   const differential = validateDifferential(p.differential);
   return withTenant(ctx, async tx => {
     await lockAccessConfigurationTx(tx,ctx.tenantId);
+    await assertModuleFunctionTx(tx,'attendancePolicy.shifts','edit');
     await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
     const [before] = await tx.select().from(shift).where(eq(shift.id, p.shiftId)).for('update');
     if (!before) throw new Error('Shift not found (or not visible)');
@@ -3520,4 +3529,18 @@ export async function saveShiftPay(ctx: SessionContext, p: { shiftId: string; wi
     await appendEvent(tx,{tenantId:ctx.tenantId, aggregateType:'shift', aggregateId:p.shiftId, eventType:'shift.pay-settings.saved', actor:actorOf(ctx),payload:{beforeDifferential:before.differential,differential,windowCount:p.windows.length}});
     return result;
   });
+}
+
+
+/** Explicit Shift-library maintenance View; routing/roster/employee consumers keep native references. */
+export function listShiftsForMaintenance(ctx:SessionContext,opts?:{includeArchived?:boolean}){
+ return withTenant(ctx,async tx=>{await assertShiftMaintenanceViewTx(tx);return listShiftsForTenant(ctx,opts,tx);});
+}
+export function shiftActionAccess(ctx:SessionContext,operation:'view'|'add'|'edit'|'delete'){
+ return moduleFunctionAccess(ctx,'attendancePolicy.shifts',operation);
+}
+
+async function assertShiftMaintenanceViewTx(tx:Tx){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.attendance_shift_allowed('view') as allowed`);
+ if(row?.allowed!==true)throw new Error('Shift view unavailable');
 }

@@ -2,11 +2,12 @@
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {createAttendanceRule,updateAttendanceRule,copyAttendanceRule,deleteAttendanceRule,setRuleShifts,type AttendanceRuleInput} from '../core/attendance-rule';
-import {createShift,type ShiftInput} from '../core/roster';
-import {getScheduleRotation,saveScheduleRotation} from '../core/attendance-rotation';
+import {createShift,copyShift,updateShift,archiveShift,unarchiveShift,deleteShift,replaceShiftOtWindows,listShiftsForTenant,listShiftsForMaintenance,listShiftOtWindows,shiftActionAccess,type ShiftInput} from '../core/roster';
+import {getScheduleRotation,saveScheduleRotation,rotationActionAccess} from '../core/attendance-rotation';
+import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,companyHr:SessionContext;
@@ -35,4 +36,91 @@ it('preserves the separate genuine group-only dated rotation and copy-with-rotat
  await expect(saveScheduleRotation(companyHr,input)).rejects.toThrow('A group-wide HR administrator is required');
  await saveScheduleRotation(admin,input);expect((await getScheduleRotation(admin,group.id)).versions).toHaveLength(1);
  const before=await owner.db.select().from(s.attendanceRule);await expect(copyAttendanceRule(companyHr,{ruleId:group.id})).rejects.toThrow('A group-wide HR administrator is required to copy');expect(await owner.db.select().from(s.attendanceRule)).toEqual(before);
+});
+
+it('retains actual company-HR Shift and child-window courses through copy, replacement and removal',async()=>{
+ const input=shiftInput('Fictional source shift'),created=await createShift(companyHr,input);
+ await replaceShiftOtWindows(companyHr,{shiftId:created.id,windows:[{label:'Fictional OT',startTime:'17:00',endTime:'18:00'}]});
+ const [window]=await listShiftOtWindows(companyHr,created.id);expect(window.label).toBe('Fictional OT');
+ await replaceShiftOtWindows(companyHr,{shiftId:created.id,windows:[{id:window.id,label:'Fictional revised OT',startTime:'17:00',endTime:'19:00'}]});expect((await listShiftOtWindows(companyHr,created.id))[0].id).toBe(window.id);
+ const copied=await copyShift(companyHr,{shiftId:created.id});expect((await listShiftOtWindows(companyHr,copied.id)).map(row=>row.label)).toEqual(['Fictional revised OT']);
+ await updateShift(companyHr,{...input,shiftId:created.id,name:'Fictional source revised'});
+ await archiveShift(companyHr,{shiftId:created.id});await unarchiveShift(companyHr,{shiftId:created.id});
+ await deleteShift(companyHr,{shiftId:copied.id});expect(await listShiftOtWindows(companyHr,copied.id)).toEqual([]);
+ expect((await listShiftsForMaintenance(companyHr)).map(row=>row.id)).toContain(created.id);
+ const events=await owner.client`select actor_id,event_type from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${created.id}::uuid order by sequence`;
+ expect(events.length).toBeGreaterThan(4);expect(events.every(event=>event.actor_id===companyHr.userId)).toBe(true);
+});
+it('keeps member routing references independent and denies forged/raw maintenance authority',async()=>{
+ const created=await createShift(companyHr,shiftInput('Fictional reference shift')),userId=await createAppUser(b.tenantId,null,'employee'),member:SessionContext={...admin,userId,personId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ expect((await listShiftsForTenant(member)).map(row=>row.id)).toContain(created.id);expect(await Promise.all((['view','add','edit','delete'] as const).map(operation=>shiftActionAccess(member,operation)))).toEqual([false,false,false,false]);
+ await expect(listShiftsForMaintenance(member)).rejects.toThrow('Shift view unavailable');
+ await expect(withTenant(member,async tx=>{await tx.execute(sql`select set_config('app.shift_constructor','true',true)`);await tx.delete(s.shift).where(eq(s.shift.id,created.id));})).rejects.toThrow();
+ await expect(withTenant(companyHr,tx=>tx.execute(sql`select * from app.shift_constructor_source`))).rejects.toThrow();
+ await expect(withTenant(companyHr,tx=>tx.execute(sql`select app.shift_initial_membership_allowed('{}'::jsonb)`))).rejects.toThrow();
+ expect((await owner.db.select().from(s.shift).where(eq(s.shift.id,created.id)))[0].name).toBe('Fictional reference shift');
+});
+it('preserves the real native Shift constructor and its original initial membership in an APP session',async()=>{
+ const group=await createAttendanceRule(companyHr,ruleInput('Fictional constructor group'));
+ const created=await createShift(companyHr,{...shiftInput('Fictional original constructor'),ruleId:group.id});
+ expect(await owner.db.select({ruleId:s.attendanceRuleShift.ruleId,shiftId:s.attendanceRuleShift.shiftId}).from(s.attendanceRuleShift).where(eq(s.attendanceRuleShift.shiftId,created.id))).toEqual([{ruleId:group.id,shiftId:created.id}]);
+ const copied=await copyShift(companyHr,{shiftId:created.id});expect(await owner.db.select({ruleId:s.attendanceRuleShift.ruleId}).from(s.attendanceRuleShift).where(eq(s.attendanceRuleShift.shiftId,copied.id))).toEqual([{ruleId:group.id}]);
+});
+it('binds the original first membership and excludes neighbors or changed/restored parents in an owner-held protocol simulation',async()=>{
+ const first=await createAttendanceRule(companyHr,ruleInput('Fictional first group')),neighbor=await createAttendanceRule(companyHr,ruleInput('Fictional neighbor group'));
+ // This is private predicate/real-body evidence under an owner-held app-role downgrade, NOT strict APP-login qualification.
+ await owner.withTenant(companyHr,async tx=>{
+  await tx.execute(sql`set local role ai_hr_app`);
+  const [fresh]=await tx.insert(s.shift).values({tenantId:b.tenantId,name:'Fictional finite source',code:randomUUID().slice(0,8),startTime:'08:00',endTime:'17:00',breakMinutes:60,ruleId:first.id}).returning();
+  await tx.insert(s.attendanceRuleShift).values({tenantId:b.tenantId,ruleId:first.id,shiftId:fresh.id});
+  await tx.insert(s.attendanceRuleShift).values({tenantId:b.tenantId,ruleId:neighbor.id,shiftId:fresh.id});
+  const [changed]=await tx.insert(s.shift).values({tenantId:b.tenantId,name:'Fictional changed source',code:randomUUID().slice(0,8),startTime:'08:00',endTime:'17:00',breakMinutes:60,ruleId:first.id}).returning();
+  await tx.update(s.shift).set({ruleId:neighbor.id}).where(eq(s.shift.id,changed.id));await tx.update(s.shift).set({ruleId:first.id}).where(eq(s.shift.id,changed.id));
+  await tx.insert(s.attendanceRuleShift).values({tenantId:b.tenantId,ruleId:first.id,shiftId:changed.id});
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`reset role`);
+  const rows=await tx.execute<{shiftId:string;ruleId:string;initial:boolean}>(sql`select shift_id as "shiftId",rule_id as "ruleId",app.shift_initial_membership_allowed(to_jsonb(actual)) as initial from public.attendance_rule_shift actual where shift_id in (${fresh.id}::uuid,${changed.id}::uuid) order by shift_id,rule_id`);
+  expect(rows.find(row=>row.shiftId===fresh.id&&row.ruleId===first.id)?.initial).toBe(true);expect(rows.find(row=>row.shiftId===fresh.id&&row.ruleId===neighbor.id)?.initial).toBe(false);expect(rows.find(row=>row.shiftId===changed.id)?.initial).toBe(false);
+ });
+});
+
+async function changeDataControls(tx:Tx,command:DataPermissionCommand){
+ const [state]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);
+ const [preview]=await tx.execute<{value:DataPermissionPreview}>(sql`select app.data_permission_transition(${JSON.stringify(command)}::jsonb,${state.value.revision},false,null) as value`);
+ expect(preview.value.fingerprint).toBeTruthy();
+ await tx.execute(sql`select app.data_permission_transition(${JSON.stringify(command)}::jsonb,${state.value.revision},true,${preview.value.fingerprint})`);
+}
+it('requeues completed Shift initialization after early flush and actual APP canonical control restore',async()=>{
+ const userId=companyHr.userId;if(!userId)throw new Error('The real company HR fixture is missing its user');
+ const profileId=randomUUID(),create:DataPermissionCommand={kind:'create',profileId,name:'Fictional Shift proof authority control',enabled:true,rules:{legacyCompany:false,predicates:[{field:'company',values:[b.companyId]},{field:'department',values:[b.deptB]}]}};
+ const state=await readDataPermissions(admin),preview=await previewDataPermission(admin,state.revision,create);await saveDataPermission(admin,state.revision,create,preview.fingerprint);
+ const assignments=(await readDataPermissions(admin)).assignments,group=await createAttendanceRule(admin,ruleInput('Fictional terminal initialization'));
+ let id:string|undefined,failure:unknown;
+ try{await withTenant(admin,async tx=>{
+  const [session]=await tx.execute<{owner:boolean;app:boolean}>(sql`select pg_has_role(session_user,(select relowner from pg_class where oid='public.app_user'::regclass),'USAGE') as owner,pg_has_role(current_user,'ai_hr_app','USAGE') as app`);expect(session).toEqual({owner:false,app:true});
+  const [created]=await tx.insert(s.shift).values({tenantId:b.tenantId,name:'Fictional authority-bound Shift',code:randomUUID().slice(0,8),startTime:'08:00',endTime:'17:00',ruleId:group.id}).returning({id:s.shift.id});id=created.id;
+  await tx.insert(s.attendanceRuleShift).values({tenantId:b.tenantId,ruleId:group.id,shiftId:created.id});
+  await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`set constraints all deferred`);
+  await changeDataControls(tx,{kind:'assign',userId,profileId});
+  const [assigned]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);expect(assigned.value.assignments).toContainEqual({userId,profileId});
+  await changeDataControls(tx,{kind:'assign',userId,profileId:null});
+  const [restored]=await tx.execute<{value:DataPermissionState}>(sql`select app.data_permission_state() as value`);expect(restored.value.assignments).toEqual(assignments);
+ });}catch(error){failure=error;}
+ let denied=false;for(let cause=failure;cause&&typeof cause==='object';cause=(cause as {cause?:unknown}).cause)if((cause as {code?:string}).code==='42501'&&(cause as {message?:string}).message==='Shift initialization incomplete')denied=true;expect(denied).toBe(true);
+ if(!id)throw new Error('The actual Shift source was never constructed');expect(await owner.db.select().from(s.shift).where(eq(s.shift.id,id))).toEqual([]);expect(await owner.db.select().from(s.attendanceRuleShift).where(eq(s.attendanceRuleShift.shiftId,id))).toEqual([]);
+ expect((await readDataPermissions(admin)).assignments).toEqual(assignments);
+});
+
+it('matches actual stored/current dated-rotation floors and registry delegation without broadening company-HR',async()=>{
+ const userId=companyHr.userId;if(!userId)throw new Error('The actual company HR actor is missing');
+ expect(await Promise.all((['view','edit'] as const).map(operation=>rotationActionAccess(companyHr,operation)))).toEqual([true,false]);
+ expect(await Promise.all((['view','edit'] as const).map(operation=>rotationActionAccess(admin,operation)))).toEqual([true,true]);
+ for(const actor of [companyHr,admin]){
+  const expected=actor.userId===admin.userId;
+  const [floor]=await owner.withTenant(actor,tx=>tx.execute<{stored:boolean;current:boolean;delegation:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${actor.userId}::uuid,'function.attendancePolicy.rotations.edit',null) as stored,app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${actor.userId}::uuid,'function.attendancePolicy.rotations.edit',null) as "current",app.access_function_delegation_floor('function.attendancePolicy.rotations.edit',null) as delegation`));
+  expect(floor).toEqual({stored:expected,current:expected,delegation:expected});
+ }
+ const [group]=await owner.db.insert(s.attendanceRule).values({tenantId:b.tenantId,name:'Fictional raw rotation owner'}).returning({id:s.attendanceRule.id}),shift=await createShift(admin,shiftInput('Fictional raw rotation shift'));
+ const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+8*86400000).toISOString().slice(0,10);
+ await expect(withTenant(companyHr,tx=>tx.insert(s.attendanceRotation).values({tenantId:b.tenantId,ruleId:group.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:userId}))).rejects.toThrow();
+ expect(await owner.db.select().from(s.attendanceRotation).where(eq(s.attendanceRotation.ruleId,group.id))).toEqual([]);
 });

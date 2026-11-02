@@ -19,6 +19,7 @@ vi.mock('../app/admin/attendance-policy/rule-actions',()=>({createAttendanceRule
 vi.mock('../app/admin/attendance/schedule/actions',()=>({saveScheduleGroupAttendanceAction:vi.fn(),saveScheduleGroupOvertimeAction:vi.fn(),saveScheduleGroupControlAction:vi.fn()}));
 vi.mock('../components/schedule-rotation-editor',()=>({ScheduleRotationEditor:()=>null}));
 vi.mock('../packs/attendance/service',()=>({
+  rotationActionAccess:async()=>true,
   getScheduleRotation:async()=>({versions:[],revision:'pool-version',memberships:[{shiftId:'shared-one'},{shiftId:'shared-two'}]}),
   workingShiftSchedule:()=>({normalMinutes:480,shiftEnd:'18:00'}),
 }));

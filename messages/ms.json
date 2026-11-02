@@ -11598,6 +11598,7 @@
       "breakMismatchNote": "Tempoh rehat dipaparkan sebagai rujukan; pengiraan jam menolak {minutes} min (jumlah rehat yang disimpan).",
       "breakMismatchBadge": "guna {minutes} min",
       "editShift": "Sunting",
+      "viewShift": "Lihat syif",
       "duplicate": "Buat salinan",
       "archiveShift": "Arkib",
       "shiftName": "Nama syif",
