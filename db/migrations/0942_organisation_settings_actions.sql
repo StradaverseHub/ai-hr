@@ -554,3 +554,38 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.email_asset_save(text,bytea) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.email_asset_save(text,bytea) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Company/role Home presentation has its own View/Edit purpose. Native employee
+-- consumption remains the original active own-company/assignment course below.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
+  PERFORM app.register_function_action('dashboardCardConfig.home',operation,'company','organisation.'||operation,'app.organisation_settings_delegation_allowed','{"moduleKey":"organisation","labelKey":"nav.dashboardCardConfig","kind":"submenu","course":"administrative","employeeBearing":false}');
+ END LOOP;
+END $$;
+CREATE FUNCTION app.organisation_home_configuration_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT operation IN ('view','edit') AND app.principal_snapshot_current() AND app.is_admin_for(co)
+ AND app.organisation_settings_function_allowed('dashboardCardConfig.home',operation,co);
+$$;
+REVOKE ALL ON FUNCTION app.organisation_home_configuration_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.organisation_home_configuration_action(uuid,text) TO ai_hr_app;
+CREATE TRIGGER organisation_settings_upsert_lock BEFORE INSERT ON public.employee_home_configuration_revision FOR EACH STATEMENT EXECUTE FUNCTION app.organisation_settings_upsert_lock();
+ALTER POLICY employee_home_configuration_read ON public.employee_home_configuration_revision
+ USING(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current()) AND
+  (app.organisation_home_configuration_action(company_id,'view') OR EXISTS(
+   SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+   WHERE u.id=app.current_user_id() AND e.tenant_id=employee_home_configuration_revision.tenant_id
+    AND e.hired_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND e.blacklisted_at IS NULL
+    AND (LEAST(e.resignation_date,e.last_working_date,e.terminated_on) IS NULL
+     OR LEAST(e.resignation_date,e.last_working_date,e.terminated_on)>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+    AND (e.company_id=employee_home_configuration_revision.company_id OR EXISTS(
+     SELECT 1 FROM public.assignment a WHERE a.employment_id=e.id AND a.tenant_id=e.tenant_id
+      AND a.company_id=employee_home_configuration_revision.company_id AND a.superseded_at IS NULL
+      AND a.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+      AND (a.valid_to IS NULL OR a.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+    ))
+  )));
+ALTER POLICY employee_home_configuration_insert ON public.employee_home_configuration_revision
+ WITH CHECK(tenant_id=app.current_tenant_id() AND (SELECT app.principal_snapshot_current()) AND app.organisation_home_configuration_action(company_id,'edit')
+  AND created_by_user_id=app.current_user_id());

@@ -1,4 +1,6 @@
 import { getTranslations } from 'next-intl/server';
+import {notFound} from 'next/navigation';
+import {settingsActionAccess} from '@/core/organisation-access';
 import Link from 'next/link';
 import { scopedAdmin } from '@/lib/scope';
 import {
@@ -51,6 +53,7 @@ export default async function DashboardCardConfigPage({
 }) {
   // scopedAdmin also fences the RLS session to an admin — the guard the reverse-completeness test asserts.
   const { s } = await scopedAdmin();
+  const access=await settingsActionAccess(s,'dashboardCardConfig');if(!access.view)notFound();
   const t = await getTranslations('dashboardCardConfig');
   const tm = await getTranslations('dashboardCardConfig.manage');
   const sp = await searchParams;
@@ -63,7 +66,7 @@ export default async function DashboardCardConfigPage({
 
   const cards = await listCards(s,true);
   const editing: DashboardCardRow | null = edit ? cards.find((c) => c.id === edit) ?? null : null;
-  const showForm = Boolean(editing || newParam);
+  const showForm = Boolean(editing ? access.edit : newParam && access.add);
 
   // Card Library filters (in-memory over the tenant's card master — the list is small and fully loaded).
   const ql = q.toLowerCase();
@@ -162,9 +165,9 @@ export default async function DashboardCardConfigPage({
               <Card className="overflow-hidden">
                 <div className="flex flex-wrap items-center justify-between gap-2 pr-4">
                   <SectionHeader title={t('catalogTitle')} count={filteredCards.length} />
-                  <Link href={`${PAGE}?${listQs}&new=1`} className={btnPrimary}>
+                  {access.add&&<Link href={`${PAGE}?${listQs}&new=1`} className={btnPrimary}>
                     {t('createNew')}
-                  </Link>
+                  </Link>}
                 </div>
 
                 {/* Searchable / filterable Card Library (item c393827d). GET form so filters live in the URL. */}
@@ -270,13 +273,13 @@ export default async function DashboardCardConfigPage({
                           <td className="px-4 py-2.5 text-center tabular-nums">{c.displayOrder}</td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center justify-end gap-3">
-                              <Link
+                              {access.edit&&<Link
                                 href={`${PAGE}?${listQs}&edit=${c.id}`}
                                 className="text-xs font-medium text-primary hover:underline"
                               >
                                 {t('edit')}
-                              </Link>
-                              <form action={setStatusAction}>
+                              </Link>}
+                              {access.edit&&<form action={setStatusAction}>
                                 <input type="hidden" name="id" value={c.id} />
                                 <input
                                   type="hidden"
@@ -287,8 +290,8 @@ export default async function DashboardCardConfigPage({
                                 <button className="text-xs font-medium text-muted-foreground hover:text-foreground hover:underline">
                                   {c.status === 'active' ? t('deactivate') : t('activate')}
                                 </button>
-                              </form>
-                              <form action={deleteCardAction}>
+                              </form>}
+                              {access.delete&&<form action={deleteCardAction}>
                                 <input type="hidden" name="id" value={c.id} />
                                 {returnFields}
                                 <ConfirmSubmit
@@ -299,7 +302,7 @@ export default async function DashboardCardConfigPage({
                                 >
                                   {t('delete')}
                                 </ConfirmSubmit>
-                              </form>
+                              </form>}
                             </div>
                           </td>
                         </tr>

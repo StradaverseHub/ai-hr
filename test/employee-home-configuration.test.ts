@@ -45,6 +45,18 @@ describe('validated deterministic Home configuration',()=>{
  });
 });
 describe('scoped immutable company/role Home versions',()=>{
+ it('registers only native View/Edit and keeps employee consumption separate from administration',async()=>{
+  const hr=await worker('hr_admin'),employee=await worker();
+  const query=sql`select app.organisation_home_configuration_action(${b.companyId}::uuid,'view') as view,
+   app.organisation_home_configuration_action(${b.companyId}::uuid,'edit') as edit,
+   app.organisation_home_configuration_action(${b.companyId}::uuid,'add') as add,
+   app.organisation_home_configuration_action(${b.companyId}::uuid,'delete') as delete`;
+  expect((await withTenant(hr.ctx,tx=>tx.execute(query)))[0]).toEqual({view:true,edit:true,add:false,delete:false});
+  expect((await withTenant(employee.ctx,tx=>tx.execute(query)))[0]).toEqual({view:false,edit:false,add:false,delete:false});
+  await save(hr.ctx);
+  expect((await readOwnEmployeeHomeConfiguration(employee.ctx,employee.employmentId)).ordinal).toBe(1);
+  expect(await employeeHomeConfigurationCompanies(employee.ctx)).toEqual([]);
+ });
  it('saves/reopens a version and resolves own company/role without accepting a caller-picked company',async()=>{
   const hr=await worker('hr_admin'),employee=await worker(),configuration=defaultEmployeeHomeConfiguration();
   configuration.quickActions=['leave','profile'];configuration.templates.find(row=>row.key==='calm')!.text.en='Fictional scoped wording.';

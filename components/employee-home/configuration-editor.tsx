@@ -9,14 +9,15 @@ import {HOME_QUICK_ACTIONS,HOME_TASK_KINDS,HOME_TEMPLATE_FIELDS,type HomeQuickAc
 import type {EmployeeHomeConfigurationView} from '@/core/employee-home-configuration';
 import {saveHomeConfigurationAction,type HomeConfigurationSaveState} from '@/app/admin/settings/dashboard/home-actions';
 
-export function HomeConfigurationEditor({initial}:{initial:EmployeeHomeConfigurationView}){
+export function HomeConfigurationEditor({initial,canEdit=false}:{initial:EmployeeHomeConfigurationView;canEdit?:boolean}){
  const t=useTranslations('employeeHome.configuration'),names=useTranslations('employeeHome.templateNames'),quick=useTranslations('employeeHome.quickActions'),task=useTranslations('employeeHome.taskNames');
  const router=useRouter();
  const inFlight=React.useRef(false),errorRef=React.useRef<HTMLParagraphElement|null>(null);
  const submit=React.useCallback(async(state:HomeConfigurationSaveState,data:FormData):Promise<HomeConfigurationSaveState>=>{
+  if(!canEdit)return {error:t('failed')};
   try{const result=await saveHomeConfigurationAction(state,data);inFlight.current=Boolean(result.destination);return result;}
   catch{inFlight.current=false;return {error:t('failed')};}
- },[t]);
+ },[t,canEdit]);
  const [state,dispatch,pending]=React.useActionState<HomeConfigurationSaveState,FormData>(submit,{error:null});
  const navigated=React.useRef<HomeConfigurationSaveState|null>(null);
  React.useEffect(()=>{if(state.destination&&navigated.current!==state){navigated.current=state;router.push(state.destination);router.refresh();}},[state,router]);
@@ -28,13 +29,13 @@ export function HomeConfigurationEditor({initial}:{initial:EmployeeHomeConfigura
   onInvalidCapture={event=>{
    if(event.target instanceof HTMLElement){const details=event.target.closest('details');if(details)details.open=true;}
   }}
-  onSubmit={event=>{event.preventDefault();if(inFlight.current||state.destination)return;const data=new FormData(event.currentTarget);inFlight.current=true;React.startTransition(()=>dispatch(data));}}
+  onSubmit={event=>{event.preventDefault();if(!canEdit||inFlight.current||state.destination)return;const data=new FormData(event.currentTarget);inFlight.current=true;React.startTransition(()=>dispatch(data));}}
   className="space-y-6">
   {/* Manual dispatch preserves native textarea/select drafts after a refused action; React's form-action
       auto-reset otherwise loses them. POST also keeps these fields out of a URL before hydration. */}
   <input type="hidden" name="companyId" value={initial.companyId}/><input type="hidden" name="audienceRole" value={initial.audienceRole}/><input type="hidden" name="expectedOrdinal" value={initial.ordinal}/>
   {state.error&&<p ref={errorRef} tabIndex={-1} role="alert" className="rounded-md border border-destructive p-3 text-sm text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{state.error}</p>}
-  <fieldset disabled={pending||Boolean(state.destination)} className="space-y-6">
+  <fieldset disabled={!canEdit||pending||Boolean(state.destination)} className="space-y-6">
    <div className="space-y-3"><h3 className="font-semibold">{t('quickTitle')}</h3><p className="max-w-prose text-sm text-muted-foreground">{t('quickHint')}</p>
     <ul className="divide-y rounded-lg border">{actionRows.map(key=><li key={key} className="flex flex-wrap items-center justify-between gap-3 px-3 py-1">
      <label className="flex min-h-11 min-w-0 items-center gap-3 text-sm"><input type="checkbox" name="quickAction" value={key} checked={actions.includes(key)} onChange={event=>{const checked=event.target.checked;setActions(previous=>checked?[...previous,key]:previous.filter(item=>item!==key));}}/>{quick(key)}</label>

@@ -23,9 +23,9 @@ function role(value:string):DashboardLayoutRole{
  if(!DASHBOARD_LAYOUT_ROLES.some(item=>item===value))throw new HomeConfigurationAccessError();
  return value as DashboardLayoutRole;
 }
-async function assertAdminCompany(tx:Tx,ctx:SessionContext,companyId:string){
+async function assertAdminCompany(tx:Tx,ctx:SessionContext,companyId:string,operation:'view'|'edit'='view'){
  if(!ctx.userId||!uuid(companyId))throw new HomeConfigurationAccessError();
- const [row]=await tx.select({allowed:sql<boolean>`app.principal_snapshot_current() AND app.is_admin_for(${company.id})`})
+ const [row]=await tx.select({allowed:sql<boolean>`app.principal_snapshot_current() AND app.is_admin_for(${company.id}) AND app.organisation_settings_function_allowed('dashboardCardConfig.home',${operation},${company.id})`})
   .from(company).where(and(eq(company.id,companyId),eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt))).limit(1);
  if(!row?.allowed)throw new HomeConfigurationAccessError();
 }
@@ -38,7 +38,7 @@ async function currentTx(tx:Tx,ctx:SessionContext,companyId:string,audienceRole:
 }
 export function employeeHomeConfigurationCompanies(ctx:SessionContext){
  return withTenant(ctx,tx=>tx.select({id:company.id,name:company.legalName}).from(company)
-  .where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() AND app.is_admin_for(${company.id})`))
+  .where(and(eq(company.tenantId,ctx.tenantId),isNull(company.archivedAt),sql`app.principal_snapshot_current() AND app.is_admin_for(${company.id}) AND app.organisation_settings_function_allowed('dashboardCardConfig.home','view',${company.id})`))
   .orderBy(asc(company.legalName),asc(company.id)));
 }
 export function readEmployeeHomeConfigurationEditor(ctx:SessionContext,p:{companyId:string;audienceRole:string}):Promise<EmployeeHomeConfigurationView>{
@@ -64,7 +64,8 @@ export async function saveEmployeeHomeConfiguration(ctx:SessionContext,p:{compan
  if(!Number.isSafeInteger(p.expectedOrdinal)||p.expectedOrdinal<0||typeof p.reason!=='string'||!p.reason.trim()||p.reason.trim().length>500)throw Error('Provide the saved version and a reason of at most 500 characters.');
  const reason=p.reason.trim();
  return withTenant(ctx,async tx=>{
-  await assertAdminCompany(tx,ctx,p.companyId);
+  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await assertAdminCompany(tx,ctx,p.companyId,'edit');
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`home-config:${ctx.tenantId}:${p.companyId}:${audienceRole}`},0))`);
   const previous=await currentTx(tx,ctx,p.companyId,audienceRole);
   if(previous.ordinal!==p.expectedOrdinal)throw new HomeConfigurationChangedError();
