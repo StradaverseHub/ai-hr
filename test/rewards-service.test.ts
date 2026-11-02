@@ -523,6 +523,20 @@ describe('Rewards persistence, authorization and atomic enactment', () => {
     expect(await owner.db.select().from(schema.payrollInput).where(eq(schema.payrollInput.batchId, batch.batchId))).toEqual([]);
     expect((await view()).unit.status).toBe('approved');
   });
+  it.each([9,10,4000,4001])('matches the original cancellation transaction code-point boundary at %i emoji',async length=>{
+    const before=await view(),reason='  '+'😀'.repeat(length)+'  ',accepted=length>=10&&length<=4000,rollback=new Error('Native cancellation boundary rollback');
+    let nativeError:unknown;
+    try{await withTenant(admin,async tx=>{await cancelRewardReviewTx(tx,admin,unitId,before.unit.revision,reason);throw rollback;});}catch(error){nativeError=error;}
+    if(accepted)expect(nativeError).toBe(rollback);
+    else expect(nativeError).toMatchObject({name:'ZodError',issues:expect.arrayContaining([expect.objectContaining({code:length<10?'too_small':'too_big'})])});
+    let admissionError:unknown;
+    try{await owner.withTenant(admin,async tx=>{const [row]=await tx.execute<{value:{reason:string}}>(sql`select app.reward_cancel_admission(${unitId}::uuid,${before.unit.revision},${reason})as value`);expect(row.value.reason).toBe(reason.trim());throw rollback;});}catch(error){admissionError=error;}
+    if(accepted)expect(admissionError).toBe(rollback);
+    else expect(pgErrorChain(admissionError)).toContainEqual(expect.objectContaining({code:length<10?'42501':'22023'}));
+    expect((await view()).unit).toEqual(before.unit);expect((await view()).rows).toEqual(before.rows);
+    expect(await owner.db.select().from(schema.rewardDecision).where(eq(schema.rewardDecision.unitId,unitId))).toEqual([]);
+    expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,unitId),eq(schema.domainEvent.eventType,'reward-unit.cancelled')))).toEqual([]);
+  });
   it.each(['assigned','administration']as const)('privately preserves the original actor-only cancellation %s course and exact audit',async course=>{
     let actor=admin;
     if(course==='administration'){

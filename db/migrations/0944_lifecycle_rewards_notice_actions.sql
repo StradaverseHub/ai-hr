@@ -1847,7 +1847,8 @@ BEGIN
  ELSIF jsonb_typeof(p_value)='string'THEN value:=p_value#>>'{}';
  ELSE RAISE EXCEPTION 'Invalid reward text input' USING ERRCODE='22023';END IF;
  value:=app.reward_access_reason_trim(value);
- units:=app.reward_calc_units(value);
+ -- Zod string min/max count code points; explicit JS .length owners retain reward_calc_units.
+ units:=char_length(value);
  IF units>p_limit THEN RAISE EXCEPTION 'Invalid reward text input' USING ERRCODE='22023';END IF;
  RETURN value;
 END $$;
@@ -2099,7 +2100,7 @@ BEGIN
  FOREACH k IN ARRAY ARRAY['bonusMatrix','ranges','branchFactors','branchRatings']LOOP
   IF jsonb_typeof(p->k)IS DISTINCT FROM'object'THEN RAISE EXCEPTION 'Invalid reward policy map' USING ERRCODE='22023';END IF;
   FOR part IN SELECT key,value FROM jsonb_each(p->k)LOOP
-   IF app.reward_calc_units(part.key)NOT BETWEEN 1 AND(CASE k WHEN'branchFactors'THEN 80 WHEN'branchRatings'THEN 100 ELSE 30 END) THEN RAISE EXCEPTION 'Invalid reward policy key' USING ERRCODE='22023';END IF;
+   IF char_length(part.key)NOT BETWEEN 1 AND(CASE k WHEN'branchFactors'THEN 80 WHEN'branchRatings'THEN 100 ELSE 30 END) THEN RAISE EXCEPTION 'Invalid reward policy key' USING ERRCODE='22023';END IF;
    IF k='branchRatings'THEN
     IF jsonb_typeof(part.value)IS DISTINCT FROM'string'OR(part.value#>>'{}')<>ALL(ARRAY['UA','BE','ME','AE','OU'])THEN RAISE EXCEPTION 'Invalid reward policy branch rating' USING ERRCODE='22023';END IF;
    ELSIF k='ranges'THEN
@@ -2125,7 +2126,7 @@ BEGIN
   IF jsonb_typeof(p->'payWindowKeep')IS DISTINCT FROM'object'THEN RAISE EXCEPTION 'Invalid reward pay window' USING ERRCODE='22023';END IF;
   normalized:='{}';FOR part IN SELECT key,value FROM jsonb_each(p->'payWindowKeep')LOOP
    text_value:=app.reward_calc_text(part.value,1000);
-   IF app.reward_calc_units(part.key)NOT BETWEEN 1 AND 64 OR app.reward_calc_units(text_value)<10 THEN RAISE EXCEPTION 'Invalid reward pay window' USING ERRCODE='22023';END IF;
+   IF char_length(part.key)NOT BETWEEN 1 AND 64 OR char_length(text_value)<10 THEN RAISE EXCEPTION 'Invalid reward pay window' USING ERRCODE='22023';END IF;
    normalized:=normalized||jsonb_build_object(part.key,text_value);
   END LOOP;result:=jsonb_set(result,'{payWindowKeep}',normalized);
  END IF;
@@ -3282,7 +3283,7 @@ BEGIN
  IF app.current_agent_principal()IS NOT NULL OR NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL THEN RAISE EXCEPTION 'A current human Rewards principal is required' USING ERRCODE='42501';END IF;
  PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  reason:=app.reward_calc_text(to_jsonb(p_reason),4000);
- IF app.reward_calc_units(reason)<10 THEN RAISE EXCEPTION 'Explain why the review is being cancelled (at least 10 characters).' USING ERRCODE='42501';END IF;
+ IF char_length(reason)<10 THEN RAISE EXCEPTION 'Explain why the review is being cancelled (at least 10 characters).' USING ERRCODE='42501';END IF;
  SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL AND app.reward_unit_native_readable(u.id) FOR UPDATE;
  SELECT u.* INTO actor FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
  IF unit.id IS NULL OR actor.id IS NULL THEN RAISE EXCEPTION 'Reward unit not found or access has been removed.' USING ERRCODE='42501';END IF;

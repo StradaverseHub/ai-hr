@@ -3,7 +3,7 @@ import {afterAll,beforeAll,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
-import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,transition,type RewardRole,type RewardStage,type RewardEntry} from '../packs/rewards/model';
+import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,factsSchema,recommendationSchema,transition,type RewardRole,type RewardStage,type RewardEntry} from '../packs/rewards/model';
 import {calculateOffcycle,offcycleRoute,offcycleTransition} from '../packs/rewards/offcycle';
 import {emptyGovernance,confirmedSeniorAwards,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint,seniorGrade} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
@@ -205,4 +205,24 @@ it('preserves native input carry normalization for absent, negative and legacy N
   const [row]=await owner.db.execute<{value:number}>(sql`select to_jsonb(app.reward_calc_input_carry(${value}::numeric))as value`);expect(row.value).toBe(Math.max(0,Number(value)||0));
  }
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_input_carry(1)`))).rejects.toThrow();
+});
+
+
+it('matches actual Zod code-point boundaries while preserving explicit UTF16 refinement minima',async()=>{
+ const check=async(kind:'recommendation'|'facts'|'policy',input:unknown,accepted:boolean)=>{
+  const schema=kind==='recommendation'?recommendationSchema:kind==='facts'?factsSchema:policySchema;
+  const parsed=schema.safeParse(input);expect(parsed.success).toBe(accepted);
+  const query=kind==='recommendation'?sql`select app.reward_calc_recommendation(${JSON.stringify(input)}::jsonb)as value`:kind==='facts'?sql`select app.reward_calc_facts(${JSON.stringify(input)}::jsonb)as value`:sql`select app.reward_calc_policy(${JSON.stringify(input)}::jsonb)as value`;
+  if(parsed.success){const [row]=await owner.db.execute<{value:unknown}>(query);expect(row.value).toEqual(parsed.data);}
+  else{const refused=await owner.db.execute(query).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'22023'}));return true;});expect(refused).toBe(true);}
+ };
+ for(const [field,limit]of [['promotionGrade',30],['reason',4000],['currentRoleSummary',8000],['proposedRoleSummary',8000]]as const)for(const extra of [0,1])await check('recommendation',{...emptyRecommendation(),[field]:'  '+'😀'.repeat(limit+extra)+'  '},extra===0);
+ for(const [field,limit]of [['caseReason',3000],['segment',80],['branch',100]]as const)for(const extra of [0,1])await check('facts',{...emptyFacts(),[field]:'  '+'😀'.repeat(limit+extra)+'  '},extra===0);
+ for(const [field,limit,value]of [['bonusMatrix',30,[0,0,0,0,0]],['ranges',30,[1,2,3]],['branchFactors',80,[0,0,0,0,0]],['branchRatings',100,'ME']]as const)for(const extra of [0,1])await check('policy',{...defaultPolicy(2026),[field]:{['😀'.repeat(limit+extra)]:value}},extra===0);
+ for(const [field,limit]of [['exemptReason',2000],['lumpReason',1000]]as const)for(const extra of [0,1])await check('policy',{...defaultPolicy(2026),[field]:'  '+'😀'.repeat(limit+extra)+'  '},extra===0);
+ for(const length of [9,10,1000,1001])await check('policy',{...defaultPolicy(2026),payWindowKeep:{actual:'  '+'😀'.repeat(length)+'  '}},length>=10&&length<=1000);
+ for(const length of [0,1,64,65])await check('policy',{...defaultPolicy(2026),payWindowKeep:{['😀'.repeat(length)]:'Actual approved retained eligibility'}},length>=1&&length<=64);
+ // This schema uses an explicit v.length refinement, unlike Zod's own min/max.
+ for(const length of [4,5])await check('policy',{...defaultPolicy(2026),exemptReason:'😀'.repeat(length)},length===5);
+ for(const length of [4,5,9,10]){const [row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_units(${'😀'.repeat(length)})::text as value`);expect(row.value).toBe(String(length*2));}
 });
