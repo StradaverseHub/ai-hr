@@ -1,7 +1,8 @@
 # Commissioning a bounded model evaluation
 
 This guide is for the evaluation maintainer and the private configuration operator. The current
-focused CLI refuses paid evaluation until trusted spending admission and verification are wired.
+focused controller has native-ledger spending verification wired. Its CLI still refuses paid
+evaluation until approved private admission and isolated fixture provisioning are commissioned.
 A working provider key, passing no-network tests or this document does not commission that runner.
 Use [repository policy](REPOSITORY-AND-ENVIRONMENTS.md) for hosted checks and release authority.
 
@@ -12,6 +13,8 @@ Use [repository policy](REPOSITORY-AND-ENVIRONMENTS.md) for hosted checks and re
 | Requested model, frozen corpus and full outcome assessment | [evaluation contract](../.github/ci/eval/contract.mjs), [corpus contract](reviews/ai-eval-corpus-contract-20261103.md) |
 | Admission before candidate execution and independent final verification | `admitFocusedEvaluation` / `runFocused` in [focused controller](../.github/ci/focused-checks.mjs) |
 | Per-process lifetime allocation, with no refunds | [attempt budget](../.github/ci/eval/attempt-budget.mjs), [native adapter](../test/helpers/ai-eval-native-budget.ts) |
+| Exact case-to-native-run correlation | [native witness](../test/helpers/ai-eval-native-witness.ts), composed through the original lifecycle and proof owners |
+| Independent financial comparison and SQL readback | [native verifier](../.github/ci/eval/native-budget-verifier.mjs), [controller reader](../.github/ci/eval/native-ledger-reader.mjs) |
 | Actual policy, private reviewed capability and one-use dispatch | [spend capability](../core/ai-spend-capability.ts), [native governance](../core/ai-governance.ts) |
 | Complete request bound and exact transport enforcement | [fixed metered carrier](../lib/ai/providers/openrouter-fixed-metered-carrier.ts) |
 | Authentic terminal billing and native settlement | [receipt owner](../lib/ai/spend-receipt.ts), effective functions in [spend migration](../db/migrations/0651_ai_spend_controls.sql) and its ordered successors |
@@ -59,16 +62,25 @@ explicitly fictional and cannot supply live financial review.
    Check the profile's maximum dispatch population, including tool rounds, against the allocation.
    Estimated successful-token cost is not enough. An infeasible full profile requires an explicit
    owner decision before any spending; do not silently truncate cases or reduce repeats.
-3. Implement trusted controller admission and verification using current private authority. Admission
+3. Commission trusted controller admission using current private authority; keep the wired default
+   native-ledger verifier. Admission
    runs before candidate/classifier/database setup: verify a genuine provisioning commitment there,
    then attest the actual fresh fixture configuration before its first POST. Missing, stale,
    mismatched or unreviewed inputs must refuse without inference.
-4. Provide independently verifiable run evidence. The current session emits case/request/configuration
-   digests and lifetime ceilings, not an authenticated controller witness or native run/root/capability
-   identities. Candidate JSON alone cannot establish monetary provenance, and repeated prompts may
-   share digests. Use reviewed controller-owned capture or exact native lifecycle identities plus
-   independent ledger readback. Native `AiAdmissionLifecycle.admitted/settled` exposes run IDs;
-   `withAiRunObserver` does not. Do not sign candidate totals and call that independent verification.
+4. Keep evidence independent of candidate totals. The session now records exact native run/capability
+   identities after the original proof owner validates dispatch; repeated prompt digests stay distinct.
+   The controller independently reads every run/reservation in the admitted tenant across both focused
+   worker databases, including held, failed or unreserved rows. It checks full retained bounds and exact
+   attempt population. Case labels/POST counts remain consistency checks, not independent network proof.
+   The trusted admission producer must nominate the fixture scope before candidate execution; never
+   select it from a receipt. Native receipt reconciliation remains authoritative for charge authenticity.
+   Do not sign candidate totals and call that independent verification.
+
+   Only after trusted admission, the controller enables narrowly validated worker-ledger retention.
+   Fresh and reused setup paths keep those disposable workers until the controller captures their
+   ledger, including after a failed test process. Ordinary teardown is unchanged. The controller's
+   existing finally cleanup removes its owned container/volumes; retained databases are not installed
+   customer data. The reader uses the pinned owned container's SQL client, not candidate dependencies.
 5. Run affected no-network and native positive/refusal tests on standard hosted Actions. Include
    missing/expired catalogue, wrong tenant/configuration, signer mismatch, duplicate dispatch,
    concurrency, billed failure/unknown settlement, fixture-reset invalidation and forged/replayed

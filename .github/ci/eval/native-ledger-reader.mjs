@@ -12,6 +12,23 @@ function scopeOf({tenantId, maxAttempts}) {
     || !Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 1500) refuse();
   return {tenantId, maxAttempts};
 }
+// Contract-tested against test/db-names.ts in the native suite. No receipt-selected DB names.
+export const FOCUSED_NATIVE_DATABASES = Object.freeze(['ai_hr_test_w_aifocus1', 'ai_hr_test_w_aifocus2']);
+/** Retain only an admitted focused eval's disposable workers until controller capture.
+ * This controls cleanup timing, not financial admission. The controller removes its container finally. */
+export function retainNativeLedgerForController(env) {
+  if (env.AIHR_EVAL_RETAIN_NATIVE_LEDGER !== 'true') return false;
+  const files = JSON.parse(env.AIHR_FOCUSED_TESTS ?? 'null');
+  if (env.GITHUB_ACTIONS !== 'true' || env.CI !== 'true' || env.RUNNER_ENVIRONMENT !== 'github-hosted'
+    || env.GITHUB_REPOSITORY !== 'StradaverseHub/ai-hr' || env.GITHUB_WORKFLOW !== 'alpha-focused-checks'
+    || !/^\d+$/.test(env.GITHUB_RUN_ID ?? '') || env.GITHUB_RUN_ATTEMPT !== '1' || env.WORKER_DB === '0' || env.TEST_DB_NAMESPACE !== 'aifocus' || env.VITEST_MAX_WORKERS !== '2'
+    || env.AIHR_EVAL_REQUESTED !== 'true' || env.AIHR_EVAL_MODEL !== 'openai/gpt-6-luna' || env.AIHR_EVAL_PATH !== 'production'
+    || !/^[a-f0-9]{64}$/.test(env.AIHR_EVAL_PLAN_HASH ?? '') || !/^[a-f0-9]{64}$/.test(env.AIHR_EVAL_CORPUS_REVIEW_DIGEST ?? '')
+    || !/^[a-f0-9]{40}$/.test(env.AIHR_CI_HEAD ?? '') || !/^[a-f0-9]{40}$/.test(env.AIHR_CI_CONTROL_HEAD ?? '')
+    || !Array.isArray(files) || files.length !== 1
+    || !['test/assistant-model-ceiling.eval.test.ts','test/review/teras-review-model.eval.test.ts'].includes(files[0])) refuse();
+  return true;
+}
 export const NATIVE_LEDGER_SQL = `select m.id::text as "runId",m.tenant_id::text as "tenantId",
   r.root_id::text as "rootId",m.feature_id as "featureId",r.capability_digest as "capabilityDigest",
   r.request_digest as "requestDigest",r.configuration_digest as "configurationDigest",
@@ -59,11 +76,16 @@ export function readOwnedNativeLedger(scope, env, execute = spawnSync) {
   const query = NATIVE_LEDGER_SQL.replace('$1', ":'tenant_id'").replace('$2', ':row_limit');
   const sql = `BEGIN READ ONLY; SET LOCAL statement_timeout='5s'; SET LOCAL lock_timeout='500ms';
 SELECT coalesce(json_agg(row_to_json(native)), '[]'::json) FROM (${query}) native; COMMIT;`;
-  const result = execute('/usr/bin/docker', ['exec', '-i', name, 'psql', '--no-psqlrc', '--no-password',
-    '-qAt', '-v', 'ON_ERROR_STOP=1', '-v', `tenant_id=${tenantId}`, '-v', `row_limit=${maxAttempts + 1}`,
-    '-h', '127.0.0.1', '-p', '5433', '-U', 'postgres', '-d', 'ai_hr_test'], {...options, input: sql});
-  if (result.error || result.status !== 0) refuse();
-  return complete(JSON.parse(result.stdout), maxAttempts);
+  const rows = [];
+  for (const database of FOCUSED_NATIVE_DATABASES) {
+    const result = execute('/usr/bin/docker', ['exec', '-i', name, 'psql', '--no-psqlrc', '--no-password',
+      '-qAt', '-v', 'ON_ERROR_STOP=1', '-v', `tenant_id=${tenantId}`, '-v', `row_limit=${maxAttempts + 1}`,
+      '-h', '127.0.0.1', '-p', '5433', '-U', 'postgres', '-d', database], {...options, input: sql});
+    if (result.error || result.status !== 0) refuse();
+    rows.push(...complete(JSON.parse(result.stdout), maxAttempts));
+    complete(rows, maxAttempts); // One global bound, never a per-worker allocation.
+  }
+  return rows;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {

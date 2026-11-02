@@ -1,3 +1,4 @@
+import {retainNativeLedgerForController} from '../.github/ci/eval/native-ledger-reader.mjs';
 import {profileTestPhase} from './profile';
 /**
  * Vitest globalSetup — build ONE migrated template database, then hand every worker its own copy.
@@ -204,6 +205,8 @@ async function setupImpl({ provide }: { provide?: (k: string, v: unknown) => voi
     // env provided directly (CI / clean-room)
   }
 
+  const retainNativeLedger = retainNativeLedgerForController(process.env);
+
   const migrationUrl = process.env.TEST_MIGRATION_DATABASE_URL;
   if (!migrationUrl) throw new Error('TEST_MIGRATION_DATABASE_URL must be set for tests');
 
@@ -250,7 +253,7 @@ async function setupImpl({ provide }: { provide?: (k: string, v: unknown) => voi
       `[global-setup] template ${templateName} reused (fingerprint match), ${workers} worker DBs wiped in ${Date.now() - t0}ms`,
     );
     provide?.('workerDbPrefix', workerPrefix);
-    return;
+    return retainNativeLedger ? async () => {} : undefined;
   }
 
   // 1. Rebuild the template from scratch — the fingerprint changed, or there was nothing to reuse.
@@ -329,6 +332,7 @@ async function setupImpl({ provide }: { provide?: (k: string, v: unknown) => voi
   // BEST-EFFORT, NEVER FATAL. A teardown failure must not turn a green suite red: the run has already
   // finished and its result is decided. Failures are logged loudly enough to notice and left at that.
   return async () => {
+    if (retainNativeLedger) return; // Owned controller captures first, then removes the container.
     if (!namespaceIsEphemeral()) return;
     const sql = postgres(adminUrl, { max: 1, onnotice: () => {} });
     const dropped: string[] = [];

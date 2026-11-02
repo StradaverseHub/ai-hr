@@ -3,7 +3,7 @@
  * No authority/privacy mock, real key or network. This is not a live paid-carrier attestation.
  */
 import {sql} from 'drizzle-orm';
-import {readNativeLedger,readOwnedNativeLedger} from '../.github/ci/eval/native-ledger-reader.mjs';
+import {readNativeLedger,readOwnedNativeLedger,FOCUSED_NATIVE_DATABASES} from '../.github/ci/eval/native-ledger-reader.mjs';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {aiProviderConfig} from '../db/schema';
@@ -20,6 +20,7 @@ import {TERAS_HARNESS_CONTRACT} from '../lib/ai/teras-harness-policy';
 import {createOpenRouterAdapter,openrouterAdapter} from '../lib/ai/providers/openrouter';
 import {createNativeEvalWitness} from './helpers/ai-eval-native-witness';
 import {installSyntheticSpendCapability} from './ai-spend-fixture';
+import {workerDb} from './db-names';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 
 const active=vi.hoisted(()=>({witness:null as ReturnType<typeof import('./helpers/ai-eval-native-witness').createNativeEvalWitness>|null,
@@ -91,6 +92,7 @@ describe('native evaluation run witness without authority mocks or real provider
     expect(rows).toHaveLength(2);
     const independent=await readNativeLedger(owner.client,{tenantId:ctx.tenantId,maxAttempts:1500});
     expect(independent).toHaveLength(2);
+    expect(FOCUSED_NATIVE_DATABASES).toEqual([workerDb(1),workerDb(2)]);
     const controllerRows=readOwnedNativeLedger({tenantId:ctx.tenantId,maxAttempts:1500},process.env);
     expect(controllerRows).toEqual(independent);
     expect(()=>readOwnedNativeLedger({tenantId:ctx.tenantId,maxAttempts:1},process.env)).toThrow('Independent native evaluation ledger unavailable');
@@ -116,6 +118,7 @@ describe('native evaluation run witness without authority mocks or real provider
     expect(active.witness!.committedAttempts()).toHaveLength(1);
     const [row]=await readback();expect(row).toMatchObject({runState:'failed',spendState:'held',confirmedNanos:null,reservedNanos:'1000000'});
     expect(row.runId).toBe(active.witness!.committedAttempts()[0].runId);
+    expect(readOwnedNativeLedger({tenantId:ctx.tenantId,maxAttempts:1500},process.env)).toMatchObject([{runId:row.runId,runState:'failed',spendState:'held',confirmedNanos:null}]);
   });
 
   it('preserves preceding lifecycle hooks and publishes no phantom committed attempt after admission rollback',async()=>{

@@ -133,6 +133,7 @@ function checkedTrackedFiles(cwd, files) {
 
 function testEnvironment(kind, profileDirectory) {
   const env = {...process.env, VITEST_MAX_WORKERS: '2', VITEST_MAX_WORKERS_NODB: '2', TEST_DB_NAMESPACE: 'aifocus'};
+  delete env.AIHR_EVAL_RETAIN_NATIVE_LEDGER; // Only trusted admission below can request retention.
   const urls = [
     'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_dev', 'postgres://postgres@127.0.0.1:5433/ai_hr_dev',
     'postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test', 'postgres://postgres@127.0.0.1:5433/ai_hr_test',
@@ -175,13 +176,13 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
     files, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
   const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
   let touchedDatabase = false, postgresProfile = null;
-  let evalRequest = null, evalPlan = null, nativeScope = null;
+  let evalRequest = null, evalPlan = null, nativeScope = null, nativeRows = null;
   const budgetVerifier = evalBudgetVerifier ?? createNativeBudgetVerifier({readNativeEvidence(expected) {
-    if (!nativeScope) throw Error('Independent native evaluation scope unavailable');
+    if (!nativeScope || !nativeRows) throw Error('Independent native evaluation scope unavailable');
     return {identity: expected.identity, evaluationId: `${expected.identity.runId}:${expected.identity.attempt}:${expected.planHash}`,
       tenantId: nativeScope.tenantId, planHash: expected.planHash, corpusReviewDigest: expected.corpusReviewDigest,
       allocationNanos: nativeScope.allocationNanos, maxAttempts: nativeScope.maxAttempts,
-      rows: readIndependentNativeLedger(nativeScope)};
+      rows: nativeRows};
   }});
   try {
     if (process.env.AIHR_EVAL_MODEL?.trim() || process.env.AIHR_EVAL_REQUESTED === 'true')
@@ -217,7 +218,8 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
       try {
         const env = testEnvironment(kind, join(dir, 'harness-profile'));
         if (evalRequest) Object.assign(env, {AIHR_EVAL_REQUESTED: 'true', AIHR_EVAL_PATH: 'production',
-          AIHR_EVAL_PLAN_HASH: evalPlan.planHash, AIHR_EVAL_CORPUS_REVIEW_DIGEST: evalPlan.corpusReviewDigest});
+          AIHR_EVAL_PLAN_HASH: evalPlan.planHash, AIHR_EVAL_CORPUS_REVIEW_DIGEST: evalPlan.corpusReviewDigest,
+          ...(nativeScope ? {AIHR_EVAL_RETAIN_NATIVE_LEDGER: 'true'} : {})});
         if (kind === 'DB') {
           if (!hostHealth().ok) throw Error('Runner disk headroom below guard before DB batch');
           touchedDatabase = true;
@@ -236,6 +238,13 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
         args.push(...selected, '--reporter=default', '--reporter=json', '--outputFile.json=' + resultPath);
         const child = spawnSync('pnpm', args, {stdio: 'inherit', env});
         batch.processExitCode = child.status; batch.signal = child.signal;
+        // Preserve native holds even when the paid trial failed; qualification runs only AFTER capture.
+        if (evalRequest && nativeScope && kind === 'DB') {
+          nativeRows = Object.freeze(readIndependentNativeLedger(nativeScope).map(row => Object.freeze(row)));
+          const nativeBytes = JSON.stringify({identity: evalIdentity, scope: nativeScope, rows: nativeRows}) + '\n';
+          writeFileSync(join(dir, 'native-ledger.json'), nativeBytes, {flag: 'wx', mode: 0o600});
+          report.evaluation.nativeLedgerHash = hash(nativeBytes);
+        }
         if (child.error || child.status !== 0) throw Error('Selected test process failed');
         let evalContext;
         if (evalRequest) {
