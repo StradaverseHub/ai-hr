@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,transition,type RewardRole,type RewardStage,type RewardEntry} from '../packs/rewards/model';
 import {calculateOffcycle,offcycleRoute,offcycleTransition} from '../packs/rewards/offcycle';
-import {emptyGovernance,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint,seniorGrade} from '../packs/rewards/governance-model';
+import {emptyGovernance,confirmedSeniorAwards,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint,seniorGrade} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 let ctx:SessionContext;
@@ -165,4 +165,17 @@ it('matches every selected native decision stage and seat, including consecutive
 
 it('retains exact native Senior grade admission, including ECMAScript whitespace',async()=>{
  for(const grade of ['21','JG21','jg 22',' JG\u00a023 ','20','24','21x','\uFEFF21','JG\u200323']){const [row]=await owner.db.execute<{allowed:boolean}>(sql`select app.reward_calc_senior_grade(${grade})as allowed`);expect(row.allowed).toBe(seniorGrade(grade));}
+});
+
+it('keeps the private payroll Senior override equal to the native post-purpose calculation without changing pools or flags',async()=>{
+ const policy=defaultPolicy(2026),ordinary=entry('post-ordinary'),senior=entry('post-senior');senior.facts.seniorPlan=true;senior.source.grade='21';
+ for(const leftOn of [undefined,'2025-01-01'])for(const amount of [499999,500000,678900]){
+  const current=structuredClone(senior);if(leftOn)current.source.leftOn=leftOn;const entries=[ordinary,current];
+  const award={newBasicCents:amount,bonusCents:123456,sourceFingerprint:seniorSourceFingerprint(current),confirmedBy:'native-independent-checker',proposedBy:'native-proposer',confirmedAt:'2026-01-01T00:00:00.000Z',approvalReference:'Offline approval',approvalDate:'2026-01-01',reason:'Actual independently confirmed offline award',evidence:[]};
+  const awards={[current.id]:award},controls={poolStatus:'final' as const,bonusPools:{standard:100000,h:50000}},base=calculateRewards(entries,policy,controls);
+  const expected=calculateRewards(entries,policy,{...controls,seniorAwards:confirmedSeniorAwards({...emptyGovernance(),awards},entries)});
+  const [row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(awards)}::jsonb)as value`);expect(row.value).toEqual(expected);
+  for(const bad of [{},{[current.id]:{...award,confirmedBy:null}},{[current.id]:{...award,sourceFingerprint:'stale actual source'}}])await expect(owner.db.execute(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(bad)}::jsonb)`)).rejects.toMatchObject({code:'42501'});
+ }
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_post_senior('{}','{}','{}')`))).rejects.toThrow();
 });

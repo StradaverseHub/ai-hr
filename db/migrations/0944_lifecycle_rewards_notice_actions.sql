@@ -2568,3 +2568,29 @@ BEGIN
  RETURN admission->>'toStage';
 END $$;
 REVOKE ALL ON FUNCTION app.reward_decision_native(uuid,integer,text,text,boolean)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Private preparation only: payroll's native confirmed-award course differs from the review
+-- screen course. Budgets and flags are already calculated before the final Senior override;
+-- never feed a redacted review projection back into payroll, and never recompute those pools.
+CREATE FUNCTION app.reward_calc_post_senior(p_calculation jsonb,p_policy jsonb,p_awards jsonb)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE rows jsonb:=p_calculation->'rows';item jsonb;award jsonb;basic numeric;new_basic numeric;bonus numeric;n integer;
+BEGIN
+ FOR n IN 0..jsonb_array_length(rows)-1 LOOP
+  item:=rows->n;IF NOT app.reward_calc_senior(p_policy,item)THEN CONTINUE;END IF;
+  award:=p_awards->(item->>'id');
+  IF coalesce(award->>'confirmedBy','')=''OR award->>'sourceFingerprint'IS DISTINCT FROM app.reward_calc_senior_fingerprint(item)THEN
+   RAISE EXCEPTION 'Every Senior plan member needs an independently confirmed offline decision before payroll transfer.' USING ERRCODE='42501';
+  END IF;
+  basic:=(item->'source'->>'basicCents')::numeric;new_basic:=basic;bonus:=0;
+  -- Same confirmedSeniorAwards filter as the native engine. An old lower proposal is not
+  -- enacted, while the actual confirmation/fingerprint requirement still applies to leavers.
+  IF(item->>'activeInReview')::boolean AND(award->>'newBasicCents')::numeric>=basic THEN
+   new_basic:=app.reward_calc_integer((award->>'newBasicCents')::numeric);bonus:=app.reward_calc_integer((award->>'bonusCents')::numeric);
+  END IF;
+  rows:=jsonb_set(rows,ARRAY[n::text],item||jsonb_build_object('meritBp',0,'promotionBp',0,'specialBp',0,'meritCents',0,'promotionCents',0,'specialCents',0,'standardBonusCents',0,'lumpCents',0,'newBasicCents',new_basic,'bonusCents',bonus));
+ END LOOP;
+ RETURN jsonb_set(p_calculation,'{rows}',rows);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_post_senior(jsonb,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
