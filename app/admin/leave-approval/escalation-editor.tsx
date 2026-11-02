@@ -31,11 +31,13 @@ export type EscalationLabels = {
  *  server-action post, and the 4ec5a940 optional reason input. */
 export function LeaveEscalationEditor({
   companyId,
+  canWrite = false,
   action,
   initial,
   labels,
 }: {
   companyId: string;
+  canWrite: boolean;
   action: (fd: FormData) => void | Promise<void>;
   initial: {
     enabled: boolean;
@@ -54,7 +56,7 @@ export function LeaveEscalationEditor({
   const roleKinds = Object.keys(labels.roleLabels).filter((k) => !isFixedLevelKind(k));
 
   return (
-    <form action={action} className="space-y-4 border-t border-border p-4">
+    <fieldset disabled={canWrite!==true}><form action={action} className="space-y-4 border-t border-border p-4">
       <input type="hidden" name="companyId" value={companyId} />
       <input type="hidden" name="enabled" value={enabled ? '1' : '0'} />
       <input type="hidden" name="target" value={target} />
@@ -148,6 +150,6 @@ export function LeaveEscalationEditor({
       <Button type="submit" size="sm">
         {labels.save}
       </Button>
-    </form>
+    </form></fieldset>
   );
 }

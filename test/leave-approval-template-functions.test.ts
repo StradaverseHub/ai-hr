@@ -4,8 +4,8 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {assignApprovalTemplate,unassignApprovalTemplate,createApprovalTemplate,updateApprovalTemplate,duplicateApprovalTemplate,setApprovalTemplateActive,setTenantDefaultTemplate,deleteApprovalTemplate,listApprovalTemplates,approvalTemplateActionAccess} from '../core/leave-approval-template';
-import {getLeaveEscalationPolicy,setLeaveEscalationPolicy,resolveApprovalChain} from '../core/leave-approval-policy';
+import {assignApprovalTemplate,unassignApprovalTemplate,createApprovalTemplate,updateApprovalTemplate,duplicateApprovalTemplate,setApprovalTemplateActive,setTenantDefaultTemplate,deleteApprovalTemplate,listApprovalTemplates,listApprovalTemplatesForMaintenance,approvalTemplateActionAccess} from '../core/leave-approval-template';
+import {getLeaveEscalationPolicy,getLeaveEscalationPolicyForMaintenance,setLeaveEscalationPolicy,resolveApprovalChain} from '../core/leave-approval-policy';
 import {leaveApprovalCompanyAccess} from '../core/leave-approval-action-access';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,companyHr:SessionContext,member:SessionContext;
@@ -28,6 +28,7 @@ it('retains actual company-HR template construction independently of the group-o
  await updateApprovalTemplate(companyHr,template.id,{name:'Fictional scoped HR revised',levels:['hr_admin']});
  const duplicate=await duplicateApprovalTemplate(companyHr,template.id);await setApprovalTemplateActive(companyHr,duplicate.id,false);await setApprovalTemplateActive(companyHr,duplicate.id,true);await deleteApprovalTemplate(companyHr,duplicate.id);
  await setTenantDefaultTemplate(companyHr,template.id);expect(await withTenant(member,tx=>resolveApprovalChain(tx,b.companyId,b.annualLeaveTypeId))).toEqual(['hr_admin']);
+ expect(await listApprovalTemplatesForMaintenance(companyHr)).toEqual(await listApprovalTemplates(companyHr));
  expect((await listApprovalTemplates(companyHr)).map(row=>row.id)).toEqual([template.id]);
  const audit=await owner.client`select distinct actor_id from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_type='leave-approval-template'`;expect(audit).toEqual([{actor_id:companyHr.userId}]);
 });
@@ -79,6 +80,7 @@ it('binds the real escalation setter to native company Edit while preserving mem
  expect(await leaveApprovalCompanyAccess(member,'leaveApproval.escalation',b.companyId,['view','edit'])).toEqual([true,false]);
  await setLeaveEscalationPolicy(companyHr,{companyId:b.companyId,enabled:true,escalateAfterDays:4,target:'next_level'});
  expect(await getLeaveEscalationPolicy(member,b.companyId)).toEqual({enabled:true,escalateAfterDays:4,target:'next_level',targetRole:null});
+ expect(await getLeaveEscalationPolicyForMaintenance(member,b.companyId)).toEqual(await getLeaveEscalationPolicy(member,b.companyId));
  await expect(setLeaveEscalationPolicy(member,{companyId:b.companyId,enabled:false})).rejects.toThrow('Leave approval company action unavailable');
  const [company]=await owner.db.select().from(s.company).where(eq(s.company.id,b.companyId));
  const image=JSON.stringify(company); // Runtime callers cannot invoke or post images to this private guard API.
