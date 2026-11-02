@@ -212,7 +212,7 @@ describe('Rewards review maintenance and canonical scoped access', () => {
         expect((await rewardAccessAdministration(reviewer, [b.companyId])).reviews).toEqual([expect.objectContaining({id,accessMode:'manage',exemption:'gr'})]);
         await expect(previewRewardAccessChange(reviewer, { unitId: id, revision: await revision(), before: null, after: { userId: reviewer.userId!, role: 'payroll' } })).resolves.toMatchObject({unitId:id});
         expect((await rewardAccessAdministration(reviewer,[randomUUID()])).reviews).toEqual([]);
-        await expect(deleteRewardReview(reviewer, id, await revision(), id)).rejects.toThrow(/administrator/);
+        await expect(deleteRewardReview(reviewer, id, await revision(), id)).rejects.toThrow('Rewards access authority for this review is required.');
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'gr', true);
         await setRewardMember(admin, id, await revision(), reviewer.userId!, 'pbp');
         const v = await getRewardUnit(reviewer, id);
