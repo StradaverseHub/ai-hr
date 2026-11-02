@@ -477,29 +477,8 @@ export async function changeAssessmentPanelState(ctx:SessionContext,reviewId:str
  return withPerformanceTenant(ctx,tx=>changeAssessmentPanelStateTx(tx,ctx,reviewId,expected,requestId,operation,reason));
 }
 export async function changeAssessmentPanelStateTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
- uuid.parse(requestId);z.enum(['archive','restore','reset']).parse(operation);note.parse(reason);
-  const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
-  if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to manage your panel.');
-  if(!r.cycle.policy.modules.tm||!['open','calibration'].includes(r.cycle.native.status)||r.native.closedAt)throw Error('This assessment is finalized or closed.');
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
-  const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);if(frozen)throw Error('This assessment is finalized.');
-  const [panel]=await tx.select().from(onehrPanel).where(and(eq(onehrPanel.requestId,requestId),eq(onehrPanel.reviewId,reviewId))).for('update');if(!panel)throw Error('Panel member not found.');
-  if(operation==='archive'){
-   if(panel.archivedAt)return;
-   await archivePanelMemberTx(tx,ctx,reviewId,requestId,reason);return;
-  }else if(operation==='restore'){
-   if(!panel.archivedAt)return;
-   const active=await tx.select({id:onehrPanel.requestId}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt)));
-   const cap=/^\d+$/.test(r.row.grade)?r.cycle.policy.panelTarget:1;if(active.length>=cap)throw Error('The panel is already at its configured assessor limit.');
-   const [peer]=await tx.select({id:onehrEmployment.id}).from(onehrEmployment).where(and(eq(onehrEmployment.id,panel.peerEmploymentId),sql`(${onehrEmployment.terminatedOn} is null or ${onehrEmployment.terminatedOn}>${todayInKualaLumpur()}::date)`));if(!peer)throw Error('A departed reviewer cannot be restored.');
-   await tx.update(onehrPanel).set({archivedAt:null,archiveReason:null}).where(eq(onehrPanel.requestId,requestId));
-   await tx.update(peerFeedbackRequest).set({status:panel.submittedAt?'submitted':'pending'}).where(eq(peerFeedbackRequest.id,requestId));
-  }else{
-   if(panel.archivedAt||!panel.submittedAt)throw Error('Reset only an active submitted reviewer.');
-   await tx.update(onehrPanel).set({submittedAt:null,resetAt:new Date()}).where(eq(onehrPanel.requestId,requestId));
-   await tx.update(peerFeedbackRequest).set({status:'pending'}).where(eq(peerFeedbackRequest.id,requestId));
-  }
-  await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,`panel-${operation}`,{requestId,reason});
+ uuid.parse(reviewId);uuid.parse(requestId);z.number().int().parse(expected);z.enum(['archive','restore','reset']).parse(operation);note.parse(reason);
+ await tx.execute(sql`select app.onehr_panel_state(${reviewId}::uuid,${expected}::integer,${requestId}::uuid,${operation}::text,${reason}::text)`);
 }
 /** The keeping writer's archive body: the row stays, with its time, reason and audit, and leaves scoring. The 0540
  * release trigger revokes a released anonymous report. Callers own the admin, state, frozen and lock checks. */

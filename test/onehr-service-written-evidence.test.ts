@@ -639,11 +639,19 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     await complete();await perf.releaseOnehrResult(a,reviewId,'feedback',true);
     const [original]=await owner.db.select().from(schema.onehrPanel).where(and(eq(schema.onehrPanel.reviewId,reviewId),eq(schema.onehrPanel.peerEmploymentId,peers[0].employmentId)));
     const before=(await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)!;
+    const [sourceBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
     await expect(perf.changeAssessmentPanelState(mgr,reviewId,(await view(mgr)).revision,original.requestId,'archive')).rejects.toThrow(/administrator/);
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_panel_state(${reviewId}::uuid,${sourceBefore.revision}::integer,${original.requestId}::uuid,'archive','forged actor')`);})).rejects.toThrow(/actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,original.requestId))).toEqual([original]);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([sourceBefore]);
     await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'archive','Outside the intended assessment scope');
     expect((await view(self)).anonymousFeedback).toBeNull();expect((await view(self)).peers).toEqual([]);
     let [stored]=await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.requestId,original.requestId));
-    expect(stored.answers).toEqual(original.answers);expect(stored.submittedAt).toEqual(original.submittedAt);expect(stored.archivedAt).not.toBeNull();
+    expect(stored).toEqual({...original,archivedAt:stored.archivedAt,archiveReason:'Outside the intended assessment scope'});expect(stored.archivedAt).not.toBeNull();
+    const [archivedReview]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(archivedReview).toEqual({...sourceBefore,revision:sourceBefore.revision+1});
+    const archiveEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.panel-archive')));expect(archiveEvents).toHaveLength(1);expect(archiveEvents[0]).toMatchObject({actorType:'user',actorId:a.userId,payload:{requestId:original.requestId,reason:'Outside the intended assessment scope'}});
+    await perf.changeAssessmentPanelState(a,reviewId,archivedReview.revision,original.requestId,'archive','Idempotent request');expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([archivedReview]);
+    expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.panel-archive')))).toHaveLength(1);
     expect((await perf.onehrAssignments(peers[0].ctx)).feedback.some(f=>f.id===original.requestId)).toBe(false);
     expect((await perf.getAssessmentRatingRecords(a,cycleId)).rows.find(r=>r.reviewId===reviewId)).toEqual(before); // A stored sign-off is not recomputed on a panel edit.
     await perf.changeAssessmentPanelState(a,reviewId,(await view(a)).revision,original.requestId,'restore');

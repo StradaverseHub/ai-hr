@@ -3959,3 +3959,51 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_profile_assign(uuid,integer,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_profile_assign(uuid,integer,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Explicit administrative panel maintenance preserves submitted evidence and its
+-- native release-revocation triggers; it never borrows assigned Review authority.
+CREATE FUNCTION app.onehr_panel_state(wanted_review uuid,expected_revision integer,wanted_request uuid,operation text,reason text) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;header public.performance_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;panel public.performance_onehr_panel%ROWTYPE;policy jsonb;peer public.employment%ROWTYPE;active_count integer;assessor_limit integer;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR administration actor unavailable' USING ERRCODE='42501';END IF;
+ IF operation IS NULL OR operation NOT IN ('archive','restore','reset') OR reason IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(reason))>4000 THEN RAISE EXCEPTION 'Invalid panel operation' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR NOT app.onehr_review_administration_edit(wanted_review) THEN RAISE EXCEPTION 'Performance administrator access is required.' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF app.onehr_self_employment(review.employment_id) THEN RAISE EXCEPTION 'Ask another administrator to manage your panel.' USING ERRCODE='42501';END IF;
+ SELECT * INTO header FROM public.performance_review actual WHERE actual.id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF policy->'modules'->>'tm' IS DISTINCT FROM 'true' OR cycle.status NOT IN ('open','calibration') OR header.closed_at IS NOT NULL THEN RAISE EXCEPTION 'This assessment is finalized or closed.' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(wanted_review::text,0));
+ IF EXISTS(SELECT 1 FROM app.onehr_review_frozen(wanted_review)) THEN RAISE EXCEPTION 'This assessment is finalized.' USING ERRCODE='42501';END IF;
+ SELECT * INTO panel FROM public.performance_onehr_panel actual WHERE actual.request_id=wanted_request AND actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id FOR UPDATE;
+ IF panel.request_id IS NULL THEN RAISE EXCEPTION 'Panel member not found.' USING ERRCODE='42501';END IF;
+ IF operation='archive' THEN
+  IF panel.archived_at IS NOT NULL THEN RETURN;END IF;
+  UPDATE public.performance_onehr_panel actual SET archived_at=clock_timestamp(),archive_reason=nullif(reason,'') WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='declined' WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ ELSIF operation='restore' THEN
+  IF panel.archived_at IS NULL THEN RETURN;END IF;
+  SELECT count(*) INTO active_count FROM public.performance_onehr_panel actual WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id AND actual.archived_at IS NULL;
+  assessor_limit:=CASE WHEN review.grade~'^\d+$' THEN (policy->>'panelTarget')::integer ELSE 1 END;
+  IF active_count>=assessor_limit THEN RAISE EXCEPTION 'The panel is already at its configured assessor limit.' USING ERRCODE='42501';END IF;
+  SELECT * INTO peer FROM public.employment actual WHERE actual.id=panel.peer_employment_id AND actual.tenant_id=review.tenant_id;
+  IF peer.id IS NULL OR peer.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date OR NOT (app.can_see_employment(peer.id) AND app.data_permission_record_read(peer.id) OR app.onehr_partner_for(peer.company_id) AND app.data_permission_matches(peer.id)) THEN RAISE EXCEPTION 'A departed reviewer cannot be restored.' USING ERRCODE='42501';END IF;
+  UPDATE public.performance_onehr_panel actual SET archived_at=NULL,archive_reason=NULL WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status=CASE WHEN panel.submitted_at IS NOT NULL THEN 'submitted' ELSE 'pending' END WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ ELSE
+  IF panel.archived_at IS NOT NULL OR panel.submitted_at IS NULL THEN RAISE EXCEPTION 'Reset only an active submitted reviewer.' USING ERRCODE='42501';END IF;
+  UPDATE public.performance_onehr_panel actual SET submitted_at=NULL,reset_at=clock_timestamp() WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='pending' WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ END IF;
+ UPDATE public.performance_onehr_review actual SET revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.panel-'||operation,'user',app.current_user_id(),jsonb_build_object('requestId',wanted_request,'reason',reason));
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_panel_state(uuid,integer,uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_panel_state(uuid,integer,uuid,text,text) TO ai_hr_app;
