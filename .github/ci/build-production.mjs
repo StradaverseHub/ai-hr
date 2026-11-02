@@ -21,7 +21,7 @@ export function assertBuildPacketAggregate(sizes){
   ||sizes.reduce((total,size)=>total+size,0)>BUILD_CAPACITY_PROFILE.zipMaxBytes)fail('five-member build packet aggregate exceeds bound');
  return true;
 }
-export const STAGING_BUILD_RUNTIME=Object.freeze({node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.3.8'});
+export const STAGING_BUILD_RUNTIME=Object.freeze({node:'22.23.3',abi:'127',platform:'linux',arch:'x64',glibc:'2.39',next:'16.4.1'});
 
 export function assertBuildRuntime(runtime,environment){
  if(!isDeepStrictEqual(runtime,STAGING_BUILD_RUNTIME))fail('target runtime mismatch');

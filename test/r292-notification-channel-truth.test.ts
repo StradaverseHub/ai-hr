@@ -17,7 +17,16 @@ describe('r292 — transport and product copy describe the same conditional deli
    'lib/demo-smtp-probe.ts: nodemailer/lib/smtp-connection',
    'lib/internal-auth/smtp.ts: nodemailer',
    'test/demo-smtp-probe.test.ts: nodemailer/lib/smtp-connection',
+   'test/mail-recipient-parser-security.test.ts: nodemailer',
+   'test/mail-recipient-parser-security.test.ts: nodemailer/lib/addressparser',
   ]);
+  // This regression executes the real library with an in-memory transport only. Pin every
+  // createTransport call, rather than excluding tests from the exact sender inventory.
+  const parserTest=read('test/mail-recipient-parser-security.test.ts');
+  const transports=[...parserTest.matchAll(/nodemailer\.createTransport\(([^;]+)\);/g)];
+  expect(transports.length).toBeGreaterThan(0);
+  expect(transports).toHaveLength([...parserTest.matchAll(/nodemailer\.createTransport\(/g)].length);
+  for(const transport of transports)expect(transport[1].trim()).toBe('{ jsonTransport: true }');
   expect(read('test/demo-smtp-probe.test.ts')).toMatch(/import type SMTPConnection from ['"]nodemailer\/lib\/smtp-connection['"]/);
   for(const f of ['lib/demo-smtp-connection.ts','lib/demo-smtp-probe.ts']){
    const src=read(f);expect(src).toContain("import 'server-only'");

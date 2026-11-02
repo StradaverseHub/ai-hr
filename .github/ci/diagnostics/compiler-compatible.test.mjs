@@ -10,7 +10,7 @@ const invoked=()=>({options:['--noEmit','--pretty','false','--extendedDiagnostic
  actualCompiler:Object.fromEntries(['package.json','lib/tsc.js','lib/_tsc.js','lib/typescript.js'].map(k=>[k,d])),sourceInvocation:d,
  mobileInputs:{'mobile/package.json':d,'mobile/package-lock.json':d}});
 const identity=source=>{const value=invoked();return {source,controller:originSha,runId:'123',attempt:'1',
- runtime:{node:'22.23.3',typescript:'5.9.3',next:'16.3.8',platform:'linux',arch:'x64'},
+ runtime:{node:'22.23.3',typescript:'5.9.3',next:'16.4.1',platform:'linux',arch:'x64'},
  inputs:{...Object.fromEntries(['tsconfig','lockfile','package','workspace','nextConfig'].map(k=>[k,d])),compilerCli:hash(value)},invoked:value};};
 const comparison=()=>({status:'ahead',ahead_by:1,behind_by:0,total_commits:1,base_commit:{sha:originSha},merge_base_commit:{sha:originSha},
  commits:[{sha:head}],files:[{filename:'scripts/ci-compiler-cache-policy.ts',status:'added'}]});
