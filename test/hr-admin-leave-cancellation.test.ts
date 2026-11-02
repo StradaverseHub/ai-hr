@@ -10,7 +10,7 @@
  *
  * Future dates (Aug 2026) so no future-gate interferes; the service intentionally allows past/started leave.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -28,7 +28,7 @@ import {
 import { listPayrollLeaveExceptions } from '../core/payroll-leave';
 import { dispatchNotifications } from '../core/notifications';
 import { listLeaveRequests, plannedAbsences } from '../core/read';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import {
   adminCtx,
   closeAll,
@@ -262,6 +262,21 @@ describe('adminCancelLeave — authorization', () => {
     });
     const out = await adminCancelLeave(supCtx, { leaveRequestId: res.leaveRequestId });
     expect(out.previousStatus).toBe('pending');
+    expect(await statusOf(res.leaveRequestId)).toBe('cancelled');
+  });
+
+  it('manager visibility plus HR in an unrelated company does not grant immediate cancellation', async () => {
+    const res=await requestLeave(subjectCtx,{employmentId:subject.employmentId,leaveTypeId:b.annualLeaveTypeId,startDate:'2026-08-10',endDate:'2026-08-10'});
+    const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Other HR scope'}).returning();
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:mgrCtx.userId!,companyId:other.id,role:'hr_admin'});
+    const mixed:SessionContext={...mgrCtx,roles:['manager','hr_admin'],grants:[{role:'manager',companyId:null},{role:'hr_admin',companyId:other.id}]};
+    const [premise]=await withTenant(mixed,tx=>tx.execute<{visible:boolean;admin:boolean}>(sql`select app.can_see_employment(${subject.employmentId}::uuid) as visible,app.is_admin_for(${b.companyId}::uuid) as admin`));
+    expect(premise).toEqual({visible:true,admin:false});
+    const before=await ledgerBalance(subject.employmentId,b.annualLeaveTypeId);
+    await expect(adminCancelLeave(mixed,{leaveRequestId:res.leaveRequestId})).rejects.toThrow();
+    expect(await statusOf(res.leaveRequestId)).toBe('pending');expect(await ledgerBalance(subject.employmentId,b.annualLeaveTypeId)).toBe(before);
+    expect(await eventTypesFor(b.tenantId,res.leaveRequestId)).not.toContain('leave-request.admin-cancelled');
+    await adminCancelLeave(adminCtx(b),{leaveRequestId:res.leaveRequestId});
     expect(await statusOf(res.leaveRequestId)).toBe('cancelled');
   });
 

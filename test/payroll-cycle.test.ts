@@ -49,7 +49,7 @@ import {
   PayrollCycleInUseError,
   PayrollCycleRegularConflictError,
 } from '../core/payroll-cycle';
-import { type SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 
 let b: Base;
 
@@ -279,6 +279,18 @@ describe('payroll cycle master (ADR-0069)', () => {
     await upsertPayrollCycle(adminB, { id, companyId: b.companyId, name: 'Hacked', runType: 'off_cycle' }).catch(() => {});
     const [row] = await owner.db.select().from(schema.payrollCycle).where(eq(schema.payrollCycle.id, id));
     expect(row.name).toBe('RlsCycle');
+  });
+
+  it('refuses native and direct DELETE by a tenant reader while preserving authorized deletion', async () => {
+    const authorized=await adminFor(b.companyId),reader=await employeeCtx();
+    const {id}=await upsertPayrollCycle(authorized,{companyId:b.companyId,name:'Unused deletion control',runType:'off_cycle'});
+    expect((await listPayrollCycles(reader,b.companyId)).map(c=>c.id)).toContain(id);
+    const removed=await withTenant(reader,tx=>tx.delete(schema.payrollCycle).where(eq(schema.payrollCycle.id,id)).returning({id:schema.payrollCycle.id}));
+    expect(removed).toEqual([]);
+    await expect(deletePayrollCycle(reader,id)).rejects.toThrow();
+    expect((await listPayrollCycles(authorized,b.companyId)).map(c=>c.id)).toContain(id);
+    await deletePayrollCycle(authorized,id);
+    expect((await listPayrollCycles(authorized,b.companyId)).map(c=>c.id)).not.toContain(id);
   });
 
   it('GRANT regression: a real ai_hr_app payroll admin can INSERT…RETURNING, read, and update (not fail-closed)', async () => {

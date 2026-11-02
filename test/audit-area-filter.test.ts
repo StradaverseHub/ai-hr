@@ -23,10 +23,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, owner, type Base } from './harness';
 import { withTenant } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { auditEvents, auditEventsCount } from '../core/read';
+import * as schema from '../db/schema';
+import {hireEmployee} from '../core/org';
 import {createNotice} from '../core/notice';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {
@@ -220,4 +222,18 @@ describe('f1b994e3 — Audit Trail Area filter', () => {
     const union = MODULE_KEYS.flatMap((m) => aggregateTypesForModule(m)).sort();
     expect(union).toEqual([...MAPPED_AGGREGATE_TYPES].sort());
   });
+});
+
+it('private payroll anomaly events require subject-company payroll authority, not admin somewhere',async()=>{
+ const a=adminCtx(b);
+ const subject=await hireEmployee(a,{person:{fullName:'Private payroll subject',primaryEmail:'private-audit@example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2024-01-01'});
+ const [other]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Unrelated audit company'}).returning();
+ const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:null}).returning();
+ await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role:'hr_admin',companyId:other.id});
+ const scoped={tenantId:b.tenantId,userId:u.id,grants:[{role:'hr_admin' as const,companyId:other.id}]};
+ const aggregateId=randomUUID();
+ await withTenant(a,tx=>appendEvent(tx,{tenantId:b.tenantId,aggregateType:'payslip',aggregateId,eventType:'payroll.anomaly.flagged',actor:actorOf(a),subjectEmploymentId:subject.employmentId,payload:{findings:[{detectorId:'negative-net',facts:{netPay:-71329,grossPay:81329}}]}}));
+ expect((await auditEvents(a,{aggregateId}))).toHaveLength(1);
+ expect(await auditEvents(scoped,{aggregateId})).toEqual([]);
+ expect(await auditEventsCount(scoped,{aggregateId})).toBe(0);
 });
