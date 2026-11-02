@@ -1626,7 +1626,7 @@ REVOKE ALL ON FUNCTION app.profile_changes_maintenance_native(uuid,uuid,text,uui
 --> statement-breakpoint
 CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add|execute)$' OR cap ~ '^function\.workforceDrafts\.(view|add|edit|delete|execute)$')
+ SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add|execute)$' OR cap ~ '^function\.workforceImports\.revert\.(view|execute|delete)$' OR cap ~ '^function\.workforceDrafts\.(view|add|edit|delete|execute)$')
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
   WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
    AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END)) OR app.profile_changes_maintenance_native(t,u,cap,co);

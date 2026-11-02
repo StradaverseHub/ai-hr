@@ -4,6 +4,7 @@
  * full, Import History (kind `employee_full`) and Revert as a VOID (ADR-0157) that frees the Employee IDs, emails
  * and NRICs. Real database, real RLS, fictional fixtures.
  */
+import {pgErrorChain} from '../lib/db-error';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,isNull,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -125,6 +126,10 @@ describe('524303d9 · Import History and Revert (void)',()=>{
   expect((await owner.db.select().from(s.employeeImportRun).where(eq(s.employeeImportRun.tenantId,b.tenantId)))).toHaveLength(1);
 
   const e10=await employmentOf('EV010');
+  const partial=await withTenant(a,tx=>tx.execute(sql`select * from app.employment_void(ARRAY[${e10.id}::uuid],${attemptId}::uuid,'Fictional partial void')`)).then(()=>null,error=>error);
+  expect(pgErrorChain(partial)).toContainEqual(expect.objectContaining({code:'42501',message:'employment_void_unavailable'}));
+  expect((await employmentOf('EV010')).voidedAt).toBeNull();
+  expect((await employmentOf('EV011')).voidedAt).toBeNull();
   const listedBefore=await listEmployeesPage(a,{limit:50,offset:0},'workforce');
   expect(listedBefore.rows.map(r=>r.employeeCode).sort()).toEqual(['EV010','EV011']);
   expect((await dashboardStats(a)).headcount).toBe(2);

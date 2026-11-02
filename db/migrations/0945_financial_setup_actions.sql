@@ -897,3 +897,65 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.import_attempt_event_payload_current(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.import_attempt_event_payload_current(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- A revert is one complete stored effect. Existing-employee compensation and
+-- voiding newly hired employments have different native purposes.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','execute','delete'] LOOP
+  PERFORM app.register_function_action('workforceImports.revert',operation,'company',
+   'workforce.'||CASE WHEN operation='execute' THEN 'edit' ELSE operation END,'app.workforce_function_delegation_allowed',
+   '{"moduleKey":"workforce","labelKey":"people.import.title","kind":"submenu","course":"administrative","screenKey":"personnelAdmin","href":"/admin/personnel/import/history","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
+CREATE FUNCTION app.import_attempt_revert_current(p_attempt uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.import_attempt a
+  WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id()
+   AND a.kind IN ('cost_allocations','bank_statutory','employee_full','movement')
+   AND cardinality(a.company_ids)>0 AND app.import_attempt_access(a.id,'maintain',true)
+   AND NOT EXISTS(SELECT 1 FROM unnest(a.company_ids) named(id)
+    WHERE (app.function_action_allowed('workforceImports.revert','view',named.id)
+     AND app.function_action_allowed('workforceImports.revert',CASE WHEN a.kind='employee_full' THEN 'delete' ELSE 'execute' END,named.id)
+     AND CASE WHEN a.kind='employee_full' THEN app.access_workforce_action_company(named.id,'delete')
+       ELSE app.workforce_section_import_allowed(named.id,'execute') END) IS NOT TRUE)
+   -- The actual immutable item set is read by its owner, before application RLS
+   -- can omit an item. An incomplete view cannot become a successful partial undo.
+   AND NOT EXISTS(SELECT 1 FROM public.import_attempt_item i WHERE i.attempt_id=a.id AND i.tenant_id=a.tenant_id
+    AND i.status='applied' AND (i.employment_id IS NULL OR NOT (i.company_id=ANY(a.company_ids))
+     OR app.import_item_access(a.id,i.company_id,'view') IS NOT TRUE
+     OR app.data_permission_record_read(i.employment_id) IS NOT TRUE
+     OR (EXISTS(SELECT 1 FROM public.user_data_permission_assignment profile WHERE profile.tenant_id=a.tenant_id AND profile.user_id=app.current_user_id())
+      AND NOT app.data_permission_matches(i.employment_id)))));
+$$;
+REVOKE ALL ON FUNCTION app.import_attempt_revert_current(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.import_attempt_revert_current(uuid) TO ai_hr_app;
+
+-- Preserve the original void owner and its full blocker checks. Its public
+-- admission cannot nominate a subset or reuse a non-employee import attempt.
+ALTER FUNCTION app.employment_void(uuid[],uuid,text) RENAME TO workforce_import_employment_void_native;
+REVOKE ALL ON FUNCTION app.workforce_import_employment_void_native(uuid[],uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.employment_void(p_employments uuid[],p_attempt uuid,p_reason text)
+RETURNS TABLE(employment_id uuid,employee_code text)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actual_ids uuid[];requested_ids uuid[];
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ IF p_attempt IS NULL OR p_reason IS NULL OR length(p_reason) NOT BETWEEN 3 AND 1000 THEN
+  RAISE EXCEPTION 'employment_void_invalid' USING ERRCODE='22023';
+ END IF;
+ PERFORM 1 FROM public.import_attempt a WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id() AND a.kind='employee_full'
+  AND app.import_attempt_revert_current(a.id) FOR UPDATE;
+ IF NOT FOUND OR app.import_attempt_revert_current(p_attempt) IS NOT TRUE THEN RAISE EXCEPTION 'employment_void_unavailable' USING ERRCODE='42501';END IF;
+ SELECT ARRAY(SELECT DISTINCT i.employment_id FROM public.import_attempt_item i
+  JOIN public.import_attempt a ON a.id=i.attempt_id AND a.tenant_id=i.tenant_id AND a.kind='employee_full'
+  WHERE i.tenant_id=app.current_tenant_id() AND i.attempt_id=p_attempt AND i.status='applied' AND i.employment_id IS NOT NULL ORDER BY i.employment_id)
+ INTO actual_ids;
+ SELECT ARRAY(SELECT DISTINCT requested.id FROM unnest(p_employments) requested(id) WHERE requested.id IS NOT NULL ORDER BY requested.id) INTO requested_ids;
+ IF cardinality(actual_ids)=0 OR actual_ids IS DISTINCT FROM requested_ids THEN
+  RAISE EXCEPTION 'employment_void_unavailable' USING ERRCODE='42501';
+ END IF;
+ RETURN QUERY SELECT native.employment_id,native.employee_code FROM app.workforce_import_employment_void_native(actual_ids,p_attempt,p_reason) native;
+END $$;
+REVOKE ALL ON FUNCTION app.employment_void(uuid[],uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.employment_void(uuid[],uuid,text) TO ai_hr_app;

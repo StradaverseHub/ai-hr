@@ -5161,9 +5161,9 @@
           "line": 11,
           "surface": "route",
           "owners": [
-            "app.import_attempt_access",
             "app.import_attempt_actor_label",
             "app.import_attempt_full_packet_current",
+            "app.import_attempt_revert_current",
             "app.principal_snapshot_current",
             "app/admin/personnel/import/history/[attemptId]/page.tsx:requireAdmin"
           ],
@@ -5200,9 +5200,9 @@
         }
       ],
       "nativeOwners": [
-        "app.import_attempt_access",
         "app.import_attempt_actor_label",
         "app.import_attempt_full_packet_current",
+        "app.import_attempt_revert_current",
         "app.principal_snapshot_current",
         "app/admin/personnel/import/history/[attemptId]/page.tsx:requireAdmin",
         "app/admin/personnel/import/history/page.tsx:requireAdmin"
@@ -29929,9 +29929,9 @@
       "line": 11,
       "surface": "route",
       "owners": [
-        "app.import_attempt_access",
         "app.import_attempt_actor_label",
         "app.import_attempt_full_packet_current",
+        "app.import_attempt_revert_current",
         "app.principal_snapshot_current",
         "app/admin/personnel/import/history/[attemptId]/page.tsx:requireAdmin"
       ],
@@ -29970,7 +29970,7 @@
       "line": 7,
       "surface": "server-action",
       "owners": [
-        "app.import_attempt_access",
+        "app.import_attempt_revert_current",
         "app.principal_snapshot_current",
         "app/admin/personnel/import/history/actions.ts:requireAdmin"
       ],
@@ -29991,7 +29991,7 @@
       "line": 12,
       "surface": "server-action",
       "owners": [
-        "app.import_attempt_access",
+        "app.import_attempt_revert_current",
         "app.principal_snapshot_current",
         "app/admin/personnel/import/history/actions.ts:requireAdmin"
       ],

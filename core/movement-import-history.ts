@@ -3,6 +3,7 @@
  * with its original file, every movement an employee's transaction created is an item, and a whole import
  * can be reverted once, all or nothing, through the Movement owner's own rollback.
  */
+import {assertWorkforceSectionImportCompanyTx,assertWorkforceSectionImportEmploymentTx} from './workforce-access';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {createImportAttemptTx,importPreviewReadStamp,importAttemptEventsTx,importAttemptItemsTx,lockImportAttemptTx,recordImportEventTx,recordImportFailure,recordImportItemTx,sealImportPlan,ImportHistoryError,type ImportAttemptItemRow,type ImportRevertHandler} from './import-history';
@@ -119,6 +120,8 @@ const revertOrder=(items:ImportAttemptItemRow[])=>[...items].sort((a,b)=>(a.empl
 async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reason:string){
  const after=itemState(i.after),before=itemState(i.before);
  if(!i.employmentId)throw new ImportHistoryError('This import cannot be reverted.');
+ await assertWorkforceSectionImportCompanyTx(tx,ctx,i.companyId);
+ await assertWorkforceSectionImportEmploymentTx(tx,ctx,i.employmentId);
  if(after.action==='update'){
   if(!after.movementId||!before.original)throw new ImportHistoryError('This import cannot be reverted.');
   await editMovementEventTx(tx,ctx,{...(before.original as CreateMovementInput),employmentId:i.employmentId,movementId:after.movementId,reason});
@@ -129,6 +132,7 @@ async function revertItemTx(tx:Tx,ctx:SessionContext,i:ImportAttemptItemRow,reas
   if(!after.movementId)throw new ImportHistoryError('This import cannot be reverted.');
   await reverseMovementForImportTx(tx,ctx,i.employmentId,after.movementId,reason);
  }
+ await assertWorkforceSectionImportEmploymentTx(tx,ctx,i.employmentId);
 }
 /** Static blockers of an Update or Delete item: the event it touched changed later, or a later movement would
  *  be overwritten by re-recording a deleted one. The rehearsal below catches every owner refusal besides. */

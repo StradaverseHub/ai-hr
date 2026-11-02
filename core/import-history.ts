@@ -38,8 +38,8 @@ async function principalTx(tx:Tx,ctx:SessionContext){
  const[row]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);
  if(!row?.ok)fail('Access changed. Sign in again before continuing.');
 }
-async function coversTx(tx:Tx,attemptId:string,operation:'view'|'maintain'){
- const[row]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_access(${attemptId}::uuid,${operation},true) as ok`);return row?.ok===true;
+async function canRevertTx(tx:Tx,attemptId:string){
+ const[row]=await tx.execute<{ok:boolean}>(sql`select app.import_attempt_revert_current(${attemptId}::uuid) as ok`);return row?.ok===true;
 }
 
 async function importReadStampTx(tx:Tx):Promise<string> {
@@ -147,7 +147,7 @@ export async function getImportAttempt(ctx:SessionContext,id:string){
   const[row]=await tx.select(listColumns).from(attempt).where(eq(attempt.id,id));if(!row)return null;
   const items=await importAttemptItemsTx(tx,id),events=await eventsWithNamesTx(tx,[id]),names=await companyNamesTx(tx,row.companyIds);
   const [packet]=await tx.execute<{allowed:boolean}>(sql`select app.import_attempt_full_packet_current(${id}::uuid) as allowed`);
-  const canDownloadSource=packet?.allowed===true,canRevert=await coversTx(tx,id,'maintain');
+  const canDownloadSource=packet?.allowed===true,canRevert=await canRevertTx(tx,id);
   return{...row,plan:row.plan as unknown as ImportPlanBase,companies:row.companyIds.map(c=>names.get(c)).filter((n):n is string=>!!n),items:items.map(i=>({...i,companyName:names.get(i.companyId)??null})),events,canDownloadSource,canRevert};
  });
 }
@@ -183,7 +183,7 @@ export interface ImportRevertHandler{
  apply(tx:Tx,ctx:SessionContext,items:ImportAttemptItemRow[],options:{reason:string}):Promise<Record<string,unknown>>;
 }
 async function revertPlanTx(tx:Tx,ctx:SessionContext,source:Pick<ImportAttemptRow,'id'|'kind'>,handler:ImportRevertHandler,lock:boolean){
- if(!await coversTx(tx,source.id,'maintain'))fail('Reverting this import needs maintain permission for every company in it.');
+ if(!await canRevertTx(tx,source.id))fail('Reverting this import needs maintain permission for every company in it.');
  const events=await importAttemptEventsTx(tx,source.id);
  if(events.some(e=>e.kind==='reverted'))fail('This import has already been reverted.');
  const confirmed=events.find(e=>e.kind==='confirmed');if(!confirmed)fail('This import was not saved, so there is nothing to revert.');

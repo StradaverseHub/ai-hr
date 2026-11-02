@@ -28,3 +28,11 @@ export const WORKFORCE_DRAFT_FUNCTIONS:readonly FunctionActionDescriptor[]=[{
   {owner:'app.access_workforce_draft',operation:'original-author-or-native-administrative-course'},
  ]})),
 }];
+
+
+export const WORKFORCE_IMPORT_REVERT_FUNCTIONS:readonly FunctionActionDescriptor[]=[{
+ key:'workforceImports.revert',scope:'company',moduleKey:'workforce',labelKey:'people.import.title',kind:'submenu',course:'administrative',screenKey:'personnelAdmin',href:'/admin/personnel/import/history',employeeBearing:true,
+ actions:(['view','execute','delete']as const).map(operation=>({operation,parentCapability:'workforce.'+(operation==='execute'?'edit':operation),delegationFloorFunction:'app.workforce_function_delegation_allowed',
+  bindings:[{owner:'app.import_attempt_revert_current',operation:'whole-actual-applied-item-set-and-'+operation},
+   {owner:operation==='delete'?'app.employment_void':'core/import-history.ts',operation:operation==='delete'?'complete-imported-hire-void':'native-compensation-for-entire-attempt'}]})),
+}];
