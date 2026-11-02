@@ -1,9 +1,9 @@
 /** Shipping-input acceptance using the genuine pinned EAS archive copier, without Expo auth/services. */
 import { it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, existsSync, readdirSync, lstatSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, relative } from 'node:path';
 import { createHash } from 'node:crypto';
 
 it('the real EAS archive implementation produces isolated input that typechecks and bundles both native platforms', () => {
@@ -43,6 +43,34 @@ it('the real EAS archive implementation produces isolated input that typechecks 
     expect(existsSync(join(archive, 'node_modules'))).toBe(false);
     run('npm', ['exec', '--offline', '--', 'tsc', '--noEmit'], mobile, 90000);
     run('npm', ['exec', '--offline', '--', 'expo', 'export', '--platform', 'ios', '--platform', 'android', '--max-workers', '2', '--output-dir', join(work, 'bundles')], mobile, 180000);
-    expect(existsSync(join(work, 'bundles/metadata.json'))).toBe(true);
+    const output = join(work, 'bundles');
+    const metadata = JSON.parse(readFileSync(join(output, 'metadata.json'), 'utf8'));
+    expect(metadata.bundler).toBe('metro');
+    const platforms = ['ios', 'android'].map(platform => {
+      const record = metadata.fileMetadata[platform];
+      expect(typeof record?.bundle).toBe('string'); expect(Array.isArray(record?.assets)).toBe(true);
+      const file = resolve(output, record.bundle), local = relative(output, file);
+      expect(local.startsWith('..')).toBe(false);
+      const bytes = readFileSync(file); expect(bytes.length).toBeGreaterThan(0);
+      for (const asset of record.assets) {
+        const assetFile = resolve(output, asset.path);
+        expect(relative(output, assetFile).startsWith('..')).toBe(false);
+        expect(lstatSync(assetFile).isFile()).toBe(true);
+      }
+      return { platform, bundle: local, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex'), assets: record.assets.length };
+    });
+    const inventory: { path: string; bytes: number; sha256: string }[] = [];
+    const visit = (directory: string) => {
+      for (const name of readdirSync(directory).sort()) {
+        const file = join(directory, name), stat = lstatSync(file);
+        if (stat.isDirectory()) visit(file);
+        else if (stat.isFile()) inventory.push({ path: relative(archive, file), bytes: stat.size, sha256: createHash('sha256').update(readFileSync(file)).digest('hex') });
+      }
+    };
+    // Record shipping input only, before considering installed dependencies as application bytes.
+    for (const directory of [join(archive, 'lib')]) visit(directory);
+    const results = { ...witness, platforms, sharedSourceInventory: inventory, isolatedCompilePassed: true, nativeBinaryOrDeviceAcceptance: false };
+    console.log('Isolated EAS bundle results', results.platforms);
+    if (process.env.RUNNER_TEMP) writeFileSync(join(process.env.RUNNER_TEMP, 'aihr-focused/eas-archive-results.json'), JSON.stringify(results));
   } finally { rmSync(work, { recursive: true, force: true }); }
 }, 900000);
