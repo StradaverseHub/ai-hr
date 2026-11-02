@@ -38,16 +38,18 @@ type Hired = { employmentId: string; personId: string };
  * Postgres message on the cause). Asserting on it is what keeps a refusal test from passing on an unrelated
  * error — a NOT NULL violation would satisfy a bare `rejects.toThrow()`.
  */
-async function refusal(p: Promise<unknown>): Promise<string> {
+async function refusal(p: Promise<unknown>,expectedSqlState?:string): Promise<string> {
   try {
     await p;
   } catch (e) {
     const parts: string[] = [];
-    let cur: unknown = e;
+    let cur: unknown = e,sqlState:string|undefined;
     while (cur instanceof Error) {
       parts.push(cur.message);
+      const code=(cur as Error&{code?:unknown}).code;if(typeof code==='string')sqlState=code;
       cur = (cur as { cause?: unknown }).cause;
     }
+    if(expectedSqlState)expect(sqlState).toBe(expectedSqlState);
     return parts.join(' | ');
   }
   throw new Error('expected the operation to be refused, but it succeeded');
@@ -144,7 +146,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
       const [actual]=await withTenant(actor,tx=>tx.execute<{self:boolean;assigned:boolean}>(sql`select app.onehr_review_task_view(${reviewId}::uuid,'self') as self,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as assigned`));expect(actual).toEqual(floor);
       await expect(withTenant(actor,tx=>tx.execute(sql`select app.financial_onehr_manager_for(${b.tenantId}::uuid,${userId}::uuid,${reviewId}::uuid)`))).rejects.toThrow();
       const [task]=await withTenant(actor,tx=>tx.execute<{header:{name:string;ownEmploymentIds:string[]}|null;self:boolean;master:boolean}>(sql`select app.onehr_review_header(${reviewId}::uuid) as header,app.onehr_self_employment(${subject.employmentId}::uuid) as self,exists(select 1 from employment where id=${subject.employmentId}::uuid) as master`));
-      expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(false);
+      expect(task.header).not.toBeNull();expect(task.header!.name).toBe('Partner subject');expect(task.self).toBe(self);expect(task.master).toBe(self);
       const view=await perf.getOnehrReview(actor,reviewId);expect(view).not.toBeNull();expect(view!.self).toBe(self);
       if(self){const personal=await perf.getAssessmentPersonalRecord(actor,reviewId);expect(personal.currentId).toBe(reviewId);expect(personal.current).not.toBeNull();}
     }
@@ -284,8 +286,8 @@ describe('OneHR performance partner (ADR-0142)', () => {
   it('cannot turn a generic draft cycle into a OneHR cycle', async () => {
     expect(await refusal(perf.configureOnehrCycle(partner, genericDraftId, null, defaultPolicy(framework)))).toMatch(/Cycle not found/);
     expect(
-      await refusal(withTenant(partner, (tx) => tx.insert(schema.onehrCycle).values({ cycleId: genericDraftId, tenantId: b.tenantId, policy: defaultPolicy(framework) }))),
-    ).toMatch(/row-level security/);
+      await refusal(withTenant(partner, (tx) => tx.insert(schema.onehrCycle).values({ cycleId: genericDraftId, tenantId: b.tenantId, policy: defaultPolicy(framework) })), '42501'),
+    ).toMatch(/OneHR setup action unavailable/);
     expect(await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId, genericDraftId))).toEqual([]);
   });
 
@@ -295,7 +297,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     // A generic cycle is not even lockable for this role.
     expect(await withTenant(partner, (tx) => tx.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, genericCycleId)).for('update'))).toEqual([]);
     expect(
-      await refusal(withTenant(partner, (tx) => tx.update(schema.reviewCycle).set({ name: 'Renamed by partner' }).where(eq(schema.reviewCycle.id, onehrCycleId)))),
+      await refusal(withTenant(partner, (tx) => tx.update(schema.reviewCycle).set({ name: 'Renamed by partner' }).where(eq(schema.reviewCycle.id, onehrCycleId))), '42501'),
     ).toMatch(/a performance partner administers OneHR assessments but cannot change the review cycle/);
     const [cycle] = await owner.db.select().from(schema.reviewCycle).where(eq(schema.reviewCycle.id, onehrCycleId));
     expect(cycle.name).toBe('Partner OneHR cycle');
@@ -558,8 +560,10 @@ describe('OneHR performance partner (ADR-0142)', () => {
     // An HR administrator who also holds the partner grant: the projection is non-empty, and the readable
     // row still wins once (no duplicate from the projection arm).
     await owner.db.insert(schema.roleAssignment).values({ tenantId: b.tenantId, appUserId: a.userId!, companyId: b.companyId, role: 'performance_partner' });
-    expect((await rowsOf(a, sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
-    await same(a);
+    expect(await rowsOf(a,sql`select * from app.onehr_employment_facts()`)).toEqual([]);
+    const both={...a,roles:['hr_admin','performance_partner'],grants:[{role:'hr_admin',companyId:null},{role:'performance_partner',companyId:b.companyId}]};
+    expect((await rowsOf(both,sql`select * from app.onehr_employment_facts()`)).length).toBeGreaterThan(1);
+    await same(both);
   });
 
   it('overrides participation in its company cycle, never for another company (VF-07, participation policy)', async () => {

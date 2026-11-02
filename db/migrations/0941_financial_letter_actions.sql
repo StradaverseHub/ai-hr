@@ -1927,7 +1927,7 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_performance_cycle_guard() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER financial_performance_cycle_guard BEFORE INSERT OR UPDATE OR DELETE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_performance_cycle_guard();
+CREATE TRIGGER z_financial_performance_cycle_guard BEFORE INSERT OR UPDATE OR DELETE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_performance_cycle_guard();
 
 --> statement-breakpoint
 -- OneHR setup has its own native course. Performance Partner must not acquire the
@@ -2180,3 +2180,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_header(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_header(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Native course classification is independent of canonical permission. A denied
+-- administrator cannot fall back to a participant projection.
+CREATE FUNCTION app.performance_cycle_native_admin(p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.cycles.view',p_company,true);
+$$;
+REVOKE ALL ON FUNCTION app.performance_cycle_native_admin(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.performance_cycle_native_admin(uuid) TO ai_hr_app;
