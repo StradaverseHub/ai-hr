@@ -1,3 +1,4 @@
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 import {afterEach,describe,it,expect,vi} from 'vitest';
 import {cleanup,render,screen,fireEvent} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
@@ -8,11 +9,12 @@ import {PasswordPolicyForm} from '../app/admin/security-center/password-policy/p
 afterEach(cleanup);
 function show(){render(<NextIntlClientProvider locale="en" messages={en}><PasswordPolicyForm policy={DEFAULT_PASSWORD_POLICY} revision={0}/></NextIntlClientProvider>);}
 describe('complete password policy form',()=>{
- it('starts with the requested new draft and requires a deliberate save',()=>{
+ it('starts with the requested new draft and requires a deliberate save',async()=>{
   show();expect((screen.getByLabelText(en.passwordPolicy.full.minLength) as HTMLInputElement).value).toBe('8');
   expect((screen.getByLabelText(en.passwordPolicy.full.maxLength) as HTMLInputElement).value).toBe('32');
   expect((screen.getByLabelText(en.passwordPolicy.full.forceFirstChange) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByRole('button',{name:en.passwordPolicy.save})).toBeTruthy();
+  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en','security-password-policy');
  });
  it('only permits automatic unlock after account lockout and retains optional numeric values',()=>{
   show();const auto=screen.getByLabelText(en.passwordPolicy.full.autoUnlock) as HTMLInputElement;
