@@ -2680,7 +2680,7 @@ BEGIN
     IF jsonb_array_length(provenance)>100 THEN RAISE EXCEPTION 'This payroll input has too many historical reward sources.' USING ERRCODE='42501';END IF;
    END IF;
   END IF;
-  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',to_jsonb(grade),'promotionGrade',to_jsonb(target_grade),'payrollInputBefore',to_jsonb(pay_input),'newBasicCents',item->'newBasicCents','newBasicSalary',app.reward_calc_fixed_money((item->>'newBasicCents')::double precision/100::double precision),'awardCents',amount,'newBonusAmount',CASE WHEN(amount<>0 OR is_senior)AND p_batch IS NOT NULL THEN app.reward_calc_fixed_money(greatest(0::double precision,coalesce(pay_input.bonus_amount,0)::double precision+amount::double precision/100::double precision))ELSE NULL END,'rewardProvenance',provenance));
+  effects:=effects||jsonb_build_array(jsonb_build_object('entryId',item->>'id','employmentBefore',to_jsonb(emp),'compensationBefore',to_jsonb(salary),'seniorGradeBefore',CASE WHEN grade.id IS NULL THEN NULL ELSE to_jsonb(grade)END,'promotionGrade',CASE WHEN target_grade.id IS NULL THEN NULL ELSE to_jsonb(target_grade)END,'payrollInputBefore',CASE WHEN pay_input.id IS NULL THEN NULL ELSE to_jsonb(pay_input)END,'newBasicCents',item->'newBasicCents','newBasicSalary',app.reward_calc_fixed_money((item->>'newBasicCents')::double precision/100::double precision),'awardCents',amount,'newBonusAmount',CASE WHEN(amount<>0 OR is_senior)AND p_batch IS NOT NULL THEN app.reward_calc_fixed_money(greatest(0::double precision,coalesce(pay_input.bonus_amount,0)::double precision+amount::double precision/100::double precision))ELSE NULL END,'rewardProvenance',provenance));
  END LOOP;
  RETURN admission||jsonb_build_object('sourcePlan',effects,'transactionId',pg_current_xact_id()::text);
 END $$;
@@ -2814,7 +2814,7 @@ BEGIN
  SELECT b.* INTO batch FROM public.payroll_batch b WHERE b.id=(proof.admission->>'batchId')::uuid AND b.tenant_id=proof.tenant_id FOR UPDATE;
  IF batch.id IS NULL OR batch.status<>'draft'OR NOT app.function_action_allowed('payroll.process','edit',batch.company_id)OR NOT app.access_financial_action_employment('payroll',target_employment,'edit')THEN RAISE EXCEPTION 'Reward payroll source or permission unavailable' USING ERRCODE='42501';END IF;
  SELECT i.* INTO before_input FROM public.payroll_input i WHERE i.batch_id=batch.id AND i.employment_id=target_employment AND i.tenant_id=proof.tenant_id FOR UPDATE;
- IF to_jsonb(before_input)IS DISTINCT FROM nullif(plan->'payrollInputBefore','null'::jsonb)THEN RAISE EXCEPTION 'Payroll input changed after reward preparation' USING ERRCODE='42501';END IF;
+ IF(CASE WHEN before_input.id IS NULL THEN NULL ELSE to_jsonb(before_input)END)IS DISTINCT FROM nullif(plan->'payrollInputBefore','null'::jsonb)THEN RAISE EXCEPTION 'Payroll input changed after reward preparation' USING ERRCODE='42501';END IF;
  IF before_input.id IS NULL THEN
   INSERT INTO public.payroll_input(tenant_id,batch_id,employment_id,overtime_amount,bonus_amount,tp1_deduction,zakat,ot_breakdown,ot_source,tp1_source)
   VALUES(proof.tenant_id,batch.id,target_employment,0,(plan->>'newBonusAmount')::numeric,0,0,NULL,NULL,NULL)RETURNING * INTO after_input;
@@ -2828,7 +2828,7 @@ BEGIN
  VALUES(proof.tenant_id,'payroll-batch',batch.id,'payroll-batch.input-set','user',proof.user_id,jsonb_build_object('employmentId',target_employment,'payrollInputId',after_input.id,'fieldsChanged',jsonb_build_array('overtimeAmount','bonusAmount','tp1Deduction','zakat')))RETURNING id INTO audit_id;
  -- Same second write as the native Senior history path, after the ordinary input event.
  IF plan->'rewardProvenance'<>'null'::jsonb THEN UPDATE public.payroll_input i SET reward_provenance=plan->'rewardProvenance'WHERE i.id=after_input.id AND i.tenant_id=proof.tenant_id RETURNING i.* INTO after_input;END IF;
- UPDATE app.reward_post_native_context c SET effects=c.effects||jsonb_build_object('input:'||p_entry::text,jsonb_build_object('inputId',after_input.id,'before',to_jsonb(before_input),'eventAfter',event_after,'after',to_jsonb(after_input),'auditId',audit_id,'employmentId',target_employment))WHERE c.id=proof.id;
+ UPDATE app.reward_post_native_context c SET effects=c.effects||jsonb_build_object('input:'||p_entry::text,jsonb_build_object('inputId',after_input.id,'before',CASE WHEN before_input.id IS NULL THEN NULL ELSE to_jsonb(before_input)END,'eventAfter',event_after,'after',to_jsonb(after_input),'auditId',audit_id,'employmentId',target_employment))WHERE c.id=proof.id;
  RETURN after_input.id;
 END $$;
 REVOKE ALL ON FUNCTION app.reward_post_grade(uuid,uuid),app.reward_post_input(uuid,uuid)FROM PUBLIC,ai_hr_app;
