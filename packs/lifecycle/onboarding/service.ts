@@ -370,12 +370,13 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
-    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'||command.type==='approve'||command.type==='assignApproval'){
+    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'||command.type==='approve'||command.type==='assignApproval'||command.type==='addItem'||command.type==='removeItem'||command.type==='keepProviding'){
         const taskCommand=command;
         return withTenant(ctx,async tx=>{
-            let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean};
+            let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean;function_key?:string;native_branch?:string};
             try{
-                if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                if(taskCommand.type==='addItem'||taskCommand.type==='removeItem'||taskCommand.type==='keepProviding'){const{type,...payload}=taskCommand;[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string;function_key:string;native_branch:string}>(sql`select * from app.onboarding_exception_update(${id}::uuid,${revision},${type},${JSON.stringify(payload)}::jsonb)`);}
+                else if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
                 else if(taskCommand.type==='assignApproval')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_assign(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.stepId},${taskCommand.user})`);
                 else if(taskCommand.type==='approve')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_decide(${id}::uuid,${revision},${JSON.stringify(taskCommand.itemIds)}::jsonb,${taskCommand.decision})`);
                 else if(taskCommand.type==='fulfil')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_fulfil_item(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.status})`);
@@ -386,7 +387,7 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             }
             if(!result)M.fail('This task is unavailable.','forbidden');
             if(result.did_change===false)return{revision:result.revision};
-            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:id,eventType:'onboarding.'+taskCommand.type,actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:id,companyId:result.company_id}});
+            await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'onboarding-case',aggregateId:id,eventType:'onboarding.'+taskCommand.type,actor:actorOf(ctx),subjectEmploymentId:result.employment_id,payload:{caseId:id,companyId:result.company_id,...(result.function_key&&result.native_branch?{functionKey:result.function_key,nativeBranch:result.native_branch}:{})}});
             // A real assigned task needs no general case/Personnel read. Preserve the ordinary visible
             // HR follow-up only where its independent administrative row/action course still applies.
             const [followup]=await tx.execute<{allowed:boolean}>(sql`select ${result.employment_id}::uuid is not null and app.can_admin_employment(${result.employment_id}::uuid) and app.lifecycle_reward_notice_action('lifecycle','edit',${result.company_id}::uuid) as allowed`);
@@ -484,32 +485,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
             case 'assignTask':
                 M.manualTask(config, c, command.taskId, command.user, actor, env, command.roundRobin);
                 break;
-            case 'removeItem': {
-                const i = r?.items.find(i => i.id === command.itemId);
-                if (!i)
-                    M.fail('Item not found.');
-                M.removeItem(config, c, i, actor, env);
-                break;
-            }
-            case 'addItem': {
-                if (!r || !config.exceptions.groups.some(g => M.inGroup(config, g, actor.id)))
-                    M.fail('Your group cannot add items.', 'forbidden');
-                const cat = config.catalogue.find(x => x.id === command.catalogueId);
-                if (!cat)
-                    M.fail('Item not found.');
-                if (command.confirmedBy && !env.users.includes(command.confirmedBy))
-                    M.fail('Choose a current confirming user.');
-                M.addItem(config, c, r, cat, 'exception', false, command.reason, command.approval, command.confirmedBy, actor, env);
-                break;
-            }
-            case 'keepProviding': {
-                const i = r?.items.find(i => i.id === command.itemId);
-                if (!i || !M.inGroup(config, i.team, actor.id))
-                    M.fail('Only the fulfilling team can keep providing.', 'forbidden');
-                i.retiredFlag = false;
-                M.log(c, actor, env, 'item.kept', i.name);
-                break;
-            }
         }
         if (command.type === 'submit' || command.type === 'saveSubmit')
             await assignRoleTasksTx(tx, c);
@@ -935,7 +910,7 @@ export type OnboardingTask = {
     id: string;
     caseId: string;
     revision: number;
-    kind: 'checklist' | 'approval' | 'manualApproval' | 'team' | 'handover' | 'mention' | 'hrNote' | 'case' | 'owner' | 'acknowledgement';
+    kind: 'checklist' | 'approval' | 'manualApproval' | 'team' | 'handover' | 'mention' | 'hrNote' | 'case' | 'owner' | 'acknowledgement' | 'exceptionAdd' | 'exceptionRemove' | 'keepProviding';
     title: string;
     joiner: string;
     businessGroup: string;
@@ -992,7 +967,7 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
         // general data profile. It returns no private case, note, document or sibling-task payload.
         const own=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_checklist_task_rows()`);
         out.push(...own.map(row=>row.task));
-        const delivery=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_delivery_task_rows()`);
+        const delivery=await tx.execute<{task:OnboardingTask}>(sql`select task from app.onboarding_delivery_task_rows() union all select task from app.onboarding_exception_task_rows()`);
         out.push(...delivery.map(row=>row.task));
         return out.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
     });
@@ -1010,7 +985,7 @@ export async function onboardingAssignedTaskMetadata(ctx:SessionContext):Promise
             for(const row of rows)updated.set(row.id,row.updatedAt);
         }
         const actual=await tx.execute<AssignedChecklistRow>(sql`select * from app.onboarding_assigned_task_rows()`);
-        const delivery=await tx.execute<{task:OnboardingTask;updated_at:Date|string}>(sql`select * from app.onboarding_delivery_task_rows()`);
+        const delivery=await tx.execute<{task:OnboardingTask;updated_at:Date|string}>(sql`select * from app.onboarding_delivery_task_rows() union all select * from app.onboarding_exception_task_rows()`);
         for(const row of delivery)updated.set(row.task.caseId,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at));
         const actualTasks=new Map(actual.map(row=>[row.case_id+':'+row.task_id,row.updated_at instanceof Date?row.updated_at:new Date(row.updated_at)]));
         return assigned.flatMap(item=>{
@@ -1417,7 +1392,7 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
 export async function onboardingBoundedTask(ctx:SessionContext,taskId:string){
     if(typeof taskId!=='string'||taskId.length===0||taskId.length>500||/[\u0000-\u001f]/.test(taskId))M.fail('This work is not available.','forbidden');
     return withTenant(ctx,async tx=>{
-        const [row]=await tx.execute<{detail:{task:OnboardingTask;body:string;notes:M.Note[];requestNumber:string|null;items?:{id:string;name:string}[];candidates?:{id:string;name:string}[]}|null}>(sql`select app.onboarding_delivery_task_detail(${taskId})as detail`);
+        const [row]=await tx.execute<{detail:{task:OnboardingTask;body:string;notes:M.Note[];requestNumber:string|null;items?:{id:string;name:string}[];candidates?:{id:string;name:string}[];catalogue?:{id:string;name:string;mandatory:boolean;workflowName:string|null}[]}|null}>(sql`select app.onboarding_delivery_task_detail(${taskId})as detail`);
         if(!row?.detail)M.fail('This work is not available.','forbidden');return row.detail;
     });
 }

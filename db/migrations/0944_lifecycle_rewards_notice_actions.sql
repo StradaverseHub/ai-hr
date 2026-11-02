@@ -195,10 +195,10 @@ REVOKE ALL ON app.lifecycle_native_effect_context,app.lifecycle_native_effect_re
 CREATE FUNCTION app.lifecycle_effect_function_identity(p_case uuid,p_purpose text)
 RETURNS TABLE(function_key text,operation text,company_id uuid)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE p_purpose WHEN 'assigned-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-handover'THEN'lifecycle.shared.handover'WHEN'assigned-onboarding-note'THEN'lifecycle.shared.requisitionNotes'WHEN'own-onboarding-ack'THEN'lifecycle.self.acknowledgement'WHEN'assigned-onboarding-conversation'THEN'lifecycle.shared.conversations'WHEN'assigned-onboarding-fulfil'THEN'lifecycle.shared.fulfilment'WHEN'assigned-onboarding-approval'THEN'lifecycle.shared.approvals'WHEN'assigned-onboarding-approval-assignment'THEN'lifecycle.shared.approvalAssignments'END,
+ SELECT CASE p_purpose WHEN 'assigned-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-task'THEN'lifecycle.shared.tasks'WHEN'assigned-onboarding-handover'THEN'lifecycle.shared.handover'WHEN'assigned-onboarding-note'THEN'lifecycle.shared.requisitionNotes'WHEN'own-onboarding-ack'THEN'lifecycle.self.acknowledgement'WHEN'assigned-onboarding-conversation'THEN'lifecycle.shared.conversations'WHEN'assigned-onboarding-fulfil'THEN'lifecycle.shared.fulfilment'WHEN'assigned-onboarding-approval'THEN'lifecycle.shared.approvals'WHEN'assigned-onboarding-approval-assignment'THEN'lifecycle.shared.approvalAssignments'WHEN'assigned-onboarding-exception-add'THEN'lifecycle.shared.exceptionAdditions'WHEN'assigned-onboarding-exception-remove'THEN'lifecycle.shared.exceptionRemovals'WHEN'assigned-onboarding-keep-providing'THEN'lifecycle.shared.retainedProvision'WHEN'administrative-onboarding-exception-remove'THEN'lifecycle.hr.exceptionRemovals'END,
  CASE WHEN p_purpose='assigned-onboarding-approval'THEN'approve'ELSE'execute'END,source.company_id FROM(
  SELECT c.company_id FROM public.lc_v9_case c WHERE p_purpose='assigned-task'AND c.id=p_case AND c.tenant_id=app.current_tenant_id()
- UNION ALL SELECT c.company_id FROM public.lc_onboarding_case c WHERE p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment')AND c.id=p_case AND c.tenant_id=app.current_tenant_id())source;
+ UNION ALL SELECT c.company_id FROM public.lc_onboarding_case c WHERE p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment','assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')AND c.id=p_case AND c.tenant_id=app.current_tenant_id())source;
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_effect_function_identity(uuid,text)FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -207,8 +207,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE result uuid;identity record;stamp text;
 BEGIN
  IF NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL OR p_case IS NULL
-  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment')
-  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve','onboarding.assignApproval')
+  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment','assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')
+  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve','onboarding.assignApproval','onboarding.addItem','onboarding.removeItem','onboarding.keepProviding')
   OR EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.active)
  THEN RAISE EXCEPTION 'Invalid native Lifecycle effect context' USING ERRCODE='42501';END IF;
  SELECT * INTO identity FROM app.lifecycle_effect_function_identity(p_case,p_purpose);
@@ -330,7 +330,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.completed AND NOT c.active
  AND app.lifecycle_native_effect_admission_valid(c.id)
  AND r.table_name=p_table AND r.before_hash=encode(sha256(convert_to(coalesce(p_before,'{}'::jsonb)::text,'UTF8')),'hex') AND r.after_hash=encode(sha256(convert_to(coalesce(p_after,'{}'::jsonb)::text,'UTF8')),'hex')
- AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
+ AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND(c.purpose NOT IN('assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')OR e.payload->>'functionKey'=c.function_key AND e.payload->>'nativeBranch'=c.purpose) AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_native_effect_approved(text,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -338,7 +338,7 @@ CREATE FUNCTION app.lifecycle_native_effect_cleanup()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.id=NEW.id)THEN RETURN NULL;END IF;
- IF NOT app.lifecycle_native_effect_admission_valid(NEW.id) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
+ IF NOT app.lifecycle_native_effect_admission_valid(NEW.id) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND(NEW.purpose NOT IN('assigned-onboarding-exception-add','assigned-onboarding-exception-remove','assigned-onboarding-keep-providing','administrative-onboarding-exception-remove')OR e.payload->>'functionKey'=NEW.function_key AND e.payload->>'nativeBranch'=NEW.purpose) AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
  THEN RAISE EXCEPTION 'Native Lifecycle completion requires its actual audit event' USING ERRCODE='42501';END IF;
  DELETE FROM app.lifecycle_native_effect_context WHERE id=NEW.id;
  RETURN NULL;
@@ -985,14 +985,21 @@ GRANT EXECUTE ON FUNCTION app.onboarding_checklist_task_rows()TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.onboarding_delivery_task_detail(p_task text)RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE selected jsonb;c public.lc_onboarding_case;request jsonb;body text:='';conversation jsonb:='[]'::jsonb;candidate_group text;candidates jsonb:='[]'::jsonb;
+DECLARE selected jsonb;c public.lc_onboarding_case;request jsonb;body text:='';conversation jsonb:='[]'::jsonb;candidate_group text;candidates jsonb:='[]'::jsonb;catalogue_options jsonb:='[]'::jsonb;workflow_item jsonb;
 BEGIN
- SELECT r.task INTO selected FROM(SELECT task FROM app.onboarding_delivery_task_rows()UNION ALL SELECT task FROM app.onboarding_checklist_task_rows())r WHERE r.task->>'id'=p_task;
+ SELECT r.task INTO selected FROM(SELECT task FROM app.onboarding_delivery_task_rows()UNION ALL SELECT task FROM app.onboarding_checklist_task_rows()UNION ALL SELECT task FROM app.onboarding_exception_task_rows())r WHERE r.task->>'id'=p_task;
  IF selected IS NULL THEN RETURN NULL;END IF;
  SELECT * INTO c FROM public.lc_onboarding_case x WHERE x.id::text=selected->>'caseId'AND x.tenant_id=app.current_tenant_id();
  SELECT r INTO request FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY q(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
  selected:=selected||jsonb_build_object('canReply',selected->>'kind'IN('mention','checklist')AND app.function_action_allowed('lifecycle.shared.conversations','execute',c.company_id));
  IF selected->>'kind'='hrNote'THEN body:=coalesce(request->>'hrNote','');END IF;
+ IF selected->>'kind'='exceptionAdd'THEN
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',cat->>'id','name',cat->>'name','mandatory',cat->>'workflow'IS NOT NULL OR coalesce((cfg.data->'exceptions'->>'always')::boolean,false),'workflowName',(SELECT w->>'name'FROM jsonb_array_elements(cfg.data->'workflows')w WHERE w->>'id'=coalesce(cat->>'workflow',cfg.data->'exceptions'->>'workflow')))ORDER BY n),'[]')INTO catalogue_options
+  FROM public.lc_onboarding_config cfg,jsonb_array_elements(cfg.data->'catalogue')WITH ORDINALITY catalogue(cat,n)WHERE cfg.tenant_id=c.tenant_id AND(cat->>'active')::boolean AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(request->'items')i WHERE(i->>'removed')::boolean IS NOT TRUE AND i->>'catalogueId'=cat->>'id');
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',d.id,'name',d.name)ORDER BY d.name,d.id),'[]')INTO candidates FROM app.onboarding_directory()d;
+ ELSIF selected->>'kind'IN('exceptionRemove','keepProviding')THEN
+  SELECT i INTO workflow_item FROM jsonb_array_elements(request->'items')i WHERE selected->'itemIds'?(i->>'id');body:=coalesce(workflow_item->>'reason','');
+ END IF;
  IF selected->>'kind'IN('mention','checklist')THEN SELECT coalesce(jsonb_agg(n),'[]'::jsonb)INTO conversation FROM app.onboarding_conversation_rows(c.id,selected->>'context')n;END IF;
  IF selected->>'kind'='manualApproval'THEN
   SELECT step->>'group'INTO candidate_group FROM jsonb_array_elements(request->'items')i,jsonb_array_elements(i->'steps')step WHERE selected->'itemIds'?(i->>'id')AND step->>'id'=selected->>'stepId';
@@ -1001,7 +1008,7 @@ BEGIN
   JOIN public.app_user u ON u.id::text=members.user_id AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
   LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE cfg.tenant_id=c.tenant_id AND g->>'id'=candidate_group;
  END IF;
- RETURN jsonb_build_object('task',selected,'body',body,'notes',conversation,'requestNumber',request->>'number','candidates',candidates,'items',CASE WHEN selected->>'kind'IN('approval','manualApproval')THEN(SELECT coalesce(jsonb_agg(jsonb_build_object('id',i->>'id','name',i->>'name')),'[]'::jsonb)FROM jsonb_array_elements(request->'items')i WHERE selected->'itemIds'?(i->>'id'))ELSE'[]'::jsonb END);
+ RETURN jsonb_build_object('task',selected,'body',body,'notes',conversation,'requestNumber',request->>'number','candidates',candidates,'catalogue',catalogue_options,'items',CASE WHEN selected->>'kind'IN('approval','manualApproval','exceptionRemove','keepProviding')THEN(SELECT coalesce(jsonb_agg(jsonb_build_object('id',i->>'id','name',i->>'name')),'[]'::jsonb)FROM jsonb_array_elements(request->'items')i WHERE selected->'itemIds'?(i->>'id'))ELSE'[]'::jsonb END);
 END $$;
 REVOKE ALL ON FUNCTION app.onboarding_delivery_task_detail(text)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_delivery_task_detail(text)TO ai_hr_app;
@@ -1357,3 +1364,220 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.onboarding_sync_discarded_draft(uuid)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_sync_discarded_draft(uuid)TO ai_hr_app;
+
+--> statement-breakpoint
+-- Native exception commands have independent same-purpose courses. An administrative from-case
+-- removal still needs its actual HR course and actual subject data scope; group/own courses do not
+-- acquire any general case or Personnel permission.
+CREATE FUNCTION app.onboarding_exception_hr_allowed(t uuid,u uuid,co uuid,claimed boolean)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN claimed THEN t=app.current_tenant_id()AND u=app.current_user_id()AND app.is_admin_for(co)
+ ELSE app.grants_admin_for((SELECT jsonb_agg(jsonb_build_object('role',r.role::text,'companyId',r.company_id))FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u),co)END
+ AND EXISTS(SELECT 1 FROM public.lc_onboarding_config cfg WHERE cfg.tenant_id=t AND(
+ cfg.data->'access'->'onboarding'?u::text
+ OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'groups')g WHERE cfg.data->'access'->'joinerViewGroups'?(g->>'id')AND g->'members'?u::text)
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'groups')g WHERE cfg.data->'access'->'joinerViewGroups'?(g->>'id')AND g->'members'?u::text AND(cfg.data->'access'->'joinerSections'->(g->>'id')->>'preset'='full'OR cfg.data->'access'->'joinerSections'->(g->>'id')->>'preset'='custom'AND cfg.data->'access'->'joinerSections'->(g->>'id')->'s'->>'hr'='view'))));
+$$;
+CREATE FUNCTION app.onboarding_exception_subject_allowed(t uuid,u uuid,p_case uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.id=p_case AND c.tenant_id=t AND(
+ NOT EXISTS(SELECT 1 FROM public.user_data_permission_assignment a WHERE a.tenant_id=t AND a.user_id=u)
+ OR c.employment_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=c.employment_id AND e.tenant_id=t AND e.voided_at IS NULL AND(app.data_permission_matches_for(u,t,e.id)OR EXISTS(SELECT 1 FROM public.app_user actor WHERE actor.id=u AND actor.tenant_id=t AND actor.person_id=e.person_id)))
+ OR c.employment_id IS NULL AND EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=c.source_draft_id AND d.tenant_id=t AND d.company_id=c.company_id AND app.data_permission_draft_matches(t,u,to_jsonb(d)))));
+$$;
+CREATE FUNCTION app.onboarding_exception_native_allowed(t uuid,u uuid,p_case uuid,p_command text,p_item text,claimed boolean)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.lc_onboarding_case c JOIN public.lc_onboarding_config cfg ON cfg.tenant_id=c.tenant_id
+ JOIN public.app_user actor ON actor.tenant_id=c.tenant_id AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
+ CROSS JOIN LATERAL(SELECT r FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY requests(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1)request
+ WHERE c.tenant_id=t AND(p_case IS NULL OR c.id=p_case)AND CASE p_command
+ WHEN'addItem'THEN request.r->>'handedAt'IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'groups')g WHERE cfg.data->'exceptions'->'groups'?(g->>'id')AND g->'members'?u::text)
+ WHEN'removeItem'THEN request.r->>'handedAt'IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(request.r->'items')i WHERE(p_item IS NULL OR i->>'id'=p_item)AND i->>'source'<>'matched'AND(i->>'addedBy'=u::text
+ OR EXISTS(SELECT 1 FROM jsonb_array_elements(cfg.data->'groups')g WHERE cfg.data->'exceptions'->'groups'?(g->>'id')AND g->'members'?u::text)))
+ WHEN'removeItemHR'THEN request.r->>'handedAt'IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(request.r->'items')i WHERE(p_item IS NULL OR i->>'id'=p_item)AND i->>'source'<>'matched'AND coalesce((i->>'fromCase')::boolean,false)AND app.onboarding_exception_hr_allowed(t,u,c.company_id,claimed)AND app.onboarding_exception_subject_allowed(t,u,c.id))
+ WHEN'keepProviding'THEN EXISTS(SELECT 1 FROM jsonb_array_elements(request.r->'items')i,jsonb_array_elements(cfg.data->'groups')g WHERE(p_item IS NULL OR i->>'id'=p_item)AND g->>'id'=i->>'team'AND g->'members'?u::text)
+ ELSE false END);
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_exception_hr_allowed(uuid,uuid,uuid,boolean),app.onboarding_exception_subject_allowed(uuid,uuid,uuid),app.onboarding_exception_native_allowed(uuid,uuid,uuid,text,text,boolean)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_exception_function_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN('lifecycle.shared.exceptionAdditions.view','lifecycle.shared.exceptionAdditions.execute','lifecycle.shared.exceptionRemovals.view','lifecycle.shared.exceptionRemovals.execute','lifecycle.shared.retainedProvision.view','lifecycle.shared.retainedProvision.execute','lifecycle.hr.exceptionRemovals.view','lifecycle.hr.exceptionRemovals.execute')AND EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.tenant_id=t AND c.company_id=co AND app.onboarding_exception_native_allowed(t,u,c.id,CASE WHEN cap LIKE'lifecycle.hr.exceptionRemovals.%'THEN'removeItemHR'WHEN split_part(cap,'.',3)='exceptionAdditions'THEN'addItem'WHEN split_part(cap,'.',3)='exceptionRemovals'THEN'removeItem'WHEN split_part(cap,'.',3)='retainedProvision'THEN'keepProviding'END,NULL,false));
+$$;
+CREATE FUNCTION app.lifecycle_exception_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id()AND u=app.current_user_id()AND app.lifecycle_exception_function_legacy_allowed(t,u,cap,co)AND EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.tenant_id=t AND c.company_id=co AND app.onboarding_exception_native_allowed(t,u,c.id,CASE WHEN cap LIKE'lifecycle.hr.exceptionRemovals.%'THEN'removeItemHR'WHEN split_part(cap,'.',3)='exceptionAdditions'THEN'addItem'WHEN split_part(cap,'.',3)='exceptionRemovals'THEN'removeItem'WHEN split_part(cap,'.',3)='retainedProvision'THEN'keepProviding'END,NULL,true));
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_exception_function_legacy_allowed(uuid,uuid,text,uuid),app.lifecycle_exception_function_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
+DO $$DECLARE key text;operation text;label text;BEGIN
+ FOREACH key IN ARRAY ARRAY['lifecycle.shared.exceptionAdditions','lifecycle.shared.exceptionRemovals','lifecycle.shared.retainedProvision','lifecycle.hr.exceptionRemovals']LOOP
+  label:=CASE key WHEN'lifecycle.shared.exceptionAdditions'THEN'onboardingV31.copy.cd1a0b329a72b'WHEN'lifecycle.shared.exceptionRemovals'THEN'onboardingV31.copy.c5a89edf2867d'WHEN'lifecycle.hr.exceptionRemovals'THEN'onboardingV31.copy.c5a89edf2867d'ELSE'onboardingV31.copy.c42ab73c14173'END;
+  FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
+   PERFORM app.register_function_action(key,operation,'company',CASE WHEN key='lifecycle.hr.exceptionRemovals'THEN CASE WHEN operation='view'THEN'lifecycle.view'ELSE'lifecycle.edit'END END,'app.lifecycle_exception_function_legacy_allowed',jsonb_build_object('moduleKey','lifecycle','labelKey',label,'kind','native_acl','course',CASE WHEN key='lifecycle.hr.exceptionRemovals'THEN'administrative'ELSE'assigned'END,'href','/tasks','employeeBearing',key='lifecycle.hr.exceptionRemovals'));
+  END LOOP;
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_exception_routing(p_config jsonb,p_definition jsonb,p_case jsonb)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE routing jsonb;chosen jsonb;group_row jsonb;fallback jsonb;fallback_group jsonb;facts jsonb:=coalesce(p_case->'local','{}')||coalesce(p_case->'source','{}');today date:=(now()AT TIME ZONE'Asia/Kuala_Lumpur')::date;
+BEGIN
+ IF p_definition->>'type'='person'THEN RETURN '{"group":null,"viaDefault":null,"unavailable":false}';END IF;
+ IF p_definition->>'type'='group'THEN SELECT g INTO group_row FROM jsonb_array_elements(p_config->'groups')g WHERE g->>'id'=p_definition->>'target';RETURN jsonb_build_object('group',group_row->>'id','viaDefault',NULL,'unavailable',false);END IF;
+ SELECT r INTO routing FROM jsonb_array_elements(p_config->'routings')r WHERE r->>'id'=p_definition->>'target';
+ SELECT r INTO chosen FROM jsonb_array_elements(routing->'rows')WITH ORDINALITY routing_rows(r,n)
+ WHERE NOT EXISTS(SELECT 1 FROM jsonb_each(r->'rules')rule WHERE jsonb_array_length(rule.value)>0 AND NOT(rule.value?coalesce(facts->>rule.key,'')))
+ ORDER BY(SELECT count(*)FROM jsonb_each(r->'rules')rule WHERE jsonb_array_length(rule.value)>0)DESC,n LIMIT 1;
+ IF chosen IS NULL THEN RETURN '{"group":null,"viaDefault":null,"unavailable":true}';END IF;
+ SELECT g INTO group_row FROM jsonb_array_elements(p_config->'groups')g WHERE g->>'id'=chosen->>'group';
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(group_row->'members')m JOIN public.app_user u ON u.id::text=m AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)WHERE NOT EXISTS(SELECT 1 FROM app.onboarding_unavailable(ARRAY[today])a WHERE a.user_id=u.id))THEN RETURN jsonb_build_object('group',group_row->>'id','viaDefault',NULL,'unavailable',false);END IF;
+ SELECT r INTO fallback FROM jsonb_array_elements(routing->'rows')WITH ORDINALITY routing_rows(r,n)WHERE NOT EXISTS(SELECT 1 FROM jsonb_each(r->'rules')rule WHERE jsonb_array_length(rule.value)>0)ORDER BY n LIMIT 1;
+ SELECT g INTO fallback_group FROM jsonb_array_elements(p_config->'groups')g WHERE g->>'id'=fallback->>'group';
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(fallback_group->'members')m JOIN public.app_user u ON u.id::text=m AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)WHERE NOT EXISTS(SELECT 1 FROM app.onboarding_unavailable(ARRAY[today])a WHERE a.user_id=u.id))THEN RETURN jsonb_build_object('group',fallback_group->>'id','viaDefault',coalesce(group_row->>'name','Unavailable group'),'unavailable',false);END IF;
+ RETURN jsonb_build_object('group',group_row->>'id','viaDefault',NULL,'unavailable',true);
+END $$;
+CREATE FUNCTION app.onboarding_exception_choose_approver(p_config jsonb,p_group text,p_requester uuid,p_extra jsonb)RETURNS uuid
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH candidates AS(SELECT u.id,m.n,coalesce(l.pending_approvals,0)+coalesce((p_extra->>u.id::text)::bigint,0)pending,coalesce(l.lifetime_approvals,0)+coalesce((p_extra->>u.id::text)::bigint,0)lifetime
+ FROM jsonb_array_elements(p_config->'groups')g,jsonb_array_elements_text(g->'members')WITH ORDINALITY m(user_id,n)
+ JOIN public.app_user u ON u.id::text=m.user_id AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ LEFT JOIN app.onboarding_assignment_loads()l ON l.user_id=u.id WHERE g->>'id'=p_group AND NOT EXISTS(SELECT 1 FROM app.onboarding_unavailable(ARRAY[(now()AT TIME ZONE'Asia/Kuala_Lumpur')::date])a WHERE a.user_id=u.id))
+ SELECT c.id FROM candidates c WHERE c.id<>p_requester OR NOT EXISTS(SELECT 1 FROM candidates other WHERE other.id<>p_requester)ORDER BY c.pending,c.lifetime,c.n LIMIT 1;
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_exception_routing(jsonb,jsonb,jsonb),app.onboarding_exception_choose_approver(jsonb,text,uuid,jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Preserve storeTx's JSON.stringify(case).length budget for the native Case contract: its
+-- numeric fields are safe integers, while source/custom form values and timestamps are strings.
+-- Count compact JSON and UTF-16 units, including supplementary characters, without exposing it.
+CREATE FUNCTION app.onboarding_native_case_size(p_value jsonb)RETURNS bigint
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE total bigint:=2;entry record;first_item boolean:=true;encoded text;number_value numeric;
+BEGIN
+ CASE jsonb_typeof(p_value)
+ WHEN'object'THEN
+  FOR entry IN SELECT key,value FROM jsonb_each(p_value)LOOP
+   total:=total+CASE WHEN first_item THEN 0 ELSE 1 END+app.onboarding_native_case_size(to_jsonb(entry.key))+1+app.onboarding_native_case_size(entry.value);first_item:=false;IF total>10000000 THEN RETURN total;END IF;
+  END LOOP;RETURN total;
+ WHEN'array'THEN
+  FOR entry IN SELECT value FROM jsonb_array_elements(p_value)LOOP
+   total:=total+CASE WHEN first_item THEN 0 ELSE 1 END+app.onboarding_native_case_size(entry.value);first_item:=false;IF total>10000000 THEN RETURN total;END IF;
+  END LOOP;RETURN total;
+ WHEN'number'THEN
+  number_value:=(p_value#>>'{}')::numeric;
+  IF number_value<>trunc(number_value)OR abs(number_value)>9007199254740991 THEN RAISE EXCEPTION 'Unsupported native case number' USING ERRCODE='23514';END IF;
+  RETURN length(trunc(number_value)::text);
+ ELSE
+  encoded:=p_value::text;
+  RETURN char_length(encoded)+char_length(regexp_replace(encoded COLLATE "C",U&'[^\+010000-\+10FFFF]','','g'));
+ END CASE;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_native_case_size(jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_exception_update(p_case uuid,p_revision integer,p_command text,p_payload jsonb)
+RETURNS TABLE(revision integer,employment_id uuid,company_id uuid,function_key text,native_branch text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_onboarding_case;cfg jsonb;request jsonb;request_index bigint;target jsonb;item_index bigint;catalogue jsonb;v9_projection jsonb;effect uuid;workflow_id text;workflow jsonb;definition jsonb;resolved jsonb;chosen uuid;manual boolean;extra_loads jsonb:='{}';assigned jsonb;items jsonb;requests jsonb;history jsonb;entry jsonb;actor_name text;confirmed_name text;stamp text;purpose text;key text;native_command text;action text;next_data jsonb;
+BEGIN
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR p_revision IS NULL OR p_revision<1 OR p_command IS NULL OR p_command NOT IN('addItem','removeItem','keepProviding')OR p_payload IS NULL OR jsonb_typeof(p_payload)<>'object'THEN RAISE EXCEPTION 'Exception command unavailable' USING ERRCODE='42501';END IF;
+ IF p_command='addItem'THEN
+  IF NOT app.access_command_keys(p_payload,ARRAY['catalogueId','reason','approval','confirmedBy'])OR jsonb_typeof(p_payload->'catalogueId')IS DISTINCT FROM'string'OR length(p_payload->>'catalogueId')NOT BETWEEN 1 AND 100 OR jsonb_typeof(p_payload->'reason')IS DISTINCT FROM'string'OR length(p_payload->>'reason')>2000 OR length(btrim(p_payload->>'reason',U&'\0020\0009\000A\000B\000C\000D\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'))=0 OR jsonb_typeof(p_payload->'approval')IS DISTINCT FROM'boolean'OR NOT(p_payload?'confirmedBy')OR jsonb_typeof(p_payload->'confirmedBy')NOT IN('string','null')OR length(coalesce(p_payload->>'confirmedBy','x'))NOT BETWEEN 1 AND 100 THEN RAISE EXCEPTION 'Choose an item and a reason' USING ERRCODE='23514';END IF;
+ ELSE
+  IF NOT app.access_command_keys(p_payload,ARRAY['itemId'])OR jsonb_typeof(p_payload->'itemId')IS DISTINCT FROM'string'OR length(p_payload->>'itemId')NOT BETWEEN 1 AND 100 THEN RAISE EXCEPTION 'Choose an item' USING ERRCODE='23514';END IF;
+ END IF;
+ SELECT actual.* INTO c FROM public.lc_onboarding_case actual WHERE actual.id=p_case AND actual.tenant_id=app.current_tenant_id()FOR UPDATE;
+ native_command:=p_command;
+ -- Select the actual native branch before consulting its function cell. A denied shared course
+ -- never falls back to the HR cell merely because the same actor also has an HR grant.
+ IF p_command='removeItem'AND app.onboarding_exception_native_allowed(c.tenant_id,app.current_user_id(),c.id,'removeItem',p_payload->>'itemId',true)IS NOT TRUE THEN native_command:='removeItemHR';END IF;
+ IF c.id IS NULL OR app.onboarding_exception_native_allowed(c.tenant_id,app.current_user_id(),c.id,native_command,p_payload->>'itemId',true)IS NOT TRUE THEN RAISE EXCEPTION 'This exception command is not assigned to you' USING ERRCODE='42501';END IF;
+ IF c.revision<>p_revision THEN RAISE EXCEPTION 'This case changed. Reload it before trying again.'USING ERRCODE='40001';END IF;
+ key:=CASE native_command WHEN'addItem'THEN'lifecycle.shared.exceptionAdditions'WHEN'removeItem'THEN'lifecycle.shared.exceptionRemovals'WHEN'removeItemHR'THEN'lifecycle.hr.exceptionRemovals'ELSE'lifecycle.shared.retainedProvision'END;
+ IF app.function_action_allowed(key,'execute',c.company_id)IS NOT TRUE THEN RAISE EXCEPTION 'Exception function unavailable'USING ERRCODE='42501';END IF;
+ SELECT data INTO cfg FROM public.lc_onboarding_config WHERE tenant_id=c.tenant_id;
+ v9_projection:=app.onboarding_v9_checklists();IF v9_projection IS NOT NULL THEN cfg:=cfg||jsonb_build_object('v9ChecklistRevision',v9_projection->'revision');END IF;
+ SELECT coalesce(person.full_name,'User '||left(actor.id::text,8))INTO actor_name FROM public.app_user actor LEFT JOIN public.person person ON person.id=actor.person_id AND person.tenant_id=actor.tenant_id WHERE actor.id=app.current_user_id()AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+ SELECT r,n INTO request,request_index FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
+ stamp:=to_char(clock_timestamp()AT TIME ZONE'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');history:=coalesce(c.data->'history','[]');next_data:=c.data;
+ IF p_command='addItem'THEN
+  SELECT item INTO catalogue FROM jsonb_array_elements(cfg->'catalogue')item WHERE item->>'id'=p_payload->>'catalogueId';
+  IF catalogue IS NULL OR(catalogue->>'active')::boolean IS NOT TRUE THEN RAISE EXCEPTION 'This catalogue item is retired or unavailable.'USING ERRCODE='23514';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(request->'items')item WHERE(item->>'removed')::boolean IS NOT TRUE AND item->>'catalogueId'=catalogue->>'id')THEN RAISE EXCEPTION 'This item is already requested.'USING ERRCODE='23514';END IF;
+  IF p_payload->>'confirmedBy'IS NOT NULL THEN
+   SELECT CASE WHEN person.id IS NOT NULL AND app.data_permission_person_read(person.id)THEN coalesce(person.full_name,'User '||left(actor.id::text,8))ELSE'User '||left(actor.id::text,8)END INTO confirmed_name FROM public.app_user actor LEFT JOIN public.person person ON person.id=actor.person_id AND person.tenant_id=actor.tenant_id WHERE actor.id::text=p_payload->>'confirmedBy'AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+   IF NOT FOUND THEN RAISE EXCEPTION 'Choose a current confirming user.'USING ERRCODE='23514';END IF;
+  END IF;
+  workflow_id:=coalesce(catalogue->>'workflow',CASE WHEN(p_payload->>'approval')::boolean OR(cfg->'exceptions'->>'always')::boolean THEN cfg->'exceptions'->>'workflow'END);
+  SELECT value INTO workflow FROM jsonb_array_elements(cfg->'workflows')WHERE value->>'id'=workflow_id;
+  IF workflow_id IS NOT NULL AND workflow IS NULL THEN RAISE EXCEPTION 'The approval workflow is unavailable. Update settings before requesting this item.'USING ERRCODE='23514';END IF;
+  target:=jsonb_build_object('id',gen_random_uuid(),'catalogueId',catalogue->>'id','name',catalogue->>'name','type',catalogue->>'type','team',catalogue->>'team','card',catalogue->'card','source','exception','fromCase',false,'addedBy',app.current_user_id(),'addedByName',actor_name,'requesterName',actor_name,'confirmedByName',confirmed_name,'workflowName',workflow->>'name','requester',app.current_user_id(),'confirmedBy',p_payload->>'confirmedBy','reason',p_payload->>'reason','workflowId',workflow_id,'mode',coalesce(workflow->>'mode','seq'),'steps','[]'::jsonb,'approval','none','state','todo','stage',CASE WHEN(catalogue->>'card')::boolean THEN'facility'ELSE'tech'END,'claim',NULL,'removed',false,'retiredFlag',false,'revokeNeeded',false);
+  FOR definition IN SELECT value FROM jsonb_array_elements(coalesce(workflow->'steps','[]'))LOOP
+   resolved:=app.onboarding_exception_routing(cfg,definition,c.data);manual:=definition->>'type'<>'person'AND definition->>'method'='manual';chosen:=NULL;
+   IF definition->>'type'='person'THEN SELECT actor.id INTO chosen FROM public.app_user actor WHERE actor.id::text=definition->>'target'AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+   ELSIF NOT manual THEN
+    SELECT actor.id INTO chosen FROM jsonb_array_elements((target->'steps')||(SELECT coalesce(jsonb_agg(step ORDER BY item_n,step_n),'[]')FROM jsonb_array_elements(request->'items')WITH ORDINALITY all_items(item,item_n),jsonb_array_elements(item->'steps')WITH ORDINALITY all_steps(step,step_n)))WITH ORDINALITY all_shared(step,n)
+    JOIN public.app_user actor ON actor.id::text=step->>'user'AND actor.tenant_id=c.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
+    WHERE step->>'group'=resolved->>'group'AND step->>'status'NOT IN('withdrawn','unresolved')ORDER BY CASE WHEN step->>'status'='pending'THEN 0 ELSE 1 END,n LIMIT 1;
+    IF chosen IS NULL AND resolved->>'group'IS NOT NULL THEN chosen:=app.onboarding_exception_choose_approver(cfg,resolved->>'group',app.current_user_id(),extra_loads);END IF;
+   END IF;
+   entry:=definition||jsonb_build_object('group',resolved->'group','user',chosen,'status',CASE WHEN definition->>'type'='person'AND chosen IS NULL OR definition->>'type'<>'person'AND resolved->>'group'IS NULL THEN'unresolved'ELSE'pending'END,'manual',manual,'fallback',NOT manual AND resolved->>'group'IS NOT NULL AND chosen IS NULL,'viaDefault',resolved->'viaDefault','unavailable',resolved->'unavailable','by',NULL,'when',NULL,'assignments',CASE WHEN chosen IS NULL THEN'[]'::jsonb ELSE jsonb_build_array(jsonb_build_object('user',chosen,'at',stamp))END);
+   target:=jsonb_set(target,'{steps}',(target->'steps')||jsonb_build_array(entry));
+   IF chosen IS NOT NULL THEN extra_loads:=extra_loads||jsonb_build_object(chosen::text,coalesce((extra_loads->>chosen::text)::bigint,0)+1);END IF;
+  END LOOP;
+  IF cfg->>'v9ChecklistRevision'IS NOT NULL THEN target:=target||jsonb_build_object('team',coalesce(c.data->'equipmentOverrides'->(catalogue->>'id')->>'group',target->>'team'),'fulfilmentMethod',coalesce(c.data->'equipmentOverrides'->(catalogue->>'id')->>'method','rr'),'dueDay',coalesce((c.data->'equipmentOverrides'->(catalogue->>'id')->>'due')::integer,-1));END IF;
+  assigned:=app.onboarding_native_requester_auto_approve(target,stamp,actor_name);target:=assigned->'item';history:=history||(assigned->'history');
+  IF target->>'fulfilmentMethod'='rr'AND target->>'approval'NOT IN('pending','rejected','withdrawn')THEN assigned:=app.onboarding_native_equipment_assignment(cfg,c.data,target,'{}',stamp,actor_name);target:=assigned->'item';history:=history||(assigned->'history');END IF;
+  items:=(request->'items')||jsonb_build_array(target);action:='item.added';purpose:='assigned-onboarding-exception-add';
+ ELSE
+  SELECT item,n INTO target,item_index FROM jsonb_array_elements(request->'items')WITH ORDINALITY all_items(item,n)WHERE item->>'id'=p_payload->>'itemId'ORDER BY n LIMIT 1;
+  IF p_command='removeItem'THEN
+   target:=target||jsonb_build_object('removed',true,'revokeNeeded',target->>'state'IN('ready','printed','handed'),'claim',NULL,'steps',(SELECT coalesce(jsonb_agg(CASE WHEN step->>'status'IN('pending','unresolved')THEN step||'{"status":"withdrawn"}'::jsonb ELSE step END ORDER BY n),'[]')FROM jsonb_array_elements(target->'steps')WITH ORDINALITY all_steps(step,n)),'approval',CASE WHEN target->>'approval'='pending'THEN'withdrawn'ELSE target->>'approval'END);
+   IF(target->>'fromCase')::boolean THEN next_data:=next_data||jsonb_build_object('selected',(SELECT coalesce(jsonb_agg(item ORDER BY n),'[]')FROM jsonb_array_elements(c.data->'selected')WITH ORDINALITY selections(item,n)WHERE item#>>'{}'<>target->>'catalogueId'),'extras',(SELECT coalesce(jsonb_agg(item ORDER BY n),'[]')FROM jsonb_array_elements(c.data->'extras')WITH ORDINALITY extras(item,n)WHERE item->>'catalogueId'<>target->>'catalogueId'));END IF;
+   action:=CASE WHEN(target->>'revokeNeeded')::boolean THEN'item.removed_revoke_needed'ELSE'item.removed'END;purpose:=CASE WHEN native_command='removeItemHR'THEN'administrative-onboarding-exception-remove'ELSE'assigned-onboarding-exception-remove'END;
+  ELSE target:=target||'{"retiredFlag":false}'::jsonb;action:='item.kept';purpose:='assigned-onboarding-keep-providing';END IF;
+  SELECT jsonb_agg(CASE WHEN n=item_index THEN target ELSE item END ORDER BY n)INTO items FROM jsonb_array_elements(request->'items')WITH ORDINALITY all_items(item,n);
+ END IF;
+ entry:=jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action',action,'detail',target->>'name');history:=history||jsonb_build_array(entry);
+ request:=jsonb_set(request,'{items}',items);SELECT jsonb_agg(CASE WHEN n=request_index THEN request ELSE r END ORDER BY n)INTO requests FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n);
+ next_data:=next_data||jsonb_build_object('requisitions',requests,'history',history);
+ IF app.onboarding_native_case_size(next_data)>10000000 THEN RAISE EXCEPTION 'This update is too large.'USING ERRCODE='23514';END IF;
+ effect:=app.lifecycle_native_effect_begin(purpose,c.id,'onboarding.'||p_command);
+ INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
+ UPDATE public.lc_onboarding_case actual SET data=next_data,revision=c.revision+1,updated_at=clock_timestamp()WHERE actual.id=c.id AND actual.tenant_id=c.tenant_id;
+ PERFORM app.lifecycle_native_effect_complete(effect);
+ RETURN QUERY SELECT c.revision+1,c.employment_id,c.company_id,key,purpose;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_exception_update(uuid,integer,text,jsonb)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_exception_update(uuid,integer,text,jsonb)TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_exception_task_rows()RETURNS TABLE(task jsonb,updated_at timestamptz)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_onboarding_case;cfg jsonb;request jsonb;item jsonb;facts jsonb;base jsonb;removal_key text;actor uuid:=app.current_user_id();
+BEGIN
+ IF NOT app.principal_snapshot_current()OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=actor AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))THEN RETURN;END IF;
+ SELECT data INTO cfg FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id();
+ FOR c IN SELECT * FROM public.lc_onboarding_case actual WHERE actual.tenant_id=app.current_tenant_id()ORDER BY actual.id LOOP
+  SELECT r INTO request FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY all_requests(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
+  IF request IS NULL THEN CONTINUE;END IF;
+  facts:=coalesce(c.data->'local','{}')||coalesce(c.data->'source','{}');
+  base:=jsonb_build_object('caseId',c.id,'revision',c.revision,'joiner',coalesce(facts->>'fullName',''),'businessGroup',coalesce(facts->>'businessGroup',''),'joinDate',coalesce(facts->>'joinDate',''),'due','','overdue',false,'assigned',false,'tagged',false,'team',true,'bounded',true);
+  IF app.onboarding_exception_native_allowed(c.tenant_id,actor,c.id,'addItem',NULL,true)AND app.function_action_allowed('lifecycle.shared.exceptionAdditions','view',c.company_id)AND EXISTS(SELECT 1 FROM jsonb_array_elements(cfg->'catalogue')catalogue WHERE(catalogue->>'active')::boolean AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(request->'items')i WHERE(i->>'removed')::boolean IS NOT TRUE AND i->>'catalogueId'=catalogue->>'id'))THEN
+   task:=base||jsonb_build_object('id',c.id::text||':exceptionAdd:','kind','exceptionAdd','title','Add item','canExecute',app.function_action_allowed('lifecycle.shared.exceptionAdditions','execute',c.company_id));updated_at:=c.updated_at;RETURN NEXT;
+  END IF;
+  FOR item IN SELECT value FROM jsonb_array_elements(request->'items')LOOP
+   removal_key:=NULL;
+   IF app.onboarding_exception_native_allowed(c.tenant_id,actor,c.id,'removeItem',item->>'id',true)THEN removal_key:='lifecycle.shared.exceptionRemovals';
+   ELSIF app.onboarding_exception_native_allowed(c.tenant_id,actor,c.id,'removeItemHR',item->>'id',true)THEN removal_key:='lifecycle.hr.exceptionRemovals';END IF;
+   IF(item->>'removed')::boolean IS NOT TRUE AND removal_key IS NOT NULL AND app.function_action_allowed(removal_key,'view',c.company_id)THEN
+    task:=base||jsonb_build_object('id',c.id::text||':exceptionRemove:'||(item->>'id'),'kind','exceptionRemove','title','Remove item','itemIds',jsonb_build_array(item->>'id'),'assigned',item->>'addedBy'=actor::text,'canExecute',app.function_action_allowed(removal_key,'execute',c.company_id));updated_at:=c.updated_at;RETURN NEXT;
+   END IF;
+   IF coalesce((item->>'retiredFlag')::boolean,false)AND app.onboarding_exception_native_allowed(c.tenant_id,actor,c.id,'keepProviding',item->>'id',true)AND app.function_action_allowed('lifecycle.shared.retainedProvision','view',c.company_id)THEN
+    task:=base||jsonb_build_object('id',c.id::text||':keepProviding:'||(item->>'id'),'kind','keepProviding','title','Keep providing','itemIds',jsonb_build_array(item->>'id'),'canExecute',app.function_action_allowed('lifecycle.shared.retainedProvision','execute',c.company_id));updated_at:=c.updated_at;RETURN NEXT;
+   END IF;
+  END LOOP;
+ END LOOP;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_exception_task_rows()FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_exception_task_rows()TO ai_hr_app;
