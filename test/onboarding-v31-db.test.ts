@@ -9,7 +9,7 @@ import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardi
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { dayDate } from '../lib/onboarding-model';
+import { dayDate,decide as canonicalDecide } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
@@ -356,6 +356,30 @@ describe('V3.1 onboarding database and authorization', () => {
         await expect(onboardingNote(tech,row.case.id,{id:note.id,context:'case',body:'CONTEXT-SMUGGLE',mentions:[]})).rejects.toThrow();
         expect((await projection(tech))[0]!.note.body).toBe('Edited assigned conversation');
         expect((await owner.client`select count(*)::int as n from app.lifecycle_native_effect_context`)[0].n).toBe(0);
+    });
+    it('decides exact hidden assigned approvals with canonical requester auto-approval and no sibling rewrite',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.catalogue[0]!.workflow='standard';
+        config.workflows[0]!.steps.push({id:'requester-confirmation',label:'Requester confirmation',type:'person',target:admin.userId!,method:'rr'});
+        await onboardingSaveConfig(admin,context.revision,config);const row=await prepared(),item=row.case.requisitions[0]!.items[0]!;
+        expect(item.approval).toBe('pending');expect(item.steps[0]!.user).toBe(tech.userId);
+        const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Approval scope '+id})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision}where id=${id}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const task=(await onboardingTasks(tech)).find(task=>task.kind==='approval'&&task.caseId===row.case.id)!;expect(task).toMatchObject({bounded:true,itemIds:[item.id]});
+        const review=await onboardingBoundedTask(tech,task.id);expect(review.items).toEqual([{id:item.id,name:item.name}]);expect(JSON.stringify(review)).not.toContain('PRIVATE-IC');
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'approve',itemIds:[item.id],decision:'approve'})).rejects.toThrow();
+        await expect(onboardingCommand(tech,row.case.id,row.revision,{type:'approve',itemIds:[item.id,item.id],decision:'approve'})).rejects.toThrow('only once');
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_approval_decide(${row.case.id}::uuid,${row.revision},${JSON.stringify([item.id])}::jsonb,'approve')`))).rejects.toThrow();
+        expect((await onboardingList(admin))[0]!.revision).toBe(row.revision);
+        const expected=structuredClone(row.case);canonicalDecide(config,expected,[item.id],'approve',{id:tech.userId!,name:'Kevin Tech',master:false,hr:false,module:false},{now:'2026-11-02T00:00:00.000Z',today:todayInKualaLumpur(),id:randomUUID,nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[tech.userId!,admin.userId!],userNames:{[admin.userId!]:item.requesterName??'User'}});
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'approve',itemIds:[item.id],decision:'approve'});
+        const updated=(await onboardingList(admin))[0]!.case,actual=updated.requisitions[0]!.items[0]!,wanted=expected.requisitions[0]!.items[0]!;
+        const decisions=(entry:typeof item)=>entry.steps.map(({when,...step})=>step);expect(decisions(actual)).toEqual(decisions(wanted));expect(actual.approval).toBe('approved');
+        expect(updated.tasks).toEqual(expected.tasks);expect(updated.source).toEqual(expected.source);expect(updated.local).toEqual(expected.local);
+        const history=(c:typeof expected)=>c.history.slice(row.case.history.length).map(({id,at,...entry})=>entry);expect(history(updated)).toEqual(history(expected));
+        expect((await onboardingTasks(tech)).some(task=>task.id===review.task.id)).toBe(false);
     });
     it('preserves the same case when Personnel activates its draft', async () => {
         const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });

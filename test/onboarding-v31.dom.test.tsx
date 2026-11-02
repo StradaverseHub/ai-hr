@@ -52,6 +52,14 @@ describe('V3.1 localized task controls', () => {
         await waitFor(()=>expect(screen.getByRole('button',{name:translation('en','Close task details')})).toBeVisible());
         expect(screen.getByRole('combobox',{name:translation('en','Status')})).toBeDisabled();expect(mocks.change).not.toHaveBeenCalled();
     });
+    it('reviews only selected native approval items before sending the actual approval command',async()=>{
+        const bounded={...task,id:'case:approval:item',kind:'approval' as const,itemIds:['item'],taskId:undefined,bounded:true,canExecute:true};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'',notes:[],requestNumber:'IT-REQ-1',items:[{id:'item',name:'Fictional selected laptop'}]}});
+        render(<NextIntlClientProvider locale="en"messages={messages('en')}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Review')}));await waitFor(()=>expect(screen.getByText('Fictional selected laptop')).toBeVisible());
+        expect(mocks.load).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:translation('en','Approve all')}));
+        await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'approve',itemIds:['item'],decision:'approve'}));
+    });
     it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
         config.checklists[0]!.tasks = [{ id: 'welcome', name: 'Welcome', by: 'group', group: 'people-gbs', method: 'manual', opens: null, due: 1, gate: false }];
