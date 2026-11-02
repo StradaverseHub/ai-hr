@@ -21,7 +21,7 @@ let req: Record<string, string>;
 let L: Record<string, string>;
 
 async function assign(subject: string, raters: string[]) {
-  await perf.assignOnehrPanel(f.a, rid[subject], await revisionOf(rid[subject]), raters.map((r) => ({ employmentId: f.P[r].employmentId, relationship: 'peer' as const })));
+  await perf.assignOnehrPanel(f.a, rid[subject], await revisionOf(rid[subject]), raters.map((r) => ({ employmentId: f.P[r].employmentId, relationship: 'peer' as const })),'administration');
   const rows = await owner.db.select({ requestId: schema.onehrPanel.requestId, peer: schema.onehrPanel.peerEmploymentId }).from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId, rid[subject]));
   for (const r of raters) req[`${r}>${subject}`] = rows.find((row) => row.peer === f.P[r].employmentId)!.requestId;
 }

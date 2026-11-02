@@ -80,7 +80,6 @@ async function managerPanelPeers(tx:Tx,reviewId:string){
  const rows=await tx.execute<PanelMemberRow&{peer_name:string}>(sql`select m.*,f.peer_name from app.onehr_manager_panel(${reviewId}::uuid) m join peer_feedback_request f on f.id=m.request_id where m.archived_at is null order by f.peer_name,m.request_id`);
  return rows.map(r=>{const m=panelMember(r);return {requestId:m.requestId,employmentId:m.peerEmploymentId,name:r.peer_name,relationship:m.relationship,submittedAt:m.submittedAt,archivedAt:m.archivedAt,resetAt:m.resetAt,archiveReason:m.archiveReason};});
 }
-async function setManagerPanelMember(tx:Tx,requestId:string,archived:boolean,relationship:string|null=null){await tx.execute(sql`select app.onehr_manager_panel_member(${requestId}::uuid,${archived}::boolean,${relationship}::text)`);}
 async function canWritePlanRemark(tx:Tx,reviewId:string){const [r]=await tx.execute<{ok:boolean}>(sql`select app.assessment_plan_remark_writer(${reviewId}::uuid) as ok`);return !!r?.ok;}
 async function requireAdmin(tx: Tx, cycleId: string) { if (!await isAdmin(tx,cycleId)) throw Error('Performance administrator access is required.'); }
 async function requireSetupAction(tx:Tx,cycleId:string,operation:'add'|'edit') {
@@ -429,77 +428,20 @@ export async function submitOnehrCompetenciesTx(tx:Tx,ctx:SessionContext,reviewI
     await tx.execute(sql`select app.onehr_competencies_submit(${reviewId}::uuid,${expected}::integer,${JSON.stringify(answers)}::jsonb,${manager}::boolean,${overallRemark}::text,${JSON.stringify(sections)}::jsonb)`);
 }
 
-export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expected:number,raw:unknown) {
- return withPerformanceTenant(ctx,tx=>assignOnehrPanelTx(tx,ctx,reviewId,expected,raw));
+export async function assignOnehrPanel(ctx:SessionContext,reviewId:string,expected:number,raw:unknown,purpose:'assigned'|'administration'='assigned') {
+ return withPerformanceTenant(ctx,tx=>assignOnehrPanelTx(tx,ctx,reviewId,expected,raw,purpose));
 }
-export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown) {
-  const inputs=z.array(z.object({employmentId:uuid,relationship:z.enum(['line_manager','matrix_manager','peer','direct_report'])})).max(30).parse(raw);
-  if(new Set(inputs.map(i=>i.employmentId)).size!==inputs.length)throw Error('A panel cannot contain the same reviewer twice.');
-    const r=await loadReview(tx,reviewId,true),admin=await isAdmin(tx,r.row.cycleId);
-    if(admin){
-     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);if(!participant?.ok)throw Error('This employee is not participating in the cycle.');
-     revision(r.row.revision,expected);if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to assign your panel.');
-     const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);
-     if(frozen||r.native.closedAt||!['open','calibration'].includes(r.cycle.native.status))throw Error('This assessment is finalized or closed.');
-    }else await writable(tx,r,'f360',expected,'manager');
-    if(!r.cycle.policy.modules.tm)throw Error('Talent assessment is disabled.');
-    if(/^\d+$/.test(r.row.grade)&&inputs.length>r.cycle.policy.panelTarget)throw Error('The panel exceeds the configured assessor limit.');
-    const prior:PanelMember[]=admin?await tx.select().from(onehrPanel).where(eq(onehrPanel.reviewId,reviewId)):await managerPanel(tx,reviewId);
-    const omitted=prior.filter(p=>!p.archivedAt&&!inputs.some(i=>i.employmentId===p.peerEmploymentId));
-    if(omitted.some(p=>p.submittedAt))throw Error('Submitted reviewers must remain on the panel.');
-    // ADR-0142: the person row the caller can read (manager, HR) wins; a performance partner gets the label projection.
-    // Employment likewise through app.onehr_employment (VF-07): the partner reads no employment row of others.
-    const [subject]=await tx.select({name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id),personId:onehrEmployment.personId}).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).where(and(eq(onehrEmployment.id,r.row.employmentId),sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`));
-    if(!subject)throw Error('Subject not available.');
-    if(!admin&&(/^[a-z]+$/i.test(r.row.grade)?inputs.length!==1:inputs.length<r.cycle.policy.minValid))throw Error('The panel is smaller than the required valid response count.');
-    const peerPeople=new Set<string>();
-    for(const input of inputs){
-      const [peer]=await tx.select({id:onehrEmployment.id,personId:onehrEmployment.personId,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id),grade:jobGrade.code}).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).leftJoin(jobGrade,eq(jobGrade.id,onehrEmployment.gradeId)).where(and(eq(onehrEmployment.id,input.employmentId),sql`(${onehrEmployment.terminatedOn} is null or ${onehrEmployment.terminatedOn}>${todayInKualaLumpur()}::date)`,sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`));
-      if(!peer||peer.personId===subject.personId||peerPeople.has(peer.personId)||!/^\d+$/.test((peer.grade??'').replace(/^JG\s*/i,'')))throw Error('Choose distinct active reviewers with numeric job grades, other than the subject.');
-      peerPeople.add(peer.personId);
-      if(input.relationship==='line_manager'&&peer.id!==r.native.reviewerEmploymentId)throw Error('The line manager must be the assigned manager.');
-      if(!admin&&input.relationship==='matrix_manager'&&!(await moderatorChoices(tx,reviewId)).some(m=>m.id===peer.id&&m.id!==r.native.reviewerEmploymentId))throw Error('Choose a current matrix manager.');
-      if(input.relationship==='direct_report'){const [edge]=await tx.execute<{ok:boolean}>(sql`select app.is_admin_report_of(${peer.id}::uuid,${r.row.employmentId}::uuid) as ok`);if(!edge?.ok)throw Error('Choose a current report of the subject.');}
-      if(!/^\d+$/.test(r.row.grade)&&(inputs.length!==1||peer.id!==r.native.reviewerEmploymentId||input.relationship!=='line_manager'))throw Error('A letter-grade subject is assessed only by their line manager.');
-      const existing=prior.find(p=>p.peerEmploymentId===peer.id);
-      if(existing){if(existing.submittedAt){if(existing.archivedAt)throw Error('Restore archived submitted feedback through the panel controls.');if(existing.relationship!==input.relationship){if(!admin)throw Error('Only scoped HR may change a submitted reviewer relationship.');await tx.update(onehrPanel).set({relationship:input.relationship}).where(eq(onehrPanel.requestId,existing.requestId));}continue;}
-       if(admin)await tx.update(onehrPanel).set({archivedAt:null,relationship:input.relationship}).where(eq(onehrPanel.requestId,existing.requestId));else await setManagerPanelMember(tx,existing.requestId,false,input.relationship);
-       await tx.update(peerFeedbackRequest).set({status:'pending'}).where(eq(peerFeedbackRequest.id,existing.requestId));continue;
-      }
-      const [request]=await tx.insert(peerFeedbackRequest).values({tenantId:ctx.tenantId,reviewId,subjectEmploymentId:r.row.employmentId,peerEmploymentId:peer.id,subjectName:subject.name,peerName:peer.name,cycleName:r.cycle.native.name,requestedByUserId:ctx.userId}).returning();
-      await tx.insert(onehrPanel).values({tenantId:ctx.tenantId,requestId:request.id,reviewId,subjectEmploymentId:r.row.employmentId,peerEmploymentId:peer.id,relationship:input.relationship});
-      await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'peer-feedback-request',aggregateId:request.id,eventType:'peer-feedback-request.created',actor:actorOf(ctx),payload:{reviewId}});
-    }
-    for(const p of omitted){if(admin)await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,p.requestId));else await setManagerPanelMember(tx,p.requestId,true);await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,p.requestId));}
-    await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,'panel-assigned',{count:inputs.length,removed:omitted.length,before:prior.map(p=>({requestId:p.requestId,employmentId:p.peerEmploymentId,relationship:p.relationship,archived:!!p.archivedAt,submitted:!!p.submittedAt})),after:inputs.map(p=>({employmentId:p.employmentId,relationship:p.relationship}))});
+export async function assignOnehrPanelTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,raw:unknown,purpose:'assigned'|'administration'='assigned') {
+ const inputs=z.array(z.object({employmentId:uuid,relationship:z.enum(['line_manager','matrix_manager','peer','direct_report'])})).max(30).parse(raw);
+ uuid.parse(reviewId);z.number().int().parse(expected);z.enum(['assigned','administration']).parse(purpose);
+ await tx.execute(sql`select app.onehr_panel_assign(${reviewId}::uuid,${expected}::integer,${JSON.stringify(inputs)}::jsonb,${purpose}::text)`);
 }
 export async function changeAssessmentPanelState(ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
  return withPerformanceTenant(ctx,tx=>changeAssessmentPanelStateTx(tx,ctx,reviewId,expected,requestId,operation,reason));
 }
 export async function changeAssessmentPanelStateTx(tx:Tx,ctx:SessionContext,reviewId:string,expected:number,requestId:string,operation:'archive'|'restore'|'reset',reason=''){
- uuid.parse(requestId);z.enum(['archive','restore','reset']).parse(operation);note.parse(reason);
-  const r=await loadReview(tx,reviewId,true);await requireAdmin(tx,r.row.cycleId);revision(r.row.revision,expected);
-  if(await isSelf(tx,r.row.employmentId))throw Error('Ask another administrator to manage your panel.');
-  if(!r.cycle.policy.modules.tm||!['open','calibration'].includes(r.cycle.native.status)||r.native.closedAt)throw Error('This assessment is finalized or closed.');
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${reviewId},0))`);
-  const [frozen]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);if(frozen)throw Error('This assessment is finalized.');
-  const [panel]=await tx.select().from(onehrPanel).where(and(eq(onehrPanel.requestId,requestId),eq(onehrPanel.reviewId,reviewId))).for('update');if(!panel)throw Error('Panel member not found.');
-  if(operation==='archive'){
-   if(panel.archivedAt)return;
-   await archivePanelMemberTx(tx,ctx,reviewId,requestId,reason);return;
-  }else if(operation==='restore'){
-   if(!panel.archivedAt)return;
-   const active=await tx.select({id:onehrPanel.requestId}).from(onehrPanel).where(and(eq(onehrPanel.reviewId,reviewId),isNull(onehrPanel.archivedAt)));
-   const cap=/^\d+$/.test(r.row.grade)?r.cycle.policy.panelTarget:1;if(active.length>=cap)throw Error('The panel is already at its configured assessor limit.');
-   const [peer]=await tx.select({id:onehrEmployment.id}).from(onehrEmployment).where(and(eq(onehrEmployment.id,panel.peerEmploymentId),sql`(${onehrEmployment.terminatedOn} is null or ${onehrEmployment.terminatedOn}>${todayInKualaLumpur()}::date)`));if(!peer)throw Error('A departed reviewer cannot be restored.');
-   await tx.update(onehrPanel).set({archivedAt:null,archiveReason:null}).where(eq(onehrPanel.requestId,requestId));
-   await tx.update(peerFeedbackRequest).set({status:panel.submittedAt?'submitted':'pending'}).where(eq(peerFeedbackRequest.id,requestId));
-  }else{
-   if(panel.archivedAt||!panel.submittedAt)throw Error('Reset only an active submitted reviewer.');
-   await tx.update(onehrPanel).set({submittedAt:null,resetAt:new Date()}).where(eq(onehrPanel.requestId,requestId));
-   await tx.update(peerFeedbackRequest).set({status:'pending'}).where(eq(peerFeedbackRequest.id,requestId));
-  }
-  await touchReview(tx,reviewId,{});await audit(tx,ctx,reviewId,`panel-${operation}`,{requestId,reason});
+ uuid.parse(reviewId);uuid.parse(requestId);z.number().int().parse(expected);z.enum(['archive','restore','reset']).parse(operation);note.parse(reason);
+ await tx.execute(sql`select app.onehr_panel_state(${reviewId}::uuid,${expected}::integer,${requestId}::uuid,${operation}::text,${reason}::text)`);
 }
 /** The keeping writer's archive body: the row stays, with its time, reason and audit, and leaves scoring. The 0540
  * release trigger revokes a released anonymous report. Callers own the admin, state, frozen and lock checks. */
@@ -538,25 +480,15 @@ export async function submitOnehrFeedback(ctx:SessionContext,requestId:string,ra
   const answers=z.record(z.string(),z.enum(['yes','no'])).parse(raw);note.parse(remark);
   const principleComments=z.record(z.string().max(200),z.string().trim().max(2000)).parse(comments);
   return withPerformanceTenant(ctx,async tx=>{
-    // Serialize all writes and freezing for the review, including peer responses.
-    const initial=await feedbackCard(tx,requestId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${initial.reviewId},0))`);
-    const card=await feedbackCard(tx,requestId);if(card.submitted||card.frozen)throw Error('Feedback is already submitted or finalized.');
-    const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
-    if(Object.keys(principleComments).some(key=>!card.statements.some(s=>s.principle===key)))throw Error('Use only the assigned leadership principles.');
-    const score=scoreAnswers(card.statements,answers);assertOverallRemark(remark,score.score/score.max*100>cycle.policy.midMaxPct);
-    await clearAssessmentDraftTx(tx,ctx,card.reviewId,'feedback',requestId);
-    await tx.update(onehrPanel).set({answers,remark,principleComments,submittedAt:new Date()}).where(eq(onehrPanel.requestId,requestId));
-    await tx.update(peerFeedbackRequest).set({status:'submitted'}).where(eq(peerFeedbackRequest.id,requestId));await audit(tx,ctx,requestId,'feedback-submitted');
+    uuid.parse(requestId);
+    await tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,true,${JSON.stringify(answers)}::jsonb,${remark}::text,${JSON.stringify(principleComments)}::jsonb)`);
   });
 }
 
 export async function declineOnehrFeedback(ctx:SessionContext,requestId:string) {
  return withPerformanceTenant(ctx,async tx=>{
-  const card=await feedbackCard(tx,requestId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${card.reviewId},0))`);
-  const fresh=await feedbackCard(tx,requestId);if(fresh.submitted||fresh.frozen)throw Error('Feedback is already submitted or finalized.');
-  const cycle=await loadCycle(tx,card.cycleId);if(!['open','calibration'].includes(cycle.native.status))throw Error('The cycle is closed.');assertWindow(cycle.policy,'f360');
-  await tx.update(onehrPanel).set({archivedAt:new Date()}).where(eq(onehrPanel.requestId,requestId));
-  await tx.update(peerFeedbackRequest).set({status:'declined'}).where(eq(peerFeedbackRequest.id,requestId));await audit(tx,ctx,requestId,'feedback-declined');
+  uuid.parse(requestId);
+  await tx.execute(sql`select app.onehr_feedback_apply(${requestId}::uuid,false,NULL::jsonb,NULL::text,NULL::jsonb)`);
  });
 }
 

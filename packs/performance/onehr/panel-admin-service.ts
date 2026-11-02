@@ -52,7 +52,7 @@ export async function buildAssessmentPanels(ctx:SessionContext,cycleId:string,mo
    return [{reviewId:r.id,revision:r.revision,code:subject.code,name:subject.name,target,managerStatus:candidate.managerStatus,...plan,members:[...existing.filter(p=>!p.archived).map(p=>({employmentId:p.employmentId,relationship:p.relationship as PanelRelationship})),...plan.add.map(p=>({employmentId:p.employmentId,relationship:p.relationship}))]}];
   });
   const currentToken=digest({revision:cycle.config.revision,mode,people,current,rows});if(token&&token!==currentToken)throw Error('People, panels or cycle rules changed. Preview the build again.');
-  await applyOrValidate(tx,!!token,async write=>{for(const row of rows)if(row.add.length)await assignOnehrPanelTx(write,ctx,row.reviewId,row.revision,row.members);});
+  await applyOrValidate(tx,!!token,async write=>{for(const row of rows)if(row.add.length)await assignOnehrPanelTx(write,ctx,row.reviewId,row.revision,row.members,'administration');});
   if(token)await auditAssessmentAdminTx(tx,ctx,cycleId,'panels-built',{mode,subjects:rows.filter(r=>r.add.length).length,assignments:rows.reduce((n,r)=>n+r.add.length,0)});
   return {token:currentToken,applied:!!token,rows:rows.map(({members,revision,...row})=>({...row,add:row.add.map(m=>({...m,name:byId.get(m.employmentId)?.name??m.employmentId}))}))};
  });
@@ -87,7 +87,7 @@ export async function importAssessmentPanels(ctx:SessionContext,cycleId:string,c
    return {reviewId,revision:review.revision,code:subject.code,name:subject.name,members:[...members].map(([employmentId,relationship])=>({employmentId,relationship})),restore,archive,created:[...members.keys()].filter(id=>!prior.some(p=>p.employmentId===id)).length,updated:[...members].filter(([id,rel])=>prior.some(p=>p.employmentId===id&&(p.archivedAt||p.relationship!==rel))).length};
   });
   const currentToken=digest({revision:cycle.config.revision,mode,parsed,people,current,plans});if(token&&token!==currentToken)throw Error('People or panels changed. Preview the import again.');
-  await applyOrValidate(tx,!!token,async write=>{for(const plan of plans){let revision=plan.revision;for(const p of plan.archive){await changeAssessmentPanelStateTx(write,ctx,plan.reviewId,revision++,p.requestId,'archive','Panel import replace');}for(const p of plan.restore){await changeAssessmentPanelStateTx(write,ctx,plan.reviewId,revision++,p.requestId,'restore','Panel import restore');}await assignOnehrPanelTx(write,ctx,plan.reviewId,revision,plan.members);}});
+  await applyOrValidate(tx,!!token,async write=>{for(const plan of plans){let revision=plan.revision;for(const p of plan.archive){await changeAssessmentPanelStateTx(write,ctx,plan.reviewId,revision++,p.requestId,'archive','Panel import replace');}for(const p of plan.restore){await changeAssessmentPanelStateTx(write,ctx,plan.reviewId,revision++,p.requestId,'restore','Panel import restore');}await assignOnehrPanelTx(write,ctx,plan.reviewId,revision,plan.members,'administration');}});
   if(token){
    await auditAssessmentAdminTx(tx,ctx,cycleId,'panels-imported',{mode,subjects:plans.length,created:plans.reduce((n,p)=>n+p.created,0),restored:plans.reduce((n,p)=>n+p.restore.length,0),archived:plans.reduce((n,p)=>n+p.archive.length,0)});
   }

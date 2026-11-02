@@ -77,7 +77,7 @@ describe('OneHR legacy drafting replays actual native source before provider adm
 
 // Additional real native owners using the shared same-transaction admission carrier.
 async function assignedFeedback(){
- await perf.assignOnehrPanel(a,reviewId,(await f.view(a)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})));
+ await perf.assignOnehrPanel(a,reviewId,(await f.view(a)).revision,peers.map(p=>({employmentId:p.employmentId,relationship:'peer'})),'administration');
  const request=(await perf.onehrAssignments(peers[0].ctx)).feedback.find(row=>row.subject==='Assessment subject');if(!request)throw Error('Missing actual assigned colleague feedback');return request.id;
 }
 describe('additional native insight and feedback admission',()=>{

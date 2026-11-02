@@ -45,7 +45,7 @@ export async function OnehrReviewView({v,error,section,returnTo}:{v:View;error?:
 
   const competencyBandVisible=competencyReviewer&&['submitted','reviewed'].includes(v.competencyStatus);
   const CompetencyPreview=({children}:{children:ReactNode})=>competencyBandVisible?<CompetencyBandPreview key={`${v.reviewId}.${v.revision}.${competencyDraft?.revision??0}`} statements={v.competencies.map(c=>({id:c.id,principle:c.principle,text:c.text,future:c.future}))} selfAnswers={Object.fromEntries(v.competencies.map(c=>[c.id,c.self??'']))} initialAnswers={Object.fromEntries(v.competencies.map(c=>[c.id,competencyValues?.answers[c.id]?.answer??c.manager??c.self??'']))} policy={{lowMaxPct:v.policy.lowMaxPct,midMaxPct:v.policy.midMaxPct}} hasFramework={frameworkFor(v.policy,v.grade).length>0}>{children}</CompetencyBandPreview>:<>{children}</>;
-  const fields=(action:string)=><><input type="hidden" name="reviewId" value={v.reviewId}/><input type="hidden" name="revision" value={v.revision}/><input type="hidden" name="action" value={action}/>{returnTo&&<input type="hidden" name="returnTo" value={returnTo}/>}</>;
+  const fields=(action:string)=><><input type="hidden" name="reviewId" value={v.reviewId}/><input type="hidden" name="revision" value={v.revision}/><input type="hidden" name="action" value={action}/>{action==='panel'&&<input type="hidden" name="purpose" value={v.admin?'administration':'assigned'}/>}{returnTo&&<input type="hidden" name="returnTo" value={returnTo}/>}</>;
   const targetChoices=[...(v.careerDirections??[])];
   const savedTarget=v.policy.profiles.find(p=>p.id===v.careerProfile?.career.targetProfileId&&p.active!==false);
   if(savedTarget&&!targetChoices.some(p=>p.id===savedTarget.id))targetChoices.push(savedTarget);

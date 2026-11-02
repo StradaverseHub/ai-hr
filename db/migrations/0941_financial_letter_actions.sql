@@ -885,7 +885,7 @@ BEGIN
  IF inserted IS NULL THEN RETURN NULL;END IF;
  -- A transaction below the global snapshot xmin has no live/deferred consumer. Do
  -- this once per transaction, retaining every in-flight actor's exact receipts.
- FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context'] LOOP
+ FOREACH table_name IN ARRAY ARRAY['financial_letter_birth','financial_family_effect','financial_batch_intent','letter_operation_effect','financial_kernel_context','financial_source_change','financial_stale_effect','financial_loan_repayment_effect','financial_loan_counter_effect','financial_loan_auxiliary','financial_claim_effect','financial_audit_effect','financial_fixed_replacement','financial_individual_effect','financial_backpay_posting','financial_backpay_catalog_effect','financial_backpay_birth','financial_claim_source_custody','financial_letter_proposed_birth','financial_claim_port_effect','financial_onehr_worker_source','financial_onehr_source_context','financial_onehr_feedback_effect'] LOOP
   EXECUTE format('DELETE FROM app.%I WHERE transaction_id<$1',table_name) USING oldest;
  END LOOP;
  DELETE FROM app.financial_receipt_epoch WHERE transaction_id<oldest;
@@ -1228,6 +1228,9 @@ BEGIN
    AND stored.role::text IN ('hr_admin','super_admin','performance_comp_partner','performance_partner')
    AND app.access_scope_covers(stored.company_id,p_company,p_tenant))
    AND (NOT p_current OR app.performance_current_native_roles(p_company,ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner']));
+ END IF;
+ IF function_key='performance.onehr.panelFeedback' THEN
+  RETURN operation IN ('view','edit') AND p_company IS NOT NULL AND app.financial_onehr_panel_nomination(p_tenant,p_user,NULL,p_company);
  END IF;
  IF function_key IN ('performance.onehr.selfReview','performance.onehr.assignedReview') THEN
   RETURN operation IN ('view','edit') AND p_company IS NOT NULL AND EXISTS(SELECT 1 FROM public.performance_review review
@@ -3959,3 +3962,286 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.onehr_profile_assign(uuid,integer,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_profile_assign(uuid,integer,uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Explicit administrative panel maintenance preserves submitted evidence and its
+-- native release-revocation triggers; it never borrows assigned Review authority.
+CREATE FUNCTION app.onehr_panel_state(wanted_review uuid,expected_revision integer,wanted_request uuid,operation text,reason text) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;header public.performance_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;panel public.performance_onehr_panel%ROWTYPE;policy jsonb;peer public.employment%ROWTYPE;active_count integer;assessor_limit integer;effect_id uuid;effect_at timestamptz;completed_event_id uuid;next_panel jsonb;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR administration actor unavailable' USING ERRCODE='42501';END IF;
+ IF operation IS NULL OR operation NOT IN ('archive','restore','reset') OR reason IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(reason))>4000 THEN RAISE EXCEPTION 'Invalid panel operation' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF review.review_id IS NULL OR NOT app.onehr_review_administration_edit(wanted_review) THEN RAISE EXCEPTION 'Performance administrator access is required.' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF app.onehr_self_employment(review.employment_id) THEN RAISE EXCEPTION 'Ask another administrator to manage your panel.' USING ERRCODE='42501';END IF;
+ SELECT * INTO header FROM public.performance_review actual WHERE actual.id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF policy->'modules'->>'tm' IS DISTINCT FROM 'true' OR cycle.status NOT IN ('open','calibration') OR header.closed_at IS NOT NULL THEN RAISE EXCEPTION 'This assessment is finalized or closed.' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(wanted_review::text,0));
+ IF EXISTS(SELECT 1 FROM app.onehr_review_frozen(wanted_review)) THEN RAISE EXCEPTION 'This assessment is finalized.' USING ERRCODE='42501';END IF;
+ SELECT * INTO panel FROM public.performance_onehr_panel actual WHERE actual.request_id=wanted_request AND actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id FOR UPDATE;
+ IF panel.request_id IS NULL THEN RAISE EXCEPTION 'Panel member not found.' USING ERRCODE='42501';END IF;
+ IF operation='archive' THEN
+  IF panel.archived_at IS NOT NULL THEN RETURN;END IF;
+  effect_at:=clock_timestamp();next_panel:=to_jsonb(panel)||jsonb_build_object('archived_at',effect_at,'archive_reason',nullif(reason,''));
+  INSERT INTO app.financial_onehr_feedback_effect(transaction_id,tenant_id,user_id,request_id,before_row,after_row) VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),wanted_request,to_jsonb(panel),next_panel) RETURNING id INTO effect_id;
+  UPDATE public.performance_onehr_panel actual SET archived_at=effect_at,archive_reason=nullif(reason,'') WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='declined' WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ ELSIF operation='restore' THEN
+  IF panel.archived_at IS NULL THEN RETURN;END IF;
+  SELECT count(*) INTO active_count FROM public.performance_onehr_panel actual WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id AND actual.archived_at IS NULL;
+  assessor_limit:=CASE WHEN review.grade~'^\d+$' THEN (policy->>'panelTarget')::integer ELSE 1 END;
+  IF active_count>=assessor_limit THEN RAISE EXCEPTION 'The panel is already at its configured assessor limit.' USING ERRCODE='42501';END IF;
+  SELECT * INTO peer FROM public.employment actual WHERE actual.id=panel.peer_employment_id AND actual.tenant_id=review.tenant_id;
+  IF peer.id IS NULL OR peer.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date OR NOT (app.can_see_employment(peer.id) AND app.data_permission_record_read(peer.id) OR app.onehr_partner_for(peer.company_id) AND app.data_permission_matches(peer.id)) THEN RAISE EXCEPTION 'A departed reviewer cannot be restored.' USING ERRCODE='42501';END IF;
+  next_panel:=to_jsonb(panel)||jsonb_build_object('archived_at',NULL,'archive_reason',NULL);
+  INSERT INTO app.financial_onehr_feedback_effect(transaction_id,tenant_id,user_id,request_id,before_row,after_row) VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),wanted_request,to_jsonb(panel),next_panel) RETURNING id INTO effect_id;
+  UPDATE public.performance_onehr_panel actual SET archived_at=NULL,archive_reason=NULL WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status=CASE WHEN panel.submitted_at IS NOT NULL THEN 'submitted' ELSE 'pending' END WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ ELSE
+  IF panel.archived_at IS NOT NULL OR panel.submitted_at IS NULL THEN RAISE EXCEPTION 'Reset only an active submitted reviewer.' USING ERRCODE='42501';END IF;
+  effect_at:=clock_timestamp();next_panel:=to_jsonb(panel)||jsonb_build_object('submitted_at',NULL,'reset_at',effect_at);
+  INSERT INTO app.financial_onehr_feedback_effect(transaction_id,tenant_id,user_id,request_id,before_row,after_row) VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),wanted_request,to_jsonb(panel),next_panel) RETURNING id INTO effect_id;
+  UPDATE public.performance_onehr_panel actual SET submitted_at=NULL,reset_at=effect_at WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='pending' WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ END IF;
+ UPDATE public.performance_onehr_review actual SET revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_review,'onehr.panel-'||operation,'user',app.current_user_id(),jsonb_build_object('requestId',wanted_request,'reason',reason)) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_feedback_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_onehr_panel actual WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id AND to_jsonb(actual)=next_panel) THEN RAISE EXCEPTION 'Panel effect did not complete' USING ERRCODE='42501';END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_panel_state(uuid,integer,uuid,text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_panel_state(uuid,integer,uuid,text,text) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Nominated anonymous feedback is an independent native course. A parallel
+-- manager, Self or administrative seat supplies neither its View nor its Edit.
+CREATE FUNCTION app.financial_onehr_panel_nomination(t uuid,u uuid,request uuid,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.performance_onehr_panel panel
+ JOIN public.peer_feedback_request feedback ON feedback.id=panel.request_id AND feedback.tenant_id=panel.tenant_id
+ JOIN public.performance_onehr_review review ON review.review_id=panel.review_id AND review.tenant_id=panel.tenant_id
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
+ JOIN public.employment subject ON subject.id=review.employment_id AND subject.tenant_id=review.tenant_id
+ JOIN public.performance_assessment_participation participation ON participation.cycle_id=review.cycle_id AND participation.employment_id=review.employment_id AND participation.tenant_id=review.tenant_id
+ JOIN public.employment peer ON peer.id=panel.peer_employment_id AND peer.tenant_id=panel.tenant_id
+ JOIN public.app_user account ON account.person_id=peer.person_id AND account.tenant_id=peer.tenant_id
+ WHERE panel.tenant_id=t AND (request IS NULL OR panel.request_id=request) AND review.company_id=co AND account.id=u
+ AND account.archived_at IS NULL AND NOT app.login_blocked(account.id) AND (peer.terminated_on IS NULL OR peer.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND panel.archived_at IS NULL AND config.policy->'modules'->>'tm'='true'
+ AND EXISTS(SELECT 1 FROM public.performance_review header WHERE header.id=review.review_id AND header.tenant_id=t)
+ AND (cycle.status='closed' OR subject.terminated_on IS NULL OR subject.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+ AND (CASE WHEN participation.override='add' THEN true WHEN participation.override='remove' THEN false ELSE participation.eligible_at_open END)
+ AND (NOT app.financial_onehr_unit_excluded(t,review.cycle_id,review.employment_id,NULL,NULL) OR EXISTS(SELECT 1 FROM public.performance_onehr_result result WHERE result.review_id=review.review_id AND result.tenant_id=t)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_panel_nomination(uuid,uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.onehr.panelFeedback',operation,'company',NULL,'app.financial_delegate_onehr_review',jsonb_build_object(
+ 'moduleKey','performance_compensation','labelKey','onehr.feedback360','kind','native_acl','course','assigned','href','/me/performance','employeeBearing',false)) FROM unnest(ARRAY['view','edit']) operation;
+CREATE FUNCTION app.financial_onehr_feedback_card_native(wanted_request uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+
+ SELECT jsonb_build_object('requestId',f.id,'reviewId',r.review_id,'cycleId',r.cycle_id,'guidedReview',coalesce((cfg.policy->'modules'->>'review')::boolean,true),'closed',cyc.status='closed','subject',f.subject_name,'statements',r.statements,'answers',a.answers,'remark',a.remark,'comments',app.assessment_principle_comments(r.statements,a.principle_comments),'resetAt',a.reset_at,'submitted',a.submitted_at IS NOT NULL,'frozen',EXISTS(SELECT 1 FROM performance_onehr_result x WHERE x.review_id=r.review_id))
+ FROM performance_onehr_panel a JOIN peer_feedback_request f ON f.id=a.request_id AND f.tenant_id=a.tenant_id JOIN performance_onehr_review r ON r.review_id=a.review_id AND r.tenant_id=a.tenant_id JOIN performance_onehr_cycle cfg ON cfg.cycle_id=r.cycle_id AND cfg.tenant_id=r.tenant_id JOIN review_cycle cyc ON cyc.id=r.cycle_id AND cyc.tenant_id=r.tenant_id JOIN employment e ON e.id=a.peer_employment_id AND e.tenant_id=a.tenant_id JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE f.id=wanted_request AND a.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND (e.terminated_on IS NULL OR e.terminated_on>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date) AND a.archived_at IS NULL AND (cfg.policy->'modules'->>'tm')::boolean=true AND app.assessment_review_participates(r.review_id)
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_feedback_card_native(uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_feedback_card(wanted_request uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_onehr_feedback_card_native(wanted_request) FROM public.performance_onehr_review review
+ JOIN public.performance_onehr_panel panel ON panel.review_id=review.review_id AND panel.tenant_id=review.tenant_id
+ WHERE panel.request_id=wanted_request AND review.tenant_id=app.current_tenant_id() AND app.financial_human_principal_current()
+ AND app.financial_onehr_panel_nomination(review.tenant_id,app.current_user_id(),wanted_request,review.company_id)
+ AND app.function_action_allowed('performance.onehr.panelFeedback','view',review.company_id);
+$$;
+
+CREATE FUNCTION app.onehr_feedback_apply(wanted_request uuid,submit boolean,answers jsonb,remark text,comments jsonb) RETURNS void
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE panel public.performance_onehr_panel%ROWTYPE;review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;card jsonb;normalized_comments jsonb;score double precision;maximum double precision;effect_id uuid;effect_at timestamptz;completed_event_id uuid;next_panel jsonb;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR feedback actor unavailable' USING ERRCODE='42501';END IF;
+ IF submit IS NULL THEN RAISE EXCEPTION 'Invalid feedback operation' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO panel FROM public.performance_onehr_panel actual WHERE actual.request_id=wanted_request AND actual.tenant_id=app.current_tenant_id();
+ IF panel.request_id IS NULL THEN RAISE EXCEPTION 'Feedback request not found or access has been removed.' USING ERRCODE='42501';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(panel.review_id::text,0));
+ SELECT * INTO panel FROM public.performance_onehr_panel actual WHERE actual.request_id=wanted_request AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=panel.review_id AND actual.tenant_id=panel.tenant_id;
+ card:=app.onehr_feedback_card(wanted_request);
+ IF card IS NULL OR NOT app.function_action_allowed('performance.onehr.panelFeedback','edit',review.company_id) THEN RAISE EXCEPTION 'Feedback request not found or access has been removed.' USING ERRCODE='42501';END IF;
+ IF panel.submitted_at IS NOT NULL OR (card->>'frozen')::boolean THEN RAISE EXCEPTION 'Feedback is already submitted or finalized.' USING ERRCODE='42501';END IF;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF cycle.status NOT IN ('open','calibration') THEN RAISE EXCEPTION 'The cycle is closed.' USING ERRCODE='42501';END IF;
+ IF policy->'windows'->'f360'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'f360'->>'opensAt')::timestamptz
+ OR policy->'windows'->'f360'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'f360'->>'closesAt')::timestamptz THEN RAISE EXCEPTION 'This step is closed.' USING ERRCODE='42501';END IF;
+ IF submit THEN
+  IF jsonb_typeof(answers) IS DISTINCT FROM 'object' OR jsonb_typeof(comments) IS DISTINCT FROM 'object' OR remark IS NULL
+  OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(remark))>4000 OR app.financial_onehr_js_words(remark)>220 THEN RAISE EXCEPTION 'Invalid feedback submission' USING ERRCODE='22023';END IF;
+  IF (SELECT count(*) FROM jsonb_object_keys(answers))<>jsonb_array_length(review.statements)
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(review.statements) statement WHERE NOT answers ? (statement->>'id'))
+  OR EXISTS(SELECT 1 FROM jsonb_each(answers) answer WHERE jsonb_typeof(answer.value) IS DISTINCT FROM 'string' OR answer.value#>>'{}' NOT IN ('yes','no')) THEN RAISE EXCEPTION 'Answer every assigned statement exactly once.' USING ERRCODE='22023';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_each(comments) comment WHERE app.financial_onehr_utf16_length(comment.key)>200 OR jsonb_typeof(comment.value) IS DISTINCT FROM 'string' OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(comment.value#>>'{}'))>2000
+  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(review.statements) statement WHERE statement->>'principle'=comment.key)) THEN RAISE EXCEPTION 'Use only the assigned leadership principles.' USING ERRCODE='22023';END IF;
+  SELECT coalesce(sum(CASE WHEN answers->>(statement->>'id')='yes' THEN CASE WHEN (statement->>'future')::boolean THEN 1.5 ELSE 1 END ELSE 0 END),0)::double precision,
+  coalesce(sum(CASE WHEN (statement->>'future')::boolean THEN 1.5 ELSE 1 END),0)::double precision INTO score,maximum FROM jsonb_array_elements(review.statements) statement;
+  IF maximum>0 AND score/maximum*100>(policy->>'midMaxPct')::double precision AND app.financial_onehr_js_trim(remark)='' THEN RAISE EXCEPTION 'Add your overall remark before submitting.' USING ERRCODE='22023';END IF;
+  SELECT coalesce(jsonb_object_agg(comment.key,to_jsonb(app.financial_onehr_js_trim(comment.value#>>'{}'))),'{}'::jsonb) INTO normalized_comments FROM jsonb_each(comments) comment;
+  DELETE FROM public.performance_assessment_draft draft WHERE draft.tenant_id=review.tenant_id AND draft.review_id=review.review_id AND draft.actor_user_id=app.current_user_id() AND draft.kind='feedback' AND draft.context_id=wanted_request;
+  effect_at:=clock_timestamp();next_panel:=to_jsonb(panel)||jsonb_build_object('answers',answers,'remark',remark,'principle_comments',normalized_comments,'submitted_at',effect_at);
+  INSERT INTO app.financial_onehr_feedback_effect(transaction_id,tenant_id,user_id,request_id,before_row,after_row) VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),wanted_request,to_jsonb(panel),next_panel) RETURNING id INTO effect_id;
+  UPDATE public.performance_onehr_panel actual SET answers=onehr_feedback_apply.answers,remark=onehr_feedback_apply.remark,principle_comments=normalized_comments,submitted_at=effect_at WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='submitted' WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ ELSE
+  effect_at:=clock_timestamp();next_panel:=to_jsonb(panel)||jsonb_build_object('archived_at',effect_at);
+  INSERT INTO app.financial_onehr_feedback_effect(transaction_id,tenant_id,user_id,request_id,before_row,after_row) VALUES(pg_current_xact_id(),review.tenant_id,app.current_user_id(),wanted_request,to_jsonb(panel),next_panel) RETURNING id INTO effect_id;
+  UPDATE public.performance_onehr_panel actual SET archived_at=effect_at WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='declined' WHERE actual.id=wanted_request AND actual.tenant_id=review.tenant_id;
+ END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(review.tenant_id,'onehr',wanted_request,CASE WHEN submit THEN 'onehr.feedback-submitted' ELSE 'onehr.feedback-declined' END,'user',app.current_user_id(),'{}'::jsonb) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_feedback_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_onehr_panel actual WHERE actual.request_id=wanted_request AND actual.tenant_id=review.tenant_id AND to_jsonb(actual)=next_panel) THEN RAISE EXCEPTION 'Feedback effect did not complete' USING ERRCODE='42501';END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_feedback_apply(uuid,boolean,jsonb,text,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_feedback_apply(uuid,boolean,jsonb,text,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Only the finite nominated writer can introduce private feedback content. Each
+-- receipt is consumed once against the complete actual OLD/NEW row; the closed
+-- function must append its canonical audit before returning. A failed statement
+-- rolls its pending receipt, row, request status and event back together.
+CREATE TABLE app.financial_onehr_feedback_effect(
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,
+ before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
+);
+ALTER TABLE app.financial_onehr_feedback_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.financial_onehr_feedback_effect FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_onehr_feedback_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+CREATE FUNCTION app.financial_onehr_feedback_delta_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE receipt uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_OP='INSERT' THEN
+  IF NEW.answers IS NOT NULL OR NEW.remark IS DISTINCT FROM '' OR NEW.principle_comments IS DISTINCT FROM '{}'::jsonb OR NEW.submitted_at IS NOT NULL OR NEW.reset_at IS NOT NULL THEN RAISE EXCEPTION 'Feedback source mutation unavailable' USING ERRCODE='42501';END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.request_id IS DISTINCT FROM OLD.request_id OR NEW.review_id IS DISTINCT FROM OLD.review_id OR NEW.subject_employment_id IS DISTINCT FROM OLD.subject_employment_id OR NEW.peer_employment_id IS DISTINCT FROM OLD.peer_employment_id THEN RAISE EXCEPTION 'Panel identity is immutable' USING ERRCODE='42501';END IF;
+ -- Consume private declines too. Administrative/assigned panel metadata siblings
+ -- have independent native writers and are not relabelled as nominated feedback.
+ UPDATE app.financial_onehr_feedback_effect effect SET consumed=true WHERE effect.id=(SELECT candidate.id FROM app.financial_onehr_feedback_effect candidate
+ WHERE candidate.transaction_id=pg_current_xact_id() AND candidate.tenant_id=NEW.tenant_id AND candidate.user_id=app.current_user_id() AND candidate.request_id=NEW.request_id AND NOT candidate.consumed
+ AND candidate.before_row=to_jsonb(OLD) AND candidate.after_row=to_jsonb(NEW) LIMIT 1) RETURNING id INTO receipt;
+ IF receipt IS NOT NULL THEN
+  IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Feedback principal unavailable' USING ERRCODE='42501';END IF;
+  RETURN NEW;
+ END IF;
+ IF NEW.answers IS DISTINCT FROM OLD.answers OR NEW.remark IS DISTINCT FROM OLD.remark OR NEW.principle_comments IS DISTINCT FROM OLD.principle_comments OR NEW.submitted_at IS DISTINCT FROM OLD.submitted_at OR NEW.reset_at IS DISTINCT FROM OLD.reset_at THEN RAISE EXCEPTION 'Feedback source mutation unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_feedback_delta_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_feedback_delta_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_panel FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_feedback_delta_guard();
+
+--> statement-breakpoint
+-- A selected roster label keeps the native employment/person-or-OneHR-label
+-- ceiling. It is not an arbitrary-directory projection for task participants.
+CREATE FUNCTION app.financial_onehr_panel_candidate(wanted_employment uuid) RETURNS TABLE(id uuid,person_id uuid,name text,grade text,terminated_on date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT employment.id,employment.person_id,person.full_name,grade.code,employment.terminated_on FROM public.employment employment
+ JOIN public.person person ON person.id=employment.person_id AND person.tenant_id=employment.tenant_id LEFT JOIN public.job_grade grade ON grade.id=employment.grade_id AND grade.tenant_id=employment.tenant_id
+ WHERE employment.id=wanted_employment AND employment.tenant_id=app.current_tenant_id()
+ AND (app.can_see_employment(employment.id) AND app.data_permission_record_read(employment.id) OR app.onehr_partner_for(employment.company_id) AND app.data_permission_matches(employment.id))
+ AND (app.can_see_person(person.id) AND app.data_permission_person_read(person.id) OR app.onehr_admin(employment.company_id) AND app.data_permission_matches(employment.id));
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_panel_candidate(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_panel_assign(wanted_review uuid,expected_revision integer,inputs jsonb,purpose text) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE review public.performance_onehr_review%ROWTYPE;header public.performance_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;panel public.performance_onehr_panel%ROWTYPE;subject public.employment%ROWTYPE;policy jsonb;prior jsonb;before_metadata jsonb;omitted jsonb;input jsonb;peer record;peer_people uuid[]:='{}';new_request_id uuid;subject_name text;admin_course boolean;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR panel actor unavailable' USING ERRCODE='42501';END IF;
+ IF purpose IS NULL OR purpose NOT IN ('assigned','administration') OR jsonb_typeof(inputs) IS DISTINCT FROM 'array' OR jsonb_array_length(inputs)>30 THEN RAISE EXCEPTION 'Invalid panel assignment purpose or input' USING ERRCODE='22023';END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(inputs) item WHERE jsonb_typeof(item) IS DISTINCT FROM 'object' OR NOT(item ?& ARRAY['employmentId','relationship']) OR item-ARRAY['employmentId','relationship']<>'{}'::jsonb
+ OR jsonb_typeof(item->'employmentId') IS DISTINCT FROM 'string' OR jsonb_typeof(item->'relationship') IS DISTINCT FROM 'string' OR item->>'relationship' NOT IN ('line_manager','matrix_manager','peer','direct_report')) THEN RAISE EXCEPTION 'Invalid panel reviewer' USING ERRCODE='22023';END IF;
+ IF jsonb_array_length(inputs)<>(SELECT count(DISTINCT (item->>'employmentId')::uuid) FROM jsonb_array_elements(inputs) item) THEN RAISE EXCEPTION 'A panel cannot contain the same reviewer twice.' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=wanted_review AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ SELECT * INTO header FROM public.performance_review actual WHERE actual.id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ admin_course:=purpose='administration';
+ IF review.review_id IS NULL OR admin_course AND NOT app.onehr_review_administration_edit(wanted_review)
+ OR NOT admin_course AND (NOT app.onehr_review_task_view(wanted_review,'assigned') OR NOT app.function_action_allowed('performance.onehr.assignedReview','edit',review.company_id) OR NOT app.onehr_manager(wanted_review)) THEN RAISE EXCEPTION 'This action is not assigned to you.' USING ERRCODE='42501';END IF;
+ IF review.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF NOT app.assessment_review_participates(wanted_review) THEN RAISE EXCEPTION 'This employee is not participating in the cycle.' USING ERRCODE='42501';END IF;
+ IF app.onehr_self_employment(review.employment_id) THEN RAISE EXCEPTION 'Ask another administrator to assign your panel.' USING ERRCODE='42501';END IF;
+ IF header.closed_at IS NOT NULL OR cycle.status NOT IN ('open','calibration') OR EXISTS(SELECT 1 FROM app.onehr_review_frozen(wanted_review)) THEN RAISE EXCEPTION 'This assessment is finalized or closed.' USING ERRCODE='42501';END IF;
+ IF NOT admin_course AND (policy->'windows'->'f360'->>'opensAt' IS NOT NULL AND now()<(policy->'windows'->'f360'->>'opensAt')::timestamptz OR policy->'windows'->'f360'->>'closesAt' IS NOT NULL AND now()>=(policy->'windows'->'f360'->>'closesAt')::timestamptz) THEN RAISE EXCEPTION 'This step is closed.' USING ERRCODE='42501';END IF;
+ IF policy->'modules'->>'tm' IS DISTINCT FROM 'true' THEN RAISE EXCEPTION 'Talent assessment is disabled.' USING ERRCODE='42501';END IF;
+ IF review.grade~'^\d+$' AND jsonb_array_length(inputs)>coalesce((policy->>'panelTarget')::integer,5) THEN RAISE EXCEPTION 'The panel exceeds the configured assessor limit.' USING ERRCODE='22023';END IF;
+ SELECT * INTO subject FROM public.employment actual WHERE actual.id=review.employment_id AND actual.tenant_id=review.tenant_id;
+ IF admin_course AND NOT EXISTS(SELECT 1 FROM app.financial_onehr_panel_candidate(subject.id)) THEN RAISE EXCEPTION 'Subject not available.' USING ERRCODE='42501';END IF;
+ SELECT person.full_name INTO subject_name FROM public.person person WHERE person.id=subject.person_id AND person.tenant_id=review.tenant_id;
+ IF subject_name IS NULL THEN RAISE EXCEPTION 'Subject not available.' USING ERRCODE='42501';END IF;
+ SELECT coalesce(jsonb_agg(to_jsonb(actual)),'[]'::jsonb) INTO prior FROM public.performance_onehr_panel actual WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT coalesce(jsonb_agg(item),'[]'::jsonb) INTO omitted FROM jsonb_array_elements(prior) item WHERE item->>'archived_at' IS NULL AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(inputs) selected WHERE selected->>'employmentId'=item->>'peer_employment_id');
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(omitted) item WHERE item->>'submitted_at' IS NOT NULL) THEN RAISE EXCEPTION 'Submitted reviewers must remain on the panel.' USING ERRCODE='42501';END IF;
+ IF NOT admin_course AND (review.grade~*'^[a-z]+$' AND jsonb_array_length(inputs)<>1 OR review.grade!~*'^[a-z]+$' AND jsonb_array_length(inputs)<(policy->>'minValid')::integer) THEN RAISE EXCEPTION 'The panel is smaller than the required valid response count.' USING ERRCODE='22023';END IF;
+ FOR input IN SELECT value FROM jsonb_array_elements(inputs) LOOP
+  SELECT * INTO peer FROM app.financial_onehr_panel_candidate((input->>'employmentId')::uuid);
+  IF peer.id IS NULL OR peer.person_id=subject.person_id OR peer.person_id=ANY(peer_people) OR peer.terminated_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date OR coalesce(regexp_replace(peer.grade,'^JG\s*','','i'),'')!~'^\d+$' THEN RAISE EXCEPTION 'Choose distinct active reviewers with numeric job grades, other than the subject.' USING ERRCODE='42501';END IF;
+  peer_people:=array_append(peer_people,peer.person_id);
+  IF input->>'relationship'='line_manager' AND peer.id IS DISTINCT FROM header.reviewer_employment_id THEN RAISE EXCEPTION 'The line manager must be the assigned manager.' USING ERRCODE='42501';END IF;
+  IF NOT admin_course AND input->>'relationship'='matrix_manager' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(app.onehr_moderator_choices(wanted_review)) candidate WHERE candidate->>'id'=peer.id::text AND peer.id IS DISTINCT FROM header.reviewer_employment_id) THEN RAISE EXCEPTION 'Choose a current matrix manager.' USING ERRCODE='42501';END IF;
+  IF input->>'relationship'='direct_report' AND NOT app.is_admin_report_of(peer.id,subject.id) THEN RAISE EXCEPTION 'Choose a current report of the subject.' USING ERRCODE='42501';END IF;
+  IF review.grade!~'^\d+$' AND (jsonb_array_length(inputs)<>1 OR peer.id IS DISTINCT FROM header.reviewer_employment_id OR input->>'relationship'<>'line_manager') THEN RAISE EXCEPTION 'A letter-grade subject is assessed only by their line manager.' USING ERRCODE='42501';END IF;
+  SELECT * INTO panel FROM public.performance_onehr_panel actual WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id AND actual.peer_employment_id=peer.id FOR UPDATE;
+  IF panel.request_id IS NOT NULL THEN
+   IF panel.submitted_at IS NOT NULL THEN
+    IF panel.archived_at IS NOT NULL THEN RAISE EXCEPTION 'Restore archived submitted feedback through the panel controls.' USING ERRCODE='42501';END IF;
+    IF panel.relationship IS DISTINCT FROM input->>'relationship' THEN
+     IF NOT admin_course THEN RAISE EXCEPTION 'Only scoped HR may change a submitted reviewer relationship.' USING ERRCODE='42501';END IF;
+     UPDATE public.performance_onehr_panel actual SET relationship=input->>'relationship' WHERE actual.request_id=panel.request_id AND actual.tenant_id=review.tenant_id;
+    END IF;
+    CONTINUE;
+   END IF;
+   UPDATE public.performance_onehr_panel actual SET archived_at=NULL,relationship=input->>'relationship' WHERE actual.request_id=panel.request_id AND actual.tenant_id=review.tenant_id;
+   UPDATE public.peer_feedback_request actual SET status='pending' WHERE actual.id=panel.request_id AND actual.tenant_id=review.tenant_id;
+  ELSE
+   INSERT INTO public.peer_feedback_request(tenant_id,review_id,subject_employment_id,peer_employment_id,subject_name,peer_name,cycle_name,requested_by_user_id)
+   VALUES(review.tenant_id,wanted_review,subject.id,peer.id,subject_name,peer.name,cycle.name,app.current_user_id()) RETURNING id INTO new_request_id;
+   INSERT INTO public.performance_onehr_panel(tenant_id,request_id,review_id,subject_employment_id,peer_employment_id,relationship) VALUES(review.tenant_id,new_request_id,wanted_review,subject.id,peer.id,input->>'relationship');
+   INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(review.tenant_id,'peer-feedback-request',new_request_id,'peer-feedback-request.created','user',app.current_user_id(),jsonb_build_object('reviewId',wanted_review));
+  END IF;
+ END LOOP;
+ FOR input IN SELECT value FROM jsonb_array_elements(omitted) LOOP
+  UPDATE public.performance_onehr_panel actual SET archived_at=clock_timestamp() WHERE actual.request_id=(input->>'request_id')::uuid AND actual.tenant_id=review.tenant_id;
+  UPDATE public.peer_feedback_request actual SET status='declined' WHERE actual.id=(input->>'request_id')::uuid AND actual.tenant_id=review.tenant_id;
+ END LOOP;
+ UPDATE public.performance_onehr_review actual SET revision=review.revision+1 WHERE actual.review_id=wanted_review AND actual.tenant_id=review.tenant_id;
+ SELECT coalesce(jsonb_agg(jsonb_build_object('requestId',item->'request_id','employmentId',item->'peer_employment_id','relationship',item->'relationship','archived',item->>'archived_at' IS NOT NULL,'submitted',item->>'submitted_at' IS NOT NULL)),'[]'::jsonb) INTO before_metadata FROM jsonb_array_elements(prior) item;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(review.tenant_id,'onehr',wanted_review,'onehr.panel-assigned','user',app.current_user_id(),jsonb_build_object('count',jsonb_array_length(inputs),'removed',jsonb_array_length(omitted),'before',before_metadata,'after',inputs));
+ RETURN review.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_panel_assign(uuid,integer,jsonb,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_panel_assign(uuid,integer,jsonb,text) TO ai_hr_app;
+
+REVOKE ALL ON FUNCTION app.onehr_manager_panel_member(uuid,boolean,text) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_manager_panel(wanted_review uuid)
+RETURNS TABLE(request_id uuid,peer_employment_id uuid,relationship text,submitted_at timestamptz,archived_at timestamptz,reset_at timestamptz,archive_reason text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT panel.request_id,panel.peer_employment_id,panel.relationship,panel.submitted_at,panel.archived_at,panel.reset_at,CASE WHEN panel.archived_at IS NULL THEN panel.archive_reason END
+ FROM public.performance_onehr_panel panel
+ WHERE panel.review_id=wanted_review AND panel.tenant_id=app.current_tenant_id() AND app.financial_human_principal_current()
+ AND app.onehr_manager(panel.review_id) AND app.onehr_review_task_view(panel.review_id,'assigned')
+ AND NOT EXISTS(SELECT 1 FROM public.employment subject WHERE subject.id=panel.subject_employment_id AND subject.tenant_id=panel.tenant_id AND app.is_self_person(subject.person_id));
+$$;

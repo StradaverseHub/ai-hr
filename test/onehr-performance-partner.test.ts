@@ -290,7 +290,7 @@ describe('OneHR performance partner (ADR-0142)', () => {
     await perf.assignOnehrPanel(partner, reviewId, await revisionOf(reviewId), [
       { employmentId: manager.employmentId, relationship: 'line_manager' },
       { employmentId: peers[0].employmentId, relationship: 'peer' },
-    ]);
+    ],'administration');
     const panel = await owner.db.select().from(schema.onehrPanel).where(eq(schema.onehrPanel.reviewId, reviewId));
     expect(panel).toHaveLength(2);
     const requests = await owner.db.select().from(schema.peerFeedbackRequest).where(eq(schema.peerFeedbackRequest.reviewId, reviewId));
