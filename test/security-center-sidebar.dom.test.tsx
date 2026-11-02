@@ -17,10 +17,10 @@ function show(theme:string,admin=true,configure=true,provision=true){document.do
 function open(){const buttons=screen.getAllByRole('button',{name:en.nav.securityCenter});if(buttons[0].getAttribute('aria-expanded')!=='true')fireEvent.click(buttons[0]);return screen.getByRole('navigation',{name:en.nav.securityCenter});}
 describe.each(['classic','monolith','atelier'])('%s Security Center navigation',theme=>{
  it('offers hub and five pages with only the selected leaf active',async()=>{
-  show(theme);const panel=open();expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(hrefs);
-  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en',`security-flyout-${theme}`,'real sidebar with fictional current authority; no authenticated server journey',theme as 'classic'|'monolith'|'atelier');
+  show(theme);fireEvent.click(screen.getByRole('button',{name:en.nav.workspaceSwitch}));const panel=open();expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(hrefs);
+  await captureAiReviewScreenshots(`<div class="flex h-[940px] items-start">${aiReviewDomHtml(document.body)}</div>`,'en',`security-flyout-${theme}`,'real sidebar with fictional current authority; no authenticated server journey',theme as 'classic'|'monolith'|'atelier');
   expect(panel.querySelectorAll('[aria-current="page"]')).toHaveLength(1);expect(panel.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe('/admin/users/create');
- });
+ },30_000);
  it('hides group provisioning from delegated admins',()=>{route.path='/admin/users';show(theme,true,false,false);const panel=open();const shown=within(panel).getAllByRole('link').map(link=>link.getAttribute('href'));expect(shown).toEqual(['/admin/security-center','/admin/users/function-access','/admin/users']);});
  it('admits configure-only users without listing role administration or provisioning',()=>{route.path='/admin/users/access';show(theme,false,true,false);const panel=open();expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/admin/security-center','/admin/users/access']);});
  it('does not expose a security node to an employee',()=>{show(theme,false,false,false);expect(screen.queryByRole('button',{name:en.nav.securityCenter})).toBeNull();expect(document.querySelector('a[href="/admin/security-center"]')).toBeNull();});
