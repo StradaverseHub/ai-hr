@@ -5,7 +5,7 @@ export type FunctionOperation=typeof FUNCTION_OPERATIONS[number];
 export type FunctionActionDescriptor={
  key:string;scope:'tenant'|'company';moduleKey:string;labelKey:string;
  kind:'screen'|'submenu'|'native_acl';course:'administrative'|'own'|'assigned';
- screenKey?:string;href?:string;
+ screenKey?:string;href?:string;employeeBearing?:boolean;
  actions:readonly {operation:FunctionOperation;parentCapability?:string|null;delegationFloorFunction?:string|null;
   bindings:readonly {owner:string;operation:string}[]}[];
 };
@@ -23,7 +23,7 @@ export function functionActionCapabilities(descriptors:readonly FunctionActionDe
    if(!action.bindings.length)throw new Error('Function action requires actual owner bindings');
    return {id:functionCapabilityId(descriptor.key,action.operation),scope:descriptor.scope,bindings:action.bindings,
     prerequisites:[...(action.parentCapability?[action.parentCapability]:[]),...(action.operation==='view'?[]:[functionCapabilityId(descriptor.key,'view')])],
-    presentation:{key:descriptor.key,moduleKey:descriptor.moduleKey,labelKey:descriptor.labelKey,kind:descriptor.kind,course:descriptor.course,...(descriptor.screenKey?{screenKey:descriptor.screenKey}:{}),...(descriptor.href?{href:descriptor.href}:{})}};
+    presentation:{key:descriptor.key,moduleKey:descriptor.moduleKey,labelKey:descriptor.labelKey,kind:descriptor.kind,course:descriptor.course,...(descriptor.employeeBearing===undefined?{}:{employeeBearing:descriptor.employeeBearing}),...(descriptor.screenKey?{screenKey:descriptor.screenKey}:{}),...(descriptor.href?{href:descriptor.href}:{})}};
   });
  });
 }

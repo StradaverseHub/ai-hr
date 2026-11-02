@@ -8,9 +8,11 @@ const names=tracked.filter(path=>/\.[cm]?[jt]sx?$/.test(path)&&!path.startsWith(
 const modules=new Map(),policies=new Map();
 const resolveImport=(path,spec)=>{if(!spec.startsWith('.')&&!spec.startsWith('@/'))return null;const stem=spec.startsWith('@/')?resolve(root,spec.slice(2)):resolve(root,dirname(path),spec);const found=['','.ts','.tsx','/index.ts','/index.tsx'].map(suffix=>stem+suffix).find(name=>existsSync(name)&&/\.[jt]sx?$/.test(name));return found?relative(root,found):null;};
 for(const path of tracked.filter(path=>/^db\/migrations\/\d.*\.sql$/.test(path)).sort()){
- const text=readFileSync(path,'utf8');for(const match of text.matchAll(/(?:CREATE|ALTER) POLICY\s+([a-z_][a-z0-9_]*)\s+ON\s+(?:public\.)?([a-z_][a-z0-9_]*)\b([^;]*);/gi)){
-  const table=match[2],key=table+':'+match[1];policies.set(key,{table,policy:match[1],source:path,owners:[...new Set([...match[3].matchAll(/app\.([a-z][a-z0-9_]*)\s*\(/g)].map(x=>'app.'+x[1]))]});
- }
+ const text=readFileSync(path,'utf8'),events=[];
+ for(const match of text.matchAll(/(?:CREATE|ALTER) POLICY\s+([a-z_][a-z0-9_]*)\s+ON\s+(?:public\.)?([a-z_][a-z0-9_]*)\b([^;]*);/gi))events.push({at:match.index,match,drop:false});
+ for(const match of text.matchAll(/DROP POLICY\s+(?:IF EXISTS\s+)?([a-z_][a-z0-9_]*)\s+ON\s+(?:public\.)?([a-z_][a-z0-9_]*)\b[^;]*;/gi))events.push({at:match.index,match,drop:true});
+ for(const event of events.sort((a,b)=>a.at-b.at)){const match=event.match,table=match[2],key=table+':'+match[1];if(event.drop){policies.delete(key);continue;}policies.set(key,{table,policy:match[1],source:path,owners:[...new Set([...match[3].matchAll(/app\.([a-z][a-z0-9_]*)\s*\(/g)].map(x=>'app.'+x[1]))]});}
+
 }
 for(const path of names){
  const text=readFileSync(path,'utf8'),ast=ts.createSourceFile(path,text,ts.ScriptTarget.Latest,true),symbols=new Map(),imports=new Map(),stars=[];

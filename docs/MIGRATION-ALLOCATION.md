@@ -940,7 +940,7 @@ and release evidence, and grants no deployment authority. Existing applied SQL i
 ## Administrative data-profile central enforcement — 2 November 2026 (provisional)
 
 Security worker appends `0938_data_permission_enforcement`, aggregate index760,
-when1793330000338, SQL SHA256 `2125e4203b92c75e0e502d011474787aac6487bbbcd6bc9a2240b7e4138f5346`. Its owned source journal leaves
+when1793330000338, SQL SHA256 `814a93e976eeadc01b38ac02540efde2c376f58fbd044f7c2159ea6772af2f9f`. Its owned source journal leaves
 index759 reserved for the independent0937 / when1793330000337 bypass-owner migration.
 The integration owner must merge0937 in chronological order and re-audit competing claims and live
 watermark before installation. This central row-scope prerequisite does not claim that the complete
