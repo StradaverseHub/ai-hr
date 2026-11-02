@@ -22,7 +22,7 @@ REVOKE ALL ON FUNCTION app.organisation_settings_legacy_allowed(uuid,uuid,text,u
 -- Future root companies require genuinely tenant-wide View/Add grants; no fabricated company ID.
 CREATE FUNCTION app.organisation_global_action(p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p_operation IN ('view','add','edit','delete') AND app.principal_snapshot_current()
+ SELECT p_operation IN ('view','add','edit','delete') AND app.principal_snapshot_current() AND app.is_group_admin()
  AND app.organisation_settings_legacy_allowed(app.current_tenant_id(),app.current_user_id(),'organisation.'||p_operation,NULL)
  AND CASE WHEN NOT EXISTS(SELECT 1 FROM public.access_capability WHERE id='organisation.'||p_operation AND supported) THEN true ELSE
  EXISTS(SELECT 1 FROM public.access_configuration WHERE tenant_id=app.current_tenant_id() AND initialized)
@@ -36,13 +36,13 @@ CREATE FUNCTION app.organisation_action_allowed(p_operation text,p_company uuid)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT p_operation IN ('view','add','edit','delete') AND app.principal_snapshot_current()
  AND CASE WHEN p_company IS NULL THEN app.organisation_global_action(p_operation) ELSE
- app.organisation_settings_legacy_allowed(app.current_tenant_id(),app.current_user_id(),'organisation.'||p_operation,p_company)
+ app.is_admin_for(p_company) AND app.organisation_settings_legacy_allowed(app.current_tenant_id(),app.current_user_id(),'organisation.'||p_operation,p_company)
  AND CASE WHEN EXISTS(SELECT 1 FROM public.access_capability WHERE id='organisation.'||p_operation AND supported)
  THEN app.access_allowed_for(app.current_user_id(),'organisation.'||p_operation,p_company) ELSE true END END;
 $$;
 CREATE FUNCTION app.settings_action_allowed(p_operation text) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT p_operation IN ('view','add','edit','delete') AND app.principal_snapshot_current()
+ SELECT p_operation IN ('view','add','edit','delete') AND app.principal_snapshot_current() AND app.is_admin()
  AND app.organisation_settings_legacy_allowed(app.current_tenant_id(),app.current_user_id(),'settings.'||p_operation,NULL)
  AND CASE WHEN EXISTS(SELECT 1 FROM public.access_capability WHERE id='settings.'||p_operation AND supported)
  THEN app.access_allowed_for(app.current_user_id(),'settings.'||p_operation,NULL) ELSE true END;
@@ -62,6 +62,7 @@ $$;
 REVOKE ALL ON FUNCTION app.organisation_company_born(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.organisation_remember_birth() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
+ DELETE FROM app.organisation_birth WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  IF NOT app.access_workforce_storage_owner() THEN
  INSERT INTO app.organisation_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),TG_TABLE_NAME,NEW.id,CASE WHEN TG_TABLE_NAME='company' THEN NEW.id ELSE (to_jsonb(NEW)->>'company_id')::uuid END) ON CONFLICT DO NOTHING;
  END IF;RETURN NULL;
@@ -77,6 +78,7 @@ $$;
 REVOKE ALL ON FUNCTION app.settings_born(text,uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.settings_remember_birth() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
+ DELETE FROM app.settings_birth WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  IF NOT app.access_workforce_storage_owner() THEN INSERT INTO app.settings_birth VALUES(pg_current_xact_id(),NEW.tenant_id,app.current_user_id(),TG_TABLE_NAME,NEW.id) ON CONFLICT DO NOTHING;END IF;RETURN NULL;
 END;$$;
 REVOKE ALL ON FUNCTION app.settings_remember_birth() FROM PUBLIC,ai_hr_app;
@@ -90,12 +92,13 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE c public.employee_id_config%ROWTYPE;n integer;
 BEGIN
  PERFORM app.access_workforce_write_lock();
+ DELETE FROM app.organisation_number_intent WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
  IF NOT app.is_admin_for(p_company) OR NOT app.access_workforce_action_company(p_company,'add') THEN RAISE EXCEPTION 'Employee admission unavailable' USING ERRCODE='42501';END IF;
  SELECT * INTO c FROM public.employee_id_config WHERE tenant_id=app.current_tenant_id() AND status='active' AND (company_id=p_company OR company_id IS NULL) ORDER BY company_id IS NULL LIMIT 1 FOR UPDATE;
  IF NOT FOUND THEN RETURN;END IF;
  n:=CASE WHEN c.current_running_number<c.start_number THEN c.start_number ELSE c.current_running_number+c.increment END;
  INSERT INTO app.organisation_number_intent VALUES(pg_current_xact_id(),c.tenant_id,app.current_user_id(),c.id,c.current_running_number,n,NULL)
- ON CONFLICT(xact_id,tenant_id,user_id,config_id) DO UPDATE SET before_number=EXCLUDED.before_number,after_number=EXCLUDED.after_number;
+ ON CONFLICT ON CONSTRAINT organisation_number_intent_pkey DO UPDATE SET before_number=EXCLUDED.before_number,after_number=EXCLUDED.after_number;
  UPDATE public.employee_id_config SET current_running_number=n,updated_at=now() WHERE id=c.id;
  RETURN QUERY SELECT c.prefix||lpad(n::text,greatest(c.number_length,length(n::text)),'0')||c.suffix,c.id,n;
 END;$$;
@@ -105,7 +108,7 @@ GRANT EXECUTE ON FUNCTION app.organisation_allocate_employee_code(uuid) TO ai_hr
 CREATE FUNCTION app.organisation_settings_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE b jsonb:=CASE WHEN TG_OP='INSERT' THEN NULL ELSE to_jsonb(OLD) END;a jsonb:=CASE WHEN TG_OP='DELETE' THEN NULL ELSE to_jsonb(NEW) END;r jsonb:=coalesce(a,b);
- op text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;co uuid;origin uuid;kind text;label uuid;prior_parent uuid;next_parent uuid;
+ op text:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;co uuid;origin uuid;requested_kind text;label uuid;prior_parent uuid;next_parent uuid;
 BEGIN
  IF app.access_workforce_storage_owner() THEN IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;END IF;
  PERFORM app.access_workforce_write_lock();
@@ -135,14 +138,14 @@ BEGIN
   IF TG_OP='UPDATE' AND (a->>'company_id') IS DISTINCT FROM (b->>'company_id') THEN RAISE EXCEPTION 'Configuration scope is immutable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME='label_company_assignment' THEN
   IF TG_OP='UPDATE' AND (a->>'label_kind' IS DISTINCT FROM b->>'label_kind' OR a->>'label_id' IS DISTINCT FROM b->>'label_id' OR a->>'company_id' IS DISTINCT FROM b->>'company_id') THEN RAISE EXCEPTION 'Label criteria identity is immutable' USING ERRCODE='42501';END IF;
-  kind:=r->>'label_kind';label:=(r->>'label_id')::uuid;co:=(r->>'company_id')::uuid;
-  IF kind NOT IN ('department','position','cost_center','business_unit') THEN RAISE EXCEPTION 'Unknown label' USING ERRCODE='42501';END IF;
-  EXECUTE format('SELECT company_id FROM public.%I WHERE id=$1 AND tenant_id=$2',kind) INTO origin USING label,app.current_tenant_id();
+  requested_kind:=r->>'label_kind';label:=(r->>'label_id')::uuid;co:=(r->>'company_id')::uuid;
+  IF requested_kind NOT IN ('department','position','cost_center','business_unit') THEN RAISE EXCEPTION 'Unknown label' USING ERRCODE='42501';END IF;
+  EXECUTE format('SELECT company_id FROM public.%I WHERE id=$1 AND tenant_id=$2',requested_kind) INTO origin USING label,app.current_tenant_id();
   IF origin IS NULL THEN
    -- Existing native delete cleanup has already removed the label. Its private successful-delete proof is exact.
-   IF TG_OP<>'DELETE' OR NOT EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind='deleted:'||kind AND i.row_id=label) THEN RAISE EXCEPTION 'Label owner unavailable' USING ERRCODE='42501';END IF;
+   IF TG_OP<>'DELETE' OR NOT EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind='deleted:'||requested_kind AND i.row_id=label) THEN RAISE EXCEPTION 'Label owner unavailable' USING ERRCODE='42501';END IF;
   ELSE
-   op:=CASE WHEN EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind=kind AND i.row_id=label) THEN 'add' ELSE 'edit' END;
+   op:=CASE WHEN EXISTS(SELECT 1 FROM app.organisation_birth i WHERE i.xact_id=pg_current_xact_id() AND i.tenant_id=app.current_tenant_id() AND i.user_id=app.current_user_id() AND i.kind=requested_kind AND i.row_id=label) THEN 'add' ELSE 'edit' END;
    IF NOT app.organisation_action_allowed(op,origin) OR NOT app.organisation_action_allowed(op,co) THEN RAISE EXCEPTION 'Label criteria action unavailable' USING ERRCODE='42501';END IF;
   END IF;
  ELSE
@@ -175,7 +178,7 @@ DO $$DECLARE name text;BEGIN
  EXECUTE format('CREATE TRIGGER organisation_settings_action BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_settings_write_guard()',name);
  END LOOP;
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit'] LOOP
- EXECUTE format('CREATE TRIGGER organisation_successful_birth AFTER INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_remember_birth()',name);
+ EXECUTE format('CREATE TRIGGER a00_organisation_successful_birth AFTER INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_remember_birth()',name);
  END LOOP;
 END;$$;
 
@@ -194,7 +197,7 @@ BEGIN
  IF NOT FOUND OR c.current_running_number<>d.reserved_number THEN RETURN;END IF;
  IF c.prefix||lpad(d.reserved_number::text,greatest(c.number_length,length(d.reserved_number::text)),'0')||c.suffix IS DISTINCT FROM d.reserved_employee_code THEN RAISE EXCEPTION 'Draft reserved number changed' USING ERRCODE='42501';END IF;
  INSERT INTO app.organisation_number_intent VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),c.id,c.current_running_number,c.current_running_number-c.increment,d.id)
- ON CONFLICT(xact_id,tenant_id,user_id,config_id) DO UPDATE SET before_number=EXCLUDED.before_number,after_number=EXCLUDED.after_number,draft_id=EXCLUDED.draft_id;
+ ON CONFLICT ON CONSTRAINT organisation_number_intent_pkey DO UPDATE SET before_number=EXCLUDED.before_number,after_number=EXCLUDED.after_number,draft_id=EXCLUDED.draft_id;
 END;$$;
 REVOKE ALL ON FUNCTION app.organisation_prepare_draft_number_release(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.organisation_prepare_draft_number_release(uuid) TO ai_hr_app;
@@ -205,7 +208,7 @@ CREATE OR REPLACE FUNCTION app.access_can_delegate(p_capability text,p_company u
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.access_capability c
   JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id()
-  WHERE c.id=p_capability AND (p_capability !~ '^(organisation|settings)\.' OR app.organisation_settings_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
+  WHERE c.id=p_capability AND (p_capability !~ '^(organisation|settings)\.' OR app.organisation_settings_delegation_allowed(u.tenant_id,u.id,p_capability,p_company) AND CASE WHEN p_capability LIKE 'settings.%' THEN app.settings_action_allowed(split_part(p_capability,'.',2)) ELSE app.organisation_action_allowed(split_part(p_capability,'.',2),p_company) END) AND (p_capability !~ '^(payroll|performance_compensation|letters)\.' OR app.financial_letter_delegation_allowed(u.tenant_id,u.id,p_capability,p_company)) AND (p_capability !~ '^[a-z][a-z0-9_]*\.(add|edit|delete|approve|issue)$' OR app.access_can_delegate(split_part(p_capability,'.',1)||'.view',p_company)) AND c.supported AND jsonb_array_length(c.bindings)>0
    AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
    AND CASE WHEN c.scope='tenant' THEN p_company IS NULL AND app.access_allowed_for(u.id,c.id,NULL)
     WHEN p_company IS NOT NULL THEN app.access_allowed_for(u.id,c.id,p_company)
