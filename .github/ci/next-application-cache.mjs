@@ -1,7 +1,7 @@
 /** Normal canonical build with optional authenticated application graph input. */
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {readFileSync,writeFileSync,mkdirSync,readdirSync,lstatSync,realpathSync,existsSync,rmSync,statfsSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,readdirSync,lstatSync,realpathSync,existsSync,rmSync,statfsSync,appendFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -129,7 +129,10 @@ export async function managedApplicationBuild(){
   const actual=await command('canonical-build','pnpm',['exec','tsx',join(ROOT,'.github/ci/build-production.mjs'),'--ci',output],720000);
   report.actualCanonicalBuild=actual.row;logText=actual.text;
   assert(report.memory.verdict!==null,'Canonical build peak RSS telemetry required');
-  console.log(`next build memory: heap=${e.NODE_OPTIONS}; peak RSS=${report.memory.peakRssKiB} KiB; min MemAvailable=${report.memory.minMemAvailableKiB} KiB; verdict=${report.memory.verdict}`);
+  // The release verifier accepts an exact artifact inventory, so canonical telemetry goes to the log, the step summary
+  // and the optional compiler-graph producer report rather than a new artifact.
+  const memoryLine=`next build memory: heap=${e.NODE_OPTIONS} (${report.memory.heapProfile}); peak RSS=${report.memory.peakRssKiB} KiB; min MemAvailable=${report.memory.minMemAvailableKiB} KiB; budget warn>${BUILD_RSS_WARN_KIB} fail>${BUILD_RSS_FAIL_KIB} KiB; verdict=${report.memory.verdict}`;
+  console.log(memoryLine);if(e.GITHUB_STEP_SUMMARY)try{appendFileSync(e.GITHUB_STEP_SUMMARY,memoryLine+'\n');}catch{}
   if(report.memory.verdict==='warn')console.log(`::warning::Canonical next build peak RSS ${report.memory.peakRssKiB} KiB exceeds the ${BUILD_RSS_WARN_KIB} KiB warning budget`);
   assert(report.memory.verdict!=='fail','Canonical next build peak RSS exceeds the '+BUILD_RSS_FAIL_KIB+' KiB budget');
   assert(/\bCompiled successfully in /.test(logText)&&/Finished TypeScript in /.test(logText)
