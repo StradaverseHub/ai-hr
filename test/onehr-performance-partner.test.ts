@@ -191,12 +191,16 @@ describe('OneHR performance partner (ADR-0142)', () => {
         expect(await perf.getOnehrReviewForPurpose(mixed,reviewId,'administration')).toBeNull();
         expect((await perf.getOnehrReviewForPurpose(mixed,reviewId,'task'))?.reviewId).toBe(reviewId);
         const [before]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(before).toBeDefined();
-        expect(await refusal(withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))),'42501')).toContain('Career administrative data unavailable');
+        const beforeRawEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id);
+        expect(await withTenant(mixed,tx=>tx.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId)))).toEqual([]);
+        // Native restrictive SELECT removes the target before a row-level write guard can execute.
+        expect(await withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId)).returning())).toEqual([]);
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([before]);
         const [reviewBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
-        expect(await refusal(withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId))),'42501')).toContain('OneHR administrative data unavailable');
+        expect(await withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId)).returning())).toEqual([]);
         expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([reviewBefore]);
         expect(await withTenant(mixed,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+        expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,reviewId)).orderBy(schema.domainEvent.id)).toEqual(beforeRawEvents);
         await perf.commentAssessmentCareerProfile(mixed,reviewId,before.revision,'Native assigned manager career comment');
         const [commented]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));
         expect(commented).toEqual({...before,reviewId,managerComment:'Native assigned manager career comment',managerUserId:userId,managerCommentAt:expect.any(Date),updatedAt:expect.any(Date),revision:before.revision+1});
