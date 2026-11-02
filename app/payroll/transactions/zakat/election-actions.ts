@@ -75,6 +75,7 @@ export async function saveZakatElectionAction(formData: FormData) {
       employerBearsSocso: current.employerBearsSocso,
       employerBearsEis: current.employerBearsEis,
       employerBearsSkbbk: current.employerBearsSkbbk,
+      employerBearsEpf: current.employerBearsEpf,
       isResident: current.isResident,
       epfCitizenship: current.epfCitizenship,
       epfMode: current.epfMode,
