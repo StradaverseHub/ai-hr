@@ -1339,3 +1339,11 @@ carrier are preserved and revalidated, and a foreign company fails closed. This 
 visibility, employee-data admission, decision, ledger or source mutation. Independent existing policy
 oracle parity/native/private-input cases are authored, unrun. Exact operational function registration
 and raw constructor/terminal closure are still subsequent work; this fact is not module completion.
+
+Own operational Leave application now has a separate native own-person/company View/Add/Edit/Delete
+course, without administrative parent or employee-profile borrowing. The actual requestLeave self Add,
+self-only pending edit and self-only pending withdrawal transactions repeat that purpose after their
+original native source checks. Source boolean and stored/current/recipient floor cases are authored,
+unrun. This is bounded command composition: shared raw Leave request/date/ledger/attachment and
+assigned/super decision readers, the apply UI and give-back cancellation are still separate unfinished
+owners; no raw/read/default/publication completion is claimed for this descriptor.

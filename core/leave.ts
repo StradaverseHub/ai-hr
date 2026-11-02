@@ -3446,6 +3446,7 @@ export async function requestLeave(
     if (!isSelfSubject && !(subject && (await resolveApplyOnBehalfTx(tx, ctx, subject.companyId)))) {
       throw new LeaveOnBehalfNotAllowedError();
     }
+    if (isSelfSubject) await assertOwnLeaveApplicationActionTx(tx,p.employmentId,'add');
 
     await lockLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId]);
     const [currentSubject] = await readSubject();
@@ -7821,6 +7822,8 @@ export async function editLeaveRequestTx(
       throw new LeaveEditNotAllowedError('only the employee who applied can edit their leave');
     }
 
+    await assertOwnLeaveApplicationActionTx(tx,req.employmentId,'edit');
+
     // Status gate: only a PENDING request is editable (expected_function 3.i — "available only for pending").
     if (req.status !== 'pending') throw new LeaveEditNotAllowedError(`the leave is already ${req.status}`);
 
@@ -8198,6 +8201,8 @@ export async function cancelOwnLeaveTx(
     if (!ctx.personId || ctx.personId !== subjectPersonId) {
       throw new LeaveCancellationNotAllowedError('only the employee can cancel their own leave', 'not_yours');
     }
+
+    await assertOwnLeaveApplicationActionTx(tx,req.employmentId,'delete');
 
     // Status gate: PENDING only. An approved row is routed to the give-back flow at the action layer.
     // r301 (83511d3b): each refusal carries its reason, so the screen can say which.
@@ -12318,4 +12323,10 @@ export function actionableLeaveCancellationIds(ctx:SessionContext,requestIds:rea
   }
   return result.sort();
  });
+}
+
+/** Refusal-only composition inside the existing native self command transaction. */
+async function assertOwnLeaveApplicationActionTx(tx:Tx,employmentId:string,operation:'add'|'edit'|'delete'){
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${employmentId}::uuid,${operation}) as allowed`);
+ if(row?.allowed!==true)throw new Error('Own Leave application action unavailable');
 }

@@ -476,3 +476,14 @@ describe('one native on-behalf permission fact shared by the composer and raw so
   await expect(withTenant(ctx,tx=>tx.execute(sql`select app.leave_on_behalf_permission(${b.tenantId}::uuid,${b.companyId}::uuid,ARRAY['super_admin'])`))).rejects.toThrow();
  });
 });
+
+
+describe('native own Leave application source composition',()=>{
+ it('binds own purpose to the actual linked person/company and refuses another visible report',async()=>{
+  const self=await hire('manager'),report=await hire('employee');await reportsTo(report.employmentId,self.employmentId);
+  const facts=await withTenant(self.ctx,tx=>tx.execute<{operation:string;own:boolean;other:boolean}>(sql`select operation,app.leave_own_application_allowed(${self.employmentId}::uuid,operation) as own,app.leave_own_application_allowed(${report.employmentId}::uuid,operation) as other from unnest(ARRAY['view','add','edit','delete']) operation`));
+  expect(facts).toEqual(['view','add','edit','delete'].map(operation=>({operation,own:true,other:false})));
+  const [floors]=await owner.withTenant(self.ctx,tx=>tx.execute<{stored:boolean;current:boolean;recipient:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${self.ctx.userId}::uuid,'function.leave.own.application.add',${b.companyId}::uuid) as stored,app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${self.ctx.userId}::uuid,'function.leave.own.application.add',${b.companyId}::uuid) as "current",app.access_function_delegation_floor('function.leave.own.application.add',${b.companyId}::uuid) as recipient`));expect(floors).toEqual({stored:true,current:true,recipient:true});
+  expect(await withTenant(self.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${self.employmentId}::uuid,'approve') as allowed`))).toEqual([{allowed:false}]);
+ });
+});
