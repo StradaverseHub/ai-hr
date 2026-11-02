@@ -37,6 +37,14 @@ if (process.argv.includes('--self-test')) {
   // Reproduce the SDK57 failure: a template literal consumes the newline escape in widget code.
   const broken = layouts("const BrokenWidget=(props)=>{'widget';return <Text>{props.updated.replace(' · ', '\\n')}</Text>}");
   assert.equal(broken.size, 1);
-  assert.throws(() => new vm.Script(`(${broken.get('BrokenWidget')})`), {name: 'SyntaxError'});
-  console.log('[widget-layout] regression reproduced: escaped newline becomes invalid serialized JavaScript');
+  const sdk = Number(require(path.join(root, 'node_modules/expo/package.json')).version.split('.')[0]);
+  if (sdk < 58) {
+    assert.throws(() => new vm.Script(`(${broken.get('BrokenWidget')})`), {name: 'SyntaxError'});
+    console.log('[widget-layout] SDK57 regression reproduced: escaped newline becomes invalid serialized JavaScript');
+  } else {
+    // SDK58 fixes the serializer. Keep the original reproducer and require it to parse,
+    // alongside all three real widget layouts above, rather than requiring an old defect.
+    assert.doesNotThrow(() => new vm.Script(`(${broken.get('BrokenWidget')})`));
+    console.log('[widget-layout] SDK58 regression fixed: escaped newline parses');
+  }
 }
