@@ -14,7 +14,7 @@ CREATE FUNCTION app.import_attempt_history_plan(wanted uuid) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN app.import_attempt_access(a.id,'view',true) THEN a.plan ELSE
   jsonb_build_object('version',a.plan->'version','previewHash',a.plan->'previewHash','counts',a.plan->'counts',
-   'issues',CASE WHEN jsonb_array_length(coalesce(a.plan->'issues','[]'::jsonb))>0
+   'issues',CASE WHEN (CASE WHEN jsonb_typeof(a.plan->'issues')='array' THEN jsonb_array_length(a.plan->'issues')>0 ELSE false END)
     THEN jsonb_build_array(jsonb_build_object('rowNum',0,'reason','Some validation details require access to every company in this file.')) ELSE '[]'::jsonb END) END
  FROM public.import_attempt a WHERE a.id=wanted AND a.tenant_id=app.current_tenant_id()
   AND app.import_attempt_access(a.id,'view',false)
