@@ -3,16 +3,17 @@
  * import built on it (board item c4055300). Real database, real RLS, fictional fixtures.
  */
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
-import {asc,eq,sql} from 'drizzle-orm';
+import {asc,eq,sql,and} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {auditEvents} from '../core/read';
 import {createCostCenter} from '../core/admin';
 import {getEmploymentCostAllocations,previewEmploymentCostAllocations,saveEmploymentCostAllocations} from '../core/employment-cost-allocations';
 import {previewCostAllocationUpload,confirmCostAllocationUpload,costAllocationRevertHandler} from '../core/cost-allocation-import';
 import {listImportAttempts,getImportAttempt,importAttemptSource,previewImportRevert,revertImport,importSourceHash,ImportHistoryError} from '../core/import-history';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
-import {importAttemptStatus} from '../lib/import-history';
+import {importAttemptStatus,importAttemptCounts} from '../lib/import-history';
 import {toCsv} from '../lib/csv';
 import {ALLOCATION_COLUMNS} from '../lib/employment-cost-allocation';
 import {LEGACY_ALLOCATION_LAYOUT_MESSAGE} from '../lib/cost-allocation-import';
@@ -24,7 +25,7 @@ const row=(company_code:string,employee_code:string,cost_center_code:string,perc
 describe('import history foundation and Cost Center Allocation import (c4055300)',()=>{
  let b:Base,a:SessionContext,betaId:string,acmeEmp:string,acmeEmp2:string,betaEmp:string,ccA:string,ccB:string,betaOnly:SessionContext,acmeOnly:SessionContext;
  const allocation=(employmentId:string,date=today)=>getEmploymentCostAllocations(a,employmentId,date);
- async function scopedAdmin(companyId:string,email:string):Promise<SessionContext>{
+ async function scopedAdmin(companyId:string|null,email:string):Promise<SessionContext>{
   const[p]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:`Scoped ${email}`,primaryEmail:email}).returning();const userId=await createAppUser(b.tenantId,p.id,'hr_admin');
   await owner.db.update(s.roleAssignment).set({companyId}).where(eq(s.roleAssignment.appUserId,userId));
   return{...a,userId,personId:p.id,grants:[{role:'hr_admin',companyId}]};
@@ -150,6 +151,56 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   expect(error).toBeInstanceOf(ImportHistoryError);expect((error as ImportHistoryError).blockers).toHaveLength(1);
   expect((await allocation(acmeEmp)).total).toBe(10000);expect((await allocation(acmeEmp2)).total).toBe(5000);
   const detail=await getImportAttempt(a,attemptId);expect(detail!.events.map(e=>e.kind)).toEqual(['previewed','confirmed','revert_failed']);expect(importAttemptStatus(detail!.plan,detail!.events)).toBe('succeeded');
+ });
+
+ it('retains private failed-revert diagnostics and reasons only for current all-company readers',async()=>{
+  const reviewer=await scopedAdmin(null,'custody-reviewer@example.test');
+  const blocked=await importFile(reviewer,[row('ACME','AC001','ACME-OPS','100'),row('BETA','BE001','BETA-OPS','100')]);
+  const [betaCenter]=await owner.db.select().from(s.costCenter).where(and(eq(s.costCenter.companyId,betaId),eq(s.costCenter.code,'BETA-OPS')));
+  expect(betaCenter).toBeTruthy();
+  const later={employmentId:betaEmp,effectiveDate:today,expectedRevision:1,operation:'replace' as const,rows:[{costCenterId:betaCenter.id,percentage:'50'}]};
+  await saveEmploymentCostAllocations(reviewer,later,{digest:(await previewEmploymentCostAllocations(reviewer,later)).digest});
+  const before=[await allocation(acmeEmp),await allocation(betaEmp)];
+  const preview=await previewImportRevertForAttempt(reviewer,blocked.attemptId);
+  expect(preview.blockers).toContainEqual(expect.objectContaining({label:`BE001 · ${today}`}));
+  await expect(revertImportForAttempt(reviewer,blocked.attemptId,{previewHash:preview.previewHash,reason:'Attempt the blocked revert'})).rejects.toBeInstanceOf(ImportHistoryError);
+  expect([await allocation(acmeEmp),await allocation(betaEmp)]).toEqual(before);
+  const fullFailure=(await getImportAttempt(a,blocked.attemptId))!.events.find(e=>e.kind==='revert_failed')!;
+  expect(JSON.stringify(fullFailure.detail)).toContain('BE001');
+  expect(JSON.stringify(await auditEvents(a,{aggregateType:'import-attempt',aggregateId:blocked.attemptId}))).toContain('BE001');
+
+  // A second actual revert records its legitimate, private free-text reason in both ledgers.
+  const successful=await importFile(reviewer,[row('ACME','AC002','ACME-OPS','100'),row('BETA','BE001','BETA-OPS','100')]);
+  const reason='BETA_PRIVATE_REASON_BE001';
+  const review=await previewImportRevertForAttempt(reviewer,successful.attemptId);expect(review.eligible).toBe(true);
+  await revertImportForAttempt(reviewer,successful.attemptId,{previewHash:review.previewHash,reason});
+  expect((await getImportAttempt(a,successful.attemptId))!.events.find(e=>e.kind==='reverted')!.reason).toBe(reason);
+  expect(JSON.stringify(await auditEvents(a,{aggregateType:'import-attempt',aggregateId:successful.attemptId}))).toContain(reason);
+
+  // Revoke B from the same real actor while retaining a separate group administrator.
+  await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,reviewer.userId!));
+  const narrowed:SessionContext={...reviewer,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const [premise]=await withTenant(narrowed,tx=>tx.execute(sql`select app.principal_snapshot_current() as current,app.import_attempt_access(${blocked.attemptId}::uuid,'view',false) as metadata,app.import_attempt_access(${blocked.attemptId}::uuid,'view',true) as whole`));
+  expect(premise).toEqual({current:true,metadata:true,whole:false});
+  const detail=await getImportAttempt(narrowed,blocked.attemptId),reverted=await getImportAttempt(narrowed,successful.attemptId),listed=await listImportAttempts(narrowed);
+  expect(detail!.items.map(i=>i.employmentId)).toEqual([acmeEmp]);expect(reverted!.items.map(i=>i.employmentId)).toEqual([acmeEmp2]);
+  expect(importAttemptStatus(detail!.plan,detail!.events)).toBe('succeeded');expect(importAttemptCounts(detail!.plan,detail!.events)).toEqual({succeeded:2,failed:0});
+  expect(importAttemptStatus(reverted!.plan,reverted!.events)).toBe('reverted');
+  for(const value of [detail!.events,reverted!.events,listed.items.map(i=>i.events)]){
+   expect.soft(JSON.stringify(value)).not.toContain('BE001');expect.soft(JSON.stringify(value)).not.toContain(reason);
+  }
+  for(const column of ['reason','detail']){
+   const failure=await withTenant(narrowed,tx=>tx.execute(sql`select ${sql.identifier(column)} from import_attempt_event where attempt_id=${blocked.attemptId}::uuid or attempt_id=${successful.attemptId}::uuid`)).then(()=>null,error=>error);
+   expect.soft(failure,'raw private event columns must not bypass the history projection').toBeTruthy();
+   if(failure)expect.soft(String(failure.cause?.message??failure.message)).toMatch(/permission denied/);
+  }
+  for(const id of [blocked.attemptId,successful.attemptId]){
+   expect.soft(await auditEvents(narrowed,{aggregateType:'import-attempt',aggregateId:id})).toEqual([]);
+   expect.soft(await withTenant(narrowed,tx=>tx.select({payload:s.domainEvent.payload}).from(s.domainEvent).where(and(eq(s.domainEvent.aggregateType,'import-attempt'),eq(s.domainEvent.aggregateId,id))))).toEqual([]);
+  }
+  // The original immutable evidence remains available to an authorized group reader.
+  expect(JSON.stringify((await getImportAttempt(a,blocked.attemptId))!.events)).toContain('BE001');
+  expect((await getImportAttempt(a,successful.attemptId))!.events.find(e=>e.kind==='reverted')!.reason).toBe(reason);
  });
 
  it('keeps whole-file columns private while a scoped administrator retains history and their items',async()=>{
