@@ -1,7 +1,7 @@
 {
   "kind": "SOURCE_INVENTORY_NOT_ENFORCEMENT_ATTESTATION",
   "registeredScreens": 109,
-  "registeredEntries": 2175,
+  "registeredEntries": 2176,
   "screens": [
     {
       "screenKey": "accessConfiguration",
@@ -5695,7 +5695,7 @@
         {
           "path": "app/admin/leave-config/approval-chains/page.tsx",
           "entry": "LeaveConfigApprovalChainsPage",
-          "line": 101,
+          "line": 102,
           "surface": "route",
           "owners": [
             "app.access_workforce_employment",
@@ -16688,14 +16688,15 @@
         {
           "path": "app/admin/personnel/import/page.tsx",
           "entry": "ImportPage",
-          "line": 17,
+          "line": 18,
           "surface": "route",
           "owners": [
             "app.cost_allocation_label_in_use",
+            "app.current_tenant_id",
             "app.is_admin_for",
             "app.organisation_settings_function_allowed",
             "app.people_general_read",
-            "app.settings_action_allowed",
+            "app.workforce_full_import_allowed",
             "app/admin/personnel/import/page.tsx:requireAdmin"
           ],
           "tables": [
@@ -16717,7 +16718,7 @@
         {
           "path": "app/admin/personnel/import/page.tsx",
           "entry": "uniqSorted",
-          "line": 128,
+          "line": 130,
           "surface": "route",
           "owners": [],
           "tables": [],
@@ -16773,7 +16774,7 @@
         "app.organisation_settings_function_allowed",
         "app.people_general_read",
         "app.principal_snapshot_current",
-        "app.settings_action_allowed",
+        "app.workforce_full_import_allowed",
         "app/admin/personnel/import/page.tsx:requireAdmin",
         "app/admin/personnel/new/page.tsx:requireAdmin",
         "app/admin/personnel/new/page.tsx:scopedSession"
@@ -23711,7 +23712,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "saveLeaveEscalationPolicyAction",
-      "line": 33,
+      "line": 35,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23730,7 +23731,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "saveApprovalTemplateAction",
-      "line": 104,
+      "line": 106,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23749,7 +23750,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "duplicateApprovalTemplateAction",
-      "line": 126,
+      "line": 128,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23768,7 +23769,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "setApprovalTemplateActiveAction",
-      "line": 138,
+      "line": 140,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23788,7 +23789,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "deleteApprovalTemplateAction",
-      "line": 151,
+      "line": 153,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23808,7 +23809,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "setTenantDefaultTemplateAction",
-      "line": 163,
+      "line": 165,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23827,11 +23828,12 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "assignApprovalTemplateAction",
-      "line": 177,
+      "line": 179,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
         "app.current_tenant_id",
+        "app.leave_approval_assignment_slot",
         "app.leave_approval_company_allowed"
       ],
       "tables": [
@@ -23850,7 +23852,7 @@
     {
       "path": "app/admin/leave-approval/actions.ts",
       "entry": "unassignApprovalTemplateAction",
-      "line": 198,
+      "line": 200,
       "surface": "server-action",
       "owners": [
         "app.access_workforce_write_lock",
@@ -23860,6 +23862,25 @@
       "tables": [
         "domainEvent",
         "leaveApprovalPolicy"
+      ],
+      "boundaries": [
+        "db/client.ts#withTenant",
+        "lib/session.ts#getSession"
+      ]
+    },
+    {
+      "path": "app/admin/leave-approval/actions.ts",
+      "entry": "previewApprovalTemplateAssignmentAction",
+      "line": 260,
+      "surface": "server-action",
+      "owners": [
+        "app.leave_approval_assignment_slot"
+      ],
+      "tables": [
+        "entitlementEligibilityRule",
+        "gradeGroup",
+        "gradeGroupMember",
+        "leaveApprovalTemplate"
       ],
       "boundaries": [
         "db/client.ts#withTenant",
@@ -23913,7 +23934,7 @@
     {
       "path": "app/admin/leave-config/approval-chains/page.tsx",
       "entry": "LeaveConfigApprovalChainsPage",
-      "line": 101,
+      "line": 102,
       "surface": "route",
       "owners": [
         "app.access_workforce_employment",
@@ -29026,11 +29047,13 @@
         "app.profile_option_value_allowed",
         "app.profile_task_relationship_tolerated",
         "app.proven_company_date_points",
+        "app.workforce_full_import_allowed",
         "app/admin/personnel/import/actions.ts:requireAdmin",
         "core/cost-allocation-import.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceEmploymentTx",
         "core/import.ts:assertWorkforceCompanyTx",
+        "core/import.ts:assertWorkforceFullImportTx",
         "core/import.ts:requirePackFor"
       ],
       "tables": [
@@ -29102,10 +29125,12 @@
         "app.profile_task_relationship_tolerated",
         "app.profile_task_store_person",
         "app.proven_company_date_points",
+        "app.workforce_full_import_allowed",
         "app/admin/personnel/import/actions.ts:requireAdmin",
         "core/cost-allocation-import.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceEmploymentTx",
+        "core/import.ts:assertWorkforceFullImportTx",
         "core/import.ts:requirePackFor",
         "core/org.ts:assertWorkforceCompanyTx",
         "core/org.ts:assertWorkforceEmploymentTx",
@@ -29724,10 +29749,12 @@
         "app.profile_task_relationship_tolerated",
         "app.profile_task_store_person",
         "app.proven_company_date_points",
+        "app.workforce_full_import_allowed",
         "app/admin/personnel/import/employee/upload/route.ts:requireAdmin",
         "core/cost-allocation-import.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceEmploymentTx",
+        "core/import.ts:assertWorkforceFullImportTx",
         "core/import.ts:requirePackFor",
         "core/org.ts:assertWorkforceCompanyTx",
         "core/org.ts:assertWorkforceEmploymentTx",
@@ -30207,14 +30234,15 @@
     {
       "path": "app/admin/personnel/import/page.tsx",
       "entry": "ImportPage",
-      "line": 17,
+      "line": 18,
       "surface": "route",
       "owners": [
         "app.cost_allocation_label_in_use",
+        "app.current_tenant_id",
         "app.is_admin_for",
         "app.organisation_settings_function_allowed",
         "app.people_general_read",
-        "app.settings_action_allowed",
+        "app.workforce_full_import_allowed",
         "app/admin/personnel/import/page.tsx:requireAdmin"
       ],
       "tables": [
@@ -30236,7 +30264,7 @@
     {
       "path": "app/admin/personnel/import/page.tsx",
       "entry": "uniqSorted",
-      "line": 128,
+      "line": 130,
       "surface": "route",
       "owners": [],
       "tables": [],
@@ -66695,9 +66723,11 @@
         "app.profile_task_relationship_tolerated",
         "app.profile_task_store_person",
         "app.proven_company_date_points",
+        "app.workforce_full_import_allowed",
         "core/cost-allocation-import.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceCompanyTx",
         "core/employment-cost-allocations.ts:assertWorkforceEmploymentTx",
+        "core/import.ts:assertWorkforceFullImportTx",
         "core/import.ts:requirePackFor",
         "core/org.ts:assertWorkforceCompanyTx",
         "core/org.ts:assertWorkforceEmploymentTx",
@@ -77153,6 +77183,15 @@
         "app.current_tenant_id",
         "app.current_user_id",
         "app.principal_snapshot_current"
+      ]
+    },
+    {
+      "table": "employee_import_run",
+      "policy": "data_permission_unstructured_history_read",
+      "source": "db/migrations/0938_data_permission_enforcement.sql",
+      "owners": [
+        "app.current_tenant_id",
+        "app.data_permission_unstructured_history_read"
       ]
     },
     {
