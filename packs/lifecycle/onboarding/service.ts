@@ -1418,3 +1418,11 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
     await storeTx(tx, ctx, row, c, false);
     await auditTx(tx, ctx, c, 'holding_' + item.recovery.outcome);
 }
+
+/** Shared shell projection. Original five admissions retained for native regression measurement. */
+export async function onboardingShellState(ctx: SessionContext) {
+ const [navigation,tasks,unread,history,unreadCount]=await Promise.all([
+  onboardingNavigation(ctx),onboardingTasks(ctx),onboardingNotices(ctx),onboardingNotices(ctx,true),onboardingUnreadNoticeCount(ctx),
+ ]);
+ return {navigation,tasks,unread,history,unreadCount};
+}
