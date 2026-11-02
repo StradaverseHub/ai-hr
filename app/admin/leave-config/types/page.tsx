@@ -1,3 +1,4 @@
+import {assertModuleFunction} from '@/core/module-action-access';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
@@ -101,6 +102,7 @@ export default async function LeaveConfigTypesPage({
   searchParams: Promise<{ error?: string; editTemplate?: string; editRule?: string }>;
 }) {
   const s = await requireAdmin();
+  await assertModuleFunction(s,'leaveConfig.types','view');
   const t = await getTranslations('admin.leave');
   // r281 (cdd7500b) — the shared-group card's own strings, read where the card is drawn.
   const tGroup = await getTranslations('admin.leave.sharedGroup');
