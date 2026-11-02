@@ -2729,3 +2729,21 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.leave_attachment_source_identity() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER aaa_leave_attachment_source_identity BEFORE INSERT ON public.leave_request_attachment FOR EACH ROW EXECUTE FUNCTION app.leave_attachment_source_identity();
+
+-- The native direct manager may read the bounded cancellation source even
+-- when their administrative data profile excludes the subject. A delegated
+-- decision relationship alone does not open the raw request or copied steps.
+CREATE FUNCTION app.leave_cancellation_direct_task_reader(p_request uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(
+  SELECT 1 FROM public.leave_cancellation_request q
+  WHERE q.id=p_request AND q.tenant_id=app.current_tenant_id()
+    AND app.workflow_direct_manager(q.employment_id)
+ );
+$$;
+REVOKE ALL ON FUNCTION app.leave_cancellation_direct_task_reader(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_cancellation_direct_task_reader(uuid) TO ai_hr_app;
+ALTER POLICY bounded_approval_task_read ON public.leave_cancellation_request
+ USING(app.leave_cancellation_direct_task_reader(id));
+ALTER POLICY data_permission_subject_read ON public.leave_cancellation_request
+ USING(app.data_permission_record_read(employment_id) OR app.leave_cancellation_direct_task_reader(id));
