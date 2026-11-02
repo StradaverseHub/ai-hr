@@ -271,6 +271,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   expect((await owner.db.select().from(s.letterJob).where(eq(s.letterJob.letterId,(await getLetterGenerationBatch(ctx,made.batchId))!.rows[1].record.id))).every(job=>job.status==='queued')).toBe(true);
  });
 
+ // 101 real audited handovers can exceed the default 30s on a shared hosted runner.
  it('pages retained decisions without using a truncated history to decide the current delegated actor',async()=>{
   const [previous]=await owner.db.select().from(s.letterPolicyVersion);
   await saveLetterPolicy(ctx,{companyId:b.companyId,category:'confirmation',enabled:true,policy:{...previous.policy,stages:[{key:'review',label:'Review',userIds:[reviewer.userId!],allowDelegation:true},...previous.policy.stages]}});
@@ -279,7 +280,7 @@ describe('letter generation snapshots and complete-batch readiness',()=>{
   for(let index=0;index<101;index++){const actor=index%2===0?reviewer:delegate,target=index%2===0?delegate:reviewer;const result=await delegateLetterApproval(actor,{letterId:row.record.id,expectedRevisionId:row.revision!.id,expectedLockVersion:lockVersion,delegateUserId:target.userId!,reason:'Recorded historical handover '+index});lockVersion=result.lockVersion;}
   const first=(await getStaffLetter(delegate,row.record.id))!;expect(first.decisions).toHaveLength(100);expect(first.canAct).toBe(true);expect(first.nextDecisionCursor).toBeTruthy();expect((await getStaffLetter(reviewer,row.record.id))!.canAct).toBe(false);
   const next=(await getStaffLetter(delegate,row.record.id,{decisionCursor:first.nextDecisionCursor!}))!;expect(next.decisions).toHaveLength(1);expect(next.decisions[0].comment).toBe('Recorded historical handover 100');expect(first.decisions.some(item=>item.id===next.decisions[0].id)).toBe(false);expect(next.nextDecisionCursor).toBeNull();expect(next.canAct).toBe(true);
- });
+ },75_000);
 
 
  it('refuses confidential delegation through both the owner and direct database writes when the target lacks financial access',async()=>{
