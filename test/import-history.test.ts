@@ -273,4 +273,20 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   await expect(getImportAttempt(acmeOnly,first.attemptId)).rejects.toThrow('Access changed');
  });
 
+ it('does not expose safe views or physical rows to a genuine employee or another tenant',async()=>{
+  const {attemptId}=await upload(a,[row('ACME','AC001','ACME-OPS','100')]);
+  const [employee]=await owner.db.select().from(s.employment).where(eq(s.employment.id,acmeEmp));
+  const userId=await createAppUser(b.tenantId,employee.personId,'employee');
+  await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
+  const employeeCtx:SessionContext={...a,userId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]};
+  const [proof]=await withTenant(employeeCtx,tx=>tx.execute(sql`select app.principal_snapshot_current() as current`));expect(proof.current).toBe(true);
+  const foreign=adminCtx(await seedBase());
+  for(const ctx of [employeeCtx,foreign]){
+   expect(await getImportAttempt(ctx,attemptId)).toBeNull();expect(await importAttemptSource(ctx,attemptId)).toBeNull();
+   expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.import_attempt_history where id=${attemptId}::uuid`))).toEqual([]);
+   expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.import_attempt_event_history where attempt_id=${attemptId}::uuid`))).toEqual([]);
+   expect(await withTenant(ctx,tx=>tx.select().from(s.importAttempt).where(eq(s.importAttempt.id,attemptId)))).toEqual([]);
+  }
+ });
+
 });
