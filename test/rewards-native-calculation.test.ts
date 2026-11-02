@@ -76,3 +76,23 @@ it('matches the annual first-pass eligibility, source windows, native row amount
   for(let n=0;n<scenarios.length;n++)if(!scenarios[n].facts.seniorPlan&&!input.seniorGrades.includes(scenarios[n].source.grade))for(const key of ['meritBp','promotionBp','meritCents','promotionCents'])expect(native.value.rows[n][key]).toBe((expected.rows[n]as unknown as Record<string,unknown>)[key]);
  }
 });
+it('matches complete annual independent pools, shared cohorts, bonus/lump distribution and confirmed Senior overrides',async()=>{
+ const policy=defaultPolicy(2026);policy.patActual=100;policy.patTarget=100;policy.ranges={'12':[300000,500000,700000],H:[100000,200000,300000],'14':[400000,600000,900000]};
+ const ordinary=entry('annual');ordinary.facts={...ordinary.facts,talent:'SCORE',performance:'ME'};ordinary.recommendation=emptyRecommendation();
+ const h=structuredClone(ordinary);h.id='annual-h';h.source={...h.source,employmentId:h.id,grade:'H',basicCents:200000};h.facts.performance='OU';
+ const star=structuredClone(ordinary);star.id='star';star.source={...star.source,employmentId:star.id,basicCents:300000};star.facts.talent='STAR';
+ const promoted=structuredClone(star);promoted.id='promotion';promoted.source={...promoted.source,employmentId:promoted.id};promoted.recommendation={...emptyRecommendation(),promotionGrade:'14',promotionBp:1500,specialBp:300,reason:'A supported real annual promotion business case'};
+ const ec=structuredClone(ordinary);ec.id='annual-ec';ec.source={...ec.source,employmentId:ec.id};ec.facts.confidentiality='ec';ec.recommendation={...emptyRecommendation(),meritBp:9000,specialBp:1000,bonusCents:9999999,lumpCents:10000};
+ const senior=structuredClone(ec);senior.id='annual-senior';senior.source={...senior.source,employmentId:senior.id,grade:'21'};senior.facts.seniorPlan=true;
+ const withheld=structuredClone(ordinary);withheld.id='withheld';withheld.source={...withheld.source,employmentId:withheld.id,notice:true};withheld.recommendation={...emptyRecommendation(),lumpCents:0};
+ const hWithheld=structuredClone(h);hWithheld.id='withheld-h';hWithheld.source={...hWithheld.source,employmentId:hWithheld.id,notice:true};
+ const leaver=structuredClone(ordinary);leaver.id='future-left';leaver.source={...leaver.source,employmentId:leaver.id,leftOn:'2027-01-01'};
+ const branch=structuredClone(ordinary);branch.id='branch';branch.facts={...branch.facts,branch:'Fictional branch',segment:'Fictional segment'};branch.recommendation.multiplierBp=10000;
+ const cohorts=[[],[ordinary],[h],[ordinary,h,ec],[star,promoted,ordinary],[ordinary,withheld,h,hWithheld],[senior,ec,ordinary],[leaver,ordinary],[branch]];
+ const policies=[policy,{...policy,patActual:0,multiplierBp:10000,lumpUnitCents:0,lumpReason:'Actual withheld provision'},{...policy,multiplierBp:10000,lumpCapCents:10000,lumpUnitCents:20000,exemptReason:'Actual approved budget exemption'},{...policy,activeAsOf:'2026-12-31',seniorMembershipMode:'named-members' as const,bonusStructure:'branch' as const,branchRatings:{'Fictional branch':'UA' as const},branchFactors:{'Fictional segment':[0,5000,10000,15000,20000]as[number,number,number,number,number]}}];
+ const controls=[{},{poolStatus:'final' as const,bonusPools:{standard:100000,h:50000}},{poolStatus:'not-set' as const,seniorAwards:{'annual-senior':{newBasicCents:550000,bonusCents:123456}}},{poolStatus:'provisional' as const,seniorAwards:{'annual-senior':{newBasicCents:499999,bonusCents:0}}}];
+ for(const entries of cohorts)for(const input of policies)for(const control of controls){const [row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_annual(${JSON.stringify(entries)}::jsonb,${JSON.stringify(input)}::jsonb,${JSON.stringify(control)}::jsonb)as value`);expect(row.value).toEqual(calculateRewards(entries,input,control));}
+ // Leap-year proration uses actual calendar days and floors each quotient in the same order.
+ const leapPolicy={...policy,year:2024,effectiveFrom:'2024-12-31',joinedBefore:'2025-01-01',confirmedBy:'2024-12-31',blockedFrom:'2025-01-01',blockedTo:'2025-12-31'},leap=structuredClone(ordinary);leap.source.hiredOn='2024-02-29';leap.source.confirmedOn='2024-04-01';
+ const [leapResult]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_annual(${JSON.stringify([leap])}::jsonb,${JSON.stringify(leapPolicy)}::jsonb)as value`);expect(leapResult.value).toEqual(calculateRewards([leap],leapPolicy));
+});

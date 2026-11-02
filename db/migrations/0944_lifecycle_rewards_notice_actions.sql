@@ -2125,3 +2125,96 @@ BEGIN
  RETURN jsonb_build_object('rows',rows,'flags',flags);
 END $$;
 REVOKE ALL ON FUNCTION app.reward_calc_json_integer(jsonb,numeric,numeric),app.reward_calc_vector(jsonb,integer,numeric),app.reward_calc_date(jsonb),app.reward_calc_policy(jsonb),app.reward_calc_annual_seed(jsonb,jsonb)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_calc_bonus_base(p_row jsonb,p_policy jsonb)RETURNS numeric
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE year_start date:=make_date((p_policy->>'year')::integer,1,1);year_end date:=make_date((p_policy->>'year')::integer,12,31);year_days integer;days integer;months numeric;
+BEGIN
+ IF(p_row->>'bonusEligible')::boolean IS NOT TRUE OR p_row->'facts'->>'performance'IS NULL THEN RETURN 0;END IF;
+ year_days:=year_end-year_start+1;days:=greatest(0,least(year_days,year_end-greatest(year_start,(p_row->'source'->>'hiredOn')::date)+1));
+ months:=coalesce((p_policy->'bonusMatrix'->(p_row->'source'->>'grade')->>(array_position(ARRAY['UA','BE','ME','AE','OU'],p_row->'facts'->>'performance')-1))::numeric,0);
+ RETURN app.reward_calc_ratio(app.reward_calc_ratio((p_row->>'bonusBasicCents')::numeric,months,10000),days,year_days);
+END $$;
+CREATE FUNCTION app.reward_calc_annual(p_entries jsonb,p_input jsonb,p_controls jsonb DEFAULT '{}'::jsonb)RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE policy jsonb:=app.reward_calc_policy(p_input);seed jsonb:=app.reward_calc_annual_seed(p_entries,policy);rows jsonb:=seed->'rows';flags jsonb:=seed->'flags';budgets jsonb;plan text;budget jsonb;group_rows jsonb;row_value jsonb;s jsonb;r jsonb;f jsonb;salary_range jsonb;percentages jsonb;pools jsonb;star_indices integer[];star_payroll numeric;maximum_need numeric;need numeric;cohort_bp numeric;basic numeric;catch_up numeric;top_up numeric;special numeric;special_bp numeric;new_basic numeric;payroll numeric;bonus_payroll numeric;excluded_payroll numeric;excluded_count integer;bonus_pool numeric;cost numeric;affordable jsonb:='{}';suggested_multiplier numeric:=NULL;suggestion jsonb;multiplier numeric;rating text;factors jsonb;bonus_base numeric;standard_bonus numeric;bonus_multiplier numeric;bonus numeric;lump_working jsonb:='[]';lump_count integer;balance numeric;available numeric;per_person numeric;suggested_lump numeric:=NULL;lump_unit numeric;lump numeric;used jsonb;used_amount numeric;standard_total numeric;increases numeric;reductions numeric;lump_total numeric;bonus_used numeric;severity text;code text;award jsonb;pool_status text:=coalesce(p_controls->>'poolStatus','legacy');labels text[]:=ARRAY['merit','promotion','special adjustment'];n integer;j integer;
+BEGIN
+ budgets:=jsonb_build_object('standard',app.reward_calc_blank_budget(),'h',app.reward_calc_blank_budget(),'ec',app.reward_calc_blank_budget());
+ FOREACH plan IN ARRAY ARRAY['standard','h','ec']LOOP
+  SELECT coalesce(jsonb_agg(e ORDER BY ordinal),'[]'::jsonb)INTO group_rows FROM jsonb_array_elements(rows)WITH ORDINALITY entries(e,ordinal)WHERE e->>'plan'=plan AND NOT app.reward_calc_senior(policy,e);
+  SELECT app.reward_calc_integer(coalesce(sum((e->'source'->>'basicCents')::numeric)FILTER(WHERE(e->>'incrementEligible')::boolean OR e->>'incrementReason'IN('Nil increment rating','PIP confirmed or awaiting decision')AND NOT((e->'facts'->>'pipCase')::boolean AND e->'facts'->>'pipDecision'='pending')),0)),app.reward_calc_integer(coalesce(sum((e->>'bonusBasicCents')::numeric)FILTER(WHERE(e->>'bonusEligible')::boolean),0)),count(*)FILTER(WHERE e->>'incrementReason'IN('Confirmation included a pay change','Pay change in the exclusion window')),app.reward_calc_integer(coalesce(sum((e->'source'->>'basicCents')::numeric)FILTER(WHERE e->>'incrementReason'IN('Confirmation included a pay change','Pay change in the exclusion window')),0))INTO payroll,bonus_payroll,excluded_count,excluded_payroll FROM jsonb_array_elements(group_rows)e;
+  percentages:=CASE WHEN plan='h'THEN policy->'hPools'ELSE policy->'standardPools'END;
+  SELECT jsonb_agg(to_jsonb(app.reward_calc_ratio(payroll,value::text::numeric,10000))ORDER BY ordinal)INTO pools FROM jsonb_array_elements(percentages)WITH ORDINALITY parts(value,ordinal);
+  bonus_pool:=CASE WHEN plan<>'ec'AND p_controls?'bonusPools'THEN app.reward_calc_json_integer(p_controls->'bonusPools'->plan,9007199254740991)ELSE app.reward_calc_ratio(app.reward_calc_ratio(bonus_payroll,(policy->>'patActual')::numeric,(policy->>'patTarget')::numeric),(policy->>'targetMonthsBp')::numeric,10000)END;
+  budget:=app.reward_calc_blank_budget()||jsonb_build_object('payrollCents',payroll,'pools',pools,'bonusPayrollCents',bonus_payroll,'excludedCount',excluded_count,'excludedPayrollCents',excluded_payroll,'bonusPoolCents',bonus_pool);budgets:=jsonb_set(budgets,ARRAY[plan],budget);
+  SELECT coalesce(array_agg((ordinal-1)::integer ORDER BY ordinal),ARRAY[]::integer[])INTO star_indices FROM jsonb_array_elements(rows)WITH ORDINALITY entries(e,ordinal)WHERE e->>'plan'=plan AND NOT app.reward_calc_senior(policy,e)AND(e->>'incrementEligible')::boolean AND e->'facts'->>'talent'IN('STAR','SSTAR')AND policy->'ranges'->coalesce(e->'recommendation'->>'promotionGrade',e->'source'->>'grade')IS NOT NULL AND(e->'source'->>'basicCents')::double precision*10<(policy->'ranges'->coalesce(e->'recommendation'->>'promotionGrade',e->'source'->>'grade')->>1)::double precision*9;
+  star_payroll:=0;maximum_need:=0;
+  FOREACH n IN ARRAY star_indices LOOP
+   row_value:=rows->n;basic:=(row_value->'source'->>'basicCents')::numeric;salary_range:=policy->'ranges'->coalesce(row_value->'recommendation'->>'promotionGrade',row_value->'source'->>'grade');star_payroll:=app.reward_calc_integer(star_payroll+basic);
+   need:=app.reward_calc_ratio(greatest(0,app.reward_calc_ratio((salary_range->>1)::numeric,9,10)-basic-(row_value->>'meritCents')::numeric-(row_value->>'promotionCents')::numeric),10000,basic);maximum_need:=greatest(maximum_need,need);
+  END LOOP;
+  cohort_bp:=CASE WHEN star_payroll>0 THEN div(least(app.reward_calc_ratio((pools->>2)::numeric,10000,star_payroll),maximum_need),50)*50 ELSE 0 END;
+  FOR n IN 0..jsonb_array_length(rows)-1 LOOP
+   row_value:=rows->n;IF row_value->>'plan'<>plan OR app.reward_calc_senior(policy,row_value)THEN CONTINUE;END IF;
+   s:=row_value->'source';r:=row_value->'recommendation';basic:=(s->>'basicCents')::numeric;salary_range:=policy->'ranges'->coalesce(r->>'promotionGrade',s->>'grade');
+   catch_up:=CASE WHEN n=ANY(star_indices)THEN app.reward_calc_increase(basic,CASE WHEN(row_value->>'promotionBp')::numeric<>0 THEN cohort_bp ELSE least(cohort_bp,greatest(0,1000-(row_value->>'meritBp')::numeric))END)ELSE 0 END;
+   top_up:=CASE WHEN salary_range IS NOT NULL AND(row_value->>'incrementEligible')::boolean THEN greatest(0,ceil(((salary_range->>0)::numeric-basic-(row_value->>'meritCents')::numeric-(row_value->>'promotionCents')::numeric-catch_up)/100)*100)ELSE 0 END;
+   special:=CASE WHEN NOT(row_value->>'activeInReview')::boolean THEN 0 WHEN plan='ec'THEN app.reward_calc_increase(basic,coalesce((r->>'specialBp')::numeric,0))WHEN(row_value->>'incrementEligible')::boolean THEN CASE WHEN r->'specialBp'<>'null'::jsonb THEN app.reward_calc_increase(basic,(r->>'specialBp')::numeric)ELSE catch_up+top_up END ELSE 0 END;
+   special_bp:=CASE WHEN basic<>0 THEN app.reward_calc_ratio(special,10000,basic,true)ELSE 0 END;new_basic:=app.reward_calc_integer(basic+(row_value->>'meritCents')::numeric+(row_value->>'promotionCents')::numeric+special);
+   row_value:=row_value||jsonb_build_object('specialCents',special,'specialBp',special_bp,'newBasicCents',new_basic);rows:=jsonb_set(rows,ARRAY[n::text],row_value);
+   IF coalesce(s->>'leftOn','')=''AND r->'specialBp'<>'null'::jsonb AND special<>catch_up+top_up AND plan<>'ec'THEN flags:=flags||app.reward_calc_flag('exception','POOL-05','Special adjustment differs from the calculated amount.',row_value->'id');END IF;
+   IF plan<>'ec'AND CASE WHEN coalesce(r->>'promotionGrade','')<>''THEN(new_basic-basic)::double precision*10>=basic::double precision*3 ELSE(new_basic-basic)::double precision*10>basic::double precision END THEN flags:=flags||app.reward_calc_flag('warning','INC-01','Increase exceeds the individual review threshold.',row_value->'id');END IF;
+   IF salary_range IS NOT NULL AND new_basic>(salary_range->>2)::numeric THEN flags:=flags||app.reward_calc_flag('review','RANGE-01','New salary is above the range maximum.',row_value->'id');END IF;
+  END LOOP;
+ END LOOP;
+ FOREACH plan IN ARRAY ARRAY['standard','h']LOOP
+  SELECT app.reward_calc_integer(coalesce(sum(app.reward_calc_bonus_base(e,policy)),0))INTO cost FROM jsonb_array_elements(rows)e WHERE e->>'plan'=plan;
+  available:=CASE WHEN cost>0 THEN app.reward_calc_ratio((budgets->plan->>'bonusPoolCents')::numeric,10000,cost)ELSE NULL END;affordable:=affordable||jsonb_build_object(plan,available);
+  IF available IS NOT NULL THEN suggested_multiplier:=CASE WHEN suggested_multiplier IS NULL THEN available ELSE least(suggested_multiplier,available)END;END IF;
+ END LOOP;
+ suggested_multiplier:=div(coalesce(suggested_multiplier,0),100)*100;
+ suggestion:=jsonb_build_object('patActualMissing',(policy->>'patActual')::numeric=0,'achievementBp',app.reward_calc_ratio((policy->>'patActual')::numeric,10000,(policy->>'patTarget')::numeric),'targetMonthsBp',policy->'targetMonthsBp','poolMultiplierBp',app.reward_calc_ratio((policy->>'patActual')::numeric,(policy->>'targetMonthsBp')::numeric,(policy->>'patTarget')::numeric),'affordableBp',affordable);
+ FOR n IN 0..jsonb_array_length(rows)-1 LOOP
+  row_value:=rows->n;r:=row_value->'recommendation';f:=row_value->'facts';multiplier:=coalesce((policy->>'multiplierBp')::numeric,suggested_multiplier);rating:=NULL;
+  IF policy->>'bonusStructure'='branch'THEN
+   rating:=policy->'branchRatings'->>(f->>'branch');factors:=policy->'branchFactors'->(f->>'segment');multiplier:=CASE WHEN rating='UA'THEN 0 WHEN rating IS NOT NULL AND factors IS NOT NULL THEN(factors->>(array_position(ARRAY['UA','BE','ME','AE','OU'],rating)-1))::numeric ELSE 0 END;
+   IF(row_value->>'bonusEligible')::boolean AND(rating IS NULL OR factors IS NULL)AND row_value->>'plan'<>'ec'THEN flags:=flags||app.reward_calc_flag('block','PPCH-01','Set the branch rating and bonus segment factor.',row_value->'id');END IF;
+  END IF;
+  bonus_base:=app.reward_calc_bonus_base(row_value,policy);standard_bonus:=div(app.reward_calc_ratio(bonus_base,multiplier,10000),100)*100;bonus_multiplier:=CASE WHEN policy->>'bonusStructure'='branch'AND rating='UA'THEN 0 ELSE coalesce((r->>'multiplierBp')::numeric,multiplier)END;
+  bonus:=CASE WHEN NOT(row_value->>'activeInReview')::boolean THEN 0 WHEN row_value->>'plan'='ec'AND r->'bonusCents'<>'null'::jsonb THEN(r->>'bonusCents')::numeric ELSE div(app.reward_calc_ratio(bonus_base,bonus_multiplier,10000),100)*100 END;
+  rows:=jsonb_set(rows,ARRAY[n::text],row_value||jsonb_build_object('standardBonusCents',standard_bonus,'bonusMultiplierBp',bonus_multiplier,'bonusCents',bonus));
+  IF r->'multiplierBp'<>'null'::jsonb AND(r->>'multiplierBp')::numeric<>multiplier AND(row_value->>'bonusEligible')::boolean AND row_value->>'plan'<>'ec'THEN flags:=flags||app.reward_calc_flag('exception','BUD-02','Individual bonus differs from the unit multiplier.',row_value->'id');END IF;
+ END LOOP;
+ FOREACH plan IN ARRAY ARRAY['standard','h']LOOP
+  SELECT count(*)FILTER(WHERE(e->>'lumpEligible')::boolean),app.reward_calc_integer(coalesce(sum((e->>'bonusCents')::numeric),0))INTO lump_count,bonus_used FROM jsonb_array_elements(rows)e WHERE e->>'plan'=plan AND NOT app.reward_calc_senior(policy,e);
+  balance:=greatest(0,(budgets->plan->>'bonusPoolCents')::numeric-bonus_used);available:=app.reward_calc_ratio(balance,(policy->>'lumpShareBp')::numeric,10000);
+  IF lump_count>0 THEN
+   per_person:=app.reward_calc_ratio(available,1,lump_count::numeric*(policy->>'lumpStepCents')::numeric)*(policy->>'lumpStepCents')::numeric;lump_working:=lump_working||jsonb_build_array(jsonb_build_object('plan',plan,'count',lump_count,'balanceCents',balance,'perPersonCents',per_person));suggested_lump:=CASE WHEN suggested_lump IS NULL THEN per_person ELSE least(suggested_lump,per_person)END;
+  END IF;
+ END LOOP;
+ suggested_lump:=CASE WHEN suggested_lump IS NULL THEN 0 ELSE least(suggested_lump,coalesce((policy->>'lumpCapCents')::numeric,9007199254740991))END;lump_unit:=coalesce((policy->>'lumpUnitCents')::numeric,suggested_lump);
+ IF lump_unit>suggested_lump THEN flags:=flags||app.reward_calc_flag('warning','BUD-05','The unit lump sum exceeds the amount supported by the remaining budget.');END IF;
+ IF lump_unit=0 AND EXISTS(SELECT 1 FROM jsonb_array_elements(rows)e WHERE(e->>'lumpEligible')::boolean)THEN flags:=flags||app.reward_calc_flag('review','BUD-05','The unit lump-sum provision is withheld (RM 0)'||CASE WHEN coalesce(policy->>'lumpReason','')<>''THEN': '||(policy->>'lumpReason')ELSE'.'END);END IF;
+ FOR n IN 0..jsonb_array_length(rows)-1 LOOP
+  row_value:=rows->n;r:=row_value->'recommendation';lump:=CASE WHEN NOT(row_value->>'activeInReview')::boolean THEN 0 WHEN row_value->>'plan'='ec'THEN coalesce((r->>'lumpCents')::numeric,0)WHEN(row_value->>'lumpEligible')::boolean THEN coalesce((r->>'lumpCents')::numeric,lump_unit)ELSE 0 END;
+  rows:=jsonb_set(rows,ARRAY[n::text],row_value||jsonb_build_object('lumpCents',lump));
+  IF(row_value->>'lumpEligible')::boolean AND r->'lumpCents'<>'null'::jsonb AND lump<>lump_unit THEN flags:=flags||app.reward_calc_flag('exception','BUD-05','Individual lump sum differs from the unit amount; RM 0 means withheld.',row_value->'id');END IF;
+ END LOOP;
+ FOREACH plan IN ARRAY ARRAY['standard','h','ec']LOOP
+  SELECT jsonb_build_array(app.reward_calc_integer(coalesce(sum((e->>'meritCents')::numeric),0)),app.reward_calc_integer(coalesce(sum((e->>'promotionCents')::numeric),0)),app.reward_calc_integer(coalesce(sum((e->>'specialCents')::numeric),0))),app.reward_calc_integer(coalesce(sum((e->>'standardBonusCents')::numeric),0)),app.reward_calc_integer(coalesce(sum(greatest(0,(e->>'bonusCents')::numeric-(e->>'standardBonusCents')::numeric)),0)),app.reward_calc_integer(coalesce(sum(greatest(0,(e->>'standardBonusCents')::numeric-(e->>'bonusCents')::numeric)),0)),app.reward_calc_integer(coalesce(sum((e->>'lumpCents')::numeric),0)),count(*)FILTER(WHERE(e->>'lumpCents')::numeric>0),app.reward_calc_integer(coalesce(sum((e->>'bonusCents')::numeric+(e->>'lumpCents')::numeric),0))INTO used,standard_total,increases,reductions,lump_total,lump_count,bonus_used FROM jsonb_array_elements(rows)e WHERE e->>'plan'=plan;
+  budget:=budgets->plan;bonus_pool:=(budget->>'bonusPoolCents')::numeric;budget:=budget||jsonb_build_object('used',used,'standardBonusCents',standard_total,'increasesCents',increases,'reductionsCents',reductions,'lumpCents',lump_total,'lumpCount',lump_count,'bonusUsedCents',bonus_used,'balanceCents',bonus_pool-bonus_used);budgets:=jsonb_set(budgets,ARRAY[plan],budget);
+  IF plan='ec'THEN CONTINUE;END IF;
+  severity:=CASE WHEN policy->>'exemptReason'<>''THEN'review'ELSE'block'END;code:=CASE WHEN policy->>'exemptReason'<>''THEN'CFG-01'ELSE'POOL-03'END;
+  FOR j IN 0..2 LOOP IF(used->>j)::numeric>(budget->'pools'->>j)::numeric THEN flags:=flags||app.reward_calc_flag(severity,code,CASE WHEN plan='h'THEN'JG H'ELSE'Standard'END||' '||labels[j+1]||' exceeds its separate pool.');END IF;END LOOP;
+  IF bonus_used>bonus_pool THEN flags:=flags||app.reward_calc_flag(CASE WHEN pool_status='final'THEN'block'ELSE severity END,CASE WHEN policy->>'exemptReason'<>''THEN'CFG-01'ELSE'BUD-01'END,CASE WHEN plan='h'THEN'JG H'ELSE'Standard'END||' bonus exceeds the 100% budget cap.');END IF;
+  IF bonus_pool>0 AND bonus_used::double precision*100<bonus_pool::double precision*80 THEN flags:=flags||app.reward_calc_flag('warning','BUD-07',CASE WHEN plan='h'THEN'JG H'ELSE'Standard'END||' bonus budget is less than 80% utilised.');END IF;
+ END LOOP;
+ FOR n IN 0..jsonb_array_length(rows)-1 LOOP
+  row_value:=rows->n;IF NOT app.reward_calc_senior(policy,row_value)THEN CONTINUE;END IF;
+  award:=p_controls->'seniorAwards'->(row_value->>'id');row_value:=row_value||jsonb_build_object('meritBp',0,'promotionBp',0,'specialBp',0,'meritCents',0,'promotionCents',0,'specialCents',0,'standardBonusCents',0,'lumpCents',0,'newBasicCents',CASE WHEN NOT(row_value->>'activeInReview')::boolean THEN(row_value->'source'->>'basicCents')::numeric ELSE coalesce((award->>'newBasicCents')::numeric,(row_value->'source'->>'basicCents')::numeric)END,'bonusCents',CASE WHEN NOT(row_value->>'activeInReview')::boolean THEN 0 ELSE coalesce((award->>'bonusCents')::numeric,0)END);rows:=jsonb_set(rows,ARRAY[n::text],row_value);
+ END LOOP;
+ IF pool_status='not-set'THEN flags:=flags||app.reward_calc_flag('block','PAT-01','Enter a valid unit PAT and target before calculating the bonus pool.');END IF;
+ FOR row_value IN SELECT value FROM jsonb_array_elements(rows)LOOP IF(row_value->>'newBasicCents')::numeric<(row_value->'source'->>'basicCents')::numeric THEN flags:=flags||app.reward_calc_flag('block','SAL-01','Salary reductions are not allowed in the salary review.',row_value->'id');END IF;END LOOP;
+ RETURN jsonb_build_object('rows',rows,'budgets',budgets,'flags',flags,'poolStatus',pool_status,'suggestedMultiplierBp',suggested_multiplier,'suggestion',suggestion,'suggestedLumpCents',suggested_lump,'lumpUnitCents',lump_unit,'lumpWorking',lump_working);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_calc_bonus_base(jsonb,jsonb),app.reward_calc_annual(jsonb,jsonb,jsonb)FROM PUBLIC,ai_hr_app;
