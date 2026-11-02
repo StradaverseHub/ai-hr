@@ -1570,7 +1570,7 @@
       "passportIssueDate": "护照签发日期",
       "passportExpiryDate": "护照到期日期",
       "passportRemark": "护照备注",
-      "passportHint": "非马来西亚籍员工必须填写护照号码、签发日期和到期日期。马来西亚籍员工的护照为选填，但三项须一并填写。签发国家和备注为选填。",
+      "passportHint": "非马来西亚籍员工必须填写护照号码。签发日期、到期日期、签发国家、国家代码和备注为选填。填写的日期和国家代码必须有效。马来西亚籍员工的护照资料为选填；填写时须包含号码和两个日期，或清空全部六个字段以删除资料。",
       "savePassport": "保存护照信息",
       "identityNricTitle": "身份识别号码 (NRIC)",
       "oldIcNumber": "旧身份证号码",
@@ -2113,7 +2113,7 @@
       "superiorFailedCount": "{count, plural, one {# 名员工已导入，但无法关联其直属上级} other {# 名员工已导入，但无法关联其直属上级}}",
       "familyRelationshipLabel": "家庭关系",
       "familyGenderLabel": "家庭成员性别",
-      "instructionPassport": "护照号码、签发日期和有效期必须同时填写，或三项均留空。护照签发国使用与国籍相同的列表——请查看「参考」工作表。",
+      "instructionPassport": "非马来西亚籍员工必须填写护照号码。签发日期、到期日期、签发国家、国家代码和备注为选填。填写的日期和国家代码必须有效。马来西亚籍员工的护照资料为选填；填写时须包含号码和两个日期，或清空全部六个字段以删除资料。",
       "instructionAddress": "地址各列为员工的住家地址。州属和国家必须与「参考」工作表上的值一致。",
       "instructionProbation": "试用期结束日期仅适用于全职员工。试用期与通知期以整数的月数和天数填写。",
       "instructionSuperior": "直属上级填写员工编号或工作邮箱。可以指向本文件中位置更靠后的人，也可以是已在职的员工。",
@@ -7648,7 +7648,8 @@
         "saving": "正在保存…",
         "saved": "薪资更正设置已保存。",
         "invalid": "请选择有效的开启或关闭值。",
-        "failed": "无法保存设置。请重试。"
+        "failed": "无法保存设置。请重试。",
+        "cta": "打开薪资更正控制"
       },
       "formulaBuilder": {
         "title": "薪资公式构建器",
@@ -20236,7 +20237,8 @@
         "sections": {
           "profile": "个人资料",
           "employment": "雇佣信息",
-          "payroll": "薪资"
+          "payroll": "薪资",
+          "statutory": "法定资料"
         },
         "defaults": {
           "initialBasicSalary": "初始基本工资（空白表示零）",
@@ -20261,7 +20263,8 @@
           "payMode": "计薪模式",
           "paymentTerm": "付款周期",
           "rateAmount": "日薪／时薪",
-          "remarks": "备注"
+          "remarks": "备注",
+          "subjectToSkbbk": "需缴纳 SKBBK"
         },
         "states": {
           "awaiting_confirmation": "等待确认",
@@ -20984,7 +20987,7 @@
         "blank": "未设置",
         "title": "护照信息",
         "description": "审核现有马来西亚法定资料中的护照更新。",
-        "intro": "请输入准确的护照资料。非马来西亚籍员工须提供护照号码、签发日期和到期日期。马来西亚籍员工可清空全部六个字段以删除可选护照信息。填写任何资料时都须包含号码和两个日期。",
+        "intro": "非马来西亚籍员工必须填写护照号码。签发日期、到期日期、签发国家、国家代码和备注为选填。填写的日期和国家代码必须有效。马来西亚籍员工的护照资料为选填；填写时须包含号码和两个日期，或清空全部六个字段以删除资料。",
         "invalid": "请先检查护照资料再继续。",
         "consequence": "仅保存这六个护照字段，不更改身份证、出生日期、TP3、薪资或权限。",
         "sharedNote": "护照信息属于个人，影响其所有保留的雇佣关系。",
@@ -27291,7 +27294,8 @@
           "product_feedback_text": "产品反馈文本",
           "closed_references": "不透明引用与限定类别（来源文本和值保留在本地）",
           "coarse_aggregate_bands": "粗粒度汇总区间（不保证匿名）",
-          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）"
+          "pseudonymous_person_bands": "带随机别名的个人区间（并非匿名）",
+          "authored_formula_request": "用户编写的公式要求"
         },
         "redaction": {
           "pii_masked": "已遮盖",
@@ -33231,7 +33235,7 @@
       "title": "公式测试与结果",
       "sample": "示例数值",
       "employee": "真实员工",
-      "sampleHelp": "保存前即可使用。只使用您在此输入的数字；不会写入任何薪资数据。",
+      "sampleHelp": "保存前即可测试。仅使用您在此输入的值；不会写入薪资记录。",
       "fields": {
         "Basic": "基本工资",
         "FixedAllowances": "固定津贴",
@@ -33267,6 +33271,46 @@
         "division_by_zero": "第 {line} 行除以 0。该员工的薪资将因计算错误而停止。",
         "out_of_range": "结果超出薪资项目可支付的金额范围（0 至 100,000,000）。"
       }
+    },
+    "generator": {
+      "title": "AI公式生成器",
+      "requirement": "描述计算要求",
+      "disclosure": "您的描述将发送给组织批准的AI服务商。请使用虚构示例，不要包含员工记录。",
+      "consent": "我了解将发送哪些信息。",
+      "generate": "生成公式",
+      "regenerate": "重新生成公式",
+      "working": "正在生成…",
+      "clear": "清空",
+      "apply": "应用到公式编辑器",
+      "variables": "使用的变量",
+      "valid": "公式语法已检查。保存前请审核并测试。",
+      "needsClarification": "需要补充说明或选择受支持的替代方案。",
+      "replaceTitle": "替换编辑器内容？",
+      "replaceHelp": "应用此草稿将替换当前文本和未保存的修改。",
+      "replace": "替换内容",
+      "cancel": "取消",
+      "draftOnly": "AI草稿不会自动保存、启用或应用到薪资。示例测试使用薪资计算器。",
+      "failed": "无法生成或验证草稿。请检查要求后重试。",
+      "unavailable": "没有可用的已批准AI连接。仍可手动编辑。",
+      "reviewRequired": "生成公式需要批准其数据共享规则。仍可手动编辑。",
+      "applied": "草稿已应用到编辑器。保存前请审核并测试。",
+      "fields": {
+        "joinDate": "入职日期",
+        "groupJoinDate": "集团入职日期",
+        "resignationDate": "辞职日期",
+        "confirmationDate": "转正日期",
+        "lastWorkingDate": "最后工作日期",
+        "employmentType": "雇佣类型",
+        "employeeNo": "员工编号",
+        "departmentCode": "部门代码",
+        "positionCode": "职位代码",
+        "gradeCode": "职级代码",
+        "dateOfBirth": "出生日期",
+        "gender": "性别",
+        "nationality": "国籍",
+        "maritalStatus": "婚姻状况"
+      },
+      "conditions": "已验证的条件"
     }
   },
   "payrollTaxBasis": {

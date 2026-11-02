@@ -729,12 +729,8 @@ function buildProfile(
       passportIssuingCountry: pCountry ?? ((stored?.passportIssuingCountry as string | null) ?? null),
       passportIssuingCountryCode: pCode ?? (stored?.passportIssuingCountryCode as string | null) ?? null,
     };
-    if (!merged.passportNumber || !merged.passportIssueDate || !merged.passportExpiryDate) {
-      errors.push(
-        'passport_number, passport_issue_date and passport_expiry_date must all be on file together — this employee has none stored, so all three are needed',
-      );
-    } else if (merged.passportExpiryDate < merged.passportIssueDate) {
-      errors.push('passport_expiry_date must be on or after passport_issue_date');
+    if (!subject.pack.statutory.validatePassport({personId:subject.personId,...merged},row.personPatch?.fields?.nationality??subject.personRow.nationality)) {
+      errors.push('passport_number is required for non-Malaysian employees; check supplied passport dates and country code');
     } else {
       row.passport = merged;
       row.passportSupplied=(Object.entries({passportNumber:pNumber,passportIssueDate:pIssue,passportExpiryDate:pExpiry,passportIssuingCountry:pCountry,passportIssuingCountryCode:pCode,passportRemark:pRemark}).filter(([,value])=>value!==undefined).map(([key])=>key)) as (keyof PassportPatch)[];

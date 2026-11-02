@@ -2,6 +2,7 @@
 import type {ProviderDataReviewRecord} from './provider-data-reviews';
 export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Object.freeze(
 [
+  {"contractId":"authored_pay_formula_v1","status":"pending","sourceDigest":"","reviewer":"pending","evidence":"pending","reviewedAt":"pending"},
   {
     "contractId": "structured_canonical_records_v1",
     "status": "pending",

@@ -21,3 +21,10 @@ it('binds the real Personnel page and both real action paths to the same native 
  const page=readFileSync('app/admin/personnel/[employmentId]/page.tsx','utf8'),actions=readFileSync('app/admin/personnel/[employmentId]/actions.ts','utf8'),country=readFileSync('localization/country-pack.ts','utf8'),identity=readFileSync('components/personnel-identity.tsx','utf8'),shared=readFileSync('components/passport-fields.tsx','utf8');
  expect(page).toContain('countryPack?.statutory.passportEditAccess?.(s,{personId:emp.personId,employmentId:emp.employmentId})');expect(page).toContain('passportDisabled={!canEditPassport}');expect(page).toContain("passportReadOnlyMessage={tAccess('workforceReadOnly')}");const start=actions.indexOf('async function applyPassportSection('),end=actions.indexOf('export async function setPassportAction',start),apply=actions.slice(start,end);expect(apply).toMatch(/employmentId:\s*String\(formData.get\('employmentId'\)\)/);expect(actions).toContain('passport: applyPassportSection');expect(country).toContain('passportEditAccess?');expect(identity).toContain('passportDisabled=false');expect(shared).not.toContain('passportDisabled');
 });
+
+it('requires only the passport number for a non-Malaysian employee',()=>{
+ const view=render(<IdentityProvider initialNationality="Singaporean"><IdentityFields {...props} passportNumber="" passportIssueDate="" passportExpiryDate=""/></IdentityProvider>);
+ const form=view.container.querySelector('form[data-save-section="passport"]') as HTMLFormElement;
+ expect((form.querySelector('input[name="passportNumber"]') as HTMLInputElement).required).toBe(true);
+ for(const name of ['passportIssueDate','passportExpiryDate'])expect((form.querySelector(`input[name="${name}"]`) as HTMLInputElement).required).toBe(false);
+});

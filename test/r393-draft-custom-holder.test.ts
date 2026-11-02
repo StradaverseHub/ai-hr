@@ -87,9 +87,10 @@ async function bankEvents(): Promise<number> {
   return Number(n);
 }
 
-async function activate(data: EmployeeDraftData) {
+async function activate(data: EmployeeDraftData, historical=false) {
   const ctx = adminCtx(b);
   const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 3 });
+  if(historical)await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
   const { employmentId } = await completeEmployeeDraft(ctx, id);
   return { id, employmentId };
 }
@@ -253,7 +254,7 @@ describe('§4 a box whose tick is off is not carried', () => {
   });
 
   it('both off and NOTHING else statutory: an un-ticked box conjures no statutory row', async () => {
-    const { employmentId } = await activate(minimal({ enableCustomHolderName: 'no', customHolderName: 'Stale Name' }));
+    const { employmentId } = await activate(minimal({ enableCustomHolderName: 'no', customHolderName: 'Stale Name' }),true);
     expect(await statutoryOf(employmentId), 'no statutory row').toBeUndefined();
   });
 });
@@ -274,8 +275,8 @@ describe('§5 a draft with no holder keys activates exactly as before', () => {
     expect(await getEmployeeDraft(adminCtx(b), id), 'the draft is gone').toBeNull();
   });
 
-  it('a draft with no statutory section at all still creates no statutory row', async () => {
-    const { employmentId } = await activate(minimal());
+  it('a historical draft with no statutory section still creates no statutory row', async () => {
+    const { employmentId } = await activate(minimal(),true);
     expect(await statutoryOf(employmentId)).toBeUndefined();
   });
 });

@@ -14,6 +14,7 @@ describe('Ops and Strata placement never grants authority',()=>{
   ['/personnel','ops','people','mine'],['/admin/personnel','ops','people','hr'],
   // 7baeb78e — letters belong to the E-Letter module, not People.
   ['/me/letters','ops','eLetter','mine'],['/letters/templates','ops','eLetter','hr'],['/letters/register/abc','ops','eLetter','hr'],['/letters/settings/policy','ops','eLetter','config'],
+  ['/admin/settings/system-labels','ops','people','config'],['/admin/settings/system-labels/profile-options','ops','people','config'],
   ['/admin/settings/movement','ops','people','config'],['/admin/organization','ops','people','config'],
   ['/leave/tracker','ops','leave','team'],['/admin/leave-config/generate','ops','leave','hr'],
   ['/admin/leave-config/types','ops','leave','config'],['/admin/work-locations','ops','attendance','config'],

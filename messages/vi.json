@@ -1570,7 +1570,7 @@
       "passportIssueDate": "Ngày cấp hộ chiếu",
       "passportExpiryDate": "Ngày hết hạn hộ chiếu",
       "passportRemark": "Ghi chú hộ chiếu",
-      "passportHint": "Số hộ chiếu, ngày cấp và ngày hết hạn là bắt buộc với nhân viên không phải quốc tịch Malaysia. Hộ chiếu của nhân viên Malaysia là tùy chọn, nhưng ba mục này phải được điền cùng nhau. Quốc gia cấp và ghi chú là tùy chọn.",
+      "passportHint": "Nhân viên không mang quốc tịch Malaysia phải có số hộ chiếu. Ngày cấp, ngày hết hạn, quốc gia cấp, mã quốc gia và ghi chú là tùy chọn. Ngày và mã quốc gia đã nhập phải hợp lệ. Với nhân viên Malaysia, thông tin hộ chiếu là tùy chọn; khi nhập phải có số và cả hai ngày, hoặc xóa cả sáu trường để bỏ thông tin.",
       "savePassport": "Lưu thông tin hộ chiếu",
       "identityNricTitle": "Số định danh (NRIC)",
       "oldIcNumber": "Số CMND cũ",
@@ -2113,7 +2113,7 @@
       "superiorFailedCount": "{count, plural, one {# nhân viên đã được nhập nhưng chưa liên kết được cấp trên trực tiếp} other {# nhân viên đã được nhập nhưng chưa liên kết được cấp trên trực tiếp}}",
       "familyRelationshipLabel": "Quan hệ gia đình",
       "familyGenderLabel": "Giới tính thành viên gia đình",
-      "instructionPassport": "Số hộ chiếu, Ngày cấp và Ngày hết hạn phải được điền cùng nhau, hoặc để trống cả ba. Quốc gia cấp hộ chiếu dùng chung danh sách với Quốc tịch — xem trang tính Tham chiếu.",
+      "instructionPassport": "Nhân viên không mang quốc tịch Malaysia phải có số hộ chiếu. Ngày cấp, ngày hết hạn, quốc gia cấp, mã quốc gia và ghi chú là tùy chọn. Ngày và mã quốc gia đã nhập phải hợp lệ. Với nhân viên Malaysia, thông tin hộ chiếu là tùy chọn; khi nhập phải có số và cả hai ngày, hoặc xóa cả sáu trường để bỏ thông tin.",
       "instructionAddress": "Các cột địa chỉ là địa chỉ nhà của nhân viên. Tỉnh/Bang và Quốc gia phải khớp với một giá trị trên trang tính Tham chiếu.",
       "instructionProbation": "Ngày kết thúc thử việc chỉ áp dụng cho nhân viên toàn thời gian. Thời gian thử việc và thời gian báo trước là số nguyên tháng và ngày.",
       "instructionSuperior": "Cấp trên trực tiếp nhận Mã nhân viên hoặc email công việc. Có thể là người ở phía dưới trong tệp này, hoặc người đã đang làm việc.",
@@ -7648,7 +7648,8 @@
         "saving": "Đang lưu…",
         "saved": "Đã lưu cài đặt điều chỉnh bảng lương.",
         "invalid": "Chọn giá trị bật hoặc tắt hợp lệ.",
-        "failed": "Không thể lưu cài đặt. Vui lòng thử lại."
+        "failed": "Không thể lưu cài đặt. Vui lòng thử lại.",
+        "cta": "Mở kiểm soát điều chỉnh"
       },
       "formulaBuilder": {
         "title": "Trình tạo công thức lương",
@@ -20236,7 +20237,8 @@
         "sections": {
           "profile": "Hồ sơ",
           "employment": "Việc làm",
-          "payroll": "Bảng lương"
+          "payroll": "Bảng lương",
+          "statutory": "Pháp định"
         },
         "defaults": {
           "initialBasicSalary": "Lương cơ bản ban đầu (trống nghĩa là không)",
@@ -20261,7 +20263,8 @@
           "payMode": "Chế độ trả lương",
           "paymentTerm": "Kỳ thanh toán",
           "rateAmount": "Mức theo ngày/giờ",
-          "remarks": "Ghi chú"
+          "remarks": "Ghi chú",
+          "subjectToSkbbk": "Thuộc diện SKBBK"
         },
         "states": {
           "awaiting_confirmation": "Chờ xác nhận",
@@ -20984,7 +20987,7 @@
         "blank": "Chưa thiết lập",
         "title": "Thông tin hộ chiếu",
         "description": "Xem xét cập nhật hộ chiếu cho hồ sơ pháp định Malaysia hiện có.",
-        "intro": "Nhập thông tin hộ chiếu chính xác. Nhân viên không mang quốc tịch Malaysia cần số hộ chiếu, ngày cấp và ngày hết hạn. Với nhân viên Malaysia, xóa cả sáu trường để bỏ thông tin hộ chiếu tùy chọn. Nếu nhập một phần, phải có số và cả hai ngày.",
+        "intro": "Nhân viên không mang quốc tịch Malaysia phải có số hộ chiếu. Ngày cấp, ngày hết hạn, quốc gia cấp, mã quốc gia và ghi chú là tùy chọn. Ngày và mã quốc gia đã nhập phải hợp lệ. Với nhân viên Malaysia, thông tin hộ chiếu là tùy chọn; khi nhập phải có số và cả hai ngày, hoặc xóa cả sáu trường để bỏ thông tin.",
         "invalid": "Kiểm tra thông tin hộ chiếu trước khi tiếp tục.",
         "consequence": "Chỉ lưu sáu trường hộ chiếu này. Không thay đổi IC, ngày sinh, TP3, lương hay quyền truy cập.",
         "sharedNote": "Thông tin hộ chiếu thuộc về cá nhân và áp dụng cho mọi quan hệ lao động được lưu giữ.",
@@ -27291,7 +27294,8 @@
           "product_feedback_text": "Văn bản phản hồi sản phẩm",
           "closed_references": "Tham chiếu mờ và danh mục cố định (văn bản và giá trị nguồn ở lại cục bộ)",
           "coarse_aggregate_bands": "Khoảng tổng hợp thô (không bảo đảm ẩn danh)",
-          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)"
+          "pseudonymous_person_bands": "Khoảng theo người với bí danh ngẫu nhiên (không ẩn danh)",
+          "authored_formula_request": "Yêu cầu công thức do người dùng viết"
         },
         "redaction": {
           "pii_masked": "Đã che",
@@ -33231,7 +33235,7 @@
       "title": "Kiểm thử & Kết quả công thức",
       "sample": "Giá trị mẫu",
       "employee": "Nhân viên thực",
-      "sampleHelp": "Dùng được trước khi lưu. Chỉ dùng các số bạn nhập ở đây; không ghi gì vào bảng lương.",
+      "sampleHelp": "Có thể kiểm tra trước khi lưu. Chỉ dùng giá trị bạn nhập ở đây; không ghi vào bảng lương.",
       "fields": {
         "Basic": "Lương cơ bản",
         "FixedAllowances": "Phụ cấp cố định",
@@ -33267,6 +33271,46 @@
         "division_by_zero": "Dòng {line} chia cho 0. Việc tính lương sẽ dừng với lỗi tính toán cho nhân viên này.",
         "out_of_range": "Kết quả nằm ngoài số tiền mà Khoản lương có thể trả (0 đến 100,000,000)."
       }
+    },
+    "generator": {
+      "title": "Trình tạo công thức AI",
+      "requirement": "Mô tả phép tính",
+      "disclosure": "Mô tả được gửi tới nhà cung cấp AI được tổ chức phê duyệt. Dùng ví dụ hư cấu, không đưa hồ sơ nhân viên vào.",
+      "consent": "Tôi hiểu thông tin sẽ được gửi.",
+      "generate": "Tạo công thức",
+      "regenerate": "Tạo lại công thức",
+      "working": "Đang tạo…",
+      "clear": "Xóa",
+      "apply": "Áp dụng vào trình sửa công thức",
+      "variables": "Biến được dùng",
+      "valid": "Đã kiểm tra cú pháp. Xem lại và thử trước khi lưu.",
+      "needsClarification": "Cần làm rõ hoặc chọn phương án được hỗ trợ.",
+      "replaceTitle": "Thay nội dung trình sửa?",
+      "replaceHelp": "Bản nháp thay thế văn bản hiện tại và các sửa đổi chưa lưu.",
+      "replace": "Thay nội dung",
+      "cancel": "Hủy",
+      "draftOnly": "AI không tự lưu, kích hoạt hay áp dụng công thức vào bảng lương. Kiểm thử mẫu dùng bộ tính lương.",
+      "failed": "Không thể tạo hoặc xác thực bản nháp. Kiểm tra yêu cầu rồi thử lại.",
+      "unavailable": "Không có kết nối AI được phê duyệt. Vẫn có thể sửa thủ công.",
+      "reviewRequired": "Tạo công thức cần phê duyệt quy tắc chia sẻ dữ liệu. Vẫn có thể sửa thủ công.",
+      "applied": "Đã áp dụng bản nháp. Xem lại và thử trước khi lưu.",
+      "fields": {
+        "joinDate": "Ngày vào làm",
+        "groupJoinDate": "Ngày vào tập đoàn",
+        "resignationDate": "Ngày từ chức",
+        "confirmationDate": "Ngày xác nhận",
+        "lastWorkingDate": "Ngày làm cuối",
+        "employmentType": "Loại việc làm",
+        "employeeNo": "Mã nhân viên",
+        "departmentCode": "Mã phòng ban",
+        "positionCode": "Mã vị trí",
+        "gradeCode": "Mã ngạch",
+        "dateOfBirth": "Ngày sinh",
+        "gender": "Giới tính",
+        "nationality": "Quốc tịch",
+        "maritalStatus": "Tình trạng hôn nhân"
+      },
+      "conditions": "Điều kiện đã xác thực"
     }
   },
   "payrollTaxBasis": {

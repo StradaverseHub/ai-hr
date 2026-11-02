@@ -16,6 +16,7 @@ import {draftTaxResidencyGap,TAX_SELECTION_SCHEMES} from './tax-selection-codes'
  */
 import type { CountryPackClient } from '../country-pack';
 import { dobFromIC, isMalaysianNationality } from './ic-dob';
+import { validPassportMY } from './passport';
 import { entitlement } from './leave';
 import { BNM_BANKS } from './bank-files/bnm-codes';
 import { defaultSocsoEisNumber } from './socso-eis';
@@ -38,6 +39,8 @@ export const myClientPack: CountryPackClient = {
     // 35b7af0a group 7 — the SAME default the Personnel card applies server-side, so the wizard's
     // shared SOCSO/EIS group cannot drift from it. From ./socso-eis, a db-free leaf (see its header).
     defaultSocsoEisNumber,
+    validatePassport: validPassportMY,
+    creationDefaults: {subjectToSkbbk: true},
     // r393 (685d2380 step 3b) — the Create New Employee draft names a refused EPF box and a refused income
     // tax residency on its Bank & Statutory tab with the pack's OWN rules (./epf-election.ts,
     // ./tax-selection-codes.ts), the same ones the writers refuse with after `hireEmployee`.
