@@ -1109,3 +1109,11 @@ Bounded task reviews expose only the selected workflow and its actual eligible c
 or Personnel read is added. These sources require hosted native/DOM/whole-compiler qualification;
 supported-cell denial proofs still require genuine reviewed component publication. Full family
 publication and the remaining raw/native boundaries remain unfinished.
+
+### Independent Payroll Claim reservation reader
+
+The existing native Claim prefill now consumes941's finite four-field Payroll source, whose shared
+SQL owners decide actual batch membership and live reservation cutoff. The duplicated TypeScript
+cutoff/scope query was removed from that reader. Ordinary own Claim View grants no financial read
+exception. Native reserve/pay/unpay/requeue ports remain Security-owned prerequisites before whole
+Claim publication; the existing AFTER financial effect and deferred money/audit checks stay in place.
