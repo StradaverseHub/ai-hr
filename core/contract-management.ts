@@ -31,7 +31,7 @@ function employeeCaseRecord(record:ContractCase,issued:boolean):ContractCase{ret
 async function caseTx(tx:Tx,id:string,lock=false):Promise<ContractCaseView>{
  uuid.parse(id);
  const [projection]=await tx.execute<{value:{data:ContractCase;source_conflict:string|null;source:ContractSource;manager:boolean;pbp:boolean;gbs:boolean;employee:boolean;configure:boolean}|null}>(sql`select app.contract_case_projection(${id}::uuid) as value`),row=projection?.value;
- if(!row?.source)unavailable();
+ if(!row?.source)return unavailable();
  const documents=await tx.execute<ContractDocumentMetadata>(sql`select id,type,template_id as "templateId",template_version as "templateVersion",decision_revision as "decisionRevision",content_hash as hash,issued_at::text as "issuedAt",released_at::text as "releasedAt",superseded_at::text as "supersededAt",signature->>'action'='accept' as accepted,employee_document_id as "employeeDocumentId" from contract_document where case_id=${id}::uuid order by created_at desc,id`);
  const activity=await tx.execute<ContractCaseView['activity'][number]>(sql`select id,action,actor_user_id as actor,occurred_at::text as at,detail from contract_case_activity where case_id=${id}::uuid order by occurred_at,id`);
  const effects=await tx.execute<ContractCaseView['effects'][number]>(sql`select kind,status,error,receipt from contract_effect where case_id=${id}::uuid order by kind`);
