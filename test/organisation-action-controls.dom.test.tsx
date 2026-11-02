@@ -27,7 +27,7 @@ describe('configuration controls reflect independent action decisions',()=>{
  it('permits archiving independently of ordinary Edit on a company label',()=>{
   const row:GridRecord={id:'label-a',companyId:'company-a',code:'A',name:'Department A',title:'',jobFamily:'',label:'',businessUnitId:null,headEmploymentId:null,description:'',isGlobal:false,archived:false,inUse:false,assignedCompanyIds:['company-a'],createdAt:null,lastUpdatedAt:null,lastUpdatedBy:null};
   render(wrap(<SystemLabelsGrid data={{department:[row],position:[],cost_center:[],business_unit:[]}} companies={[{id:'company-a',name:'Company A'}]} writableCompanyIds={['company-a']} companyActionControls={{'company-a':{add:false,edit:false,delete:true}}} isGroupAdmin={false} actions={{save:vi.fn(),assign:vi.fn(),unassign:vi.fn(),setCriteria:vi.fn(),copyToCompanies:vi.fn()}}/>));
-  expect(screen.getByDisplayValue('A')).toHaveProperty('readOnly',true);
+  expect(screen.getByDisplayValue('Department A')).toHaveProperty('readOnly',true);
   const archive=screen.getByRole('button',{name:en.admin.systemLabels.archive});expect(archive).toHaveProperty('disabled',false);
   fireEvent.click(archive);expect(screen.queryByRole('button',{name:en.admin.systemLabels.archive})).toBeNull();
  });
