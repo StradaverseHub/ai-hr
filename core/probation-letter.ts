@@ -1,3 +1,4 @@
+import {probationLetterDocument} from '../lib/probation-letter-document';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -5,7 +6,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import {assertModuleEnabled} from './entitlements';
 import {v9ConfigSchema} from '../lib/lifecycle-v9-validation';
-import {validateFieldValue,type Block,type Field,type Document,type Signature} from '../lib/lifecycle-v9-model';
+import {validateFieldValue,type Block,type Field,type Document} from '../lib/lifecycle-v9-model';
 import {validateSigningRoute,signingComplete,type SigningDocument,type SigningRoute,type SigningGuardrails} from '../lib/document-signing-model';
 import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
@@ -42,13 +43,8 @@ async function previewTx(tx:Tx,ctx:SessionContext,input:{outcomeId:string;templa
  const[row]=await tx.execute<{data:ProbationLetterPreview}>(sql`select app.probation_letter_preview(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${input.revision}) as data`);if(!row?.data)throw new ProbationError('forbidden','The current letter source is unavailable.');companyGate(ctx,row.data.companyId);return row.data;
 }
 export function previewProbationLetter(ctx:SessionContext,input:Parameters<typeof previewTx>[2]){return withScopedLifecycleTenant(ctx,tx=>previewTx(tx,ctx,input));}
-export function probationLetterDocument(input:{id:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;createdAt:string;signing?:SigningDocument|null}):Document{
- const mergeValues=Object.fromEntries(Object.entries(input.merge).map(([key,value])=>[key,value==null?'':String(value)]));
- const current=input.signing?.actions.filter(a=>a.action==='signed'&&a.contentHash===input.signing!.contentHash&&a.contentRevision===input.signing!.contentRevision)??[];
- const signature=(actor:typeof current[number]|undefined):Signature|null=>actor?.signature?{by:{id:actor.actorId,name:actor.actorName},at:actor.at,...actor.signature}:null;
- const employee=current.find(a=>a.role==='employee'),hr=current.find(a=>a.role!=='employee');
- return{id:input.id,templateId:input.templateId,version:input.templateVersion,name:input.name,status:input.signing&&signingComplete(input.signing,{requiredRoles:input.signing.route.steps.filter(s=>s.required).map(s=>s.role)})?'signed':'draft',blocks:input.blocks,fields:input.fields,values:Object.fromEntries(input.fields.map(f=>[f.id,mergeValues[f.pmKey??f.id]??''])),edits:{},mergeValues,hrSignature:signature(hr),employeeSignature:signature(employee),createdAt:input.createdAt,sentAt:null,hrStep:'before',employeeAck:true,templateType:'Letter'};
-}
+export {probationLetterDocument} from '../lib/probation-letter-document';
+
 async function renderLetter(document:Document,signing:SigningDocument|null,reference:string):Promise<Buffer>{
  const {v9PdfDocument}=await import('../lib/lifecycle-v9-pdf'),{renderLetterPdf}=await import('../lib/letter-pdf');
  const resolved=v9PdfDocument(document,true),current=signing?.actions.filter(a=>a.action==='signed'&&a.contentHash===signing.contentHash&&a.contentRevision===signing.contentRevision)??[];
@@ -60,7 +56,9 @@ async function renderLetter(document:Document,signing:SigningDocument|null,refer
  return Buffer.from(await pdf.save());
 }
 export function prepareProbationLetter(ctx:SessionContext,input:Parameters<typeof previewTx>[2]){return withScopedLifecycleTenant(ctx,async tx=>{
- const preview=await previewTx(tx,ctx,input);for(const field of preview.fields)validateFieldValue(field,preview.merge[field.pmKey??field.id]??'');
+ const preview=await previewTx(tx,ctx,input);
+ if(preview.blocks.some(block=>block.type==='letterhead')&&['company.name','company.regNo','company.address'].some(key=>!preview.merge[key]?.trim()))throw new ProbationError('invalid','An authorized Organisation administrator must complete the company letterhead before this letter can be prepared.');
+ for(const field of preview.fields)validateFieldValue(field,preview.merge[field.pmKey??field.id]??'');
  const document=probationLetterDocument({id:randomUUID(),name:'Probation outcome letter',...preview,createdAt:new Date().toISOString()}),basePdf=await renderLetter(document,null,'Probation outcome preparation');
  const[row]=await tx.execute<{data:ProbationLetterPreview&{partId:string;contentHash:string;contentRevision:number}}>(sql`select app.probation_prepare_letter(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${basePdf},${input.revision},${preview.sourceDigest}) as data`);
  const created=await createSigningDocumentTx(tx,ctx,{companyId:row.data.companyId,employmentId:row.data.employmentId,subjectId:row.data.partId,subjectType:'probation',contentHash:row.data.contentHash,route:row.data.route,guardrails:row.data.guardrails});
