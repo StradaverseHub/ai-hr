@@ -886,16 +886,27 @@ CREATE FUNCTION app.claim_admin_subject_for(t uuid,u uuid,subject uuid) RETURNS 
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=subject AND e.tenant_id=t AND app.module_action_legacy_allowed(t,u,'claims.view',e.company_id) AND app.data_permission_matches_for(u,t,e.id));
 $$;
+-- Restricted publisher target hooks cannot borrow its ambient tenant. Port ONLY the actual
+-- 0818 delegation coverage fact, keeping its exact activity/module/task/org-scope semantics.
+-- Applied source drift refuses migration instead of silently changing the native target ceiling.
+DO $port$ DECLARE source text;BEGIN
+ SELECT prosrc INTO source FROM pg_proc WHERE oid='app.delegation_line_covers(uuid,uuid,text,text)'::regprocedure;
+ IF source IS NULL OR md5(source)<>'fb19e7bd1c4cbc1363e6de3c579c64a6' OR (length(source)-length(replace(source,'app.current_tenant_id()','')))/length('app.current_tenant_id()')<>1 THEN
+  RAISE EXCEPTION 'Native delegation coverage source changed';
+ END IF;
+ EXECUTE 'CREATE FUNCTION app.claim_delegation_line_covers_for(p_tenant uuid,line_id uuid,subject_id uuid,wanted_module text,wanted_task text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS '||quote_literal(replace(source,'app.current_tenant_id()','p_tenant'));
+END $port$;
+REVOKE ALL ON FUNCTION app.claim_delegation_line_covers_for(uuid,uuid,uuid,text,text) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.claim_assigned_subject_for(t uuid,u uuid,subject uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT t=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id
+ SELECT EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user actor ON actor.tenant_id=e.tenant_id
  WHERE e.id=subject AND e.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(u) AND actor.person_id IS NOT NULL AND actor.person_id<>e.person_id
  AND (EXISTS(SELECT 1 FROM public.reporting_line line JOIN public.employment manager ON manager.id=line.manager_employment_id AND manager.tenant_id=line.tenant_id
   WHERE line.tenant_id=t AND line.subordinate_employment_id=e.id AND line.line_type='administrative' AND line.superseded_at IS NULL AND line.valid_from<=current_date AND (line.valid_to IS NULL OR line.valid_to>current_date) AND manager.person_id=actor.person_id)
  OR EXISTS(SELECT 1 FROM public.reporting_line adm JOIN public.reporting_line delegation ON delegation.subordinate_employment_id=adm.manager_employment_id AND delegation.tenant_id=adm.tenant_id
   JOIN public.employment delegate ON delegate.id=delegation.manager_employment_id AND delegate.tenant_id=delegation.tenant_id
   WHERE adm.tenant_id=t AND adm.subordinate_employment_id=e.id AND adm.line_type='administrative' AND adm.superseded_at IS NULL AND adm.valid_from<=current_date AND (adm.valid_to IS NULL OR adm.valid_to>current_date)
-  AND delegate.person_id=actor.person_id AND app.delegation_line_covers(delegation.id,e.id,'claims','claims.claim'))));
+  AND delegate.person_id=actor.person_id AND app.claim_delegation_line_covers_for(t,delegation.id,e.id,'claims','claims.claim'))));
 $$;
 REVOKE ALL ON FUNCTION app.claim_related_subject_for(uuid,uuid,uuid),app.claim_admin_subject_for(uuid,uuid,uuid),app.claim_assigned_subject_for(uuid,uuid,uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint

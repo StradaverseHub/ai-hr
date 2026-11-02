@@ -283,3 +283,30 @@ for(const course of ['receipt','cancel','reimburse'] as const)it(`requeues genui
  expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audit);
  expect((await readDataPermissions(admin)).assignments).toEqual(assignments);
 });
+
+it('resolves pure publisher targets without ambient tenant/claims and preserves actual APP native admission',async()=>{
+ const pending=await submitClaim(admin,submission());
+ await actor('pure stand-in report',b.deptB,stranger.employmentId);
+ await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
+ const foreign=await seedBase();
+ // These are actual owner publisher probes, deliberately carrying no target tenant or user claims.
+ // They are not owner-held SET ROLE simulations of APP admission; actual APP probes are separate below.
+ const probe=(tenant:string)=>owner.db.transaction(async tx=>{
+  await tx.execute(sql`select set_config('app.tenant_id',${tenant},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true)`);
+  const [context]=await tx.execute<{tenant:string|null}>(sql`select app.current_tenant_id() as tenant`);expect(context.tenant).toBe(tenant||null);
+  const [row]=await tx.execute<{related:boolean;direct:boolean;delegated:boolean;unrelated:boolean;own:boolean;foreignTarget:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${top.userId}::uuid,'function.claims.related.execute',${b.companyId}::uuid) as related,app.module_function_legacy_allowed(${b.tenantId}::uuid,${middle.userId}::uuid,'function.claims.assigned.approve',${b.companyId}::uuid) as direct,app.module_function_legacy_allowed(${b.tenantId}::uuid,${stranger.userId}::uuid,'function.claims.assigned.approve',${b.companyId}::uuid) as delegated,app.module_function_legacy_allowed(${b.tenantId}::uuid,${peer.userId}::uuid,'function.claims.assigned.approve',${b.companyId}::uuid) as unrelated,app.module_function_legacy_allowed(${b.tenantId}::uuid,${leaf.userId}::uuid,'function.claims.own.submit.execute',${b.companyId}::uuid) as own,app.module_function_legacy_allowed(${foreign.tenantId}::uuid,${stranger.userId}::uuid,'function.claims.assigned.approve',${foreign.companyId}::uuid) as "foreignTarget"`);
+  return row;
+ });
+ const expected={related:true,direct:true,delegated:true,unrelated:false,own:true,foreignTarget:false};
+ expect(await probe('')).toEqual(expected);expect(await probe(foreign.tenantId)).toEqual(expected);
+ for(const [ctx,submit,decide] of [[top.ctx,true,false],[middle.ctx,true,true],[stranger.ctx,false,true],[peer.ctx,false,false]] as const){
+  const [actual]=await withTenant(ctx,tx=>tx.execute<{submit:boolean;decide:boolean;owner:boolean}>(sql`select app.claim_nonself_submit_allowed(${leaf.employmentId}::uuid) as submit,app.claim_decision_allowed(${leaf.employmentId}::uuid) as decide,pg_has_role(session_user,(select relowner from pg_class where oid='public.app_user'::regclass),'USAGE') as owner`));
+  expect(actual).toEqual({submit,decide,owner:false});
+ }
+ expect((await listPendingClaims(stranger.ctx)).find(row=>row.id===pending.id)?.canDecide).toBe(true);
+ // An actual native scope change must change the pure target despite the same foreign caller tenant.
+ await setReportingLine(admin,{subordinateEmploymentId:middle.employmentId,managerEmploymentId:stranger.employmentId,lineType:'delegate',validFrom:'2026-01-01',scopes:[{module:'leave',taskType:'leave.application'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
+ expect(await probe('')).toEqual({...expected,delegated:false});expect(await probe(foreign.tenantId)).toEqual({...expected,delegated:false});
+ const [native]=await withTenant(stranger.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.claim_decision_allowed(${leaf.employmentId}::uuid) as allowed`));expect(native.allowed).toBe(false);
+ await expect(withTenant(stranger.ctx,tx=>tx.execute(sql`select app.claim_delegation_line_covers_for(${b.tenantId}::uuid,${randomUUID()}::uuid,${leaf.employmentId}::uuid,'claims','claims.claim')`))).rejects.toThrow();
+});

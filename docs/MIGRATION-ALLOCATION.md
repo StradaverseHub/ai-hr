@@ -1347,3 +1347,14 @@ original native source checks. Source boolean and stored/current/recipient floor
 unrun. This is bounded command composition: shared raw Leave request/date/ledger/attachment and
 assigned/super decision readers, the apply UI and give-back cancellation are still separate unfinished
 owners; no raw/read/default/publication completion is claimed for this descriptor.
+
+Restricted-publisher Claim audit found the assigned pure helper and 0818 delegation coverage fact
+still borrowed ambient tenant. The assigned target helper now uses only explicit tenant/user/subject;
+a private parameterized exact 0818 coverage copy retains the real administrative-manager→delegate
+relationship, activity, task/module and organisation scope. Its source hash and single replacement
+anchor are checked at migration time; native drift refuses instead of silently changing behavior.
+The recursive-manager/HOD/company-tree owners and profile/login facts were inspected and already take
+explicit source IDs/tenant/date without caller GUCs, so they are reused unchanged. Owner NULL-tenant
+and foreign-caller-tenant probes, actual APP positive/negative admission, scoped delegation removal
+and private-port denial cases are authored, unrun. This establishes a qualification target, not a
+claim that a genuine supported package/default installation has passed.
