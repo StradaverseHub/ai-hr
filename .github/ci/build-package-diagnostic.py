@@ -3,6 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 import sys
+sys.dont_write_bytecode=True
 spec=importlib.util.spec_from_file_location("bundle",Path(__file__).with_name("build-bundle.py"))
 bundle=importlib.util.module_from_spec(spec);spec.loader.exec_module(bundle)
 def inspect(source,origin):

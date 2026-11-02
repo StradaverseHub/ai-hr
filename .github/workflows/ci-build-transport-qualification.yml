@@ -62,6 +62,8 @@ jobs:
         with: {node-version: '22.23.3'}
       - name: Run explicit CI and legacy diagnostic transport refusal controls
         run: node --test automation/.github/ci/build-transport.test.mjs automation/.github/ci/ci-build-transport-policy.test.mjs
+      - name: Standalone diagnostic must keep the controller read-only
+        run: python3 automation/.github/ci/build-package-diagnostic.test.py
       - name: Authenticate immutable origin and consumer metadata before candidate checkout
         env: {GH_TOKEN: '${{ github.token }}'}
         run: node automation/.github/ci/ci-build-transport-qualification.mjs --metadata-only

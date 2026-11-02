@@ -94,6 +94,7 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/releases -p "test_*.py"
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-bundle.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-map-bundle.test.py
+          PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-package-diagnostic.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-transport-extract.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/build-activate.test.py
           PYTHONDONTWRITEBYTECODE=1 python3 .github/ci/focused-recovery-extract.test.py
