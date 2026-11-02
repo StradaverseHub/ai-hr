@@ -223,7 +223,7 @@ REVOKE ALL ON FUNCTION app.financial_letter_born(text,uuid) FROM PUBLIC,ai_hr_ap
 --> statement-breakpoint
 CREATE FUNCTION app.access_letter_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;
+DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;function_key text;function_operation text;
 BEGIN
  IF TG_OP='DELETE' THEN row_data:=to_jsonb(OLD);ELSE row_data:=to_jsonb(NEW);END IF;
  IF TG_OP='UPDATE' THEN old_data:=to_jsonb(OLD);END IF;
@@ -289,7 +289,14 @@ BEGIN
   ELSE native:='approve';operation:='approve';END IF;
  ELSE RAISE EXCEPTION 'Unbound letter action owner' USING ERRCODE='42501';
  END CASE;
- IF co IS NULL OR NOT app.access_letter_action(co,native,operation) THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
+ function_operation:=operation;
+ function_key:=CASE WHEN TG_TABLE_NAME='letter_asset' AND row_data->>'kind'='signature' THEN 'letterSettings.signature'
+ WHEN TG_TABLE_NAME='letter_merge_field_version' THEN 'letterFields'
+ WHEN TG_TABLE_NAME IN ('letter_template','letter_template_version','letter_template_field') THEN 'letterTemplates'
+ ELSE app.financial_letter_native_function(native,operation) END;
+ IF function_key='letterSettings.signature' THEN function_operation:='add';END IF;
+ IF co IS NULL OR function_key IS NULL OR NOT app.letter_function_action(function_key,function_operation,co)
+ OR NOT app.access_letter_action(co,native,operation) THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
 END;
 $$;
@@ -566,6 +573,7 @@ BEGIN
   OR data-ARRAY['status','lease_token','lease_until','last_error'] IS DISTINCT FROM to_jsonb(OLD)-ARRAY['status','lease_token','lease_until','last_error']) THEN RAISE EXCEPTION 'Letter cancellation consequence unavailable' USING ERRCODE='42501';END IF;
  IF NOT EXISTS(SELECT 1 FROM app.letter_operation_effect proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.user_id=app.current_user_id() AND proof.letter_id=NEW.letter_id AND proof.company_id=NEW.company_id
   AND app.access_letter_action(proof.company_id,proof.native_capability,proof.operation)
+  AND app.letter_function_action(app.financial_letter_native_function(proof.native_capability,proof.operation),proof.operation,proof.company_id)
   AND (TG_OP<>'UPDATE' OR proof.operation IN ('delete','approve'))
   AND (TG_OP='UPDATE' OR EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=NEW.source_event_id AND audit.tenant_id=NEW.tenant_id AND audit.aggregate_id=NEW.letter_id AND audit.aggregate_type='letter' AND audit.actor_id=app.current_user_id() AND app.financial_audit_written(audit.id)
    AND (proof.operation='edit' AND audit.event_type='letter.submitted' OR proof.operation='approve' AND audit.event_type IN ('letter.approval.approve','letter.approval.reject','letter.approval.return','letter.approval.delegated') OR proof.operation='issue' AND audit.event_type='letter.issued'))))
@@ -1155,24 +1163,22 @@ CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_fixed_repl
 --> statement-breakpoint
 -- Exact function parity is distinct from the aggregate family: a template operator's
 -- installed native course does not imply Approval or Settings ownership.
+CREATE FUNCTION app.financial_letter_same_purpose_not_denied(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.access_capability c WHERE c.id=cap AND (NOT c.supported OR jsonb_array_length(c.bindings)>0 AND NOT EXISTS(
+  SELECT 1 FROM public.access_user_override deny WHERE deny.tenant_id=t AND deny.user_id=u AND deny.capability_id=cap AND deny.effect='deny' AND deny.retired_at IS NULL
+  AND (co IS NULL OR deny.company_id IS NULL OR app.access_scope_covers(deny.company_id,co,t)))));
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_same_purpose_not_denied(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_function_native(p_tenant uuid,p_user uuid,p_capability text,p_company uuid,p_current boolean) RETURNS boolean
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;
+DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;required text[]:='{}';alternatives text[]:='{}';passed boolean:=false;
 BEGIN
- IF p_capability NOT LIKE 'function.%' THEN RETURN false;END IF;
- CASE function_key
- WHEN 'payroll.backPay' THEN family:='payroll';
- WHEN 'payroll.process' THEN family:='payroll';
- WHEN 'payroll.fixedTransactions' THEN family:='payroll';
- WHEN 'payroll.individualTransactions' THEN family:='payroll';
- WHEN 'payroll.statutoryAdjustments' THEN family:='payroll';
- WHEN 'letterFields' THEN native:='template';
- WHEN 'letterTemplates' THEN native:='template';
- WHEN 'letterGenerate' THEN native:='generate';
- WHEN 'letterApproval' THEN native:='approve';
- WHEN 'letterRegister' THEN native:=CASE WHEN operation='issue' OR operation='delete' THEN 'issue' ELSE 'read' END;
- WHEN 'letterSettings' THEN native:='settings';
- ELSE RETURN false;END CASE;
+ IF p_capability NOT LIKE 'function.%' OR p_current AND (p_tenant IS DISTINCT FROM app.current_tenant_id() OR p_user IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current()) THEN RETURN false;END IF;
+ IF function_key='myLetters' THEN
+  RETURN p_company IS NULL AND operation IN ('view','execute') AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
+ END IF;
+ IF function_key IN ('payroll.process','payroll.fixedTransactions','payroll.individualTransactions','payroll.statutoryAdjustments','payroll.backPay') THEN family:='payroll';END IF;
  IF family IS NOT NULL THEN
   IF function_key='payroll.backPay' AND operation='execute' THEN operation:='edit';END IF;
   IF operation NOT IN ('view','add','edit','delete') THEN RETURN false;END IF;
@@ -1181,6 +1187,26 @@ BEGIN
    AND (function_key NOT IN ('payroll.fixedTransactions','payroll.backPay') OR EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('hr_admin','super_admin') AND (p_company IS NULL AND g.company_id IS NULL OR p_company IS NOT NULL AND app.access_scope_covers(g.company_id,p_company,p_tenant))))
    ELSE app.financial_letter_legacy_allowed(p_tenant,p_user,family||'.'||operation,p_company) END;
  END IF;
+ -- These are the actual independent Letters navigation/service courses. Native read-only
+ -- access to fields/templates is not silently changed into native Template maintenance.
+ CASE function_key
+ WHEN 'letterFields' THEN
+  IF operation='view' THEN alternatives:=ARRAY['read','template'];ELSIF operation IN ('add','edit','delete') THEN required:=ARRAY['template'];ELSE RETURN false;END IF;
+ WHEN 'letterTemplates' THEN
+  IF operation='view' THEN alternatives:=ARRAY['read','template'];ELSIF operation IN ('add','edit','delete','approve') THEN required:=ARRAY['template'];ELSE RETURN false;END IF;
+ WHEN 'letterGenerate' THEN
+  IF operation='view' THEN required:=ARRAY['read','generate'];ELSIF operation IN ('add','edit','delete') THEN required:=ARRAY['generate'];ELSE RETURN false;END IF;
+ WHEN 'letterApproval' THEN
+  IF operation NOT IN ('view','approve') THEN RETURN false;END IF;required:=ARRAY['read','approve'];
+ WHEN 'letterRegister' THEN
+  IF operation='view' THEN required:=ARRAY['read'];ELSIF operation IN ('issue','delete') THEN required:=ARRAY['issue'];ELSE RETURN false;END IF;
+ WHEN 'letterReports' THEN
+  IF operation<>'view' THEN RETURN false;END IF;required:=ARRAY['read','report'];
+ WHEN 'letterSettings' THEN
+  IF operation='view' THEN alternatives:=ARRAY['settings','approve'];ELSIF operation IN ('add','edit','delete') THEN required:=ARRAY['settings'];ELSE RETURN false;END IF;
+ WHEN 'letterSettings.signature' THEN
+  IF operation NOT IN ('view','add') THEN RETURN false;END IF;required:=ARRAY['approve'];
+ ELSE RETURN false;END CASE;
  IF p_company IS NULL THEN
   IF NOT EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=p_tenant AND r.app_user_id=p_user AND r.company_id IS NULL AND r.role::text IN ('super_admin','hr_admin')) THEN RETURN false;END IF;
   IF p_current AND NOT EXISTS(SELECT 1 FROM app.current_grants() g WHERE g.role IN ('super_admin','hr_admin') AND g.company_id IS NULL) THEN RETURN false;END IF;
@@ -1188,10 +1214,16 @@ BEGIN
    IF NOT app.financial_function_native(p_tenant,p_user,p_capability,selected,p_current) THEN RETURN false;END IF;
   END LOOP;RETURN true;
  END IF;
- RETURN CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native)
- ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END;
+ FOREACH native IN ARRAY required LOOP
+  IF NOT CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END THEN RETURN false;END IF;
+ END LOOP;
+ IF cardinality(alternatives)=0 THEN RETURN true;END IF;
+ FOREACH native IN ARRAY alternatives LOOP
+  IF CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END THEN passed:=true;END IF;
+ END LOOP;RETURN passed;
 END;
 $$;
+
 REVOKE ALL ON FUNCTION app.financial_function_native(uuid,uuid,text,uuid,boolean) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.financial_function_legacy_allowed(p_tenant uuid,p_user uuid,p_capability text,p_company uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(p_tenant,p_user,p_capability,p_company,false); $$;
@@ -1241,10 +1273,10 @@ SELECT app.register_function_action('letterGenerate','view','company','letters.v
 SELECT app.register_function_action('letterGenerate','add','company','letters.add','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
 SELECT app.register_function_action('letterGenerate','edit','company','letters.edit','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
 SELECT app.register_function_action('letterGenerate','delete','company','letters.delete','app.financial_delegate_lettergenerate','{"moduleKey":"letters","labelKey":"nav.letterGenerate","kind":"submenu","course":"administrative","screenKey":"letterGenerate","href":"/letters/generate","employeeBearing":true}'::jsonb);
-CREATE FUNCTION app.financial_delegate_letterapproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true); $$;
+CREATE FUNCTION app.financial_delegate_letterapproval(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterApproval.'||substring(cap from '[^.]+$'),co,true) AND (substring(cap from '[^.]+$')<>'approve' OR app.financial_letter_same_purpose_not_denied(t,u,'letters.approve',co)); $$;
 REVOKE ALL ON FUNCTION app.financial_delegate_letterapproval(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
-SELECT app.register_function_action('letterApproval','view','company','letters.view','app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
-SELECT app.register_function_action('letterApproval','approve','company','letters.approve','app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"administrative","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('letterApproval','view','company',NULL,'app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"assigned","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterApproval','approve','company',NULL,'app.financial_delegate_letterapproval','{"moduleKey":"letters","labelKey":"nav.letterApproval","kind":"submenu","course":"assigned","screenKey":"letterApproval","href":"/letters/approval","employeeBearing":false}'::jsonb);
 CREATE FUNCTION app.financial_delegate_letterregister(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterRegister.'||substring(cap from '[^.]+$'),co,true); $$;
 REVOKE ALL ON FUNCTION app.financial_delegate_letterregister(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 SELECT app.register_function_action('letterRegister','view','company','letters.view','app.financial_delegate_letterregister','{"moduleKey":"letters","labelKey":"nav.letterRegister","kind":"submenu","course":"administrative","screenKey":"letterRegister","href":"/letters/register","employeeBearing":true}'::jsonb);
@@ -1492,12 +1524,14 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_scope_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_scope_allowed(uuid) TO ai_hr_app;
 CREATE FUNCTION app.financial_backpay_row_read(p_row jsonb) RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RETURN app.principal_snapshot_current() AND p_row->>'tenant_id'=app.current_tenant_id()::text
  AND app.access_backpay_action((p_row->>'company_id')::uuid,'view')
  AND (EXISTS(SELECT 1 FROM public.back_pay_run run WHERE run.id=(p_row->>'id')::uuid AND run.tenant_id=app.current_tenant_id() AND run.company_id=(p_row->>'company_id')::uuid)
   OR EXISTS(SELECT 1 FROM app.financial_backpay_birth proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.run_id=(p_row->>'id')::uuid AND proof.company_id=(p_row->>'company_id')::uuid AND proof.row_hash=encode(sha256(convert_to(p_row::text,'UTF8')),'hex')))
  AND app.financial_backpay_subjects_allowed((p_row->>'id')::uuid);
+END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_row_read(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.financial_backpay_row_read(jsonb) TO ai_hr_app;
@@ -1569,3 +1603,130 @@ $$;
 REVOKE ALL ON FUNCTION app.financial_backpay_catalog_finish() FROM PUBLIC,ai_hr_app;
 CREATE CONSTRAINT TRIGGER financial_backpay_catalog_complete AFTER INSERT ON app.financial_backpay_catalog_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.financial_backpay_catalog_finish();
 CREATE TRIGGER financial_receipts_prune AFTER INSERT ON app.financial_backpay_catalog_effect FOR EACH ROW EXECUTE FUNCTION app.financial_receipts_prune();
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_delegate_letterreports(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterReports.'||substring(cap from '[^.]+$'),co,true); $$;
+CREATE FUNCTION app.financial_delegate_myletters(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.myLetters.'||substring(cap from '[^.]+$'),co,true); $$;
+CREATE FUNCTION app.financial_delegate_lettersignature(t uuid,u uuid,cap text,co uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.financial_function_native(t,u,'function.letterSettings.signature.'||substring(cap from '[^.]+$'),co,true); $$;
+REVOKE ALL ON FUNCTION app.financial_delegate_letterreports(uuid,uuid,text,uuid),app.financial_delegate_myletters(uuid,uuid,text,uuid),app.financial_delegate_lettersignature(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('letterReports','view','company','letters.view','app.financial_delegate_letterreports','{"moduleKey":"letters","labelKey":"nav.letterReports","kind":"screen","course":"administrative","screenKey":"letterReports","href":"/letters/reports","employeeBearing":true}'::jsonb);
+SELECT app.register_function_action('myLetters','view','tenant',NULL,'app.financial_delegate_myletters','{"moduleKey":"letters","labelKey":"nav.myLetters","kind":"screen","course":"own","screenKey":"myLetters","href":"/me/letters","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('myLetters','execute','tenant',NULL,'app.financial_delegate_myletters','{"moduleKey":"letters","labelKey":"nav.myLetters","kind":"screen","course":"own","screenKey":"myLetters","href":"/me/letters","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings.signature','view','company',NULL,'app.financial_delegate_lettersignature','{"moduleKey":"letters","labelKey":"letters.settings.signature","kind":"native_acl","course":"own","href":"/letters/settings","employeeBearing":false}'::jsonb);
+SELECT app.register_function_action('letterSettings.signature','add','company',NULL,'app.financial_delegate_lettersignature','{"moduleKey":"letters","labelKey":"letters.settings.signature","kind":"native_acl","course":"own","href":"/letters/settings","employeeBearing":false}'::jsonb);
+--> statement-breakpoint
+CREATE FUNCTION app.letter_function_action(p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_key IN ('letterFields','letterTemplates','letterGenerate','letterApproval','letterRegister','letterReports','letterSettings','letterSettings.signature')
+ AND app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.'||p_key||'.'||p_operation,p_company,true)
+ AND app.function_action_allowed(p_key,p_operation,p_company)
+ AND (p_key<>'letterApproval' OR p_operation<>'approve' OR app.financial_letter_same_purpose_not_denied(app.current_tenant_id(),app.current_user_id(),'letters.approve',p_company));
+$$;
+REVOKE ALL ON FUNCTION app.letter_function_action(text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_function_action(text,text,uuid) TO ai_hr_app;
+CREATE FUNCTION app.letter_recipient_function_action(p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','execute')
+ AND app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.myLetters.'||p_operation,NULL,true)
+ AND app.function_action_allowed('myLetters',p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.letter_recipient_function_action(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.letter_recipient_function_action(text) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.financial_letter_function_for_user(p_tenant uuid,p_user uuid,p_key text,p_operation text,p_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.access_function_action action JOIN public.access_capability capability ON capability.id=action.capability_id
+ WHERE action.function_key=p_key AND action.operation=p_operation
+ AND (p_key<>'letterApproval' OR p_operation<>'approve' OR app.financial_letter_same_purpose_not_denied(p_tenant,p_user,'letters.approve',p_company))
+ AND app.financial_function_native(p_tenant,p_user,capability.id,p_company,false)
+ AND (NOT capability.supported OR jsonb_array_length(capability.bindings)>0 AND app.access_allowed_for_tenant(p_tenant,p_user,capability.id,p_company)));
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_function_for_user(uuid,uuid,text,text,uuid) FROM PUBLIC,ai_hr_app;
+-- The native Approve primitive also owns an independent own-signature image course. Each actual
+-- mutation below chooses its exact source, so one does not lend the other's denied action.
+CREATE OR REPLACE FUNCTION app.access_letter_action_for_user(p_tenant uuid,p_user uuid,p_company uuid,p_native text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','add','edit','delete','approve','issue') AND app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,p_native)
+ AND CASE
+ WHEN p_native='approve' THEN p_operation='approve' AND (app.financial_letter_function_for_user(p_tenant,p_user,'letterApproval','approve',p_company) OR app.financial_letter_function_for_user(p_tenant,p_user,'letterSettings.signature','add',p_company) OR app.financial_letter_function_for_user(p_tenant,p_user,'letterSettings.signature','view',p_company))
+ WHEN p_native='read' THEN p_operation='view' AND (app.financial_letter_capability_allowed_for(p_tenant,p_user,'letters.view',p_company) OR app.financial_letter_function_for_user(p_tenant,p_user,'letterApproval','view',p_company))
+ ELSE app.financial_letter_capability_allowed_for(p_tenant,p_user,'letters.view',p_company)
+ AND app.financial_letter_capability_allowed_for(p_tenant,p_user,'letters.'||p_operation,p_company)
+ AND CASE p_native
+  WHEN 'generate' THEN app.financial_letter_function_for_user(p_tenant,p_user,'letterGenerate',p_operation,p_company)
+  WHEN 'settings' THEN app.financial_letter_function_for_user(p_tenant,p_user,'letterSettings',p_operation,p_company)
+  WHEN 'issue' THEN app.financial_letter_function_for_user(p_tenant,p_user,'letterRegister',p_operation,p_company)
+  WHEN 'report' THEN p_operation='view' AND app.financial_letter_function_for_user(p_tenant,p_user,'letterReports','view',p_company)
+  ELSE p_native='template' END END;
+$$;
+CREATE OR REPLACE FUNCTION app.access_letter_action(p_company uuid,p_native text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),p_company,p_native)
+ AND app.access_letter_action_for_user(app.current_tenant_id(),app.current_user_id(),p_company,p_native,p_operation)
+ AND CASE
+ WHEN p_native='approve' THEN app.letter_function_action('letterApproval','approve',p_company) OR app.letter_function_action('letterSettings.signature','add',p_company) OR app.letter_function_action('letterSettings.signature','view',p_company)
+ WHEN p_native='read' THEN app.financial_letter_capability_allowed_current('letters.view',p_company) OR app.letter_function_action('letterApproval','view',p_company)
+ ELSE app.financial_letter_capability_allowed_current('letters.view',p_company) AND app.financial_letter_capability_allowed_current('letters.'||p_operation,p_company)
+ AND CASE p_native WHEN 'generate' THEN app.letter_function_action('letterGenerate',p_operation,p_company)
+ WHEN 'settings' THEN app.letter_function_action('letterSettings',p_operation,p_company)
+ WHEN 'issue' THEN app.letter_function_action('letterRegister',p_operation,p_company)
+ WHEN 'report' THEN app.letter_function_action('letterReports','view',p_company) ELSE p_native='template' END END;
+$$;
+CREATE OR REPLACE FUNCTION app.letter_permission(co uuid,cap text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.access_letter_action(co,cap,CASE cap WHEN 'approve' THEN 'approve' WHEN 'issue' THEN 'issue' ELSE 'view' END);
+$$;
+--> statement-breakpoint
+CREATE FUNCTION app.financial_letter_native_function(p_native text,p_operation text) RETURNS text
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE p_native WHEN 'generate' THEN 'letterGenerate' WHEN 'approve' THEN 'letterApproval' WHEN 'issue' THEN 'letterRegister' WHEN 'settings' THEN 'letterSettings' END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_letter_native_function(text,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.access_letter_recipient_function_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_TABLE_NAME='letter_access_token' THEN
+  IF NOT app.letter_recipient_function_action('view') THEN RAISE EXCEPTION 'Own letter access unavailable' USING ERRCODE='42501';END IF;
+ ELSE
+  IF NOT app.letter_recipient_function_action(CASE WHEN NEW.kind='viewed' THEN 'view' ELSE 'execute' END) THEN RAISE EXCEPTION 'Own letter action unavailable' USING ERRCODE='42501';END IF;
+ END IF;RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.access_letter_recipient_function_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_letter_recipient_function BEFORE INSERT ON letter_recipient_event FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE TRIGGER financial_letter_recipient_function BEFORE INSERT ON letter_access_token FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE POLICY financial_letter_token_read ON letter_access_token AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(app.letter_recipient_function_action('view'));
+--> statement-breakpoint
+-- These actual recipient readers keep their unchanged tenant/person/current-artifact conditions.
+DO $$DECLARE signature text;body text;needle text:='app.is_self_person(e.person_id)';BEGIN
+ FOREACH signature IN ARRAY ARRAY['app.letter_can_read(uuid)','app.letter_recipient_mode(uuid)','app.letter_recipient_link_minutes(uuid)'] LOOP
+  SELECT pg_get_functiondef(to_regprocedure(signature)) INTO body;
+  IF body IS NULL OR (length(body)-length(replace(body,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Recipient source binding drift: %',signature;END IF;
+  EXECUTE replace(body,needle,'(app.is_self_person(e.person_id) AND app.letter_recipient_function_action(''view''))');
+ END LOOP;
+END $$;
+
+--> statement-breakpoint
+CREATE CONSTRAINT TRIGGER financial_letter_recipient_function_final AFTER INSERT ON letter_recipient_event DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE CONSTRAINT TRIGGER financial_letter_recipient_function_final AFTER INSERT ON letter_access_token DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.access_letter_recipient_function_guard();
+CREATE POLICY financial_letter_function_read ON letter_record AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(
+ app.letter_function_action('letterGenerate','view',company_id)
+ OR app.letter_function_action('letterRegister','view',company_id)
+ OR app.letter_function_action('letterReports','view',company_id)
+ OR app.letter_current_native_permission(app.current_tenant_id(),app.current_user_id(),company_id,'settings') AND app.letter_function_action('letterSettings','view',company_id)
+ OR app.letter_function_action('letterApproval','view',company_id) AND app.letter_staff_scope(company_id,created_by,batch_id,id)
+ OR state IN ('issued','void') AND app.letter_recipient_function_action('view') AND EXISTS(SELECT 1 FROM public.employment self WHERE self.id=employment_id AND self.tenant_id=letter_record.tenant_id AND app.is_self_person(self.person_id))
+);
+--> statement-breakpoint
+-- Reminder eligibility repeats the exact assigned Approval course rather than borrowing the
+-- distinct own-signature primitive which uses the same legacy native Approve ACL.
+DO $$DECLARE body text;needle text:='NOT app.letter_permission_for_user_at(wanted_tenant,j.recipient_user_id,l.company_id,''approve'')';BEGIN
+ SELECT pg_get_functiondef('identity_email.letter_job_current(uuid,uuid)'::regprocedure) INTO body;
+ IF body IS NULL OR (length(body)-length(replace(body,needle,'')))/length(needle)<>1 THEN RAISE EXCEPTION 'Assigned letter reminder binding drift';END IF;
+ EXECUTE replace(body,needle,needle||' OR NOT app.financial_letter_function_for_user(wanted_tenant,j.recipient_user_id,''letterApproval'',''approve'',l.company_id)');
+END $$;
+
+--> statement-breakpoint
+CREATE POLICY financial_letter_signature_read ON letter_asset AS RESTRICTIVE FOR SELECT TO ai_hr_app USING(kind<>'signature' OR owner_user_id=app.current_user_id() AND app.letter_function_action('letterSettings.signature','view',company_id));
