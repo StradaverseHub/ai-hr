@@ -10,6 +10,7 @@ import messages from '../messages/en.json';
 import {blankCase,defaultConfig} from '../lib/onboarding-model';
 import {OnboardingCaseView} from '../app/lifecycle/onboarding/case-view';
 import {NativeCaseDocuments} from '../app/lifecycle/v9/native-case-documents';
+import {defaultV9CaseFields} from '../lib/lifecycle-v9-case-form';
 import {fictionalV9Case,fictionalV9Task} from './fixtures/lifecycle-v9/case';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
@@ -42,7 +43,7 @@ it.each([1440,390])('renders the approved shared case structure at %i pixels wit
  cleanup();
  const today='2026-11-02',env={today,now:today+'T02:00:00Z',id:()=> 'fictional-history',nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
  const c=blankCase('native-case','OB-FICTIONAL','draft',{fullName:'Fictional Joiner',joinDate:'2026-11-30'},env);
- const config=defaultConfig('owner');config.v9ChecklistRevision=1;
+ const config=defaultConfig('owner');config.v9ChecklistRevision=1;config.v9CaseFields=defaultV9CaseFields('onb');
  const detail={case:c,config,revision:1,actor:{id:'owner',name:'Fictional HR',module:true,hr:true,master:false},directory:[],labels:{},notes:[],availability:{},today,canOpenRequisition:false};
  const onboard=render(<NextIntlClientProvider locale="en" messages={messages}><div className="v9-workspace v9-workspace-global"><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9"/><NativeCaseDocuments initial={fictionalV9Case({id:c.id,module:'onb',facts:{...fictionalV9Case().facts,name:'Fictional Joiner',joinDate:'2026-11-30',company:'company',title:'position',department:'department',supervisorUserId:'owner'}})} config={v9Defaults()} actor={{id:'owner',name:'Fictional HR'}} writableKeys={[]}/></div></NextIntlClientProvider>);
  expect(getComputedStyle(onboard.container.querySelector('.lifecycle-case-header h1')!).fontSize).toBe(offHeader);

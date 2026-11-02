@@ -22,3 +22,5 @@
 .lifecycle-case-section .v9-button{max-width:100%;white-space:normal;overflow-wrap:anywhere;height:auto;min-height:36px}
 .onb-stat progress{display:block;width:100%;margin:4px 0}
 .onb-workspace,.v9-workspace.v9-native-documents{font-family:var(--font-sans)}
+/* Native document sections sit outside .onb-workspace and share its heading hierarchy. */
+.lifecycle-case-section>h2{font-size:16px;font-weight:600;line-height:1.5}

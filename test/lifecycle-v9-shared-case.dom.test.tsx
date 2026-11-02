@@ -7,6 +7,7 @@ import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-sc
 import {blankCase,defaultConfig,submitCase} from '../lib/onboarding-model';
 import {OnboardingCaseView} from '../app/lifecycle/onboarding/case-view';
 import {NativeCaseDocuments} from '../app/lifecycle/v9/native-case-documents';
+import {defaultV9CaseFields} from '../lib/lifecycle-v9-case-form';
 import {fictionalV9Case,fictionalV9Task} from './fixtures/lifecycle-v9/case';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OffboardingCaseView,caseTasksByDue} from '../app/lifecycle/v9/offboarding-case-view';
@@ -56,7 +57,7 @@ it.each(['en','ms','zh','ta','th','vi'])('captures paired real case adapters in 
  const env={today,now:today+'T02:00:00Z',id:()=> 'fictional-history-'+(++next),nextNumber:()=> 'IT-FICTIONAL-'+(++next),leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:['owner']};
  const config=defaultConfig('owner'),actor={id:'owner',name:'Fictional HR',module:true,hr:true,master:false};
  config.checklists[0].tasks=[{id:'welcome',name:'Fictional welcome task',by:'group',group:'people-gbs',method:'manual',opens:null,due:1,gate:false}];
- const c=blankCase('native-case','OB-FICTIONAL','draft',{fullName:'Fictional Joiner',joinDate:'2026-11-30',title:'position',company:'company',department:'department',supervisor:'owner'},env);c.hiring='new_hire';submitCase(config,c,actor,env);config.v9ChecklistRevision=1;
+ const c=blankCase('native-case','OB-FICTIONAL','draft',{fullName:'Fictional Joiner',joinDate:'2026-11-30',title:'position',company:'company',department:'department',supervisor:'owner'},env);c.hiring='new_hire';submitCase(config,c,actor,env);config.v9ChecklistRevision=1;config.v9CaseFields=defaultV9CaseFields('onb');
  const detail={case:c,config,revision:1,actor,directory:[{id:'owner',name:'Fictional HR'}],labels:{title:'Fictional Analyst',company:'Fictional Company',department:'Fictional Department'},notes:[],availability:{},today,canOpenRequisition:true};
  const onboard=render(<NextIntlClientProvider locale={locale} messages={locale==='en'?messages:JSON.parse(readFileSync(`messages/${locale}.json`,'utf8'))}><div className="v9-workspace v9-workspace-global"><OnboardingCaseView detail={detail} registerHref="/lifecycle/v9"/><NativeCaseDocuments initial={fictionalV9Case({id:c.id,module:'onb',facts:{...fictionalV9Case().facts,name:'Fictional Joiner',joinDate:'2026-11-30',company:'company',title:'position',department:'department',supervisorUserId:'owner'}})} config={v9Defaults()} actor={{id:'owner',name:'Fictional HR'}} writableKeys={[]}/></div></NextIntlClientProvider>);
  expect(onboard.container.querySelectorAll('.lifecycle-case-header')).toHaveLength(1);
