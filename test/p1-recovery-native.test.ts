@@ -57,7 +57,8 @@ it.each(['shift','rest','clear'] as const)('one row Save rolls back earlier %s w
   expect(await snapshot()).toEqual(before);
  } finally {await owner.client`drop trigger p1_roster_fault on roster_assignment`;await owner.client`drop function public.p1_roster_fault()`;await owner.client`drop sequence public.p1_roster_reach`;}
  expect(await assignRosterRow(ctx,{employmentId:person.employmentId,shiftDates:dates,brush:brush==='shift'?shift.id:brush})).toEqual({applied:2});
- const after=await snapshot();expect(after.rows).toHaveLength(brush==='clear'?0:2);expect(after.events.filter(e=>String(e.row.event_type).startsWith('roster.')).length-before.events.filter(e=>String(e.row.event_type).startsWith('roster.')).length).toBe(2);
+ const after=await snapshot();expect(after.rows).toHaveLength(brush==='clear'?0:2);expect(after.events.filter(e=>e.row.aggregate_type==='roster-assignment').length-before.events.filter(e=>e.row.aggregate_type==='roster-assignment').length).toBe(2);
+ expect(after.events.filter(e=>e.row.event_type==='roster.manual-changes').length-before.events.filter(e=>e.row.event_type==='roster.manual-changes').length).toBe(2);
 });
 
 it.each(['rest','clear'] as const)('bulk %s action reports failure only after rolling back the whole selected population',async brush=>{
@@ -77,5 +78,6 @@ it.each(['rest','clear'] as const)('bulk %s action reports failure only after ro
   expect(Number((await owner.client`select last_value from p1_bulk_reach`)[0].last_value)).toBeGreaterThanOrEqual(2);expect(await snapshot()).toEqual(before);
  } finally {log.mockRestore();await owner.client`drop trigger p1_bulk_fault on roster_assignment`;await owner.client`drop function public.p1_bulk_fault()`;await owner.client`drop sequence public.p1_bulk_reach`;}
  const {bulkAssignAction}=await import('../app/roster/actions');expect(await bulkAssignAction({employmentIds:employees,shiftDates:dates,brush})).toEqual({ok:true});
- const after=await snapshot();expect(after.rows).toHaveLength(brush==='clear'?0:4);expect(after.events.filter(e=>String(e.row.event_type).startsWith('roster.')).length-before.events.filter(e=>String(e.row.event_type).startsWith('roster.')).length).toBe(4);
+ const after=await snapshot();expect(after.rows).toHaveLength(brush==='clear'?0:4);expect(after.events.filter(e=>e.row.aggregate_type==='roster-assignment').length-before.events.filter(e=>e.row.aggregate_type==='roster-assignment').length).toBe(4);
+ expect(after.events.filter(e=>e.row.event_type==='roster.manual-changes').length-before.events.filter(e=>e.row.event_type==='roster.manual-changes').length).toBe(4);
 });

@@ -1,4 +1,4 @@
-import { assertDutyRosterWriteTx } from './schedule-group-controls';
+import { assertDutyRosterWriteTx, lockDutyRosterWriteSetTx } from './schedule-group-controls';
 import { rotationVersionOn, weekPatternWorkingDayCount } from './week-pattern';
 import { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
 export { ShiftNotInScheduleGroupError, groupRuleIdTx, assertShiftsAllowedForEmploymentsTx } from './schedule-shift-eligibility';
@@ -3043,7 +3043,7 @@ export async function assignRosterRows(
     const writes = employees.flatMap(employmentId => dates.map(shiftDate =>
       brush === 'clear' ? {employmentId,shiftDate,clear:true as const} :
         {employmentId,shiftDate,shiftId:brush === 'rest' ? null : brush,isRestDay:brush === 'rest'}));
-    await assertDutyRosterWriteTx(tx,ctx,writes);
+    await lockDutyRosterWriteSetTx(tx,ctx,writes);
     if (brush !== 'rest' && brush !== 'clear') {
       await assertShiftsAllowedForEmploymentsTx(tx, employees.flatMap(employmentId =>
         dates.map(shiftDate => ({employmentId,shiftDate,shiftId:brush}))));

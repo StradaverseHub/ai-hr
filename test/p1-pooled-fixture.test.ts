@@ -33,7 +33,7 @@ it('changed owned rows refuse cleanup without touching either population',async(
  await owner.db.update(s.leaveRequest).set({reason:'Actual browser edit must survive'}).where(eq(s.leaveRequest.id,receipt.requests[0].id));
  const before=await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id);
  await expect(owner.db.transaction(tx=>clearPooledFixture(tx,f.base.tenantId,receipt))).rejects.toThrow('changed');
- expect(await owner.db.select().from(s.leaveRequest)).toEqual(before);
+ expect(await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id)).toEqual(before);
 });
 it('a late preparation failure rolls back groups, requests and borrowed routing together',async()=>{
  const f=await setup(),before={groups:await owner.db.select().from(s.leaveSharedGroup).orderBy(s.leaveSharedGroup.id),requests:await owner.db.select().from(s.leaveRequest).orderBy(s.leaveRequest.id),types:await owner.db.select().from(s.leaveType).orderBy(s.leaveType.id)};
