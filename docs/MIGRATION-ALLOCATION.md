@@ -1376,3 +1376,22 @@ Approval screen projects Template View before rendering that maintenance section
 escalation section by exact company View; its editor receives exact Edit and defaults missing flags
 to disabled. The company escalation DOM controls and shared-reference facade checks are authored,
 not executed. Assignment picker/course preview and the remaining native command chapters are open.
+
+Assignment controls now project the actual selected logical slots. The native constructor and read-only
+projection share one private SQL bucket lookup (including archived-row reactivation, null-safe grade
+population/duration and exclusion of legacy org/grade scopes) and one native eligibility preparation
+owner. The authenticated read-only action mints no intent/reservation and does not take write admission;
+the constructor recomputes under existing Access/Leave locks and raw guards repeat actual controls.
+The picker opens only for companies with a native Add or Edit course, unassign uses exact company
+Delete, and submission stays disabled until a current positive projection covers all selected slots.
+Selection changes clear it; stale responses cannot enable another selection. Native read-only/actual
+Add→archive→Edit and rendered pending/stale response cases are authored, unrun. Full supported default,
+recipient and control-denial qualification still awaits genuine component closure/publication.
+
+Static native-source correction: 0319 makes ordinary Schedule Group and OT-row writes ANY-HR;
+0545 membership is ANY-HR too. The original ff17 core constructor/edit/copy adds a group-admin floor
+only for dated rotations (and copy carrying dated rotations). Remove the invented blanket group-only
+Attendance configuration/Schedule delegation floor; actual stored/current ordinary Schedule floors
+remain ANY-HR. Dated rotation's genuine group-only service/RLS floor is retained. Company-HR ordinary
+constructor/edit/copy and stored/current parity versus actual dated-rotation refusal/copy rollback
+cases are authored, not executed or relabeled as installed default/recipient evidence.
