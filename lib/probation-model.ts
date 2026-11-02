@@ -32,7 +32,7 @@ export const DEFAULT_PROBATION_CONFIG:ProbationConfig={
 };
 export function blankProbationAssessment():Assessment{return Object.fromEntries(PROBATION_CRITERIA.map(c=>[c.id,{rating:null,evidence:''}])) as Assessment;}
 export function validateProbationConfig(config:ProbationConfig):void{
-  if(!Number.isSafeInteger(config.version)||config.version<1||!config.eligibleGrades.length||config.eligibleGrades.length>100||new Set(config.eligibleGrades).size!==config.eligibleGrades.length)reject('Choose a valid configuration version and eligible grades.');
+  if(!Number.isSafeInteger(config.version)||config.version<1||!config.eligibleGrades.length||config.eligibleGrades.some(grade=>!/^(1[2-9]|2[0-3])$/.test(grade))||new Set(config.eligibleGrades).size!==config.eligibleGrades.length)reject('Choose a valid configuration version and eligible grades.');
   for(const n of [config.defaultMonths,config.kpiDueWorkingDays,config.kpiReminderWorkingDay,config.issueLeadDays,config.firstReminderDays,config.dailyReminderDays])if(!Number.isSafeInteger(n)||n<1||n>366)reject('Review timings must be positive whole numbers.');
   if(!['block','warn','off'].includes(config.kpiGate)||!Number.isSafeInteger(config.lowBand)||config.lowBand<1||config.lowBand>5||config.maxExtensions!==2||config.extensionMonths.length!==2||!config.extensionMonths.includes(3)||!config.extensionMonths.includes(6))reject('Check the KPI gate, result threshold and extension limits.');
   if(config.gradeHEnabled&&!config.gradeHFormPublished)reject('Publish approved Grade H form content before enabling Grade H.');
