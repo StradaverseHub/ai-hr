@@ -35,3 +35,71 @@ BEGIN
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.access_workforce_service_info_update() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Shared read-only ownership: existing V9 PBP rules and shared People Ops group.
+-- Module opt-in rows may narrow these results; they must never replace them.
+CREATE FUNCTION app.lifecycle_canonical_people_ops_member(wanted_company uuid,wanted_user uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.company co
+ JOIN public.app_user u ON u.tenant_id=co.tenant_id AND u.id=wanted_user
+ JOIN public.lc_v9_config v ON v.tenant_id=co.tenant_id
+ JOIN public.lc_onboarding_config shared ON shared.tenant_id=co.tenant_id
+ CROSS JOIN LATERAL jsonb_array_elements(coalesce(shared.data->'groups','[]'::jsonb)) g
+ WHERE co.id=wanted_company AND co.tenant_id=app.current_tenant_id()
+ AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND g->>'id'=v.data->>'peopleOpsGroup' AND g->'members' ? u.id::text);
+$$;
+CREATE FUNCTION app.lifecycle_canonical_pbp_scope(wanted_company uuid,wanted_unit uuid,wanted_user uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ RETURN EXISTS(SELECT 1 FROM public.company co
+ JOIN public.app_user u ON u.tenant_id=co.tenant_id AND u.id=wanted_user
+ JOIN public.lc_v9_config v ON v.tenant_id=co.tenant_id
+ CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.data->'bpRules','[]'::jsonb)) r
+ WHERE co.id=wanted_company AND co.tenant_id=app.current_tenant_id()
+ AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND r->>'userId'=u.id::text
+ AND (coalesce(jsonb_array_length(r->'rules'->'company'),0)=0 OR r->'rules'->'company' ? co.id::text)
+ AND (wanted_unit IS NULL OR coalesce(jsonb_array_length(r->'rules'->'businessGroup'),0)=0 OR r->'rules'->'businessGroup' ? wanted_unit::text));
+EXCEPTION WHEN OTHERS THEN RETURN false;
+END $$;
+CREATE FUNCTION app.lifecycle_canonical_pbp_user(wanted_employment uuid,wanted_case uuid DEFAULT NULL) RETURNS uuid
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result uuid;override_user text;
+BEGIN
+ IF wanted_case IS NOT NULL THEN
+  SELECT c.data->'facts'->>'pbpUserId' INTO override_user FROM public.lc_v9_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id WHERE c.id=wanted_case AND c.employment_id=wanted_employment AND c.company_id=e.company_id AND c.tenant_id=app.current_tenant_id();
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  IF nullif(override_user,'') IS NOT NULL THEN
+   result:=override_user::uuid;
+   IF EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=result AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN result; END IF;
+   RETURN NULL;
+  END IF;
+ END IF;
+ WITH facts AS (
+  SELECT e.company_id,a.business_unit_id,a.department_id,e.tenant_id
+  FROM public.employment e
+  LEFT JOIN LATERAL(SELECT x.business_unit_id,x.department_id FROM public.assignment x
+   WHERE x.employment_id=e.id AND x.tenant_id=e.tenant_id AND x.superseded_at IS NULL
+   AND x.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+   AND (x.valid_to IS NULL OR x.valid_to>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+   ORDER BY x.valid_from DESC,x.id LIMIT 1) a ON true
+  WHERE e.id=wanted_employment AND e.tenant_id=app.current_tenant_id()
+ ), candidates AS (
+  SELECT r->>'userId' AS user_id,
+   (CASE WHEN coalesce(jsonb_array_length(r->'rules'->'businessGroup'),0)>0 THEN 4 ELSE 0 END
+    +CASE WHEN coalesce(jsonb_array_length(r->'rules'->'company'),0)>0 THEN 2 ELSE 0 END
+    +CASE WHEN coalesce(jsonb_array_length(r->'rules'->'department'),0)>0 THEN 1 ELSE 0 END) AS score
+  FROM facts f JOIN public.lc_v9_config v ON v.tenant_id=f.tenant_id
+  CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.data->'bpRules','[]'::jsonb)) r
+  WHERE (coalesce(jsonb_array_length(r->'rules'->'company'),0)=0 OR r->'rules'->'company' ? f.company_id::text)
+   AND (coalesce(jsonb_array_length(r->'rules'->'businessGroup'),0)=0 OR r->'rules'->'businessGroup' ? f.business_unit_id::text)
+   AND (coalesce(jsonb_array_length(r->'rules'->'department'),0)=0 OR r->'rules'->'department' ? f.department_id::text)
+   AND NOT EXISTS(SELECT 1 FROM jsonb_each(coalesce(r->'rules','{}'::jsonb)) extra
+    WHERE extra.key NOT IN('company','businessGroup','department') AND extra.value<>'[]'::jsonb)
+ ), highest AS (SELECT DISTINCT user_id FROM candidates WHERE score=(SELECT max(score) FROM candidates))
+ SELECT (min(h.user_id))::uuid INTO result FROM highest h HAVING count(*)=1;
+ IF result IS NULL OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=result AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) THEN RETURN NULL; END IF;
+ RETURN result;
+EXCEPTION WHEN OTHERS THEN RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.lifecycle_canonical_people_ops_member(uuid,uuid),app.lifecycle_canonical_pbp_scope(uuid,uuid,uuid),app.lifecycle_canonical_pbp_user(uuid,uuid) FROM PUBLIC,ai_hr_app;
