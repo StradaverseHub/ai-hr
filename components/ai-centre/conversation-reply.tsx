@@ -6,6 +6,7 @@ import { ruleVersionLabel } from '@/lib/ai-centre/rule-version';
 import { ProposalCard, type ProposalCheck } from './proposal-card';
 import { RecommendationPanel } from './leave-recommendation';
 import { ConversationSuggestions } from '@/components/assistant/chat-reply-boundary';
+import { ReplyMarkdown } from './reply-markdown';
 
 /** Reads that have a "Why?" explainer the person can ask for next (ADR-0170 step 4). */
 const WHY: Readonly<Record<string, string>> = { my_leave_balances: 'leave', my_payslip_summary: 'payslip' };
@@ -39,7 +40,7 @@ export async function ConversationReply({ turn }: { turn: ConversationTurn }) {
           <span>{t(turn.crisis ? 'routedCrisis' : 'routed')}</span>
         </aside>
       )}
-      {turn.reply && <div data-teras-text className="whitespace-pre-wrap break-words">{turn.reply}</div>}
+      {turn.reply && <ReplyMarkdown text={turn.reply} />}
       {turn.proposals.map(proposal => {
         const body = proposal.body, facts = body.facts ?? {};
         const checks: ProposalCheck[] = body.checks.map(check => ({ label: label('checks', check.check, words(check.check)),
