@@ -4,8 +4,9 @@
  * asserted here is either the service's rule or the policy's — and the tests that matter assert BOTH
  * layers (an admin session sails through RLS, so it can only be the service refusing).
  */
+import {randomUUID} from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { withLifecycleTenant } from '../core/module-gate';
 import type { SessionContext } from '../db/client';
 import * as schema from '../db/schema';
@@ -572,6 +573,25 @@ describe('Lifecycle module', () => {
       expect((await listAssetRequests(requester))[0]!.status).toBe('cancelled');
     });
 
+    it('keeps eligible hidden-name handlers without admitting a nonmember or another company membership',async()=>{
+      const id=randomUUID(),revision=randomUUID();
+      await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Handler scope '+id})`;
+      await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'employeeId',values:['NO-OTHER-PERSON']}]})}::text::jsonb,${admin.userId!})`;
+      await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+      await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${manager.userId!},${id},${admin.userId!})`;
+      const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional other company handler'}).returning();
+      const elsewhere=await createAppUser(b.tenantId,person.id,'employee');await setStaff(admin,{userId:elsewhere,companyId:companyB,level:'agent'});
+      const candidates=await withTenant(manager,tx=>tx.execute<{user_id:string;full_name:string|null}>(sql`select user_id,full_name from app.lc_staff_directory(${b.companyId}::uuid)`));
+      expect(candidates.find(row=>row.user_id===agent.userId)).toEqual({user_id:agent.userId,full_name:null});
+      expect(candidates.some(row=>row.user_id===elsewhere)).toBe(false);
+      expect(await withTenant(requester,tx=>tx.execute(sql`select * from app.lc_staff_directory(${b.companyId}::uuid)`))).toEqual([]);
+      expect(await withTenant(manager,tx=>tx.select().from(schema.person).where(eq(schema.person.id,agent.personId!)))).toEqual([]);
+      const item=await catalogue('HIDDEN-HANDLER'),request=await createAssetRequest(requester,{catalogueId:item.id,companyId:b.companyId});
+      await setAssetRequestHandler(manager,request.number,agent.userId!);
+      await rejects(setAssetRequestHandler(manager,request.number,requester.userId!),/module staff/);
+      await rejects(setAssetRequestHandler(manager,request.number,elsewhere),/module staff/);
+      expect((await getAssetRequest(manager,request.number)).request.handlerUserId).toBe(agent.userId);
+    });
     it('rejection is final, and the handler must be module staff', async () => {
       const item = await catalogue('HW-003');
       const { number } = await createAssetRequest(requester, { catalogueId: item.id, companyId: b.companyId });
