@@ -26834,7 +26834,7 @@
     "passwordHelp": "使用至少 14 个字符。请勿包含用户名或电子邮箱地址。",
     "passwordTitle": "设置您自己的密码",
     "enrollTitle": "设置身份验证器",
-    "enrollHelp": "使用身份验证器应用扫描二维码，或手动输入设置密钥，然后输入当前的六位验证码。",
+    "enrollHelp": "请先打开身份验证器应用，选择添加账户，再使用应用内的扫描功能扫描此二维码。您也可以手动输入设置密钥。然后返回此处，输入当前的六位验证码。",
     "qrAlt": "身份验证器设置二维码",
     "manualKey": "手动设置密钥",
     "code": "六位身份验证码",
@@ -26871,7 +26871,8 @@
       "rateLimited": "尝试次数过多，请稍后重试。",
       "unavailable": "登录或密码恢复暂时不可用，请稍后重试或联系管理员。",
       "conflict": "此用户名无法注册，请选择其他用户名或联系管理员。",
-      "forbidden": "无法验证此请求，请直接打开应用后重试。"
+      "forbidden": "无法验证此请求，请直接打开应用后重试。",
+      "authenticatorUnavailable": "无法打开身份验证器。请打开身份验证器应用，手动输入设置密钥，然后返回此处输入其六位验证码。"
     },
     "switchAccountTitle": "使用其他账户",
     "switchAccountHelp": "此邀请属于其他组织或已验证邮箱。请退出当前账户，再设置或登录受邀账户。您当前的 HR 账户将保持独立。",
@@ -26881,7 +26882,9 @@
     "signingInHelp": "正在进入 AIHR。",
     "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。",
     "microsoft": "使用 Microsoft 继续",
-    "microsoftError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。"
+    "microsoftError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。",
+    "openAuthenticator": "打开身份验证器",
+    "samePhoneHelp": "正在使用本手机设置？请点击下方按钮打开默认身份验证器。在 iPhone 上，可能会打开 Apple 的“密码”应用。如果无法打开，请在身份验证器应用中手动输入设置密钥。"
   },
   "aiManagement": {
     "title": "AI 管理",
