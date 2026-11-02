@@ -1,5 +1,5 @@
 import {sql} from 'drizzle-orm';
-import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
+import {employmentInformationAt,informationReportBatchRows,informationReportRelation} from '../../core/information-correction-history';
 /**
  * 9c8dad7a / 3aae0789 — BORANG A (KWSP monthly contribution form): the READ.
  *
@@ -79,7 +79,7 @@ import {
   companyStatutoryMy,
   employeeStatutoryMy,
   employment,
-  payrollBatch,
+  payrollDocumentBatch,
   payslip,
   person,
   position,
@@ -258,10 +258,7 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
     // run added is its stamp minus the PREVIOUS stamped run's — a figure that cannot be read off a run
     // whose predecessor was filtered out in SQL. The selection is applied below, against a complete month.
     // CP39 has no such column and does filter its query; see its own note.
-    const batches = await tx
-      .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
-      .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, params.periodKey)));
+    const batches = await informationReportBatchRows(tx,params.companyId,params.periodKey);
 
     const baseMeta = {
       statutoryVersion: MY_STATUTORY_VERSION,
@@ -311,14 +308,14 @@ export function borangAReport(ctx: SessionContext, params: ReportParams): Promis
         // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
-        runSeq: payrollBatch.runSeq,
+        runSeq: payrollDocumentBatch.runSeq,
         // r372 (item f022dd70) — and WHICH KIND of run, because the EPF normal stream belongs to the
         // regular one. `isAdditionalRun = batch.runType !== 'regular'` in core/payroll.ts, and an
         // additional run pays only the bonus bucket. NOT NULL DEFAULT 'regular'.
-        runType: payrollBatch.runType,
+        runType: payrollDocumentBatch.runType,
       })
       .from(informationReportRelation('payslip',params.companyId,params.periodKey))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
       .innerJoin(informationReportRelation('employment',params.companyId,params.periodKey), eq(employment.id, payslip.employmentId))
       .innerJoin(informationReportRelation('person',params.companyId,params.periodKey), eq(person.id, employment.personId))
       .leftJoin(informationReportRelation('employee_statutory_my',params.companyId,params.periodKey), eq(employeeStatutoryMy.personId, employment.personId))

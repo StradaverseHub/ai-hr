@@ -1,5 +1,5 @@
 import {sql} from 'drizzle-orm';
-import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
+import {employmentInformationAt,informationReportBatchRows,informationReportRelation} from '../../core/information-correction-history';
 /**
  * 8ca344bf — BORANG 8A (PERKESO monthly contribution schedule): the READ.
  *
@@ -70,7 +70,7 @@ import {
   companyStatutoryMy,
   employeeStatutoryMy,
   employment,
-  payrollBatch,
+  payrollDocumentBatch,
   payslip,
   person,
 } from '../../db/schema';
@@ -225,10 +225,7 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
     // ⚠️ r372 (item f022dd70) — THE WHOLE MONTH IS READ EVEN WHEN THE OPERATOR PICKED SOME OF ITS RUNS.
     // See the same note on `borangAReport`: the EPF additional stream is cumulative across `run_seq`, so
     // the selection is applied below, against a complete month, and never in this query.
-    const batches = await tx
-      .select({ id: payrollBatch.id, status: payrollBatch.status, runSeq: payrollBatch.runSeq })
-      .from(payrollBatch)
-      .where(and(eq(payrollBatch.companyId, params.companyId), eq(payrollBatch.payPeriod, periodKey)));
+    const batches = await informationReportBatchRows(tx,params.companyId,periodKey);
 
     const baseMeta = {
       statutoryVersion: MY_STATUTORY_VERSION,
@@ -276,8 +273,8 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         passportNumber: employeeStatutoryMy.passportNumber,
         epfCitizenship: employeeStatutoryMy.epfCitizenship,
         nationality: person.nationality,
-        joinDate: employmentInformationAt('joinDate',sql`${payrollBatch.payPeriod} || '-01'`,sql`${employment.joinDate}`),
-        hiredOn: employmentInformationAt('hiredOn',sql`${payrollBatch.payPeriod} || '-01'`,sql`${employment.hiredOn}`),
+        joinDate: employmentInformationAt('joinDate',sql`${payrollDocumentBatch.payPeriod} || '-01'`,sql`${employment.joinDate}`),
+        hiredOn: employmentInformationAt('hiredOn',sql`${payrollDocumentBatch.payPeriod} || '-01'`,sql`${employment.hiredOn}`),
         terminatedOn: employment.terminatedOn,
         // r408 — column (2)'s M: a termination of type 'death' inside the month.
         terminationType: employment.terminationType,
@@ -285,14 +282,14 @@ export function borang8AReport(ctx: SessionContext, params: ReportParams): Promi
         // r372 — WHICH RUN OF THE MONTH WROTE THIS PAYSLIP. Joined rather than mapped off `batches` so the
         // pairing is an invariant of the query and cannot acquire a "?? 1" fallback that silently decides
         // a wage. `run_seq` is NOT NULL DEFAULT 1 and unique per (pay_period_id, run_seq).
-        runSeq: payrollBatch.runSeq,
+        runSeq: payrollDocumentBatch.runSeq,
         // r372 (item f022dd70) — and WHICH KIND of run. SOCSO, EIS and SKBBK are charged once for the
         // month on the REGULAR run (ADR-0024: an additional run adds 0), so a selection without one has
         // no PERKESO money in it at all. NOT NULL DEFAULT 'regular'.
-        runType: payrollBatch.runType,
+        runType: payrollDocumentBatch.runType,
       })
       .from(informationReportRelation('payslip',params.companyId,params.periodKey))
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .innerJoin(payrollDocumentBatch, eq(payrollDocumentBatch.id, payslip.batchId))
       .innerJoin(informationReportRelation('employment',params.companyId,params.periodKey), eq(employment.id, payslip.employmentId))
       .innerJoin(informationReportRelation('person',params.companyId,params.periodKey), eq(person.id, employment.personId))
       .leftJoin(informationReportRelation('employee_statutory_my',params.companyId,params.periodKey), eq(employeeStatutoryMy.personId, employment.personId))

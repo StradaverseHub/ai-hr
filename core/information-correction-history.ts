@@ -1,6 +1,6 @@
 /** Historical display resolution: a stored null is meaningful and must not fall back to corrected master data. */
-import {sql,getTableColumns,type SQL} from 'drizzle-orm';
-import {informationPayslipSnapshot,payslip,payrollBatch,employment,domainEvent} from '../db/schema';
+import {and,eq,sql,getTableColumns,type SQL} from 'drizzle-orm';
+import {informationPayslipSnapshot,payslip,payrollBatch,payrollDocumentBatch,employment,domainEvent} from '../db/schema';
 export function frozenPayslipInformation(field:'grade'|'employmentType',fallback:SQL){
  return sql<string|null>`case when exists(select 1 from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) then (select ${field==='grade'?sql`f.grade`:sql`f.employment_type`} from ${informationPayslipSnapshot} f where f.payslip_id=${payslip.id}) else ${fallback}::text end`;
 }
@@ -41,6 +41,18 @@ export function informationDocumentRow(d:HistoricalDocument):RawDocumentRow{
  return {...d.metadata,id:p.id,employmentId:p.employment_id,companyId:b.company_id,batchId:b.id,payPeriod:b.pay_period,runType:b.run_type as RunType,runSeq:b.run_seq,batchStatus:b.status,
  historyImportAttemptId:b.history_import_attempt_id,historyImportCycleName:b.history_import_cycle_name,releasedAt:b.released_at?new Date(String(b.released_at)):null,version:p.version,
  basic:p.basic_salary,allowance:p.allowance,overtime:p.overtime_pay,bonus:p.bonus,gross:p.gross_pay,statutory:p.statutory,otherDeductions:p.other_deductions,totalDeductions:p.total_deductions,net:p.net_pay,employerCost:p.employer_cost,daysWorked:p.days_worked,coverageFrom:p.coverage_from,coverageTo:p.coverage_to,payDate:b.history_import_attempt_id?null:b.batch_date} as RawDocumentRow;
+}
+
+/** Keep live draft/run readiness and add only batch IDs proved by retained report rows. */
+export function informationReportBatchRows(tx:Tx,companyId:string,period:string){
+ const ordinary=tx.select({id:payrollBatch.id,status:payrollBatch.status,runSeq:payrollBatch.runSeq})
+  .from(payrollBatch).where(and(eq(payrollBatch.companyId,companyId),eq(payrollBatch.payPeriod,period)));
+ const retained=tx.select({id:payrollDocumentBatch.id,status:payrollDocumentBatch.status,runSeq:payrollDocumentBatch.runSeq})
+  .from(payrollDocumentBatch).where(and(eq(payrollDocumentBatch.companyId,companyId),eq(payrollDocumentBatch.payPeriod,period),
+   sql`${payrollDocumentBatch.id} in (
+    select (retained.data->>'batch_id')::uuid from app.information_report_records('payslip',${companyId}::uuid,${period}) as retained(data)
+   )`));
+ return ordinary.union(retained);
 }
 
 /** Report-only relation. Visible rows retain their ordinary owner; only missing retained rows are added.
