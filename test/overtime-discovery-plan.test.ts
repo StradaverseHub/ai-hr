@@ -19,8 +19,16 @@ let originalPublic:Awaited<ReturnType<typeof publicSnapshot>>;
 beforeAll(async()=>{
  await migrateTestDb();originalPublic=await publicSnapshot();
  expect(originalPublic.prosecdef).toBe(false);expect(originalPublic.provolatile).toBe('s');
- const marker=' BEGIN\n SELECT a.id INTO answer';expect(originalPublic.body.split(marker)).toHaveLength(2);
- const body=originalPublic.body.replace(marker," BEGIN\n IF NOT EXISTS(SELECT 1 FROM public.overtime_pattern_assignment empty_guard WHERE empty_guard.tenant_id=p_tenant) THEN RETURN NULL; END IF;\n SELECT a.id INTO answer");
+ const select=' SELECT a.id INTO answer FROM public.overtime_pattern_assignment a';
+ const tenant=" WHERE a.tenant_id=p_tenant AND v.kind='formula' AND pat.archived_at IS NULL";
+ const dated=' AND a.superseded_at IS NULL AND a.valid_from<=p_date AND (a.valid_to IS NULL OR a.valid_to>p_date)';
+ const target=" AND (a.target->>'type'='group' OR a.target->'employmentIds' ? p_employment)";
+ for(const part of [select,tenant,dated,target])expect(originalPublic.body.split(part)).toHaveLength(2);
+ // Keep every original table, column privilege and RLS owner in one statement.
+ // The fence avoids joining versions/patterns before finding eligible assignments.
+ const body=originalPublic.body.replace(select,'__CANDIDATE_SELECT__')
+  .replace(tenant," WHERE v.kind='formula' AND pat.archived_at IS NULL").replace(dated,'').replace(target,'')
+  .replace('__CANDIDATE_SELECT__'," WITH candidate_assignments AS MATERIALIZED (\n SELECT a.id,a.version_id FROM public.overtime_pattern_assignment a WHERE a.tenant_id=p_tenant\n"+dated+'\n'+target+"\n ) SELECT a.id INTO answer FROM candidate_assignments a");
  expect((await owner.client`select to_regprocedure('app.perf_formula_empty_candidate(uuid,text,date,uuid)') as oid`)[0].oid).toBeNull();
  await owner.client.unsafe('CREATE FUNCTION app.perf_formula_empty_candidate(p_tenant uuid,p_employment text,p_date date,p_company uuid) RETURNS uuid LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $perf$'+body+'$perf$');privateCreated=true;
  await owner.client.unsafe('REVOKE ALL ON FUNCTION app.perf_formula_empty_candidate(uuid,text,date,uuid) FROM PUBLIC,ai_hr_app');
@@ -113,5 +121,5 @@ it('matches the independent original query and actual stage reader across identi
   configuredPaired.push({round,order:round%2===0?'current-proposed':'proposed-current',currentMs,proposedMs});
  }
  expect(await publicSnapshot()).toEqual(originalPublic);
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/formula-empty-prototype.json',JSON.stringify({kind:'PRIVATE_INVOKER_FORMULA_PROTOTYPE_NOT_CAPACITY_OR_IMPLEMENTATION',paired,configuredPaired,readersPerBurst:12,principals:6,tenants:2,originalQueryAndPublicFunctionParity:true,liveScopeAndInvalidPrincipalControls:true,publicFunctionUnchanged:true,limitations:'Native fixture empty-assignment cost only; private fallback matches configured individual/group queries. No public function, visibility function, policy, migration or provider binding changed.'}));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(process.env.AIHR_FOCUSED_EVIDENCE_DIR+'/formula-empty-prototype.json',JSON.stringify({kind:'PRIVATE_INVOKER_FORMULA_ASSIGNMENT_PLAN_NOT_CAPACITY_OR_IMPLEMENTATION',paired,configuredPaired,readersPerBurst:12,principals:6,tenants:2,originalQueryAndPublicFunctionParity:true,liveScopeAndInvalidPrincipalControls:true,publicFunctionUnchanged:true,limitations:'Native empty and configured assignment query-plan measurements; private query preserves individual/group results. No public function, visibility function, policy, migration or provider binding changed.'}));
 });
