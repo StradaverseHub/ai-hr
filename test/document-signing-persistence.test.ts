@@ -12,10 +12,10 @@ let b:Base,admin:SessionContext,subjectId:string,employmentId:string;
 let manager:{userId:string;personId:string;ctx:SessionContext},employee:typeof manager,head:typeof manager,delegate:typeof manager;
 let route:SigningRoute;
 const originalHooks:{name:string;definition:string}[]=[];
-const hooks=['probation_signing_access','probation_signing_guardrails','probation_signing_route_allowed','probation_signing_content'];
+const hooks=['probation_signing_access','probation_signing_guardrails','probation_signing_route_allowed','probation_signing_content','probation_signing_action_allowed'];
 beforeAll(async()=>{
  await migrateTestDb();
- originalHooks.push(...await owner.db.execute<{name:string;definition:string}>(sql`select p.proname as name,pg_get_functiondef(p.oid) as definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname in ('probation_signing_access','probation_signing_guardrails','probation_signing_route_allowed','probation_signing_content')`));
+ originalHooks.push(...await owner.db.execute<{name:string;definition:string}>(sql`select p.proname as name,pg_get_functiondef(p.oid) as definition from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname in ('probation_signing_access','probation_signing_guardrails','probation_signing_route_allowed','probation_signing_content','probation_signing_action_allowed')`));
  await owner.db.execute(sql.raw(`create table public.test_document_signing_subject(id uuid primary key,tenant_id uuid not null references public.tenant(id),company_id uuid not null,employment_id uuid not null,admin_id uuid not null,readers uuid[] not null,route jsonb not null,rules jsonb not null,content jsonb not null);`));
  await owner.db.execute(sql.raw(`
  create or replace function app.probation_signing_access(p_subject uuid,p_operation text) returns boolean language sql stable security definer set search_path=pg_catalog,public,pg_temp as $$
@@ -25,11 +25,13 @@ beforeAll(async()=>{
  select rules from public.test_document_signing_subject where id=$1 and tenant_id=app.current_tenant_id(); $$;
  create or replace function app.probation_signing_route_allowed(p_subject uuid,p_route jsonb) returns boolean language sql stable security definer set search_path=pg_catalog,public,pg_temp as $$
  select coalesce((select route=$2 from public.test_document_signing_subject where id=$1 and tenant_id=app.current_tenant_id()),false); $$;
+ create or replace function app.probation_signing_action_allowed(p_subject uuid,p_action jsonb) returns boolean language sql stable security definer set search_path=pg_catalog,public,pg_temp as $$
+ select exists(select 1 from public.test_document_signing_subject s where s.id=$1 and s.tenant_id=app.current_tenant_id() and (app.current_user_id()=any(s.readers) or s.admin_id=app.current_user_id())); $$;
  create or replace function app.probation_signing_content(p_subject uuid) returns jsonb language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$
  declare value jsonb;begin select content into value from public.test_document_signing_subject where id=$1 and tenant_id=app.current_tenant_id() for update;return value;end; $$;`));
 });
 afterAll(async()=>{
- for(const name of hooks.filter(name=>!originalHooks.some(old=>old.name===name))){const args=name==='probation_signing_access'?'uuid,text':name==='probation_signing_route_allowed'?'uuid,jsonb':'uuid';await owner.db.execute(sql.raw(`drop function if exists app.${name}(${args});`));}
+ for(const name of hooks.filter(name=>!originalHooks.some(old=>old.name===name))){const args=name==='probation_signing_access'?'uuid,text':['probation_signing_route_allowed','probation_signing_action_allowed'].includes(name)?'uuid,jsonb':'uuid';await owner.db.execute(sql.raw(`drop function if exists app.${name}(${args});`));}
  for(const old of originalHooks)await owner.db.execute(sql.raw(old.definition));
  await owner.db.execute(sql.raw('drop table if exists public.test_document_signing_subject;'));await closeAll();
 });

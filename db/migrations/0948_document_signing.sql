@@ -146,6 +146,13 @@ BEGIN
   IF app.document_signature_valid(p_action->'signature') IS NOT TRUE THEN RAISE EXCEPTION 'A valid signature and consent are required';END IF;
   IF step->>'kind'='approve' AND d.guardrails->>'independentApprovalFromRole' IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'actions') a WHERE a->>'role'=d.guardrails->>'independentApprovalFromRole' AND a->>'action'='signed' AND a->>'actorPersonId'=v_person::text AND a->>'contentRevision'=d.data->>'contentRevision' AND a->>'contentHash'=d.data->>'contentHash') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') other_step WHERE other_step->>'kind'='approve' AND other_step->>'required'='true' AND other_step->>'holderPersonId'<>v_person::text) THEN RAISE EXCEPTION 'A distinct approving person is required'; END IF;
  ELSE RAISE EXCEPTION 'Invalid signing action'; END IF;
+ -- A subject owner must validate action payloads as well as the shared route and actor.
+ -- In particular, an employee acknowledgement cannot replace the saved review comment.
+ IF d.subject_type='probation' THEN
+  IF to_regprocedure('app.probation_signing_action_allowed(uuid,jsonb)') IS NULL THEN RAISE EXCEPTION 'Signing subject action policy unavailable';END IF;
+  EXECUTE 'SELECT app.probation_signing_action_allowed($1,$2)' INTO route_allowed USING d.subject_id,p_action;
+  IF route_allowed IS NOT TRUE THEN RAISE EXCEPTION 'The current subject does not permit this signing action';END IF;
+ END IF;
  SELECT p.full_name INTO v_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id();
  IF v_name IS NULL THEN RAISE EXCEPTION 'Verified signer name is missing'; END IF;
  v_action:=p_action||jsonb_build_object('actorName',v_name,'actorPersonId',v_person,'at',to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
