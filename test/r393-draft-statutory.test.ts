@@ -118,9 +118,10 @@ async function selectionOf(employmentId: string) {
   return row;
 }
 
-async function activate(data: EmployeeDraftData) {
+async function activate(data: EmployeeDraftData, historical = false) {
   const ctx = adminCtx(b);
   const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 3 });
+  if(historical)await owner.db.update(schema.employeeDraft).set({data}).where(eq(schema.employeeDraft.id,id));
   const { employmentId } = await completeEmployeeDraft(ctx, id);
   return { id, employmentId };
 }
@@ -296,7 +297,7 @@ describe('§3 a blank box stays statutory (null), never 0% or RM0.00', () => {
   });
 
   it('EPF boxes the category does not use conjure no statutory row on their own', async () => {
-    const { employmentId } = await activate(minimal({ epfEmployeeRate: '15', epfEmployeeAmount: '200' }));
+    const { employmentId } = await activate(minimal({ epfEmployeeRate: '15', epfEmployeeAmount: '200' }), true);
     expect(await statutoryOf(employmentId), 'no statutory row').toBeUndefined();
   });
 });
@@ -406,7 +407,7 @@ describe('§4 a draft with NONE of the new keys activates exactly as before', ()
   };
 
   it('every employee_statutory_my column equals the row the pre-r393 writer calls produce', async () => {
-    const viaDraft = await activate(minimal(LEGACY));
+    const viaDraft = await activate(minimal(LEGACY), true);
     const ctx = adminCtx(b);
     const pack = packFor('MY')!;
     // THE REFERENCE: the hire and the two writer calls d358d909's completeEmployeeDraft made for this draft,
