@@ -5,25 +5,25 @@ import {and,eq,isNull,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {client,withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {hireEmployee,endReportingLine} from '../core/org';
+import {hireEmployee,endReportingLine,setReportingLine} from '../core/org';
 import {createClaimType,pendingClaimTaskMetadata} from '../packs/claims/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
-import {claimTaskStatementProbe,claimTaskBoundedHeaderProbe,explainClaimTaskProbe} from './helpers/claim-task-statement-probe';
+import {claimTaskStatementProbe,claimTaskBoundedHeaderProbe,explainClaimTaskProbe,claimTaskGroupedHeaderProbe,analyzeClaimTaskProbe} from './helpers/claim-task-statement-probe';
 
 let b:Base,ctx:SessionContext,typeId:string;
 let headerContract:{bodyHash:string;estimatedRows:number};
 beforeAll(async()=>{await migrateTestDb();
- const [fn]=await owner.client`select prosrc,prorows from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
- headerContract={bodyHash:createHash('sha256').update(fn.prosrc).digest('hex'),estimatedRows:Number(fn.prorows)};
+ const [fn]=await owner.client`select prosrc,prorows,provolatile from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
+ headerContract={bodyHash:createHash('sha256').update(fn.prosrc).digest('hex'),estimatedRows:Number(fn.prorows)};expect(fn.provolatile).toBe('s');
  expect(headerContract.bodyHash).toBe('db95e52af25b98f0f18f766e80eca953d5ccdfb9aceb9d1a2873572bec0659d5');
  const keys=await owner.client`select c.relname,a.attname from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_attribute a on a.attrelid=c.oid and a.attnum=any(k.conkey) where k.contype='p' and c.oid in('public.employment'::regclass,'public.person'::regclass)`;
  expect(keys.map(row=>row.relname+'.'+row.attname).sort()).toEqual(['employment.id','person.id']);
 });afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'claims','active');ctx=adminCtx(b);
  typeId=(await createClaimType(ctx,{code:'STMT_PROBE',name:'Fictional statement proposal',requiresReceipt:false,defaultTaxable:false})).id;});
-async function person(name:string,manager?:string){return hireEmployee(ctx,{person:{fullName:'Fictional '+name,primaryEmail:randomUUID()+'@example.invalid'},
- companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur(new Date(Date.now()-7*86400000)),reportingManagerEmploymentId:manager});}
+async function person(name:string,manager?:string,departmentId=b.deptA){return hireEmployee(ctx,{person:{fullName:'Fictional '+name,primaryEmail:randomUUID()+'@example.invalid'},
+ companyId:b.companyId,departmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur(new Date(Date.now()-7*86400000)),reportingManagerEmploymentId:manager});}
 async function claims(employmentId:string,count:number){const start=Date.now()-120000;return owner.db.insert(s.claimRequest).values(Array.from({length:count},(_,i)=>({
  tenantId:b.tenantId,employmentId,claimTypeId:typeId,amount:'1.00',status:'pending' as const,incurredOn:todayInKualaLumpur(),createdAt:new Date(start+i*1000),
 }))).returning({id:s.claimRequest.id,createdAt:s.claimRequest.createdAt});}
@@ -33,7 +33,8 @@ async function counted<T>(run:()=>Promise<T>){const previous=client.options.debu
 async function compare(actor:SessionContext,companyIds?:string[]){
  const expected=await pendingClaimTaskMetadata(actor,companyIds);const actual=await claimTaskStatementProbe(actor,companyIds);
  expect(actual.items).toEqual(expected);expect(actual.total).toBe(expected.length);
- const bounded=await claimTaskBoundedHeaderProbe(actor,companyIds);expect(bounded).toEqual(actual);return actual;
+ const bounded=await claimTaskBoundedHeaderProbe(actor,companyIds);expect(bounded).toEqual(actual);
+ expect(await claimTaskGroupedHeaderProbe(actor,companyIds)).toEqual(actual);return actual;
 }
 async function events(){const [row]=await owner.client`select count(*)::int as total from domain_event`;return row.total;}
 function state(error:unknown){for(let e=error;e&&typeof e==='object';e=(e as {cause?:unknown}).cause){const code=(e as {code?:string}).code;if(code)return code;}return null;}
@@ -78,16 +79,17 @@ it('fails closed for revoked or forged caller facts and recovers after a SQL err
  const subject=await person('error recovery subject');await claims(subject.employmentId,3);expect((await compare(ctx)).total).toBe(3);
  const before=await events(),forged={...ctx,personId:randomUUID()};
  await expect(pendingClaimTaskMetadata(forged,[b.companyId])).rejects.toThrow();
- await expect(claimTaskStatementProbe(forged,[b.companyId])).rejects.toThrow();await expect(claimTaskBoundedHeaderProbe(forged,[b.companyId])).rejects.toThrow();
+ await expect(claimTaskStatementProbe(forged,[b.companyId])).rejects.toThrow();await expect(claimTaskBoundedHeaderProbe(forged,[b.companyId])).rejects.toThrow();await expect(claimTaskGroupedHeaderProbe(forged,[b.companyId])).rejects.toThrow();
  let canonicalError:unknown,prototypeError:unknown;
  try{await pendingClaimTaskMetadata(ctx,['not-a-uuid']);}catch(error){canonicalError=error;}
  try{await claimTaskStatementProbe(ctx,['not-a-uuid']);}catch(error){prototypeError=error;}
  expect(state(canonicalError)).toBe('22P02');expect(state(prototypeError)).toBe('22P02');
  await expect(claimTaskBoundedHeaderProbe(ctx,['not-a-uuid'])).rejects.toThrow();
+ let groupedError:unknown;try{await claimTaskGroupedHeaderProbe(ctx,['not-a-uuid']);}catch(error){groupedError=error;}expect(state(groupedError)).toBe('22P02');
  expect((await compare(ctx)).total).toBe(3);expect(await events()).toBe(before);
  const grants=await owner.db.select().from(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
  await owner.db.delete(s.roleAssignment).where(eq(s.roleAssignment.appUserId,ctx.userId!));
- try{await expect(pendingClaimTaskMetadata(ctx,[b.companyId])).rejects.toThrow();await expect(claimTaskStatementProbe(ctx,[b.companyId])).rejects.toThrow();await expect(claimTaskBoundedHeaderProbe(ctx,[b.companyId])).rejects.toThrow();}
+ try{await expect(pendingClaimTaskMetadata(ctx,[b.companyId])).rejects.toThrow();await expect(claimTaskStatementProbe(ctx,[b.companyId])).rejects.toThrow();await expect(claimTaskBoundedHeaderProbe(ctx,[b.companyId])).rejects.toThrow();await expect(claimTaskGroupedHeaderProbe(ctx,[b.companyId])).rejects.toThrow();}
  finally{await owner.db.insert(s.roleAssignment).values(grants);}
  expect((await compare(ctx)).total).toBe(3);
 });
@@ -111,7 +113,7 @@ it('keeps same-tenant company filters and foreign-tenant rows identical to the p
 it('captures caller and company inputs before asynchronous work in either private query form',async()=>{
  const subject=await person('caller capture subject');await claims(subject.employmentId,3);
  const expected=await pendingClaimTaskMetadata(ctx,[b.companyId]);expect(expected).toHaveLength(3);
- for(const read of [claimTaskStatementProbe,claimTaskBoundedHeaderProbe]){
+ for(const read of [claimTaskStatementProbe,claimTaskBoundedHeaderProbe,claimTaskGroupedHeaderProbe]){
   const input={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))},companies=[b.companyId];
   const pending=read(input,companies);
   input.userId=randomUUID();input.personId=randomUUID();input.roles=[];input.grants=[];companies[0]=randomUUID();
@@ -139,7 +141,45 @@ it('compares a proven singleton-header plan bound without altering the native ow
   plans[mode]={cost:document[0].Plan['Total Cost'],headers,jit:document[0].JIT??null};
   if(mode==='bounded')expect(Number(headers[0].estimatedRows)).toBeLessThanOrEqual(1);
  }
- const [afterFn]=await owner.client`select prosrc,prorows from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
+ const [afterFn]=await owner.client`select prosrc,prorows,provolatile from pg_proc where oid='app.delegated_approval_subject(uuid,text,text)'::regprocedure`;
  expect(createHash('sha256').update(afterFn.prosrc).digest('hex')).toBe(headerContract.bodyHash);expect(Number(afterFn.prorows)).toBe(headerContract.estimatedRows);expect(await events()).toBe(before);
  console.log('CLAIM_HEADER_PLAN_PROBE '+JSON.stringify({scope:'private singleton-cardinality experiment, not500-user acceptance',headerContract,pairs,plans}));
+});
+
+it('keeps typed Claims delegation and department coverage as the current edge ends',async()=>{
+ const manager=await person('cover delegator'),standIn=await person('cover delegate');
+ const included=await person('covered claimant',manager.employmentId),excluded=await person('out-of-scope claimant',manager.employmentId,b.deptB);
+ const userId=await createAppUser(b.tenantId,standIn.personId,'manager');
+ const actor:SessionContext={...ctx,userId,personId:standIn.personId,roles:['manager'],grants:[{role:'manager',companyId:null}]};
+ const kept=await claims(included.employmentId,4);await claims(excluded.employmentId,2);
+ const {reportingLineId}=await setReportingLine(ctx,{subordinateEmploymentId:manager.employmentId,managerEmploymentId:standIn.employmentId,lineType:'delegate',
+  validFrom:todayInKualaLumpur(new Date(Date.now()-86400000)),validTo:todayInKualaLumpur(new Date(Date.now()+86400000)),
+  scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
+ expect(new Set((await compare(actor,[b.companyId])).items.map(row=>row.id))).toEqual(new Set(kept.map(row=>row.id)));
+ await endReportingLine(ctx,{reportingLineId,endDate:todayInKualaLumpur()});
+ expect((await compare(actor,[b.companyId])).total).toBe(0);
+});
+
+it('executes the native header once for repeated claims while retaining exact record and count behavior',async()=>{
+ const subject=await person('grouped header subject');await claims(subject.employmentId,40);const before=await events();
+ const expected=await pendingClaimTaskMetadata(ctx,[b.companyId]);expect(expected).toHaveLength(40);
+ expect((await claimTaskGroupedHeaderProbe(ctx,[b.companyId])).items).toEqual(expected);
+ const pairs=[];
+ for(let i=0;i<4;i++){const timing:Record<string,number>={};
+  for(const kind of i%2?['grouped','reference']:['reference','grouped']){
+   const start=performance.now();const result=await(kind==='reference'?claimTaskStatementProbe:claimTaskGroupedHeaderProbe)(ctx,[b.companyId],5);
+   expect(result).toEqual({items:expected.slice(0,5),total:40});timing[kind]=performance.now()-start;
+  }pairs.push(timing);
+ }
+ const plans:Record<string,unknown>={};
+ for(const mode of ['reference','grouped'] as const){
+  const rows=await analyzeClaimTaskProbe(ctx,[b.companyId],5,mode),raw=rows[0]['QUERY PLAN'];
+  const document=(typeof raw==='string'?JSON.parse(raw):raw) as {Plan:Record<string,unknown>;JIT?:unknown;'Execution Time'?:number}[];
+  let headerCalls=0;
+  const walk=(node:Record<string,unknown>)=>{if(node['Node Type']==='Function Scan'&&String(node['Function Name']).endsWith('delegated_approval_subject'))headerCalls+=Number(node['Actual Loops']);for(const child of (node.Plans??[]) as Record<string,unknown>[])walk(child);};
+  walk(document[0].Plan);expect(headerCalls).toBeGreaterThan(0);if(mode==='grouped')expect(headerCalls).toBe(1);
+  plans[mode]={headerCalls,executionMs:document[0]['Execution Time'],jit:document[0].JIT??null};
+ }
+ expect(await events()).toBe(before);
+ console.log('CLAIM_GROUPED_HEADER_PROBE '+JSON.stringify({scope:'private matched component, not HTTP or500-user acceptance',rows:40,pairs,plans,exactPreview:true,auditUnchanged:true}));
 });
