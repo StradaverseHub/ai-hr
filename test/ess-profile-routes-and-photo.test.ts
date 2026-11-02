@@ -87,7 +87,8 @@ describe('bounded private maintenance picker',()=>{
   expect(second.rows).toHaveLength(3);expect(second.nextCursor).toBeNull();
   expect(new Set([...first.rows,...second.rows].map(row=>row.id)).size).toBe(53);
   expect(JSON.stringify({first,second})).not.toContain('NEVER IN PICKER');
-  expect(Object.keys(first.rows[0]).sort()).toEqual(['createdAt','employeeCode','id','name']);
+  expect(Object.keys(first.rows[0]).sort()).toEqual(['canEdit','createdAt','employeeCode','id','name']);
+  expect(first.rows.every(row=>row.canEdit===true)).toBe(true);
  });
 });
 describe('independent own photo and hidden payloads',()=>{
