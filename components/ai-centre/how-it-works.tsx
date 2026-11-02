@@ -147,7 +147,9 @@ function RequestJourney() {
   const part = (key: 'interfaces' | 'harness' | 'context' | 'capabilities' | 'record' | 'model' | 'foundation' | 'guard' | 'outcome') => ({ name: t(`layers.${key}`), part: t(`parts.${key}`) });
   const labels: ClockworkLabels = { interfaces: part('interfaces'), harness: part('harness'), context: part('context'), capabilities: part('capabilities'), record: part('record'), model: part('model'), foundation: part('foundation'), guard: part('guard'), outcome: part('outcome') };
   return (
-    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:grid-cols-1">
+    // Controls are never out of reach of what they move (staging acceptance, 3 November 2026): beside the figure or
+    // the layer list from lg (the step panel stays in view while the list scrolls), and above the list on phones.
+    <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]">
       {/* Wide screens: the clockwork figure. Below that width its labels would be too small, so the same
           layers show as the stacked list. Either way the step text below carries the meaning. */}
       <div className="hidden xl:block">
@@ -192,16 +194,16 @@ function RequestJourney() {
           <li className="inline-flex items-center gap-1.5"><span aria-hidden className="size-3 rounded-full shadow-[inset_0_0_0_2px_rgb(138_90_46)]" />{t('legend.person')}</li>
         </ul>
       </div>
-      <section className="rounded-2xl border border-border bg-card p-5 xl:grid xl:grid-cols-2 xl:gap-x-7">
+      <section data-how-steps className="order-first rounded-2xl border border-border bg-card p-5 lg:sticky lg:top-4 lg:order-none">
         {/* The panel the step tabs control; announced politely as the step changes. */}
-        <div role="tabpanel" id="how-step-panel" aria-labelledby={`how-step-tab-${HOW_STEPS[step]}`} aria-live="polite" aria-atomic="true" className="xl:col-start-1">
+        <div role="tabpanel" id="how-step-panel" aria-labelledby={`how-step-tab-${HOW_STEPS[step]}`} aria-live="polite" aria-atomic="true">
           <p className="text-xs tabular-nums text-muted-foreground">{t('stepOf', { n: step + 1, total: HOW_STEPS.length })}</p>
           <h2 className="mb-2 mt-1 text-lg font-semibold leading-snug tracking-tight">{t(`steps.${HOW_STEPS[step]}`)}</h2>
           <p className="mb-3 max-w-prose text-sm">{t(`steps.${HOW_STEPS[step]}Body`)}</p>
         </div>
-        {/* The step's checks sit beside the text on wide screens; announced with it. */}
-        <div aria-live="polite" className="xl:col-start-2 xl:row-span-2 xl:row-start-1">{extra}</div>
-        <div className="mt-4 flex flex-wrap items-center gap-2 xl:col-start-1 xl:row-start-2">
+        {/* The step's checks, announced with it. */}
+        <div aria-live="polite">{extra}</div>
+        <div data-how-controls className="mt-4 flex flex-wrap items-center gap-2">
           <button type="button" onClick={() => { setPlaying(false); go(step - 1); }} disabled={step === 0}
             className="inline-flex min-h-9 items-center gap-1 rounded-md border border-input bg-card px-3 text-sm font-medium hover:bg-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><ChevronLeft aria-hidden className="size-4" />{t('previous')}</button>
           {/* Under reduced motion nothing plays, so there is no Play button to mislabel (review L5): Next steps through. */}

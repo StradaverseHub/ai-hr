@@ -96,6 +96,9 @@ function Shapes({ shapes, glass, model }: { shapes: readonly Shape[]; glass?: bo
 /** Label geometry in viewBox units (about 1px at the figure's 1000-unit width). A row is a name and a part line,
  * each allowed two lines; rows on the right are at least LABEL_GAP apart so a wrapped row does not reach the next. */
 const LABEL_WIDTH = 276, LABEL_RISE = 16, LABEL_HEIGHT = 64, LABEL_GAP = 50;
+/** Rows stay below the title and caption printed over the top left (and the mark at the top right) and inside the
+ * frame: the opened model rose above the title and was cut by the figure's top edge (staging, 3 November 2026). */
+export const LABEL_TOP = 96, LABEL_BOTTOM = 620 - LABEL_HEIGHT + LABEL_RISE;
 /** Text colours on the #0c0d0f panel, each at least 4.5:1 (on 8.2/8.8, rest 15.9/7.4, dimmed 8.1/5.2). */
 const LABEL_TONE = {
   on: { name: 'text-[#fb8a4a]', part: 'text-[#d9a37f]' },
@@ -149,15 +152,16 @@ export function ClockworkFigure({ active, labels, title, caption, mark, reduced,
   rows.push({ key: 'model', side: 'l', a: d.P(...at(46, Math.PI * 0.75), modelZ), ...labels.model, on: lit('harness') });
   rows.push({ key: 'guard', side: 'l', a: d.P(134, 326, Z.found - 6), ...labels.guard, on: lit('guard') });
   rows.push({ key: 'outcome', side: 'r', a: d.P(...at(40, -Math.PI / 4), Z.found), ...labels.outcome, on: lit('outcome') });
-  let last = -1e9;
-  for (const row of rows.filter(r => r.side === 'r').sort((p, q) => p.a[1] - q.a[1])) { row.y = Math.max(row.a[1], last + LABEL_GAP); last = row.y; }
-  for (const row of rows.filter(r => r.side === 'l')) row.y = row.a[1];
+  let last = LABEL_TOP - LABEL_GAP;
+  for (const row of rows.filter(r => r.side === 'r').sort((p, q) => p.a[1] - q.a[1])) { row.y = Math.min(LABEL_BOTTOM, Math.max(row.a[1], last + LABEL_GAP)); last = row.y; }
+  for (const row of rows.filter(r => r.side === 'l')) row.y = Math.min(LABEL_BOTTOM, Math.max(row.a[1], LABEL_TOP));
   const token: Pt | null = !active || e < 0.95 ? null
     : active === 'guard' ? d.P(150, 326, Z.found - 6) : active === 'outcome' ? d.P(150, 150, Z.found)
     : d.P(...at(158, Math.PI * 0.75), Z[active]);
 
   return (
-    <div ref={figure} data-clockwork-figure className="relative h-[620px] overflow-hidden rounded-2xl border border-[#1d1f23] bg-[#0c0d0f]">
+    // Sized to the screen so the figure and the step controls beside it are visible together (1280x800 upwards).
+    <div ref={figure} data-clockwork-figure className="relative h-[clamp(420px,calc(100dvh-19rem),620px)] overflow-hidden rounded-2xl border border-[#1d1f23] bg-[#0c0d0f]">
       <div className="absolute left-6 top-5"><p className="text-[19px] font-semibold tracking-tight text-[#f2f2f3]">{title}</p><p className="mt-1.5 text-[11px] uppercase tracking-[0.12em] text-[#878c94]">{caption}</p></div>
       <p className="absolute right-6 top-6 text-[11px] uppercase tracking-[0.12em] text-[#878c94]">{mark}</p>
       <svg viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" role="img" aria-label={label} className="absolute inset-0 size-full">
