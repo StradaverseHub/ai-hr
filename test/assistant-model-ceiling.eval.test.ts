@@ -48,8 +48,16 @@ import {encryptSecret} from '../lib/ai/crypto';
 // gate refuses every production turn as protected_input (model run 41364850565: 270 of 270, $0), which proves the gate
 // holds but measures nothing; the probe then runs the same harness directly and says so in its output. The bypass
 // lives only in this test file: production turns always pass preparePrivateAiTask (core/teras-wiring/model-client.ts).
+// Test-only review bypass (run 41381946727 onward): while the contract's digest awaits approval, the probe can still run
+// the production code path end to end (gateway, harness policy with its multi-call opt-in, the real OpenRouter
+// transport) by approving only teras_harness_turn_v1 inside THIS file. It never qualifies the production path.
+const reviewBypass=vi.hoisted(()=>({active:false}));
+vi.mock('../lib/ai/provider-data-reviews',async original=>{const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
+ return{...actual,providerDataReviewStatus:(contractId:string)=>contractId==='teras_harness_turn_v1'&&reviewBypass.active?'approved':actual.providerDataReviewStatus(contractId),
+  assertProviderDataContractReviewed:(contractId:string,digest:string)=>{if(contractId==='teras_harness_turn_v1'&&reviewBypass.active)return;actual.assertProviderDataContractReviewed(contractId,digest);}};});
 const PRODUCTION_REVIEWED=providerDataReviewStatus(TERAS_HARNESS_CONTRACT)==='approved';
-const PATH=process.env.AIHR_EVAL_PATH==='direct'?'direct':process.env.AIHR_EVAL_PATH==='production'||PRODUCTION_REVIEWED?'production':'direct';
+const PATH:'production'|'transport'|'direct'=process.env.AIHR_EVAL_PATH==='direct'?'direct':process.env.AIHR_EVAL_PATH==='production'||PRODUCTION_REVIEWED?'production':'transport';
+if(PATH==='transport')reviewBypass.active=true;
 const KEY=process.env.AIHR_EVAL_OPENROUTER_KEY?.trim(),MODEL=process.env.AIHR_EVAL_MODEL?.trim();
 const BUDGET=Math.min(50,Number(process.env.AIHR_EVAL_BUDGET_USD??'20')||20),REPEATS=Math.max(1,Math.min(5,Math.trunc(Number(process.env.AIHR_EVAL_REPEATS??'3'))||3));
 // About 200 calls per pass, plus up to two per sensitive-corpus turn (run 41305344388 hit the old cap of 250 a pass);
@@ -69,7 +77,7 @@ const ROUTES=routes();
 const inventedLinks=(reply:string)=>[...reply.matchAll(/(?:^|[\s(`"'])(\/[a-z][a-z0-9-]*(?:\/[a-z0-9-[\]]+)*)/g)].map(match=>match[1].split(/[?#]/)[0])
  .filter(path=>!ROUTES.some(route=>route.test(path)));
 let base:Base;let spentUsd=0,calls=0;
-const ledger:{wire?:string[];pass:number;conversation:string;turn:string;question:string;gate?:string;mode:string|null;reads:string[];proposed:string|null;proposals?:string[];reply:string;usd:number;steps:number;inventedLinks?:string[];truncated?:number;error?:string;
+const ledger:{wire?:string[];multiCallSteps?:number;pass:number;conversation:string;turn:string;question:string;gate?:string;mode:string|null;reads:string[];proposed:string|null;proposals?:string[];reply:string;usd:number;steps:number;inventedLinks?:string[];truncated?:number;error?:string;
  /** Harness outcomes: reply-check failures (before any retry), whether the shown reply is the spec fallback, and the spec version. */
  checkFailures?:string[];fallback?:boolean;budgetExhausted?:string|null;undeclaredRemoved?:number;spec?:number}[]=[];
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -96,7 +104,7 @@ async function fixtures(){
  const sitiCtx:SessionContext={...await entitledCtx(base,['employee']),userId:await createAppUser(base.tenantId,siti.personId,'employee'),personId:siti.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
  await requestLeave(sitiCtx,{employmentId:siti.employmentId,leaveTypeId:base.annualLeaveTypeId,startDate:leaveDate,endDate:leaveDate});
  const hr:SessionContext={...await entitledCtx(base,['hr_admin']),userId:adminUser,personId:person.personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
- if(PATH==='production'){
+ if(PATH!=='direct'){
   // The tenant's own provider route: OpenRouter, the evaluation key, the allowed upstreams only, no fallbacks.
   if(!ALLOWED.length)throw Error('The production path needs AIHR_EVAL_ALLOWED_PROVIDERS.');
   await owner.db.insert(schema.aiProviderConfig).values({tenantId:base.tenantId,provider:'openrouter',model:MODEL!,apiKeyCiphertext:encryptSecret(KEY!,base.tenantId),keyLast4:KEY!.slice(-4),isActive:true,
@@ -157,13 +165,14 @@ async function produced(ctx:SessionContext,question:string,companyId:string,conv
  return result;
 }
 async function turn(ctx:SessionContext,history:readonly ModelHistoryMessage[],question:string,companyId:string,conversationId:string,memory:InMemoryTaskMemoryStore){
- const result=PATH==='production'?await produced(ctx,question,companyId,conversationId)
+ const result=PATH!=='direct'?await produced(ctx,question,companyId,conversationId)
   :await runTurn({enabled:HARNESS_TEST_ONLY,ctx,conversationId,question,scope:{companyId,locale:'en'},model:openRouter,memory,history});
  const trace=result.trace;
  return{mode:result.mode,slot:result.slot??undefined,reply:result.reply,modelTurn:result.modelTurn,reads:[...result.reads],proposed:result.suggestion?.action??null,proposals:result.proposals.map(row=>row.body.what.action),usd:trace.budgets.spendUsd,steps:trace.budgets.steps,
   truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',
   checkFailures:trace.checks.flatMap(row=>row.results.filter(check=>!check.ok).map(check=>check.check+': '+(check.finding??''))),fallback:trace.outcome.fallback,
-  budgetExhausted:trace.budgets.exhausted,undeclaredRemoved:trace.disclosure.reduce((sum,row)=>sum+row.undeclared.length,0),spec:trace.spec.version};
+  budgetExhausted:trace.budgets.exhausted,undeclaredRemoved:trace.disclosure.reduce((sum,row)=>sum+row.undeclared.length,0),spec:trace.spec.version,
+  multiCallSteps:[...trace.calls.reduce((steps,call)=>steps.set(call.step,(steps.get(call.step)??0)+1),new Map<number,number>()).values()].filter(count=>count>1).length};
 }
 // Ordinary suites reject skipped assertions, so without the protected secret this proves the probe is inert.
 describe('real-model redesign ceiling on fictional data',()=>{
@@ -187,7 +196,7 @@ describe('real-model redesign ceiling on fictional data',()=>{
      if(!item.continues){history=[];conversationId=randomUUID();}let observation:BaselineObservation;
      try{const result=await turn(ctx,history,item.question,base.companyId,conversationId,memory);
       observation={plan:result.proposed&&result.mode!=='refuse'?{mode:'propose',action:result.proposed}:result.mode?{mode:result.mode==='honest_gap'?'insufficient':result.mode,...(result.slot?{slot:result.slot}:{})}:null,reads:result.reads,providerCalls:result.steps};
-      ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,proposals:result.proposals,reply:result.reply.slice(0,1200),usd:result.usd,steps:result.steps,truncated:result.truncated,inventedLinks:inventedLinks(result.reply),
+      ledger.push({multiCallSteps:result.multiCallSteps,pass:index,conversation:conversation.id,turn:item.id,question:item.question,gate:result.gate,mode:result.mode,reads:result.reads,proposed:result.proposed,proposals:result.proposals,reply:result.reply.slice(0,1200),usd:result.usd,steps:result.steps,truncated:result.truncated,inventedLinks:inventedLinks(result.reply),
        checkFailures:result.checkFailures,fallback:result.fallback,budgetExhausted:result.budgetExhausted,undeclaredRemoved:result.undeclaredRemoved,spec:result.spec});
       history=[...history,...result.modelTurn];
      }catch(error){observation={plan:null,reads:[],providerCalls:0,error:(error as Error).message};ledger.push({pass:index,conversation:conversation.id,turn:item.id,question:item.question,mode:null,reads:[],proposed:null,reply:'',usd:0,steps:0,error:(error as Error).message,wire:(error as {wire?:string[]}).wire});}
@@ -247,7 +256,8 @@ describe('real-model redesign ceiling on fictional data',()=>{
    guidanceGroundedInProduct:guidance.filter(row=>row.reads.some(read=>GROUNDING_READS.has(read))).length,routes:ROUTES.length};
   const ceilingDir=process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):join(process.cwd(),'.review-evidence');mkdirSync(ceilingDir,{recursive:true});
   const ceilingOutput=JSON.stringify({productionReviewed:PRODUCTION_REVIEWED,
-   productionPath:PATH==='production'?'measured':'production path not measured: contract has no approval record (teras_harness_turn_v1); this run used the harness directly with fictional fixtures and does not qualify the production path',variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='production'?'_production':''),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
+   multiCall:{turns:ledger.filter(row=>(row.multiCallSteps??0)>0).length,steps:ledger.reduce((sum,row)=>sum+(row.multiCallSteps??0),0),turnsErrored:ledger.filter(row=>row.error).length},
+   productionPath:PATH==='production'?'measured':PATH==='transport'?'production gate not exercised: digest pending approval. This run used the production code path and the real OpenRouter transport with a test-only review bypass in this file and fictional fixtures; it is evidence about the multi-call fix, not production-path qualification':'production path not measured: contract has no approval record (teras_harness_turn_v1); this run used the harness directly with fictional fixtures and does not qualify the production path',variant:'teras_harness_v'+(ledger.find(row=>row.spec)?.spec??'?')+(PATH==='direct'?'':'_'+PATH),path:PATH,stability,context,sensitive,catalogues,negativeGateBreaches:breaches,model:MODEL,allowedProviders:ALLOWED,budgetUsd:BUDGET,spentUsd:Number(spentUsd.toFixed(4)),calls,
    summaries:passes.map(row=>summarizeBaseline(row.scores)),runs:passes.map(row=>row.runs),turns:passes.map(row=>row.scores),ledger});
   // Kept as evidence beside the review probe's output (the log alone dropped it in run 41360905376).
   writeFileSync(join(ceilingDir,'assistant-model-ceiling.json'),ceilingOutput);process.stdout.write('AIHR_ASSISTANT_MODEL_CEILING '+ceilingOutput+'\n');
