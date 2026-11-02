@@ -3,6 +3,7 @@
  * Run after db:seed with node --env-file=.env.local --import tsx scripts/dev-fixture-onehr.ts.
  * Own fictional company isolates the roster; native services perform every workflow transition.
  * Never run by deploy. Refuses real authentication, non-demo production, or a non-demo tenant.
+ * Requires the explicit loopback ai_hr_fixture_onehr target and no foreign tenant.
  * Re-running returns the existing fixture; reseed to reconstruct it after changing workflow code.
  */
 import { randomUUID } from 'node:crypto';
@@ -19,11 +20,14 @@ import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import {assertDisposableDemoUrl,attestDisposableDemoDatabase} from './lib/disposable-demo-fixture';
 
 const refusal=demoSeedRefusal(process.env);if(refusal)throw Error(refusal);
+const target=assertDisposableDemoUrl(process.env.MIGRATION_DATABASE_URL,'onehr');
 const owner=createDb(process.env.MIGRATION_DATABASE_URL!);
 const tenantId=DEMO_TENANT_ID,companyName='OneHR native (dev fixture)',cycleName='OneHR annual (dev fixture)';
 async function main(){
+ await attestDisposableDemoDatabase(owner.client,target);
  const [tenant]=await owner.db.select().from(s.tenant).where(eq(s.tenant.id,tenantId));if(!tenant)throw Error('Run db:seed first.');
  const [existing]=await owner.db.select().from(s.reviewCycle).where(and(eq(s.reviewCycle.tenantId,tenantId),eq(s.reviewCycle.name,cycleName)));
  if(existing){await manifest(existing.id);return;}
