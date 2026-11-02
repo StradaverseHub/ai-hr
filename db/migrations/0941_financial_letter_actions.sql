@@ -2728,3 +2728,35 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_career_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER z_financial_onehr_career_guard BEFORE INSERT OR UPDATE ON public.performance_assessment_career_profile FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_career_guard();
+
+--> statement-breakpoint
+-- Administrative deltas use their actual data floor even when the same actor
+-- independently sees the row as its subject or assigned reviewer.
+CREATE FUNCTION app.financial_onehr_administrative_delta_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE administrative boolean:=false;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'OneHR principal unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='performance_onehr_plan' THEN
+  administrative:=TG_OP='UPDATE' AND OLD.status<>'draft' AND NEW.status='draft';
+ ELSE
+  IF TG_OP='INSERT' THEN administrative:=true;
+  ELSE administrative:=NEW.profile_id IS DISTINCT FROM OLD.profile_id OR NEW.profile_match IS DISTINCT FROM OLD.profile_match OR NEW.statements IS DISTINCT FROM OLD.statements
+  OR (SELECT coalesce(jsonb_agg(item-ARRAY['self','selfRemark','manager','managerRemark'] ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(NEW.competencies) WITH ORDINALITY source(item,position))
+   IS DISTINCT FROM (SELECT coalesce(jsonb_agg(item-ARRAY['self','selfRemark','manager','managerRemark'] ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(OLD.competencies) WITH ORDINALITY source(item,position));END IF;
+  IF TG_OP='UPDATE' AND NEW.kpis IS DISTINCT FROM OLD.kpis THEN
+   administrative:=administrative OR EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.kpis) current_kpi
+    LEFT JOIN LATERAL (SELECT previous FROM jsonb_array_elements(OLD.kpis) previous WHERE previous->>'id'=current_kpi->>'id') old_kpi ON true
+    WHERE (current_kpi->>'moderatorSource'='matrix' AND (current_kpi->>'moderatorSource' IS DISTINCT FROM old_kpi.previous->>'moderatorSource' OR current_kpi->>'moderatorEmploymentId' IS DISTINCT FROM old_kpi.previous->>'moderatorEmploymentId'))
+    OR coalesce((current_kpi->>'hrOwned')::boolean,false) IS DISTINCT FROM coalesce((old_kpi.previous->>'hrOwned')::boolean,false))
+    OR EXISTS(SELECT 1 FROM jsonb_array_elements(OLD.kpis) previous WHERE coalesce((previous->>'hrOwned')::boolean,false) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(NEW.kpis) current_kpi WHERE current_kpi->>'id'=previous->>'id' AND current_kpi=previous));
+  END IF;
+ END IF;
+ IF administrative AND NOT app.financial_onehr_result_admin(NEW.review_id) THEN RAISE EXCEPTION 'OneHR administrative data unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_administrative_delta_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_administrative_delta_guard BEFORE INSERT OR UPDATE ON public.performance_onehr_review FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_administrative_delta_guard();
+CREATE TRIGGER z_financial_onehr_administrative_delta_guard BEFORE UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_administrative_delta_guard();

@@ -158,6 +158,9 @@ describe('OneHR performance partner (ADR-0142)', () => {
         const [before]=await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId));expect(before).toBeDefined();
         expect(await refusal(withTenant(mixed,tx=>tx.update(schema.assessmentCareerProfile).set({career:{...(before.career as Record<string,unknown>),aspiration:'Borrowed admin rewrite'}}).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))),'42501')).toContain('Career administrative data unavailable');
         expect(await owner.db.select().from(schema.assessmentCareerProfile).where(eq(schema.assessmentCareerProfile.employmentId,subject.employmentId))).toEqual([before]);
+        const [reviewBefore]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+        expect(await refusal(withTenant(mixed,tx=>tx.update(schema.onehrReview).set({profileMatch:'Borrowed administrative profile match'}).where(eq(schema.onehrReview.reviewId,reviewId))),'42501')).toContain('OneHR administrative data unavailable');
+        expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([reviewBefore]);
       }
     }
   });
