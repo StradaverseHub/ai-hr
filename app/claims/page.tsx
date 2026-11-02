@@ -143,6 +143,7 @@ export default async function ClaimsPage({
             employmentId={selectedQuery.employmentId}
             allowSave={Boolean(editing?permissions.draftEdit:permissions.draftAdd)}
             allowSubmit={permissions.submit&&(!editing||permissions.draftEdit)}
+            allowReceipt={permissions.receiptView}
           />
         )}
       </Card>}

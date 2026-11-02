@@ -6,7 +6,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {appendEvent} from '../db/events';
 import {hireEmployee} from '../core/org';
-import {cancelClaim,createClaimType,markReimbursementsPaid,listReimbursementsDue,saveClaimDraft,deleteClaimDraft,submitDraftClaims} from '../core/claims';
+import {cancelClaim,createClaimType,markReimbursementsPaid,listReimbursementsDue,saveClaimDraft,deleteClaimDraft,submitDraftClaims,addClaimAttachment,getClaimAttachment} from '../core/claims';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -90,4 +90,39 @@ it('keeps ordinary own draft submission independent of an administrative Departm
  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id)))[0].status).toBe('pending');
  await refusal(withTenant(own,async tx=>{await tx.transaction(async nested=>{await nested.update(s.claimRequest).set({amount:'99.00'}).where(eq(s.claimRequest.id,draft.id));await nested.update(s.claimRequest).set({amount:'25.00'}).where(eq(s.claimRequest.id,draft.id));});}),'Filed claim is immutable');
  expect((await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,draft.id)))[0].amount).toBe('25.00');
+});
+
+it('adds and reads actual own receipt bytes through the native port and refuses raw alteration or source flags',async()=>{
+ const draft=await saveClaimDraft(own,{employmentId:subject.employmentId,claimTypeId:typeId,amount:25,incurredOn:todayInKualaLumpur()});
+ const file={fileName:'Fictional native receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional native receipt bytes')};
+ const attachment=await addClaimAttachment(own,{claimRequestId:draft.id,...file});
+ expect(await getClaimAttachment(own,attachment.id)).toEqual(file);
+ const stored=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.id,attachment.id));
+ const audits=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(withTenant(own,async tx=>{await tx.transaction(async nested=>{
+  await nested.update(s.claimAttachment).set({fileName:'Changed.pdf'}).where(eq(s.claimAttachment.id,attachment.id));
+  await nested.update(s.claimAttachment).set({fileName:file.fileName}).where(eq(s.claimAttachment.id,attachment.id));
+ });}),'Claim receipts are immutable');
+ await refusal(withTenant(own,tx=>tx.delete(s.claimAttachment).where(eq(s.claimAttachment.id,attachment.id))),'Claim receipt removal source unavailable');
+ await refusal(withTenant(own,tx=>tx.execute(sql`select app.claim_own_receipt_native(${draft.id}::uuid,'Forged source.pdf','application/pdf',${file.content},'draft-add')`)),'Own receipt native source unavailable');
+ await refusal(withTenant(own,tx=>tx.insert(s.claimAttachment).values({tenantId:b.tenantId,claimRequestId:draft.id,employmentId:subject.employmentId,fileName:file.fileName,mimeType:file.mimeType,content:file.content,sizeBytes:file.content.length,uploadedByUserId:own.userId!})),'Own claim receipt source unavailable');
+ expect(await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.id,attachment.id))).toEqual(stored);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
+ const events=await owner.client`select actor_id,payload from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${draft.id}::uuid and event_type='claim-request.receipt-added'`;
+ expect(events).toEqual([{actor_id:own.userId,payload:{fileName:file.fileName,sizeBytes:file.content.length}}]);
+});
+it('binds an initial draft receipt to the actual same-transaction source and refuses a second file slot',async()=>{
+ const file={fileName:'Fictional initial receipt.pdf',mimeType:'application/pdf',content:Buffer.from('Fictional initial receipt bytes')};
+ let proposedId:string|undefined;
+ const audits=await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`;
+ await refusal(withTenant(own,async tx=>{
+  const draft=await saveClaimDraft(own,{employmentId:subject.employmentId,claimTypeId:typeId,amount:25,incurredOn:todayInKualaLumpur()},file,tx);proposedId=draft.id;
+  await tx.execute(sql`select app.claim_own_receipt_native(${draft.id}::uuid,'Extra.pdf','application/pdf',${file.content},'draft-add')`);
+ }),'Own receipt native source unavailable');
+ expect(proposedId).toBeTruthy();
+ expect(await owner.db.select().from(s.claimRequest).where(eq(s.claimRequest.id,proposedId!))).toEqual([]);
+ expect(await owner.client`select id from domain_event where tenant_id=${b.tenantId}::uuid order by id`).toEqual(audits);
+ const actual=await saveClaimDraft(own,{employmentId:subject.employmentId,claimTypeId:typeId,amount:25,incurredOn:todayInKualaLumpur()},file);
+ const receipts=await owner.db.select().from(s.claimAttachment).where(eq(s.claimAttachment.claimRequestId,actual.id));
+ expect(receipts).toHaveLength(1);expect(await getClaimAttachment(own,receipts[0].id)).toEqual(file);
 });

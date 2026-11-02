@@ -91,6 +91,7 @@ export function ClaimForm({
   employmentId,
   allowSave=true,
   allowSubmit=true,
+  allowReceipt=true,
 }: {
   types: ClaimFormType[];
   submitAction: Action;
@@ -100,6 +101,7 @@ export function ClaimForm({
   employmentId?:string;
   allowSave?:boolean;
   allowSubmit?:boolean;
+  allowReceipt?:boolean;
 }) {
   const t = useTranslations('claims');
   const [typeId, setTypeId] = useState(draft?.claimTypeId ?? types[0]?.id ?? '');
@@ -331,7 +333,8 @@ export function ClaimForm({
       </Field>
 
       <Field label={t('receiptLabel')}>
-        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="text-sm" />
+        <input name="receipt" type="file"
+          disabled={!allowReceipt} accept="application/pdf,image/jpeg,image/png" className="text-sm" />
         <span className="mt-1 text-xs text-muted-foreground">{t('attachmentHint')}</span>
       </Field>
 

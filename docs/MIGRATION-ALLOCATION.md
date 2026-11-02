@@ -1188,3 +1188,16 @@ again on actual consume/promote and immutable receipt facts; revoking and restor
 revive an old review. Older unsealed receipts require a fresh review. New actual synthetic-transport
 cases cover both between-probe revocation and direct native consume after restoration; no provider
 transport is executed during local preparation.
+
+### Own Claim receipt source chapter (unapplied, unqualified)
+
+0943 registers exact own Receipt View/Add with the current and pure own native floor. Actual file
+construction runs in a finite SQL port, binding bytes and metadata to the real current claim, actor,
+transaction, authority stamp, actual insert and completed receipt audit. Initial draft/save/submit
+files additionally consume one private slot from their actual same-transaction source mutation and
+require its native source audit at deferred completion. A caller-supplied purpose cannot mint that
+slot. Raw receipt writes/removal and mutate-restore attempts are refused; native draft deletion retains
+its separate exact closed source proof. Receipt presence for submitting an actual own Draft returns
+only a boolean under Submit authority. The web file control consumes Receipt View; authored native
+source and six-locale DOM checks require hosted qualification. Independent nonself receipt purposes,
+nonself submission/decisions, finite Payroll writers and full package closure remain unfinished.
