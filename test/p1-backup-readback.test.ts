@@ -31,3 +31,26 @@ it('keeps failed reader status and terminates its owned pipe descendants without
   expect(descendant.error).toBeUndefined();expect(descendant.status).toBe(1);expect(()=>process.kill(foreignPid,0)).not.toThrow();
  } finally {process.kill(foreignPid,'SIGKILL');rmSync(dir,{recursive:true,force:true});}
 });
+
+it('a bounded final-wait failure has a distinct cleanup-uncertain status',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'readback-uncertain-'));
+ const code=`import subprocess,runpy,sys,hashlib
+real=subprocess.Popen
+children=[]
+class Deferred:
+ def __init__(self,*a,**k):
+  self.raw=real(*a,**k);children.append(self.raw);self.pid=self.raw.pid;self.stdout=self.raw.stdout
+ def wait(self,timeout=None):
+  raise subprocess.TimeoutExpired('owned reader',timeout)
+subprocess.Popen=Deferred
+sys.argv=[${JSON.stringify(resolve('scripts/backup-readback.py'))},'2',hashlib.sha256(b'ok').hexdigest(),${JSON.stringify(join(dir,'out'))},'1','--',${JSON.stringify(process.execPath)},'-e','process.stdout.write("ok")']
+try:
+ runpy.run_path(sys.argv[0],run_name='__main__')
+finally:
+ for child in children: child.wait(timeout=5)
+`;
+ try {
+  const result=spawnSync('python3',['-c',code],{encoding:'utf8',timeout:10000});
+  expect(result.error).toBeUndefined();expect(result.status).toBe(78);expect(result.stderr).toContain('cleanup is uncertain');
+ } finally {rmSync(dir,{recursive:true,force:true});}
+});
