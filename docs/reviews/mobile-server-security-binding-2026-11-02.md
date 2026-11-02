@@ -1,0 +1,9 @@
+# PR209 server security binding refresh
+
+On 2 November 2026 the repository owner directly approved the concrete ORCHESTRATOR question for reviewed source `3f8d0e598b92956c4ff02088c5977c7680b076c0` and provider digest `134316f6e4b2fe9260473f4a9146dc9b2b38e53e071619cd3c91f57ede084af7`: “Okay go ahead, you have my full approval.” The PR209 owner independently read the original question and response in that chat before applying this refresh. This is a new exact binding decision; earlier approvals and refusals remain historical evidence.
+
+The review covers Next.js 16.4.1, Nodemailer 10.1.4, the coherent lockfile/runtime identity changes and the reviewed controller guards. It preserves the 6144 MiB build policy. The literal change refreshes only the source digest of the same 24 already approved contracts. Their original reviewer, evidence and review-date fields remain historical contract-approval metadata; this record documents the subsequent binding decision. The two pending contracts, `structured_canonical_records_v1` and `attendance_trend_analysis_v1`, stay pending with empty source digests. No new model-facing data fields, permissions, access or contract approvals are introduced.
+
+Provider source generation/check must still produce that exact 1,158-file digest. Updating the literal approvals is an input change to the module-agent manifest, so generate the module manifest last and check both manifests on the final frozen commit. This document does not preapprove a later provider digest or relabel existing consents, evaluations, promotions, receipts or jobs. Existing governance gates continue to apply.
+
+The owner also authorized final full qualification and an isolated staging release after successful checks and verification. Focused checks and controller-only diagnostics are not full release witnesses. Production installation and app-store publication are excluded.

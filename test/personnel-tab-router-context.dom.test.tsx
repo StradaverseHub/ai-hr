@@ -26,7 +26,7 @@ function between(start:string,end:string){
 function installNextHistory(onCanonicalUrl:(url:string|URL|null|undefined)=>void){
  const copyBody=between('function copyNextJsInternalHistoryState(data) {','\nfunction Head(');
  const copy=new Function('window',`${copyBody}; return copyNextJsInternalHistoryState;`)(window);
- const patch=between('window.history.replaceState = function replaceState(data, _unused, url) {','\n        /**');
+ const patch=between('window.history.replaceState = function replaceState(data, _unused, url) {','\n        const onPopState =');
  new Function('window','originalReplaceState','applyUrlFromHistoryPushReplace','copyNextJsInternalHistoryState',patch)(window,nativeReplace.bind(window.history),onCanonicalUrl,copy);
 }
 beforeEach(()=>{vi.clearAllMocks();__resetUnsavedGuards();window.history.replaceState=nativeReplace;});
