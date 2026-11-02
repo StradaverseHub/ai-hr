@@ -1,0 +1,47 @@
+name: mobile-android-signin-probe
+run-name: Build bounded Android sign-in diagnostic utility
+on:
+  push:
+    branches: [codex/mobile-android-ui-probe-20261102]
+    paths:
+      - .github/workflows/mobile-android-signin-probe.yml
+      - .github/diagnostics/android/OneHrSignInProbe.java
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-tool:
+    if: github.repository == 'StradaverseHub/ai-hr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Compile utility only with standard runner SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          sdkmanager 'platforms;android-34'
+          platform="$ANDROID_HOME/platforms/android-34"
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          out="$RUNNER_TEMP/onehr-signin-probe"
+          mkdir -p "$out/classes" "$out/dex" "$out/artifact"
+          javac -source 8 -target 8 -classpath "$platform/android.jar:$platform/uiautomator.jar:$platform/optional/android.test.base.jar" -d "$out/classes" .github/diagnostics/android/OneHrSignInProbe.java
+          "$build_tools/d8" --min-api 24 --lib "$platform/android.jar" --classpath "$platform/uiautomator.jar" --classpath "$platform/optional/android.test.base.jar" --output "$out/dex" "$out/classes/onehr/diagnostics/OneHrSignInProbe.class"
+          jar cf "$out/artifact/onehr-signin-probe.jar" -C "$out/dex" classes.dex
+          SOURCE_SHA="$GITHUB_SHA" PROBE_OUT="$out/artifact" python3 - <<'PY'
+          import os,pathlib,hashlib,json
+          p=pathlib.Path(os.environ['PROBE_OUT']);source=pathlib.Path('.github/diagnostics/android/OneHrSignInProbe.java')
+          v={'source':os.environ['SOURCE_SHA'],'run':os.environ['GITHUB_RUN_ID'],'toolSha256':hashlib.sha256((p/'onehr-signin-probe.jar').read_bytes()).hexdigest(),'javaSourceSha256':hashlib.sha256(source.read_bytes()).hexdigest(),'appCompiledOrModified':False,'credentialsIncluded':False,'deviceActionsPerformedByBuild':False}
+          (p/'manifest.json').write_text(json.dumps(v,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onehr-signin-probe
+          path: ${{ runner.temp }}/onehr-signin-probe/artifact/
+          if-no-files-found: error
+          retention-days: 1
