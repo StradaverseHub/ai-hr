@@ -2,7 +2,7 @@
 import pathlib,hashlib,json,os,re,sys,zipfile
 root=pathlib.Path(os.environ['REVIEW_DIR']);base=pathlib.Path('base-artifact/OneHR-client-probe.apk')
 assert hashlib.sha256(base.read_bytes()).hexdigest()=='605fa7384e3d9d297eec0bde0d66d3c79bb70277178259aa5ac9d78243d438cb'
-bundle=pathlib.Path('source/mobile/android/app/build/generated/assets/createBundleReleaseJsAndAssets/index.android.bundle')
+bundle=pathlib.Path('source/mobile/android/app/build/generated/assets/react/release/index.android.bundle')
 assert bundle.exists()
 assert bundle.read_bytes()[:8]==bytes.fromhex('c61fbc03c103191f')
 signature=lambda n: bool(re.fullmatch(r'META-INF/(?:MANIFEST\.MF|[^/]+\.(?:SF|RSA|DSA|EC))',n,re.I))

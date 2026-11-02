@@ -32,6 +32,7 @@ mkdir -p "$review_dir"
     '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m'
 ) > "$review_dir/gradle-review.log" 2>&1 || { tail -100 "$review_dir/gradle-review.log"; exit 1; }
 export REVIEW_DIR="$review_dir"
+cp source/mobile/android/app/build/generated/assets/react/release/index.android.bundle "$review_dir/index.android.hbc"
 python3 controller/.github/ci/repackage-client-probe.py
 build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
 "$build_tools/zipalign" -P 16 -f 4 "$review_dir/unaligned.apk" "$review_dir/aligned.apk"
