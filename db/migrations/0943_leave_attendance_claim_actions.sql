@@ -1422,14 +1422,64 @@ CREATE TRIGGER module_rotation_access BEFORE INSERT ON public.attendance_rotatio
 CREATE TRIGGER aaa_module_rotation_action BEFORE INSERT ON public.attendance_rotation FOR EACH ROW EXECUTE FUNCTION app.attendance_rotation_action_guard();
 
 --> statement-breakpoint
+-- Duty roster and exception switches are distinct native ANY-HR Group maintenance purposes.
+CREATE FUNCTION app.attendance_schedule_control_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT cap IN ('function.attendancePolicy.dutyRoster.view','function.attendancePolicy.dutyRoster.edit','function.attendancePolicy.exceptions.view','function.attendancePolicy.exceptions.edit','function.attendancePolicy.schedule.view','function.attendancePolicy.schedule.edit')
+ AND app.module_action_legacy_allowed(t,u,'attendance_configuration.'||split_part(cap,'.',4),co);
+$$;
+CREATE FUNCTION app.attendance_schedule_control_current_native_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current() AND app.attendance_schedule_control_native_allowed(t,u,cap,co)
+ AND app.module_action_current_legacy_allowed(t,u,'attendance_configuration.'||split_part(cap,'.',4),co);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_schedule_control_native_allowed(uuid,uuid,text,uuid),app.attendance_schedule_control_current_native_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+DO $$ DECLARE key text;operation text;BEGIN
+ FOREACH key IN ARRAY ARRAY['dutyRoster','exceptions'] LOOP
+  FOREACH operation IN ARRAY ARRAY['view','edit'] LOOP
+   PERFORM app.register_function_action('attendancePolicy.'||key,operation,'tenant','function.attendancePolicy.schedule.'||operation,'app.attendance_schedule_control_current_native_allowed',jsonb_build_object('moduleKey','attendance','labelKey',CASE key WHEN 'dutyRoster' THEN 'boardSchedule.duty' ELSE 'boardSchedule.exception' END,'kind','native_acl','course','administrative','screenKey','attendancePolicy','href','/admin/attendance/schedule','employeeBearing',false));
+  END LOOP;
+ END LOOP;
+END $$;
+CREATE FUNCTION app.attendance_schedule_control_allowed(p_key text,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_key IN ('attendancePolicy.dutyRoster','attendancePolicy.exceptions') AND p_operation IN ('view','edit')
+ AND app.attendance_schedule_control_current_native_allowed(app.current_tenant_id(),app.current_user_id(),'function.'||p_key||'.'||p_operation,NULL)
+ AND app.module_function_allowed('attendancePolicy.schedule','view',NULL) AND app.module_function_allowed('attendancePolicy.schedule',p_operation,NULL)
+ AND app.function_action_allowed(p_key,'view',NULL) AND app.function_action_allowed(p_key,p_operation,NULL);
+$$;
+REVOKE ALL ON FUNCTION app.attendance_schedule_control_allowed(text,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.attendance_schedule_control_allowed(text,text) TO ai_hr_app;
+CREATE FUNCTION app.attendance_schedule_control_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE key text:=CASE TG_TABLE_NAME WHEN 'attendance_rule' THEN 'attendancePolicy.dutyRoster' ELSE 'attendancePolicy.exceptions' END;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ IF TG_TABLE_NAME='attendance_rule' THEN
+  IF TG_OP='INSERT' THEN IF NOT NEW.duty_roster_control THEN RETURN NEW;END IF;
+  ELSIF OLD.duty_roster_control IS NOT DISTINCT FROM NEW.duty_roster_control THEN RETURN NEW;END IF;
+ END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() OR NOT app.attendance_schedule_control_allowed(key,'edit') THEN RAISE EXCEPTION 'Schedule control action unavailable' USING ERRCODE='42501';END IF;
+ IF TG_TABLE_NAME='attendance_exception_revision' THEN
+  IF NOT EXISTS(SELECT 1 FROM public.attendance_rule parent WHERE parent.id=NEW.rule_id AND parent.tenant_id=NEW.tenant_id) THEN RAISE EXCEPTION 'Schedule control subject unavailable' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.attendance_schedule_control_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_schedule_duty_action BEFORE INSERT OR UPDATE ON public.attendance_rule FOR EACH ROW EXECUTE FUNCTION app.attendance_schedule_control_guard();
+CREATE TRIGGER aaa_schedule_exception_action BEFORE INSERT ON public.attendance_exception_revision FOR EACH ROW EXECUTE FUNCTION app.attendance_schedule_control_guard();
+CREATE TRIGGER module_schedule_exception_access BEFORE INSERT ON public.attendance_exception_revision FOR EACH STATEMENT EXECUTE FUNCTION app.module_configuration_write_lock();
+
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.module_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
+ SELECT (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_native_allowed(t,u,cap,co)) OR app.leave_approval_company_native_allowed(t,u,cap,co) OR app.leave_approval_template_native_allowed(t,u,cap,co) OR app.claim_receipt_native_allowed(t,u,cap,co) OR app.claim_own_native_allowed(t,u,cap,co) OR app.claim_nonself_native_allowed(t,u,cap,co) OR app.claim_self_decision_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_legacy_allowed(t,u,a.parent_capability,co));
 $$;
 CREATE OR REPLACE FUNCTION app.module_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
+ SELECT (cap ~ '^function\.attendancePolicy\.(dutyRoster|exceptions)\.(view|edit)$' AND app.attendance_schedule_control_current_native_allowed(t,u,cap,co)) OR (cap LIKE 'function.attendancePolicy.rotations.%' AND app.attendance_rotation_current_native_allowed(t,u,cap,co)) OR app.leave_approval_company_current_native_allowed(t,u,cap,co) OR app.leave_approval_template_current_native_allowed(t,u,cap,co) OR app.claim_receipt_current_native_allowed(t,u,cap,co) OR app.claim_own_current_native_allowed(t,u,cap,co) OR app.claim_nonself_current_native_allowed(t,u,cap,co) OR app.claim_self_decision_current_native_allowed(t,u,cap,co)
  OR EXISTS(SELECT 1 FROM app.access_function_action a WHERE a.capability_id=cap AND a.function_key IN ('claimsConfig.types','claimsConfig.limits','claimsConfig.mileage','claimsConfig.reimbursements','claims.administration','leaveConfig.types','leaveConfig.gradeGroups','attendancePolicy.schedule','attendancePolicy.shifts') AND app.module_action_current_native_default(t,u,a.parent_capability,co));
 $$;
 

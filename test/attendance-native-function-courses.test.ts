@@ -4,10 +4,11 @@ import {eq,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
-import {createAttendanceRule,updateAttendanceRule,copyAttendanceRule,deleteAttendanceRule,setRuleShifts,type AttendanceRuleInput} from '../core/attendance-rule';
+import {createAttendanceRule,updateAttendanceRule,copyAttendanceRule,deleteAttendanceRule,setRuleShifts,type AttendanceRuleInput} from '../packs/attendance/service';
 import {createShift,copyShift,updateShift,archiveShift,unarchiveShift,deleteShift,replaceShiftOtWindows,listShiftsForTenant,listShiftsForMaintenance,listShiftOtWindows,shiftActionAccess,type ShiftInput} from '../core/roster';
-import {getScheduleRotation,saveScheduleRotation,rotationActionAccess} from '../core/attendance-rotation';
+import {getScheduleRotation,saveScheduleRotation,rotationActionAccess} from '../packs/attendance/service';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand,type DataPermissionState,type DataPermissionPreview} from '../core/data-permissions';
+import {scheduleGroupControls,saveScheduleGroupControl,scheduleControlActionAccess} from '../packs/attendance/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,companyHr:SessionContext;
@@ -123,4 +124,25 @@ it('matches actual stored/current dated-rotation floors and registry delegation 
  const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+8*86400000).toISOString().slice(0,10);
  await expect(withTenant(companyHr,tx=>tx.insert(s.attendanceRotation).values({tenantId:b.tenantId,ruleId:group.id,effectiveFrom:date,anchorDate:date,unit:'day',length:1,allowedShiftIds:[shift.id],days:[{kind:'full',shiftId:shift.id}],createdBy:userId}))).rejects.toThrow();
  expect(await owner.db.select().from(s.attendanceRotation).where(eq(s.attendanceRotation.ruleId,group.id))).toEqual([]);
+});
+
+it('preserves distinct actual company-HR Duty and Exception courses and immutable forward revisions',async()=>{
+ const group=await createAttendanceRule(companyHr,ruleInput('Fictional separate schedule controls'));
+ expect(await Promise.all([scheduleControlActionAccess(companyHr,'duty','view'),scheduleControlActionAccess(companyHr,'duty','edit'),scheduleControlActionAccess(companyHr,'exception','edit')])).toEqual([true,true,true]);
+ await saveScheduleGroupControl(companyHr,{ruleId:group.id,kind:'duty',enabled:true});await saveScheduleGroupControl(companyHr,{ruleId:group.id,kind:'exception',enabled:true});
+ const state=await scheduleGroupControls(companyHr,group.id);expect(state.dutyRosterControl).toBe(true);expect(state.revisions).toHaveLength(1);expect(state.revisions[0].enabled).toBe(true);expect(state.revisions[0].effectiveFrom>todayInKualaLumpur()).toBe(true);
+ await expect(saveScheduleGroupControl(companyHr,{ruleId:group.id,kind:'exception',enabled:false})).rejects.toThrow('A saved exception revision already takes effect tomorrow');
+ expect((await scheduleGroupControls(companyHr,group.id)).revisions).toEqual(state.revisions);
+ const [floors]=await owner.withTenant(companyHr,tx=>tx.execute<{dutyStored:boolean;dutyCurrent:boolean;exceptionStored:boolean;exceptionCurrent:boolean;dutyDelegation:boolean;exceptionDelegation:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${companyHr.userId}::uuid,'function.attendancePolicy.dutyRoster.edit',null) as "dutyStored",app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${companyHr.userId}::uuid,'function.attendancePolicy.dutyRoster.edit',null) as "dutyCurrent",app.module_function_legacy_allowed(${b.tenantId}::uuid,${companyHr.userId}::uuid,'function.attendancePolicy.exceptions.edit',null) as "exceptionStored",app.module_function_current_legacy_allowed(${b.tenantId}::uuid,${companyHr.userId}::uuid,'function.attendancePolicy.exceptions.edit',null) as "exceptionCurrent",app.access_function_delegation_floor('function.attendancePolicy.dutyRoster.edit',null) as "dutyDelegation",app.access_function_delegation_floor('function.attendancePolicy.exceptions.edit',null) as "exceptionDelegation"`));expect(floors).toEqual({dutyStored:true,dutyCurrent:true,exceptionStored:true,exceptionCurrent:true,dutyDelegation:true,exceptionDelegation:true});
+});
+it('denies raw or stale non-admin switch writes without changing actual control state',async()=>{
+ const group=await createAttendanceRule(companyHr,ruleInput('Fictional guarded schedule controls')),userId=await createAppUser(b.tenantId,null,'employee'),member:SessionContext={...admin,userId,personId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ expect(await scheduleControlActionAccess(member,'duty','edit')).toBe(false);expect(await scheduleControlActionAccess(member,'exception','edit')).toBe(false);
+ await expect(withTenant(member,async tx=>{await tx.execute(sql`select set_config('app.schedule_control','true',true)`);await tx.update(s.attendanceRule).set({dutyRosterControl:true}).where(eq(s.attendanceRule.id,group.id));})).rejects.toThrow();
+ const date=new Date(Date.parse(todayInKualaLumpur()+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+ await expect(withTenant(member,tx=>tx.insert(s.attendanceExceptionRevision).values({tenantId:b.tenantId,ruleId:group.id,effectiveFrom:date,enabled:true,createdBy:userId}))).rejects.toThrow();
+ expect(await scheduleGroupControls(companyHr,group.id)).toMatchObject({dutyRosterControl:false,revisions:[]});
+ const actorId=companyHr.userId;if(!actorId)throw new Error('The actual company HR actor is missing');
+ await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,actorId));
+ await expect(saveScheduleGroupControl(companyHr,{ruleId:group.id,kind:'duty',enabled:true})).rejects.toThrow();expect((await owner.db.select().from(s.attendanceRule).where(eq(s.attendanceRule.id,group.id)))[0].dutyRosterControl).toBe(false);
 });

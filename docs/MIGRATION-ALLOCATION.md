@@ -1302,3 +1302,12 @@ mode; shared week/payroll routing keeps native references. Native role/parity/ra
 read-only cases are authored, unrun. This role/action guard does not certify the full direct-raw
 rotation temporal/payroll-effect constructor contract; remaining native transaction/source closure
 and genuine component publication are still required.
+
+Duty Roster and Exception switches now have separate exact View/Edit under actual Schedule View/Edit,
+with the original ANY-HR stored/current/delegation ceiling. Native setter, raw Duty-column changes
+and immutable Exception INSERT repeat their own control; plain Group Add/default initialization does
+not require unrelated switch Edit. Shared runtime/roster reference lookup stays independent. The Group
+screen uses separate View/Edit projections and retains the real current value without an editing
+form when only View is present. Native company-HR positives, actual immutable-version refusal,
+raw/stale non-admin negatives and rendered sibling/View separation are authored, unrun. Future
+supported-denial/default/recipient proof still needs genuine component completion/publication.
