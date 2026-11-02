@@ -13,7 +13,7 @@ describe('isolated Contract Staff native custody',()=>{
   await setupContractManagement(admin,b.companyId,randomUUID());
   const workspace=await contractWorkflowWorkspace(admin);expect(workspace.workflows).toHaveLength(5);expect(workspace.workflows.every(w=>w.draft.module==='contract_staff'&&w.publishedVersion===null)).toBe(true);
   const [runtime]=await withTenant(admin,tx=>tx.execute<{enabled:boolean}>(sql`select app.contract_runtime(${b.companyId}::uuid) as enabled`));expect(runtime.enabled).toBe(false);
-  const [p]=await owner.db.insert(S.person).values({tenantId:b.tenantId,fullName:'Fictional bounded contract reviewer'}).returning();const userId=await createAppUser(b.tenantId,p.id,'employee');
+  const [p]=await owner.db.insert(S.person).values({tenantId:b.tenantId,fullName:'Fictional bounded contract reviewer',primaryEmail:randomUUID()+'@contract.test'}).returning();const userId=await createAppUser(b.tenantId,p.id,'employee');
   const actor={...admin,userId,personId:p.id,roles:['hr_admin'],grants:[{role:'employee',companyId:null}]} satisfies SessionContext;
   expect(await canConfigureContractWorkflows(actor)).toBe(false);
   await expect(assignContractRole(actor,{companyId:b.companyId,businessUnitId:null,userId,role:'gbs',from:'2026-01-01',to:null,reason:'Forged role claim must be refused'})).rejects.toThrow();
