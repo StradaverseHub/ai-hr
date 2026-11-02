@@ -37,6 +37,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 /** The pack's implementation modules (extensionless, as import specifiers resolve them). */
 const BOUNDARIES = [
   'core/leave',
+  'core/leave-cycle', // Pure cycle policy stays private to the leave pack, with no allowlist growth.
   'core/leave-approval-policy',
   // r90 (241817ef) — the approval-rule conversion. Added to BOTH lists deliberately, and the pairing is
   // the point: as a BOUNDARY it becomes guarded like its siblings, so a future file importing it directly
@@ -119,6 +120,7 @@ const BOUNDARIES = [
 const ALWAYS_ALLOWED = [
   'packs/leave/', // the pack itself: wiring (index.ts) + service facade
   'core/leave.ts', // implementation files import each other freely
+  'core/leave-cycle.ts', // Owned pure policy; paired with its guarded module above.
   'core/leave-approval-policy.ts',
   'core/leave-approval-consolidation.ts', // r90 241817ef — see the BOUNDARIES note above
   'core/leave-approval-template.ts',

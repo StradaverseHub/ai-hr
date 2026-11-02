@@ -172,7 +172,7 @@ import {
   type LeaveBfRunRow,
 } from '../lib/leave-bf-import-schema';
 import { carryAllowanceFrom, carryEnabled } from './leave-compute';
-import { earnedCycleStart, resolveLeaveYearCycle } from './leave';
+import { earnedCycleStart, resolveLeaveYearCycle } from './leave-cycle';
 import { listLeaveTypes } from './read';
 import { lockLeaveDependenciesTx, lockLeaveDependencyReadConfigurationTx } from './leave-dependency-lock';
 

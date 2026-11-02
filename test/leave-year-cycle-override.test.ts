@@ -24,7 +24,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompanyLeaveCycle, setLeaveTypeRules, updateLeaveType } from '../core/admin';
-import { accrueEarnedLeave, resolveLeaveYearCycle } from '../core/leave';
+import * as legacyLeave from '../core/leave';
+import {
+  A2C_OVERRIDE,
+  accrueEarnedLeave,
+  earnedCycleStart,
+  leaveCycleEnd,
+  LEAVE_YEAR_CYCLE_OVERRIDES,
+  resolveLeaveYearCycle,
+} from '../packs/leave/service';
 import {
   adminCtx,
   closeAll,
@@ -101,6 +109,36 @@ describe('e1a51aea — resolveLeaveYearCycle', () => {
     expect(resolveLeaveYearCycle('a2c', 'anniversary')).toBe('calendar');
     // Defensive: a genuinely unknown stored value never invents semantics — company cycle wins.
     expect(resolveLeaveYearCycle('nonsense', 'anniversary')).toBe('anniversary');
+  });
+});
+
+describe('leave pack cycle contract', () => {
+  it('anchors anniversaries to the hire month, including the preceding cycle year', () => {
+    expect(earnedCycleStart('2025-07-15', '2026-07-01', 'anniversary')).toBe('2026-07-01');
+    expect(earnedCycleStart('2025-07-15', '2026-06-30', 'anniversary')).toBe('2025-07-01');
+  });
+
+  it('keeps the last day inclusive when the cycle spans a leap day', () => {
+    expect(leaveCycleEnd('2023-03-01')).toBe('2024-02-29');
+    expect(leaveCycleEnd('2024-03-01')).toBe('2025-02-28');
+    expect(leaveCycleEnd('2024-01-01')).toBe('2024-12-31');
+  });
+
+  it.each(['calendar', null, undefined, 'unknown'])('keeps calendar anchoring for %s', (cycle) => {
+    expect(earnedCycleStart('2025-07-15', '2026-03-31', cycle)).toBe('2026-01-01');
+  });
+
+  it('preserves the legacy exports and the live override vocabulary', () => {
+    expect(legacyLeave.earnedCycleStart).toBe(earnedCycleStart);
+    expect(legacyLeave.leaveCycleEnd).toBe(leaveCycleEnd);
+    expect(legacyLeave.resolveLeaveYearCycle).toBe(resolveLeaveYearCycle);
+    expect(legacyLeave.LEAVE_YEAR_CYCLE_OVERRIDES).toBe(LEAVE_YEAR_CYCLE_OVERRIDES);
+    expect(LEAVE_YEAR_CYCLE_OVERRIDES).toEqual(['a2a', 'c2c', 'a2c']);
+    expect(legacyLeave.A2C_OVERRIDE).toBe(A2C_OVERRIDE);
+    expect(resolveLeaveYearCycle(A2C_OVERRIDE, 'anniversary')).toBe('calendar');
+    expect(resolveLeaveYearCycle(null, null)).toBeNull();
+    expect(resolveLeaveYearCycle(undefined, undefined)).toBeUndefined();
+    expect(resolveLeaveYearCycle('unknown', 'custom')).toBe('custom');
   });
 });
 

@@ -17,7 +17,7 @@ import { and, asc, eq, gte, inArray, isNull, lte, ne, or, sql } from 'drizzle-or
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { assertCanDecide } from './approvals';
-import { earnedCycleStart } from './leave';
+import { earnedCycleStart } from './leave-cycle';
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockLeaveDependenciesTx, lockLeaveDependencyConfigurationTx, LeaveDependencyUnavailable } from './leave-dependency-lock';
 import {

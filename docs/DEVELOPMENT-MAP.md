@@ -20,6 +20,11 @@ Tests below are starting points, not claims of a completed run or full coverage.
 | Identity and access | [session](../lib/session.ts), [authorization](../lib/authz.ts), [embedded login](../deploy/internal-auth/README.md) | [database context](../db/client.ts), effective SQL policies and installation provider selection | [embedded auth](../test/internal-auth.test.ts), [mobile session](../test/mobile-api-session.test.ts) |
 | Time, presentation and distribution | [HR dates](../lib/hr-date.ts), [components](../components), [messages](../messages) | Reuse domain dates, authorized view models, existing renderers and package owners | Native/browser/rendered document checks establish different claims; measure the affected artifact |
 
+Leave cycle dates and override vocabulary live in the pure [cycle policy](../core/leave-cycle.ts).
+Leave, TOIL and historical imports share that implementation; outside callers keep using the pack
+service. Ledger writes, working-day database reads and accrual orchestration remain with their existing
+owners. [Cycle contract tests](../test/leave-year-cycle-override.test.ts) protect the public behavior.
+
 Consumers import pack services where that is the repository's public domain boundary. Client components
 receive thin typed projections; they do not import financial writers, server-only export dependencies
 or an authority-bearing registry. Keep one writer for each business fact and one financial kernel.
