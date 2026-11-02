@@ -6,7 +6,7 @@ import {previewCostAllocationImportTx,writeNewEmployeeCostAllocationsTx} from '.
 import type {AllocationImportRecords,AllocationImportPreview} from '../lib/cost-allocation-import';
 import {lockAccessConfigurationTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
-import {workforceCompanies,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
+import {workforceCompanies,workforceFullImportCompanies,assertWorkforceFullImportTx,workforceEmploymentPredicate,assertWorkforceCompanyTx,WorkforceAccessError} from './workforce-access';
 import {PERSONNEL_PAY_MODES,PERSONNEL_PAYMENT_TERMS,PERSONNEL_EPF_CITIZENSHIPS} from '../lib/personnel-choice-vocabulary';
 import { personnelOperationalValues,type PersonnelOperationalPatch } from '../lib/personnel-operational-import';
 import { applyPersonnelOperationalValuesTx } from './personnel-import-operations';
@@ -343,9 +343,10 @@ async function analyze(
   outerTx?:Tx,
 ): Promise<{ preview: ImportPreview; resolved: ResolvedRow[]; dependents: ResolvedDependent[]; registers:Awaited<ReturnType<typeof validateRegisterImport>>[] }> {
   const read=<T,>(fn:(tx:Tx)=>Promise<T>)=>outerTx?fn(outerTx):withTenant(ctx,fn);
+  await read(tx=>assertWorkforceFullImportTx(tx,ctx,companyId));
   if(Object.keys(registerRecords).some(key=>!(PERSONNEL_REGISTER_KINDS as readonly string[]).includes(key)))throw new Error('Unknown register sheet.');
   const [catalogCompanies, leaveTypes, maintainIds, viewIds] = await Promise.all([
-    listCompanies(ctx,{adminOnly:true},outerTx), listLeaveTypes(ctx,{},outerTx), workforceCompanies(ctx,'add',outerTx), workforceCompanies(ctx,'view',outerTx),
+    listCompanies(ctx,{adminOnly:true},outerTx), listLeaveTypes(ctx,{},outerTx), workforceFullImportCompanies(ctx,outerTx), workforceCompanies(ctx,'view',outerTx),
   ]);
   const writable=new Set(maintainIds),readable=new Set(viewIds);
   if(!writable.has(companyId)||!readable.has(companyId))throw new WorkforceAccessError();
@@ -1260,6 +1261,7 @@ export async function validateEmployeeImport(
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'view');
     await assertWorkforceCompanyTx(tx,ctx,p.companyId,'add');
     for(const companyId of new Set(resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId))){
+      await assertWorkforceFullImportTx(tx,ctx,companyId);
       await assertWorkforceCompanyTx(tx,ctx,companyId,'view');await assertWorkforceCompanyTx(tx,ctx,companyId,'add');
     }
   });
@@ -1362,6 +1364,7 @@ export async function commitEmployeeImport(
   // The outside analysis nominated this exact raw file. Resolve ALL protected facts in this actual
   // transaction before any employee/assignment/reporting write; changing the binding requires preview.
   const fresh=await analyze(ctx,p.companyId,p.records,p.dependentRecords??[],p.registerRecords,tx);
+  for(const companyId of new Set(fresh.resolved.filter(row=>row.result.ok).map(row=>row.hire.companyId)))await assertWorkforceFullImportTx(tx,ctx,companyId);
   const freshBinding=JSON.stringify({preview:fresh.preview,resolved:fresh.resolved.map(({pack,...row})=>row),dependents:fresh.dependents,registers:fresh.registers});
   if(freshBinding!==nominationBinding||fresh.resolved.some((row,index)=>row.pack!==nominationPack[index]))
     throw new Error('Employee import inputs changed. Preview the complete file again.');

@@ -67,3 +67,17 @@ export function workforceViewScope(ctx: SessionContext) {
   return {companyIds:companies.map(row=>row.id),canOpen:companies.length>0||unassigned?.allowed===true};
  });
 }
+
+/** Full employee workbook course; one company cell never admits other file companies. */
+export function workforceFullImportCompanies(ctx:SessionContext,outerTx?:Tx){
+ const run=async(tx:Tx)=>{
+  await lockAccessConfigurationTx(tx,ctx.tenantId);
+  return (await tx.execute<{id:string}>(sql`select id from company where tenant_id=app.current_tenant_id() and app.workforce_full_import_allowed(id,'add') order by id`)).map(row=>row.id);
+ };
+ return outerTx?run(outerTx):withTenant(ctx,run);
+}
+export async function assertWorkforceFullImportTx(tx:Tx,ctx:SessionContext,companyId:string){
+ await lockWorkforceOperationTx(tx,ctx,'add');
+ const [row]=await tx.execute<{allowed:boolean}>(sql`select app.workforce_full_import_allowed(${companyId}::uuid,'add') as allowed`);
+ if(row?.allowed!==true)throw new WorkforceAccessError();
+}

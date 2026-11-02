@@ -1625,7 +1625,7 @@ REVOKE ALL ON FUNCTION app.profile_changes_maintenance_native(uuid,uuid,text,uui
 --> statement-breakpoint
 CREATE FUNCTION app.workforce_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT (cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$'
+ SELECT ((cap ~ '^function\.workforceRecords\.(view|add|edit|delete)$' OR cap ~ '^function\.workforceImports\.(view|add)$')
  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.role_assignment r ON r.tenant_id=actor.tenant_id AND r.app_user_id=actor.id
   WHERE actor.tenant_id=t AND actor.id=u AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id)
    AND r.role::text IN ('hr_admin','super_admin') AND CASE WHEN co IS NULL THEN r.company_id IS NULL ELSE app.access_scope_covers(r.company_id,co,t) END)) OR app.profile_changes_maintenance_native(t,u,cap,co);
@@ -2152,3 +2152,23 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
     AND (NOT m.derived OR app.access_derived_carrier_covers(g.legacy_key,p_company))));
 $$;
 --> statement-breakpoint
+
+--> statement-breakpoint
+-- Full employee workbook import is an administrative source course, distinct
+-- from individual record maintenance. The ordinary canonical hire remains its
+-- final writer and repeats every subject/destination/data-scope check.
+DO $$ DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','add'] LOOP
+  PERFORM app.register_function_action('workforceImports',operation,'company','workforce.'||operation,'app.workforce_function_delegation_allowed',
+   '{"moduleKey":"workforce","labelKey":"people.import.title","kind":"submenu","course":"administrative","screenKey":"personnelAdmin","href":"/admin/personnel/import","employeeBearing":true}'::jsonb);
+ END LOOP;
+END $$;
+CREATE FUNCTION app.workforce_full_import_allowed(p_company uuid,p_operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT p_operation IN ('view','add') AND app.access_workforce_projection_company(p_company)
+ AND app.function_action_allowed('workforceImports','view',p_company)
+ AND app.function_action_allowed('workforceImports',p_operation,p_company)
+ AND (p_operation='view' OR app.access_workforce_action_company(p_company,'add'));
+$$;
+REVOKE ALL ON FUNCTION app.workforce_full_import_allowed(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.workforce_full_import_allowed(uuid,text) TO ai_hr_app;
