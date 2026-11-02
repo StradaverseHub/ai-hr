@@ -23,7 +23,7 @@ import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError } from '../core/leave';
+import { canApplyLeaveOnBehalf, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess } from '../core/leave';
 import { listEmployees, reportingLinesFor } from '../core/read';
 import { PAYROLL_PERMISSION_DEFAULTS, PAYROLL_PERMISSION_KEYS,decidePayrollPermission } from '../lib/payroll-permissions';
 import {withTenant,type SessionContext} from '../db/client';
@@ -491,8 +491,10 @@ describe('native own Leave application source composition',()=>{
 it('keeps a real customer-granted manager on-behalf course and pure target floor independent of publisher tenant',async()=>{
  const manager=await hire('manager'),subject=await hire('employee');await reportsTo(subject.employmentId,manager.employmentId);
  const [absent]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(absent.allowed).toBe(false);
+ expect(await leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId])).toEqual([manager.employmentId]);
  await grant({role:'manager',allowed:true});
  const [admitted]=await withTenant(manager.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.leave_on_behalf_application_allowed(${subject.employmentId}::uuid) as allowed`));expect(admitted.allowed).toBe(true);
+ expect((await leaveApplicationAddAccess(manager.ctx,[manager.employmentId,subject.employmentId,subject.employmentId])).sort()).toEqual([manager.employmentId,subject.employmentId].sort());
  const foreign=await seedBase();
  for(const ambient of ['',foreign.tenantId]){
   const [floors]=await owner.db.transaction(async tx=>{await tx.execute(sql`select set_config('app.tenant_id',${ambient},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true)`);return tx.execute<{named:boolean;global:boolean;foreign:boolean}>(sql`select app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${b.companyId}::uuid) as named,app.module_function_legacy_allowed(${b.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',null) as global,app.module_function_legacy_allowed(${foreign.tenantId}::uuid,${manager.ctx.userId}::uuid,'function.leave.onBehalf.application.add',${foreign.companyId}::uuid) as foreign`);});expect(floors).toEqual({named:true,global:false,foreign:false});

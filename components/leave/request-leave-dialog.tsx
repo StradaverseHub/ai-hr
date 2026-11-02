@@ -24,6 +24,7 @@ type SummaryAction = ComponentProps<typeof LeaveDurationFields>['summaryAction']
  * refreshed page shows the new request. Modeled on edit-leave-dialog.tsx.
  */
 export function RequestLeaveDialog({
+  canAdd,
   types,
   startDefault,
   defaultTypeId,
@@ -34,6 +35,7 @@ export function RequestLeaveDialog({
   previewAction,
   summaryAction,
 }: {
+  canAdd:boolean;
   types: LeaveTypeOption[];
   startDefault?: string;
   /** 76dbcaa1 — forwarded to LeaveDurationFields: the type an Apply action asked to open on. */
@@ -74,15 +76,16 @@ export function RequestLeaveDialog({
    * otherwise re-open it immediately after the first close.
    */
   useEffect(() => {
-    if (params.get('apply') !== '1' || openedFromUrl.current) return;
+    if (canAdd!==true || params.get('apply') !== '1' || openedFromUrl.current) return;
     openedFromUrl.current = true;
     setOpen(true);
     const next = new URLSearchParams(params.toString());
     next.delete('apply');
     const qs = next.toString();
     router.replace(qs ? `/leave?${qs}` : '/leave', { scroll: false });
-  }, [params, router]);
+  }, [params, router,canAdd]);
 
+  if(canAdd!==true)return null;
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>

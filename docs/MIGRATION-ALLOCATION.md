@@ -1368,3 +1368,12 @@ on-behalf source purpose after its original permission/subject gate. It does not
 own application authority. Distinct own/on-behalf labels exist in all six locales. Actual custom-manager
 admission/revocation and owner NULL/foreign-tenant target cases are authored, unrun. Shared raw/effect,
 selected-target UI, reviewed/assigned decisions and publication closure remain unfinished.
+
+The actual /leave application composer now filters its already-native-visible candidate IDs through
+one read-only batched own-Add/on-behalf-Add projection, returning IDs only. No write/Access lock,
+reservation or employee metadata grant is added. The real RequestLeaveDialog requires canAdd=true;
+false/missing runtime projection renders no trigger/form and does not consume an auto-open link.
+Denied target options are absent while independently permitted own/nonself choices remain. Actual
+native target filtering and rendered denied/allowed dialog/field cases are authored, unrun. Home
+shortcuts, existing pending Edit/Delete affordances, separate give-back and assigned decision UI,
+shared raw/effect closure and genuine supported publication still require subsequent work.

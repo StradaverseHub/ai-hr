@@ -27,7 +27,7 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 // 5206539f — `leave.apply_on_behalf` is resolved by the SAME function requestLeave's own gate calls
 // (the on-behalf permission read, asked in ./my-leave-data.ts since r397), so the selector below and the refusal in the
 // service can never answer differently.
-import { todayInKualaLumpur } from '@/core/leave';
+import { todayInKualaLumpur,leaveApplicationAddAccess } from '@/core/leave';
 import { isReplacementLeaveType, pickReplacementLeaveType } from '@/core/ess-view';
 // r302 (6c9802c9) — My Leave dashboard: the per-leave-year figures, Upcoming Leave, and the names of the people
 // who decide the viewer's OWN requests (migration 0472). Every figure is a pick in core/my-leave.ts.
@@ -307,10 +307,13 @@ export default async function LeavePage({
   // them. Every line of it existed to make a LINE MANAGER's list of reports behave, and there is no such
   // list any more. What is left is one subject on the self-service path — the viewer — whose own eligible
   // set is `eligibleLeaveTypes` and can never be empty while the trigger below renders.
-  const requestLeaveEmployeeOptions = [
+  const nativeRequestLeaveEmployeeOptions = [
     ...active.filter((e) => e.employmentId === me.employmentId),
     ...active.filter((e) => e.employmentId !== me.employmentId),
   ].map((e) => ({ id: e.employmentId, name: e.name }));
+  const allowedApplicationIds=new Set(await leaveApplicationAddAccess(session,[me.employmentId,...(canApplyOnBehalf?nativeRequestLeaveEmployeeOptions.map(row=>row.id):[])]));
+  const requestLeaveEmployeeOptions=nativeRequestLeaveEmployeeOptions.filter(row=>allowedApplicationIds.has(row.id));
+  const canAddLeaveApplication=allowedApplicationIds.has(me.employmentId)||(canApplyOnBehalf&&requestLeaveEmployeeOptions.length>0);
 
   // Request Leave (feedback 48e69709): the apply form moved from a collapsed Card at the page bottom into a
   // modal launched from a "+" primary button in the PageHeader. These are the exact props the form used to
@@ -650,6 +653,7 @@ export default async function LeavePage({
                 <RequestLeaveDialog
                   key={me.employmentId}
                   ownEmploymentId={me.employmentId}
+                  canAdd={canAddLeaveApplication}
                   types={requestLeaveTypeOptionsGrouped}
                   // 5206539f — the per-subject type map is NOT passed any more, and the dialog's optional
                   // prop is left unset rather than fed an empty object. It existed to re-draw the offer as a
@@ -666,7 +670,7 @@ export default async function LeavePage({
                   defaultTypeId={
                     typeof sp.applyType === 'string' && /^[0-9a-f-]{36}$/i.test(sp.applyType) ? sp.applyType : null
                   }
-                  employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}
+                  employeeOptions={canApplyOnBehalf && requestLeaveEmployeeOptions.length ? requestLeaveEmployeeOptions : undefined}
                   submitAction={requestLeaveAction}
                   previewAction={previewLeaveDeductionAction}
                   summaryAction={leaveApplySummaryAction}

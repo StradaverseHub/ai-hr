@@ -12331,3 +12331,13 @@ async function assertOwnLeaveApplicationActionTx(tx:Tx,employmentId:string,opera
  const [row]=await tx.execute<{allowed:boolean}>(sql`select app.leave_own_application_allowed(${employmentId}::uuid,${operation}) as allowed`);
  if(row?.allowed!==true)throw new Error('Own Leave application action unavailable');
 }
+
+/** Refusal-only form projection over caller-supplied, already-native-visible target IDs.
+ * It returns no employee metadata, reserves nothing and takes no Access/write lock. */
+export function leaveApplicationAddAccess(ctx:SessionContext,employmentIds:readonly string[]):Promise<string[]>{
+ const ids=[...new Set(employmentIds)];if(!ids.length)return Promise.resolve([]);
+ return withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{id:string}>(sql`select selected.id from jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb) selected(id) where app.leave_own_application_allowed(selected.id::uuid,'add') or app.leave_on_behalf_application_allowed(selected.id::uuid)`);
+  return rows.map(row=>row.id);
+ });
+}
