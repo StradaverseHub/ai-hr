@@ -33913,7 +33913,8 @@
       "uploadTitle": "Record an offline review",
       "uploadHelp": "Upload the completed signed PDF with a reason. The original document is retained as evidence; this does not create a digital signature or release an outcome letter.",
       "pdf": "Completed review PDF",
-      "upload": "Record PDF evidence"
+      "upload": "Record PDF evidence",
+      "pendingPdf": "The signed review is saved. Filing its completed PDF is pending; the existing background worker will retry without changing the signed review."
     },
     "tracker": {
       "title": "Probation tracker",
@@ -33995,7 +33996,7 @@
     },
     "access": {
       "title": "Module assignments",
-      "help": "Assignments are scoped to this company and their effective dates. Current role and scope are checked again when an action is taken.",
+      "help": "Assignments opt named users into this module for the selected scope and dates. PBP and GBS authority still comes from the current Lifecycle PBP rules and People Ops group; a module assignment cannot replace those mappings.",
       "firstPreparer": "Nominate the first preparer",
       "bootstrapHelp": "A group administrator must explicitly nominate a named preparer for this company before configuration is available.",
       "person": "Person",
@@ -34098,7 +34099,22 @@
       "returnReason": "Reason for returning this letter",
       "return": "Return for correction",
       "release": "Release signed letter",
-      "releaseHelp": "Release files the completed signed PDF in the employee record and applies the approved outcome. Every required current signature must be complete."
+      "releaseHelp": "Release saves the request to file the completed signed PDF and apply the approved outcome. The existing background worker completes those steps; any delay or failure remains visible for retry. Every required current signature must be complete.",
+      "tasks": "Outcome letters",
+      "open": "Open outcome letter"
+    },
+    "dates": {
+      "title": "Probation date review",
+      "sourceChanged": "Personnel dates have changed. Review and reconcile the schedule before continuing. Submitted reviews retain their original recorded facts.",
+      "savedPeriod": "Recorded probation period",
+      "currentPeriod": "Current Personnel period",
+      "help": "PBP can request a later end date for long leave. GBS applies the request through Personnel; the schedule changes only with that recorded movement. No past reminders are replayed.",
+      "reconcile": "Reconcile with current Personnel dates",
+      "newEnd": "Requested later probation end date",
+      "request": "Request long-leave date adjustment",
+      "applied": "Applied through Personnel",
+      "pending": "Awaiting GBS application",
+      "apply": "Apply Personnel date adjustment"
     }
   },
   "templateEditor": {

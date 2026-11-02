@@ -32,7 +32,7 @@ describe('probation reviewer interactions',()=>{
  it('retains entered ratings and error recovery when the guarded save fails',async()=>{
   mocks.save.mockResolvedValue({ok:false,detail:'The review changed. Reload before saving.'});const{view,part}=fixture();show(view,part);
   const criterion=within(screen.getByRole('heading',{name:'Employee assessment'}).closest('section')!).getByRole('group',{name:/KPI Achievement Progress/});fireEvent.click(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/}));fireEvent.click(screen.getByRole('button',{name:'Save draft'}));
-  await screen.findByRole('alert');expect(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/})).toBeChecked();expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();expect(mocks.refresh).not.toHaveBeenCalled();
+  await screen.findByRole('alert');expect(within(criterion).getByRole('radio',{name:/3 · Meets Expectations/})).toBeChecked();await waitFor(()=>expect(screen.getByText('You have unsaved changes')).toBeInTheDocument());expect(mocks.refresh).not.toHaveBeenCalled();
  });
  it('locks submitted self-ratings and saves only the permitted acknowledgement comment contribution',async()=>{
   const{view,part}=fixture();part.staffSubmittedAt='2026-12-01T01:00:00Z';part.managerSubmittedAt='2026-12-02T01:00:00Z';part.managerVisible=true;part.allowedCommands=['acknowledge','return'];part.state='pending_ack';
@@ -43,6 +43,11 @@ describe('probation reviewer interactions',()=>{
  it('shows the submitted Personnel snapshot and period on a previously submitted review',()=>{
   const{view,part}=fixture();part.submittedFacts={...view.record.facts,companyName:'Company at submission'};part.submittedPeriod={startOn:'2026-10-01',endOn:'2027-03-31',gradeAtStart:'14'};
   show(view,part);expect(screen.getByText('Company at submission')).toBeInTheDocument();expect(screen.queryByText('Fictional Company')).not.toBeInTheDocument();expect(screen.getByText('2027-03-31')).toBeInTheDocument();expect(screen.getByText(/Personnel details and review period recorded/)).toBeInTheDocument();
+ });
+ it('lets PBP confirm a different permitted extension without editing the manager assessment',async()=>{
+  const{view}=fixture(),part=view.parts.find(p=>p.type===3)!;view.roles=['pbp'];part.canEditEmployee=false;part.canEditManager=false;part.managerSubmittedAt='2027-04-01T01:00:00Z';part.extensionMonths=3;part.allowedCommands=['confirm_extension'];
+  show(view,part);fireEvent.change(screen.getByRole('combobox',{name:/Extension period/}),{target:{value:'6'}});fireEvent.change(screen.getByRole('textbox',{name:/Reason/}),{target:{value:'Reviewed the support plan and approved six months.'}});fireEvent.click(screen.getByRole('button',{name:'Confirm extension'}));
+  await waitFor(()=>expect(mocks.act).toHaveBeenCalledWith(expect.objectContaining({command:'confirm_extension',months:6,reason:'Reviewed the support plan and approved six months.'})));expect(mocks.save).not.toHaveBeenCalled();
  });
  it('does not offer a signature or privileged state change to a read-only viewer',()=>{
   const{view,part}=fixture();view.roles=['hod'];part.canEditEmployee=false;part.selfVisible=false;part.allowedCommands=[];show(view,part);

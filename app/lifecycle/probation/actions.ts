@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow} from '@/packs/probation/service';
+import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
  try{const result=await work();revalidatePath('/lifecycle/probation','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,code:error instanceof Error&&error.name==='ProbationError'?'review':'unavailable',detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
@@ -30,3 +30,9 @@ export async function releaseLetter(input:Parameters<typeof releaseProbationLett
 export async function saveWorkflow(input:Parameters<typeof saveProbationWorkflow>[1]){return execute(async()=>saveProbationWorkflow(await requireScopedLifecycleModule(),input));}
 
 export async function previewWorkflow(input:Parameters<typeof previewProbationWorkflow>[1]){return execute(async()=>previewProbationWorkflow(await requireScopedLifecycleModule(),input));}
+
+export async function requestDateShift(input:Parameters<typeof requestProbationDateShift>[1]){return execute(async()=>requestProbationDateShift(await requireScopedLifecycleModule(),input));}
+
+export async function applyDateShift(input:Parameters<typeof applyProbationDateShift>[1]){return execute(async()=>applyProbationDateShift(await requireScopedLifecycleModule(),input));}
+
+export async function reconcileDates(input:Parameters<typeof reconcileProbationDates>[1]){return execute(async()=>reconcileProbationDates(await requireScopedLifecycleModule(),input));}
