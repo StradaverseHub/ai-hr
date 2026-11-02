@@ -2010,8 +2010,8 @@ CREATE TRIGGER shift_constructor_authority_recheck AFTER UPDATE ON app.access_co
 CREATE TABLE app.leave_permission_mutation(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,
  grant_id uuid NOT NULL,before_row jsonb,after_row jsonb,authority_stamp text NOT NULL,
- scopes jsonb NOT NULL,active boolean NOT NULL DEFAULT true,born boolean NOT NULL DEFAULT false,
- event_id uuid,completed boolean NOT NULL DEFAULT false,
+ scopes jsonb NOT NULL,scope_nodes uuid[] NOT NULL,active boolean NOT NULL DEFAULT true,born boolean NOT NULL DEFAULT false,
+ event_id uuid,completed boolean NOT NULL DEFAULT false,scope_changed boolean NOT NULL DEFAULT false,
  CHECK(before_row IS NOT NULL OR after_row IS NOT NULL));
 CREATE INDEX leave_permission_mutation_transaction ON app.leave_permission_mutation(xact_id,tenant_id,grant_id);
 ALTER TABLE app.leave_permission_mutation ENABLE ROW LEVEL SECURITY;
@@ -2065,6 +2065,26 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.leave_permission_admit(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 
+-- Bind hierarchy only for actual affected scopes and the actual actor/changed recipients'
+-- company predicates. This is source freshness, not a second data-ceiling implementation.
+CREATE FUNCTION app.leave_permission_scope_nodes(p_before jsonb,p_after jsonb,p_scopes jsonb) RETURNS uuid[]
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH RECURSIVE affected_users(user_id) AS(
+  SELECT app.current_user_id() UNION SELECT recipient.user_id FROM app.native_permission_override_recipients(app.current_tenant_id(),'leave.apply_on_behalf',p_before,p_after) recipient
+  WHERE recipient.before_allowed IS DISTINCT FROM recipient.after_allowed
+ ),roots(id) AS(
+  SELECT scope.value::uuid FROM jsonb_array_elements_text(p_scopes) scope WHERE scope.value IS NOT NULL
+  UNION SELECT candidate.value::uuid FROM affected_users actor JOIN public.user_data_permission_assignment assignment ON assignment.tenant_id=app.current_tenant_id() AND assignment.user_id=actor.user_id
+  JOIN public.data_permission_profile profile ON profile.id=assignment.profile_id AND profile.tenant_id=assignment.tenant_id AND profile.enabled AND profile.retired_at IS NULL
+  JOIN public.data_permission_revision revision ON revision.id=profile.active_revision_id AND revision.tenant_id=profile.tenant_id AND revision.profile_id=profile.id
+  CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN app.data_permission_rules_valid(revision.rules) THEN revision.rules->'predicates' ELSE '[]'::jsonb END) predicate
+  CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN predicate->>'field'='company' THEN predicate->'values' ELSE '[]'::jsonb END) candidate
+ ),lineage(id,parent_company_id) AS(
+  SELECT company.id,company.parent_company_id FROM public.company company JOIN roots ON roots.id=company.id WHERE company.tenant_id=app.current_tenant_id()
+  UNION SELECT parent.id,parent.parent_company_id FROM lineage child JOIN public.company parent ON parent.id=child.parent_company_id AND parent.tenant_id=app.current_tenant_id()
+ ) SELECT coalesce(array_agg(lineage.id ORDER BY lineage.id),'{}'::uuid[]) FROM lineage;
+$$;
+REVOKE ALL ON FUNCTION app.leave_permission_scope_nodes(jsonb,jsonb,jsonb) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.leave_permission_source_allowed(p_before jsonb,p_after jsonb,p_active boolean DEFAULT false) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
@@ -2103,7 +2123,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE proof app.leave_permission_mutation%ROWTYPE;scope jsonb;event_name text;expected_payload jsonb;
 BEGIN
  SELECT * INTO proof FROM app.leave_permission_mutation actual WHERE actual.id=NEW.id;
- IF NOT FOUND OR NOT proof.completed OR NOT proof.born OR proof.active OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id() OR proof.user_id IS DISTINCT FROM app.current_user_id()
+ IF NOT FOUND OR NOT proof.completed OR NOT proof.born OR proof.active OR proof.scope_changed OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id() OR proof.user_id IS DISTINCT FROM app.current_user_id()
  OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp() OR NOT app.principal_snapshot_current() OR NOT app.is_admin() THEN RAISE EXCEPTION 'Leave permission completion unavailable' USING ERRCODE='42501';END IF;
  event_name:=CASE WHEN proof.before_row IS NULL THEN 'created' WHEN proof.after_row IS NULL THEN 'deleted' ELSE 'updated' END;
  expected_payload:=jsonb_build_object('permissionKey','leave.apply_on_behalf','role',coalesce(proof.after_row,proof.before_row)->>'role');
@@ -2147,8 +2167,8 @@ BEGIN
  END IF;
  scopes:=app.leave_permission_admit(b,a);
  DELETE FROM app.leave_permission_mutation WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
- INSERT INTO app.leave_permission_mutation(xact_id,tenant_id,user_id,grant_id,before_row,after_row,authority_stamp,scopes)
- VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),coalesce(proposed.id,prior.id),b,a,app.access_function_authority_stamp(),scopes) RETURNING id INTO proof_id;
+ INSERT INTO app.leave_permission_mutation(xact_id,tenant_id,user_id,grant_id,before_row,after_row,authority_stamp,scopes,scope_nodes)
+ VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),coalesce(proposed.id,prior.id),b,a,app.access_function_authority_stamp(),scopes,app.leave_permission_scope_nodes(b,a,scopes)) RETURNING id INTO proof_id;
  IF a IS NULL THEN DELETE FROM public.payroll_permission_grant WHERE id=prior.id AND tenant_id=prior.tenant_id;
  ELSIF b IS NULL THEN INSERT INTO public.payroll_permission_grant(id,tenant_id,company_id,permission_key,role,allowed,created_at,updated_at)
   VALUES(proposed.id,proposed.tenant_id,proposed.company_id,proposed.permission_key,proposed.role,proposed.allowed,proposed.created_at,proposed.updated_at);
@@ -2182,6 +2202,17 @@ CREATE TABLE app.module_company_hierarchy_epoch(
 ALTER TABLE app.module_company_hierarchy_epoch ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.module_company_hierarchy_epoch FROM PUBLIC,ai_hr_app;
 INSERT INTO app.module_company_hierarchy_epoch(tenant_id,company_id) SELECT tenant_id,id FROM public.company;
+CREATE FUNCTION app.leave_permission_hierarchy_recheck() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF TG_OP='INSERT' OR NEW.epoch IS DISTINCT FROM OLD.epoch THEN
+  UPDATE app.leave_permission_mutation proof SET scope_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id
+   AND proof.completed AND NOT proof.scope_changed AND (NEW.company_id=ANY(proof.scope_nodes) OR proof.scopes @> '[null]'::jsonb);
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_permission_hierarchy_recheck() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_permission_hierarchy_recheck AFTER INSERT OR UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_permission_hierarchy_recheck();
 CREATE TABLE app.module_company_cleanup(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,company_id uuid NOT NULL,
  source jsonb NOT NULL,authority_stamp text NOT NULL,hierarchy jsonb NOT NULL,usage_rows bigint NOT NULL,

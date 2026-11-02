@@ -6,6 +6,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {deletePayrollPermissionGrant,setPayrollPermissionGrant} from '../core/payroll-permissions-admin';
 import {resolvePayrollPermission} from '../core/payroll';
+import {createCompany} from '../core/admin';
 import {readDataPermissions,previewDataPermission,saveDataPermission,type DataPermissionCommand} from '../core/data-permissions';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext;
@@ -72,4 +73,18 @@ it('commits native self-narrowing with the original audit in immediate mode and 
  await expect(withTenant(admin,tx=>tx.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.id,id)))).resolves.toEqual([source]);
  const events=await owner.db.select({event:s.domainEvent.eventType,actor:s.domainEvent.actorId,payload:s.domainEvent.payload}).from(s.domainEvent).where(eq(s.domainEvent.aggregateId,id));
  expect(events).toEqual([{event:'payroll-permission-grant.created',actor:b.adminUserId,payload:{companyId:b.companyId,permissionKey:key,role:'hr_admin',allowed:false}}]);
+});
+
+it('rechecks a completed company Leave override after actual hierarchy move and restore',async()=>{
+ const alternate=await createCompany(admin,{legalName:'Fictional alternative Leave ACL parent'});
+ await expect(withTenant(admin,async tx=>{
+  const [written]=await tx.execute<{id:string}>(sql`select app.leave_on_behalf_grant_set(${b.companyId}::uuid,'manager',true) as id`);expect(written.id).toBeTruthy();
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
+  for(const parentCompanyId of [alternate.id,null]){
+   expect(await tx.update(s.company).set({parentCompanyId}).where(eq(s.company.id,b.companyId)).returning({id:s.company.id})).toEqual([{id:b.companyId}]);
+  }
+ })).rejects.toThrow('Leave permission completion unavailable');
+ expect(await owner.db.select().from(s.payrollPermissionGrant).where(eq(s.payrollPermissionGrant.tenantId,b.tenantId))).toEqual([]);
+ expect(await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.eventType,'payroll-permission-grant.created'))).toEqual([]);
 });
