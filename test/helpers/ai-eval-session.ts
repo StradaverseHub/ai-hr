@@ -5,12 +5,14 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {mkdirSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import type {governedAiConfig,withAiAdmissionLifecycle} from '../../core/ai-governance';
 import type {withReviewedAiSpendDispatch} from '../../core/ai-spend-capability';
 import {usdToNanos} from '../../lib/ai/spend-allocation';
 import {providerDataReviewStatus} from '../../lib/ai/provider-data-reviews';
 import {TERAS_HARNESS_CONTRACT} from '../../lib/ai/teras-harness-policy';
 import {captureRequestedEval,createEvalLedger,EVAL_CARRIERS,loadEvalPlan} from '../../.github/ci/eval/contract.mjs';
 import {createNativeEvalBudget} from './ai-eval-native-budget';
+import {createNativeEvalWitness} from './ai-eval-native-witness';
 
 type NativeDispatch=typeof withReviewedAiSpendDispatch;
 type Status='met'|'missed'|'review_required';
@@ -19,7 +21,16 @@ type PlannedCase={id:string;set:string;conversationId:string;turnId:string;repea
 type CaseScope={id:string;attemptId?:string};
 const scopes=new AsyncLocalStorage<CaseScope>();
 let nativeOwner:NativeDispatch|null=null;
-let activeRuntime:{dispatch:NativeDispatch}|null=null;
+let lifecycleOwner:typeof withAiAdmissionLifecycle|null=null;
+let activeRuntime:{dispatch:NativeDispatch;configuration:(cfg:Parameters<typeof withAiAdmissionLifecycle>[0],feature:Parameters<typeof withAiAdmissionLifecycle>[1],tenantId:string)=>ReturnType<typeof withAiAdmissionLifecycle>}|null=null;
+/** Add correlation through the original lifecycle owner; existing checks/hooks remain composed. */
+export function bindNativeEvalGovernance(actual:typeof governedAiConfig,lifecycle:typeof withAiAdmissionLifecycle):typeof governedAiConfig{
+ lifecycleOwner=lifecycle;
+ return (ctx,snapshot,feature)=>{
+  const cfg=actual(ctx,snapshot,feature);
+  return activeRuntime?activeRuntime.configuration(cfg,feature,ctx.tenantId):cfg;
+ };
+}
 /** Vitest instrumentation supplies the actual unmodified owner; no resolver/permission bypass. */
 export function bindNativeEvalDispatch(actual:NativeDispatch):NativeDispatch{
  nativeOwner=actual;
@@ -45,24 +56,35 @@ export function createModelEvalSession(carrier:string){
   ||process.env.AIHR_EVAL_CORPUS_REVIEW_DIGEST&&process.env.AIHR_EVAL_CORPUS_REVIEW_DIGEST!==plan.corpusReviewDigest)
   throw Error('Controller and carrier evaluation plan differ.');
  const ledger=createEvalLedger(plan),observed=new Map<string,number>(),terminal=new Map<string,string>();
- const attempts:{caseId:string;requestId:string;requestDigest:string;configurationDigest:string;ceilingNanos:string}[]=[];
+ const evaluationId=`${identity.runId}:${identity.attempt}:${plan.planHash}`;
+ const attempts:{caseId:string;evaluationId:string;runId:string;capabilityDigest:string;requestId:string;requestDigest:string;configurationDigest:string;ceilingNanos:string}[]=[];
+ let tenantId:string|null=null,witness:ReturnType<typeof createNativeEvalWitness>|null=null;
+ const getWitness=()=>{
+  if(!nativeOwner||!lifecycleOwner)throw Error('Original native evaluation owners unavailable.');
+  return witness??=createNativeEvalWitness({evaluationId,withLifecycle:lifecycleOwner,nativeDispatch:nativeOwner});
+ };
  const sent:{caseId:string;body:string}[]=[],consumedPosts=new Set<string>();
  let guard:ReturnType<typeof createNativeEvalBudget>|null=null,receipt:Record<string,unknown>|null=null,persisted=false;
  const getGuard=()=>{
   if(!nativeOwner)throw Error('Original native spend proof owner unavailable.');
-  return guard??=createNativeEvalBudget({allocationNanos:usdToNanos(String(request.budgetUsd)),maxAttempts:1500,nativeDispatch:nativeOwner});
+  return guard??=createNativeEvalBudget({allocationNanos:usdToNanos(String(request.budgetUsd)),maxAttempts:1500,nativeDispatch:getWitness().dispatch});
  };
  const dispatch:NativeDispatch=(envelope,configuration,input,consume)=>{
   const scope=scopes.getStore();if(!scope||!byId.has(scope.id))throw Error('Model dispatch outside a planned case.');
   const allocation=getGuard();
   return allocation.dispatch(envelope,configuration,input,async()=>{
    const bound=allocation.attemptEvidence().at(-1);if(!bound)throw Error('Native evaluation attempt unavailable.');
-   attempts.push({caseId:scope.id,...bound,ceilingNanos:String(bound.ceilingNanos)});
+   const native=getWitness().attemptFor(input);
+   if(!native||native.caseId!==scope.id)throw Error('Exact native evaluation run unavailable.');
+   attempts.push({...bound,...native,ceilingNanos:String(bound.ceilingNanos)});
    return scopes.run({id:scope.id,attemptId:bound.requestId},consume);
   });
  };
  if(activeRuntime)throw Error('Only one model evaluation may own this process.');
- const runtime={dispatch};activeRuntime=runtime;
+ const runtime={dispatch,configuration(cfg:Parameters<typeof withAiAdmissionLifecycle>[0],feature:Parameters<typeof withAiAdmissionLifecycle>[1],currentTenant:string){
+  if(tenantId!==null&&tenantId!==currentTenant)throw Error('Evaluation fixture tenant changed.');
+  tenantId=currentTenant;return getWitness().configuration(cfg,feature);
+ }};activeRuntime=runtime;
  const realFetch=globalThis.fetch;
  const observer:typeof fetch=async(input,init)=>{
   if(activeRuntime!==runtime)throw Error('Evaluation lifetime is closed.');
@@ -92,8 +114,9 @@ export function createModelEvalSession(carrier:string){
   const snapshot=guard?.snapshot()??{allocationNanos:usdToNanos(String(request.budgetUsd)),reservedNanos:BigInt('0'),remainingNanos:usdToNanos(String(request.budgetUsd)),attempts:0,maxAttempts:1500};
   receipt={schemaVersion:1,request,files:[carrier],planHash:plan.planHash,corpusReviewDigest:plan.corpusReviewDigest,
    plannedCaseIds:cases.map(row=>row.id),productionReviewed:true,path:'production',outcomes,
-   budget:{kind:'native_owned_no_refund_lifetime_reservations',identity:request.identity,
-    snapshot:Object.fromEntries(Object.entries(snapshot).map(([key,value])=>[key,typeof value==='bigint'?String(value):value])),attempts:attempts.slice()}};
+   nativeAdmissions:witness?.committedAttempts()??[],
+   budget:{kind:'native_owned_no_refund_lifetime_reservations',identity:request.identity,evaluationId,tenantId,
+    snapshot:Object.fromEntries(Object.entries(snapshot).map(([key,value])=>[key,typeof value==='bigint'?String(value):value])),attempts:attempts.map(row=>({...row,postCount:consumedPosts.has(row.requestId)?1:0}))}};
   }
   try{
   const directory=process.env.AIHR_FOCUSED_EVIDENCE_DIR??(process.env.RUNNER_TEMP?join(process.env.RUNNER_TEMP,'aihr-focused'):null);
@@ -119,7 +142,7 @@ export function createModelEvalSession(carrier:string){
    }
    ledger.start(id);const started=performance.now();
    try{
-    const value=await scopes.run({id},work),grade=judge(value);
+    const value=await scopes.run({id},()=>getWitness().runCase(id,work)),grade=judge(value);
     ledger.finish({id,status:'completed',elapsedMs:performance.now()-started,providerCalls:observed.get(id)??0,
      security:{passed:grade.findings.length===0,findings:[...grade.findings]},
      criteria:row.quality.criteria.map(criterion=>({id:criterion,status:grade.criteria[criterion]??'review_required'}))});

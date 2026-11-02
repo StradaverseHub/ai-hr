@@ -7,6 +7,7 @@ import {isAbsolute, join, relative, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {hostHealth} from './host-health.mjs';
 import {CI_POLICY} from './policy-version.mjs';
+import {createNativeBudgetVerifier} from './eval/native-budget-verifier.mjs';
 import {captureRequestedEval, loadEvalPlan, assertFocusedEvalContext, EVAL_CARRIERS} from './eval/contract.mjs';
 import {restrictedPortRequest,executeDatabaseSetup,runRestrictedPortQualification,SOURCE_PINS} from './restricted-port-qualification.mjs';
 import {capturePostgresEvidence, validatePostgresEvidence, postgresProfileFromEnv, V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
@@ -71,14 +72,38 @@ export function classifierEnvironment(env) {
 }
 
 /** Must finish before any candidate subprocess. loadPlan only reads pinned source bytes. */
-export function admitFocusedEvaluation({env, files, identity, loadPlan, budgetAdmission, budgetVerifier}) {
+export function admitFocusedEvaluation({env, files, identity, loadPlan, budgetAdmission, budgetVerifier, nativeVerification = false}) {
   const request = captureRequestedEval(env, files, identity);
   if (!request) return {request: null, plan: null};
   const plan = loadPlan(request);
-  if (typeof budgetAdmission !== 'function' || typeof budgetVerifier !== 'function'
-    || budgetAdmission({request, plan, identity})?.admitted !== true)
+  if (typeof budgetAdmission !== 'function' || typeof budgetVerifier !== 'function')
     throw Error('Requested model evaluation: verified budget admission is unavailable');
-  return {request, plan};
+  const admission = budgetAdmission({request, plan, identity});
+  if (admission?.admitted !== true) throw Error('Requested model evaluation: verified budget admission is unavailable');
+  return {request, plan, nativeScope: nativeVerification ? captureNativeBudgetScope(admission.nativeScope, request) : admission.nativeScope};
+}
+
+/** Called only on a TRUSTED admission callback's result, never an env/receipt descriptor.
+ * The independently provisioned tenant must be selected before candidate execution. */
+export function captureNativeBudgetScope(value, request) {
+  if (!value || Object.keys(value).sort().join(',') !== 'allocationNanos,maxAttempts,tenantId'
+    || typeof value.tenantId !== 'string' || !/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(value.tenantId)
+    || value.tenantId === '00000000-0000-0000-0000-000000000000'
+    || typeof request.budgetUsd !== 'number' || !Number.isFinite(request.budgetUsd)
+    || request.budgetUsd <= 0 || request.budgetUsd > 15
+    || value.allocationNanos !== BigInt(request.budgetUsd.toFixed(9).replace('.', '')).toString()
+    || value.maxAttempts !== 1500) throw Error('Requested model evaluation: independent native scope is unavailable');
+  return Object.freeze({...value});
+}
+function readIndependentNativeLedger(scope) {
+  const script = fileURLToPath(new URL('./eval/native-ledger-reader.mjs', import.meta.url));
+  const env = Object.fromEntries(['PATH', 'HOME', 'RUNNER_TEMP', 'GITHUB_ACTIONS', 'CI', 'RUNNER_ENVIRONMENT', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT']
+    .filter(key => process.env[key] !== undefined).map(key => [key, process.env[key]]));
+  const child = spawnSync(process.execPath, [script], {cwd: fileURLToPath(new URL('.', import.meta.url)), env,
+    input: JSON.stringify({tenantId: scope.tenantId, maxAttempts: scope.maxAttempts}),
+    encoding: 'utf8', timeout: 15_000, maxBuffer: 2 * 1024 * 1024});
+  if (child.error || child.status !== 0) throw Error('Independent native evaluation ledger unavailable');
+  return JSON.parse(child.stdout);
 }
 
 function runnerOnly() {
@@ -150,15 +175,24 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
     files, manifestHash: hash(JSON.stringify(files)), batches: [], exitCode: 1};
   const pgEnv = {...process.env, AIHR_CI_UNIT: 'db-1'};
   let touchedDatabase = false, postgresProfile = null;
-  let evalRequest = null, evalPlan = null;
+  let evalRequest = null, evalPlan = null, nativeScope = null;
+  const budgetVerifier = evalBudgetVerifier ?? createNativeBudgetVerifier({readNativeEvidence(expected) {
+    if (!nativeScope) throw Error('Independent native evaluation scope unavailable');
+    return {identity: expected.identity, evaluationId: `${expected.identity.runId}:${expected.identity.attempt}:${expected.planHash}`,
+      tenantId: nativeScope.tenantId, planHash: expected.planHash, corpusReviewDigest: expected.corpusReviewDigest,
+      allocationNanos: nativeScope.allocationNanos, maxAttempts: nativeScope.maxAttempts,
+      rows: readIndependentNativeLedger(nativeScope)};
+  }});
   try {
     if (process.env.AIHR_EVAL_MODEL?.trim() || process.env.AIHR_EVAL_REQUESTED === 'true')
       report.evaluation = {requested: true, status: 'admission_refused', executionComplete: false,
         measurementPassed: false, safetyPassed: null, qualityPassed: null, requiresHumanReview: null,
         budgetVerified: false, releaseEligible: false};
-    ({request: evalRequest, plan: evalPlan} = admitFocusedEvaluation({env: process.env, files,
+    const admission = admitFocusedEvaluation({env: process.env, files,
       identity: evalIdentity, loadPlan: request => loadEvalPlan(request, cwd),
-      budgetAdmission: evalBudgetAdmission, budgetVerifier: evalBudgetVerifier}));
+      budgetAdmission: evalBudgetAdmission, budgetVerifier, nativeVerification: !evalBudgetVerifier});
+    ({request: evalRequest, plan: evalPlan} = admission);
+    if (evalRequest && !evalBudgetVerifier) nativeScope = admission.nativeScope;
     if (evalRequest) report.evaluation = {...report.evaluation, request: evalRequest,
       planHash: evalPlan.planHash, corpusReviewDigest: evalPlan.corpusReviewDigest,
       plannedCaseIds: evalPlan.cases.map(row => row.id), status: 'admitted_not_measured'};
@@ -216,7 +250,7 @@ export function runFocused(destination, {evalBudgetAdmission, evalBudgetVerifier
           } finally { closeSync(fd); }
           const receipt = JSON.parse(receiptBytes);
           evalContext = {requested: true, request: evalRequest, plan: evalPlan, receipt,
-            identity: evalIdentity, budgetVerifier: evalBudgetVerifier,
+            identity: evalIdentity, budgetVerifier,
             onAssessment(summary) { report.evaluation = {...report.evaluation, ...summary,
               status: summary.measurementPassed ? 'measurement_passed' : summary.requiresHumanReview ? 'review_required' : 'measurement_failed'}; }};
           report.evaluation.receiptHash = hash(receiptBytes);

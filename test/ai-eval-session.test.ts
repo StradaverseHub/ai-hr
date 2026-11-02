@@ -2,6 +2,8 @@
  * This fake seam proves no native authority/certificate/price. The separate native-budget suite
  * exercises real proof custody/SQL. Frozen tracked plans/source bindings are read normally.
  */
+import {randomUUID} from 'node:crypto';
+import type {governedAiConfig,withAiAdmissionLifecycle,AiAdmissionLifecycle} from '../core/ai-governance';
 import {mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -9,7 +11,7 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import type {withReviewedAiSpendDispatch} from '../core/ai-spend-capability';
 import type {AiAdmission} from '../lib/ai/governance';
 import type {ResolvedAiConfig} from '../lib/ai/types';
-import {bindNativeEvalDispatch,createModelEvalSession,type EvalGrade} from './helpers/ai-eval-session';
+import {bindNativeEvalDispatch,bindNativeEvalGovernance,createModelEvalSession,type EvalGrade} from './helpers/ai-eval-session';
 
 type Session=NonNullable<ReturnType<typeof createModelEvalSession>>;
 type Case={id:string;requiresModel:boolean;dependsOn:string|null;quality:{criteria:string[]}};
@@ -19,14 +21,23 @@ const configuration:ResolvedAiConfig={provider:'openrouter',model:'openai/gpt-6-
 const request:Readonly<AiAdmission>=Object.freeze({operation:'conversation',reservedTokens:1,inputDigest:'a'.repeat(64)});
 const envelope=Object.freeze({capabilityDigest:'b'.repeat(64),requestDigest:'a'.repeat(64),reservedNanos:'1'});
 // Intentionally fake proof owner. Never reuse this as native authorization or real carrier evidence.
-const fakeNative:typeof withReviewedAiSpendDispatch=async(_envelope,_configuration,_request,consume)=>consume();
+let fictionalHooks:AiAdmissionLifecycle={};
+const fakeNative:typeof withReviewedAiSpendDispatch=async(_envelope,_configuration,input,consume)=>{
+ await fictionalHooks.admitted?.({} as Parameters<NonNullable<AiAdmissionLifecycle['admitted']>>[0],{runId:randomUUID(),request:input});
+ return consume();
+};
+let fictionalConfiguration:typeof governedAiConfig;
 let dispatch:typeof withReviewedAiSpendDispatch,directory:string;
 const sessions:Session[]=[];
 const grade=(row:Case):EvalGrade=>({findings:[],criteria:Object.fromEntries(row.quality.criteria.map(id=>[id,'met' as const]))});
 const cases=(session:Session)=>session.plan.cases as Case[];
 function session(){
   const value=createModelEvalSession(carrier);if(!value)throw Error('Expected requested fictional session');
-  sessions.push(value);return value;
+  sessions.push(value);
+  // Explicitly fake lifecycle authority for mechanics only; the separate native suite proves custody.
+  fictionalConfiguration({tenantId:'11111111-1111-4111-8111-111111111111'} as Parameters<typeof governedAiConfig>[0],
+    {} as Parameters<typeof governedAiConfig>[1],'hr_assistant');
+  return value;
 }
 const post=()=>fetch('https://openrouter.ai/api/v1/chat/completions',{
   method:'POST',body:JSON.stringify({model:'openai/gpt-6-luna',messages:[{role:'user',content:'Fictional mechanics only'}]}),
@@ -44,6 +55,7 @@ beforeEach(()=>{
   // Installed BEFORE a session captures fetch; every underlying call is fictional and local.
   vi.stubGlobal('fetch',vi.fn(async()=>new Response('fictional HTTP result')));
   dispatch=bindNativeEvalDispatch(fakeNative);
+  fictionalConfiguration=bindNativeEvalGovernance(()=>configuration,((cfg,_feature,hooks)=>{fictionalHooks=hooks;return cfg;}) as typeof withAiAdmissionLifecycle);
 });
 afterEach(()=>{
   // Finish even failed assertions; an already finalized receipt is idempotent.

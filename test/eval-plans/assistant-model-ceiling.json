@@ -28,11 +28,15 @@
   },
   {
    "path": "test/helpers/ai-eval-session.ts",
-   "sha256": "b83c579c03f72b59108d2920019186d13afc5971a0c20c5132a7022c2b992b81"
+   "sha256": "293d4ede32d4b3231fc38d208bdced3a703dbf430852abedc6ea033f630e6427"
   },
   {
    "path": "test/helpers/ai-eval-native-budget.ts",
    "sha256": "d99346fbda13e0c0b67c6f07ada82441e9fb5335176cf31a662a300236300d6e"
+  },
+  {
+   "path": "test/helpers/ai-eval-native-witness.ts",
+   "sha256": "a8ca4e42f475003ad1be9377bda1fd6b08c1bc55eae7c91dd564519fc3f9e353"
   },
   {
    "path": "test/helpers/ai-eval-hr-snapshot.ts",
@@ -48,7 +52,7 @@
   },
   {
    "path": "test/assistant-model-ceiling.eval.test.ts",
-   "sha256": "7a988efdd1e9096fd58649b84d010d03d37917408d57847a316f33e0f0446693"
+   "sha256": "5914e335bb830c6d221aedef15a87fd4be5e93e6bc2ad7ceb875163237e4cf3b"
   }
  ],
  "cases": [

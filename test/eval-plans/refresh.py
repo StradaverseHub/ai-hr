@@ -101,6 +101,7 @@ review = 'docs/reviews/ai-eval-corpus-contract-20261103.md'
 common = [builder, 'test/explainer-corpus.ts', 'test/harness-sensitive-corpus.ts',
           'test/assistant-behaviour-score.ts', 'test/assistant-corpus-review.ts',
           'test/helpers/ai-eval-session.ts', 'test/helpers/ai-eval-native-budget.ts',
+          'test/helpers/ai-eval-native-witness.ts',
           'test/helpers/ai-eval-hr-snapshot.ts', 'test/helpers/ai-eval-grade.ts', review]
 for carrier, name, repeats, population in [
     ('test/assistant-model-ceiling.eval.test.ts', 'assistant-model-ceiling', 3, rows),

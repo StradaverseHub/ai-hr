@@ -1,7 +1,7 @@
 /** Controller-only regressions; no app imports, database, compiler or provider calls. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {parseSelection, partitionSelection, verifyFocusedResult, classifierEnvironment, admitFocusedEvaluation} from './focused-checks.mjs';
+import {parseSelection, partitionSelection, verifyFocusedResult, classifierEnvironment, admitFocusedEvaluation, captureNativeBudgetScope} from './focused-checks.mjs';
 
 const files = ['test/example.test.ts', 'test/screen.dom.test.tsx'];
 test('Manifest retains exact file identities and sorts a copied selection', () => {
@@ -176,3 +176,28 @@ test('ordinary classifier preflight does not load an eval plan or require a paid
   assert.deepEqual(admitFocusedEvaluation({env: {}, files, identity: undefined,
     loadPlan() { throw Error('ordinary CI must not load an evaluation plan'); }}), {request: null, plan: null});
 });
+
+// Scope parsing is not authority: only a trusted admission callback may supply this context.
+test('native scope is a copied fixed allocation, including fractional-dollar caps', () => {
+  const scope={tenantId:'11111111-1111-4111-8111-111111111111',allocationNanos:'100000000',maxAttempts:1500};
+  const captured=captureNativeBudgetScope(scope,{budgetUsd:0.1});
+  assert.notEqual(captured,scope);assert.ok(Object.isFrozen(captured));
+  scope.tenantId='22222222-2222-4222-8222-222222222222';
+  assert.equal(captured.tenantId,'11111111-1111-4111-8111-111111111111');
+});
+for(const change of [undefined,{}, {tenantId:'invalid',allocationNanos:'15000000000',maxAttempts:1500},
+  {tenantId:'00000000-0000-0000-0000-000000000000',allocationNanos:'15000000000',maxAttempts:1500},
+  {tenantId:'11111111-1111-4111-8111-111111111111',allocationNanos:'16000000000',maxAttempts:1500},
+  {tenantId:'11111111-1111-4111-8111-111111111111',allocationNanos:'15000000000',maxAttempts:1}]) {
+ test('native controller refuses missing or mismatched independently admitted scope: '+JSON.stringify(change),()=>{
+  const {request,identity}=requestedEvalContext();let classifications=0;
+  const env={AIHR_EVAL_MODEL:request.model,AIHR_EVAL_OPENROUTER_KEY:'fictional',AIHR_EVAL_BUDGET_USD:'15',
+    AIHR_EVAL_ALLOWED_PROVIDERS:'azure',AIHR_EVAL_REPEATS:'1',AIHR_EVAL_PROFILE:'fixture'};
+  assert.throws(()=>{
+   admitFocusedEvaluation({env,files:[evalFile],identity,loadPlan:()=>({}),budgetAdmission:()=>({admitted:true,nativeScope:change}),
+    budgetVerifier:()=>false,nativeVerification:true});
+   classifications++;
+  },/independent native scope/);
+  assert.equal(classifications,0);
+ });
+}

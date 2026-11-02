@@ -32,6 +32,11 @@ import {SENSITIVE_CORPUS} from '../harness-sensitive-corpus';
 import {adminCtx,closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,seedEntitlement,setModule,type Base} from '../harness';
 import {UNSEEN_CORPUS,type UnseenTurn} from './teras-review-unseen-corpus';
 
+vi.mock('../../core/ai-governance',async original=>{
+ const actual=await original<typeof import('../../core/ai-governance')>();
+ const {bindNativeEvalGovernance}=await import('../helpers/ai-eval-session');
+ return {...actual,governedAiConfig:bindNativeEvalGovernance(actual.governedAiConfig,actual.withAiAdmissionLifecycle)};
+});
 vi.mock('../../core/ai-spend-capability',async original=>{
  const actual=await original<typeof import('../../core/ai-spend-capability')>();
  const helper=await import('../helpers/ai-eval-session');

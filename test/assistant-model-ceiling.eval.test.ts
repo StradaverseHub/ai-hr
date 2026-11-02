@@ -36,6 +36,11 @@ import {conversationRoute} from '../core/teras-wiring/switch';
 import {runConversationTurn} from '../core/teras-wiring/turn';
 import {encryptSecret} from '../lib/ai/crypto';
 // Additive instrumentation: the original native owner still validates every opaque proof.
+vi.mock('../core/ai-governance',async original=>{
+ const actual=await original<typeof import('../core/ai-governance')>();
+ const {bindNativeEvalGovernance}=await import('./helpers/ai-eval-session');
+ return {...actual,governedAiConfig:bindNativeEvalGovernance(actual.governedAiConfig,actual.withAiAdmissionLifecycle)};
+});
 vi.mock('../core/ai-spend-capability',async original=>{
  const actual=await original<typeof import('../core/ai-spend-capability')>();
  const {bindNativeEvalDispatch}=await import('./helpers/ai-eval-session');

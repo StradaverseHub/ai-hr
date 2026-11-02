@@ -3,6 +3,7 @@
  * No authority/privacy mock, real key or network. This is not a live paid-carrier attestation.
  */
 import {sql} from 'drizzle-orm';
+import {readNativeLedger,readOwnedNativeLedger} from '../.github/ci/eval/native-ledger-reader.mjs';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant,type SessionContext} from '../db/client';
 import {aiProviderConfig} from '../db/schema';
@@ -88,6 +89,14 @@ describe('native evaluation run witness without authority mocks or real provider
     expect(attempts[0].requestDigest).toBe(attempts[1].requestDigest);
     expect(new Set(attempts.map(row=>row.runId)).size).toBe(2);expect(new Set(rows.map(row=>row.rootId)).size).toBe(2);
     expect(rows).toHaveLength(2);
+    const independent=await readNativeLedger(owner.client,{tenantId:ctx.tenantId,maxAttempts:1500});
+    expect(independent).toHaveLength(2);
+    const controllerRows=readOwnedNativeLedger({tenantId:ctx.tenantId,maxAttempts:1500},process.env);
+    expect(controllerRows).toEqual(independent);
+    expect(()=>readOwnedNativeLedger({tenantId:ctx.tenantId,maxAttempts:1},process.env)).toThrow('Independent native evaluation ledger unavailable');
+    expect(new Set(independent.map((row:Row)=>row.runId))).toEqual(new Set(rows.map(row=>row.runId)));
+    expect(independent.every((row:Row&{tenantId:string;featureId:string})=>row.tenantId===ctx.tenantId&&row.featureId==='hr_assistant')).toBe(true);
+    await expect(readNativeLedger(owner.client,{tenantId:ctx.tenantId,maxAttempts:1})).rejects.toThrow('Independent native evaluation ledger unavailable');
     for(const attempt of attempts){const row=rows.find(item=>item.runId===attempt.runId)!;
       expect(row).toMatchObject({runId:attempt.runId,capabilityDigest:attempt.capabilityDigest,requestDigest:attempt.requestDigest,
         configurationDigest:attempt.configurationDigest,reservedNanos:attempt.ceilingNanos,confirmedNanos:null,
