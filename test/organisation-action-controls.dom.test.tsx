@@ -24,6 +24,14 @@ describe('configuration controls reflect independent action decisions',()=>{
   fireEvent.click(screen.getByRole('button',{name:en.admin.profileOptions.addRow}));
   expect(screen.getAllByRole('textbox').some(input=>!(input as HTMLInputElement).readOnly)).toBe(true);
  });
+ it('keeps profile-option category actions independent on an empty catalogue',()=>{
+  render(wrap(<ProfileOptionsGrid categories={['religion','race']} categoryActionControls={{religion:denied,race:{add:true,edit:false,delete:false}}} data={{religion:[],race:[]}} actions={{save:vi.fn(),remove:vi.fn()}}/>));
+  expect(screen.getByRole('button',{name:en.admin.profileOptions.addRow})).toHaveProperty('disabled',true);
+  fireEvent.click(screen.getByRole('button',{name:new RegExp(en.admin.profileOptions.category.race)}));
+  expect(screen.getByRole('button',{name:en.admin.profileOptions.addRow})).toHaveProperty('disabled',false);
+  fireEvent.click(screen.getByRole('button',{name:en.admin.profileOptions.addRow}));
+  expect(screen.getAllByRole('textbox').some(field=>!(field as HTMLInputElement).readOnly)).toBe(true);
+ });
  it('switches label submenu controls independently within the same company',()=>{
   render(wrap(<SystemLabelsGrid data={{department:[],position:[],cost_center:[],business_unit:[]}} companies={[{id:'company-a',name:'Company A'}]} writableCompanyIds={['company-a']} kindActionControls={{department:{'company-a':denied},position:{'company-a':{add:true,edit:false,delete:false}}}} isGroupAdmin={false} actions={{save:vi.fn(),assign:vi.fn(),unassign:vi.fn(),setCriteria:vi.fn(),copyToCompanies:vi.fn()}}/>));
   expect(screen.getByRole('button',{name:en.admin.systemLabels.addRow})).toHaveProperty('disabled',true);

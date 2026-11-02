@@ -93,8 +93,10 @@ export function ProfileOptionsGrid({
   actions,
   hideRail = false,
   actionControls=LEGACY_CONFIGURATION_ACTION_CONTROLS,
+  categoryActionControls,
 }: {
   actionControls?:ConfigurationActionControls;
+  categoryActionControls?:Partial<Record<ProfileGridCategory,ConfigurationActionControls>>;
   categories: ProfileGridCategory[];
   data: Record<string, ProfileGridRecord[]>;
   actions: ProfileGridActions;
@@ -106,6 +108,7 @@ export function ProfileOptionsGrid({
 }) {
   const t = useTranslations('admin.profileOptions');
   const [category, setCategory] = useState<ProfileGridCategory>(categories[0]);
+  const currentActions=categoryActionControls?categoryActionControls[category]??{add:false,edit:false,delete:false}:actionControls;
   const [rowsByCat, setRowsByCat] = useState<Record<string, RowState[]>>(() => {
     const seed: Record<string, RowState[]> = {};
     for (const c of categories) seed[c] = (data[c] ?? []).map(toRow);
@@ -150,7 +153,7 @@ export function ProfileOptionsGrid({
     setRowsByCat((prev) => ({ ...prev, [category]: next }));
   }
   function updateCell(key: string, field: 'value' | 'label' | 'description' | 'sortOrder', value: string) {
-    const target=rows.find(r=>r.key===key);if(!target||!(target.isNew?actionControls.add:actionControls.edit))return;
+    const target=rows.find(r=>r.key===key);if(!target||!(target.isNew?currentActions.add:currentActions.edit))return;
     patchRows(
       rows.map((r) =>
         r.key === key ? { ...r, [field]: field === 'sortOrder' ? Number(value || 0) : value, dirty: true } : r,
@@ -158,11 +161,11 @@ export function ProfileOptionsGrid({
     );
   }
   function toggleActive(key: string) {
-    const target=rows.find(r=>r.key===key);if(!target||!(target.isNew?actionControls.add:actionControls.edit))return;
+    const target=rows.find(r=>r.key===key);if(!target||!(target.isNew?currentActions.add:currentActions.edit))return;
     patchRows(rows.map((r) => (r.key === key ? { ...r, isActive: !r.isActive, dirty: true } : r)));
   }
   function addRow() {
-    if(!actionControls.add)return;
+    if(!currentActions.add)return;
     draftSeq.current += 1;
     const nextSort = rows.reduce((m, r) => Math.max(m, r.sortOrder), -1) + 1;
     const draft: RowState = {
@@ -378,7 +381,7 @@ export function ProfileOptionsGrid({
             {showFilters ? <ChevronUp className="size-3.5" aria-hidden /> : <ChevronDown className="size-3.5" aria-hidden />}
           </button>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!actionControls.add}>
+            <Button type="button" variant="outline" size="sm" onClick={addRow} disabled={!currentActions.add}>
               {t('addRow')}
             </Button>
             <Button type="button" size="sm" onClick={save} disabled={!hasChanges || pending}>
@@ -475,7 +478,7 @@ export function ProfileOptionsGrid({
                         <input
                           data-cell={`value:${rowIdx}`}
                           value={r.value}
-                          readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'value', e.target.value)}
+                          readOnly={!(r.isNew?currentActions.add:currentActions.edit)} onChange={(e) => updateCell(r.key, 'value', e.target.value)}
                           onKeyDown={(e) => onCellKey(e, rowIdx, 'value')}
                           placeholder={t('valuePlaceholder')}
                           className={`${cellInput} w-full min-w-0 font-mono text-xs ${err ? 'border-destructive' : ''}`}
@@ -490,7 +493,7 @@ export function ProfileOptionsGrid({
                       <input
                         data-cell={`label:${rowIdx}`}
                         value={r.label}
-                        readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'label', e.target.value)}
+                        readOnly={!(r.isNew?currentActions.add:currentActions.edit)} onChange={(e) => updateCell(r.key, 'label', e.target.value)}
                         onKeyDown={(e) => onCellKey(e, rowIdx, 'label')}
                         placeholder={t('labelPlaceholder')}
                         className={`${cellInput} w-full min-w-0 ${err ? 'border-destructive' : ''}`}
@@ -500,7 +503,7 @@ export function ProfileOptionsGrid({
                       <input
                         data-cell={`description:${rowIdx}`}
                         value={r.description}
-                        readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'description', e.target.value)}
+                        readOnly={!(r.isNew?currentActions.add:currentActions.edit)} onChange={(e) => updateCell(r.key, 'description', e.target.value)}
                         onKeyDown={(e) => onCellKey(e, rowIdx, 'description')}
                         placeholder={t('descriptionPlaceholder')}
                         className={`${cellInput} w-full min-w-0`}
@@ -512,7 +515,7 @@ export function ProfileOptionsGrid({
                         type="number"
                         step="1"
                         value={r.sortOrder}
-                        readOnly={!(r.isNew?actionControls.add:actionControls.edit)} onChange={(e) => updateCell(r.key, 'sortOrder', e.target.value)}
+                        readOnly={!(r.isNew?currentActions.add:currentActions.edit)} onChange={(e) => updateCell(r.key, 'sortOrder', e.target.value)}
                         onKeyDown={(e) => onCellKey(e, rowIdx, 'sortOrder')}
                         aria-label={t('sortOrderLabel')}
                         className={`${cellInput} w-16`}
@@ -523,7 +526,7 @@ export function ProfileOptionsGrid({
                           made through it), restyled to StatusBadge's exact look while staying a button. */}
                       <button
                         type="button"
-                        disabled={!(r.isNew?actionControls.add:actionControls.edit)} onClick={() => toggleActive(r.key)}
+                        disabled={!(r.isNew?currentActions.add:currentActions.edit)} onClick={() => toggleActive(r.key)}
                         className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
                           r.isActive
                             ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
@@ -540,7 +543,7 @@ export function ProfileOptionsGrid({
                           <X className="size-3.5" aria-hidden />
                         </RowIconButton>
                       ) : (
-                        <RowIconButton title={t('delete')} onClick={() => actionControls.delete && setConfirmDelete(r)} disabled={!actionControls.delete}>
+                        <RowIconButton title={t('delete')} onClick={() => currentActions.delete && setConfirmDelete(r)} disabled={!currentActions.delete}>
                           <Trash2 className="size-3.5" aria-hidden />
                         </RowIconButton>
                       )}

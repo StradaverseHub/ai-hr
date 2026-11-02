@@ -55,7 +55,7 @@ export default async function SystemLabelsPage({
   const canViewOptions=await settingsAccess(s,'view','systemLabels.profileOptions');
   const settingsControls=async(key:string)=>({add:await settingsAccess(s,'add',key),edit:await settingsAccess(s,'edit',key),delete:await settingsAccess(s,'delete',key)});
   const gradeControls=await settingsControls('systemLabels.jobGrade');
-  const optionControls=await settingsControls('systemLabels.profileOptions');
+  const optionControls=Object.fromEntries(await Promise.all(EMPLOYMENT_PROFILE_CATEGORIES.map(async category=>[category,await settingsControls('systemLabels.profileOptions.'+category)])));
   const { error } = await searchParams;
   const t = await getTranslations('admin.systemLabels');
   // c9986927 — the relocated organisation categories keep their own existing i18n namespace; only their
@@ -83,7 +83,7 @@ export default async function SystemLabelsPage({
       canViewGrades?listJobGrades(s, { includeArchived: true }):[],
       // c9986927 — Division / Branch / Region / Line / Section / Team / Base / Category are maintained
       // here now. Like grades they are TENANT-WIDE, so they must NOT pass through company Criteria.
-      canViewOptions?listAllProfileOptions(s, { activeOnly: false }):({} as Partial<Awaited<ReturnType<typeof listAllProfileOptions>>>),
+      canViewOptions?listAllProfileOptions(s, { activeOnly: false,maintenance:true }):({} as Partial<Awaited<ReturnType<typeof listAllProfileOptions>>>),
       // 9a65f808 — grade groups, maintained here now for the same reason grades are: they are the
       // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
       // through company Criteria. Archived groups arrive too — the editor badges them and the editor is
@@ -231,7 +231,7 @@ export default async function SystemLabelsPage({
     count: (profileOptions[c] ?? []).filter((r) => r.isActive).length,
     body: (
       <ProfileOptionsGrid
-        actionControls={optionControls}
+        actionControls={optionControls[c]}
         key={c}
         hideRail
         categories={[c]}

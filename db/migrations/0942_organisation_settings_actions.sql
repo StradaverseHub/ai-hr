@@ -61,38 +61,61 @@ GRANT EXECUTE ON FUNCTION app.organisation_action_allowed(text,uuid),app.setting
 --> statement-breakpoint
 -- Exact native maintenance purposes. Dormant until the restricted publisher qualifies the full
 -- component; reference/picker reads keep their own native courses.
+CREATE FUNCTION app.organisation_profile_option_delegation_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NULL AND cap IN ('function.systemLabels.profileOptions.view','function.systemLabels.profileOptions.add','function.systemLabels.profileOptions.edit','function.systemLabels.profileOptions.delete')
+ AND app.organisation_settings_delegation_allowed(t,u,'settings.'||substring(cap from '[^.]+$'),NULL);
+$$;
+REVOKE ALL ON FUNCTION app.organisation_profile_option_delegation_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
 DO $functions$ DECLARE source record;operation text;BEGIN
  FOR source IN SELECT * FROM (VALUES
-('organization','company','organisation','nav.organization','screen','/admin/organization','organization',ARRAY['view','add','edit','delete']::text[]),
-('systemLabels.department','company','organisation','admin.systemLabels.category.department','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
-('systemLabels.position','company','organisation','admin.systemLabels.category.position','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
-('systemLabels.cost_center','company','organisation','admin.systemLabels.category.cost_center','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
-('systemLabels.business_unit','company','organisation','admin.systemLabels.category.business_unit','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
-('systemLabels.jobGrade','tenant','settings','admin.systemLabels.category.grade','submenu','/admin/settings/system-labels','systemLabels',ARRAY['view','add','edit','delete']::text[]),
-('systemLabels.profileOptions','tenant','settings','nav.profileOptions','submenu','/admin/settings/system-labels/profile-options','systemLabels',ARRAY['view','add','edit','delete']::text[]),
-('employeeIdConfig.company','company','organisation','nav.employeeIdConfig','submenu','/admin/settings/employee-id','employeeIdConfig',ARRAY['view','add','edit','delete']::text[]),
-('employeeIdConfig.global','tenant','settings','nav.employeeIdConfig','submenu','/admin/settings/employee-id','employeeIdConfig',ARRAY['view','add','edit','delete']::text[]),
-('peopleGeneral','tenant','settings','nav.peopleGeneral','screen','/admin/settings/people-general','peopleGeneral',ARRAY['view','edit']::text[]),
-('dashboardCardConfig','tenant','settings','nav.dashboardCardConfig','screen','/admin/settings/dashboard','dashboardCardConfig',ARRAY['view','add','edit','delete']::text[]),
-('loginPresentation','tenant','settings','nav.loginPresentation','screen','/admin/settings/login','loginPresentation',ARRAY['view','edit']::text[]),
-('workflowEmail','tenant','settings','nav.workflowEmail','screen','/admin/settings/notifications','workflowEmail',ARRAY['view','edit']::text[]),
-('emailTemplates','tenant','settings','nav.emailTemplates','screen','/admin/settings/email-templates','emailTemplates',ARRAY['view','edit']::text[]),
-('entra','tenant','settings','nav.entra','screen','/admin/settings/entra','entra',ARRAY['view','edit']::text[]),
-('aiConfig','tenant','settings','nav.aiConfig','screen','/control-tower/agents/provider','aiConfig',ARRAY['view','add','edit','delete']::text[]),
-('systemTesting','tenant','settings','nav.systemTesting','screen','/admin/system-testing','systemTesting',ARRAY['view','add','edit','delete']::text[]),
-('systemExplorer','tenant','settings','nav.systemExplorer','screen','/admin/system-explorer','systemExplorer',ARRAY['view']::text[])
- ) definitions(key,scope,parent,label,kind,href,screen,operations) LOOP
+('organization','company','organisation','nav.organization','screen','/admin/organization','organization','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.department','company','organisation','admin.systemLabels.category.department','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.position','company','organisation','admin.systemLabels.category.position','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.cost_center','company','organisation','admin.systemLabels.category.cost_center','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.business_unit','company','organisation','admin.systemLabels.category.business_unit','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.jobGrade','tenant','settings','admin.systemLabels.category.grade','submenu','/admin/settings/system-labels','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions','tenant','settings','nav.profileOptions','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('employeeIdConfig.company','company','organisation','nav.employeeIdConfig','submenu','/admin/settings/employee-id','employeeIdConfig','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('employeeIdConfig.global','tenant','settings','nav.employeeIdConfig','submenu','/admin/settings/employee-id','employeeIdConfig','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('peopleGeneral','tenant','settings','nav.peopleGeneral','screen','/admin/settings/people-general','peopleGeneral','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
+('dashboardCardConfig','tenant','settings','nav.dashboardCardConfig','screen','/admin/settings/dashboard','dashboardCardConfig','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('loginPresentation','tenant','settings','nav.loginPresentation','screen','/admin/settings/login','loginPresentation','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
+('workflowEmail','tenant','settings','nav.workflowEmail','screen','/admin/settings/notifications','workflowEmail','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
+('emailTemplates','tenant','settings','nav.emailTemplates','screen','/admin/settings/email-templates','emailTemplates','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
+('entra','tenant','settings','nav.entra','screen','/admin/settings/entra','entra','app.organisation_settings_delegation_allowed',ARRAY['view','edit']::text[]),
+('aiConfig','tenant','settings','nav.aiConfig','screen','/control-tower/agents/provider','aiConfig','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemTesting','tenant','settings','nav.systemTesting','screen','/admin/system-testing','systemTesting','app.organisation_settings_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemExplorer','tenant','settings','nav.systemExplorer','screen','/admin/system-explorer','systemExplorer','app.organisation_settings_delegation_allowed',ARRAY['view']::text[]),
+('systemLabels.profileOptions.religion','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.religion','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.race','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.race','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.nationality','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.nationality','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.state','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.state','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.country','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.country','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.relationship','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.relationship','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.salutation','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.salutation','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.division','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.division','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.branch','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.branch','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.region','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.region','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.line','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.line','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.section','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.section','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.team','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.team','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.base','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.base','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.category','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.category','submenu','/admin/settings/system-labels','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.dependentRelationship','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.dependentRelationship','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[]),
+('systemLabels.profileOptions.qualificationLevel','tenant','function.systemLabels.profileOptions','admin.profileOptions.category.qualificationLevel','submenu','/admin/settings/system-labels/profile-options','systemLabels','app.organisation_profile_option_delegation_allowed',ARRAY['view','add','edit','delete']::text[])
+ ) definitions(key,scope,parent,label,kind,href,screen,floor,operations) LOOP
   FOREACH operation IN ARRAY source.operations LOOP
-   PERFORM app.register_function_action(source.key,operation,source.scope,source.parent||'.'||operation,'app.organisation_settings_delegation_allowed',
-    jsonb_build_object('moduleKey',source.parent,'labelKey',source.label,'kind',source.kind,'course','administrative','screenKey',source.screen,'href',source.href,'employeeBearing',false));
+   PERFORM app.register_function_action(source.key,operation,source.scope,source.parent||'.'||operation,source.floor,
+    jsonb_build_object('moduleKey',CASE WHEN source.parent LIKE 'function.%' THEN 'settings' ELSE source.parent END,'labelKey',source.label,'kind',source.kind,'course','administrative','screenKey',source.screen,'href',source.href,'employeeBearing',false));
   END LOOP;
  END LOOP;
 END $functions$;
 CREATE FUNCTION app.organisation_settings_function_legacy_allowed(t uuid,u uuid,cap text,co uuid) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
- WHERE f.capability_id=cap AND f.parent_capability ~ '^(organisation|settings)\.'
- AND app.organisation_settings_legacy_allowed(t,u,f.parent_capability,co)
+ WHERE f.capability_id=cap AND (f.parent_capability ~ '^(organisation|settings)\.' OR f.function_key LIKE 'systemLabels.profileOptions.%' AND f.parent_capability='function.systemLabels.profileOptions.'||f.operation)
+ AND app.organisation_settings_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
  AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key='workflowEmail' AND f.operation<>'view')
   OR EXISTS(SELECT 1 FROM public.role_assignment r WHERE r.tenant_id=t AND r.app_user_id=u AND r.role::text IN ('hr_admin','super_admin') AND r.company_id IS NULL)));
 $$;
@@ -101,15 +124,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT t=app.current_tenant_id() AND u=app.current_user_id() AND app.principal_snapshot_current()
  AND app.organisation_settings_function_legacy_allowed(t,u,cap,co)
  AND EXISTS(SELECT 1 FROM app.access_function_action f WHERE f.capability_id=cap
- AND app.organisation_settings_current_legacy_allowed(t,u,f.parent_capability,co)
+ AND app.organisation_settings_current_legacy_allowed(t,u,CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN 'settings.'||f.operation ELSE f.parent_capability END,co)
  AND (f.function_key NOT IN ('employeeIdConfig.global','peopleGeneral','loginPresentation','emailTemplates','entra') AND NOT(f.function_key='workflowEmail' AND f.operation<>'view') OR app.is_group_admin()));
 $$;
 CREATE FUNCTION app.organisation_settings_function_allowed(p_key text,p_operation text,p_company uuid DEFAULT NULL) RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.access_function_action f JOIN app.access_function_definition d USING(function_key)
- WHERE f.function_key=p_key AND f.operation=p_operation AND f.parent_capability ~ '^(organisation|settings)\.'
+ WHERE f.function_key=p_key AND f.operation=p_operation AND (f.parent_capability ~ '^(organisation|settings)\.' OR f.function_key LIKE 'systemLabels.profileOptions.%' AND f.parent_capability='function.systemLabels.profileOptions.'||f.operation)
  AND app.organisation_settings_function_current_legacy_allowed(app.current_tenant_id(),app.current_user_id(),f.capability_id,p_company)
- AND CASE WHEN f.parent_capability LIKE 'settings.%' THEN app.settings_action_allowed(p_operation) ELSE app.organisation_action_allowed(p_operation,p_company) END
+ AND CASE WHEN f.function_key LIKE 'systemLabels.profileOptions.%' THEN app.organisation_settings_function_allowed('systemLabels.profileOptions',p_operation,NULL) WHEN f.parent_capability LIKE 'settings.%' THEN app.settings_action_allowed(p_operation) ELSE app.organisation_action_allowed(p_operation,p_company) END
  AND CASE WHEN d.scope='company' AND p_company IS NULL THEN app.function_global_action_allowed(p_key,p_operation) ELSE app.function_action_allowed(p_key,p_operation,p_company) END);
 $$;
 REVOKE ALL ON FUNCTION app.organisation_settings_function_legacy_allowed(uuid,uuid,text,uuid),app.organisation_settings_function_current_legacy_allowed(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
@@ -191,7 +214,8 @@ BEGIN
    IF TG_OP='INSERT' AND NOT (a->>'allow_duplicated_nric')::boolean AND NOT (a->>'allow_duplicated_email')::boolean AND (a->>'admission_version')::bigint=1 THEN RETURN NEW;END IF;
    op:='edit';
   END IF;
-  function_key:=CASE TG_TABLE_NAME WHEN 'job_grade' THEN 'systemLabels.jobGrade' WHEN 'profile_option' THEN 'systemLabels.profileOptions' WHEN 'people_general_policy' THEN 'peopleGeneral' WHEN 'dashboard_card_config' THEN 'dashboardCardConfig' WHEN 'login_presentation' THEN 'loginPresentation' WHEN 'email_design' THEN 'emailTemplates' WHEN 'email_design_version' THEN 'emailTemplates' WHEN 'email_asset' THEN 'emailTemplates' WHEN 'notification_email_policy' THEN 'workflowEmail' WHEN 'ai_provider_config' THEN 'aiConfig' WHEN 'entra_connector' THEN 'entra' WHEN 'test_case' THEN 'systemTesting' WHEN 'test_case_version' THEN 'systemTesting' WHEN 'test_assignment' THEN 'systemTesting' WHEN 'test_catalogue_update' THEN 'systemTesting' ELSE NULL END;
+  IF TG_TABLE_NAME='profile_option' AND TG_OP='UPDATE' AND b->>'category' IS DISTINCT FROM a->>'category' THEN RAISE EXCEPTION 'Profile option category is immutable' USING ERRCODE='42501';END IF;
+  function_key:=CASE TG_TABLE_NAME WHEN 'job_grade' THEN 'systemLabels.jobGrade' WHEN 'profile_option' THEN 'systemLabels.profileOptions.'||(r->>'category') WHEN 'people_general_policy' THEN 'peopleGeneral' WHEN 'dashboard_card_config' THEN 'dashboardCardConfig' WHEN 'login_presentation' THEN 'loginPresentation' WHEN 'email_design' THEN 'emailTemplates' WHEN 'email_design_version' THEN 'emailTemplates' WHEN 'email_asset' THEN 'emailTemplates' WHEN 'notification_email_policy' THEN 'workflowEmail' WHEN 'ai_provider_config' THEN 'aiConfig' WHEN 'entra_connector' THEN 'entra' WHEN 'test_case' THEN 'systemTesting' WHEN 'test_case_version' THEN 'systemTesting' WHEN 'test_assignment' THEN 'systemTesting' WHEN 'test_catalogue_update' THEN 'systemTesting' ELSE NULL END;
   IF function_key IS NOT NULL AND NOT app.organisation_settings_function_allowed(function_key,op,NULL) THEN RAISE EXCEPTION 'Settings function unavailable' USING ERRCODE='42501';END IF;
   IF NOT app.settings_action_allowed(op) THEN RAISE EXCEPTION 'Settings action unavailable' USING ERRCODE='42501';END IF;
  ELSIF TG_TABLE_NAME='employee_id_config' THEN
@@ -248,7 +272,7 @@ REVOKE ALL ON FUNCTION app.organisation_settings_write_guard() FROM PUBLIC,ai_hr
 DO $$DECLARE name text;BEGIN
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit','job_grade','profile_option','employee_id_config','people_general_policy','label_company_assignment','company_logo','dashboard_card_config','login_presentation','tenant_setting','email_design','email_design_version','email_asset','notification_email_policy','ai_provider_config','entra_connector','test_case','test_case_version','test_assignment','test_catalogue_update'] LOOP
  -- Provider configuration is upserted: only the successful row operation determines Add/Edit.
- EXECUTE format('CREATE TRIGGER organisation_settings_action %s INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_settings_write_guard()',CASE WHEN name='ai_provider_config' THEN 'AFTER' ELSE 'BEFORE' END,name);
+ EXECUTE format('CREATE TRIGGER organisation_settings_action %s INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_settings_write_guard()',CASE WHEN name IN ('ai_provider_config','profile_option') THEN 'AFTER' ELSE 'BEFORE' END,name);
  END LOOP;
  FOREACH name IN ARRAY ARRAY['company','department','position','cost_center','business_unit'] LOOP
  EXECUTE format('CREATE TRIGGER a00_organisation_successful_birth AFTER INSERT ON public.%I FOR EACH ROW EXECUTE FUNCTION app.organisation_remember_birth()',name);

@@ -13,7 +13,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "organization"
+  "screenKey": "organization",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemLabels.department",
@@ -28,7 +29,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemLabels"
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemLabels.position",
@@ -43,7 +45,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemLabels"
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemLabels.cost_center",
@@ -58,7 +61,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemLabels"
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemLabels.business_unit",
@@ -73,7 +77,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemLabels"
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemLabels.jobGrade",
@@ -88,7 +93,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemLabels"
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemLabels.profileOptions",
@@ -103,7 +109,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemLabels"
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "employeeIdConfig.company",
@@ -118,7 +125,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "employeeIdConfig"
+  "screenKey": "employeeIdConfig",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "employeeIdConfig.global",
@@ -133,7 +141,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "employeeIdConfig"
+  "screenKey": "employeeIdConfig",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "peopleGeneral",
@@ -146,7 +155,8 @@ const sourceFunctions=[
    "view",
    "edit"
   ],
-  "screenKey": "peopleGeneral"
+  "screenKey": "peopleGeneral",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "dashboardCardConfig",
@@ -161,7 +171,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "dashboardCardConfig"
+  "screenKey": "dashboardCardConfig",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "loginPresentation",
@@ -174,7 +185,8 @@ const sourceFunctions=[
    "view",
    "edit"
   ],
-  "screenKey": "loginPresentation"
+  "screenKey": "loginPresentation",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "workflowEmail",
@@ -187,7 +199,8 @@ const sourceFunctions=[
    "view",
    "edit"
   ],
-  "screenKey": "workflowEmail"
+  "screenKey": "workflowEmail",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "emailTemplates",
@@ -200,7 +213,8 @@ const sourceFunctions=[
    "view",
    "edit"
   ],
-  "screenKey": "emailTemplates"
+  "screenKey": "emailTemplates",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "entra",
@@ -213,7 +227,8 @@ const sourceFunctions=[
    "view",
    "edit"
   ],
-  "screenKey": "entra"
+  "screenKey": "entra",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "aiConfig",
@@ -228,7 +243,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "aiConfig"
+  "screenKey": "aiConfig",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemTesting",
@@ -243,7 +259,8 @@ const sourceFunctions=[
    "edit",
    "delete"
   ],
-  "screenKey": "systemTesting"
+  "screenKey": "systemTesting",
+  "floor": "app.organisation_settings_delegation_allowed"
  },
  {
   "key": "systemExplorer",
@@ -255,12 +272,285 @@ const sourceFunctions=[
   "operations": [
    "view"
   ],
-  "screenKey": "systemExplorer"
+  "screenKey": "systemExplorer",
+  "floor": "app.organisation_settings_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.religion",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.religion",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.race",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.race",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.nationality",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.nationality",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.state",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.state",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.country",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.country",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.relationship",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.relationship",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.salutation",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.salutation",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.division",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.division",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.branch",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.branch",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.region",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.region",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.line",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.line",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.section",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.section",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.team",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.team",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.base",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.base",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.category",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.category",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.dependentRelationship",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.dependentRelationship",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
+ },
+ {
+  "key": "systemLabels.profileOptions.qualificationLevel",
+  "scope": "tenant",
+  "parent": "function.systemLabels.profileOptions",
+  "labelKey": "admin.profileOptions.category.qualificationLevel",
+  "kind": "submenu",
+  "href": "/admin/settings/system-labels/profile-options",
+  "operations": [
+   "view",
+   "add",
+   "edit",
+   "delete"
+  ],
+  "screenKey": "systemLabels",
+  "floor": "app.organisation_profile_option_delegation_allowed"
  }
 ] as const;
 export const ORGANISATION_SETTINGS_FUNCTIONS:readonly FunctionActionDescriptor[]=sourceFunctions.map(row=>({
- key:row.key,scope:row.scope,moduleKey:row.parent,labelKey:row.labelKey,kind:row.kind,course:'administrative',screenKey:row.screenKey,href:row.href,employeeBearing:false,
- actions:row.operations.map(operation=>({operation,parentCapability:row.parent+'.'+operation,delegationFloorFunction:'app.organisation_settings_delegation_allowed',bindings:[{owner:'app.organisation_settings_function_allowed',operation},{owner:'app.organisation_settings_write_guard',operation:'native-source-purpose'}]})),
+ key:row.key,scope:row.scope,moduleKey:row.parent.startsWith('function.')?'settings':row.parent,labelKey:row.labelKey,kind:row.kind,course:'administrative',screenKey:row.screenKey,href:row.href,employeeBearing:false,
+ actions:row.operations.map(operation=>({operation,parentCapability:row.parent+'.'+operation,delegationFloorFunction:row.floor,bindings:[{owner:'app.organisation_settings_function_allowed',operation},{owner:'app.organisation_settings_write_guard',operation:'native-source-purpose'}]})),
 }));
 /** Code-owned native action bindings. Publication refuses absent/unqualified owner prerequisites.
  * Existing role/company/native command floors remain authoritative; reference pickers are independent.
