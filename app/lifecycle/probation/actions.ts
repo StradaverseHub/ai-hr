@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter} from '@/packs/probation/service';
+import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
  try{const result=await work();revalidatePath('/lifecycle/probation','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,code:error instanceof Error&&error.name==='ProbationError'?'review':'unavailable',detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
@@ -26,3 +26,7 @@ export async function prepareLetter(input:Parameters<typeof prepareProbationLett
 export async function signLetter(input:Parameters<typeof actOnProbationLetter>[1]){return execute(async()=>actOnProbationLetter(await requireScopedLifecycleModule(),input));}
 
 export async function releaseLetter(input:Parameters<typeof releaseProbationLetter>[1]){return execute(async()=>releaseProbationLetter(await requireScopedLifecycleModule(),input));}
+
+export async function saveWorkflow(input:Parameters<typeof saveProbationWorkflow>[1]){return execute(async()=>saveProbationWorkflow(await requireScopedLifecycleModule(),input));}
+
+export async function previewWorkflow(input:Parameters<typeof previewProbationWorkflow>[1]){return execute(async()=>previewProbationWorkflow(await requireScopedLifecycleModule(),input));}

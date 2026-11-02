@@ -20,16 +20,16 @@ describe('source-bound probation letter interactions',()=>{
  it('requires a current server preview and invalidates it after an HR field changes',async()=>{
   show(<OutcomeEditor caseId={caseId} outcome={outcome} templates={definitions}/>);
   const prepare=screen.getByRole('button',{name:'Prepare for signatures'});expect(prepare).toBeDisabled();
-  fireEvent.change(screen.getByRole('textbox',{name:'Authorized HR note'}),{target:{value:'First note'}});fireEvent.click(screen.getByRole('button',{name:'Preview letter'}));
+  fireEvent.change(screen.getByRole('textbox',{name:/Authorized HR note/}),{target:{value:'First note'}});fireEvent.click(screen.getByRole('button',{name:'Preview letter'}));
   await waitFor(()=>expect(prepare).toBeEnabled());expect(screen.getByText('Dear Fictional Employee')).toBeInTheDocument();
-  fireEvent.change(screen.getAllByRole('textbox',{name:'Authorized HR note'})[0],{target:{value:'Changed note'}});expect(prepare).toBeDisabled();
+  fireEvent.change(screen.getAllByRole('textbox',{name:/Authorized HR note/})[0],{target:{value:'Changed note'}});expect(prepare).toBeDisabled();
   fireEvent.click(screen.getByRole('button',{name:'Preview letter'}));await waitFor(()=>expect(prepare).toBeEnabled());fireEvent.click(prepare);
   await waitFor(()=>expect(m.prepare).toHaveBeenCalledWith({outcomeId:'outcome',templateId:'template-version',edits:{note:'Changed note'},revision:4}));expect(m.prepare.mock.calls[0][0]).not.toHaveProperty('pdf');
  });
  it('preserves the preparer edits when native source validation refuses preparation',async()=>{
   m.prepare.mockResolvedValue({ok:false,detail:'Personnel changed. Review the current dates.'});show(<OutcomeEditor caseId={caseId} outcome={outcome} templates={definitions}/>);
-  fireEvent.change(screen.getByRole('textbox',{name:'Authorized HR note'}),{target:{value:'Retained draft'}});fireEvent.click(screen.getByRole('button',{name:'Preview letter'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Prepare for signatures'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Prepare for signatures'}));
-  await screen.findByRole('alert');expect(screen.getAllByRole('textbox',{name:'Authorized HR note'})[0]).toHaveValue('Retained draft');expect(m.push).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole('textbox',{name:/Authorized HR note/}),{target:{value:'Retained draft'}});fireEvent.click(screen.getByRole('button',{name:'Preview letter'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Prepare for signatures'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Prepare for signatures'}));
+  await screen.findByRole('alert');expect(screen.getAllByRole('textbox',{name:/Authorized HR note/})[0]).toHaveValue('Retained draft');expect(m.push).not.toHaveBeenCalled();
  });
  it('withholds employee signing until prior HR stages finish and offers no release to an employee',()=>{
   const signing={tenantId:'tenant',companyId:'company',subjectId:'letter',subjectType:'probation',contentRevision:1,contentHash:'a'.repeat(64),route:preview.route,actions:[]};

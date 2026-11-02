@@ -8,6 +8,7 @@ import type {ProbationCaseView,ProbationPartView,ProbationPart} from '@/packs/pr
 import {scoreProbationForm} from '@/lib/probation-form';
 import {pendingSigningSteps} from '@/lib/document-signing-model';
 import {SignatureInput,type SignatureInputLabels} from '@/components/lifecycle-v9/signature-input';
+import {EvidenceUpload} from './evidence-upload';
 import {AssessmentFields} from './assessment';
 import {ProbationFacts} from './facts';
 import {DraftGuard} from './draft-guard';
@@ -70,5 +71,6 @@ export function PartEditor({view,part,actor}:{view:ProbationCaseView;part:Probat
    {step&&part.allowedCommands.includes('return')&&<><label className="v9-field"><span>{t('returnReason')}</span><textarea value={reason} maxLength={5000} disabled={busy} onChange={e=>setReason(e.target.value)}/></label><button className="v9-button" type="button" disabled={busy||dirty||!reason.trim()} onClick={()=>run('return',{stepId:step.id})}>{t('returnReview')}</button></>}
   </section>
   {controls.length>0&&<section className="v9-panel v9-stack"><h2>{t('controls.title')}</h2><p className="v9-muted">{t('controls.help')}</p><label className="v9-field"><span>{t('reason')} *</span><textarea maxLength={5000} value={reason} disabled={busy} onChange={e=>setReason(e.target.value)}/></label><label className="v9-field"><span>{t('controls.owner')}</span><select value={owner} disabled={busy} onChange={e=>setOwner(e.target.value as 'employee'|'lm')}><option value="employee">{t('roles.employee')}</option><option value="lm">{t('roles.lm')}</option></select></label><div className="probation-actions">{controls.map(command=><button type="button" className="v9-button" key={command} disabled={busy||dirty||!reason.trim()} onClick={()=>run(command,{owner,months:draft.extensionMonths??undefined})}>{t('commands.'+command)}</button>)}</div></section>}
+  {view.roles.some(role=>role==='pbp'||role==='gbs')&&<EvidenceUpload caseId={view.record.id} partId={part.id} revision={part.storageRevision}/>}
  </main>;
 }

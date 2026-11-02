@@ -33907,7 +33907,13 @@
     },
     "files": {
       "title": "Filed documents",
-      "empty": "No documents have been filed yet."
+      "empty": "No documents have been filed yet.",
+      "tooLarge": "Choose a nonempty PDF up to 10 MB.",
+      "uploadRefused": "The upload could not be recorded. Check the PDF and current review, then try again. Your selected file and reason are retained.",
+      "uploadTitle": "Record an offline review",
+      "uploadHelp": "Upload the completed signed PDF with a reason. The original document is retained as evidence; this does not create a digital signature or release an outcome letter.",
+      "pdf": "Completed review PDF",
+      "upload": "Record PDF evidence"
     },
     "tracker": {
       "title": "Probation tracker",
@@ -34003,7 +34009,39 @@
       "title": "Intake and activation"
     },
     "workflows": {
-      "title": "Probation workflows"
+      "title": "Probation workflows",
+      "newName": "New probation notification",
+      "saved": "Saved workflows",
+      "add": "Add workflow",
+      "name": "Workflow name",
+      "description": "Description",
+      "event": "When this happens",
+      "part": "Review part",
+      "mergeHelp": "Message fields use double braces: {{employeeName}}, {{employeeCode}}, {{part}}, {{dueOn}}, {{endOn}}, {{companyName}}. Recipients always resolve from current scoped role holders.",
+      "subject": "Email subject",
+      "body": "Message",
+      "recipients": "Recipients",
+      "addMessage": "Add notification step",
+      "preview": "Preview matching cases and messages",
+      "previewHelp": "This preview sends nothing. It uses current scoped cases, matching conditions and the actual recipient roles.",
+      "previewCount": "{count} matching cases shown",
+      "truncated": "Showing the first 100 matching cases",
+      "held": "This event is held until the current readiness requirements are met.",
+      "noRecipient": "No eligible current recipient",
+      "events": {
+        "kpi_assigned": "Week 1 KPIs assigned",
+        "kpi_reminder": "Week 1 KPI reminder",
+        "kpi_overdue": "Week 1 KPIs overdue",
+        "review_issued": "Review issued",
+        "review_reminder": "Review reminder",
+        "review_due": "Review due",
+        "approval_pending": "Review approval pending",
+        "letter_released": "Outcome letter released",
+        "letter_signing_pending": "Outcome letter signature pending",
+        "letter_release_pending": "Signed letter release pending",
+        "letter_returned": "Outcome letter returned",
+        "overdue_summary": "Overdue summary"
+      }
     },
     "templates": {
       "title": "Outcome letter templates",
