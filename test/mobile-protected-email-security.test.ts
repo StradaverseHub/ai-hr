@@ -27,6 +27,7 @@ it('builds the real patched bundle and boots it under the supported private runt
   // Status refuses relay readiness with the absent lookup configuration and retains the Letters hold.
   // No dispatch, actor or credential request is submitted; no database/SMTP query is needed.
   expect(child.exitCode).toBeNull();
+  const status=await readFile('/proc/'+child.pid+'/status','utf8'),highWaterMatch=status.match(/^VmHWM:\s+(\d+) kB$/m);expect(highWaterMatch).not.toBeNull();const highWaterBytes=Number(highWaterMatch![1])*1024;expect(highWaterBytes).toBeGreaterThan(0);expect(highWaterBytes).toBeLessThan(192*1024*1024);console.log(JSON.stringify({kind:'PROTECTED_BUNDLE_STARTUP_RSS_OBSERVATION_NOT_CGROUP_LOAD_TEST',highWaterBytes,serviceMemoryMaxBytes:192*1024*1024}));
   if(process.env.GITHUB_ACTIONS==='true'&&process.env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&process.env.AIHR_CI_HEAD===manifest.source){
    const selected=JSON.parse(process.env.AIHR_FOCUSED_TESTS??'[]') as string[];
    if(selected.includes('test/mobile-protected-email-security.test.ts')){const output=join(realpathSync(process.env.RUNNER_TEMP!),'aihr-focused','protected-email-security');await mkdir(dirname(output),{recursive:true,mode:0o700});await cp(join(directory,'artifact'),output,{recursive:true,errorOnExist:true,force:false});}
