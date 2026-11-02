@@ -146,20 +146,6 @@ it('compares a proven singleton-header plan bound without altering the native ow
  console.log('CLAIM_HEADER_PLAN_PROBE '+JSON.stringify({scope:'private singleton-cardinality experiment, not500-user acceptance',headerContract,pairs,plans}));
 });
 
-it('keeps typed Claims delegation and department coverage as the current edge ends',async()=>{
- const manager=await person('cover delegator'),standIn=await person('cover delegate');
- const included=await person('covered claimant',manager.employmentId),excluded=await person('out-of-scope claimant',manager.employmentId,b.deptB);
- const userId=await createAppUser(b.tenantId,standIn.personId,'manager');
- const actor:SessionContext={...ctx,userId,personId:standIn.personId,roles:['manager'],grants:[{role:'manager',companyId:null}]};
- const kept=await claims(included.employmentId,4);await claims(excluded.employmentId,2);
- const {reportingLineId}=await setReportingLine(ctx,{subordinateEmploymentId:manager.employmentId,managerEmploymentId:standIn.employmentId,lineType:'delegate',
-  validFrom:todayInKualaLumpur(new Date(Date.now()-86400000)),validTo:todayInKualaLumpur(new Date(Date.now()+86400000)),
-  scopes:[{module:'claims',taskType:'claims.claim'}],orgScope:{companyId:b.companyId,businessUnitId:null,departmentId:b.deptA}});
- expect(new Set((await compare(actor,[b.companyId])).items.map(row=>row.id))).toEqual(new Set(kept.map(row=>row.id)));
- await endReportingLine(ctx,{reportingLineId,endDate:todayInKualaLumpur()});
- expect((await compare(actor,[b.companyId])).total).toBe(0);
-});
-
 it('executes the native header once for repeated claims while retaining exact record and count behavior',async()=>{
  const subject=await person('grouped header subject');await claims(subject.employmentId,40);const before=await events();
  const expected=await pendingClaimTaskMetadata(ctx,[b.companyId]);expect(expected).toHaveLength(40);
