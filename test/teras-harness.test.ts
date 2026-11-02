@@ -11,7 +11,8 @@ import {grantAssistant} from '../core/assistant-grant';
 import {hireEmployee} from '../core/org';
 import {ASSISTANT_TOOLS} from '../core/assistant-tools';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {HARNESS_TEST_ONLY,runTurn} from '../core/harness/runner';
+import {HARNESS_TEST_ONLY,roleNoteFor,runTurn} from '../core/harness/runner';
+import {HARNESS_SPEC} from '../core/harness/spec';
 import {InMemoryTaskMemoryStore} from '../core/harness/memory';
 import type {ModelRequest} from '../core/harness/model-client';
 import {scriptedModel,type ScriptStep} from './harness-ratchet/scripted-model';
@@ -82,5 +83,43 @@ describe('turn harness over native owners',()=>{
   expect(suggest.result.trace.calls[0]).toMatchObject({tool:'suggest_action',status:'refused'});
   expect(suggest.result.suggestion).toBeNull();expect(suggest.result.proposals).toEqual([]);
   expect(suggest.result.trace.outcome.fallback).toBe(false);
+ });
+ it('describes managers and payroll partners by their roles, offers them what it did before, and points pay refusals where each can see pay (spec v11)',async()=>{
+  await setModule(base.tenantId,'payroll','active');
+  const {employee,hr}=await people(),admin=adminCtx(base);
+  const login=async(role:'manager'|'payroll_partner',companyId:string|null):Promise<SessionContext>=>{
+   const person=await hireEmployee(admin,{person:{fullName:'Fictional Harness '+role,primaryEmail:randomUUID()+'@fixture.test'},companyId:base.companyId,departmentId:base.deptB,employmentType:'full_time',hiredOn:'2020-01-01'});
+   const [user]=await owner.db.insert(schema.appUser).values({tenantId:base.tenantId,workosUserId:'harness_'+randomUUID(),personId:person.personId}).returning({id:schema.appUser.id});
+   await owner.db.insert(schema.roleAssignment).values({tenantId:base.tenantId,appUserId:user.id,role,companyId});await grantAssistant(admin,{appUserId:user.id});
+   return{...await entitledCtx(base,[role]),userId:user.id,personId:person.personId,roles:[role],grants:[{role,companyId}]};
+  };
+  const partner=await login('payroll_partner',base.companyId),manager=await login('manager',null);
+  const ask=async(ctx:SessionContext,question:string,reply='Ok.')=>{const {result,model}=await turn(ctx,question,[{final:{reply,mode:'answer'}}]);
+   return{result,offered:model.requests[0].tools.map(tool=>tool.name),system:String(model.requests[0].messages[0].content)};};
+  // Their own work: the role note says so, and the offer is the provider's own, as before v11.
+  const close=await ask(partner,'close the September payroll');
+  expect(close.system).toContain(roleNoteFor(partner));expect(close.system).toContain('They manage payroll for their company');
+  expect(close.system).not.toMatch(/only their own records/);
+  expect(close.offered).toContain('pay_aggregates');expect(close.offered).toContain('suggest_action');
+  for(const adminOnly of ['setup_readiness','company_setup','setup_copilot'])expect(close.offered,adminOnly).not.toContain(adminOnly);
+  const team=await ask(manager,'who in my team has leave coming up?');
+  expect(team.system).toContain(HARNESS_SPEC.roleNote.manager);
+  for(const notTheirs of ['setup_readiness','company_setup','pay_aggregates'])expect(team.offered,notTheirs).not.toContain(notTheirs);
+  // The manager is offered exactly what an employee is on the same question: the manager sentence widened nothing.
+  const own=await ask(employee,'who in my team has leave coming up?');
+  expect(own.offered.slice().sort()).toEqual(team.offered.slice().sort());
+  // Issue 13: another person's pay. No read for anyone; the administrator is told the per-person payslip page.
+  const reply='Pay is not shown in chat; you can see it on [Individual Payslip](/payroll/individual-payslip).';
+  const asAdmin=await ask(hr,"what is Ravi's salary?",reply);
+  expect(asAdmin.result.trace.gate.reason).toBe('other_person');expect(asAdmin.result.reads).toEqual([]);
+  expect(asAdmin.system).toContain('[Individual Payslip](/payroll/individual-payslip)');
+  expect(asAdmin.result.trace.checks[0].results.every(row=>row.ok)).toBe(true);expect(asAdmin.result.reply).toBe(reply);
+  const asPartner=await ask(partner,"what was Siti's net pay in September?");
+  expect(asPartner.result.reads).toEqual([]);expect(asPartner.system).toContain(HARNESS_SPEC.payView.none);expect(asPartner.system).not.toContain('](/payroll');
+  // The same administrator's page is not linkable for the partner: the destination check refuses it.
+  const partnerLink=await ask(partner,"what was Siti's net pay in September?",reply);
+  expect(partnerLink.result.trace.checks[0].results.find(row=>row.check==='destination_links')?.ok).toBe(false);
+  const asEmployee=await ask(employee,"what is Ravi's salary?");
+  expect(asEmployee.result.reads).toEqual([]);expect(asEmployee.system).not.toContain('If they ask about this person\'s pay');
  });
 });

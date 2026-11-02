@@ -21,6 +21,8 @@ import {approvalQueueFor} from './approval-queue';
 import {companySetup,CompanySetupRefused} from './company-setup';
 import en from '../../messages/en.json';import ms from '../../messages/ms.json';import zh from '../../messages/zh.json';import vi from '../../messages/vi.json';import ta from '../../messages/ta.json';import th from '../../messages/th.json';
 const NAV_LABELS:Readonly<Record<string,Record<string,string>>>={en:en.nav,ms:ms.nav,zh:zh.nav,vi:vi.nav,ta:ta.nav,th:th.nav};
+/** A destination's label in the person's locale, as product_destinations gives it. */
+export const destinationLabel=(labelKey:string,locale?:string)=>(NAV_LABELS[locale??'en']??NAV_LABELS.en)[labelKey]??NAV_LABELS.en[labelKey]??labelKey;
 
 export type CapabilityEffect='read'|'context'|'prepare_review';
 export type Capability=Readonly<{name:string;effect:CapabilityEffect;module:string|null;sensitivity:'ordinary'|'pay'|'identity'|'configuration';
@@ -64,7 +66,7 @@ export async function runContextTool(ctx:SessionContext,name:string,input:unknow
  const value=input&&typeof input==='object'&&!Array.isArray(input)?input as Record<string,unknown>:null;if(!value)return{ok:false,refusal:'invalid_input'};
  if(name==='product_destinations'){
   // The sidebar's own module visibility owner; null means "no opinion" there, so no module filter here.
-  return{ok:true,content:destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>({href:row.href,label:(NAV_LABELS[scope.locale??'en']??NAV_LABELS.en)[row.labelKey]??NAV_LABELS.en[row.labelKey]??row.labelKey,module:row.module,
+  return{ok:true,content:destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>({href:row.href,label:destinationLabel(row.labelKey,scope.locale),module:row.module,
    ...(DESTINATION_PURPOSE[row.href]?{purpose:DESTINATION_PURPOSE[row.href]}:{})}))};
  }
  if(name==='product_guidance'){

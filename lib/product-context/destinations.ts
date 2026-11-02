@@ -18,7 +18,7 @@ import '@/packs/register-all';
 import {listPacks,type ModulePack,type NavChildDescriptor} from '@/packs/registry';
 import {V9_NAVIGATION} from '@/lib/lifecycle-v9-navigation';
 import {SECURITY_CENTER,SECURITY_PAGES} from '@/lib/security-center-navigation';
-import {isAdmin,hasTeamAccess} from '@/lib/authz-model';
+import {canManagePayroll,isAdmin,hasTeamAccess,withEffectiveGrants} from '@/lib/authz-model';
 import {MODULE_CODES_WITH_NAV} from '@/lib/nav-entitlements';
 import type {SessionContext} from '@/db/client';
 
@@ -234,4 +234,15 @@ export function linkablePathsFor(ctx:SessionContext,visibleModules?:readonly str
  const pages=LINKABLE_PAGES.filter(([,audience,module])=>(audience==='everyone'||(audience==='manager'&&manager)||(audience==='admin'&&admin))
   &&(module===null||visibleModules===undefined||!NAV_GATED.has(module)||visibleModules.includes(module))).map(([path])=>path);
  return Object.freeze([...new Set([...destinationsFor(ctx,visibleModules).map(row=>row.href.split(/[?#]/)[0]||'/'),...pages])]);
+}
+
+/** Issue 13 (scored evaluation, 3 November 2026): the pages where a caller with payroll access sees another person's
+ * pay, most specific first: the per-person payslip review, the transaction history, then the payroll workbench. */
+export const PAY_VIEW_PAGES=Object.freeze(['/payroll/individual-payslip','/payroll/transaction-view','/payroll'] as const);
+/** The first PAY_VIEW_PAGES destination among this caller's own linkable paths (linkablePathsFor), or null: without
+ * payroll access, or when none is linkable for them. Grants nothing and widens no list; the page's own guard decides. */
+export function payViewDestinationFor(ctx:SessionContext,linkable:readonly string[]):ProductDestination|null{
+ if(!canManagePayroll(withEffectiveGrants(ctx)))return null;
+ const href=PAY_VIEW_PAGES.find(path=>linkable.includes(path));
+ return href?productDestinations().find(row=>row.href===href)??null:null;
 }

@@ -21,11 +21,13 @@ describe('reply style (spec v9)',()=>{
   expect(instructions).not.toMatch(/short plain reply/);
   // Owner, 3 November 2026: ask rather than guess, and offer to do it rather than point at a page.
   expect(instructions).toMatch(/could mean more than one action, ask one short question with a numbered list of the matching options available_actions returns/);
-  expect(instructions).toMatch(/start with "Yes, I can …" and offer the choice: you prepare it here with them, or they open the page themselves\. Do not link that page in your text/);
-  expect(instructions).toMatch(/When you cannot do it, say so in one line/);
+  // Spec v11: "Yes, I can …" when an action is listed; the card carries the page (test/teras-harness-v11.test.ts).
+  expect(instructions).toMatch(/start with "Yes, I can …" and call suggest_action, so its card comes with your reply; never open with "I can't" when an action is listed\. Do not link that page in your text/);
+  expect(instructions).toMatch(/When no listed action fits, say so in one line/);
   // Issue 13: a pay refusal links where this person can already see pay, and sends only those without access elsewhere.
   expect(instructions).toMatch(/Individual pay never reaches you, so never give or estimate anyone's pay/);
-  expect(instructions).toMatch(/if product_destinations lists a payroll page this person can open, link it/);
+  // Spec v11: someone else's pay links only the page the harness names for this caller, never their own payslips.
+  expect(instructions).toMatch(/for their own pay, their own payslips page if product_destinations lists it; for someone else's pay, only the page a note in this conversation names, never their own payslips/);
   expect(instructions).toMatch(/Never send someone with access to "contact the payroll team"/);
   // Issue 18: "Medical Leave: 0 (withheld)" misread the ESS flag; a hidden part is never shown as 0.
   expect(instructions).toMatch(/withheld:true means the company hides some parts of that row; every figure that is present is real/);

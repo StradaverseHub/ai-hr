@@ -224,7 +224,7 @@ describe('AI Centre scored evaluation on fictional data',()=>{
       const proposals=result.proposals.filter(row=>Date.parse(row.body.createdAt)>=Date.parse(trace.startedAt)).map(row=>row.body.what.action);
       const obs:SmartEvalObservation={reply,mode:result.mode,fallback:trace.outcome.fallback,budgetExhausted:trace.budgets.exhausted,suggestion:result.suggestion?.action??null,proposals,
        inventedLinks:inventedLinks(reply),firstAttemptCheckFailures:(trace.checks.find(row=>row.attempt===1)?.results??[]).filter(check=>!check.ok).map(check=>check.check),
-       overclaim:overclaim(reply),identifierKinds:[...identifiersIn(reply)],leakedIds:identifiers.filter(id=>reply.includes(id)).length,fixedReply:fixedReplyOf(reply)};
+       overclaim:overclaim(reply,{prepared:proposals.length>0}),identifierKinds:[...identifiersIn(reply)],leakedIds:identifiers.filter(id=>reply.includes(id)).length,fixedReply:fixedReplyOf(reply)};
       pending.push({row:{...head,reply,mode:result.mode,gate:trace.gate.privateReads?'open':trace.gate.reason??'open',fallback:obs.fallback,budgetExhausted:obs.budgetExhausted,suggestion:obs.suggestion,proposals,reads:[...result.reads],
        steps:trace.budgets.steps,usd:trace.budgets.spendUsd,inputTokens:trace.budgets.inputTokens,outputTokens:trace.budgets.outputTokens,wallMs,
        truncated:trace.retries.filter(row=>row.reason==='truncated'||row.reason==='blank').length,firstAttemptCheckFailures:obs.firstAttemptCheckFailures,fixedReply:obs.fixedReply,calls},

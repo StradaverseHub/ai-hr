@@ -26,9 +26,11 @@
  * never confirms or writes a change. */
 import {createHash,randomUUID} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
-import {isAdmin} from '../../lib/authz-model';
+import {canManagePayroll,isAdmin,isGroupAdmin,withEffectiveGrants} from '../../lib/authz-model';
 import {todayInKualaLumpur} from '../../lib/hr-date';
+import {payViewDestinationFor} from '../../lib/product-context/destinations';
 import {gateTurn,isSensitiveReason,TURN_GATE_NOTE} from '../../lib/product-context/request-gate';
+import {destinationLabel} from '../product-context/tools';
 import {canonicalJson,type Proposal} from '../proposals/proposal';
 import {DisclosureLedger,discloseToolOutput,type DisclosureApplied} from './disclosure';
 import {fenceNonce,fenceUntrusted} from './fence';
@@ -96,6 +98,35 @@ export function offerFor(bindings:readonly ToolBinding[],gate:ReturnType<typeof 
  });
 }
 
+/** Spec v11: the caller profile, from the session's own roles and grants (lib/authz-model.ts): employee; manager;
+ * HR administrator with the companies their grants cover, or group administrator; payroll partner with theirs. It
+ * describes and never grants: the offer is fixed before it by offerFor, which never reads it, and every tool and
+ * review page still decides as the caller. Pure. */
+export function roleNoteFor(ctx:SessionContext):string{
+ const R=S.roleNote,grants=withEffectiveGrants(ctx).grants??[];
+ const caller:SessionContext={...ctx,grants,roles:ctx.roles??[...new Set(grants.map(grant=>grant.role))]};
+ const scopeOf=(roles:readonly string[])=>{const held=grants.filter(grant=>roles.includes(grant.role));
+  if(held.some(grant=>grant.companyId==null))return R.scope.group;
+  const companies=new Set(held.map(grant=>grant.companyId)).size;return companies>1?R.scope.many.replace('{n}',String(companies)):R.scope.one;};
+ const parts:string[]=[ctx.personId?R.employee:R.noRecord];
+ if(isGroupAdmin(caller))parts.push(R.groupAdmin);
+ else if(isAdmin(caller))parts.push(R.admin.replace('{scope}',scopeOf(['hr_admin','super_admin'])));
+ // An administrator already manages payroll (canManagePayroll unions the admin roles); a partner is described apart.
+ if(!isAdmin(caller)&&canManagePayroll(caller))parts.push(R.payroll.replace('{scope}',scopeOf(['payroll_partner'])));
+ if(caller.roles?.includes('manager'))parts.push(R.manager);
+ parts.push(R.tools);
+ return parts.join(' ');
+}
+
+/** Spec v11, issue 13: on a turn about another person, where a caller with payroll access can already see that
+ * person's pay, from the destination registry and this caller's own linkable paths, so the link passes the
+ * destination check. Null for a caller without payroll access: their turn is unchanged. No figure or id is in it. */
+export function payViewNoteFor(ctx:SessionContext,destinations:readonly string[],locale?:string):string|null{
+ if(!canManagePayroll(withEffectiveGrants(ctx)))return null;
+ const page=payViewDestinationFor(ctx,destinations);
+ return page?S.payView.page.replace('{label}',destinationLabel(page.labelKey,locale)).replace('{href}',page.href):S.payView.none;
+}
+
 /** The spec's contact route for a sensitive-topic turn. */
 export function routeReply():string{
  const {contact,routeReply:template,caseClause}=S.sensitive,route:string|null=contact.caseRoute;
@@ -105,7 +136,7 @@ export function routeReply():string{
 export async function runTurn(options:TurnOptions):Promise<TurnResult>{
  if(options.enabled===HARNESS_TEST_ONLY?!testProcess():!consumeHarnessPermit(options.enabled,options.ctx.tenantId,options.ctx.userId))throw new HarnessDisabled();
  const clock=options.clock??(()=>new Date()),started=clock(),startedMs=Date.now(),{ctx,model}=options;
- const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics}),admin=isAdmin(ctx);
+ const callerKey=authorityKey(ctx),gate=gateTurn(options.question,{sensitive:S.sensitive.topics});
  const reason=gate.privateReads?null:gate.reason,refused=reason==='workplace_harm'||reason==='instruction_override',crisis=reason==='sensitive_crisis',routed=isSensitiveReason(reason);
  // Crisis turns never reach the model (run 41307457954: the provider answered every one with a bare refusal), and
  // since spec v6 no sensitive-topic turn does: the person's words about health, harassment, a grievance or a
@@ -128,9 +159,11 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
   for(const kind of result.kinds)if(!screening.kinds.includes(kind))screening.kinds.push(kind);return result.text;};
  const question=screened(options.question,'question'),nonce=fenceNonce();
  const gateNote=gate.privateReads?null:TURN_GATE_NOTE[gate.reason],rawNote=memoryNote(current),note=rawNote?screened(rawNote,'memory'):null;
+ // A turn about another person closes every private read; a caller with payroll access is told where they already see pay.
+ const payNote=!gate.privateReads&&gate.reason==='other_person'?payViewNoteFor(ctx,candidates.destinations,options.scope.locale):null;
  // Review H2: the goal (the person's earlier words) travels fenced in the person's own message, never in system text.
  const rawGoal=memoryGoal({...current,goal:current.goal?screened(current.goal,'memory'):null},value=>fenceUntrusted('conversation_goal',value,nonce));
- const system=[S.instructions.join(' ').replace('{today}',todayInKualaLumpur(started)),admin?S.roleNote.admin:S.roleNote.employee,...(gateNote?[gateNote]:[]),...(note?[note]:[])].join(' ');
+ const system=[S.instructions.join(' ').replace('{today}',todayInKualaLumpur(started)),roleNoteFor(ctx),...(gateNote?[gateNote]:[]),...(payNote?[payNote]:[]),...(note?[note]:[])].join(' ');
  // Review M8: the newest earlier turns up to the spec's character cap; the kept history starts with the person's turn.
  const kept:ModelHistoryMessage[]=[];let historyChars=0;
  for(const row of [...history].reverse()){historyChars+=row.content.length;if(historyChars>S.budgets.maxHistoryChars)break;kept.unshift(row);}
@@ -148,7 +181,8 @@ export async function runTurn(options:TurnOptions):Promise<TurnResult>{
 
  /** Runs the checks on a candidate reply; returns true when the turn may end with it. */
  const judge=(candidate:string,candidateMode:string|null,candidateSlot:string|null)=>{
-  const results=checkReply(candidate,allowedPaths(),S.replyChecks.order,{question:options.question});checks.push({attempt:checks.length+1,results});
+  // "Prepared … for you to review and confirm" is admitted only when this turn issued a proposal (a prepared card).
+  const results=checkReply(candidate,allowedPaths(),S.replyChecks.order,{question:options.question,prepared:issued.length>0});checks.push({attempt:checks.length+1,results});
   const failed=results.find(result=>!result.ok);
   if(!failed){reply=candidate;mode=candidateMode;slot=candidateSlot;return true;}
   if(checkRetries<S.retry.replyCheck){checkRetries++;retries.push({step:steps,reason:failed.check});retryPending=true;
