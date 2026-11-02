@@ -89,6 +89,37 @@ function fixture(copy: { t?: (k: string, v?: Record<string, unknown>) => string;
 afterEach(cleanup);
 
 describe('approvals list', () => {
+  it('handles replacement-leave detail without formatting attendance facts', () => {
+    const f = fixture();
+    const task = v2tasks.ReplacementTaskDetailV2.parse({
+      kind: 'replacementLeave', id: ID, subject: { name: 'Aisyah', code: null },
+      createdAt: '2026-10-28T01:00:00.000Z', reasonRequiredToReject: true,
+      unit: 'day', totalDays: 1, totalHours: 0, submittedOn: '2026-10-28', employeeReason: null,
+      dates: [], expected: { status: 'pending' },
+    });
+    expect(f.taskLine(task)).toBe('task_replacementLeave');
+  });
+
+  for (const expanded of [false, true]) {
+    it(`keeps replacement leave on the web when the server marks it native=${expanded}`, async () => {
+      const f = fixture();
+      const path = `/approvals?task=replacementLeave&requestId=${ID}`;
+      const replacement = v2tasks.TaskItemV2.parse(item({
+        kind: 'replacementLeave', nativeDecision: expanded, webPath: expanded ? null : path,
+      }));
+      expect(f.decidesNatively(replacement)).toBe(false);
+      expect(() => f.taskPath('replacementLeave', ID)).toThrow();
+      expect(() => f.taskPath('replacementLeave', ID, 'decision')).toThrow();
+      f.apiGetPage.mockResolvedValueOnce({ items: [replacement], nextCursor: null });
+      render(<f.ApprovalsScreen />);
+      fireEvent.click(await screen.findByRole('link', { name: 'openOnWeb: task_replacementLeave · Aisyah' }));
+      expect(f.openURL).toHaveBeenCalledWith(`https://hr.test${expanded ? '/approvals' : path}`);
+      expect(f.push).not.toHaveBeenCalled();
+      expect(f.apiGetV2).not.toHaveBeenCalled();
+      expect(f.apiPostV2).not.toHaveBeenCalled();
+    });
+  }
+
   it('a native kind opens its detail; a read-only kind shows an Open on web chip that opens the company origin', async () => {
     const f = fixture();
     f.apiGetPage.mockResolvedValueOnce({ items: [
