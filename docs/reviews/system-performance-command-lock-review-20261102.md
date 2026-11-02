@@ -1,52 +1,58 @@
-## Current result: both auth-only500 tests fail; feedback-only source qualifying
+## Current result: feedback-only500 qualification fails; release admission remains held
 
-Staging readiness remains **NO;0/2 activity targets accepted**. Exact auth-only
-sourcebee63dd2c26f0a2c8d2b3ca33827118c7b739b54 finishes both original load profiles:
-[1s41408202511](https://github.com/StradaverseHub/ai-hr/actions/runs/41408202511)
-settles328 completed/172 failed,360 iterations,2/6 loaded browsers;
-[5s41408206047](https://github.com/StradaverseHub/ai-hr/actions/runs/41408206047)
-settles497/3,694 iterations,6/6 loaded browsers. Both have three loaded Home-card
-failures, complete accounting, two valid tenant audit chains without interior gaps,
-and fail the original latency targets. Their HTTP stages stay within600s at586.30s
-and595.14s. One-second errors:158 aborts,11 Leave dependency refusals,3 native
-Personnel refusals; five-second:one socket hangup,one Leave dependency refusal,
-one Personnel55P03. Role-level read p95 remains44–77s and write66–89s across
-these observations. No accepted overall speedup follows. Original runs and raw
-artifacts /private/tmp/aihr-auth-{one,five}-bee6-attempt1 remain preserved.
-The authentication reservation experiment is not selected for the next candidate.
+**Not staging-ready;0/2 activity targets accepted.** Isolated feedback-only source
+f2b9e4e9a6cf6c0888470b99b4ddaca26a213250 excludes the unsuccessful authentication,
+bell and Onboarding experiments. Both original load profiles now finish FAIL:
 
-The owner approved regeneration of the same two generated source metadata files for
-this performance task; literal provider approvals remain unchanged and provider
-egress remains blocked. The earlier metadata approval question is resolved.
+|Activity|Final or last accounting|HTTP stage|Other outcomes|
+|---|---|---|---|
+|[1s41416183769](https://github.com/StradaverseHub/ai-hr/actions/runs/41416183769)|last331 completed,0 failed,169 active;592 iterations|610.16s; original600s parent kills it|accounting incomplete; no final p95/browser/audit acceptance|
+|[5s41416186817](https://github.com/StradaverseHub/ai-hr/actions/runs/41416186817)|463 completed,37 failed,0 active;482 iterations|599.35s; within original600s|6/6 browsers; both tenant audit chains valid,2380/2165 checked,no interior gaps|
 
-Feedback plan source7912 passed29 checks and compilation; its sole strict Lifecycle
-count failure (88 expected,89 actual) was repaired in7ed4 and affected rehearsal
-[41411056590](https://github.com/StradaverseHub/ai-hr/actions/runs/41411056590)
-passes, retaining30 successful checks total. Native coverage includes500 principals
-and516 independent controls. Those bytes were tested on the unaccepted auth base;
-that is not whole-system speed evidence or approval to promote the auth experiment.
+Both retain three loaded Home-card failures. Five-second errors are35 aborts,
+one socket hangup and one native Personnel draft-delete55P03 (DRAFT-15900A08).
+Role-level read p95 is59.41–61.55s; write85.42–88.17s; employee/manager navigation
+111.32/116.11s. No aggregate percentile or overall improvement percentage is inferred.
+One-second last zero recorded failures is not success:169 users remain active when
+its parent is killed. Original artifacts are retained in
+/private/tmp/aihr-feedback-only-{one,five}-f2b9-attempt1; strict extracted identities,
+settings and results: /private/tmp/aihr-feedback-only-terminal-results-20261102.json.
+Both original workloads,pacing,targets,timeouts and standard resource budgets remain
+unchanged. No repeat runs or resource increases were used. This candidate remains
+unaccepted; a component speed observation does not establish system capacity.
 
-New isolatedf2b9e4e9a6cf6c0888470b99b4ddaca26a213250 carries only feedback plan
-reuse onto retained7490/application07f. All659 inherited SQL files and journal
-entries,auth implementation,root layout and literal approvals remain exact. Existing
-UNAPPLIED0934/idx792/when334 is unchanged,with strict660/89 count expectations.
-Both canonical manifest checks pass (module last). Hosted affected native/Home/OneHR/
-populated-upgrade checks and whole compiler PASS in
-[41414760893](https://github.com/StradaverseHub/ai-hr/actions/runs/41414760893):
-19 database and11 other checks across10 files,including500 principals/516 native
-controls. Artifactfocused.json pins sourcef2b9 and controller6ea889365 explicitly.
-Both original500-user profiles are running against frozen source/controllerf2b9:
-[1s41416183769](https://github.com/StradaverseHub/ai-hr/actions/runs/41416183769) and
-[5s41416186817](https://github.com/StradaverseHub/ai-hr/actions/runs/41416186817).
-No load result or whole-system gain is established yet.
-No deployment,merge,queue admission,lease,provider approval or resource increase.
+Its prerequisite[41414760893](https://github.com/StradaverseHub/ai-hr/actions/runs/41414760893)
+passes19 database and11 other checks across10 files plus the fresh whole compiler.
+Native coverage is500 principals/516 controls,including caller RLS,hidden OneHR
+exclusions,foreign tenant/live grants and timestamp/order parity. The strict Lifecycle
+count repair (660 total/89 after frozen boundary) passes. Both canonical generated
+manifest checks pass,module last. All659 inherited SQL files/journal entries,auth
+implementation,root layout and literal approval registry remain exact. The owner
+approved regeneration of the two metadata files for this performance task; literal
+provider bindings were not approved and egress remains blocked for this source.
 
-Fresh08:38:49UTC read-only all-ref/WIP scan:1816 heads,320 journals,399 migration
-trees,263 worktrees,584 variants,zero parse errors; maximum934/792/334 is the
-existing owned feedback append. Main6ea889365/alpha cf6949d92 are intentionally
-not merged into this causal experiment. Earlier read-only live ledger verification
-of642 expected identities atwatermark299 remains historical; refresh before any
-later release reconciliation. No live migration or installation was changed.
+The remaining evidence still identifies shared capacity/lock pressure: sampled
+Access-configuration waiter occurrences are206/169 and audit-chain215/144 across
+459/438 samples. These overlapping sample counts are not wall time or exclusive
+causal attribution. Feedback SQL still records551/366 calls with30.23/37.69s total
+statement execution despite only10.45/7.90ms planning; nested SQL times overlap and
+must not be summed as CPU. Sampled root holders include Attendance correction/punch,
+personnel-policy and event-write work. Attendance's effect audit precedes required
+status finalization,pattern refresh and accrual; moving it requires dedicated native
+race/audit proof. Independent0931 ordinary-delete-authority work is read-only context,
+not adopted or edited. Do not blindly rerun or loosen the closed native55P03 bounds.
+
+Prior auth-onlybee63 failures remain unchanged:1s41408202511 settles328/172 with
+2/6 browsers;5s41408206047 settles497/3 with6/6; both three Home failures and unmet
+speed targets. That reservation variant is not selected. Original metadata proposals,
+red cases and strict upgrade-count failure are preserved under their exact sources.
+
+Fresh08:38:49UTC source-claim scan covers1816 heads,320 journals,399 trees,263
+worktrees and584 WIP variants,zero parse errors. Existing owned UNAPPLIED0934/
+idx792/when334 is the maximum; no new reservation or foreign SQL is adopted. Fresh
+main6ea889365/alpha cf6949d92 are intentionally excluded from this causal baseline.
+Earlier642-row applied identity verification is historical,not release admission.
+No deployment,merge,queue admission,lease,provider approval or live migration follows.
 
 ## Measured transaction admission bottleneck; speed target unmet
 
