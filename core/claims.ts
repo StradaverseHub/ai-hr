@@ -41,6 +41,7 @@ import { toCsv } from '../lib/csv';
 import { assertCanDecide, filterDelegationOrgScopeTx,isApprovalDecisionRefusal,assertAssignedWorkPrincipalTx } from './approvals';
 import { scopeOf } from '../lib/delegation-scope';
 import { resolveBatchScopeFilter, resolveBatchCutOffWindow, type BatchScope } from './payroll';
+import { lockNativePayrollBatchPeriodTx } from './payroll-period-lock';
 import { calendarWindowFor } from './payroll-policy-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -3588,6 +3589,8 @@ export async function prefillClaimsForBatch(
   p: { batchId: string },
 ): Promise<{ applied: number; claims: number; total: number }> {
   return withTenant(ctx, async (tx) => {
+    // Join native generation/reset ownership before batch, claim or input rows.
+    await lockNativePayrollBatchPeriodTx(tx, ctx, p.batchId);
     const [batch] = await tx
       .select({
         id: payrollBatch.id,
@@ -3635,7 +3638,9 @@ export async function prefillClaimsForBatch(
           scopeFilter,
           claimDecidedUpperBound,
         ),
-      );
+      )
+      .orderBy(claimRequest.id)
+      .for('update', { of: claimRequest });
     if (due.length === 0) return { applied: 0, claims: 0, total: 0 };
 
     // Sum per employment, and remember which claim ids belong to each.
@@ -3680,7 +3685,7 @@ export async function prefillClaimsForBatch(
     await tx
       .update(claimRequest)
       .set({ payrollBatchId: p.batchId })
-      .where(inArray(claimRequest.id, allIds));
+      .where(and(inArray(claimRequest.id, allIds), isNull(claimRequest.payrollBatchId)));
     for (const c of due) {
       await appendEvent(tx, {
         tenantId: ctx.tenantId,
