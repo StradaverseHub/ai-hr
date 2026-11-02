@@ -540,8 +540,8 @@ words: "I approve Noveri's exact binding packet at 4635d26b and the bounded 8,19
 6,144 MB build fails. Complete all checks and staging verification; keep System Optimization out until it passes."
 The owner authorised relaying that approval, the packet reference and the release instructions to the Noveri wiring
 session in userMessage 01a19bc7-9d6e-70d2-9f67-49a9588f49a7, turn 01a19bc7-9d03-7073-b127-8e64190e2076, startedAt
-1793614912 = 2026-11-02T10:21:52Z. The message and turn metadata were retrieved from that chat by the orchestrator and
-given to the Noveri session by the owner; they are source-chat times, not relay receipt times. The owner then confirmed
+1793614912 = 2026-11-02T10:21:52Z. The message and turn metadata were retrieved from that chat and conveyed to the Noveri session by the Codex
+orchestrator under the owner's explicit relay authorization; they are source-chat times, not relay receipt times. The owner then confirmed
 directly in the Noveri session ("I approve binding-packet-6ea.md at 4635d26b. Write the binding."), received there at
 about 2026-11-02T10:29Z (receipt time, not the recorded approval time).
 
