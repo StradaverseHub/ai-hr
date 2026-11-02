@@ -70,12 +70,16 @@ it('applies only the selected dependent correction through the native register v
  const child=await addDependent(root,{personId:subject.personId,fullName:'Fictional child',relationship:'child'}),sibling=await addDependent(root,{personId:subject.personId,fullName:'Unrelated family',relationship:'parent'}),field='family.family_and_dependents.fullname';
  const view=await readOwnProfileWorkspace(subject.ctx,{employmentId:subject.employmentId}),record=view.registers.find(row=>row.id===child.id)!;
  const submitted=await submitOwnProfileEdit(subject.ctx,{employmentId:subject.employmentId,proposal:{v:2,fields:[],registers:[{kind:'dependent',id:child.id,clientId:child.id,fields:[{fieldId:field,before:record.baselines[field],value:'Fictional corrected child'}]}]}});expect(submitted.requestId).toBeTruthy();
+ await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`select app.profile_task_projection(${submitted.requestId}::uuid,true)`);await tx.execute(sql`select app.profile_task_store_register(${subject.personId}::uuid,'dependent',${sibling.id}::uuid,${sibling.id},'{"fullName":"Forged sibling"}'::jsonb)`);})).rejects.toThrow();
  await decideProfileChange(approver.ctx,{requestId:submitted.requestId!,decision:'approved'});
  const rows=await owner.db.select().from(s.employeeDependent);expect(rows.find(row=>row.id===child.id)?.fullName).toBe('Fictional corrected child');expect(rows.find(row=>row.id===sibling.id)?.fullName).toBe('Unrelated family');await noRaw(approver.ctx,subject);
 });
 it('applies exact stored photo bytes for its named task while keeping the master photo hidden',async()=>{
  const {subject,approver,id}=await phoneRequest();await decideProfileChange(approver.ctx,{requestId:id,decision:'rejected',reason:'Photo fixture'});await setTenantSetting(root,{key:'ess.profile_photo_edit',value:true});
  const png=Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c636000020000050001a5f645400000000049454e44ae426082','hex');
- const submitted=await setOwnPersonPhoto(subject.ctx,{employmentId:subject.employmentId,content:png,fileName:'fictional.png'});await decideProfileChange(approver.ctx,{requestId:submitted.requestId,decision:'approved'});
+ const submitted=await setOwnPersonPhoto(subject.ctx,{employmentId:subject.employmentId,content:png,fileName:'fictional.png'});
+ await expect(withTenant(approver.ctx,tx=>tx.execute(sql`select app.profile_task_store_photo(${submitted.requestId}::uuid)`))).rejects.toThrow();
+ await expect(withTenant(approver.ctx,async tx=>{await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select app.profile_task_store_photo(${submitted.requestId}::uuid)`);})).rejects.toThrow();
+ await decideProfileChange(approver.ctx,{requestId:submitted.requestId,decision:'approved'});
  expect((await owner.db.select().from(s.personPhoto).where(eq(s.personPhoto.personId,subject.personId)))[0].content).toEqual(png);expect(await getPersonPhoto(approver.ctx,subject.personId)).toBeNull();await noRaw(approver.ctx,subject);
 });

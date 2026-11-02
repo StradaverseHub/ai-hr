@@ -357,6 +357,7 @@ BEGIN
  subject_column:=CASE WHEN p_kind='qualification' THEN 'employment_id' ELSE 'person_id' END;subject:=CASE WHEN p_kind='qualification' THEN q.employment_id ELSE q.person_id END;
  FOR pair IN SELECT key,value FROM jsonb_each(p_values) LOOP
   SELECT * INTO binding FROM app.access_profile_value_bindings() b WHERE b.owner=p_kind AND b.field_name=pair.key;
+  IF binding.column_name IS NULL AND p_kind='dependent' AND pair.value='null'::jsonb THEN binding.column_name:=CASE pair.key WHEN 'remarks' THEN 'remarks' WHEN 'deceasedOn' THEN 'deceased_on' WHEN 'occupation' THEN 'occupation' WHEN 'companyName' THEN 'company_name' WHEN 'employerAddress' THEN 'employer_address' END;END IF;
   IF binding.column_name IS NULL THEN RAISE EXCEPTION 'Profile register effect field unavailable' USING ERRCODE='42501';END IF;
   patch:=patch||jsonb_build_object(binding.column_name,pair.value);
  END LOOP;
@@ -407,7 +408,57 @@ DO $$ DECLARE definition text; BEGIN
  EXECUTE definition;
 END $$;
 --> statement-breakpoint
-CREATE TABLE app.profile_task_photo_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,person_id uuid NOT NULL,proposal_hash text NOT NULL,route_hash text NOT NULL,content_hash text NOT NULL,audited boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,request_id));
+CREATE FUNCTION app.profile_task_photo_policy() RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p_field text:='profile.personal_details.photo';p_primary boolean:=false;b record;raw jsonb;cap text;linked text;linked_ids text[];
+BEGIN
+ IF NOT EXISTS(SELECT 1 FROM public.tenant_setting WHERE tenant_id=app.current_tenant_id() AND key='ess.profile_photo_edit' AND value='true'::jsonb)THEN RETURN false;END IF;
+ SELECT NULL::text AS primary_key,true AS immediate,p_field AS legacy_key,'Profile'::text AS tab_name,'Personal details'::text AS section_name INTO b;
+ SELECT value INTO raw FROM public.tenant_setting WHERE tenant_id=app.current_tenant_id() AND key='ess.profile_change_fields';
+ IF raw IS NULL OR raw='null'::jsonb OR raw='"all"'::jsonb OR jsonb_typeof(raw)='array' THEN
+  IF jsonb_typeof(raw)='array' AND EXISTS(SELECT 1 FROM jsonb_array_elements(raw) v WHERE jsonb_typeof(v)<>'string') THEN RETURN false; END IF;
+  IF p_primary THEN RETURN b.primary_key IS NOT NULL; END IF;
+  RETURN true;
+ END IF;
+ IF jsonb_typeof(raw)<>'object' THEN RETURN false; END IF;
+ IF raw->'version'='2'::jsonb THEN
+  IF (SELECT count(*) FROM jsonb_object_keys(raw))<>2 OR jsonb_typeof(raw->'fields') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+  IF jsonb_array_length(raw->'fields')>512 OR EXISTS(SELECT 1 FROM jsonb_array_elements(raw->'fields') v WHERE jsonb_typeof(v)<>'string' OR length(v#>>'{}') NOT BETWEEN 1 AND 200)
+   OR (SELECT count(DISTINCT v) FROM jsonb_array_elements(raw->'fields') v)<>jsonb_array_length(raw->'fields') THEN RETURN false; END IF;
+  RETURN true;
+ END IF;
+ IF raw->'version' NOT IN ('3'::jsonb,'4'::jsonb,'5'::jsonb) OR raw->'version' IS NULL
+  OR jsonb_typeof(raw->'fields') IS DISTINCT FROM 'object' OR jsonb_typeof(raw->'primaryOnly') IS DISTINCT FROM 'array' THEN RETURN false; END IF;
+ IF (SELECT count(*) FROM jsonb_object_keys(raw))<>(CASE WHEN raw->'version'='3'::jsonb THEN 3 WHEN raw->'version'='5'::jsonb THEN 5 ELSE 4 END)
+  OR (SELECT count(*) FROM jsonb_object_keys(raw->'fields'))>512 OR jsonb_array_length(raw->'primaryOnly')>512
+  OR EXISTS(SELECT 1 FROM jsonb_each(raw->'fields') f WHERE length(f.key) NOT BETWEEN 1 AND 200 OR f.value NOT IN ('"editable"'::jsonb,'"viewOnly"'::jsonb,'"hide"'::jsonb))
+  OR EXISTS(SELECT 1 FROM jsonb_array_elements(raw->'primaryOnly') v WHERE jsonb_typeof(v)<>'string' OR length(v#>>'{}') NOT BETWEEN 1 AND 200)
+  OR (SELECT count(DISTINCT v) FROM jsonb_array_elements(raw->'primaryOnly') v)<>jsonb_array_length(raw->'primaryOnly') THEN RETURN false; END IF;
+ IF raw->'version' IN ('4'::jsonb,'5'::jsonb) THEN
+  IF jsonb_typeof(raw->'groups') IS DISTINCT FROM 'object' THEN RETURN false; END IF;
+  IF (SELECT count(*) FROM jsonb_object_keys(raw->'groups'))>128
+   OR EXISTS(SELECT 1 FROM jsonb_each(raw->'groups') g WHERE length(g.key) NOT BETWEEN 1 AND 200 OR g.value NOT IN ('"editable"'::jsonb,'"viewOnly"'::jsonb,'"hide"'::jsonb)) THEN RETURN false; END IF;
+ END IF;
+ cap:=raw->'fields'->>p_field;
+ IF cap IS NULL OR cap='hide' THEN RETURN false; END IF;
+ IF raw->'version' IN ('4'::jsonb,'5'::jsonb) AND (COALESCE(raw->'groups'->>('tab:'||b.tab_name),'editable')<>'editable'
+  OR COALESCE(raw->'groups'->>('section:'||b.tab_name||'/'||b.section_name),'editable')<>'editable') THEN RETURN false; END IF;
+ linked_ids:=CASE
+  WHEN p_field IN ('profile.personal_details.fullname','profile.personal_details.firstname','profile.personal_details.lastname')
+   THEN ARRAY['profile.personal_details.fullname','profile.personal_details.firstname','profile.personal_details.lastname']
+  WHEN p_field='profile.personal_details.dateofbirth' THEN ARRAY['profile.personal_details.dateofbirth','profile.personal_details.age']
+  WHEN p_field='family.family_and_dependents.dateofbirth' THEN ARRAY['family.family_and_dependents.dateofbirth','family.family_and_dependents.age']
+  ELSE ARRAY[p_field] END;
+ FOREACH linked IN ARRAY linked_ids LOOP
+  IF COALESCE(raw->'fields'->>linked,'hide')='hide' THEN RETURN false; END IF;
+ END LOOP;
+ RETURN CASE WHEN p_primary THEN b.primary_key IS NOT NULL AND cap='viewOnly' AND raw->'primaryOnly' ? p_field ELSE cap IN ('editable','viewOnly') END;
+END; $$;
+REVOKE ALL ON FUNCTION app.profile_task_photo_policy() FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.profile_photo_proposal_allowed() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT app.profile_task_photo_policy() $$;
+--> statement-breakpoint
+CREATE TABLE app.profile_task_photo_effect(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,person_id uuid NOT NULL,proposal_hash text NOT NULL,route_hash text NOT NULL,content_hash text NOT NULL,mime_type text NOT NULL,size_bytes integer NOT NULL,audited boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,request_id));
 ALTER TABLE app.profile_task_photo_effect ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.profile_task_photo_effect FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -427,8 +478,8 @@ BEGIN
  IF baseline IS DISTINCT FROM q.proposed->>'baselineHash' THEN RAISE EXCEPTION 'Profile photo changed' USING ERRCODE='40001';END IF;
  SELECT * INTO photo FROM public.profile_photo_proposal WHERE request_id=q.id AND tenant_id=q.tenant_id;
  IF photo.request_id IS NULL THEN RAISE EXCEPTION 'Profile photo bytes unavailable' USING ERRCODE='42501';END IF;
- INSERT INTO app.profile_task_photo_effect(xact_id,tenant_id,user_id,request_id,person_id,proposal_hash,route_hash,content_hash)
- VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id(),q.id,q.person_id,encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex'),encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex'),encode(sha256(photo.content),'hex'));
+ INSERT INTO app.profile_task_photo_effect(xact_id,tenant_id,user_id,request_id,person_id,proposal_hash,route_hash,content_hash,mime_type,size_bytes)
+ VALUES(pg_current_xact_id(),q.tenant_id,app.current_user_id(),q.id,q.person_id,encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex'),encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex'),encode(sha256(photo.content),'hex'),photo.mime_type,photo.size_bytes);
  INSERT INTO public.person_photo(tenant_id,person_id,content,file_name,mime_type,size_bytes,uploaded_by_user_id)
  VALUES(q.tenant_id,q.person_id,photo.content,'profile-photo'||CASE WHEN photo.mime_type='image/png'THEN '.png' ELSE '.jpg' END,photo.mime_type,photo.size_bytes,app.current_user_id())
  ON CONFLICT(person_id)DO UPDATE SET content=excluded.content,file_name=excluded.file_name,mime_type=excluded.mime_type,size_bytes=excluded.size_bytes,uploaded_by_user_id=excluded.uploaded_by_user_id,updated_at=now();
@@ -443,7 +494,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.profile_task_photo_effect effect JOIN public.profile_change_request q ON q.id=effect.request_id AND q.tenant_id=effect.tenant_id AND q.person_id=effect.person_id
  JOIN public.person_photo photo ON photo.person_id=q.person_id AND photo.tenant_id=q.tenant_id
  WHERE effect.xact_id=pg_current_xact_id() AND effect.tenant_id=app.current_tenant_id() AND effect.user_id=app.current_user_id() AND effect.person_id=p_person AND effect.audited AND q.status='approved'
- AND effect.proposal_hash=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex') AND effect.route_hash=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex') AND effect.content_hash=encode(sha256(photo.content),'hex'));
+ AND effect.proposal_hash=encode(sha256(convert_to(q.proposed::text,'UTF8')),'hex') AND effect.route_hash=encode(sha256(convert_to(jsonb_build_array(q.route_id,q.route_revision,q.route_approver_user_id,q.route_approver_employment_id,q.route_context)::text,'UTF8')),'hex') AND effect.content_hash=encode(sha256(photo.content),'hex') AND photo.mime_type=effect.mime_type AND photo.size_bytes=effect.size_bytes AND photo.uploaded_by_user_id=effect.user_id AND photo.file_name='profile-photo'||CASE WHEN effect.mime_type='image/png'THEN '.png' ELSE '.jpg' END);
 $$;
 REVOKE ALL ON FUNCTION app.profile_task_photo_approved(uuid) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
