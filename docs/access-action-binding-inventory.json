@@ -4304,7 +4304,7 @@
         {
           "path": "app/admin/settings/dashboard/page.tsx",
           "entry": "isSection",
-          "line": 28,
+          "line": 31,
           "surface": "route",
           "owners": [],
           "tables": [],
@@ -4313,7 +4313,7 @@
         {
           "path": "app/admin/settings/dashboard/page.tsx",
           "entry": "isCardType",
-          "line": 29,
+          "line": 32,
           "surface": "route",
           "owners": [],
           "tables": [],
@@ -4322,11 +4322,12 @@
         {
           "path": "app/admin/settings/dashboard/page.tsx",
           "entry": "DashboardCardConfigPage",
-          "line": 32,
+          "line": 35,
           "surface": "route",
           "owners": [
             "app.current_tenant_id",
             "app.current_user_id",
+            "app.is_admin_for",
             "app.login_blocked",
             "app.organisation_settings_function_allowed",
             "app.principal_snapshot_current",
@@ -4349,6 +4350,7 @@
       "nativeOwners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.is_admin_for",
         "app.login_blocked",
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
@@ -4506,13 +4508,14 @@
         {
           "path": "app/admin/settings/email-templates/page.tsx",
           "entry": "EmailTemplatesPage",
-          "line": 11,
+          "line": 12,
           "surface": "route",
           "owners": [
             "app.current_tenant_id",
             "app.current_user_id",
             "app.email_design_admin",
             "app.login_blocked",
+            "app.organisation_settings_function_allowed",
             "app.principal_snapshot_current",
             "app/admin/settings/email-templates/page.tsx:scopedAdmin",
             "lib/scope.ts:requireAdmin"
@@ -4533,6 +4536,7 @@
         "app.current_user_id",
         "app.email_design_admin",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/email-templates/page.tsx:scopedAdmin",
         "lib/scope.ts:requireAdmin"
@@ -15747,9 +15751,11 @@
             "app.onehr_moderator",
             "app.onehr_moderator_choices",
             "app.onehr_own_employment",
+            "app.onehr_result_administration",
             "app.onehr_result_card",
             "app.onehr_review_frozen",
             "app.onehr_review_header",
+            "app.onehr_review_task_fields",
             "app.onehr_review_task_header",
             "app.onehr_review_task_view",
             "app.onehr_reviewer_unit_out",
@@ -15846,9 +15852,11 @@
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
         "app.onehr_own_employment",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_reviewer_unit_out",
@@ -16079,9 +16087,11 @@
             "app.onehr_manager_panel",
             "app.onehr_moderator",
             "app.onehr_moderator_choices",
+            "app.onehr_result_administration",
             "app.onehr_result_card",
             "app.onehr_review_frozen",
             "app.onehr_review_header",
+            "app.onehr_review_task_fields",
             "app.onehr_review_task_header",
             "app.onehr_review_task_view",
             "app.onehr_self_employment",
@@ -16373,9 +16383,11 @@
             "app.onehr_manager_panel",
             "app.onehr_moderator",
             "app.onehr_moderator_choices",
+            "app.onehr_result_administration",
             "app.onehr_result_card",
             "app.onehr_review_frozen",
             "app.onehr_review_header",
+            "app.onehr_review_task_fields",
             "app.onehr_review_task_header",
             "app.onehr_self_employment",
             "app.onehr_task_result_card",
@@ -16541,9 +16553,11 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_self_employment",
@@ -32047,7 +32061,9 @@
       "line": 11,
       "surface": "server-action",
       "owners": [
+        "app.access_workforce_write_lock",
         "app.is_admin_for",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current"
       ],
       "tables": [
@@ -32063,7 +32079,7 @@
     {
       "path": "app/admin/settings/dashboard/page.tsx",
       "entry": "isSection",
-      "line": 28,
+      "line": 31,
       "surface": "route",
       "owners": [],
       "tables": [],
@@ -32072,7 +32088,7 @@
     {
       "path": "app/admin/settings/dashboard/page.tsx",
       "entry": "isCardType",
-      "line": 29,
+      "line": 32,
       "surface": "route",
       "owners": [],
       "tables": [],
@@ -32081,11 +32097,12 @@
     {
       "path": "app/admin/settings/dashboard/page.tsx",
       "entry": "DashboardCardConfigPage",
-      "line": 32,
+      "line": 35,
       "surface": "route",
       "owners": [
         "app.current_tenant_id",
         "app.current_user_id",
+        "app.is_admin_for",
         "app.login_blocked",
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
@@ -32154,7 +32171,9 @@
       "owners": [
         "app.email_design_admin",
         "app.internal_auth_read",
-        "app.principal_by_identity"
+        "app.organisation_settings_function_allowed",
+        "app.principal_by_identity",
+        "app/admin/settings/email-templates/actions.ts:requireEmailDesignEdit"
       ],
       "tables": [
         "`aihr-internal-v1:${purpose}`",
@@ -32170,13 +32189,14 @@
     {
       "path": "app/admin/settings/email-templates/page.tsx",
       "entry": "EmailTemplatesPage",
-      "line": 11,
+      "line": 12,
       "surface": "route",
       "owners": [
         "app.current_tenant_id",
         "app.current_user_id",
         "app.email_design_admin",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/email-templates/page.tsx:scopedAdmin",
         "lib/scope.ts:requireAdmin"
@@ -32423,6 +32443,7 @@
         "app.internal_auth_read",
         "app.internal_auth_write",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/entra/actions.ts:requireEntraAdmin",
         "app/admin/settings/entra/actions.ts:scopedAdmin",
@@ -32454,6 +32475,7 @@
         "app.entra_admin",
         "app.internal_auth_read",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/entra/actions.ts:requireEntraAdmin",
         "app/admin/settings/entra/actions.ts:scopedAdmin",
@@ -32484,6 +32506,7 @@
         "app.entra_admin",
         "app.entra_bind",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/entra/actions.ts:requireEntraAdmin",
         "app/admin/settings/entra/actions.ts:scopedAdmin",
@@ -32510,6 +32533,7 @@
         "app.entra_admin",
         "app.entra_retry",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/entra/actions.ts:requireEntraAdmin",
         "app/admin/settings/entra/actions.ts:scopedAdmin",
@@ -32536,6 +32560,7 @@
         "app.entra_admin",
         "app.entra_reconcile_hold",
         "app.login_blocked",
+        "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current",
         "app/admin/settings/entra/actions.ts:requireEntraAdmin",
         "app/admin/settings/entra/actions.ts:scopedAdmin",
@@ -50200,7 +50225,6 @@
         "app.is_self_person",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_feedback_card",
         "app.onehr_frozen_visible",
@@ -50208,9 +50232,11 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_self_employment",
@@ -59115,7 +59141,6 @@
       "surface": "server-action",
       "owners": [
         "app.access_profile_policy_write_lock",
-        "app.assessment_dispatcher_scope",
         "app.assessment_pending_work",
         "app.assessment_reminder_mail_routes",
         "app.current_tenant_id",
@@ -59123,10 +59148,13 @@
         "app.email_design_admin",
         "app.email_design_assessment_words",
         "app.email_design_save",
+        "app.financial_onehr_worker_enroll",
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_cycle_admin",
+        "app.onehr_reminder_cooldowns",
         "app.onehr_review_task_recipient_access",
+        "app.onehr_worker_access",
         "app.principal_snapshot_current",
         "app.tenant_setting_action_allowed",
         "lib/profile-edit-policy-value.ts:permission"
@@ -59151,7 +59179,6 @@
       "surface": "server-action",
       "owners": [
         "app.access_profile_policy_write_lock",
-        "app.assessment_dispatcher_scope",
         "app.assessment_pending_work",
         "app.assessment_reminder_mail_routes",
         "app.current_tenant_id",
@@ -59159,10 +59186,13 @@
         "app.email_design_admin",
         "app.email_design_assessment_words",
         "app.email_design_save",
+        "app.financial_onehr_worker_enroll",
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_cycle_admin",
+        "app.onehr_reminder_cooldowns",
         "app.onehr_review_task_recipient_access",
+        "app.onehr_worker_access",
         "app.principal_snapshot_current",
         "app.tenant_setting_action_allowed",
         "lib/profile-edit-policy-value.ts:permission"
@@ -59186,7 +59216,6 @@
       "line": 39,
       "surface": "server-action",
       "owners": [
-        "app.assessment_dispatcher_scope",
         "app.assessment_pending_work",
         "app.assessment_reminder_mail_routes",
         "app.email_design_admin",
@@ -59195,7 +59224,9 @@
         "app.is_group_admin",
         "app.onehr_admin",
         "app.onehr_cycle_admin",
-        "app.onehr_review_task_recipient_access"
+        "app.onehr_review_task_recipient_access",
+        "app.onehr_worker_access",
+        "app.principal_snapshot_current"
       ],
       "tables": [
         "dep",
@@ -59240,7 +59271,6 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_feedback_card",
         "app.onehr_frozen_visible",
@@ -59248,7 +59278,9 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -59765,9 +59797,11 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_self_employment",
@@ -59864,9 +59898,11 @@
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
         "app.onehr_own_employment",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_reviewer_unit_out",
@@ -60291,14 +60327,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -60382,14 +60419,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -60473,14 +60511,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -60647,15 +60686,16 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_self_employment",
@@ -60926,14 +60966,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -61252,8 +61293,10 @@
         "app.onehr_release_admin",
         "app.onehr_release_leaders",
         "app.onehr_release_people",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_reviewer_unit_out",
         "app.onehr_self_employment",
@@ -61535,14 +61578,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -61674,7 +61718,9 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_reviewer_unit_out",
         "app.onehr_self_employment",
@@ -62005,14 +62051,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -62424,7 +62471,6 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_feedback_card",
         "app.onehr_frozen_visible",
@@ -62432,7 +62478,9 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -62558,9 +62606,11 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_review_task_view",
         "app.onehr_self_employment",
@@ -62662,7 +62712,6 @@
         "app.ai_spend_reviewed_metered_carrier",
         "app.ai_spend_settle",
         "app.assessment_admin_report_history",
-        "app.assessment_dispatcher_scope",
         "app.current_tenant_id",
         "app.current_user_id",
         "app.email_design_assessment_words",
@@ -62671,6 +62720,7 @@
         "app.login_blocked",
         "app.onehr_admin",
         "app.onehr_cycle_admin",
+        "app.onehr_worker_access",
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current"
       ],
@@ -62718,7 +62768,6 @@
         "app.ai_spend_reviewed_carrier",
         "app.ai_spend_reviewed_metered_carrier",
         "app.ai_spend_settle",
-        "app.assessment_dispatcher_scope",
         "app.current_tenant_id",
         "app.current_user_id",
         "app.email_design_assessment_words",
@@ -62727,6 +62776,7 @@
         "app.login_blocked",
         "app.onehr_admin",
         "app.onehr_cycle_admin",
+        "app.onehr_worker_access",
         "app.organisation_settings_function_allowed",
         "app.performance_provider_source_read_hold_v1",
         "app.principal_snapshot_current"
@@ -62784,7 +62834,6 @@
         "app.ai_spend_reviewed_metered_carrier",
         "app.ai_spend_settle",
         "app.assessment_calibration_axis_confirmed",
-        "app.assessment_dispatcher_scope",
         "app.assessment_review_participates",
         "app.assessment_unit_out",
         "app.current_tenant_id",
@@ -62796,6 +62845,7 @@
         "app.onehr_admin",
         "app.onehr_cycle_admin",
         "app.onehr_employment",
+        "app.onehr_worker_access",
         "app.organisation_settings_function_allowed",
         "app.principal_snapshot_current"
       ],
@@ -63069,14 +63119,15 @@
         "app.is_group_admin",
         "app.login_blocked",
         "app.onehr_assessment_inputs",
-        "app.onehr_cycle_admin",
         "app.onehr_effective_reviewer",
         "app.onehr_frozen_visible",
         "app.onehr_manager",
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_review_frozen",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -63179,9 +63230,11 @@
         "app.onehr_manager_panel",
         "app.onehr_moderator",
         "app.onehr_moderator_choices",
+        "app.onehr_result_administration",
         "app.onehr_result_card",
         "app.onehr_review_frozen",
         "app.onehr_review_header",
+        "app.onehr_review_task_fields",
         "app.onehr_review_task_header",
         "app.onehr_self_employment",
         "app.onehr_task_result_card",
@@ -76622,22 +76675,22 @@
     {
       "table": "employee_home_configuration_revision",
       "policy": "employee_home_configuration_insert",
-      "source": "db/migrations/0582_employee_home_notice_integrity.sql",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
       "owners": [
         "app.current_tenant_id",
         "app.principal_snapshot_current",
-        "app.is_admin_for",
+        "app.organisation_home_configuration_action",
         "app.current_user_id"
       ]
     },
     {
       "table": "employee_home_configuration_revision",
       "policy": "employee_home_configuration_read",
-      "source": "db/migrations/0582_employee_home_notice_integrity.sql",
+      "source": "db/migrations/0942_organisation_settings_actions.sql",
       "owners": [
         "app.current_tenant_id",
         "app.principal_snapshot_current",
-        "app.is_admin_for",
+        "app.organisation_home_configuration_action",
         "app.current_user_id"
       ]
     },
@@ -80548,9 +80601,34 @@
     {
       "table": "performance_assessment_reminder_recipient",
       "policy": "data_permission_subject_read",
-      "source": "db/migrations/0938_data_permission_enforcement.sql",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
       "owners": [
-        "app.data_permission_record_read"
+        "app.data_permission_record_read",
+        "app.onehr_reminder_source_recipient_read"
+      ]
+    },
+    {
+      "table": "performance_assessment_reminder_recipient",
+      "policy": "financial_onehr_recipient_queue",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_worker_queue_recipient"
+      ]
+    },
+    {
+      "table": "performance_assessment_reminder_recipient",
+      "policy": "financial_onehr_recipient_read",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_source_recipient_read"
+      ]
+    },
+    {
+      "table": "performance_assessment_reminder_recipient",
+      "policy": "financial_onehr_recipient_update",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_source_recipient_write"
       ]
     },
     {
@@ -80561,6 +80639,22 @@
         "app.current_tenant_id",
         "app.assessment_dispatcher_scope",
         "app.onehr_cycle_admin"
+      ]
+    },
+    {
+      "table": "performance_assessment_reminder_run",
+      "policy": "financial_onehr_run_queue",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_worker_queue_cycle"
+      ]
+    },
+    {
+      "table": "performance_assessment_reminder_run",
+      "policy": "financial_onehr_run_read",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_source_run_read"
       ]
     },
     {
@@ -80761,9 +80855,18 @@
     {
       "table": "performance_calibration_group_member",
       "policy": "data_permission_subject_read",
-      "source": "db/migrations/0938_data_permission_enforcement.sql",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
       "owners": [
-        "app.data_permission_record_read"
+        "app.data_permission_record_read",
+        "app.onehr_reminder_graph_fact_read"
+      ]
+    },
+    {
+      "table": "performance_calibration_group_member",
+      "policy": "financial_onehr_group_member_source",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_graph_fact_read"
       ]
     },
     {
@@ -80793,6 +80896,14 @@
       "owners": [
         "app.current_tenant_id",
         "app.onehr_hod_writer"
+      ]
+    },
+    {
+      "table": "performance_calibration_group",
+      "policy": "financial_onehr_group_source",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_graph_fact_read"
       ]
     },
     {
@@ -80852,6 +80963,14 @@
     },
     {
       "table": "performance_hod_assignment",
+      "policy": "financial_onehr_hod_source",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_graph_fact_read"
+      ]
+    },
+    {
+      "table": "performance_hod_assignment",
       "policy": "performance_hod_assignment_insert",
       "source": "db/migrations/0663_onehr_leader_seats.sql",
       "owners": [
@@ -80896,6 +81015,14 @@
       "owners": [
         "app.current_tenant_id",
         "app.onehr_admin"
+      ]
+    },
+    {
+      "table": "performance_leader_seat",
+      "policy": "financial_onehr_seat_source",
+      "source": "db/migrations/0941_financial_letter_actions.sql",
+      "owners": [
+        "app.onehr_reminder_graph_fact_read"
       ]
     },
     {
