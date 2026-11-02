@@ -1124,6 +1124,38 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.claim_command_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER claim_command BEFORE INSERT OR UPDATE ON public.claim_request FOR EACH ROW EXECUTE FUNCTION app.claim_command_guard();
+--> statement-breakpoint
+-- The claim command trigger runs before this legacy guard. A manager clipped
+-- by an administrative data profile can use only the exact admitted decision.
+CREATE FUNCTION app.claim_delegated_decision_write_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE decision_columns text[]:=ARRAY['status','taxable','decided_by_employment_id','decided_at'];
+BEGIN
+ IF app.access_workforce_storage_owner()
+ OR OLD.employment_id=ANY((SELECT app.visible_employment_ids())::uuid[]) THEN RETURN NEW;END IF;
+
+ IF OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()
+ OR OLD.status::text<>'pending' OR NEW.status::text NOT IN ('approved','rejected')
+ OR (to_jsonb(OLD)-decision_columns) IS DISTINCT FROM (to_jsonb(NEW)-decision_columns)
+ OR NOT (
+   app.can_decide_via_delegation(OLD.employment_id,'claims','claims.claim')
+   OR (app.workflow_direct_manager(OLD.employment_id) AND EXISTS(
+    SELECT 1 FROM app.claim_command_effect proof
+    WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id
+      AND proof.user_id=app.current_user_id() AND proof.claim_id=OLD.id
+      AND proof.course=(CASE NEW.status::text WHEN 'approved' THEN 'approve' ELSE 'reject' END)
+      AND proof.before_source=to_jsonb(OLD) AND proof.after_source=to_jsonb(NEW)
+      AND NOT proof.born AND NOT proof.completed
+      AND proof.authority_stamp=app.claim_command_authority_stamp()
+   ))
+ ) THEN RAISE EXCEPTION 'Delegated request permits decision columns only';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.claim_delegated_decision_write_guard() FROM PUBLIC,ai_hr_app;
+DROP TRIGGER claim_delegate_write_guard ON public.claim_request;
+CREATE TRIGGER claim_delegate_write_guard BEFORE UPDATE ON public.claim_request
+ FOR EACH ROW EXECUTE FUNCTION app.claim_delegated_decision_write_guard();
+--> statement-breakpoint
 CREATE CONSTRAINT TRIGGER claim_command_final AFTER INSERT OR UPDATE ON public.claim_request DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.claim_command_guard();
 --> statement-breakpoint
 CREATE FUNCTION app.claim_command_born() RETURNS trigger
