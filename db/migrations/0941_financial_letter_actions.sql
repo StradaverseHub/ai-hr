@@ -1242,11 +1242,11 @@ BEGIN
   END LOOP;RETURN true;
  END IF;
  FOREACH native IN ARRAY required LOOP
-  IF NOT CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END THEN RETURN false;END IF;
+  IF NOT (CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END) THEN RETURN false;END IF;
  END LOOP;
  IF cardinality(alternatives)=0 THEN RETURN true;END IF;
  FOREACH native IN ARRAY alternatives LOOP
-  IF CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END THEN passed:=true;END IF;
+  IF (CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END) THEN passed:=true;END IF;
  END LOOP;RETURN passed;
 END;
 $$;
