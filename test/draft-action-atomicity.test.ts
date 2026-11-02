@@ -56,7 +56,7 @@ describe('Draft action exact-payload activation',()=>{
   await owner.client.unsafe('create trigger board16_draft_action_fail before insert on domain_event for each row execute function public.board16_draft_action_fail()');
   const logger=vi.spyOn(console,'error').mockImplementation(()=>{});try{
    const result=await createEmployeeAction(draft.id,attempt,4);expect(result).toMatchObject({ok:false,kind:'system',reference:expect.stringMatching(/^DRAFT-[0-9A-F]{8}$/)});expect(JSON.stringify(result)).not.toContain('000123');
-   const reopened=await getEmployeeDraft(actor.ctx!,draft.id);expect(reopened).toMatchObject({id:draft.id,reservedEmployeeCode:draft.employeeCode,currentStep:4});expect(reopened!.data).toEqual({...attempt,profile:{...attempt.profile,employeeCode:draft.employeeCode},employment:{...attempt.employment,companyId:b.companyId}});expect(await business()).toEqual(before);
+   const reopened=await getEmployeeDraft(actor.ctx!,draft.id);expect(reopened).toMatchObject({id:draft.id,reservedEmployeeCode:draft.employeeCode,currentStep:4});expect(reopened!.data).toEqual({...attempt,creationDefaultsVersion:1,profile:{...attempt.profile,employeeCode:draft.employeeCode},employment:{...attempt.employment,companyId:b.companyId},statutory:{...attempt.statutory,subjectToSkbbk:'yes'}});expect(await business()).toEqual(before);
   }finally{logger.mockRestore();await owner.client.unsafe('drop trigger board16_draft_action_fail on domain_event');await owner.client.unsafe('drop function public.board16_draft_action_fail()');}
   const retry=await createEmployeeAction(draft.id,attempt,4);expect(retry.ok).toBe(true);expect(await getEmployeeDraft(actor.ctx!,draft.id)).toBeNull();
  });

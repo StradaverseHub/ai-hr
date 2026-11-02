@@ -536,11 +536,9 @@ export function EmployeeWizard({
               renders (components/passport-fields.tsx), under the same heading and in the same order.
               It sits inside Personal Details because that is where the record keeps it.
 
-              OPTIONAL FOR EVERYBODY HERE, including a non-Malaysian. `setPassportProfileMY` makes the
-              trio mandatory for a non-Malaysian WHENEVER IT IS CALLED, and `completeEmployeeDraft` calls
-              it only when the draft carries a passport value — so this screen never becomes stricter than
-              `hireEmployee` or the bulk importer. The one rule it does carry is all-or-nothing, judged by
-              `missingByTab` on this tab, where a refusal costs nothing.
+              The country pack owns completeness. A Malaysian who starts a passport must provide its
+              number and both dates; for a foreign passport the number is required and dates are optional.
+              The wizard and native activation use that same rule.
 
               THE ISSUING COUNTRY LIST IS THE NATIONALITY CATALOG, not the country one, because that is
               what the Personnel card is fed (its own comment calls the value a demonym). Passing the

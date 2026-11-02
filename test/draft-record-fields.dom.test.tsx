@@ -192,11 +192,10 @@ describe('Profile — the names, the demographics, the contact pair and the pass
     expect(savedData().profile?.fullName).toBe('Nadia Yusof');
   });
 
-  it('a HALF-TYPED passport is named as outstanding — and a complete one is not', async () => {
-    // The all-or-nothing rule, on the tab that owns it. It has to be judged here: `setPassportProfileMY`
-    // refuses a partial block, and it only runs AFTER `hireEmployee` has committed, so a refusal there
-    // would fail an activation that had already created an employee.
-    wrap();
+  it('names an incomplete Malaysian passport and clears the requirement when its dates are entered', async () => {
+    // The Malaysia pack requires the complete trio only for Malaysian employees who start a passport.
+    const draft=freshDraft();
+    wrap({...draft,profile:{...draft.profile,nationality:'Malaysian'}});
     await userEvent.type(field(detail.passportNumber), 'A1234567');
     expect(
       screen.getByText(messages.people.wizard.activateNeeds).parentElement!.textContent,
