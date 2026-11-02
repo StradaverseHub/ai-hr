@@ -28,6 +28,7 @@ it('keeps only actual current unit membership, with no raw subject access and im
  const subject=await hire('REWARD-SUBJECT'),reviewer=await actor('REWARD-REVIEWER'),other=await actor('REWARD-OTHER'),manager=await actor('REWARD-MANAGER','manager');
  const [bu]=await owner.db.insert(s.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'REWARD-TASK',name:'Fictional assigned review'}).returning();
  await owner.db.update(s.assignment).set({businessUnitId:bu.id}).where(eq(s.assignment.employmentId,subject.employmentId));
+ await owner.db.update(s.assignment).set({businessUnitId:bu.id}).where(eq(s.assignment.employmentId,reviewer.employmentId));
  const today=todayInKualaLumpur(),unit=await createRewardUnit(root,{name:'Fictional assigned review',year:Number(today.slice(0,4)),companyId:b.companyId,businessUnitId:bu.id,snapshotDate:today});
  const second=await createRewardUnit(root,{name:'Fictional other review',year:Number(today.slice(0,4))-1,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:(Number(today.slice(0,4))-1)+'-12-31'});
  const reviewed=await getRewardUnit(root,unit),entry=reviewed.rows.find(row=>row.source.employmentId===subject.employmentId)!;
@@ -57,6 +58,21 @@ it('keeps only actual current unit membership, with no raw subject access and im
   {createdAt:new Date('2000-01-01T00:00:00Z')},
  ]){let refusal:unknown;try{await withTenant(reviewer.ctx,tx=>tx.update(s.rewardEntry).set(change).where(eq(s.rewardEntry.id,entry.id)));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward recipient identity is immutable'}));}
  expect(await withTenant(reviewer.ctx,tx=>tx.select({id:s.rewardEntry.id,employmentId:s.rewardEntry.employmentId,source:s.rewardEntry.source}).from(s.rewardEntry).where(eq(s.rewardEntry.id,entry.id)))).toEqual([{id:entry.id,employmentId:subject.employmentId,source:entry.source}]);
+ // Raw UPDATE membership cannot bypass the native draft stage/seat or hide an OLD EC
+ // record by simultaneously lowering its proposed classification.
+ const assertRecommendationDenied=async(entryId:string,change:Partial<typeof s.rewardEntry.$inferInsert>)=>{let refusal:unknown;try{await withTenant(reviewer.ctx,tx=>tx.update(s.rewardEntry).set(change).where(eq(s.rewardEntry.id,entryId)));}catch(error){refusal=error;}expect(pgErrorChain(refusal)).toContainEqual(expect.objectContaining({code:'42501',message:'Reward recommendation unavailable'}));};
+ await assertRecommendationDenied(entry.id,{recommendation:{...entry.recommendation,reason:'Draft BG seat cannot author annual recommendations'}});
+ await setRewardMember(root,unit,(await getRewardUnit(root,unit)).unit.revision,reviewer.ctx.userId!,'bu');
+ let ownReview=await getRewardUnit(root,unit);const ownEntry=ownReview.rows.find(row=>row.source.employmentId===reviewer.employmentId)!;
+ await saveRewardEntry(root,unit,ownReview.unit.revision,ownEntry.id,ownEntry.recommendation,{...ownEntry.facts,reviewed:true});
+ await assertRecommendationDenied(ownEntry.id,{recommendation:{...ownEntry.recommendation,reason:'Cannot recommend an award for myself'}});
+ const actualAssigned=await getRewardUnit(reviewer.ctx,unit),actualAssignedEntry=actualAssigned.rows.find(row=>row.id===entry.id)!;
+ await saveRewardEntry(reviewer.ctx,unit,actualAssigned.unit.revision,entry.id,{...actualAssignedEntry.recommendation,reason:'Actual eligible BU recommendation'});
+ let classification=await getRewardUnit(root,unit),classified=classification.rows.find(row=>row.id===entry.id)!;
+ await saveRewardEntry(root,unit,classification.unit.revision,entry.id,classified.recommendation,{...classified.facts,confidentiality:'ec'});
+ await assertRecommendationDenied(entry.id,{recommendation:{...entry.recommendation,reason:'Cannot edit a hidden EC recommendation'},facts:{...classified.facts,confidentiality:'standard'}});
+ classification=await getRewardUnit(root,unit);classified=classification.rows.find(row=>row.id===entry.id)!;
+ await saveRewardEntry(root,unit,classification.unit.revision,entry.id,classified.recommendation,{...classified.facts,confidentiality:'standard'});
  // Real native recommendation edits and checked source refresh remain available to GR.
  let native=await getRewardUnit(root,unit),nativeEntry=native.rows.find(row=>row.id===entry.id)!;
  await saveRewardEntry(root,unit,native.unit.revision,entry.id,{...nativeEntry.recommendation,reason:'Actual recipient recommendation retained'});

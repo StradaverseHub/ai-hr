@@ -1785,3 +1785,32 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_unit_identity_guard()FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER reward_unit_identity_guard BEFORE UPDATE ON public.reward_unit FOR EACH ROW EXECUTE FUNCTION app.reward_unit_identity_guard();
 CREATE TRIGGER reward_unit_identity_lock BEFORE UPDATE ON public.reward_unit FOR EACH STATEMENT EXECUTE FUNCTION app.notice_action_statement_lock();
+--> statement-breakpoint
+-- Repeat the native recommendation admission for direct row writers. This protects the OLD
+-- recipient/classification as well as its proposed classification; it is not source-refresh or
+-- general classification authority. Those separate mutation courses retain their native owners.
+CREATE FUNCTION app.reward_entry_recommendation_guard()RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;roles text[];actor_id uuid;actor_person uuid;old_visible boolean;next_visible boolean;can_edit boolean;
+BEGIN
+ IF app.access_workforce_storage_owner()OR NEW.recommendation IS NOT DISTINCT FROM OLD.recommendation THEN RETURN NEW;END IF;
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR OLD.tenant_id IS DISTINCT FROM app.current_tenant_id()OR NEW.tenant_id IS DISTINCT FROM app.current_tenant_id()THEN RAISE EXCEPTION 'Reward recommendation unavailable' USING ERRCODE='42501';END IF;
+ SELECT actual.* INTO unit FROM public.reward_unit actual WHERE actual.id=OLD.unit_id AND actual.tenant_id=OLD.tenant_id;
+ SELECT actor.id,actor.person_id INTO actor_id,actor_person FROM public.app_user actor WHERE actor.id=app.current_user_id()AND actor.tenant_id=OLD.tenant_id AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id);
+ roles:=ARRAY(SELECT app.reward_roles(OLD.unit_id));
+ old_visible:=actor_id IS NOT NULL AND OLD.source->>'personId'IS DISTINCT FROM actor_person::text
+  AND(OLD.facts->>'reviewed'='true'OR'gr'=ANY(roles))
+  AND CASE OLD.facts->>'confidentiality'WHEN'ec'THEN roles&&ARRAY['gr','ctro','ec']WHEN'bg'THEN EXISTS(SELECT 1 FROM unnest(roles)r WHERE r NOT IN('bu','pbp'))WHEN'standard'THEN true ELSE false END;
+ next_visible:=actor_id IS NOT NULL AND NEW.source->>'personId'IS DISTINCT FROM actor_person::text
+  AND(NEW.facts->>'reviewed'='true'OR'gr'=ANY(roles))
+  AND CASE NEW.facts->>'confidentiality'WHEN'ec'THEN roles&&ARRAY['gr','ctro','ec']WHEN'bg'THEN EXISTS(SELECT 1 FROM unnest(roles)r WHERE r NOT IN('bu','pbp'))WHEN'standard'THEN true ELSE false END;
+ can_edit:=unit.status='draft'AND(roles&&ARRAY['bu','gr']OR unit.kind<>'annual'AND'bg'=ANY(roles)OR OLD.facts->>'confidentiality'='ec'AND roles&&ARRAY['gr','ctro','ec']);
+ IF unit.id IS NULL OR unit.deleted_at IS NOT NULL OR cardinality(roles)=0 OR old_visible IS NOT TRUE OR next_visible IS NOT TRUE OR can_edit IS NOT TRUE
+  OR(OLD.facts->>'confidentiality'<>'ec'AND coalesce(NEW.recommendation->'bonusCents','null'::jsonb)<>'null'::jsonb)
+  OR NEW.facts->'seniorPlan'IS DISTINCT FROM OLD.facts->'seniorPlan'
+  OR(NEW.facts IS DISTINCT FROM OLD.facts AND NOT('gr'=ANY(roles))AND(NOT('bu'=ANY(roles))OR(NEW.facts-ARRAY['erDecision','pipDecision','caseReason'])IS DISTINCT FROM(OLD.facts-ARRAY['erDecision','pipDecision','caseReason'])))
+ THEN RAISE EXCEPTION 'Reward recommendation unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_entry_recommendation_guard()FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER reward_entry_recommendation_guard BEFORE UPDATE ON public.reward_entry FOR EACH ROW EXECUTE FUNCTION app.reward_entry_recommendation_guard();
