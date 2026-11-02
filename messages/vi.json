@@ -33796,6 +33796,9 @@
     }
   },
   "contractManagement": {
+    "resubmitRequired": "Quản lý trực tiếp hoặc People BP được phân công phải gửi quyết định sửa đổi trước khi xác nhận.",
+    "sourcePayBasisUnsupported": "Điều khoản hợp đồng này yêu cầu trả lương hàng tháng. People Ops phải xem xét cơ sở trả lương trong Hồ sơ nhân sự trước khi tiếp tục.",
+    "sourceCurrencyUnsupported": "Điều khoản hợp đồng này yêu cầu số tiền bằng MYR. People Ops phải xem xét loại tiền của lương và phụ cấp cố định trong Hồ sơ nhân sự.",
     "dateAmendmentPending": "Việc điều chỉnh ngày kết thúc hợp đồng đang chờ cập nhật hồ sơ được ủy quyền. Ngày kết thúc hiện tại vẫn có hiệu lực cho đến khi cập nhật thành công.",
     "dateAmendmentFailed": "Việc điều chỉnh ngày kết thúc cần được xem xét. Kiểm tra Hồ sơ nhân sự hiện tại trước khi thử lại.",
     "retryDateAmendment": "Thử điều chỉnh lại ngày kết thúc",

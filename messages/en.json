@@ -33796,6 +33796,9 @@
     }
   },
   "contractManagement": {
+    "resubmitRequired": "The Line Manager or assigned People BP must submit a revised decision before confirmation.",
+    "sourcePayBasisUnsupported": "These contract terms require monthly pay. People Ops must review the pay basis in Personnel before continuing.",
+    "sourceCurrencyUnsupported": "These contract terms require MYR amounts. People Ops must review the salary and fixed allowance currencies in Personnel.",
     "dateAmendmentPending": "A contract end-date correction is awaiting its authorised record update. The current end date stays in force until that update succeeds.",
     "dateAmendmentFailed": "The end-date correction needs review. Check the current Personnel record before retrying.",
     "retryDateAmendment": "Retry end-date correction",

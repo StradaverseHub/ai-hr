@@ -33796,6 +33796,9 @@
     }
   },
   "contractManagement": {
+    "resubmitRequired": "直属经理或指定 People BP 必须先提交修订后的决定，方可确认。",
+    "sourcePayBasisUnsupported": "这些合同条款要求按月计薪。People Ops 必须先在人事资料中审核计薪方式，才能继续。",
+    "sourceCurrencyUnsupported": "这些合同条款要求使用马币金额。People Ops 必须审核人事资料中的工资及固定津贴币种。",
     "dateAmendmentPending": "合同结束日期更正正在等待获授权的记录更新。更新成功前，当前结束日期仍然有效。",
     "dateAmendmentFailed": "结束日期更正需要审核。请先检查当前人事资料，再重试。",
     "retryDateAmendment": "重试更正结束日期",

@@ -33796,6 +33796,9 @@
     }
   },
   "contractManagement": {
+    "resubmitRequired": "Pengurus Barisan atau People BP yang ditugaskan mesti menyerahkan keputusan yang disemak semula sebelum pengesahan.",
+    "sourcePayBasisUnsupported": "Terma kontrak ini memerlukan bayaran bulanan. People Ops mesti menyemak asas bayaran dalam Rekod Kakitangan sebelum meneruskan.",
+    "sourceCurrencyUnsupported": "Terma kontrak ini memerlukan amaun MYR. People Ops mesti menyemak mata wang gaji dan elaun tetap dalam Rekod Kakitangan.",
     "dateAmendmentPending": "Pembetulan tarikh tamat kontrak sedang menunggu kemas kini rekod yang dibenarkan. Tarikh tamat semasa kekal berkuat kuasa sehingga kemas kini berjaya.",
     "dateAmendmentFailed": "Pembetulan tarikh tamat memerlukan semakan. Semak Rekod Kakitangan semasa sebelum mencuba semula.",
     "retryDateAmendment": "Cuba pembetulan tarikh tamat semula",
