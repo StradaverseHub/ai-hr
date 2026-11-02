@@ -17,6 +17,7 @@ export async function internalNotificationEmailRequest<T>(input: NotificationEma
       const rows = await client<WorkflowMailTarget[]>`select * from app.internal_auth_notification_target(${id}::uuid,${token}::uuid,${origin})`;
       return rows.length === 1 ? rows[0] : null;
     },
+    async privateMessage(id,token){const row=(await client`select app.private_workflow_mail(${id}::uuid,${token}::uuid,${origin},false) as content`)[0];return row?.content??{required:true,message:null};},
     async assessmentTasks(id, token) {
       const rows = await client`select * from app.internal_auth_notification_summary(${id}::uuid,${token}::uuid,${origin})`;
       return rows.length === 1 && !rows[0].required ? undefined : rows[0]?.summary ?? null;

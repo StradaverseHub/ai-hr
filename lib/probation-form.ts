@@ -1,6 +1,6 @@
 import {PROBATION_CRITERIA,type Assessment} from './probation-model';
 export type ProbationCriterion={id:string;section:'role'|'principles';title:string;weight:number;standard:string;behaviours:string[];prompt:string};
-export type ProbationForm={version:number;name:string;criteria:ProbationCriterion[];ratingLabels:string[];bands:{min:number;band:number;label:string}[];employeeCommentsRequired:boolean};
+export type ProbationForm={targetGrades?:string[];version:number;name:string;criteria:ProbationCriterion[];ratingLabels:string[];bands:{min:number;band:number;label:string}[];employeeCommentsRequired:boolean};
 const guidance=[
  ['kpi','KPI Achievement Progress','Progress against agreed KPIs, targets and deliverables',[], 'What results demonstrate progress against the acknowledged Week 1 KPIs?'],
  ['knowledge','Job Knowledge & Problem Solving','Application of technical and role knowledge',[],'Which work examples show effective knowledge and problem solving?'],

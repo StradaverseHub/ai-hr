@@ -6,7 +6,7 @@ import zh from '../../messages/zh.json';
 import vi from '../../messages/vi.json';
 import ta from '../../messages/ta.json';
 import th from '../../messages/th.json';
-import type { WorkflowMail } from './notifications';
+import {privateWorkflowMessageSchema,type WorkflowMail} from './notifications';
 import {attendanceCcMessage} from '../../lib/attendance-cc-mail';
 import {assessmentReminderMessage,assessmentReminderSystemMessage} from '../../lib/assessment-reminder-message';
 const catalogues={en:en.workflowEmail,ms:ms.workflowEmail,zh:zh.workflowEmail,vi:vi.workflowEmail,ta:ta.workflowEmail,th:th.workflowEmail};
@@ -14,6 +14,7 @@ const escape=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 /** Fixed alerts or validated assessment summaries; the isolated service owns delivery. */
 export function workflowEmailSystemMessage(mail:WorkflowMail,openingInDesign=false) {
   const copy=catalogues[mail.locale],label=copy.categories[mail.category];
+  if(mail.privateMessage){const message=privateWorkflowMessageSchema.parse(mail.privateMessage);return{subject:message.subject,text:message.body+`\n\n${copy.openApp}: ${mail.link}\n`,html:`<!doctype html><html lang="${mail.locale}"><body>${message.body.split('\n').map(line=>`<p>${escape(line)}</p>`).join('')}<p><a href="${escape(mail.link)}">${escape(copy.openApp)}</a></p></body></html>`};}
   if(mail.attendanceCc){
     const message=attendanceCcMessage.parse(mail.attendanceCc),labels=copy.attendanceCc;
     const date=new Intl.DateTimeFormat(mail.locale,{timeZone:'Asia/Kuala_Lumpur',dateStyle:'medium',timeStyle:'short'}).format(new Date(message.occurredAt));
