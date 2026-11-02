@@ -6856,7 +6856,14 @@
       "closeBlockedPending": "无法关闭此批次：此批次中有 {n} 名符合资格的员工仍为新增 / 待处理：{names}。请先通过重新处理为他们处理薪资，然后再关闭。",
       "closeBlockedReprocessRunning": "此批次仍有重新处理正在运行，无法关闭。请等待重新处理完成后再关闭。",
       "closeBlockedReprocessFailed": "无法关闭此批次：{n} 名员工最近一次重新处理失败：{names}。请修正所报告的问题并重新处理他们，然后再关闭。",
-      "closeBlockedAndMore": " 等另外 {n} 人"
+      "closeBlockedAndMore": " 等另外 {n} 人",
+      "reprocessStopped_LATER_CYCLE_FINALIZED": "后续薪资周期已完成。已保存的结果仍然有效。更改先前付款前，请审核并重新打开该周期。",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "所得税更正后，薪资来源已更改。已保存的结果仍然有效。请检查并重新计算受影响的税务历史后重试。",
+      "reprocessFailedEmployee": "处理失败的员工",
+      "reprocessPendingEmployees": "{count} 名所选员工仍待处理。",
+      "reprocessPcbBefore": "原 PCB",
+      "reprocessPcbAfter": "更新后 PCB",
+      "reprocessPcbDifference": "PCB 差额"
     },
     "transactions": {
       "title": "交易录入",
@@ -7941,7 +7948,8 @@
       "draftResultTitle": "薪资草稿",
       "draftResultSubtitle": "请查看各公司的处理结果。已保存的草稿尚未计算工资单；处理前请打开已保存批次，检查交易。",
       "draftCompanySaved": "草稿已保存",
-      "draftSaving": "正在保存草稿…"
+      "draftSaving": "正在保存草稿…",
+      "outstandingOnly": "仅支付未付款项 · 离职日期 {date}"
     },
     "guide": {
       "title": "薪资工作流程指南",
@@ -33387,7 +33395,8 @@
     "noticeOriginal": "此处显示原始薪资计算。之后的所得税基数更正会单独记录。",
     "noticeApplied": "此结果使用已记录的所得税基数更正。实际已扣PCB和已发放的薪资保持不变。",
     "noticeReferences": "所得税更正参考编号",
-    "noticeView": "查看所得税更正"
+    "noticeView": "查看所得税更正",
+    "reviewPayrollProcess": "查看薪资处理"
   },
   "entra": {
     "title": "Microsoft Entra ID",

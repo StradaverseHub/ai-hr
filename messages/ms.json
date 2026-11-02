@@ -6856,7 +6856,14 @@
       "closeBlockedPending": "Proses ini tidak boleh ditutup: {n} pekerja yang layak untuk proses ini masih Baharu / Belum Selesai: {names}. Proses mereka melalui Proses semula dahulu, kemudian tutup semula.",
       "closeBlockedReprocessRunning": "Proses ini tidak boleh ditutup semasa proses semula masih berjalan padanya. Tunggu sehingga proses semula selesai, kemudian tutup semula.",
       "closeBlockedReprocessFailed": "Proses ini tidak boleh ditutup: proses semula terkini gagal bagi {n} pekerja: {names}. Betulkan masalah yang dilaporkan dan proses semula mereka, kemudian tutup semula.",
-      "closeBlockedAndMore": " dan {n} lagi"
+      "closeBlockedAndMore": " dan {n} lagi",
+      "reprocessStopped_LATER_CYCLE_FINALIZED": "Kitaran gaji yang kemudian telah dimuktamadkan. Keputusan tersimpan kekal sah. Semak dan buka semula kitaran itu sebelum mengubah bayaran terdahulu.",
+      "reprocessStopped_TAX_BASIS_SOURCE_CHANGED": "Sumber gaji berubah selepas pembetulan cukai pendapatan. Hasil tersimpan kekal sah. Semak dan kira semula sejarah cukai yang terjejas sebelum mencuba lagi.",
+      "reprocessFailedEmployee": "Pekerja gagal",
+      "reprocessPendingEmployees": "{count} pekerja yang dipilih masih menunggu.",
+      "reprocessPcbBefore": "PCB sebelum",
+      "reprocessPcbAfter": "PCB dikemas kini",
+      "reprocessPcbDifference": "Perbezaan PCB"
     },
     "transactions": {
       "title": "Kemasukan Transaksi",
@@ -7941,7 +7948,8 @@
       "draftResultTitle": "Draf gaji",
       "draftResultSubtitle": "Semak hasil bagi setiap syarikat. Draf yang disimpan belum mempunyai slip gaji yang dikira; buka proses yang disimpan untuk menyemak transaksi sebelum pemprosesan.",
       "draftCompanySaved": "Draf disimpan",
-      "draftSaving": "Menyimpan draf…"
+      "draftSaving": "Menyimpan draf…",
+      "outstandingOnly": "Bayaran tertunggak sahaja · tamat {date}"
     },
     "guide": {
       "title": "Panduan Aliran Kerja Gaji",
@@ -33387,7 +33395,8 @@
     "noticeOriginal": "Ini menunjukkan pengiraan gaji asal. Pembetulan asas cukai pendapatan kemudian direkodkan secara berasingan.",
     "noticeApplied": "Hasil ini menggunakan pembetulan asas cukai pendapatan yang direkodkan. PCB yang dibayar dan gaji yang telah dikeluarkan kekal tidak berubah.",
     "noticeReferences": "Rujukan pembetulan cukai pendapatan",
-    "noticeView": "Lihat pembetulan cukai pendapatan"
+    "noticeView": "Lihat pembetulan cukai pendapatan",
+    "reviewPayrollProcess": "Semak Proses Gaji"
   },
   "entra": {
     "title": "Microsoft Entra ID",

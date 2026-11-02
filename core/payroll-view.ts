@@ -2330,6 +2330,11 @@ export function listAppliedTp1Deductions(
  * the instant this batch was processed. Any recomputation of an earlier-month batch for the same
  * employment and tax year landing in that window moved the cumulative accumulators this slip replays.
  */
+function savedPcb(snapshot:unknown):number|null{
+ const source=snapshot&&typeof snapshot==='object'?(snapshot as {statutory?:unknown}).statutory:null;
+ const value=source&&typeof source==='object'?(source as {pcb?:unknown}).pcb:null;
+ return typeof value==='number'&&Number.isFinite(value)?value:null;
+}
 export type RecomputeDisclosureRow = {
   id: string;
   employmentId: string;
@@ -2339,6 +2344,8 @@ export type RecomputeDisclosureRow = {
   reason: string | null;
   at: Date;
   diff: RecomputeDiff;
+  pcbBefore?: number|null;
+  pcbAfter?: number|null;
   /** Earlier-month pay periods recomputed inside this event's window (cause (b) evidence, deduped). */
   priorMonths: string[];
 };
@@ -2443,6 +2450,7 @@ export function listRecomputeDisclosure(
         action: e.action,
         reason: e.reason,
         at: e.at,
+        pcbBefore: savedPcb(e.before),pcbAfter:savedPcb(e.after),
         diff: diffPayslipVersions(
           e.before as PayslipSnapshot | null,
           e.after as PayslipSnapshot | null,

@@ -277,9 +277,10 @@ export default async function ReprocessPage({
           is what the operator came back for; the selection stays below so a second correction does not
           need a second navigation. */}
       {thisJob?.status === 'failed' && <ErrorBanner message={t(reprocessStoppedMessageKey(thisJob.stopCode))} />}
-      {thisJob && outcomes !== null && (outcomes.length > 0 || thisJob.status === 'completed') && (
+      {thisJob && outcomes !== null && (
         <ReprocessOutcomePanel outcomes={outcomes} history={disclosure} slips={slips} run={batch}
           currency={currency} batchId={batchId} from={listFrom} jobId={thisJob.id}
+          stoppedEmployee={readStoppedEmployee(thisJob.result,thisJob.employmentIds)}
           selected={thisJob.employmentIds.length} stopped={thisJob.status === 'failed'} stoppedCode={thisJob.stopCode} />
       )}
       {thisJob?.status === 'completed' && outcomes === null && (
@@ -468,4 +469,11 @@ export default async function ReprocessPage({
       )}
     </div>
   );
+}
+
+function readStoppedEmployee(result:unknown,selected:readonly string[]){
+ const value=result&&typeof result==='object'?(result as {stoppedEmployee?:unknown}).stoppedEmployee:null;
+ if(!value||typeof value!=='object')return null;
+ const row=value as {employmentId?:unknown;name?:unknown;employeeCode?:unknown};
+ return typeof row.employmentId==='string'&&selected.includes(row.employmentId)&&typeof row.name==='string'&&(row.employeeCode===null||typeof row.employeeCode==='string')?{employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode}:null;
 }
