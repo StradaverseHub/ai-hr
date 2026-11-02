@@ -27,7 +27,8 @@ import { FilterChips, FilterPanel, type FilterField } from '@/components/filter-
 // 5206539f — `leave.apply_on_behalf` is resolved by the SAME function requestLeave's own gate calls
 // (the on-behalf permission read, asked in ./my-leave-data.ts since r397), so the selector below and the refusal in the
 // service can never answer differently.
-import { todayInKualaLumpur,leaveApplicationAddAccess } from '@/core/leave';
+import { todayInKualaLumpur } from '@/core/leave';
+import { leaveApplicationAddAccess } from '@/packs/leave/service';
 import { isReplacementLeaveType, pickReplacementLeaveType } from '@/core/ess-view';
 // r302 (6c9802c9) — My Leave dashboard: the per-leave-year figures, Upcoming Leave, and the names of the people
 // who decide the viewer's OWN requests (migration 0472). Every figure is a pick in core/my-leave.ts.

@@ -64,7 +64,10 @@ describe('Request Leave: relocated to a top-right primary "+" button', () => {
     // Nothing between the guard and the dialog may reopen an admin branch.
     expect(page.slice(guardAt, dialogAt).includes('{admin && (')).toBe(false);
     // A manager is not `admin`, so on-behalf-of application from this page is unaffected.
-    expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
+    // Exact Add projection further narrows the native permission's already-visible choices.
+    expect(page).toContain('employeeOptions={canApplyOnBehalf && requestLeaveEmployeeOptions.length ? requestLeaveEmployeeOptions : undefined}');
+    expect(page).toContain('nativeRequestLeaveEmployeeOptions.filter(row=>allowedApplicationIds.has(row.id))');
+    expect(page).toContain('canAdd={canAddLeaveApplication}');
   });
 });
 

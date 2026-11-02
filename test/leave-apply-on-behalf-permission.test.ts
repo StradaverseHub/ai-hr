@@ -403,7 +403,10 @@ describe('the screen and the service read ONE permission (AGENTS rule 17)', () =
     expect(loader).toContain('.find((e) => e.employmentId === me.employmentId)?.companyId ?? null;');
     expect(page).toContain('canApplyOnBehalf,'); // destructured off the loader's result
     expect(loader, 'the reporting-lines read is back').not.toContain('reportingLinesFor');
-    expect(page).toContain('employeeOptions={canApplyOnBehalf ? requestLeaveEmployeeOptions : undefined}');
+    // Exact Add projection further narrows the native permission's already-visible choices.
+    expect(page).toContain('employeeOptions={canApplyOnBehalf && requestLeaveEmployeeOptions.length ? requestLeaveEmployeeOptions : undefined}');
+    expect(page).toContain('nativeRequestLeaveEmployeeOptions.filter(row=>allowedApplicationIds.has(row.id))');
+    expect(page).toContain('canAdd={canAddLeaveApplication}');
     // THE ONE-EDIT-APART CASE. The old rule and the new one differ by a single expression, so the absence of
     // the old read is asserted as flatly as the presence of the new one — a page that asks BOTH questions
     // would satisfy every other assertion in this file.
