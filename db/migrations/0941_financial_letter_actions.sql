@@ -3813,3 +3813,48 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.performance_feedback_framework(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.performance_feedback_framework(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- A prepared reminder is its own finite notification source. The maintenance
+-- worker cannot borrow the human Administrative Data predicate of generic enqueue.
+CREATE FUNCTION app.onehr_reminder_email_enqueue(wanted_notification uuid,wanted_sequence bigint) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE notice public.notification%ROWTYPE;event public.domain_event%ROWTYPE;recipient public.performance_assessment_reminder_recipient%ROWTYPE;source jsonb;opened boolean:=false;worker boolean;created integer:=0;
+BEGIN
+ IF nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL THEN RAISE EXCEPTION 'OneHR notification actor unavailable' USING ERRCODE='42501';END IF;
+ IF app.current_agent_principal() IS NOT NULL THEN RAISE EXCEPTION 'OneHR notification actor unavailable' USING ERRCODE='42501';END IF;
+ SELECT * INTO notice FROM public.notification actual WHERE actual.id=wanted_notification AND actual.tenant_id=app.current_tenant_id();
+ SELECT * INTO event FROM public.domain_event actual WHERE actual.id=notice.source_event_id AND actual.tenant_id=notice.tenant_id;
+ IF notice.id IS NULL OR notice.kind<>'performance.reminder' OR event.event_type<>'assessment.reminder-queued' OR event.aggregate_type<>'assessment-reminder' OR event.sequence IS DISTINCT FROM wanted_sequence THEN RETURN 0;END IF;
+ worker:=app.current_user_id() IS NULL AND EXISTS(SELECT 1 FROM app.financial_onehr_worker_source proof WHERE proof.transaction_id=pg_current_xact_id() AND proof.tenant_id=notice.tenant_id
+ AND proof.session_login=session_user AND proof.source_kind='event' AND proof.source_id=event.id AND proof.event_id=event.id AND proof.recipient_id=event.aggregate_id
+ AND app.financial_onehr_worker_allowed(proof.cycle_id,NULL,proof.recipient_id));
+ IF NOT worker AND (NOT app.financial_human_principal_current() OR NOT app.is_admin()) THEN RETURN 0;END IF;
+ PERFORM app.access_workforce_write_lock();
+ IF worker THEN opened:=app.financial_onehr_recipient_context_begin(event.aggregate_id,false);IF NOT opened THEN RETURN 0;END IF;END IF;
+ source:=app.onehr_reminder_dispatch_source(event.aggregate_id);
+ SELECT * INTO recipient FROM public.performance_assessment_reminder_recipient actual WHERE actual.id=event.aggregate_id AND actual.tenant_id=notice.tenant_id AND actual.source_event_id=event.id;
+ IF source IS NULL OR recipient.id IS NULL OR recipient.employment_id IS DISTINCT FROM notice.recipient_employment_id OR recipient.outcome<>'queued'
+ OR NOT app.financial_onehr_prepared_current(notice.tenant_id,recipient.id) OR recipient.prepared_until<=clock_timestamp()
+ OR recipient.tenant_epoch IS DISTINCT FROM (source->>'tenantEpoch')::bigint OR recipient.cycle_epoch IS DISTINCT FROM (source->>'cycleEpoch')::bigint THEN
+  IF opened THEN PERFORM app.financial_onehr_recipient_context_end(event.aggregate_id);END IF;RETURN 0;
+ END IF;
+ PERFORM 1 FROM public.notification actual WHERE actual.id=notice.id AND actual.tenant_id=notice.tenant_id AND actual.kind=notice.kind
+ AND actual.source_event_id=event.id AND actual.recipient_employment_id=recipient.employment_id FOR SHARE;
+ IF NOT FOUND THEN IF opened THEN PERFORM app.financial_onehr_recipient_context_end(event.aggregate_id);END IF;RETURN 0;END IF;
+ INSERT INTO public.notification_delivery(tenant_id,notification_id,channel,recipient_user_id,source_event_id,kind,category)
+ SELECT notice.tenant_id,notice.id,'email',account.id,event.id,notice.kind,'performance'
+ FROM public.employment employment JOIN public.app_user account ON account.person_id=employment.person_id AND account.tenant_id=employment.tenant_id
+ JOIN public.notification_pref pref ON pref.tenant_id=employment.tenant_id AND pref.recipient_employment_id=employment.id AND pref.category='performance' AND pref.channel='email' AND pref.enabled
+  AND pref.email_consent_user_id=account.id AND pref.email_after_sequence IS NOT NULL AND event.sequence>pref.email_after_sequence
+ JOIN public.notification_email_policy policy ON policy.tenant_id=employment.tenant_id AND policy.category='performance' AND policy.enabled AND event.sequence>policy.after_sequence
+ WHERE employment.id=notice.recipient_employment_id AND employment.tenant_id=notice.tenant_id AND account.id=recipient.user_id AND account.archived_at IS NULL AND NOT app.login_blocked(account.id)
+ AND EXISTS(SELECT 1 FROM public.app_external_identity identity WHERE identity.app_user_id=account.id AND identity.revoked_at IS NULL)
+ ON CONFLICT DO NOTHING;
+ GET DIAGNOSTICS created=ROW_COUNT;
+ IF opened THEN PERFORM app.financial_onehr_recipient_context_end(event.aggregate_id);END IF;
+ RETURN created;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_reminder_email_enqueue(uuid,bigint) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_reminder_email_enqueue(uuid,bigint) TO ai_hr_app;
