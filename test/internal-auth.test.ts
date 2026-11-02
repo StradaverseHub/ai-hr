@@ -1,4 +1,5 @@
-import { readPasswordPolicy, savePasswordPolicy } from '../core/password-policy';
+import {NEW_PASSWORD_REQUIREMENTS} from '../lib/password-policy';
+import { readPasswordPolicy, savePasswordPolicy, unlockPasswordAccount } from '../core/password-policy';
 import {saveEmailDesign} from '../core/email-design/service';
 import {defaultEmailDocument} from '../lib/email-design/model';
 import { randomUUID } from 'node:crypto';
@@ -94,6 +95,30 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(changeInitialPassword(challenge(again), final)).rejects.toMatchObject({ code: 'passwordPolicy' });
     const done = completed(await changeInitialPassword(challenge(again), 'Another unused secret phrase 902!'));
     expect(await readSession(done.access_token)).not.toBeNull();
+  });
+  it('enforces configured failures, generic refusal and tenant-guarded audited unlock',async()=>{
+    const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,lockoutEnabled:true,failedAttempts:2}},0);
+    for(let i=0;i<2;i++)await expect(startLogin({organization:'alpha',username:'owner',password:'wrong',native:false})).rejects.toMatchObject({code:'invalidLogin'});
+    await expect(startLogin({organization:'alpha',username:'owner',password:temp,native:false})).rejects.toMatchObject({code:'invalidLogin'});
+    await expect(unlockPasswordAccount({...ctx,tenantId:randomUUID()},base.adminUserId)).rejects.toThrow();
+    await expect(unlockPasswordAccount({...ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]},base.adminUserId)).rejects.toThrow();
+    await unlockPasswordAccount(ctx,base.adminUserId);
+    expect((await startLogin({organization:'alpha',username:'owner',password:temp,native:false})).step).toBe('password');
+    const events=await owner.client`select id from domain_event where tenant_id=${base.tenantId}::uuid and event_type='app-user.password-unlocked'`;
+    expect(events).toHaveLength(1);
+  });
+  it('verifies first-login enrollment before replacing a password and retains recovery codes',async()=>{
+    const ctx={...adminCtx(base),grants:[{role:'hr_admin',companyId:null}]};
+    await savePasswordPolicy(ctx,{enabled:false,interval:90,unit:'days',requirements:{...NEW_PASSWORD_REQUIREMENTS,firstResetVerification:true}},0);
+    const setup=await startLogin({organization:'alpha',username:'owner',password:temp,native:true});
+    if(setup.step!=='enroll'||!setup.secret)throw Error('Expected verified first-time setup');
+    const change=await verifyMfa(challenge(setup),await generate({secret:setup.secret}),true);
+    expect(change.step).toBe('password');
+    await expect(changeInitialPassword(challenge(change),'short',true)).rejects.toMatchObject({code:'passwordPolicy'});
+    const session=completed(await changeInitialPassword(challenge(change),'Valid changed secret 5!',true));
+    expect(session.recoveryCodes).toHaveLength(8);expect(await readSession(session.access_token,true)).not.toBeNull();
+    expect((await startLogin({organization:'alpha',username:'owner',password:'Valid changed secret 5!',native:false})).step).toBe('mfa');
   });
   it('guards policy edits, revisions and tenant boundaries, with an audit event', async () => {
     const ctx = { ...adminCtx(base), grants: [{ role: 'hr_admin', companyId: null }] };

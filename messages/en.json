@@ -509,7 +509,8 @@
     "functionAccess": "Function Access",
     "securityCenter": "Security Center",
     "aiManagementInventory": "AI inventory",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "passwordPolicy": "Password Policy"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -26869,7 +26870,7 @@
       "invalidLogin": "The organization, username or password is incorrect, or this account is unavailable.",
       "invalidChallenge": "This setup or recovery link has expired or is no longer valid. Start again.",
       "invalidCode": "This code is incorrect, expired or already used. Try the next authenticator code or an unused recovery code.",
-      "passwordPolicy": "Use a password you have not used before, with at least 14 characters, excluding your username and email.",
+      "passwordPolicy": "Choose a password that meets your organisation’s password policy and excludes your username and email.",
       "passwordMismatch": "The passwords do not match.",
       "rateLimited": "Too many attempts. Please wait before trying again.",
       "unavailable": "Sign-in or recovery is temporarily unavailable. Try again later or contact your administrator.",
@@ -32846,6 +32847,10 @@
     "users": {
       "title": "Users",
       "description": "Find users and manage roles, invitations and account access."
+    },
+    "passwordPolicy": {
+      "title": "Password Policy",
+      "description": "New complexity rules apply when a password is created, changed or reset. External organisation sign-ins keep their provider’s password policy."
     }
   },
   "payFormula": {
@@ -33654,7 +33659,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "Password security",
+    "title": "Password Policy",
     "description": "Configure recurring changes for HR passwords. Manage Microsoft passwords and Conditional Access in Entra.",
     "enabled": "Require recurring password changes",
     "interval": "Change every",
@@ -33672,6 +33677,35 @@
       "conflict": "Another administrator changed this policy. Reload before saving.",
       "forbidden": "You do not have permission to change this policy.",
       "unavailable": "Password settings are unavailable. Try again."
+    },
+    "full": {
+      "minLength": "Minimum password length",
+      "maxLength": "Maximum password length",
+      "uppercase": "Require uppercase letters",
+      "lowercase": "Require lowercase letters",
+      "numbers": "Require numbers",
+      "special": "Require special characters",
+      "historyEnabled": "Prevent reuse of previous passwords",
+      "historyCount": "Previous passwords to remember",
+      "lockoutEnabled": "Lock account after failed attempts",
+      "failedAttempts": "Consecutive failed attempts",
+      "autoUnlock": "Automatically unlock account",
+      "unlockMinutes": "Unlock after (minutes)",
+      "forceFirstChange": "Force password change on first login",
+      "firstResetVerification": "Authenticator or recovery code on first login or reset",
+      "complexity": "Complexity and expiry",
+      "expiry": "Password expiry",
+      "account": "Account protection",
+      "firstLogin": "First login and reset",
+      "manualUnlock": "Only an authorised administrator can unlock an account when automatic unlock is off.",
+      "legacy": "Existing authentication rules remain effective until you save this configuration. Saving replaces the previous complexity and history rules with the values shown.",
+      "mfa": "Existing normal-login authenticator requirements continue to apply. This setting does not turn off mandatory MFA or allow recovery by email alone.",
+      "effect": "New complexity rules apply when a password is created, changed or reset. External organisation sign-ins keep their provider’s password policy.",
+      "unlockTitle": "Unlock password account",
+      "unlockUser": "User account",
+      "unlockChoose": "Select a user",
+      "unlockAction": "Unlock account",
+      "unlocked": "Account unlocked."
     }
   }
 }

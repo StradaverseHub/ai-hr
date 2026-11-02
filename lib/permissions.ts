@@ -123,7 +123,7 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'letterFields',href:'/letters/fields',labelKey:'letters.fields.title',guard:'scopedSession',routes:['/letters/fields','/letters/fields/[fieldId]'],hasScopeNote:true},
   // This is a capability gate, not a role grant. The reference grid renders it conditionally for all
   // roles; the page reads current SQL authority and a matching individual denial always wins.
-  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center'],hasScopeNote:true},
+  {screenKey:'securityCenter',href:'/admin/security-center',labelKey:'securityCenter.title',guard:'requireSecurityCenter',routes:['/admin/security-center','/admin/security-center/password-policy'],hasScopeNote:true},
   {screenKey:'functionAccess',href:'/admin/users/function-access',labelKey:'securityCenter.functions.title',guard:'requireAdmin',routes:['/admin/users/function-access']},
   {screenKey:'createLogin',href:'/admin/users/create',labelKey:'securityCenter.create.title',guard:'requireGroupAdministration',routes:['/admin/users/create'],hasScopeNote:true},
   {screenKey:'inviteUser',href:'/admin/users/invite',labelKey:'securityCenter.invite.title',guard:'requireGroupAdministration',routes:['/admin/users/invite'],hasScopeNote:true},
