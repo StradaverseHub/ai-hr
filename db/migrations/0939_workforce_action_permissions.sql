@@ -785,6 +785,11 @@ BEGIN
  company:=CASE WHEN TG_OP='DELETE' THEN OLD.company_id ELSE NEW.company_id END;
  author:=CASE WHEN TG_OP='DELETE' THEN OLD.created_by_person_id ELSE NEW.created_by_person_id END;
  action:=CASE TG_OP WHEN 'INSERT' THEN 'add' WHEN 'DELETE' THEN 'delete' ELSE 'edit' END;
+ IF TG_OP='DELETE' AND EXISTS(SELECT 1 FROM app.workforce_hire_source hs WHERE hs.xact_id=pg_current_xact_id() AND hs.tenant_id=OLD.tenant_id AND hs.user_id=app.current_user_id() AND hs.draft_id=OLD.id AND hs.employment_id IS NOT NULL) THEN
+  IF NOT app.access_workforce_consumed_draft(to_jsonb(OLD)) THEN RAISE EXCEPTION 'Hire source effects incomplete' USING ERRCODE='42501';END IF;
+  UPDATE app.workforce_hire_source SET consumed=true WHERE xact_id=pg_current_xact_id() AND tenant_id=OLD.tenant_id AND user_id=app.current_user_id() AND draft_id=OLD.id;
+  RETURN OLD;
+ END IF;
  own:=app.access_profile_request_own(author) AND NOT EXISTS(SELECT 1 FROM public.access_user_override o WHERE o.user_id=app.current_user_id() AND o.tenant_id=app.current_tenant_id() AND o.retired_at IS NULL AND o.effect='deny' AND o.capability_id IN ('workforce.'||action,'workforce.view','workforce.maintain') AND app.access_scope_covers(o.company_id,company,app.current_tenant_id()));
  IF own OR app.access_workforce_draft_action(company,action) OR TG_OP='UPDATE' AND app.access_workforce_draft_action(company,'add') THEN
   IF TG_OP='DELETE' THEN RETURN OLD;ELSE RETURN NEW;END IF;
@@ -1057,7 +1062,8 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE source app.workforce_hire_source%ROWTYPE;
 BEGIN
  SELECT * INTO source FROM app.workforce_hire_source s WHERE s.xact_id=NEW.xact_id AND s.tenant_id=NEW.tenant_id AND s.user_id=NEW.user_id AND s.draft_id=NEW.draft_id;
- IF NOT FOUND OR NOT source.consumed THEN RETURN NULL;END IF;
+ IF NOT FOUND OR source.employment_id IS NULL THEN RETURN NULL;END IF;
+ IF NOT source.consumed THEN RAISE EXCEPTION 'Hire source effects incomplete' USING ERRCODE='42501';END IF;
  IF source.xact_id<>pg_current_xact_id() OR source.user_id IS DISTINCT FROM app.current_user_id() OR source.tenant_id IS DISTINCT FROM app.current_tenant_id()
   OR NOT app.access_workforce_consumed_draft(source.source)
   OR EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=source.draft_id AND d.tenant_id=source.tenant_id)

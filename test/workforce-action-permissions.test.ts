@@ -77,6 +77,12 @@ describe('genuine Workforce operations',()=>{
   const [statutory]=await owner.db.select().from(s.employeeStatutoryMy).where(eq(s.employeeStatutoryMy.personId,employment.personId));expect(statutory.bankAccountNo).toBe('12345678');expect(statutory.epfEmployeeRate).toBe('0.1100');
   expect(await owner.db.select().from(s.employeeDependent).where(eq(s.employeeDependent.personId,employment.personId))).toHaveLength(1);
  });
+ it('a prepared source cannot commit a partial hire while its family and draft remain unconsumed',async()=>{
+  const context=await ctx(),email=randomUUID()+'@fixture.invalid';
+  const draft=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional incomplete source',primaryEmail:email,employeeIdMode:'manual',employeeCode:'ACT-PARTIAL'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'},family:[{fullName:'Fictional retained child',relationship:'child'}]},currentStep:6});
+  await deny('edit','delete');await expect(hireEmployee(await ctx(),{fromEmployeeDraftId:draft.id,person:{fullName:'Fictional incomplete source',primaryEmail:email},employeeCode:'ACT-PARTIAL',companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'})).rejects.toThrow();
+  expect(await getEmployeeDraft(await ctx(),draft.id)).not.toBeNull();expect(await owner.db.select().from(s.person).where(eq(s.person.primaryEmail,email))).toHaveLength(0);
+ });
  it('Add does not authorize discarding an unrelated saved draft',async()=>{
   const context=await ctx();const draft=await saveEmployeeDraft(context,{data:{profile:{fullName:'Fictional retained source',primaryEmail:randomUUID()+'@fixture.invalid'},employment:{companyId:b.companyId}},currentStep:0});
   await deny('delete');await expect(discardEmployeeDraft(await ctx(),draft.id)).rejects.toThrow();expect(await getEmployeeDraft(await ctx(),draft.id)).not.toBeNull();
