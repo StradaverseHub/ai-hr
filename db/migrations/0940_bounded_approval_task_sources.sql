@@ -528,3 +528,18 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  OR wanted_module='claims' AND wanted_task='claims.claim' AND EXISTS(SELECT 1 FROM public.claim_request q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND q.status<>'draft' AND app.workflow_task_reader(wanted_task,q.id))
  OR wanted_module='attendance' AND wanted_task='attendance.correction' AND EXISTS(SELECT 1 FROM public.attendance_correction q WHERE q.employment_id=e.id AND q.tenant_id=e.tenant_id AND app.workflow_task_reader(wanted_task,q.id)));
 $$;
+--> statement-breakpoint
+CREATE FUNCTION app.profile_task_relationship_tolerated(p_person uuid,p_value text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.profile_task_effect_source(p_person) IS NOT NULL AND EXISTS(
+ SELECT 1 FROM app.profile_task_before c JOIN public.profile_change_request q ON q.id=c.request_id AND q.tenant_id=c.tenant_id
+ CROSS JOIN LATERAL jsonb_array_elements(q.proposed->'registers')r CROSS JOIN LATERAL jsonb_array_elements(r->'fields')f
+ WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND q.person_id=p_person
+ AND r->>'kind'='emergency' AND f->>'fieldId'='profile.emergency_contact.relationship' AND app.access_profile_value_normalized(f->'value')=to_jsonb(p_value)
+ AND EXISTS(SELECT 1 FROM public.person_emergency_contact e WHERE e.person_id=q.person_id AND e.tenant_id=q.tenant_id AND e.archived_at IS NULL AND e.relationship=p_value));
+$$;
+REVOKE ALL ON FUNCTION app.profile_task_relationship_tolerated(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.profile_task_relationship_tolerated(uuid,text) TO ai_hr_app;
+--> statement-breakpoint
+ALTER POLICY data_permission_subject_read ON attendance_workflow_decision USING(app.data_permission_record_read(employment_id) OR app.workflow_task_reader('attendance.workflow',request_id));
+ALTER POLICY data_permission_subject_read ON attendance_workflow_participant_decision USING(app.data_permission_record_read(employment_id) OR app.workflow_task_reader('attendance.workflow',request_id));
