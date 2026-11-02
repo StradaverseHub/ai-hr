@@ -1,6 +1,6 @@
 import type {ReactNode} from 'react';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
-import {fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -109,7 +109,7 @@ describe('Contract Management scoped interactions',()=>{
   wrap(<ContractCaseDetail view={amendmentView()} today="2026-11-03" editorLabels={null}/>);const cancel=screen.getByRole('button',{name:messages.contractManagement.cancelDateAmendment});expect(cancel).toBeDisabled();await userEvent.type(screen.getByLabelText('Reason'),'The pending cover correction was withdrawn.');await userEvent.click(cancel);await waitFor(()=>expect(mocks.command).toHaveBeenCalledWith('reconcile',{caseId,revision:1,reason:'The pending cover correction was withdrawn.'}));
  });
  it('labels a cancelled date request separately from an applied record update',()=>{
-  const v=view();v.employee=false;v.gbs=true;v.effects=[{kind:'date_amendment',status:'done',error:null,receipt:{cancelled:true}}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(/End-date correction cancelled/)).toBeInTheDocument();expect(screen.queryByText(/^Completed$/)).not.toBeInTheDocument();
+  const v=view();v.employee=false;v.gbs=true;v.effects=[{kind:'date_amendment',status:'done',error:null,receipt:{cancelled:true}}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);const updates=within(screen.getByRole('heading',{name:messages.contractManagement.recordUpdates}).closest('section')!);expect(updates.getByText(/End-date correction cancelled/)).toBeInTheDocument();expect(updates.queryByText(/^Completed$/)).not.toBeInTheDocument();
  });
  it('keeps a previously reviewed renewal PDF frozen until a revised decision exists',()=>{
   const v=view();v.employee=false;v.gbs=true;v.record.state='in_approval';v.documents=[{id:documentId,type:'renewal',templateId:caseId,templateVersion:1,decisionRevision:1,hash:'a'.repeat(64),issuedAt:null,releasedAt:null,supersededAt:null,accepted:false,employeeDocumentId:null}];bindCurrentDocument(v);v.record.approvals=[{id:caseId,name:'Reviewed Rewards step',stage:0,holderIds:[documentId],quorum:'any',when:'always',state:'approved',actions:[{actorId:documentId,action:'approve',comment:'Reviewed.',at:'2026-11-03T06:00:00Z'}]}];wrap(<ContractCaseDetail view={v} today="2026-11-03" editorLabels={null}/>);expect(screen.getByText(messages.contractManagement.reviewedDocumentLocked)).toBeInTheDocument();expect(screen.getByRole('button',{name:messages.contractManagement.generateDocument})).toBeDisabled();
