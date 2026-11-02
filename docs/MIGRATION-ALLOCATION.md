@@ -917,3 +917,12 @@ This helper preserves revoked raw identity access and checks current tenant/grou
 authority under the canonical access lock. Recheck all claims, aggregate journal and live watermark
 before integration/installation; adjust the unapplied index on aggregation. This is source allocation,
 with no deployment or installation authorization.
+
+## Approved administrative data-profile owner — 2 November 2026 (provisional)
+
+Security worker reserves `0936_data_permission_profiles`, index758 on its own journal,
+when1793330000336, following its0935 allocation. SQL SHA256 `b49d0e327744e5d8370941af1552a598bc6d9b4392662e53eeeea11941eb84d4`.
+Parent coordinated0937 / when1793330000337 / aggregate index759 to the independent read-bypass
+worker;0938 / when1793330000338 / aggregate index760 is reserved to Security for central scope.
+These are additive uninstalled source claims. Re-audit all refs/worktree journals and live watermark
+before release; no deployment or installation is authorized.
