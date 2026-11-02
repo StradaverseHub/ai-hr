@@ -2462,7 +2462,7 @@ CREATE TRIGGER aaa_leave_request_date_access BEFORE INSERT OR UPDATE OR DELETE O
 -- No application command physically deletes a Leave request. Withdrawal and all other
 -- cancellations retain the row and its native audit. The storage owner retains maintenance.
 REVOKE DELETE ON public.leave_request FROM ai_hr_app;
-CREATE FUNCTION app.leave_request_edit_guard() RETURNS trigger
+CREATE FUNCTION app.leave_request_mutation_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE edit_fields text[]:=ARRAY['leave_type_id','start_date','end_date','days','duration_type','hours','from_time','to_time','reason','employee_remark','unpaid_days'];
 BEGIN
@@ -2475,11 +2475,15 @@ BEGIN
    OR EXISTS(SELECT 1 FROM public.leave_request_date day_row WHERE day_row.tenant_id=OLD.tenant_id AND day_row.leave_request_id=OLD.id)
    OR NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.tenant_id=NEW.tenant_id AND actual.id=NEW.leave_type_id) THEN
    RAISE EXCEPTION 'Own Leave request edit unavailable' USING ERRCODE='42501';END IF;
+ ELSIF OLD.status::text='pending' AND NEW.status::text='cancelled' THEN
+  IF (to_jsonb(NEW)-'status') IS DISTINCT FROM (to_jsonb(OLD)-'status')
+  OR NOT (app.leave_own_withdraw_source_allowed(to_jsonb(OLD),to_jsonb(NEW)) OR app.leave_employee_record_cancel_allowed(OLD.id)) THEN
+   RAISE EXCEPTION 'Pending Leave cancellation source unavailable' USING ERRCODE='42501';END IF;
  END IF;
  RETURN NEW;
 END $$;
-REVOKE ALL ON FUNCTION app.leave_request_edit_guard() FROM PUBLIC,ai_hr_app;
-CREATE TRIGGER aaa_leave_request_edit BEFORE UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_request_edit_guard();
+REVOKE ALL ON FUNCTION app.leave_request_mutation_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER aaa_leave_request_mutation BEFORE UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_request_mutation_guard();
 
 --> statement-breakpoint
 -- Employee Leave Records is administrative; related-manager reads and assigned decisions
@@ -2508,3 +2512,125 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.leave_employee_records_company_allowed(uuid,text),app.leave_employee_records_subject_allowed(uuid,text),app.leave_employee_record_cancel_allowed(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.leave_employee_records_company_allowed(uuid,text),app.leave_employee_records_subject_allowed(uuid,text),app.leave_employee_record_cancel_allowed(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Pending own withdrawal owns one actual request, its native defensive reversal, and
+-- the existing self-cancelled audit in the same statement. No generic ledger port.
+CREATE TABLE app.leave_own_withdraw_effect(
+ xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,request_id uuid NOT NULL,employment_id uuid NOT NULL,
+ company_id uuid NOT NULL,ancestry uuid[] NOT NULL,source_before jsonb NOT NULL,source_after jsonb NOT NULL,
+ authority_stamp text NOT NULL,audit_payload jsonb NOT NULL,event_id uuid,ledger_id uuid,ledger_row jsonb,
+ completed boolean NOT NULL DEFAULT false,source_changed boolean NOT NULL DEFAULT false,
+ PRIMARY KEY(xact_id,tenant_id,request_id));
+ALTER TABLE app.leave_own_withdraw_effect ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON app.leave_own_withdraw_effect FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_own_withdraw_source_allowed(p_before jsonb,p_after jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT nullif(current_setting('app.agent_principal_id',true),'') IS NULL AND app.principal_snapshot_current()
+ AND EXISTS(SELECT 1 FROM app.leave_own_withdraw_effect proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id()
+  AND proof.request_id=(p_before->>'id')::uuid AND proof.source_before=p_before AND proof.source_after=p_after AND NOT proof.completed AND NOT proof.source_changed
+  AND proof.authority_stamp=app.access_function_authority_stamp() AND app.leave_own_application_allowed(proof.employment_id,'delete'));
+$$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw_source_allowed(jsonb,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.leave_own_withdraw_complete() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE proof app.leave_own_withdraw_effect%ROWTYPE;
+BEGIN
+ SELECT * INTO proof FROM app.leave_own_withdraw_effect actual WHERE actual.xact_id=NEW.xact_id AND actual.tenant_id=NEW.tenant_id AND actual.request_id=NEW.request_id;
+ IF NOT FOUND OR NOT proof.completed OR proof.source_changed OR proof.xact_id<>pg_current_xact_id() OR proof.tenant_id IS DISTINCT FROM app.current_tenant_id()
+ OR proof.user_id IS DISTINCT FROM app.current_user_id() OR nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL
+ OR proof.authority_stamp IS DISTINCT FROM app.access_function_authority_stamp() OR NOT app.leave_own_application_allowed(proof.employment_id,'delete')
+ OR NOT EXISTS(SELECT 1 FROM public.employment subject WHERE subject.tenant_id=proof.tenant_id AND subject.id=proof.employment_id AND subject.company_id=proof.company_id)
+ OR NOT EXISTS(SELECT 1 FROM public.leave_request actual WHERE actual.tenant_id=proof.tenant_id AND actual.id=proof.request_id AND to_jsonb(actual)=proof.source_after)
+ OR (proof.ledger_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.leave_ledger actual WHERE actual.tenant_id=proof.tenant_id AND actual.id=proof.ledger_id AND to_jsonb(actual)=proof.ledger_row))
+ OR NOT EXISTS(SELECT 1 FROM public.domain_event audit WHERE audit.id=proof.event_id AND audit.tenant_id=proof.tenant_id AND audit.actor_type='user' AND audit.actor_id=proof.user_id
+  AND audit.aggregate_type='leave-request' AND audit.aggregate_id=proof.request_id AND audit.event_type='leave-request.self-cancelled' AND audit.subject_employment_id=proof.employment_id AND audit.payload=proof.audit_payload) THEN
+  RAISE EXCEPTION 'Own Leave withdrawal effects or authority changed' USING ERRCODE='42501';
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw_complete() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER leave_own_withdraw_complete AFTER UPDATE ON app.leave_own_withdraw_effect DEFERRABLE INITIALLY DEFERRED FOR EACH ROW WHEN(NEW.completed) EXECUTE FUNCTION app.leave_own_withdraw_complete();
+CREATE FUNCTION app.leave_own_withdraw_recheck() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE prior_tenant uuid;next_tenant uuid;prior_request uuid;next_request uuid;
+BEGIN
+ IF TG_TABLE_NAME='access_control_epoch' THEN
+  IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND proof.completed AND NOT proof.source_changed;END IF;
+ ELSIF TG_TABLE_NAME='module_company_hierarchy_epoch' THEN
+  IF NEW.epoch IS DISTINCT FROM OLD.epoch THEN UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=NEW.tenant_id AND NEW.company_id=ANY(proof.ancestry) AND proof.completed AND NOT proof.source_changed;END IF;
+ ELSIF TG_TABLE_NAME='employment' THEN
+  IF TG_OP='DELETE' OR (OLD.id,OLD.tenant_id,OLD.person_id,OLD.company_id,OLD.voided_at) IS DISTINCT FROM (NEW.id,NEW.tenant_id,NEW.person_id,NEW.company_id,NEW.voided_at) THEN
+   UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=OLD.tenant_id AND proof.employment_id=OLD.id AND proof.completed AND NOT proof.source_changed;
+  END IF;
+ ELSE
+  IF TG_OP='UPDATE' AND to_jsonb(OLD)=to_jsonb(NEW) THEN RETURN NULL;END IF;
+  IF TG_OP<>'INSERT' THEN
+   prior_tenant:=OLD.tenant_id;
+   IF TG_TABLE_NAME='leave_request' THEN prior_request:=OLD.id;ELSE prior_request:=OLD.source_request_id;END IF;
+  END IF;
+  IF TG_OP<>'DELETE' THEN
+   next_tenant:=NEW.tenant_id;
+   IF TG_TABLE_NAME='leave_request' THEN next_request:=NEW.id;ELSE next_request:=NEW.source_request_id;END IF;
+  END IF;
+  IF prior_request IS NOT NULL OR next_request IS NOT NULL THEN
+   UPDATE app.leave_own_withdraw_effect proof SET source_changed=true WHERE proof.xact_id=pg_current_xact_id() AND proof.completed AND NOT proof.source_changed
+   AND ((proof.tenant_id,proof.request_id)=(prior_tenant,prior_request) OR (proof.tenant_id,proof.request_id)=(next_tenant,next_request));
+  END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw_recheck() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER leave_own_withdraw_control_recheck AFTER UPDATE ON app.access_control_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_company_recheck AFTER UPDATE ON app.module_company_hierarchy_epoch FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_subject_recheck AFTER UPDATE OR DELETE ON public.employment FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_request_recheck AFTER UPDATE ON public.leave_request FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+CREATE TRIGGER leave_own_withdraw_ledger_recheck AFTER INSERT OR UPDATE OR DELETE ON public.leave_ledger FOR EACH ROW EXECUTE FUNCTION app.leave_own_withdraw_recheck();
+
+CREATE FUNCTION app.leave_own_withdraw(p_request uuid) RETURNS TABLE(restored_days numeric,event_id uuid)
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id();u uuid:=app.current_user_id();nominated uuid;co uuid;ancestry uuid[];q public.leave_request%ROWTYPE;changed public.leave_request%ROWTYPE;
+ leave_kind public.leave_type%ROWTYPE;balance_type uuid;net numeric;restore numeric:=0;ledger public.leave_ledger%ROWTYPE;stamp text;after_row jsonb;audit_payload jsonb;audit_id uuid;
+BEGIN
+ PERFORM app.audit_access_order_lock_for(t);PERFORM app.access_workforce_write_lock();
+ IF nullif(current_setting('app.agent_principal_id',true),'') IS NOT NULL OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Own Leave withdrawal unavailable' USING ERRCODE='42501';END IF;
+ IF current_setting('transaction_isolation')<>'read committed' OR current_setting('transaction_read_only')<>'off'
+ OR NOT pg_try_advisory_xact_lock_shared(hashtextextended('leave-dependency-configuration:'||t::text,0)) THEN RAISE EXCEPTION 'Leave dependency unavailable' USING ERRCODE='55P03';END IF;
+ SELECT actual.employment_id INTO nominated FROM public.leave_request actual WHERE actual.id=p_request AND actual.tenant_id=t AND app.leave_own_application_allowed(actual.employment_id,'delete');
+ IF NOT FOUND THEN RAISE EXCEPTION 'Own Leave withdrawal unavailable' USING ERRCODE='42501';END IF;
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-employment:'||t::text||':'||nominated::text,0)) THEN RAISE EXCEPTION 'Leave dependency unavailable' USING ERRCODE='55P03';END IF;
+ SELECT * INTO q FROM public.leave_request actual WHERE actual.id=p_request AND actual.tenant_id=t FOR UPDATE;
+ IF NOT FOUND OR q.employment_id IS DISTINCT FROM nominated OR q.status::text<>'pending' OR q.parent_group_id IS NOT NULL
+ OR app.leave_own_application_allowed(q.employment_id,'delete') IS NOT TRUE THEN RAISE EXCEPTION 'Own Leave withdrawal unavailable' USING ERRCODE='42501';END IF;
+ SELECT subject.company_id INTO co FROM public.employment subject WHERE subject.id=q.employment_id AND subject.tenant_id=t;
+ SELECT * INTO leave_kind FROM public.leave_type actual WHERE actual.id=q.leave_type_id AND actual.tenant_id=t;
+ IF NOT FOUND OR co IS NULL THEN RAISE EXCEPTION 'Own Leave withdrawal source unavailable' USING ERRCODE='42501';END IF;
+ WITH RECURSIVE lineage(id,parent_company_id) AS(
+  SELECT actual.id,actual.parent_company_id FROM public.company actual WHERE actual.id=co AND actual.tenant_id=t
+  UNION SELECT parent.id,parent.parent_company_id FROM lineage child JOIN public.company parent ON parent.id=child.parent_company_id AND parent.tenant_id=t
+ ) SELECT array_agg(lineage.id ORDER BY lineage.id) INTO ancestry FROM lineage;
+ stamp:=app.access_function_authority_stamp();
+ IF stamp IS NULL OR ancestry IS NULL OR EXISTS(SELECT 1 FROM public.leave_ledger actual WHERE actual.source_request_id=q.id AND (actual.tenant_id<>t OR actual.employment_id<>q.employment_id)) THEN RAISE EXCEPTION 'Own Leave withdrawal source unavailable' USING ERRCODE='42501';END IF;
+ SELECT coalesce(sum(actual.days),0) INTO net FROM public.leave_ledger actual WHERE actual.tenant_id=t AND actual.employment_id=q.employment_id AND actual.source_request_id=q.id;
+ IF net<0 THEN restore:=round(-net,2);END IF;
+ after_row:=to_jsonb(q)||'{"status":"cancelled"}'::jsonb;
+ audit_payload:=jsonb_build_object('previousStatus','pending','newStatus','cancelled','restoredDays',restore,'leaveTypeCode',leave_kind.code,'leaveTypeName',leave_kind.name,'startDate',q.start_date,'endDate',q.end_date);
+ DELETE FROM app.leave_own_withdraw_effect WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.leave_own_withdraw_effect(xact_id,tenant_id,user_id,request_id,employment_id,company_id,ancestry,source_before,source_after,authority_stamp,audit_payload)
+ VALUES(pg_current_xact_id(),t,u,q.id,q.employment_id,co,ancestry,to_jsonb(q),after_row,stamp,audit_payload);
+ IF restore>0 THEN
+  balance_type:=coalesce(leave_kind.balance_source_type_id,leave_kind.id);
+  IF NOT EXISTS(SELECT 1 FROM public.leave_type actual WHERE actual.id=balance_type AND actual.tenant_id=t) THEN RAISE EXCEPTION 'Own Leave withdrawal source unavailable' USING ERRCODE='42501';END IF;
+  INSERT INTO public.leave_ledger(tenant_id,employment_id,leave_type_id,entry_type,days,source_request_id,effective_on)
+  VALUES(t,q.employment_id,balance_type,'debit',restore,q.id,q.start_date) RETURNING * INTO ledger;
+ END IF;
+ UPDATE public.leave_request actual SET status='cancelled' WHERE actual.id=q.id AND actual.tenant_id=t AND actual.status::text='pending' RETURNING * INTO changed;
+ IF NOT FOUND OR to_jsonb(changed) IS DISTINCT FROM after_row THEN RAISE EXCEPTION 'Own Leave withdrawal source changed' USING ERRCODE='42501';END IF;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload)
+ VALUES(t,'leave-request',q.id,'leave-request.self-cancelled','user',u,q.employment_id,audit_payload) RETURNING id INTO audit_id;
+ UPDATE app.leave_own_withdraw_effect proof SET completed=true,event_id=audit_id,ledger_id=ledger.id,ledger_row=CASE WHEN ledger.id IS NULL THEN NULL ELSE to_jsonb(ledger) END
+ WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=t AND proof.request_id=q.id;
+ RETURN QUERY SELECT restore,audit_id;
+END $$;
+REVOKE ALL ON FUNCTION app.leave_own_withdraw(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.leave_own_withdraw(uuid) TO ai_hr_app;

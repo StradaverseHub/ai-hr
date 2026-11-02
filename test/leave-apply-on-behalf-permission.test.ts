@@ -23,7 +23,7 @@ import { and, eq,sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
-import { adminCancelLeave, canApplyLeaveOnBehalf, decideLeave, editLeaveRequest, leaveEmployeeRecordCancellationAccess, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
+import { adminCancelLeave, canApplyLeaveOnBehalf, cancelOwnLeave, decideLeave, editLeaveRequest, leaveEmployeeRecordCancellationAccess, requestLeave, LeaveOnBehalfNotAllowedError,leaveApplicationAddAccess,ownLeaveRequestActionAccess } from '../core/leave';
 import { countLeaveRequestsByStatus, listEmployees, listLeaveRequestsPage, reportingLinesFor } from '../core/read';
 import { ownLeaveRejections } from '../core/my-leave';
 import { ownLeaveRequestsPage } from '../core/mobile-leave-history';
@@ -576,4 +576,34 @@ it('keeps administrative Employee Leave Records and Delete separate from a visib
  expect(await leaveEmployeeRecordCancellationAccess(admin,[leaveRequestId])).toEqual([]);
  const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.admin-cancelled')));
  expect(audit).toMatchObject({actorId:b.adminUserId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:'pending',newStatus:'cancelled'}});
+});
+
+it('withdraws only the actual own pending request through its native audit and exact defensive reversal',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ expect(await withTenant(subject.ctx,tx=>tx.update(schema.leaveRequest).set({status:'cancelled'}).where(eq(schema.leaveRequest.id,leaveRequestId))).then(()=>null,pgSqlState)).toBe('42501');
+ // A retained debit on a pending legacy request exercises the existing defensive reversal course.
+ await owner.db.insert(schema.leaveLedger).values({tenantId:b.tenantId,employmentId:subject.employmentId,leaveTypeId:typeId,entryType:'debit',days:'-1.25',sourceRequestId:leaveRequestId,effectiveOn:START});
+ await expect(withTenant(subject.ctx,async tx=>{
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  return cancelOwnLeave(subject.ctx,{leaveRequestId},tx);
+ })).resolves.toEqual({previousStatus:'pending',restoredDays:1.25});
+ const ledger=await owner.db.select({days:schema.leaveLedger.days,type:schema.leaveLedger.leaveTypeId,effective:schema.leaveLedger.effectiveOn}).from(schema.leaveLedger).where(eq(schema.leaveLedger.sourceRequestId,leaveRequestId));
+ expect(ledger.sort((a,b)=>Number(a.days)-Number(b.days))).toEqual([{days:'-1.25',type:typeId,effective:START},{days:'1.25',type:typeId,effective:START}]);
+ const [audit]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.self-cancelled')));
+ expect(audit).toMatchObject({actorId:subject.ctx.userId,subjectEmploymentId:subject.employmentId,payload:{previousStatus:'pending',newStatus:'cancelled',restoredDays:1.25,startDate:START,endDate:END}});
+});
+it('requeues a completed own withdrawal if its actual request changes after an early flush',async()=>{
+ const subject=await hire('employee'),typeId=await leaveType();
+ const {leaveRequestId}=await requestLeave(subject.ctx,{employmentId:subject.employmentId,leaveTypeId:typeId,startDate:START,endDate:END});
+ await expect(withTenant(subject.ctx,async tx=>{
+  await cancelOwnLeave(subject.ctx,{leaveRequestId},tx);
+  await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
+  await tx.execute(sql`SET CONSTRAINTS ALL DEFERRED`);
+  for(const reason of ['Fictional transient request rewrite',null]){
+   expect(await tx.update(schema.leaveRequest).set({reason}).where(eq(schema.leaveRequest.id,leaveRequestId)).returning({id:schema.leaveRequest.id})).toEqual([{id:leaveRequestId}]);
+  }
+ })).rejects.toThrow('Own Leave withdrawal effects or authority changed');
+ const [persisted]=await owner.db.select().from(schema.leaveRequest).where(eq(schema.leaveRequest.id,leaveRequestId));expect(persisted).toMatchObject({status:'pending',reason:null});
+ expect(await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,leaveRequestId),eq(schema.domainEvent.eventType,'leave-request.self-cancelled')))).toEqual([]);
 });

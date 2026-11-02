@@ -8219,56 +8219,9 @@ export async function cancelOwnLeaveTx(
       throw new LeaveCancellationNotAllowedError('grouped (emergency / split) leave cannot be cancelled here', 'grouped');
     }
 
-    const [lt] = await tx
-      .select({ code: leaveType.code, name: leaveType.name })
-      .from(leaveType)
-      .where(eq(leaveType.id, req.leaveTypeId))
-      .limit(1);
-
-    // Reverse the NET ledger debit (net 0 for pending ⇒ restoredDays 0; kept robust for defense-in-depth).
-    const [netRow] = await tx
-      .select({ net: sql<string>`coalesce(sum(${leaveLedger.days}), 0)` })
-      .from(leaveLedger)
-      .where(eq(leaveLedger.sourceRequestId, req.id));
-    const net = Number(netRow?.net ?? 0);
-    let restoredDays = 0;
-    if (net < 0) {
-      restoredDays = round2(-net);
-      await tx.insert(leaveLedger).values({
-        tenantId: ctx.tenantId,
-        employmentId: req.employmentId,
-        // Balance Deduction Source (cdf9ca48): same ledger the approval debited (see the give-back path).
-        leaveTypeId: await resolveBalanceSourceTypeId(tx, req.leaveTypeId),
-        entryType: 'debit',
-        days: restoredDays.toFixed(2),
-        sourceRequestId: req.id,
-        effectiveOn: req.startDate,
-      });
-    }
-
-    await tx.update(leaveRequest).set({ status: 'cancelled' }).where(eq(leaveRequest.id, req.id));
-
-    // Substrate: distinct self-cancelled event (audit + notification key). Carries the display fields the
-    // approver/HR notification renderer needs (payload-only renderers).
-    const eventId = await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'leave-request',
-      aggregateId: req.id,
-      eventType: 'leave-request.self-cancelled',
-      actor: actorOf(ctx),
-      subjectEmploymentId: req.employmentId,
-      payload: {
-        previousStatus: 'pending',
-        newStatus: 'cancelled',
-        restoredDays,
-        leaveTypeCode: lt?.code ?? null,
-        leaveTypeName: lt?.name ?? null,
-        startDate: req.startDate,
-        endDate: req.endDate,
-      },
-    }, { returnId: true });
-
-    return { previousStatus: 'pending', restoredDays, eventId };
+    const [effect] = await tx.execute<{ restoredDays: string | number; eventId: string }>(sql`select restored_days as "restoredDays", event_id as "eventId" from app.leave_own_withdraw(${req.id}::uuid)`);
+    if (!effect?.eventId) throw new LeaveCancellationNotAllowedError('own leave withdrawal unavailable', 'already_final');
+    return { previousStatus: 'pending', restoredDays: Number(effect.restoredDays), eventId: effect.eventId };
   }
 }
 
