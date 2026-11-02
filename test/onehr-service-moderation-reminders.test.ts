@@ -16,7 +16,8 @@ import { hireEmployee, setReportingLine } from '../core/org';
 import { setCompensation } from '../core/comp';
 import * as perf from '../packs/performance/service';
 import {assessmentDevelopmentContext} from '../packs/performance/onehr/development-suggestion-service';
-import { defaultPolicy, type KPI } from '../packs/performance/onehr/model';
+import { defaultPolicy, scorecard, type KPI } from '../packs/performance/onehr/model';
+import {assessmentReminderWork,type ReminderWorkGraph} from '../packs/performance/onehr/reminder-work';
 import framework from '../packs/performance/onehr/framework.json';
 import sourceGolden from './fixtures/onehr/source-golden.json';
 import { createRewardUnit, getRewardUnit, importOnehrRewardResults } from '../packs/rewards/service';
@@ -66,6 +67,97 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     const [r]=await owner.db.select().from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,cycleId),eq(schema.performanceReview.employmentId,subject.employmentId)));reviewId=r.id;
   });
   afterAll(closeAll);
+  it('qualifies the private scalar scorecard owner against ordered A/B preview math and actual stored source',async()=>{
+    const [policyRow]=await owner.db.select().from(schema.onehrCycle).where(eq(schema.onehrCycle.cycleId,cycleId));
+    const policy:ReturnType<typeof defaultPolicy>={...defaultPolicy(framework),bBands:[{companyId:b.companyId,variant:'base' as const,minima:[0,70,90,110,130]}]};
+    const make=(actual:number,scoring:KPI['scoring'],weightBp=10000):KPI=>({id:randomUUID(),title:'Fictional math oracle',description:'',weightBp,unit:'units',scoring,moderatorEmploymentId:manager.employmentId,setting:'approved',settingRemark:'',actual,note:'',approvedActual:actual,moderationRemark:'',locked:true});
+    const cases:KPI[][]=[[],[make(1,{mechanism:'A',method:'more',rates:[0,1,2,3,4]},0)]];
+    for(const method of ['more','less'] as const){
+      const scoring:KPI['scoring']={mechanism:'A',method,rates:method==='more'?[0,1,2,3,4]:[4,3,2,1,0]};
+      for(const actual of [-1,0,1-Number.EPSILON,1,1+Number.EPSILON,2,3,4,5])cases.push([make(actual,scoring)],[make(actual,scoring,3333),make(4-actual,scoring,6667)]);
+      for(const variant of ['base','excellence'] as const)for(const multiple of [0,25,100,10000])for(const actual of [-10,0,50,50+Number.EPSILON*50,100,150,200])cases.push([make(actual,{mechanism:'B',method,variant,threshold:50,target:100,multiple,excellence:150})]);
+    }
+    for(const kpis of cases.slice(2,8)){cases.push(kpis.map(k=>({...k,locked:false})),kpis.map(k=>({...k,actual:null})));}
+    const rows=await owner.db.execute<{position:number;value:{score:number|null;band:string|null;scoreText:string|null}}>(sql`select item.position::integer as position,app.financial_onehr_scorecard(item.kpis,${JSON.stringify(policy)}::jsonb,${b.companyId}::uuid,false) as value from jsonb_array_elements(${JSON.stringify(cases)}::jsonb) with ordinality item(kpis,position)`);
+    const assertScalar=(value:{score:number|null;band:string|null;scoreText:string|null},expected:ReturnType<typeof scorecard>)=>{expect(Object.keys(value).sort()).toEqual(['band','score','scoreText']);expect({score:value.score,band:value.band}).toEqual(JSON.parse(JSON.stringify(expected)));if(expected.score===null)expect(value.scoreText).toBeNull();else if(Number.isNaN(expected.score))expect(value.scoreText).toBe('NaN');else expect(Number(value.scoreText)).toBe(expected.score===0?0:expected.score);};
+    expect(rows).toHaveLength(cases.length);for(const row of rows)assertScalar(row.value,scorecard(cases[row.position-1],policy,b.companyId,false));
+    const managerRows=await owner.db.execute<{position:number;value:{score:number|null;band:string|null;scoreText:string|null}}>(sql`select item.position::integer as position,app.financial_onehr_scorecard(item.kpis,${JSON.stringify(policy)}::jsonb,${b.companyId}::uuid,true) as value from jsonb_array_elements(${JSON.stringify(cases)}::jsonb) with ordinality item(kpis,position)`);
+    for(const row of managerRows)assertScalar(row.value,scorecard(cases[row.position-1],policy,b.companyId,true));
+    await complete();const [stored]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect((stored.kpis as KPI[]).length).toBeGreaterThan(0);
+    for(const manager of [false,true]){const [actual]=await owner.db.execute<{value:{score:number|null;band:string|null;scoreText:string|null}}>(sql`select app.financial_onehr_scorecard(${JSON.stringify(stored.kpis)}::jsonb,${JSON.stringify(policyRow.policy)}::jsonb,${stored.companyId}::uuid,${manager}::boolean) as value`);assertScalar(actual.value,scorecard(stored.kpis as KPI[],policyRow.policy as ReturnType<typeof defaultPolicy>,stored.companyId,manager));}
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_scorecard(jsonb,jsonb,uuid,boolean)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+  });
+
+  it('preserves the original stored-service overflow, zero-weight refusal and underflow boundary outcomes before scalar cutover',async()=>{
+    for(const fixture of [{name:'overflow',target:1e-308,actual:1e308,multiple:100},{name:'nan',target:1e-308,actual:1e308,multiple:0},{name:'underflow',target:1e308,actual:1e-308,multiple:100}]){
+      const {cycleId:actualCycle}=await perf.createCycle(a,{name:'Fictional original scalar '+fixture.name,companyId:b.companyId,periodStart:`${year}-01-01`,periodEnd:`${year}-12-31`});
+      const policy=defaultPolicy(framework);policy.bBands=[{companyId:b.companyId,variant:'base',minima:[0,70,90,110,130]}];await perf.configureOnehrCycle(a,actualCycle,null,policy);await perf.openCycle(a,{cycleId:actualCycle});
+      const [header]=await owner.db.select({id:schema.performanceReview.id}).from(schema.performanceReview).where(and(eq(schema.performanceReview.cycleId,actualCycle),eq(schema.performanceReview.employmentId,subject.employmentId)));expect(header).toBeDefined();
+      const revision=async()=>{const [row]=await owner.db.select({revision:schema.onehrReview.revision}).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,header.id));return row.revision;};
+      const id=randomUUID(),input={id,title:'Native '+fixture.name,description:'Fictional source boundary',weightBp:10000,unit:'units',scoring:{mechanism:'B' as const,method:'more' as const,variant:'base' as const,threshold:0,target:fixture.target,multiple:fixture.multiple,excellence:null},moderatorEmploymentId:manager.employmentId};
+      if(fixture.name==='underflow'){
+        await perf.saveOnehrKpis(self,header.id,await revision(),[{...input,weightBp:0}]);const [draft]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,header.id));
+        await expect(perf.saveOnehrKpis(self,header.id,draft.revision,[{...input,weightBp:0}],true)).rejects.toThrow(/weights must total/);expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,header.id))).toEqual([draft]);
+      }
+      await perf.saveOnehrKpis(self,header.id,await revision(),[input],true);await perf.approveOnehrScorecard(mgr,header.id,await revision(),true,'Source thresholds verified');
+      await perf.submitOnehrResults(self,header.id,await revision(),[{id,actual:fixture.actual,note:'Actual native boundary input'}],'Actual employee source reflection.');
+      const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,header.id));const oldEvents=await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,header.id)).orderBy(schema.domainEvent.id);
+      const native=scorecard((before.kpis as KPI[]).map(k=>({...k,approvedActual:fixture.actual,locked:true})),policy,b.companyId,true);
+      const proposed=(before.kpis as KPI[]).map(k=>({...k,approvedActual:fixture.actual,locked:true}));
+      const [scalar]=await owner.db.execute<{value:{score:number|null;band:string|null;scoreText:string}}>(sql`select app.financial_onehr_scorecard(${JSON.stringify(proposed)}::jsonb,${JSON.stringify(policy)}::jsonb,${b.companyId}::uuid,true) as value`);expect({score:scalar.value.score,band:scalar.value.band}).toEqual(JSON.parse(JSON.stringify(native)));expect(scalar.value.scoreText).not.toBeNull();
+      const scalarStorage=()=>owner.db.execute<{value:string}>(sql`select (${scalar.value.scoreText}::text)::numeric(20,8)::text as value`);
+      const mutate=()=>withTenant(mgr,tx=>perf.moderateOnehrKpiTx(tx,mgr,header.id,before.revision,id,fixture.actual,'',true));
+      if(fixture.name==='overflow'){
+        expect(native.score).toBe(Infinity);expect(native.band).toBe('OU');await expect(scalarStorage()).rejects.toThrow();await expect(mutate()).rejects.toThrow();expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,header.id))).toEqual([before]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId,header.id)).orderBy(schema.domainEvent.id)).toEqual(oldEvents);
+      }else{
+        if(fixture.name==='nan'){expect(Number.isNaN(native.score)).toBe(true);expect(native.band).toBeNull();}else expect(native).toEqual({score:0,band:'UA'});
+        await mutate();const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,header.id));expect(after.revision).toBe(before.revision+1);expect(after.managerPerformance).toBe(native.band);if(fixture.name==='nan')expect(after.managerScore).toBe('NaN');else expect(Number(after.managerScore)).toBe(0);const [storedScalar]=await scalarStorage();expect(storedScalar.value).toBe(after.managerScore);
+      }
+    }
+  });
+
+  it('binds administrative KPI reassignment to actual source and candidate data ceilings',async()=>{
+    const id=randomUUID();await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[{id,title:'Untouched administrative assignment',description:'Native source',weightBp:10000,unit:'units',scoring:{mechanism:'A',method:'more',rates:[0,1,2,3,4]},moderatorEmploymentId:manager.employmentId}]);
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));await perf.assignAssessmentKpiModerator(a,reviewId,before.revision,id,peers[0].employmentId);
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const original=(before.kpis as KPI[])[0],changed=(after.kpis as KPI[])[0];
+    expect(changed).toEqual({...original,moderatorEmploymentId:peers[0].employmentId,moderatorSource:'matrix',approvalChain:[{employmentId:peers[0].employmentId,actual:null,remark:'',at:null}]});expect(after).toEqual({...before,kpis:[changed],revision:before.revision+1});
+    const events=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-moderator-assigned')));expect(events).toHaveLength(1);expect(events[0]).toMatchObject({actorType:'user',actorId:a.userId,payload:{kpiId:id,previous:manager.employmentId,moderatorEmploymentId:peers[0].employmentId}});
+    await expect(withTenant(a,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);await tx.execute(sql`select app.onehr_kpi_moderator_assign(${reviewId}::uuid,${after.revision}::integer,${id}::uuid,${manager.employmentId}::uuid)`);})).rejects.toThrow(/OneHR administration actor unavailable/);
+    const hidden=await hireEmployee(a,{person:{fullName:'Fictional other-department candidate'},companyId:b.companyId,departmentId:b.deptB,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
+    const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptA]}]};
+    await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional administrative candidate ceiling '+profile})`;
+    await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+    await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+    await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${a.userId!},${profile},${a.userId!})`;
+    const [source]=await withTenant(a,tx=>tx.execute<{edit:boolean;subject:boolean;candidate:boolean}>(sql`select app.onehr_review_administration_edit(${reviewId}::uuid) as edit,app.data_permission_matches(${subject.employmentId}::uuid) as subject,app.data_permission_matches(${hidden.employmentId}::uuid) as candidate`));expect(source).toEqual({edit:true,subject:true,candidate:false});
+    await expect(perf.assignAssessmentKpiModerator(a,reviewId,after.revision,id,hidden.employmentId)).rejects.toThrow(/within your scope/);
+    const excludedRevision=randomUUID();await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${excludedRevision},${b.tenantId},${profile},${JSON.stringify({...rules,predicates:[{field:'department',values:[b.deptB]}]})}::text::jsonb,${a.userId!})`;await owner.client`update data_permission_profile set active_revision_id=${excludedRevision} where id=${profile}`;
+    const [excluded]=await withTenant(a,tx=>tx.execute<{edit:boolean}>(sql`select app.onehr_review_administration_edit(${reviewId}::uuid) as edit`));expect(excluded.edit).toBe(false);await expect(perf.assignAssessmentKpiModerator(a,reviewId,after.revision,id,hidden.employmentId)).rejects.toThrow(/administrative data unavailable/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([after]);expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.kpi-moderator-assigned')))).toEqual([{id:events[0].id}]);
+  });
+
+  it('approves only the actual assigned setting lines against the full private scorecard source',async()=>{
+    const first=randomUUID(),second=randomUUID();
+    for(const peer of peers.slice(0,2))await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:peer.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
+    await perf.saveOnehrKpis(self,reviewId,(await view(self)).revision,[first,second].map((id,index)=>({id,title:index?'Other approver private target':'My assigned objective',description:index?'Unassigned narrative must remain private':'Assigned narrative',weightBp:5000,unit:'units',scoring:{mechanism:'A' as const,method:'more' as const,rates:[0,1,2,3,4]},moderatorEmploymentId:peers[index].employmentId})),true);
+    const [before]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));
+    const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+    await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional scorecard approver '+profile})`;
+    await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+    await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+    await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${peers[0].ctx.userId!},${profile},${a.userId!})`;
+    const assigned=await perf.getOnehrReviewForPurpose(peers[0].ctx,reviewId,'task');expect(assigned).not.toBeNull();expect(assigned!.kpis.map(k=>k.id)).toEqual([first]);expect(JSON.stringify(assigned)).not.toContain('Unassigned narrative must remain private');
+    expect(await withTenant(peers[0].ctx,tx=>tx.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId)))).toEqual([]);
+    await perf.approveOnehrScorecard(peers[0].ctx,reviewId,before.revision,true,'Assigned target approved');
+    const [after]=await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));const oldKpis=before.kpis as Record<string,unknown>[],kpis=after.kpis as Record<string,unknown>[];
+    expect(after.revision).toBe(before.revision+1);expect(kpis[1]).toEqual(oldKpis[1]);expect(kpis[0]).toMatchObject({...oldKpis[0],setting:'approved',settingRemark:'Assigned target approved',settingApprovals:[{employmentId:peers[0].employmentId,action:'approved',remark:'Assigned target approved',at:expect.any(String)}]});
+    const approval=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,reviewId),eq(schema.domainEvent.eventType,'onehr.scorecard-approved')));expect(approval).toHaveLength(1);expect(approval[0]).toMatchObject({actorType:'user',actorId:peers[0].ctx.userId,subjectEmploymentId:subject.employmentId,payload:{reason:'Assigned target approved',kpiIds:[first]}});
+    expect((await perf.getOnehrReviewForPurpose(peers[0].ctx,reviewId,'task'))!.kpis.map(k=>k.id)).toEqual([first]);
+    await expect(perf.approveOnehrScorecard(peers[0].ctx,reviewId,after.revision,true,'Borrowed second line')).rejects.toThrow(/awaiting your turn/);
+    expect(await owner.db.select().from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId))).toEqual([after]);
+    await perf.approveOnehrScorecard(peers[1].ctx,reviewId,after.revision,true,'Other assigned target approved');expect((await view(self)).kpis.every(k=>k.setting==='approved')).toBe(true);
+  });
+
   it('revokes relationship-based matrix access with the edge and explicit access with HR reassignment',async()=>{
     const matrix=peers[0];
     await setReportingLine(a,{subordinateEmploymentId:subject.employmentId,managerEmploymentId:matrix.employmentId,lineType:'functional',validFrom:`${year}-01-01`});
@@ -722,6 +814,14 @@ const {hire,view,editableDraftKpi,complete,reviewerPlan}=createOnehrServiceFixtu
     expect(data.reviews.find(r=>r.id===reviewId)).toMatchObject({facts:{resultsSubmitted:true,kpis:[{moderatorEmploymentId:manager.employmentId}]}});
     expect(data.panels.map(p=>p.employmentId).sort()).toEqual(peers.map(p=>p.employmentId).sort());
     const text=JSON.stringify(data);for(const privateValue of [privateTitle,privateRemark,String(privateAmount),'Private submitted evidence','Private KPI description','Approved private review text'])expect(text).not.toContain(privateValue);
+    const pendingGraph=system as ReminderWorkGraph;expect(pendingGraph.reviews.find(r=>r.id===reviewId)?.facts).toMatchObject({managerPerformance:null,managerComplete:false});
+    await perf.moderateOnehrKpi(mgr,reviewId,(await view(mgr)).revision,id,privateAmount,'');await perf.confirmOnehrPerformance(mgr,reviewId,(await view(mgr)).revision,'UA','');
+    const [confirmed]=await owner.db.select({band:schema.onehrReview.managerPerformance}).from(schema.onehrReview).where(eq(schema.onehrReview.reviewId,reviewId));expect(confirmed.band).toBe('UA');
+    const completed=await read({...a,userId:undefined,personId:undefined}) as ReminderWorkGraph;expect(completed.reviews.find(r=>r.id===reviewId)?.facts).toMatchObject({managerPerformance:null,managerComplete:true});expect(JSON.stringify(completed)).not.toContain('"UA"');
+    const nativeRows=await owner.db.select({id:schema.onehrReview.reviewId,band:schema.onehrReview.managerPerformance}).from(schema.onehrReview).where(eq(schema.onehrReview.cycleId,cycleId)),nativeBands=new Map(nativeRows.map(r=>[r.id,r.band]));
+    const originalShape:ReminderWorkGraph={...completed,reviews:completed.reviews.map(r=>({...r,facts:{...r.facts,managerComplete:undefined,managerPerformance:(nativeBands.get(r.id)??null) as typeof r.facts.managerPerformance}}))};
+    const now=new Date(),companies=new Set([b.companyId]),work=assessmentReminderWork(completed,companies,now);expect(work.length).toBeGreaterThan(0);expect(assessmentReminderWork(originalShape,companies,now)).toEqual(work);
+
     expect(await read(self)).toBeNull();expect(await read(peers[0].ctx)).toBeNull();expect(await read(a,randomUUID())).toBeNull();
     await expect(withTenant(a,tx=>tx.execute(sql`select app.assessment_admin_for(${self.userId}::uuid,${b.companyId}::uuid)`))).rejects.toThrow();
     let cycle=(await perf.getOnehrCycle(a,cycleId))!;await perf.setAssessmentParticipation(a,cycleId,cycle.revision,subject.employmentId,cycle.participants.find(p=>p.employmentId===subject.employmentId)!.revision,'remove');

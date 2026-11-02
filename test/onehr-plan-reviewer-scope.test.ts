@@ -151,6 +151,42 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     expect(ap).toEqual({ visible: false, reviewer: true });
   });
 
+  it('projects the native assigned shared plan through its task purpose without opening raw profile-fenced rows',async()=>{
+    const [expected]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId));expect(expected.status).toBe('shared');
+    for(const ctx of [mgr,approverCtx]){
+      const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+      await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional plan reviewer data '+profile})`;
+      await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+      await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+      await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${ctx.userId!},${profile},${a.userId!})`;
+      const [source]=await withTenant(ctx,tx=>tx.execute<{data:boolean;reviewer:boolean;view:boolean}>(sql`select app.data_permission_matches(${subject.employmentId}::uuid) as data,app.assessment_plan_reviewer(${sharedPlanId}::uuid) as reviewer,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as view`));expect(source).toEqual({data:false,reviewer:true,view:true});
+      expect(await plansAs(ctx)).toEqual([]);
+      const plans=await withTenant(ctx,tx=>tx.execute<{id:string;goals:unknown;career:unknown}>(sql`select id,goals,career from app.onehr_review_task_plans(${reviewId}::uuid)`));expect(plans).toEqual([{id:sharedPlanId,goals:expected.goals,career:expected.career}]);
+      expect(await withTenant(ctx,tx=>tx.execute(sql`select id from app.onehr_review_administration_plans(${reviewId}::uuid)`))).toEqual([]);
+      expect((await perf.getOnehrReviewForPurpose(ctx,reviewId,'task'))?.plans.map(p=>p.id)).toEqual([sharedPlanId]);
+      expect(await withTenant(ctx,tx=>tx.execute(sql`select id from app.onehr_review_task_plans(${review2Id}::uuid)`))).toEqual([]);
+    }
+    for(const ctx of [skipCtx,hodCtx])expect(await withTenant(ctx,tx=>tx.execute(sql`select id from app.onehr_review_task_plans(${reviewId}::uuid)`))).toEqual([]);
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_view_plans(uuid,text)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId))).toEqual([expected]);
+    await perf.reviewOnehrPlan(mgr,sharedPlanId,expected.revision,expected.managerComment,'Native assigned plan conversation',false,reviewId);
+    const [changed]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId));
+    expect(changed).toEqual({...expected,conversation:'Native assigned plan conversation',acknowledgedAt:null,revision:expected.revision+1});
+    const [event]=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,sharedPlanId),eq(schema.domainEvent.eventType,'onehr.plan-reviewed')));expect(event).toBeDefined();expect(event.actorType).toBe('user');expect(event.actorId).toBe(mgr.userId);expect(event.subjectEmploymentId).toBe(subject.employmentId);expect(event.payload).toEqual({reviewId,previous:{comment:expected.managerComment,conversation:expected.conversation,heldOn:expected.conversationHeldOn,status:expected.status},next:{comment:expected.managerComment,conversation:changed.conversation,heldOn:changed.conversationHeldOn,status:changed.status}});
+    for(const ctx of [self,skipCtx,hodCtx,partner])await expect(perf.reviewOnehrPlan(ctx,sharedPlanId,changed.revision,changed.managerComment,'Borrowed plan conversation',false,reviewId)).rejects.toThrow();
+    await expect(withTenant(mgr,async tx=>{await tx.execute(sql`select set_config('app.agent_principal_id','invalid-agent',true)`);return tx.execute(sql`select app.onehr_plan_review(${sharedPlanId}::uuid,${changed.revision}::integer,${changed.managerComment}::text,'Agent plan mutation'::text,false,${reviewId}::uuid,null::date,false)`);})).rejects.toThrow(/OneHR plan actor unavailable/);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId))).toEqual([changed]);
+    expect(await owner.db.select({id:schema.domainEvent.id}).from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,sharedPlanId),eq(schema.domainEvent.eventType,'onehr.plan-reviewed')))).toEqual([{id:event.id}]);
+    const currentGoals=changed.goals as {id:string;dueOn:string;[key:string]:unknown}[],target=currentGoals[0];expect(target).toBeDefined();
+    const patch={area:'Native assigned coaching goal',dueOn:target.dueOn,onJob:'Practise the agreed responsibility.',fromOthers:'Review with the native assigned reviewer.',formalLearning:'Complete the agreed course.',managerComment:'Observed progress.'};
+    await perf.editAssessmentDevelopmentGoal(mgr,reviewId,sharedPlanId,changed.revision,target.id,patch);
+    const [goalChanged]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId));const nextGoals=goalChanged.goals as typeof currentGoals;const [editor]=await owner.db.select({name:schema.person.fullName}).from(schema.person).where(eq(schema.person.id,manager.personId));
+    expect(nextGoals[0]).toEqual({...target,...patch,editedByName:editor.name,editedAt:expect.any(String)});expect(nextGoals.slice(1)).toEqual(currentGoals.slice(1));expect(goalChanged).toEqual({...changed,goals:nextGoals,revision:changed.revision+1});
+    const goalEvents=await owner.db.select().from(schema.domainEvent).where(and(eq(schema.domainEvent.aggregateId,sharedPlanId),eq(schema.domainEvent.eventType,'onehr.development-goal-reviewed')));expect(goalEvents).toHaveLength(1);expect(goalEvents[0]).toMatchObject({actorType:'user',actorId:mgr.userId,subjectEmploymentId:subject.employmentId,payload:{reviewId,goalId:target.id,previous:target,next:nextGoals[0]}});
+    for(const ctx of [self,skipCtx,hodCtx,partner])await expect(perf.editAssessmentDevelopmentGoal(ctx,reviewId,sharedPlanId,goalChanged.revision,target.id,{...patch,area:'Borrowed admin goal'})).rejects.toThrow();
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId))).toEqual([goalChanged]);
+  });
+
   it('a department-tree non-reviewer reads nothing of a shared plan (TASK-030 acceptance)', async () => {
     expect(await plansAs(skipCtx), 'skip-level manager').toEqual([]);
     expect(await plansAs(hodCtx), 'head of department').toEqual([]);

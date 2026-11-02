@@ -67,7 +67,7 @@ import type {GenerateArgs} from '../lib/ai/types';
 import { resolveActiveAiConfig } from './ai-config';
 
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { onehrAttachmentSubjectTx, assertStandardCycleTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
+import { onehrAttachmentSubjectTx, assertStandardCycleTx, assertStandardFeedbackTx, prepareAssessmentClosureTx, initializeOnehrCycleTx } from '../packs/performance/onehr/service';
 
 export class PerfError extends Error {
   constructor(message: string) {
@@ -1753,8 +1753,8 @@ export function reviewForViewer(ctx: SessionContext, reviewId: string, outerTx?:
       .where(eq(performanceReview.id, reviewId))
       .limit(1);
     if (!r) return null;
-    const [onehr]=await tx.execute<{configured:boolean}>(sql`select exists(select 1 from performance_onehr_cycle where cycle_id=${r.cycle.id}::uuid) as configured`);
-    if(onehr?.configured)return null;
+    const [framework]=await tx.execute<{value:'standard'|'onehr'|null}>(sql`select app.performance_review_framework(${r.review.id}::uuid) as value`);
+    if(framework?.value!=='standard')return null;
 
     // Resolve the reviewer's name + person (separate query — avoids a self-join on employment).
     let reviewerName: string | null = null;
@@ -2491,7 +2491,7 @@ export async function submitPeerFeedback(
 ): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
+    if (rq) await assertStandardFeedbackTx(tx,rq.id);
     if (!rq) throw new PerfError('Feedback request not found'); // RLS-invisible → not found
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.insert(peerFeedback).values({
@@ -2518,7 +2518,7 @@ export async function submitPeerFeedback(
 export async function declinePeerFeedback(ctx: SessionContext, p: { requestId: string }): Promise<void> {
   await withTenant(ctx, async (tx) => {
     const [rq] = await tx.select().from(peerFeedbackRequest).where(eq(peerFeedbackRequest.id, p.requestId)).limit(1);
-    if (rq) { const [cycle] = await tx.select({ id: reviewCycle.id }).from(reviewCycle).where(eq(reviewCycle.id, sql`(select cycle_id from performance_review where id=${rq.reviewId})`)); if (cycle) await assertStandardCycleTx(tx, cycle.id); const [panel] = await tx.execute<{onehr: boolean}>(sql`select exists(select 1 from performance_onehr_panel where request_id=${rq.id}::uuid) as onehr`); if(panel?.onehr) throw new PerfError('Use the assigned 360 feedback form for this request.'); }
+    if (rq) await assertStandardFeedbackTx(tx,rq.id);
     if (!rq) throw new PerfError('Feedback request not found');
     if (rq.status !== 'pending') throw new PerfError(`This request is already ${rq.status}`);
     await tx.update(peerFeedbackRequest).set({ status: 'declined' }).where(eq(peerFeedbackRequest.id, rq.id));
@@ -2545,8 +2545,7 @@ export function pendingStandardFeedbackTaskMetadata(ctx:SessionContext):Promise<
       .where(and(eq(peerFeedbackRequest.tenantId,ctx.tenantId),eq(peerFeedbackRequest.status,'pending'),
         sql`EXISTS (SELECT 1 FROM public.employment peer WHERE peer.id=${peerFeedbackRequest.peerEmploymentId}
           AND peer.tenant_id=${peerFeedbackRequest.tenantId} AND app.is_self_person(peer.person_id))`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_onehr_panel panel WHERE panel.request_id=${peerFeedbackRequest.id})`,
-        sql`NOT EXISTS (SELECT 1 FROM public.performance_review review JOIN public.performance_onehr_cycle cycle ON cycle.cycle_id=review.cycle_id WHERE review.id=${peerFeedbackRequest.reviewId})`))
+        sql`app.performance_feedback_framework(${peerFeedbackRequest.id})='standard'`))
       .orderBy(desc(peerFeedbackRequest.createdAt),peerFeedbackRequest.id);
     return rows.map(row=>({...row,kind:'feedback' as const,linkPath:`/me/performance#feedback-${row.id}`}));
   });
