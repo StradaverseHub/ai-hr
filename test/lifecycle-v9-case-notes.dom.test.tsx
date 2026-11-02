@@ -8,7 +8,7 @@ it('retains a failed note and offers editing only for the actual author',async()
  const c=fictionalV9Case({notes:[{id:'other-note',context:'task',body:'Other author',by:'other',name:'Other HR',at:'2026-10-30T00:00:00Z',mentions:[],resolved:[],edited:false,deleted:false}]});
  render(<CaseNotes c={c} context="task" label="Fictional task" actor={actor} users={[actor]} busy={false} command={command}/>);
  expect(screen.queryByRole('button',{name:'Edit note'})).not.toBeInTheDocument();
- fireEvent.click(screen.getByText('1 note'));
+ fireEvent.click(screen.getByText('Notes (1)'));
  fireEvent.change(screen.getByLabelText('Add a note on Fictional task'),{target:{value:'Fictional retained note'}});
  fireEvent.click(screen.getByRole('button',{name:'Send note'}));
  expect(await screen.findByRole('alert')).toHaveTextContent('This case changed.');
