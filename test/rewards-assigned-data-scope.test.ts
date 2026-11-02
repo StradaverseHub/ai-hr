@@ -1,11 +1,11 @@
 /** An actual unit review is an independent record course; it is never a Personnel grant. */
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,expect,it} from 'vitest';
-import {eq} from 'drizzle-orm';
+import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {hireEmployee,updatePersonProfilePartial} from '../core/org';
-import {createRewardUnit,getRewardUnit,saveRewardEntry,refreshRewardSources,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance} from '../packs/rewards/service';
+import {createRewardUnit,getRewardUnit,saveRewardEntry,refreshRewardSources,getRewardSeniorMembership,previewRewardSeniorMembership,saveRewardSeniorMembership,confirmRewardGovernance,listRewardUnits} from '../packs/rewards/service';
 import {setRewardMember} from './rewards-access-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {pgErrorChain} from '../lib/db-error';
@@ -48,6 +48,11 @@ it('keeps only actual current unit membership, with no raw subject access and im
  const raw=await withTenant(reviewer.ctx,async tx=>({people:await tx.select().from(s.person).where(eq(s.person.id,subject.personId)),employments:await tx.select().from(s.employment).where(eq(s.employment.id,subject.employmentId)),entries:await tx.select({employmentId:s.rewardEntry.employmentId}).from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit))}));
  expect(raw.people).toEqual([]);expect(raw.employments).toEqual([]);expect(raw.entries.map(row=>row.employmentId)).toContain(subject.employmentId);
  expect((await getRewardUnit(reviewer.ctx,unit)).rows.map(row=>row.source.employmentId)).toContain(subject.employmentId);
+ // Existing seated-list totals are whole-review metadata, not a general subject/profile read.
+ const listed=(await listRewardUnits(reviewer.ctx,[b.companyId])).find(row=>row.id===unit)!;
+ const [counts]=await owner.withTenant(reviewer.ctx,tx=>tx.execute<{value:{people:number;verified:number}|null}>(sql`select app.reward_unit_verification_counts(${unit}::uuid)as value`));expect(counts.value).toEqual({people:listed.people,verified:listed.verified});expect(Object.keys(counts.value!).sort()).toEqual(['people','verified']);
+ for(const outsider of [other,manager])expect(await owner.withTenant(outsider.ctx,tx=>tx.execute(sql`select app.reward_unit_verification_counts(${unit}::uuid)as value`))).toEqual([{value:null}]);
+ await expect(withTenant(reviewer.ctx,tx=>tx.execute(sql`select app.reward_unit_verification_counts(${unit}::uuid)`))).rejects.toThrow();
  for(const outsider of [other,manager])expect(await withTenant(outsider.ctx,tx=>tx.select().from(s.rewardEntry).where(eq(s.rewardEntry.unitId,unit)))).toEqual([]);
  // The same saved seat cannot carry this review's history to a different company/BU.
  const [companyB]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional other reward owner'}).returning();

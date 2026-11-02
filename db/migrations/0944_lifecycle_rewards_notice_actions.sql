@@ -2974,3 +2974,20 @@ LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN p::text='NaN'THEN 0 ELSE greatest(0,coalesce(p,0))END;
 $$;
 REVOKE ALL ON FUNCTION app.reward_calc_input_carry(numeric)FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Pay-free complete verification totals are an existing seated review-list course. They
+-- disclose no category/person/own-person status or monetary aggregate. An administrator
+-- without a native seat gets NULL, never a partial Personnel-filtered population.
+-- Private until its finite read ACL and consuming list owner are reviewed together.
+CREATE FUNCTION app.reward_unit_verification_counts(p_unit uuid)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE unit public.reward_unit;people integer;verified integer;
+BEGIN
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))THEN RETURN NULL;END IF;
+ SELECT u.* INTO unit FROM public.reward_unit u WHERE u.id=p_unit AND u.tenant_id=app.current_tenant_id()AND u.deleted_at IS NULL;
+ IF unit.id IS NULL OR NOT EXISTS(SELECT 1 FROM app.reward_roles(unit.id))THEN RETURN NULL;END IF;
+ SELECT count(*)::integer,count(*)FILTER(WHERE e.facts->>'reviewed'='true')::integer INTO people,verified FROM public.reward_entry e WHERE e.unit_id=unit.id AND e.tenant_id=unit.tenant_id;
+ RETURN jsonb_build_object('people',people,'verified',verified);
+END $$;
+REVOKE ALL ON FUNCTION app.reward_unit_verification_counts(uuid)FROM PUBLIC,ai_hr_app;
