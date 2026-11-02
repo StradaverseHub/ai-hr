@@ -1,4 +1,4 @@
-import {withProbationPersonnelIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
+import {withProbationPersonnelIntentTx,withProbationDateShiftIntentTx,probationMovementAuthorityTx} from './probation-effect-authority';
 import { withExitDateAuthorityTx } from './exit-date-authority';
 import { isDatabaseError } from '../lib/db-error';
 import { hasClosedPayrollCorrectionAuthorityTx, withClosedPayrollCorrectionAuthorityTx } from './closed-payroll-correction-authority';
@@ -4608,3 +4608,5 @@ export function applyReleasedProbationMovementTx(tx:Tx,ctx:SessionContext,outcom
  const result=await dispatchMovementEventTx(tx,ctx,{employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,...(intent.endDate?{endDate:intent.endDate}:{}),remarks:intent.sourceKey});
  return{alreadyApplied:false,result};
 });}
+
+export function applyApprovedProbationDateShiftTx(tx:Tx,ctx:SessionContext,requestId:string){return withProbationDateShiftIntentTx(tx,requestId,async intent=>{if(intent.completed)return;await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);return dispatchMovementEventTx(tx,ctx,{employmentId:intent.employmentId,kind:intent.kind,effectiveDate:intent.effectiveDate,endDate:intent.endDate,remarks:intent.sourceKey});});}

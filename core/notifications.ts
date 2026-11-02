@@ -325,7 +325,7 @@ export function renderRewardRouted(p: Record<string, unknown> | null, ev: EventR
 // Recipient defaults to the event's subjectEmploymentId. Keep titles/bodies short; deep-link into the
 // app where the full, gated detail lives.
 const REGISTRY: Record<string, Spec | Spec[]> = {
-  'probation.notification-due':{kind:'probation.notification',category:'review',recipients:(tx,ev)=>probationNotificationRecipientsTx(tx,ev),render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload.caseId==='string'?`/lifecycle/probation/${payload.caseId}`:'/lifecycle/probation'})},
+  'probation.notification-due':{kind:'probation.notification',category:'review',recipients:(tx,ev)=>probationNotificationRecipientsTx(tx,ev),render:(payload)=>({severity:'action',title:'probation.notification.title',body:'probation.notification.body',linkPath:typeof payload?.caseId==='string'?(payload.documentKind==='letter'&&typeof payload.partId==='string'?`/lifecycle/probation/${payload.caseId}/letters/${payload.partId}`:`/lifecycle/probation/${payload.caseId}`):'/lifecycle/probation'})},
   // This explicit command atomically point-projects its in-app notification. SQL refuses a forged
   // event or a commit without that exact projection; the global cursor must not project it twice.
   'employee-home.greeting.sent': {

@@ -1,6 +1,7 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { activeWorkflowRelay,createNotificationEmailService,type WorkflowEmailDependencies,type WorkflowMailTarget } from '../deploy/identity-email/notifications';
+import {workflowEmailMessage} from '../deploy/identity-email/notification-message';
 import { defaultEmailConfig } from '../lib/identity/email-model';
 let d:WorkflowEmailDependencies,target:WorkflowMailTarget;const job={op:'send',deliveryId:randomUUID(),leaseToken:randomUUID()};
 beforeEach(()=>{
@@ -8,6 +9,7 @@ beforeEach(()=>{
  d={origin:'https://hr.test',ready:vi.fn().mockResolvedValue(true),target:vi.fn().mockResolvedValue(target),verifyRecipient:vi.fn().mockResolvedValue('verified'),start:vi.fn().mockResolvedValue(true),finish:vi.fn().mockResolvedValue(true),send:vi.fn().mockResolvedValue(undefined)};
 });
 describe('isolated workflow email orchestration',()=>{
+ it('renders the pinned subject and escaped authored body through the existing mail designer',()=>{const message=workflowEmailMessage({category:'review',locale:'en',link:'https://hr.test/lifecycle/probation',action:true,messageId:'fixture',privateMessage:{subject:'Published review subject',body:'Dear <employee>, complete the published review.'}});expect(message.subject).toBe('Published review subject');expect(message.text).toContain('Dear <employee>');expect(message.html).toContain('&lt;employee&gt;');expect(message.html).not.toContain('Dear <employee>');});
  it('sends pinned private workflow wording only after source authorization and rejects stale or header-injected content',async()=>{
   d.privateMessage=vi.fn().mockResolvedValue({required:true,message:{subject:'Probation review due',body:'Please complete your published review.'}});
   expect(await createNotificationEmailService(d)(job)).toEqual({outcome:'sent'});

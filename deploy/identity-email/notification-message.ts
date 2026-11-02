@@ -35,5 +35,6 @@ export function workflowEmailMessage(mail:WorkflowMail){
  if(design&&(design.kind!==kind||design.locale!==mail.locale))throw Error('Email design binding changed.');
  if(mail.assessmentTasks)return assessmentReminderMessage({tasks:mail.assessmentTasks,words:mail.assessmentWords},mail.locale,mail.link,design);
  const system=workflowEmailSystemMessage(mail);
- return renderEmailDesign(design?.document??null,kind,mail.locale,{subject:system.subject,text:system.text,link:mail.link},{...design?.data,category:mail.category});
+ const rendered=renderEmailDesign(design?.document??null,kind,mail.locale,{subject:system.subject,text:system.text,link:mail.link},{...design?.data,category:mail.category});
+ return mail.privateMessage?{...rendered,subject:system.subject}:rendered;
 }
