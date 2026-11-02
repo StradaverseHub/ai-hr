@@ -7,7 +7,7 @@ import {requestDateShift,applyDateShift,reconcileDates} from './actions';
 import {DraftGuard} from './draft-guard';
 export function CaseDateControls({view}:{view:ProbationCaseView}){
  const t=useTranslations('probation'),router=useRouter(),[endOn,setEndOn]=useState(''),[reason,setReason]=useState(''),[busy,start]=useTransition(),[error,setError]=useState('');
- const pbp=view.roles.includes('pbp'),gbs=view.roles.includes('gbs'),pending=view.dateAdjustments.some(a=>a.status!=='applied');if(!pbp&&!gbs)return null;
+ const pbp=view.roles.includes('pbp'),gbs=view.roles.includes('gbs'),pending=view.dateAdjustments.some(a=>a.status!=='applied');if(!view.runtimeEnabled||!pbp&&!gbs)return null;
  const run=(work:()=>Promise<{ok:boolean;detail?:string}>)=>{setError('');start(async()=>{const result=await work();if(!result.ok){setError(result.detail??t('errors.unavailable'));return;}setEndOn('');setReason('');router.refresh();});};
  return <section className="v9-panel v9-stack"><DraftGuard dirty={!!reason.trim()||!!endOn}/><h2>{t('dates.title')}</h2>{error&&<p className="v9-notice v9-error" role="alert">{error}</p>}
   {view.sourceChanged&&<div className="v9-notice v9-warning"><p>{t('dates.sourceChanged')}</p><dl className="probation-facts"><div><dt>{t('dates.savedPeriod')}</dt><dd>{view.record.startOn} – {view.record.endOn}</dd></div><div><dt>{t('dates.currentPeriod')}</dt><dd>{view.record.facts.startOn} – {view.record.facts.endOn??'—'}</dd></div></dl></div>}

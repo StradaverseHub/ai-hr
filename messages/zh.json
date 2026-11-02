@@ -34031,7 +34031,54 @@
       "assign": "记录分配"
     },
     "intake": {
-      "title": "登记及启用"
+      "title": "纳入与启用",
+      "help": "将未完成工作转入新流程前，请先审核现有试用记录。",
+      "stagingOnly": "保存纳入决定仅记录审核结果，不会创建正式个案或发送提醒。",
+      "truncated": "此视图已超过 500 条符合条件任职记录的审核上限。批准启用前，请处理完整批次。",
+      "excludedCount": "已按来源规则排除 {count} 条历史或不符合条件的记录",
+      "cohort": "现有试用人员批次",
+      "empty": "您当前权限范围内没有匹配记录。",
+      "states": {
+        "excluded": "已排除",
+        "held": "需要审核",
+        "ready": "可进行演练",
+        "already_admitted": "已纳入新流程"
+      },
+      "reviewNeeded": "启用前须解决",
+      "readOnly": "您当前的角色可查看此记录，但无法更改其纳入决定。",
+      "disposition": "纳入决定",
+      "unfinished": "继续未完成工作",
+      "exclude": "从此流程排除",
+      "flags": {
+        "noProbation": "不适用试用期",
+        "internalTransfer": "内部调动",
+        "rehire": "重新聘用，需单独审核",
+        "confirmedOnHire": "入职时已转正"
+      },
+      "partHelp": "将每个必需部分对应到其当前阶段。每个在线下完成的部分均须选择原始 PDF。审核将依据实际试用计划核对必需部分。",
+      "notRequired": "不属于此计划",
+      "completedOffline": "已在线下完成",
+      "originalPdf": "线下原始 PDF",
+      "validateUnknown": "未知的试用期已由当前 PBP 依据来源记录核实。",
+      "saveStage": "记录纳入决定",
+      "cutoverTitle": "启用演练",
+      "previewHelp": "为指定审核人准备完整批次及提醒预览。此操作不会发送任何消息。",
+      "prepare": "准备当前演练",
+      "reviewReference": "审核编号",
+      "activationDate": "拟定启用日期",
+      "configuredOrigin": "已配置的安装地址",
+      "originHelp": "此地址来自配置。安装负责人必须在启用前核实实际目标。",
+      "download": "下载完整审核 CSV",
+      "previewCounts": "预计 {future} 条消息 · 已排除 {past} 条历史消息 · {events} 个事件触发工作流",
+      "conditionalHelp": "未来消息取决于实际条件。发送时会重新核对当前待处理阶段和收件人。过去的提醒不会补发；每个启用批次会为 PBP 准备一次逾期摘要。",
+      "futureMessages": "预计未来消息",
+      "excludedMessages": "不予补发的历史消息",
+      "eventMessages": "等待未来事件的工作流",
+      "approved": "您对此次确切演练的批准已记录。启用仍需由经核实的安装负责人完成。",
+      "approvalReason": "批准此次演练的原因",
+      "approve": "批准此次确切演练",
+      "screenBound": "下方显示每个分区的前 100 条消息。CSV 包含完整审核内容。",
+      "exportHeld": "此次演练不完整。请先准备完整的审查，再下载或批准。"
     },
     "workflows": {
       "title": "试用期工作流",
@@ -34193,7 +34240,8 @@
       "saveRoute": "保存案例流程",
       "discard": "放弃未保存的更改"
     },
-    "gradeChanged": "当前职级与记录的入职职级不同。PBP 必须审核变更；此评估将保留原始表单和入职职级记录。"
+    "gradeChanged": "当前职级与记录的入职职级不同。PBP 必须审核变更；此评估将保留原始表单和入职职级记录。",
+    "runtimePaused": "处理已暂停。现有记录仍可作为只读历史查看。"
   },
   "templateEditor": {
     "newField": "新字段",

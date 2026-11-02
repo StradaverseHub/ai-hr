@@ -34031,7 +34031,54 @@
       "assign": "Rekod penugasan"
     },
     "intake": {
-      "title": "Pendaftaran dan pengaktifan"
+      "title": "Kemasukan dan pengaktifan",
+      "help": "Semak rekod percubaan sedia ada sebelum memindahkan kerja yang belum selesai ke proses baharu.",
+      "stagingOnly": "Merekod keputusan kemasukan menyimpan keputusan semakan. Tindakan ini tidak mewujudkan kes aktif atau menghantar peringatan.",
+      "truncated": "Paparan ini melebihi had semakan 500 rekod penggajian yang layak. Selesaikan semakan seluruh kumpulan sebelum meluluskan pengaktifan.",
+      "excludedCount": "{count} rekod sejarah atau tidak layak dikecualikan mengikut peraturan sumber",
+      "cohort": "Kumpulan percubaan sedia ada",
+      "empty": "Tiada rekod sepadan dalam skop semasa anda.",
+      "states": {
+        "excluded": "Dikecualikan",
+        "held": "Perlu semakan",
+        "ready": "Sedia untuk simulasi",
+        "already_admitted": "Sudah dalam proses baharu"
+      },
+      "reviewNeeded": "Selesaikan sebelum pengaktifan",
+      "readOnly": "Peranan semasa anda boleh melihat rekod ini tetapi tidak boleh mengubah keputusan kemasukannya.",
+      "disposition": "Keputusan kemasukan",
+      "unfinished": "Teruskan kerja yang belum selesai",
+      "exclude": "Kecualikan daripada proses ini",
+      "flags": {
+        "noProbation": "Tiada tempoh percubaan terpakai",
+        "internalTransfer": "Pertukaran dalaman",
+        "rehire": "Pengambilan semula yang memerlukan semakan berasingan",
+        "confirmedOnHire": "Disahkan semasa diambil bekerja"
+      },
+      "partHelp": "Padankan setiap Bahagian yang diwajibkan dengan peringkat semasanya. Pilih PDF asal bagi setiap Bahagian yang diselesaikan di luar sistem. Semakan mengesahkan Bahagian yang diwajibkan berdasarkan pelan percubaan sebenar.",
+      "notRequired": "Bukan sebahagian daripada pelan ini",
+      "completedOffline": "Selesai di luar sistem",
+      "originalPdf": "PDF asal daripada proses di luar sistem",
+      "validateUnknown": "Tempoh percubaan yang tidak diketahui telah disahkan oleh PBP semasa berdasarkan rekod sumber.",
+      "saveStage": "Rekodkan keputusan kemasukan",
+      "cutoverTitle": "Simulasi pengaktifan",
+      "previewHelp": "Sediakan seluruh kumpulan dan pratonton peringatan untuk semakan oleh pihak yang dinamakan. Tiada penghantaran dibuat.",
+      "prepare": "Sediakan simulasi semasa",
+      "reviewReference": "Rujukan semakan",
+      "activationDate": "Tarikh pengaktifan yang dicadangkan",
+      "configuredOrigin": "Alamat pemasangan yang dikonfigurasi",
+      "originHelp": "Alamat ini datang daripada konfigurasi. Pemilik pemasangan mesti mengesahkan sasaran sebenar sebelum pengaktifan.",
+      "download": "Muat turun CSV semakan lengkap",
+      "previewCounts": "{future} mesej dijangka · {past} mesej lampau dikecualikan · {events} aliran kerja dicetuskan peristiwa",
+      "conditionalHelp": "Mesej masa hadapan adalah bersyarat. Peringkat semasa yang belum selesai dan penerima disemak semula semasa penghantaran. Peringatan lampau tidak dihantar semula; ringkasan tertunggak disediakan untuk PBP sekali bagi setiap kelompok pengaktifan.",
+      "futureMessages": "Mesej masa hadapan yang dijangka",
+      "excludedMessages": "Mesej lampau dikecualikan daripada penghantaran susulan",
+      "eventMessages": "Aliran kerja yang menunggu peristiwa masa hadapan",
+      "approved": "Kelulusan anda telah direkodkan untuk simulasi tepat ini. Pengaktifan masih memerlukan pemilik pemasangan yang telah disahkan.",
+      "approvalReason": "Sebab meluluskan simulasi ini",
+      "approve": "Luluskan simulasi tepat ini",
+      "screenBound": "100 mesej pertama dalam setiap seksyen dipaparkan di bawah. CSV mengandungi semakan lengkap.",
+      "exportHeld": "Raptai ini belum lengkap. Sediakan semakan lengkap sebelum memuat turun atau meluluskannya."
     },
     "workflows": {
       "title": "Aliran kerja percubaan",
@@ -34193,7 +34240,8 @@
       "saveRoute": "Simpan laluan kes",
       "discard": "Buang perubahan belum disimpan"
     },
-    "gradeChanged": "Gred semasa berbeza daripada gred permulaan yang direkodkan. PBP mesti menyemak perubahan ini; penilaian ini mengekalkan borang asal dan rekod gred permulaan."
+    "gradeChanged": "Gred semasa berbeza daripada gred permulaan yang direkodkan. PBP mesti menyemak perubahan ini; penilaian ini mengekalkan borang asal dan rekod gred permulaan.",
+    "runtimePaused": "Pemprosesan dijeda. Rekod sedia ada kekal tersedia sebagai sejarah baca sahaja."
   },
   "templateEditor": {
     "newField": "Medan baharu",

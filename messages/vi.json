@@ -34031,7 +34031,54 @@
       "assign": "Ghi nhận phân công"
     },
     "intake": {
-      "title": "Tiếp nhận và kích hoạt"
+      "title": "Tiếp nhận và kích hoạt",
+      "help": "Xem xét các hồ sơ thử việc hiện có trước khi chuyển công việc chưa hoàn tất sang quy trình mới.",
+      "stagingOnly": "Việc ghi nhận quyết định tiếp nhận chỉ lưu quyết định xem xét. Thao tác này không tạo hồ sơ đang hoạt động hoặc gửi lời nhắc.",
+      "truncated": "Chế độ xem này vượt giới hạn xem xét 500 hồ sơ việc làm đủ điều kiện. Hãy xử lý toàn bộ nhóm trước khi phê duyệt kích hoạt.",
+      "excludedCount": "{count} hồ sơ lịch sử hoặc không đủ điều kiện đã bị loại theo quy tắc nguồn",
+      "cohort": "Nhóm thử việc hiện có",
+      "empty": "Không có hồ sơ phù hợp trong phạm vi hiện tại của bạn.",
+      "states": {
+        "excluded": "Đã loại trừ",
+        "held": "Cần xem xét",
+        "ready": "Sẵn sàng diễn tập",
+        "already_admitted": "Đã ở trong quy trình mới"
+      },
+      "reviewNeeded": "Cần xử lý trước khi kích hoạt",
+      "readOnly": "Vai trò hiện tại cho phép bạn xem hồ sơ này nhưng không được thay đổi quyết định tiếp nhận.",
+      "disposition": "Quyết định tiếp nhận",
+      "unfinished": "Tiếp tục công việc chưa hoàn tất",
+      "exclude": "Loại khỏi quy trình này",
+      "flags": {
+        "noProbation": "Không áp dụng thử việc",
+        "internalTransfer": "Điều chuyển nội bộ",
+        "rehire": "Tái tuyển dụng cần xem xét riêng",
+        "confirmedOnHire": "Đã xác nhận chính thức khi tuyển dụng"
+      },
+      "partHelp": "Đối chiếu từng Phần bắt buộc với giai đoạn hiện tại. Chọn PDF gốc cho mỗi Phần đã hoàn thành ngoài hệ thống. Việc xem xét kiểm tra các Phần bắt buộc theo kế hoạch thử việc thực tế.",
+      "notRequired": "Không thuộc kế hoạch này",
+      "completedOffline": "Đã hoàn thành ngoài hệ thống",
+      "originalPdf": "PDF gốc ngoài hệ thống",
+      "validateUnknown": "Thời gian thử việc chưa xác định đã được PBP hiện tại xác minh dựa trên hồ sơ nguồn.",
+      "saveStage": "Ghi nhận quyết định tiếp nhận",
+      "cutoverTitle": "Diễn tập kích hoạt",
+      "previewHelp": "Chuẩn bị toàn bộ nhóm và bản xem trước lời nhắc cho người xem xét được chỉ định. Thao tác này không gửi gì.",
+      "prepare": "Chuẩn bị diễn tập hiện tại",
+      "reviewReference": "Mã tham chiếu xem xét",
+      "activationDate": "Ngày kích hoạt đề xuất",
+      "configuredOrigin": "Địa chỉ hệ thống được cấu hình",
+      "originHelp": "Địa chỉ này lấy từ cấu hình. Chủ sở hữu hệ thống phải xác minh đích thực tế trước khi kích hoạt.",
+      "download": "Tải CSV xem xét đầy đủ",
+      "previewCounts": "{future} tin nhắn dự kiến · {past} tin nhắn quá khứ bị loại · {events} quy trình kích hoạt theo sự kiện",
+      "conditionalHelp": "Tin nhắn trong tương lai phụ thuộc vào điều kiện. Các giai đoạn đang chờ và người nhận sẽ được kiểm tra lại khi gửi. Lời nhắc quá khứ không được gửi lại; mỗi đợt kích hoạt sẽ chuẩn bị một bản tóm tắt quá hạn cho PBP.",
+      "futureMessages": "Tin nhắn dự kiến trong tương lai",
+      "excludedMessages": "Tin nhắn quá khứ không được gửi bù",
+      "eventMessages": "Quy trình đang chờ sự kiện trong tương lai",
+      "approved": "Phê duyệt của bạn đã được ghi nhận cho đúng bản diễn tập này. Việc kích hoạt vẫn cần chủ sở hữu hệ thống đã được xác minh.",
+      "approvalReason": "Lý do phê duyệt bản diễn tập này",
+      "approve": "Phê duyệt đúng bản diễn tập này",
+      "screenBound": "Bên dưới hiển thị 100 tin nhắn đầu tiên của mỗi phần. CSV chứa toàn bộ nội dung xem xét.",
+      "exportHeld": "Bản diễn tập này chưa đầy đủ. Hãy chuẩn bị bản rà soát đầy đủ trước khi tải xuống hoặc phê duyệt."
     },
     "workflows": {
       "title": "Quy trình thử việc",
@@ -34193,7 +34240,8 @@
       "saveRoute": "Lưu luồng của hồ sơ",
       "discard": "Bỏ thay đổi chưa lưu"
     },
-    "gradeChanged": "Bậc hiện tại khác với bậc ban đầu đã ghi nhận. PBP cần rà soát thay đổi; đánh giá này giữ biểu mẫu gốc và bản ghi bậc ban đầu."
+    "gradeChanged": "Bậc hiện tại khác với bậc ban đầu đã ghi nhận. PBP cần rà soát thay đổi; đánh giá này giữ biểu mẫu gốc và bản ghi bậc ban đầu.",
+    "runtimePaused": "Quy trình xử lý đang tạm dừng. Bạn vẫn có thể xem các hồ sơ hiện có ở chế độ chỉ đọc."
   },
   "templateEditor": {
     "newField": "Trường mới",

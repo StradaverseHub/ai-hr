@@ -1,7 +1,7 @@
 'use server';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates} from '@/packs/probation/service';
+import {admitProbation,actOnProbation,saveProbationDraft,logProbationFollowup,saveProbationConfiguration,installProbationDrafts,bootstrapProbationPreparer,assignProbationAccess,replaceProbationSigner,overrideProbationRoute,saveProbationLetterTemplate,previewProbationLetter,prepareProbationLetter,actOnProbationLetter,releaseProbationLetter,saveProbationWorkflow,previewProbationWorkflow,requestProbationDateShift,applyProbationDateShift,reconcileProbationDates,saveProbationIntakeDisposition,prepareProbationCutoverPlan,approveProbationCutover} from '@/packs/probation/service';
 async function execute<T>(work:()=>Promise<T>){
  try{const result=await work();revalidatePath('/lifecycle/probation','layout');return{ok:true as const,result};}
  catch(error){return{ok:false as const,code:error instanceof Error&&error.name==='ProbationError'?'review':'unavailable',detail:error instanceof Error&&error.name==='ProbationError'?error.message:undefined};}
@@ -36,3 +36,7 @@ export async function requestDateShift(input:Parameters<typeof requestProbationD
 export async function applyDateShift(input:Parameters<typeof applyProbationDateShift>[1]){return execute(async()=>applyProbationDateShift(await requireScopedLifecycleModule(),input));}
 
 export async function reconcileDates(input:Parameters<typeof reconcileProbationDates>[1]){return execute(async()=>reconcileProbationDates(await requireScopedLifecycleModule(),input));}
+
+export async function stageIntake(input:Parameters<typeof saveProbationIntakeDisposition>[1]){return execute(async()=>saveProbationIntakeDisposition(await requireScopedLifecycleModule(),input));}
+export async function prepareCutover(companyId:string){return execute(async()=>prepareProbationCutoverPlan(await requireScopedLifecycleModule(),companyId));}
+export async function approveCutover(input:Parameters<typeof approveProbationCutover>[1]){return execute(async()=>{await approveProbationCutover(await requireScopedLifecycleModule(),input);return{approved:true};});}

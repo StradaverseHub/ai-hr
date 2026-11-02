@@ -34031,7 +34031,54 @@
       "assign": "Record assignment"
     },
     "intake": {
-      "title": "Intake and activation"
+      "title": "Intake and activation",
+      "help": "Review existing probation records before moving unfinished work into the new process.",
+      "stagingOnly": "Saving a stage records the review decision. It does not create a live case or send reminders.",
+      "truncated": "This view exceeds the 500 eligible-employment review limit. Resolve the complete cohort before approving activation.",
+      "excludedCount": "{count} historical or ineligible records excluded by the source rules",
+      "cohort": "Existing probation cohort",
+      "empty": "No matching records in your current scope.",
+      "states": {
+        "excluded": "Excluded",
+        "held": "Needs review",
+        "ready": "Ready for rehearsal",
+        "already_admitted": "Already in the new process"
+      },
+      "reviewNeeded": "Resolve before activation",
+      "readOnly": "Your current role can view this record but cannot change its intake decision.",
+      "disposition": "Intake decision",
+      "unfinished": "Continue unfinished work",
+      "exclude": "Exclude from this process",
+      "flags": {
+        "noProbation": "No probation applies",
+        "internalTransfer": "Internal transfer",
+        "rehire": "Rehire requiring separate review",
+        "confirmedOnHire": "Confirmed on hire"
+      },
+      "partHelp": "Map each required Part to its current stage. Select an original PDF for every Part completed offline. The review checks the required Parts against the actual probation plan.",
+      "notRequired": "Not part of this plan",
+      "completedOffline": "Completed offline",
+      "originalPdf": "Original offline PDF",
+      "validateUnknown": "Unknown probation period validated by the current PBP against source records.",
+      "saveStage": "Record intake decision",
+      "cutoverTitle": "Activation rehearsal",
+      "previewHelp": "Prepare a complete cohort and reminder preview for named review. This sends nothing.",
+      "prepare": "Prepare current rehearsal",
+      "reviewReference": "Review reference",
+      "activationDate": "Proposed activation date",
+      "configuredOrigin": "Configured installation address",
+      "originHelp": "This address comes from configuration. The installation owner must verify the actual target before activation.",
+      "download": "Download complete review CSV",
+      "previewCounts": "{future} projected messages · {past} past messages excluded · {events} event-driven workflows",
+      "conditionalHelp": "Future messages are conditional. Current pending stages and recipients are checked again at delivery. Past reminders are not replayed; an overdue summary is prepared for the PBP once per activation batch.",
+      "futureMessages": "Projected future messages",
+      "excludedMessages": "Past messages excluded from catch-up",
+      "eventMessages": "Workflows waiting for a future event",
+      "approved": "Your approval has been recorded for this exact rehearsal. Activation still requires the verified installation owner.",
+      "approvalReason": "Reason for approving this rehearsal",
+      "approve": "Approve this exact rehearsal",
+      "screenBound": "The first 100 messages in each section are shown below. The CSV contains the complete review.",
+      "exportHeld": "This rehearsal is incomplete. Prepare a complete review before downloading or approving it."
     },
     "workflows": {
       "title": "Probation workflows",
@@ -34193,7 +34240,8 @@
       "saveRoute": "Save case route",
       "discard": "Discard unsaved changes"
     },
-    "gradeChanged": "The current grade differs from the recorded starting grade. PBP must review the change; this review keeps its original form and starting-grade record."
+    "gradeChanged": "The current grade differs from the recorded starting grade. PBP must review the change; this review keeps its original form and starting-grade record.",
+    "runtimePaused": "Processing is paused. Existing records remain available as read-only history."
   },
   "templateEditor": {
     "newField": "New field",
