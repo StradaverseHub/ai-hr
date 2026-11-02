@@ -435,6 +435,23 @@ describe('2ef69d1e — Back Pay (Arrears)', () => {
     expect(runs[0].total).toBeCloseTo(1000, 2);
   });
 
+  it('first-use pay item port refuses orphan commands, unknown kinds and caller access to its private witness',async()=>{
+    const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
+    await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
+    const {runId}=await calculateBackPay(a,{companyId:base.companyId,targetPayPeriod:'2026-04'});
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,'earning')`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,'not-a-kind')`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.backpay_component(${runId}::uuid,null)`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.financial_backpay_catalog_approved(null,'{}'::jsonb)`))).rejects.toThrow();
+    await expect(withTenant(a,tx=>tx.execute(sql`select app.financial_backpay_subjects_allowed(${runId}::uuid)`))).rejects.toThrow();
+    const [unknown]=await withTenant(a,tx=>tx.execute<{allowed:boolean}>(sql`select app.financial_backpay_row_read(jsonb_build_object('id',${randomUUID()},'tenant_id',${base.tenantId},'company_id',${base.companyId})) as allowed`));
+    expect(unknown.allowed).toBe(false);
+    expect(await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,base.tenantId),eq(schema.payComponent.code,BACK_PAY_EARNING_CODE)))).toEqual([]);
+    expect((await approveAndPostBackPay(a,{runId})).postedCount).toBe(1);
+    const [component]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,base.tenantId),eq(schema.payComponent.code,BACK_PAY_EARNING_CODE)));
+    expect(component).toMatchObject({includedInEpf:true,includedInSocsoEis:true,includedInPcb:true,includedInHrdfBase:true,isNonPayable:false,prorates:false,pcbRemunerationType:null,pcbExemptionCode:null,displayCategory:'allowance'});
+  });
+
   it('Back Pay posting cannot adopt an existing manual transaction or rewrite its calculated source',async()=>{
     const {a,employmentId}=await hire(5000);await runAndClose('2026-03');
     await setCompensation(a,{employmentId,basicSalary:6000,effectiveFrom:'2026-03-01'});
