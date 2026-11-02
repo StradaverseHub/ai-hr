@@ -4417,7 +4417,7 @@ GRANT EXECUTE ON FUNCTION app.onehr_kpi_checkin(uuid,integer,uuid,text,text) TO 
 --> statement-breakpoint
 CREATE TABLE app.financial_onehr_plan_effect(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),transaction_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,plan_id uuid NOT NULL,
- operation text NOT NULL CHECK(operation IN ('reopen','acknowledge')),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
+ operation text NOT NULL CHECK(operation IN ('reopen','acknowledge','progress')),before_row jsonb NOT NULL,after_row jsonb NOT NULL,consumed boolean NOT NULL DEFAULT false,event_id uuid REFERENCES public.domain_event(id)
 );
 ALTER TABLE app.financial_onehr_plan_effect ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON app.financial_onehr_plan_effect FROM PUBLIC,ai_hr_app;
@@ -4578,3 +4578,58 @@ BEGIN
 END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_onehr_goal(jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.onehr_goal_progress(wanted_plan uuid,expected_revision integer,wanted_goal text,status text,note text,active_review uuid DEFAULT NULL) RETURNS integer
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE plan public.performance_onehr_plan%ROWTYPE;review public.performance_onehr_review%ROWTYPE;cycle public.review_cycle%ROWTYPE;policy jsonb;goals jsonb;previous jsonb;next_goals jsonb;stamp text;next_plan jsonb;effect_id uuid;completed_event_id uuid;
+BEGIN
+ IF NOT app.financial_human_principal_current() OR app.current_user_id() IS NULL THEN RAISE EXCEPTION 'OneHR development actor unavailable' USING ERRCODE='42501';END IF;
+ IF NOT app.financial_onehr_uuid_text(wanted_goal) OR status IS NULL OR status NOT IN ('not_started','in_progress','done','dropped') OR note IS NULL OR app.financial_onehr_utf16_length(app.financial_onehr_js_trim(note))>2000 THEN RAISE EXCEPTION 'Invalid development progress' USING ERRCODE='22023';END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO plan FROM public.performance_onehr_plan actual WHERE actual.id=wanted_plan AND actual.tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF plan.id IS NULL OR NOT app.onehr_self_employment(plan.employment_id) THEN RAISE EXCEPTION 'Plan not found.' USING ERRCODE='42501';END IF;
+ IF plan.revision IS DISTINCT FROM expected_revision THEN RAISE EXCEPTION 'This record changed. Reload before saving.' USING ERRCODE='40001';END IF;
+ IF plan.status='draft' THEN RAISE EXCEPTION 'Share the plan before updating progress.' USING ERRCODE='42501';END IF;
+ SELECT * INTO review FROM public.performance_onehr_review actual WHERE actual.review_id=coalesce(active_review,plan.review_id) AND actual.tenant_id=plan.tenant_id;
+ SELECT * INTO cycle FROM public.review_cycle actual WHERE actual.id=review.cycle_id AND actual.tenant_id=review.tenant_id;
+ SELECT config.policy INTO policy FROM public.performance_onehr_cycle config WHERE config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id;
+ IF review.review_id IS NULL OR review.employment_id IS DISTINCT FROM plan.employment_id OR plan.plan_year IS DISTINCT FROM (extract(year from cycle.period_end)::integer+CASE WHEN policy->>'kind'='year_end' THEN 1 ELSE 0 END)
+ OR policy->'modules'->>'idp' IS DISTINCT FROM 'true' OR cycle.status NOT IN ('open','calibration') OR NOT app.assessment_review_participates(review.review_id)
+ OR NOT app.onehr_review_task_view(review.review_id,'self') OR NOT app.function_action_allowed('performance.onehr.selfReview','edit',review.company_id) THEN RAISE EXCEPTION 'Check in through an active assessment period for this plan year.' USING ERRCODE='42501';END IF;
+ IF jsonb_typeof(plan.goals) IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Invalid stored development goals' USING ERRCODE='22023';END IF;
+ SELECT coalesce(jsonb_agg(app.financial_onehr_goal(item) ORDER BY position),'[]'::jsonb) INTO goals FROM jsonb_array_elements(plan.goals) WITH ORDINALITY source(item,position);
+ SELECT item INTO previous FROM jsonb_array_elements(goals) WITH ORDINALITY source(item,position) WHERE item->>'id'=wanted_goal ORDER BY position LIMIT 1;
+ IF previous IS NULL THEN RAISE EXCEPTION 'Goal not found.' USING ERRCODE='42501';END IF;
+ stamp:=to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
+ SELECT jsonb_agg(CASE WHEN item->>'id'=wanted_goal THEN item||jsonb_build_object('status',status,'progressNote',note,'progressAt',stamp,'checkins',coalesce(item->'checkins','[]'::jsonb)||jsonb_build_array(jsonb_build_object('status',status,'note',note,'at',stamp))) ELSE item END ORDER BY position) INTO next_goals FROM jsonb_array_elements(goals) WITH ORDINALITY source(item,position);
+ next_plan:=to_jsonb(plan)||jsonb_build_object('goals',next_goals,'revision',plan.revision+1);
+ INSERT INTO app.financial_onehr_plan_effect(transaction_id,tenant_id,user_id,plan_id,operation,before_row,after_row) VALUES(pg_current_xact_id(),plan.tenant_id,app.current_user_id(),plan.id,'progress',to_jsonb(plan),next_plan) RETURNING id INTO effect_id;
+ UPDATE public.performance_onehr_plan actual SET goals=next_goals,revision=plan.revision+1 WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
+ VALUES(plan.tenant_id,'onehr',plan.id,'onehr.goal-progress-updated','user',app.current_user_id(),jsonb_build_object('goalId',wanted_goal,'previous',previous->'status','status',status,'note',note,'reviewId',review.review_id)) RETURNING id INTO completed_event_id;
+ UPDATE app.financial_onehr_plan_effect effect SET event_id=completed_event_id WHERE effect.id=effect_id AND effect.transaction_id=pg_current_xact_id() AND effect.consumed;
+ IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM public.performance_onehr_plan actual WHERE actual.id=plan.id AND actual.tenant_id=plan.tenant_id AND to_jsonb(actual)=next_plan) THEN RAISE EXCEPTION 'Development progress did not complete' USING ERRCODE='42501';END IF;
+ RETURN plan.revision+1;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_goal_progress(uuid,integer,text,text,text,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_goal_progress(uuid,integer,text,text,text,uuid) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_plan_progress_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE receipt uuid;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ UPDATE app.financial_onehr_plan_effect effect SET consumed=true WHERE effect.id=(SELECT candidate.id FROM app.financial_onehr_plan_effect candidate
+ WHERE candidate.transaction_id=pg_current_xact_id() AND candidate.tenant_id=NEW.tenant_id AND candidate.user_id=app.current_user_id() AND candidate.plan_id=NEW.id AND candidate.operation='progress' AND NOT candidate.consumed
+ AND candidate.before_row=to_jsonb(OLD) AND candidate.after_row=to_jsonb(NEW) LIMIT 1) RETURNING id INTO receipt;
+ IF receipt IS NOT NULL THEN IF NOT app.financial_human_principal_current() THEN RAISE EXCEPTION 'Development progress principal unavailable' USING ERRCODE='42501';END IF;RETURN NEW;END IF;
+ -- Draft plan construction has its separate native definition owner. Shared and
+ -- agreed progress never borrows an Administrative or assigned-review writer.
+ IF OLD.status<>'draft' AND (SELECT coalesce(jsonb_agg(jsonb_build_object('id',item->'id','status',item->'status','progressNote',item->'progressNote','progressAt',item->'progressAt','checkins',item->'checkins') ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(NEW.goals) WITH ORDINALITY source(item,position))
+ IS DISTINCT FROM (SELECT coalesce(jsonb_agg(jsonb_build_object('id',item->'id','status',item->'status','progressNote',item->'progressNote','progressAt',item->'progressAt','checkins',item->'checkins') ORDER BY position),'[]'::jsonb) FROM jsonb_array_elements(OLD.goals) WITH ORDINALITY source(item,position)) THEN RAISE EXCEPTION 'Development progress source unavailable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_plan_progress_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER z_financial_onehr_plan_progress_guard BEFORE UPDATE ON public.performance_onehr_plan FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_plan_progress_guard();

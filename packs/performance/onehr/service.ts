@@ -1123,14 +1123,8 @@ export async function reviewOnehrPlanTx(tx:Tx,ctx:SessionContext,planId:string,e
 }
 
 export async function updateOnehrGoalProgress(ctx:SessionContext,planId:string,expected:number,goalId:string,status:'not_started'|'in_progress'|'done'|'dropped',progressNote='',activeReviewId?:string) {
-  uuid.parse(planId);uuid.parse(goalId);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);
-  return withPerformanceTenant(ctx,async tx=>{const [plan]=await tx.select().from(onehrPlan).where(eq(onehrPlan.id,planId)).for('update');if(!plan||!await isSelf(tx,plan.employmentId))throw Error('Plan not found.');revision(plan.revision,expected);if(plan.status==='draft')throw Error('Share the plan before updating progress.');
-    const r=await loadReview(tx,activeReviewId??plan.reviewId);const year=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
-    if(r.row.employmentId!==plan.employmentId||year!==plan.planYear||!r.cycle.policy.modules.idp||!['open','calibration'].includes(r.cycle.native.status))throw Error('Check in through an active assessment period for this plan year.');
-    await requireParticipant(tx,r.row.reviewId);
-    const now=new Date().toISOString();
-    const goals=z.array(goalSchema).parse(plan.goals);if(!goals.some(g=>g.id===goalId))throw Error('Goal not found.');const previous=goals.find(g=>g.id===goalId)!.status;
-    await tx.update(onehrPlan).set({goals:goals.map(g=>g.id===goalId?{...g,status,progressNote,progressAt:now,checkins:[...(g.checkins??[]),{status,note:progressNote,at:now}]}:g),revision:plan.revision+1}).where(eq(onehrPlan.id,planId));await audit(tx,ctx,planId,'goal-progress-updated',{goalId,previous,status,note:progressNote,reviewId:r.row.reviewId});});
+  uuid.parse(planId);uuid.parse(goalId);z.number().int().parse(expected);z.enum(['not_started','in_progress','done','dropped']).parse(status);z.string().trim().max(2000).parse(progressNote);if(activeReviewId)uuid.parse(activeReviewId);
+  return withPerformanceTenant(ctx,async tx=>{await tx.execute(sql`select app.onehr_goal_progress(${planId}::uuid,${expected}::integer,${goalId}::text,${status}::text,${progressNote}::text,${activeReviewId??null}::uuid)`);});
 }
 /** Minimal own-plan facts for an explicit acknowledgement. The native permission is current self,
  * exact revision and closed plan; it deliberately does not infer approval of ratings or add a new
