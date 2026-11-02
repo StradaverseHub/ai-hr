@@ -122,6 +122,16 @@ async function loadReviewTaskFields(tx:Tx,reviewId:string,purpose:'task'|'admini
  const cycle=await loadCycle(tx,row.cycleId);
  return {row,native:header.value,cycle,kpis:z.array(kpiSchema).parse(row.kpis),competencies:z.array(competencySchema).parse(row.competencies)};
 }
+async function loadReviewPlanFields(tx:Tx,reviewId:string,purpose:'task'|'administration'){
+ const fields=Object.entries(getTableColumns(onehrPlan)).map(([key,column])=>sql`${sql.identifier(column.name)} as ${sql.identifier(key)}`);
+ const source=purpose==='administration'?sql`app.onehr_review_administration_plans(${reviewId}::uuid)`:sql`app.onehr_review_task_plans(${reviewId}::uuid)`;
+ return tx.execute<typeof onehrPlan.$inferSelect>(sql`select ${sql.join(fields,sql`, `)} from ${source}`);
+}
+async function loadReviewCareerFields(tx:Tx,reviewId:string,purpose:'task'|'administration'){
+ const fields=Object.entries(getTableColumns(assessmentCareerProfile)).map(([key,column])=>sql`${sql.identifier(column.name)} as ${sql.identifier(key)}`);
+ const source=purpose==='administration'?sql`app.onehr_review_administration_career(${reviewId}::uuid)`:sql`app.onehr_review_task_career(${reviewId}::uuid)`;
+ const [profile]=await tx.execute<typeof assessmentCareerProfile.$inferSelect>(sql`select ${sql.join(fields,sql`, `)} from ${source}`);return profile;
+}
 async function frozenReviewTx(tx:Tx,reviewId:string){const [row]=await tx.execute<{id:string}>(sql`select id from app.onehr_review_frozen(${reviewId}::uuid)`);return row;}
 async function moderatorChoices(tx:Tx,id:string){const [r]=await tx.execute<{value:{id:string;name:string;personId:string}[]}>(sql`select app.onehr_moderator_choices(${id}::uuid) as value`);return r?.value??[];}
 async function notifyKpiApprovers(tx:Tx,ctx:SessionContext,id:string,kpis:KPI[],phase:'setting'|'results') {
@@ -1412,11 +1422,12 @@ async function reviewForPurposeTx(tx:Tx,ctx:SessionContext,reviewId:string,purpo
     const [participant]=await tx.execute<{ok:boolean}>(sql`select app.assessment_review_participates(${reviewId}::uuid) as ok`);
     const leadership=(manager||reviewer||admin)&&participant?.ok?await assessment(tx,reviewId,r.cycle.policy):null;
     const planYear=Number(r.cycle.native.periodEnd.slice(0,4))+(r.cycle.policy.kind==='year_end'?1:0);
-    const storedPlans=(await tx.select().from(onehrPlan).where(and(eq(onehrPlan.employmentId,r.row.employmentId),eq(onehrPlan.planYear,planYear)))).map(p=>({...p,career:careerSchema.parse(p.career),goals:z.array(goalSchema).parse(p.goals)}));
+    const readPurpose=admin&&!scope?.task?'administration':purpose;
+    const storedPlans=(await loadReviewPlanFields(tx,reviewId,readPurpose)).map(p=>({...p,career:careerSchema.parse(p.career),goals:z.array(goalSchema).parse(p.goals)}));
     const [activePlanCycle]=self?await tx.select({periodEnd:reviewCycle.periodEnd,policy:onehrCycle.policy}).from(onehrReview).innerJoin(reviewCycle,eq(reviewCycle.id,onehrReview.cycleId)).innerJoin(onehrCycle,eq(onehrCycle.cycleId,onehrReview.cycleId)).where(and(eq(onehrReview.employmentId,r.row.employmentId),sql`${reviewCycle.status} in ('open','calibration')`)).orderBy(desc(reviewCycle.periodEnd),asc(onehrReview.reviewId)).limit(1):[];
     const activePlanningYear=activePlanCycle?Number(activePlanCycle.periodEnd.slice(0,4))+(policySchema.parse(activePlanCycle.policy).kind==='year_end'?1:0):null;
     const plans=self?storedPlans.map(p=>personalPlan(p,activePlanningYear)):storedPlans;
-    const [careerProfile]=await tx.select().from(assessmentCareerProfile).where(eq(assessmentCareerProfile.employmentId,r.row.employmentId));
+    const careerProfile=await loadReviewCareerFields(tx,reviewId,readPurpose);
     const feedbackReport=result&&(!self||record!.feedbackReleasedAt)?result.feedback:[];
     const choices=manager||admin?await tx.select({id:onehrEmployment.id,name:onehrLabel.labelOrPerson(person.fullName,onehrEmployment.id),code:onehrEmployment.employeeCode}).from(onehrEmployment).leftJoin(person,eq(person.id,onehrEmployment.personId)).where(and(sql`not exists(select 1 from app.onehr_employment sub where sub.id=${r.row.employmentId}::uuid and sub.person_id=${onehrEmployment.personId})`,sql`(${onehrEmployment.terminatedOn} is null or ${onehrEmployment.terminatedOn}>${todayInKualaLumpur()}::date)`,sql`(${person.id} is not null or ${onehrLabel.visible(onehrEmployment.id)})`)):[];
     const evidence=r.cycle.policy.modules.evidence?await tx.select().from(onehrEvidence).where(and(eq(onehrEvidence.employmentId,r.row.employmentId),sql`${onehrEvidence.state}<>'retracted'`)).orderBy(desc(onehrEvidence.occurredOn),desc(onehrEvidence.id)):[];

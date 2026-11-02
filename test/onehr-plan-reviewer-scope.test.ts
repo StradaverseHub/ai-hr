@@ -151,6 +151,26 @@ describe('Career Plan reviewer scope (TASK-030, migration 0640)', () => {
     expect(ap).toEqual({ visible: false, reviewer: true });
   });
 
+  it('projects the native assigned shared plan through its task purpose without opening raw profile-fenced rows',async()=>{
+    const [expected]=await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId));expect(expected.status).toBe('shared');
+    for(const ctx of [mgr,approverCtx]){
+      const profile=randomUUID(),revision=randomUUID(),rules={legacyCompany:false,predicates:[{field:'department',values:[b.deptB]}]};
+      await owner.client`insert into data_permission_profile(id,tenant_id,name) values(${profile},${b.tenantId},${'Fictional plan reviewer data '+profile})`;
+      await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by) values(${revision},${b.tenantId},${profile},${JSON.stringify(rules)}::text::jsonb,${a.userId!})`;
+      await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${profile}`;
+      await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by) values(${b.tenantId},${ctx.userId!},${profile},${a.userId!})`;
+      const [source]=await withTenant(ctx,tx=>tx.execute<{data:boolean;reviewer:boolean;view:boolean}>(sql`select app.data_permission_matches(${subject.employmentId}::uuid) as data,app.assessment_plan_reviewer(${sharedPlanId}::uuid) as reviewer,app.onehr_review_task_view(${reviewId}::uuid,'assigned') as view`));expect(source).toEqual({data:false,reviewer:true,view:true});
+      expect(await plansAs(ctx)).toEqual([]);
+      const plans=await withTenant(ctx,tx=>tx.execute<{id:string;goals:unknown;career:unknown}>(sql`select id,goals,career from app.onehr_review_task_plans(${reviewId}::uuid)`));expect(plans).toEqual([{id:sharedPlanId,goals:expected.goals,career:expected.career}]);
+      expect(await withTenant(ctx,tx=>tx.execute(sql`select id from app.onehr_review_administration_plans(${reviewId}::uuid)`))).toEqual([]);
+      expect((await perf.getOnehrReviewForPurpose(ctx,reviewId,'task'))?.plans.map(p=>p.id)).toEqual([sharedPlanId]);
+      expect(await withTenant(ctx,tx=>tx.execute(sql`select id from app.onehr_review_task_plans(${review2Id}::uuid)`))).toEqual([]);
+    }
+    for(const ctx of [skipCtx,hodCtx])expect(await withTenant(ctx,tx=>tx.execute(sql`select id from app.onehr_review_task_plans(${reviewId}::uuid)`))).toEqual([]);
+    const [privilege]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.financial_onehr_view_plans(uuid,text)','EXECUTE') as allowed`);expect(privilege.allowed).toBe(false);
+    expect(await owner.db.select().from(schema.onehrPlan).where(eq(schema.onehrPlan.id,sharedPlanId))).toEqual([expected]);
+  });
+
   it('a department-tree non-reviewer reads nothing of a shared plan (TASK-030 acceptance)', async () => {
     expect(await plansAs(skipCtx), 'skip-level manager').toEqual([]);
     expect(await plansAs(hodCtx), 'head of department').toEqual([]);

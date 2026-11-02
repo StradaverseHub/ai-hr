@@ -3319,3 +3319,52 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 REVOKE ALL ON FUNCTION app.onehr_review_task_header(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onehr_review_task_header(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Career plans retain their own native reviewer/year/status course. A task View
+-- never lends the parallel administrative arm, and a plan read never opens raw rows.
+CREATE FUNCTION app.financial_onehr_view_plans(wanted_review uuid,purpose text) RETURNS SETOF public.performance_onehr_plan
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT plan.* FROM public.performance_onehr_review review
+ JOIN public.review_cycle cycle ON cycle.id=review.cycle_id AND cycle.tenant_id=review.tenant_id
+ JOIN public.performance_onehr_cycle config ON config.cycle_id=review.cycle_id AND config.tenant_id=review.tenant_id
+ JOIN public.performance_onehr_plan plan ON plan.employment_id=review.employment_id AND plan.tenant_id=review.tenant_id
+ WHERE review.review_id=wanted_review AND review.tenant_id=app.current_tenant_id()
+ AND plan.plan_year=extract(year from cycle.period_end)::integer+CASE WHEN config.policy->>'kind'='year_end' THEN 1 ELSE 0 END
+ AND CASE purpose WHEN 'task' THEN (app.onehr_review_task_view(review.review_id,'self') OR app.onehr_review_task_view(review.review_id,'assigned'))
+  AND (app.onehr_self_employment(plan.employment_id) OR plan.status<>'draft' AND app.assessment_plan_reviewer(plan.id))
+ WHEN 'administration' THEN app.onehr_review_administration(review.review_id) AND app.financial_onehr_result_admin(plan.review_id)
+ ELSE false END
+ ORDER BY plan.id;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_view_plans(uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_review_task_plans(wanted_review uuid) RETURNS SETOF public.performance_onehr_plan
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_view_plans(wanted_review,'task'); $$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_plans(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_plans(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_review_administration_plans(wanted_review uuid) RETURNS SETOF public.performance_onehr_plan
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_view_plans(wanted_review,'administration'); $$;
+REVOKE ALL ON FUNCTION app.onehr_review_administration_plans(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_administration_plans(uuid) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_view_career(wanted_review uuid,purpose text) RETURNS SETOF public.performance_assessment_career_profile
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT profile.* FROM public.performance_onehr_review review
+ JOIN public.performance_assessment_career_profile profile ON profile.employment_id=review.employment_id AND profile.tenant_id=review.tenant_id
+ WHERE review.review_id=wanted_review AND review.tenant_id=app.current_tenant_id()
+ AND CASE purpose WHEN 'task' THEN (app.onehr_review_task_view(review.review_id,'self') OR app.onehr_review_task_view(review.review_id,'assigned'))
+  AND (app.onehr_self_employment(review.employment_id) OR EXISTS(SELECT 1 FROM public.performance_onehr_review assigned
+   JOIN public.review_cycle cycle ON cycle.id=assigned.cycle_id AND cycle.tenant_id=assigned.tenant_id
+   WHERE assigned.employment_id=review.employment_id AND assigned.tenant_id=review.tenant_id AND cycle.status IN ('open','calibration')
+   AND (app.onehr_effective_reviewer(assigned.review_id) OR app.onehr_moderator(assigned.review_id))))
+ WHEN 'administration' THEN app.onehr_review_administration(review.review_id) AND app.assessment_career_access(review.employment_id)
+ ELSE false END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_view_career(uuid,text) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.onehr_review_task_career(wanted_review uuid) RETURNS SETOF public.performance_assessment_career_profile
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_view_career(wanted_review,'task'); $$;
+REVOKE ALL ON FUNCTION app.onehr_review_task_career(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_task_career(uuid) TO ai_hr_app;
+CREATE FUNCTION app.onehr_review_administration_career(wanted_review uuid) RETURNS SETOF public.performance_assessment_career_profile
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$ SELECT * FROM app.financial_onehr_view_career(wanted_review,'administration'); $$;
+REVOKE ALL ON FUNCTION app.onehr_review_administration_career(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_review_administration_career(uuid) TO ai_hr_app;
