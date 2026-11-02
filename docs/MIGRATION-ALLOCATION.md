@@ -1233,3 +1233,13 @@ a test-only review fixture for precisely two fixed synthetic contracts and add a
 refusal before transport/admission; production approval records remain unchanged. The unmocked
 review gate verifies actual current/stale records and the pending formula contract, rather than
 assuming a changed source still carries an old approval. This source grants no production approval.
+
+### Workflow email and Entra maintenance controls (independent source)
+
+Both maintenance pages consume one canonical View/Add/Edit/Delete projection; unavailable operations
+remain false. Entra configuration, binding, retry and reconciliation controls are read-only without
+Edit. Workflow policy and failed-delivery history remain readable with View, while policy saves and
+retry controls require Edit. Their service reads/writes repeat the exact purpose; policy serialization
+joins Access before its custom lock. Independent account-recovery delivery and authenticated worker
+courses retain their own owners. New page checks require hosted qualification; generic worker/raw
+outbox closure remains separate work and no completion sentinel is added.

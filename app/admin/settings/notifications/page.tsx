@@ -1,3 +1,5 @@
+import {notFound} from 'next/navigation';
+import {settingsActionAccess} from '@/core/organisation-access';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { requireModule, isGroupAdmin } from '@/lib/authz';
@@ -12,7 +14,9 @@ export default async function WorkflowEmailPage({searchParams}:{searchParams:Pro
   const {s}=await scopedAdmin();await requireModule('notifications');
   const [t,accountT,query]=await Promise.all([getTranslations('workflowEmail'),getTranslations('accountEmail'),searchParams]);
   const [policy,deliveries,relay,accountDeliveries]=await Promise.all([readNotificationEmailPolicy(s),readNotificationEmailDeliveries(s),readNotificationEmailTransport(),readAccountEmailDeliveries(s)]);
-  const mayWrite=isGroupAdmin(s),enabled=new Set(policy.filter(p=>p.enabled).map(p=>p.category));
+  const permissions=await settingsActionAccess(s,'workflowEmail');
+  if(!permissions.view)notFound();
+  const mayWrite=isGroupAdmin(s)&&permissions.edit,enabled=new Set(policy.filter(p=>p.enabled).map(p=>p.category));
   return <div className="max-w-5xl space-y-6">
     <PageHeader title={t('title')} description={t('description')}/>
     <ErrorBanner message={query.error==='account-retry'?accountT('retryError'):query.error?t('error'):undefined}/>

@@ -1,8 +1,10 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
 import { render,screen,cleanup } from '@testing-library/react';
 import en from '../messages/en.json';
-const m=vi.hoisted(()=>({policy:vi.fn(),deliveries:vi.fn(),relay:vi.fn(),preferences:vi.fn(),identity:vi.fn(),internal:vi.fn(),group:vi.fn(),accounts:vi.fn()}));
+const m=vi.hoisted(()=>({policy:vi.fn(),deliveries:vi.fn(),relay:vi.fn(),preferences:vi.fn(),identity:vi.fn(),internal:vi.fn(),group:vi.fn(),edit:true,accounts:vi.fn()}));
 const t=(key:string)=>key.split('.').reduce((v:any,k)=>v?.[k],en.workflowEmail)??key;
+vi.mock('../core/organisation-access',()=>({settingsActionAccess:async()=>({view:true,add:false,edit:m.edit,delete:false})}));
+vi.mock('next/navigation',()=>({notFound:()=>{throw Error('NOT_FOUND');}}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>t,getLocale:async()=>'en'}));
 vi.mock('../lib/scope',()=>({scopedAdmin:async()=>({s:{userId:'user'}}),scopedSession:async()=>({s:{userId:'user'},scopeIds:[]})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn(),isGroupAdmin:m.group}));
@@ -17,8 +19,16 @@ vi.mock('../app/admin/settings/notifications/actions',()=>({saveWorkflowEmailPol
 vi.mock('../app/me/notifications/actions',()=>({saveMyWorkflowEmailPreferences:vi.fn(),saveMyLetterEmailPreferences:vi.fn()}));
 import AdminPage from '../app/admin/settings/notifications/page';
 import MyPage from '../app/me/notifications/page';
-beforeEach(()=>{cleanup();vi.clearAllMocks();m.accounts.mockResolvedValue([]);m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
+beforeEach(()=>{cleanup();vi.clearAllMocks();m.accounts.mockResolvedValue([]);m.policy.mockResolvedValue([]);m.deliveries.mockResolvedValue([]);m.relay.mockResolvedValue(null);m.group.mockReturnValue(true);m.edit=true;m.internal.mockReturnValue(false);m.identity.mockResolvedValue(null);m.preferences.mockResolvedValue({employments:[{id:'employment',code:'EMP-01'}],preferences:[],policy:[]});});
 describe('workflow email configuration screens',()=>{
+ it('keeps the policy and failed delivery history readable without offering Edit or retry',async()=>{
+  m.edit=false;m.deliveries.mockResolvedValue([{id:'fictional-delivery',recipientCode:null,category:'claims',status:'failed',attempts:1,error:null,createdAt:new Date('2026-01-01T00:00:00Z'),sentAt:null}]);
+  render(await AdminPage({searchParams:Promise.resolve({})}));
+  for(const input of screen.getAllByRole('checkbox'))expect(input.matches(':disabled')).toBe(true);
+  expect(screen.queryByRole('button',{name:en.workflowEmail.savePolicy})).toBeNull();expect(screen.queryByRole('button',{name:en.workflowEmail.retry})).toBeNull();
+  expect(screen.getByText(/fictional-delivery/)).toBeTruthy();
+ });
+
  it('does not claim mail is active when the root-installed service has not been upgraded',async()=>{
   render(await AdminPage({searchParams:Promise.resolve({})}));
   expect(screen.getByText(en.workflowEmail.upgradeRequired)).toBeTruthy();
