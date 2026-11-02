@@ -82,8 +82,8 @@ async function journey(ctx: SessionContext, family: Family, kind: string, id: st
   return { ...f, reply };
 }
 async function press(name: string) {
-  await waitFor(() => expect(screen.getByRole('button', { name, exact: true })).toBeTruthy(), { timeout: 10000 });
-  const button = screen.getByRole('button', { name, exact: true }) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByRole('button', { name })).toBeTruthy(), { timeout: 10000 });
+  const button = screen.getByRole('button', { name }) as HTMLButtonElement;
   expect(button.disabled).toBe(false); fireEvent.click(button);
 }
 function fillPack(action: PackAction, values: Record<string, unknown>) {
@@ -92,10 +92,10 @@ function fillPack(action: PackAction, values: Record<string, unknown>) {
     const value = values[f.key];
     if (f.kind === 'choice') {
       const option = f.options!.find(o => o.value === String(value)); expect(option, f.key).toBeDefined();
-      const group = screen.getAllByText(f.label, { exact: true }).map(n => n.parentElement!).find(n => within(n).queryByRole('button', { name: option!.label, exact: true }));
-      expect(group, f.label).toBeDefined(); fireEvent.click(within(group!).getByRole('button', { name: option!.label, exact: true }));
+      const group = screen.getAllByText(f.label, { exact: true }).map(n => n.parentElement!).find(n => within(n).queryByRole('button', { name: option!.label }));
+      expect(group, f.label).toBeDefined(); fireEvent.click(within(group!).getByRole('button', { name: option!.label }));
     } else if (f.kind === 'boolean') {
-      if (value !== f.value) fireEvent.click(screen.getByRole('button', { name: `${f.value === true ? '✓ ' : ''}${f.label}`, exact: true }));
+      if (value !== f.value) fireEvent.click(screen.getByRole('button', { name: `${f.value === true ? '✓ ' : ''}${f.label}` }));
     } else fireEvent.change(screen.getByLabelText(f.label), { target: { value: String(value) } });
   }
 }

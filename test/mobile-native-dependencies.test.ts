@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { runInNewContext } from 'node:vm';
 import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
@@ -13,7 +14,7 @@ const decode = nativeRequire('decode-uri-component') as (value: string) => strin
 // SDK58 removed query-string. Exercise the installed Expo callback parser rather than
 // restoring an obsolete dependency just to keep its old regression fixture loadable.
 const parserModule = { exports: {} as { getQueryParams: (value: string) => { errorCode: string | null; params: Record<string, string> } } };
-const parserSource = readFileSync(nativeRequire.resolve('expo-auth-session/build/QueryParams.js'), 'utf8');
+const parserSource = readFileSync(join(dirname(nativeRequire.resolve('expo-auth-session')), 'QueryParams.js'), 'utf8');
 runInNewContext(transpileModule(parserSource, { compilerOptions: { module: ModuleKind.CommonJS, target: ScriptTarget.ES2022 } }).outputText,
   { module: parserModule, exports: parserModule.exports, URL, URLSearchParams, Object });
 const query = { parse: (value: string) => parserModule.exports.getQueryParams(`onehr://auth/callback?${value}`).params };
@@ -57,7 +58,8 @@ describe('native dependency fixes — actual installed callers', () => {
       const { parentPort, workerData } = require('node:worker_threads');
       const load = require('node:module').createRequire(workerData);
       (async () => {
-        const { getQueryParams } = await import(require('node:url').pathToFileURL(load.resolve('expo-auth-session/build/QueryParams.js')).href);
+        const file = require('node:path').join(require('node:path').dirname(load.resolve('expo-auth-session')), 'QueryParams.js');
+        const { getQueryParams } = await import(require('node:url').pathToFileURL(file).href);
         const parsed = getQueryParams('onehr://auth/callback?state=' + '%C2'.repeat(10000));
         parentPort.postMessage(parsed.params.state.length);
       })().catch(error => { throw error; });
@@ -81,7 +83,8 @@ describe('native dependency fixes — actual installed callers', () => {
         payload += '%' + Math.floor(i / 256).toString(16).padStart(2, '0') + '%' + (i % 256).toString(16).padStart(2, '0') + 'x';
       }
       (async () => {
-        const { getQueryParams } = await import(require('node:url').pathToFileURL(load.resolve('expo-auth-session/build/QueryParams.js')).href);
+        const file = require('node:path').join(require('node:path').dirname(load.resolve('expo-auth-session')), 'QueryParams.js');
+        const { getQueryParams } = await import(require('node:url').pathToFileURL(file).href);
         const parsed = getQueryParams('onehr://auth/callback?state=' + payload + '%zz');
         parentPort.postMessage({ length: parsed.params.state.length, intact: parsed.params.state.endsWith('%zz') });
       })().catch(error => { throw error; });
