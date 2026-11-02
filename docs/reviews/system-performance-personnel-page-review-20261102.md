@@ -50,6 +50,72 @@ The owned primary draft retains these commits as01923d599/eedd5a4ce/bfa1883ef.
 Its tracked tree atbfa1883ef equals tested435006109. Test/controller receipts retain
 their original identities; no receipt is relabelled into a release witness.
 
+## Retained-volume scaling qualification
+
+Test-only `955e3abeca383415f9442c41240e5096f55d8df7` /
+[41461923371](https://github.com/StradaverseHub/ai-hr/actions/runs/41461923371)
+passes its native fixture and whole-repository compiler. It changes only
+`test/personnel-volume-profile.test.ts` from retained primary41bb56058; production
+reader, public functions, migrations, grants, literal provider bindings and controller
+are unchanged. Fresh main41ec7fd8/alpha6ea88936 diverge from the retained causal base
+and are intentionally excluded from this experiment, not claimed as integrated.
+
+|Permitted employments|Former reader mean|Composed reader mean|Lower elapsed time|
+|---|---|---|---|
+|512|40.71ms|24.19ms|40.60%|
+|4,096|237.81ms|144.97ms|39.04%|
+|16,384|910.69ms|567.58ms|37.68%|
+
+Each mean is four alternating-order matched pairs in the same runner. Assertions
+compare full results, independent first/later/final page IDs, exact total and independently
+counted Active/Resigned facets, department and resigned filters, un-narrowed status
+facets, empty and real foreign scopes, actual APP role, and forged HR claims with no
+real grant. All controls pass. These numbers do not replace the earlier512-record
+measurement: fixture statistics and execution context differ; no cross-run speed
+percentage is inferred. Planner statistics are refreshed only in the fictional fixture.
+Owner bulk inserts model retained volume, not authorized hiring throughput.
+
+Existing standard hosted execution and PostgreSQL profile2 retain configured cap
+2,113,929,216bytes, peak budget2,147,483,648bytes, JIT on and the existing240-second
+per-test limit. Receipt reports PostgreSQL memory peak802,455,552bytes, no OOM or
+cap events; actual shared_buffers128MB/work_mem4MB. Node RSS snapshots are not
+peak measurements. No capacity/resource improvement is inferred from those samples.
+
+Cost still grows substantially with permitted workforce size. All four composed
+reads at16,384 records are below the diagnostic1,000ms single-read budget, but this
+is neither page p95 nor500-user capacity. The larger65,536-record follow-up is frozen
+as test-onlyae4933a39d0f95b94c374c98ff4930079c218984 /
+[41463173514](https://github.com/StradaverseHub/ai-hr/actions/runs/41463173514),
+with only cardinality/description changed, unchanged controls/resources/time bound.
+The native correctness fixture passes and finishes inside its unchanged bound.
+All four composed reads exceed the diagnostic1,000ms single-reader budget:
+2,196.05–2,224.94ms, mean2,212.63ms versus former3,642.67ms (39.26% lower).
+This is a performance-budget failure despite the workflow's functional PASS.
+All independent page/count/facet/filter/tenant/forged-authority controls pass.
+PostgreSQL peak1,290,649,600bytes, with zero OOM/cap events. Owner bulk population
+cost148.78seconds is setup, not authorized hiring performance. No compiler rerun is
+claimed forae4933a39: its only diff from compiler-qualified955e is two test literals
+(cardinality/description), with exact receipts retained separately.
+
+The single-reader cost is already over budget at65,536 permitted records; neither
+million-record nor500-user Personnel speed is established. This simple fixture has
+one permitted company and no reporting-line hierarchy. Native security permission
+model integration, broader organization shapes and concurrent HTTP behavior remain
+unqualified. No additional full500 workload is dispatched.
+
+The repair seam is now concrete: avoid building the full wide authorized JSON
+projection before paging and exact counts/facets. A compatible native owner should
+separate or compose the minimal authorized count/filter input and the bounded wide
+page projection, preserving current field restrictions, final data-permission policy,
+manager scope, exact status/count/filter semantics and refusal behavior. App-side
+limits after the existing opaque full-set projection cannot demonstrate bounded
+native work. This review does not authorize modifying security-owned0938, replacing
+its predicate, changing any applied SQL, or allocating overlapping migrations.
+A frozen security-owner interface/incorporation is required before adopting that
+native repair on the current permission model; it did not prevent these independent
+retained-reader experiments. No provider binding, live data or deployment authority
+is implied. Both rejected formula-query prototypes and original500 failures remain.
+
 ## Permission and source boundaries
 
 The implementation calls the existing `app.access_workforce_list_rows()` projection

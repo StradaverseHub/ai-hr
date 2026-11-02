@@ -9,6 +9,18 @@ count3→1 is proven by native PostgreSQL statistics; the original red341b/41449
 is preserved. Rows, order, filters, totals and tenant boundaries remain exact.
 See [Personnel repair review](reviews/system-performance-personnel-page-review-20261102.md) for source, controls and limits.
 
+Larger retained-volume checks now identify the remaining Personnel scaling limit.
+Test-only955e/41461923371 passes native controls and whole compiler at512/4,096/16,384
+permitted records: composed means24.19/144.97/567.58ms versus former40.71/237.81/910.69ms.
+Same-resource follow-upae4933a39/41463173514 passes native correctness at65,536 but
+**fails the diagnostic1-second single-read budget**: mean2,212.63ms versus3,642.67ms,
+all four composed reads above2.19seconds. Functional workflow PASS is not speed
+acceptance. No app/public SQL/resource/timeout change, no new full500 run. Exact
+counts, page IDs, facets, filter and tenant/forged-authority controls pass. These
+single-HR-reader fixtures do not qualify the newer security policy or million-record
+Personnel capacity. The existing full wide projection before paging is the next
+native owner seam; see the same Personnel review for immutable identities and bounds.
+
 The primary draft now includes this qualified Personnel change and the genuine
 self-approval test-fixture repair alongside its earlier performance work. The punch-audit, shell and authentication variants
 remain separate. Existing bounded remote Personnel search is still in this candidate;
