@@ -20,8 +20,10 @@
  *    harness with a fixed reply, and the model is never called. It needs a subject other than the person.
  * Which sensitive topics are routed is read from the harness spec's `sensitive` section.
  *
- * Deterministic and pure. Patterns cover English, Malay, Chinese and Vietnamese wording; Tamil and Thai
- * are not covered yet (ADR-0169 §6). Authored independently of the adversarial holdouts
+ * Deterministic and pure. Patterns cover English, Malay, Chinese and Vietnamese wording. Thai and Tamil patterns
+ * were added by the whole-stack review fix (B2) and are PENDING NATIVE-SPEAKER REVIEW (ADR-0169 §6): they are a
+ * floor, not a reviewed list. English also covers assault, rape and abuse wording, crisis paraphrases, pregnancy
+ * worry, comments on someone's body and unwanted touching, and common misspellings (review B2). Authored independently of the adversarial holdouts
  * (lib/ai/assistant-adversarial-holdouts.ts), which stay unseen. Not imported by the production Assistant. */
 
 /** Routed topics, in the order they are tested: crisis first, so a crisis message is never routed elsewhere. */
@@ -66,14 +68,32 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   /\bbunuh\s+diri\b/i,/\b(nak|mahu|ingin)\s+mati\b/i,/\b(tamatkan|tamat)\s+(nyawa|hidup)\b/i,/\b(cederakan|sakiti)\s+diri\b/i,
   /(自杀|自殺|想死|不想活|轻生|輕生|自残|自殘|伤害自己|傷害自己|结束(我的)?生命|結束(我的)?生命)/,
   /(tự tử|tự sát|muốn chết|tự làm hại|kết thúc cuộc đời|không muốn sống)/i,
+  // Paraphrases (review B2): "I can't go on anymore", "the point of living", "better off without me".
+  /\b(can'?t|cannot|can not)\s+go\s+on\s+(any\s*more|like\s+this|living|with\s+(life|living))\b/i,/\b(the|any|no)\s+point\s+(of|in)\s+(living|being\s+alive|life)\b/i,
+  /\bbetter\s+off\s+(dead|without\s+me)\b/i,/\b(life|living)\s+(is\s+not|isn'?t|is\s+no\s+longer)\s+worth\b/i,/\bwish\s+i\s+(was|were)\s+(dead|never\s+born)\b/i,
+  /\b(suiside|sucide|suicde|sucidal|suicidel)\b/i,
+  // Thai and Tamil: pending native-speaker review.
+  /(ฆ่าตัวตาย|อยากตาย|ไม่อยากมีชีวิตอยู่|ไม่อยากอยู่แล้ว|ทำร้ายตัวเอง|จบชีวิต(ตัวเอง)?|ปลิดชีวิต)/,
+  /(தற்கொலை|சாக\s*வேண்டும்|சாகணும்|சாகப்\s*போகிறேன்|உயிரை\s*மாய்த்து|வாழ\s*விருப்பமில்லை|வாழ\s*பிடிக்கவில்லை|என்னை\s*நானே\s*காயப்படுத்த)/,
  ],
  harassment:[
   /\b(harass(ed|es|ing|ment)?|bull(y|ied|ies|ying)|victimi[sz](ed|ation)|stalk(ed|ing))\b/i,
+  // Common misspellings (review B2): "harrased", "harrassment", "harased", "bulied", "bullyed".
+  /\bhar+as+(e|ed|es|ing|ment|sment)?\b/i,/\bbul+(i|y)(ed|es|ing)\b/i,
+  // Assault, rape and abuse (review B2).
+  /\b(rape|raped|raping|rapist)\b/i,/\bsexual+y?\s+(abus\w*|assault\w*|molest\w*)\b/i,/\bmolest\w*/i,
+  /\b(assault(ed|s|ing)?|abus(ed|es|ing)|attack(ed|s|ing)|hit|slapped|punched|kicked|beat|beats|beaten|choked|grabbed|cornered)\s+me\b/i,/\b(physically|verbally|sexually)\s+abus\w*/i,
+  // Comments on someone's body and unwanted touching (review B2, run 41343676782 emp-harassment-split-2).
+  /\b(comment(s|ing|ed)?|remarks?|jokes?|joking|talk(s|ing|ed)?|staring|stares|stared)\s+(about|on|at)\s+my\s+(body|figure|looks|appearance|breasts?|chest|legs?|butt|bum|bottom|weight|shape|skin)\b/i,
+  /\btouch(ed|es|ing)?\s+(me|my\s+(shoulders?|body|waist|hands?|legs?|thighs?|back|hair|chest|butt|bum|bottom|breasts?|knees?|neck|face|hips?|arms?))\b/i,
   /\bsexual(ly)?\s+(harass\w*|assault\w*|advances?|comments?|misconduct)\b/i,/\b(touched|groped)\s+me\b/i,
-  /\b(intimidat(es|ed|ing)|threaten(s|ed|ing))\s+me\b/i,/\binappropriate(ly)?\s+(touch\w*|comments?|remarks?|messages?|behaviou?r)\b/i,/\bhostile\s+work(place|\s+environment)\b/i,/\bdiscriminat(ed|es|ing|ion)\b/i,
+  /\b(intimidat(es|ed|ing)|threaten(s|ed|ing))\s+me\b/i,/\binappropriate(ly)?\s+(touch\w*|comments?|remarks?|messages?|behaviou?r)\b/i,/\bhostile\s+work(place|\s+environment)\b/i,/\bdiscrim\w*/i,
   /\b(gangguan\s+seksual|diganggu|dibuli|buli|membuli|pelecehan|diugut|ugutan|didiskriminasi|diskriminasi)\b/i,
   /(骚扰|騷擾|霸凌|欺凌|被欺负|被欺負|歧视|歧視|威胁我|威脅我)/,
   /(quấy rối|bắt nạt|phân biệt đối xử|đe dọa tôi|bị đe dọa)/i,
+  // Thai and Tamil: pending native-speaker review.
+  /(ล่วงละเมิด|คุกคามทางเพศ|ถูกคุกคาม|โดนคุกคาม|กลั่นแกล้ง|รังแก|เลือกปฏิบัติ|ข่มขืน|ลวนลาม|ทำร้ายร่างกาย|ขู่ฉัน|ขู่ผม|จับตัวฉัน|จับตัวผม)/,
+  /(பாலியல்\s*(துன்புறுத்தல்|தொல்லை|வன்கொடுமை)|துன்புறுத்த|தொல்லை\s*கொடு|கொடுமைப்படுத்த|பாகுபாடு|கற்பழி|மிரட்டு|என்னைத்\s*தொட்ட|என்னை\s*அடித்த)/,
  ],
  termination_threat:[
   /\b(threat(en|ens|ened|ening)?|going|gonna|wants?|trying|plans?|planning)\s+(to\s+)?(fire|sack|terminate|dismiss|let\s+go\s+of)\s+me\b/i,
@@ -82,6 +102,9 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   /\b(saya|aku)\s+(akan\s+|telah\s+|sudah\s+|nak\s+)?(dipecat|diberhentikan|dibuang\s+kerja)\b/i,/\b(pecat|berhentikan|buang)\s+(saya|aku)\b/i,/\bdipaksa\s+(letak\s+jawatan|berhenti)\b/i,
   /(解雇我|开除我|開除我|辞退我|辭退我|炒我鱿鱼|炒我魷魚|我被解雇|我被开除|我被開除|我被辞退|我被辭退|逼我辞职|逼我辭職)/,
   /(đuổi việc tôi|sa thải tôi|tôi bị đuổi việc|tôi bị sa thải|ép tôi nghỉ việc|buộc tôi nghỉ việc)/i,
+  // Thai and Tamil: pending native-speaker review.
+  /(ไล่(ฉัน|ผม)ออก|(ฉัน|ผม)(จะ)?(ถูก|โดน)ไล่ออก|เลิกจ้าง(ฉัน|ผม)|(ฉัน|ผม)(จะ)?(ถูก|โดน)เลิกจ้าง|บังคับให้(ฉัน|ผม)?ลาออก)/,
+  /(என்னை\s*(வேலையை\s*விட்டு|வேலையிலிருந்து|பணியிலிருந்து)\s*நீக்க|என்னைப்\s*பணிநீக்கம்|ராஜினாமா\s*செய்ய\s*(கட்டாய|வற்புறுத்த))/,
  ],
  grievance:[
   /\bgrievances?\b/i,/\bwhistle-?blow(er|ing)?\b/i,
@@ -90,6 +113,11 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   /\b(aduan|mengadu|membuat\s+aduan|laporkan)\s+(tentang|terhadap|mengenai)?\s*(pengurus|bos|penyelia|ketua|rakan\s+sekerja|dia)\b/i,
   /(投诉|投訴|申诉|申訴|举报|舉報)\s*(我的)?(经理|經理|上司|老板|老闆|主管|同事|他|她)/,/(申诉|申訴)/,
   /(khiếu nại|tố cáo|phàn nàn)\s+(về\s+)?(quản lý|sếp|cấp trên|đồng nghiệp|anh ấy|chị ấy)/i,
+  // A report of someone's wrongdoing (review run 41343676782: "someone anonymously report our finance manager fiddling claims").
+  /\banonymous(ly)?\b[^.?!]{0,30}\breport/i,
+  /\b(manager|boss|supervisor|colleague|co-?worker|director|superior|team\s*lead|he|she)\b[^.?!]{0,30}\b(fiddl\w*|fraud\w*|embezzl\w*|steal(s|ing)?|stole|misappropriat\w*|falsif\w*|taking\s+bribes?|kickbacks?)\b/i,
+  // Thai and Tamil: pending native-speaker review.
+  /(ร้องเรียน|ร้องทุกข์|แจ้งเบาะแส)/,/(புகார்\s*(அளிக்க|செய்ய|கொடுக்க)|மீது\s*புகார்|குறைதீர்)/,
  ],
  medical:[
   /\b(i|i'm|i am|i've|i have|i was|i've been|i have been|my)\s+(just\s+)?(been\s+)?(diagnosed|diagnosis)\b/i,
@@ -99,12 +127,20 @@ const SENSITIVE:Readonly<Record<SensitiveTopic,readonly RegExp[]>>={
   /\b(didiagnosis|kemurungan|penyakit\s+(mental|kronik)|kesihatan\s+mental|barah|kanser|kurang\s+upaya)\b/i,
   /(确诊|確診|诊断出|診斷出|抑郁|抑鬱|焦虑症|焦慮症|癌症|精神疾病|心理健康|精神健康|慢性病|残疾|殘疾|流产|流產)/,
   /(được chẩn đoán|bị chẩn đoán|trầm cảm|ung thư|sức khỏe tâm thần|rối loạn lo âu|bệnh mãn tính|khuyết tật|sảy thai)/i,
+  // Pregnancy worry (review B2): pregnancy alone is an ordinary leave question ("I'm pregnant. How much maternity leave?"),
+  // pregnancy with fear of telling, hiding or losing the job is a disclosure that gets the contact route.
+  /\bpregnan(t|cy)\b[^.?!]{0,80}\b(worr\w*|scared|afraid|anxious|nervous|fear\w*|hide|hiding|keep\s+it\s+(a\s+)?secret|tell(ing)?\s+(my\s+)?(manager|boss|supervisor|employer|hr|team)|fire[ds]?|sack\w*|lose\s+my\s+job|discriminat\w*)/i,
+  /\b(worr\w*|scared|afraid|anxious|nervous)\b[^.?!]{0,60}\bpregnan(t|cy)\b/i,
+  /\b(mengandung|hamil)\b[^.?!]{0,60}\b(risau|takut|bimbang|dipecat|beritahu)\b/i,/(怀孕|懷孕)[^。？！]{0,20}(担心|擔心|害怕|不敢|怕被)/,/(mang thai|có thai)[^.?!]{0,40}(lo lắng|sợ|ngại)/i,
+  // Thai and Tamil: pending native-speaker review.
+  /(ได้รับการวินิจฉัย|ซึมเศร้า|มะเร็ง|สุขภาพจิต|โรคเรื้อรัง|แท้งลูก|(ตั้งครรภ์|ท้อง)[^.?!]{0,20}(กังวล|กลัว))/,
+  /(கண்டறியப்பட்ட|மனச்சோர்வு|புற்றுநோய்|மனநல|நாள்பட்ட\s*நோய்|கருச்சிதைவு|கர்ப்பமாக[^.?!]{0,30}(பயம்|கவலை|பயமாக))/,
  ],
 };
 // Workplace harms (principle 8): inferring a judgement about someone from their communications or behaviour.
 // Patterns built from SUBJECT are case-sensitive (a capitalised word is a likely name), so they are tested on the
 // words as written and with each sentence's first letter lowercased ("Is Siti loyal?", "Siti is about to quit").
-const SUBJECT='(?:he|she|they|him|her|them|\\p{Lu}\\p{Ll}+(?:\\s+\\p{Lu}\\p{Ll}+)*|my\\s+(?:team|staff|employees|subordinates|direct\\s+reports|colleagues?|co-?workers?|reports)|(?:our|the|which|any|these)\\s+(?:team|staff|employees?|workers?|people|members?)|employees|staff|workers|anyone|anybody|someone|who)';
+const SUBJECT='(?:he|she|they|him|her|them|his|their|\\p{Lu}\\p{Ll}+(?:\\s+\\p{Lu}\\p{Ll}+)*|my\\s+(?:team|staff|employees|subordinates|direct\\s+reports|colleagues?|co-?workers?|reports)|(?:our|the|which|any|these)\\s+(?:team|staff|employees?|workers?|people|members?)|employees|staff|workers|anyone|anybody|someone|who)';
 const SOURCE='(?:messages?|chats?|emails?|e-mails?|posts?|comments?|slack|teams\\s+messages|whatsapp|communications?|behaviou?r|activity|keystrokes?|logins?|browsing|tone|writing)';
 const QUIT='(?:quit|quitting|resign|resigning|(?:leave|leaving)\\s+(?:us|the\\s+company|the\\s+team|soon|(?:his|her|their)\\s+job)|job[- ]hunt\\w*)';
 const HARMS:readonly RegExp[]=[
@@ -118,7 +154,12 @@ const HARMS:readonly RegExp[]=[
  /\b(risiko\s+berhenti|kesetiaan|sentimen)\b/i,/\b(dia|pekerja|staf|pasukan\s+saya)\s+((itu|ini)\s+)?(akan|nak|mahu|bercadang)\s+(berhenti|letak\s+jawatan)\b/i,
  /(离职风险|離職風險|忠诚度|忠誠度|情绪分析|情緒分析|情感分析)/,/(他|她|员工|員工|同事|下属|下屬)[^。？！]{0,10}(会不会|會不會|是否|打算)[^。？！]{0,6}(离职|離職|辞职|辭職)/,
  /(分析|查看|监控|監控)[^。？！]{0,10}(他|她|员工|員工|同事|下属|下屬)[^。？！]{0,6}(的)?(消息|聊天|邮件|郵件|态度|態度)/,
- /(nguy cơ nghỉ việc|lòng trung thành|phân tích cảm xúc|phân tích thái độ)/i,/(anh ấy|chị ấy|nhân viên|đồng nghiệp)[^.?!]{0,12}?(định|sắp|muốn)\s+nghỉ việc/i,
+ /(nguy cơ nghỉ việc|lòng trung thành|phân tích cảm xúc|phân tích thái độ)/i,
+ // "… and tell me if he is unhappy" (review M14).
+ new RegExp('\\b(?:if|whether)\\s+'+SUBJECT+'\\s+(?:is|are|was|were|seems?|feels?)\\s+(?:loyal|disloyal|unhappy|happy|disengaged|motivated|unmotivated|frustrated|bitter|angry|(?:likely|planning|going|about|thinking|looking)\\s+(?:to|of|about)\\s+'+QUIT+')','u'),
+ // Thai and Tamil: pending native-speaker review.
+ /(ความเสี่ยงที่จะลาออก|(เขา|เธอ|พนักงาน)[^.?!]{0,15}(จะ|กำลังจะ|คิดจะ)ลาออก|วิเคราะห์[^.?!]{0,15}(ข้อความ|แชท|อีเมล)ของ(เขา|เธอ|พนักงาน)|ความภักดี)/,
+ /((அவர்|அவள்|ஊழியர்)[^.?!]{0,20}ராஜினாமா\s*செய்வார|(அவர்|அவள்|ஊழியர்)[^.?!]{0,10}(செய்திகளை|அரட்டைகளை|மின்னஞ்சல்களை)[^.?!]{0,20}(படித்து|பகுப்பாய்வு)|விசுவாசம்)/,/(anh ấy|chị ấy|nhân viên|đồng nghiệp)[^.?!]{0,12}?(định|sắp|muốn)\s+nghỉ việc/i,
 ];
 // A judgement the person asks about themself ("Am I likely to be promoted?") is not inference about someone else.
 const SELF_ONLY=/^\s*(am\s+i|was\s+i|will\s+i|do\s+i|could\s+i)\b/i;
@@ -140,6 +181,15 @@ function namedPossessive(text:string):boolean{
  }
  return false;
 }
+// A single name after a record word ("What is the salary of Ahmad?", review M14). Months, days and NOT_A_PERSON words are not names.
+const RECORD_OF_NAME=new RegExp('\\b'+RECORD+'\\s+(?:of|for|belonging\\s+to)\\s+(\\p{Lu}\\p{Ll}+)\\b','giu');
+const NOT_A_NAME_WORD=/^(January|February|March|April|May|June|July|August|September|October|November|December|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|Q[1-4]|This|Next|Last|Each|Every|All|Me|Myself|Us|Him|Her|Them)$/;
+const singleNamedRecord=(text:string)=>[...text.matchAll(RECORD_OF_NAME)].some(match=>/^\p{Lu}/u.test(match[1])&&!NOT_A_NAME_WORD.test(match[1])&&!NOT_A_PERSON.test(match[1])&&!POSSESSOR_NOT_A_PERSON.test(match[1]));
+// A lower-case name asked about ("how much leave does siti fictional have", review M14 low): two words between an auxiliary
+// and a possession verb that are not pronouns, determiners or leave words.
+const LOWER_NAMED=/\b(?:does|did|will|can|has)\s+([a-z]+)\s+([a-z]+)\s+(?:have|get|earn|make|take|receive|owe)\b/g;
+const NOT_LOWER_NAME=/^(i|you|he|she|it|we|they|my|your|our|his|her|their|the|a|an|this|that|these|those|each|every|any|anyone|someone|everyone|everybody|somebody|nobody|one|staff|employees?|people|annual|medical|sick|leave|company|payroll|policy|team|manager|boss|hr|admin|maternity|paternity|unpaid|public|holiday|claims?|it's)$/;
+const lowerNamed=(text:string)=>[...text.matchAll(LOWER_NAMED)].some(match=>!NOT_LOWER_NAME.test(match[1])&&!NOT_LOWER_NAME.test(match[2]));
 const FIRST_PERSON=/\b(i|i'm|i've|me|my|mine|myself|saya|aku|tôi|mình)\b|我/i;
 // Two or more capitalised words in a row: a likely person name. Only counts when the person does not also
 // speak about themselves, so "How much Annual Leave do I have" stays open while "does Siti Fictional have" does not.
@@ -173,7 +223,7 @@ export function gateTurn(question:string,options:Readonly<{sensitive?:readonly S
  if(OVERRIDE.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'instruction_override'});
  if(ATTACHMENT.some(pattern=>pattern.test(text)))return Object.freeze({privateReads:false,actions:false,reason:'attachment'});
  if(topic)return closed(`sensitive_${topic}`,false);
- if(THIRD_PARTY.some(pattern=>pattern.test(text))||namedPossessive(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});
+ if(THIRD_PARTY.some(pattern=>pattern.test(text))||namedPossessive(text)||singleNamedRecord(text)||lowerNamed(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});
  const body=sentenceLower(text);
  const named=[...body.matchAll(PROPER_NAME)].some(match=>!NOT_A_PERSON.test(match[1]));
  if(named&&!FIRST_PERSON.test(text))return Object.freeze({privateReads:false,actions:true,reason:'other_person'});

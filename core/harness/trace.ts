@@ -28,7 +28,9 @@ export type TurnTrace=Readonly<{
  checks:readonly Readonly<{attempt:number;results:readonly ReplyCheckResult[]}>[];
  retries:readonly TraceRetry[];
  screening:TraceScreening;
- budgets:Readonly<{steps:number;inputTokens:number;outputTokens:number;spendUsd:number;wallMs:number;exhausted:BudgetExhausted|null}>;
+ budgets:Readonly<{steps:number;inputTokens:number;outputTokens:number;spendUsd:number;wallMs:number;exhausted:BudgetExhausted|null;
+  /** Tool calls answered as refused beyond the spec's per-step or per-turn cap (review M7). */
+  refusedCalls:number}>;
  restoration:Readonly<{restored:number;refused:readonly Readonly<{placeholder:string;reason:string}>[]}>;
  memory:MemoryReauthorisation;
  outcome:Readonly<{mode:string|null;slot:string|null;suggestion:string|null;openProposals:number;

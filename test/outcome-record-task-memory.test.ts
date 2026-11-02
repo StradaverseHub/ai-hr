@@ -32,6 +32,19 @@ const turn=(ctx:SessionContext,conversationId:string,question:string)=>runTurn({
 const rows=(userId:string)=>owner.db.select().from(terasTaskMemory).where(and(eq(terasTaskMemory.tenantId,base.tenantId),eq(terasTaskMemory.appUserId,userId)));
 
 describe('task memory persistence',()=>{
+ it('expires a day after its last update: never read again, and erased by a later write in the tenant (0906)',async()=>{
+  const me=await employee('Fictional Expiring Memory');const other=await employee('Fictional Later Writer');const conversationId=randomUUID();
+  await turn(me,conversationId,'How much leave do I have?');
+  expect(await new PostgresTaskMemoryStore(me).load(base.tenantId,me.userId!,conversationId)).not.toBeNull();
+  // Two days later the conversation cannot continue (two-hour continuation), so its memory is not read.
+  await owner.db.update(terasTaskMemory).set({updatedAt:new Date(Date.now()-2*86_400_000)}).where(eq(terasTaskMemory.appUserId,me.userId!));
+  expect(await new PostgresTaskMemoryStore(me).load(base.tenantId,me.userId!,conversationId)).toBeNull();
+  expect(await rows(me.userId!)).toHaveLength(1);
+  // Any later memory write in the tenant erases expired rows, including another login's.
+  await turn(other,randomUUID(),'How much leave do I have?');
+  expect(await rows(me.userId!)).toHaveLength(0);
+  expect(await rows(other.userId!)).toHaveLength(1);
+ });
  it('carries a conversation across turns through the database and re-authorises it every turn',async()=>{
   const me=await employee('Fictional Memory Employee');const conversationId=randomUUID();
   const first=await turn(me,conversationId,'How much leave do I have?');

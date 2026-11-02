@@ -89,6 +89,23 @@ describe('OpenRouter serialized request compatibility with the published plugin 
     expect(terminal.mock.calls[0][0].accounting.totalTokens).toBe(2);
   });
 
+  // Opt-in for the Teras harness only (allowMultipleToolCalls, set by lib/ai/teras-harness-policy.ts): the caller
+  // executes the calls itself, sequentially and under its own caps. The request body is unchanged: no
+  // parallel_tool_calls, same routing; every other caller keeps the refusal above.
+  it.each([2, 3])('returns %i tool calls in order only to a caller that opted in, with an unchanged request body', async count => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({choices: [{
+      finish_reason: 'tool_calls', message: {role: 'assistant', content: null,
+        tool_calls: Array.from({length: count}, (_, n) => ({id: `synthetic_${n}`, type: 'function',
+          function: {name: tool.name, arguments: JSON.stringify({marker})}}))}}],
+      usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0}}),
+    {status: 200, headers: {'Content-Type': 'application/json'}}));
+    const optedIn: ConverseArgs = {...requests.tool, allowMultipleToolCalls: true};
+    const result = await createOpenRouterTransport(fetcher)(configuration, optedIn, undefined, vi.fn());
+    expect(result.completion.toolCalls.map(call => call.id)).toEqual(Array.from({length: count}, (_, n) => `synthetic_${n}`));
+    expect(body(optedIn)).toEqual(body(requests.tool));
+    expect(body(optedIn)).not.toHaveProperty('parallel_tool_calls');
+  });
+
   it('completes through the real transport against a local vendor-schema rejecting stub', async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
       const request = JSON.parse(String(init?.body));

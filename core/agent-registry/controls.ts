@@ -92,9 +92,6 @@ export async function setWorkerSwitch(supplied:SessionContext,input:Readonly<{wo
  if(!isModuleEnabled(ctx,SWITCHED_MODULE[workerId]))throw new WorkerControlRefused('module_not_enabled');
  return withTenant(ctx,async tx=>{
   const startedAt=new Date();
-  const [before]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
-   .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,workerId))).limit(1).for('update');
-  const from=before?.enabled===true;
   // The attestation names the provider active now; a later change of provider is not covered by it.
   let attestedProvider:TerasAttestedProvider|null=null;
   if(attest&&enabled){
@@ -103,8 +100,20 @@ export async function setWorkerSwitch(supplied:SessionContext,input:Readonly<{wo
    attestedProvider=active as TerasAttestedProvider;
   }
   const values={enabled,changedByUserId:ctx.userId!,changedByOperator:null,changedAt:sql`now()`,...(workerId==='conversation'?{attestedProvider}:{})};
-  const [row]=await tx.insert(terasWorkerControl).values({tenantId:ctx.tenantId,workerId,...values})
-   .onConflictDoUpdate({target:[terasWorkerControl.tenantId,terasWorkerControl.workerId],set:values}).returning();
+  // First change: insert the row, or do nothing when it exists. ON CONFLICT waits for a concurrent first insert to
+  // commit, so exactly one caller creates the row (from: no row, i.e. off). Everyone else then locks the existing row
+  // and reads the state before their change; SELECT ... FOR UPDATE alone locks nothing while no row exists.
+  const [inserted]=await tx.insert(terasWorkerControl).values({tenantId:ctx.tenantId,workerId,...values})
+   .onConflictDoNothing({target:[terasWorkerControl.tenantId,terasWorkerControl.workerId]}).returning();
+  let from=false,row=inserted;
+  if(!inserted){
+   const [before]=await tx.select({enabled:terasWorkerControl.enabled}).from(terasWorkerControl)
+    .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,workerId))).limit(1).for('update');
+   from=before?.enabled===true;
+   [row]=await tx.update(terasWorkerControl).set(values)
+    .where(and(eq(terasWorkerControl.tenantId,ctx.tenantId),eq(terasWorkerControl.workerId,workerId))).returning();
+  }
+  if(!row)throw new WorkerControlRefused('not_administrator');
   // Audit: who (the event actor), when (the event time), which worker, and the state before and after.
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'teras-worker',aggregateId:ctx.tenantId,
    eventType:enabled?'teras-worker.enabled':'teras-worker.disabled',actor:actorOf(ctx),payload:{workerId,from,to:enabled,version:row.version,...(workerId==='conversation'?{attestedProvider}:{})}});

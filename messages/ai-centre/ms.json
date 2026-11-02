@@ -350,7 +350,7 @@
       "switchOwner": {
         "tenant_setting": "Tukar pada suis ciri",
         "ai_provider": "Tukar pada suis ciri",
-        "job_type": "Tukar dalam tugas diwakilkan",
+        "job_type": "Belum tersedia: versi ini tiada skrin untuk menghidupkan tugas diwakilkan",
         "worker_control": "Ditukar di sini, untuk setiap syarikat dalam kumpulan"
       },
       "never": "Tidak pernah",
@@ -412,7 +412,7 @@
         "explainers": "Penerang",
         "team_absence_weekly_summary": "Ringkasan mingguan ketidakhadiran pasukan",
         "daily_digest": "Ringkasan harian",
-        "conversation": "Perbualan Noveri"
+        "conversation": "Perbualan sembang langsung"
       },
       "switchInvalid": "Suis itu tidak boleh ditukar di sini.",
       "switchRefused": "Hanya pentadbir kumpulan boleh menukar suis ini.",

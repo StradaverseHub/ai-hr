@@ -1,5 +1,5 @@
 /** Ordinary journal upgrade over a populated, trigger-protected database at the installed 636-entry prefix,
- *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%). Hosted only. */
+ *  through the appended tail (0873 movement, 0874 tax, 0875 Rewards read-policy role, 0876 EPF manual 0%, 0898 idle policy, 0899 Entra). Hosted only. */
 import {randomUUID,createHash} from 'node:crypto';
 import {copyFileSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -18,7 +18,7 @@ import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule} from './harness';
 beforeAll(async()=>{await resetDb();});afterAll(closeAll);
 
-it('applies only the 0873/0874 tail through the ordinary migrator after closed payroll and immutable import history exist, preserving their bytes and the applied ledger prefix',async()=>{
+it('applies the pinned payroll and authentication successor tail through the ordinary migrator after closed payroll and immutable import history exist, preserving their bytes and the applied ledger prefix',async()=>{
  const sourceUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(sourceUrl.hostname);expect(sourceUrl.port).toBe('5433');expect(sourceUrl.pathname).toMatch(/^\/ai_hr_test/);
  const name='ai_hr_tax_upgrade_'+randomUUID().replaceAll('-','');
@@ -26,7 +26,7 @@ it('applies only the 0873/0874 tail through the ordinary migrator after closed p
  const destinationUrl=new URL(sourceUrl);destinationUrl.pathname='/'+name;
  const preDirectory=mkdtempSync(join(tmpdir(),'aihr-tax-pre0873-'));
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8'));
- const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276']] as const;
+ const tail=[['0873_movement_exit_payroll_preservation','1793330000273'],['0874_payroll_tax_basis_corrections','1793330000274'],['0875_reward_access_request_read_role','1793330000275'],['0876_epf_manual_percentage_zero','1793330000276'],['0898_session_idle_timeout','1793330000298'],['0899_entra_workforce','1793330000299'],['0924_teras_outcome_record_mandates','1793330000324'],['0925_teras_rule_version_labels','1793330000325'],['0926_teras_worker_registry','1793330000326'],['0927_teras_conversation_switch','1793330000327'],['0928_teras_outcome_private_turns','1793330000328'],['0929_teras_review_services','1793330000329']] as const;
  expect(journal.entries.slice(-tail.length).map((entry:{tag:string;when:number})=>[entry.tag,String(entry.when)])).toEqual(tail);
  const installed=journal.entries.slice(0,-tail.length);expect(installed).toHaveLength(636);expect(installed.at(-1).tag).toBe('0865_assistant_company_retention_references');
  mkdirSync(join(preDirectory,'meta'));writeFileSync(join(preDirectory,'meta','_journal.json'),JSON.stringify({...journal,entries:installed}));

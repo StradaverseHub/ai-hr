@@ -4,8 +4,8 @@
  * real native owners as tools, the step 5a task-memory store, the outcome record and the retired accounting row.
  * Only the provider adapter's network call is scripted; no provider is contacted. The provider-data review lookup is
  * isolated here, as in test/ai-private-analysis.test.ts: the owner's approval record for the contract is a
- * separate, explicitly approved change, and the real refusal of an unreviewed contract is proved below and by
- * test/provider-data-review-gate.test.ts. No approval is claimed by this file.
+ * separate, explicitly approved change (the rebind, 72ead258), and the real refusal of a contract whose source moved
+ * past its review is proved below and by test/provider-data-review-gate.test.ts. No approval is claimed by this file.
  *
  * Proves: the harness runs when the switch is on; history sent back is the model side only; cross-person and
  * cross-tenant reads are refused; a tenant with no compliant provider is refused before any read or model call; a
@@ -14,9 +14,13 @@ import {randomUUID} from 'node:crypto';
 import {and,eq} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 const review=vi.hoisted(()=>({approved:true}));
+// Since the rebind (72ead258) the real record approves the contract. `approved:false` stands for a source that has
+// moved past the reviewed digest: the real assertion is called with a stale digest and refuses, as it would in production.
+const STALE_SOURCE='0'.repeat(64);
 vi.mock('../lib/ai/provider-data-reviews',async original=>{const actual=await original<typeof import('../lib/ai/provider-data-reviews')>();
- return{...actual,providerDataReviewStatus:(contractId:string)=>contractId==='teras_harness_turn_v1'&&review.approved?'approved':actual.providerDataReviewStatus(contractId),
-  assertProviderDataContractReviewed:(contractId:string,digest:string)=>{if(contractId==='teras_harness_turn_v1'&&review.approved)return;actual.assertProviderDataContractReviewed(contractId,digest);}};});
+ return{...actual,providerDataReviewStatus:(contractId:string)=>contractId==='teras_harness_turn_v1'?(review.approved?'approved':'pending'):actual.providerDataReviewStatus(contractId),
+  assertProviderDataContractReviewed:(contractId:string,digest:string)=>{if(contractId==='teras_harness_turn_v1'&&review.approved)return;
+   actual.assertProviderDataContractReviewed(contractId,contractId==='teras_harness_turn_v1'?STALE_SOURCE:digest);}};});
 import * as schema from '../db/schema';
 import {terasOutcomeRecord,terasTaskMemory} from '../db/teras-schema';
 import type {SessionContext} from '../db/client';
@@ -126,6 +130,21 @@ describe('a live-chat turn with the switch on',()=>{
   expect(rows.reduce((sum,row)=>sum+row.turnCount,0)).toBe(3);
  },60000);
 
+ it('runs a two-call response one call after the other, in order, through the gateway; an over-cap response runs nothing',async()=>{
+  await openRouter(b.tenantId);
+  const two=():Partial<ConverseResult>=>({toolCalls:[{id:'p-a',name:'my_leave_balances',input:{}},{id:'p-b',name:'my_leave_requests',input:{limit:5}}],stop:'tool_use'});
+  script([two,args=>{expect((args.turns.at(-1) as {results:{name:string}[]}).results.map(row=>row.name)).toEqual(['my_leave_balances','my_leave_requests']);return final('Done.');}]);
+  const result=await turn(employee,'How much leave do I have, and what have I applied for?');
+  // The harness's captured request opts in to multi-call responses (lib/ai/teras-harness-policy.ts).
+  expect(sent[0].allowMultipleToolCalls).toBe(true);
+  expect(result.reads).toEqual(['my_leave_balances','my_leave_requests']);
+  expect(result.trace.calls.map(call=>[call.step,call.tool,call.status])).toEqual([[1,'my_leave_balances','ok'],[1,'my_leave_requests','ok']]);
+  // A response over the per-step cap (M7) is not trusted at all: none of its calls runs.
+  const many=():Partial<ConverseResult>=>({toolCalls:Array.from({length:9},(_,n)=>({id:'p-m'+n,name:'my_leave_balances',input:{}})),stop:'tool_use'});
+  script([many,()=>final('Ask me one thing at a time.')]);
+  const flooded=await turn(employee,'How much leave do I have?');
+  expect(flooded.reads).toEqual([]);expect(flooded.trace.calls).toEqual([]);expect(flooded.trace.budgets.refusedCalls).toBe(9);
+ },60000);
  it('refuses a read about another person at the gate and an id the turn did not issue',async()=>{
   await openRouter(b.tenantId);
   script([()=>call('my_leave_balances'),()=>final('I can\'t share another person\'s leave.','refuse')]);

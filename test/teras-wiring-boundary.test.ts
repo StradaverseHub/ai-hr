@@ -12,6 +12,9 @@ import {ContinuationRefused,issueConversationContinuation,MAX_HISTORY_MESSAGES,v
 import {compliantProvider} from '../core/teras-wiring/turn';
 import {captureTerasHarnessTask,fingerprintTerasHarnessTask,fromStrictArguments,strictToolSchema,TERAS_HARNESS_CONTRACT,toStrictArguments} from '../lib/ai/teras-harness-policy';
 import {privateTaskDescriptor} from '../lib/ai/provider-task-registry';
+import {captureConversationInput} from '../lib/ai/conversation-input';
+import {buildOpenRouterRequest} from '../lib/ai/providers/openrouter-transport';
+import {fixtureOpenRouterTransport as createOpenRouterTransport} from './helpers/provider-egress-fixture';
 import {parseSwitchArguments,runSwitch,SwitchRefused,type SwitchDatabase} from '../scripts/operator/teras-conversation-switch-core';
 import {fakeTools} from './harness-ratchet/fake-tools';
 import {scriptedModel} from './harness-ratchet/scripted-model';
@@ -126,6 +129,24 @@ describe('the provider-data contract conversion',()=>{
   expect(args.tools.map(tool=>tool.name).sort()).toEqual(['final_answer','my_leave_balances','suggest_action']);
   expect(args.tools.find(tool=>tool.name==='suggest_action')!.description).toBe('Not available in this step.');
   expect(JSON.stringify(args)).not.toContain(TENANT_A);expect(args.maxTokens).toBe(1600);
+ });
+ it('opts the harness, and only the harness, in to multi-call responses through the real transport, sending nothing new',async()=>{
+  const args=captureTerasHarnessTask(source()).args as import('../lib/ai/types').ConverseArgs;
+  expect(args.allowMultipleToolCalls).toBe(true);
+  // The flag survives the gateway's own input capture, so it is part of the egress logical digest.
+  expect(captureConversationInput(args).allowMultipleToolCalls).toBe(true);
+  const configuration={model:'openai/fictional-model',apiKey:'fictional-key',routing:{allowedProviders:['azure'],allowFallbacks:false,sort:'latency'}};
+  const body=JSON.parse(buildOpenRouterRequest({model:configuration.model,routing:configuration.routing},args));
+  expect(body).not.toHaveProperty('parallel_tool_calls');expect(body).not.toHaveProperty('allowMultipleToolCalls');
+  const twoCalls=()=>new Response(JSON.stringify({choices:[{finish_reason:'tool_calls',message:{role:'assistant',content:null,tool_calls:[
+   {id:'r1',type:'function',function:{name:'final_answer',arguments:JSON.stringify({mode:'answer',slot:null,reply:'one'})}},
+   {id:'r2',type:'function',function:{name:'final_answer',arguments:JSON.stringify({mode:'answer',slot:null,reply:'two'})}}]}}],
+   usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2,cost:0}}),{status:200,headers:{'Content-Type':'application/json'}});
+  const harness=await createOpenRouterTransport(vi.fn<typeof fetch>().mockImplementation(async()=>twoCalls()))(configuration,args,undefined,vi.fn());
+  expect(harness.completion.toolCalls.map(call=>call.id)).toEqual(['r1','r2']);
+  // Any other caller (no opt-in) is still refused, exactly as before.
+  const {allowMultipleToolCalls:_optIn,...other}=args;
+  await expect(createOpenRouterTransport(vi.fn<typeof fetch>().mockImplementation(async()=>twoCalls()))(configuration,other,undefined,vi.fn())).rejects.toThrow('AI provider response unavailable.');
  });
  it('refuses any other shape and fingerprints the exact bytes',()=>{
   expect(()=>captureTerasHarnessTask(source({extra:true}))).toThrow();

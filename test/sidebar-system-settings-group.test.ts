@@ -74,6 +74,8 @@ const SYSTEM_SETTINGS_CHILD_HREFS = [
   // and who approves. DECLARED here rather than tolerated, which is the whole point of asserting the
   // full list: a row spliced into the middle of this node is exactly where a neighbour gets clipped.
   '/admin/settings/profile-requests',
+  // Microsoft identity configuration is a declared setup destination.
+  '/admin/settings/entra',
   '/admin/settings/login',
   '/admin/settings/email',
   '/admin/settings/email-templates',
@@ -181,7 +183,7 @@ describe('sidebar System Settings group (a4e49748 consolidation)', () => {
     expect(SIDEBAR).toContain("['/admin/settings/notifications','notifications'] as const");
     const source = (file: string) => fs.readFileSync(path.resolve(__dirname, '..', file), 'utf8');
     expect(source('app/admin/settings/notifications/page.tsx')).toContain("await scopedAdmin();await requireModule('notifications')");
-    expect(source('app/admin/scheduled-actions/page.tsx')).toContain("if (!isGroupAdmin(s)) redirect('/')");
+    expect(source('app/admin/scheduled-actions/page.tsx')).toContain("if (!isGroupAdmin(s) && !isOperator(s)) redirect('/')");
     expect(source('app/admin/privacy/page.tsx')).toContain('await requireAdmin()');
   });
 

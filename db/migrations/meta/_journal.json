@@ -4485,29 +4485,57 @@
     {
       "idx": 755,
       "version": "7",
-      "when": 1793330000290,
-      "tag": "0890_teras_outcome_record_mandates",
+      "when": 1793330000298,
+      "tag": "0898_session_idle_timeout",
       "breakpoints": true
     },
     {
       "idx": 756,
       "version": "7",
-      "when": 1793330000291,
-      "tag": "0891_teras_rule_version_labels",
+      "when": 1793330000299,
+      "tag": "0899_entra_workforce",
       "breakpoints": true
     },
     {
       "idx": 757,
       "version": "7",
-      "when": 1793330000295,
-      "tag": "0895_teras_worker_registry",
+      "when": 1793330000324,
+      "tag": "0924_teras_outcome_record_mandates",
       "breakpoints": true
     },
     {
       "idx": 758,
       "version": "7",
-      "when": 1793330000301,
-      "tag": "0901_teras_conversation_switch",
+      "when": 1793330000325,
+      "tag": "0925_teras_rule_version_labels",
+      "breakpoints": true
+    },
+    {
+      "idx": 759,
+      "version": "7",
+      "when": 1793330000326,
+      "tag": "0926_teras_worker_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1793330000327,
+      "tag": "0927_teras_conversation_switch",
+      "breakpoints": true
+    },
+    {
+      "idx": 761,
+      "version": "7",
+      "when": 1793330000328,
+      "tag": "0928_teras_outcome_private_turns",
+      "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1793330000329,
+      "tag": "0929_teras_review_services",
       "breakpoints": true
     }
   ]

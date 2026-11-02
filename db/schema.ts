@@ -11426,6 +11426,14 @@ export const loginPresentation = pgTable('login_presentation', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ADR-0171 idle sign-out policy: one row per organization; no row means DEFAULT_IDLE_TIMEOUT_MINUTES.
+export const sessionPolicy = pgTable('session_policy', {
+  tenantId: uuid('tenant_id').primaryKey().references(() => tenant.id),
+  idleTimeoutMinutes: integer('idle_timeout_minutes').notNull(),
+  revision: integer('revision').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Approved payroll-history correction graph: attempts and revisions are append-only; a record's
 // latest ordinal is its effective snapshot. No closed payslip is updated or deleted for a correction.
 export const payrollHistoryImportAttempt=pgTable('payroll_history_import_attempt',{

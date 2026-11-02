@@ -5,6 +5,14 @@ journals and the actual staging watermark before journal integration or applicat
 applied SQL/hash and exact journal prefix. Reservations do not authorize deployment or skipping the
 owning release gate.
 
+## Idle sign-out policy — 2 November 2026 (provisional source claim)
+
+`claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /
+when1793330000298 on its own branch. Claims observed on 2 November 2026 ran to file0897, idx770 and
+when1793330000297 across remote branches and registered worktrees, so the timestamp sits above all of them.
+This is unapplied source only: re-freeze above the then-live ordered ledger, relocate the idx with the
+competing claims and keep the timestamp above every earlier-applied migration before integration.
+
 ## V9 coordinated staging successor — 30 October 2026
 
 The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.
@@ -914,3 +922,47 @@ Branch `claude/ai-centre-step5-ui-20261102` (cut from `claude/teras-privacy-fixe
 union orders the Teras claims above main's 0875/0876 by timestamp: 0890 idx755, 0891 idx756, 0895 idx757
 (timestamps …290/…291/…295 and SQL bytes unchanged). No migration is added by the UI work. Re-freeze above
 the then-installed ledger at integration; this grants no installation.
+
+## Entra workforce connector — 2 November 2026 (provisional)
+
+`codex/entra-integration-design-20261102` appends `0899_entra_workforce` at
+when1793330000299, with the next index on its own source journal. A scan of all local/origin
+committed journals (306 unique contents) found claims through0897/…297; registered worktree
+journals additionally include foreign0898/…298 (auto-logout). Those foreign claims remain excluded.
+Recheck competing reservations, the accepted journal and the live installation watermark before
+integration; adjust the unapplied index to the aggregate journal. This is source allocation only,
+not installation or release evidence.
+
+
+## PR #194 / PR #196 authentication integration — 2 November 2026
+
+The Entra candidate integrates the frozen idle-session contract from PR #196 at
+`2dd7fc4d7152e3f91a99b3586be3593edd41136c`. Its uninstalled `0898` body and timestamp `1793330000298`
+remain unchanged. The uninstalled `0899` Entra migration follows at timestamp `1793330000299` and journal
+index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / index 754 is preserved.
+This is an owned aggregate source reservation, not adoption of either member's gate evidence.
+Recheck the then-live watermark and release order before integration or installation; later accepted
+migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.
+
+## Teras re-allocation above the Entra watermark — 2 November 2026 (provisional source claim)
+
+Branch `claude/teras-review-fixes`, after the normal merge of released main 50ea2471 (642 journal entries; the live
+ledger reported by the Entra hand-back has 642 applied rows, watermark when1793330000299, with 0898
+`0f7204555b6aad9819a43e9a00b04530593e1d137afa7941603ac02e8ecc8729` and 0899
+`c70afe9dac5c37ebd471230df02f9d824184affc5db50ab7d8c6163c0adf842b` verified byte-identical here). None of the Teras
+migrations is applied anywhere. A scan of every origin ref and open PR found claims through
+`0923_overtime_formula_candidate_plan` (when1793330000323, performance work), so the Teras claims move above it.
+SQL bytes are unchanged; only file names and journal positions move. The earlier entries for 0890/0891/0895 above
+are superseded by this table. Development source only: no installation priority, no deployment; re-freeze above
+the then-installed ledger at integration.
+
+| idx (branch) | when | Tag | Was | SQL SHA256 |
+| ---: | ---: | --- | --- | --- |
+|757|1793330000324|0924_teras_outcome_record_mandates|0890|f60531e8dcc633857fc5bb18f7cf886a75b1767374956e30a2b49d6a962627c4|
+|758|1793330000325|0925_teras_rule_version_labels|0891|2d779ba3d268fcc68a1cf2e2d1ffde50e72ade996daa02ff4ec4e345203d531b|
+|759|1793330000326|0926_teras_worker_registry|0895|60108e148ce2f7c0c178d4a678217a565c2f2d0f1b6988752ffc61f1f1d3c259|
+|760|1793330000327|0927_teras_conversation_switch|0901|ac5475982a99c2b387bc5f34e9af6f69cb5bbe3aac156bdd8aa906e17579c968|
+|761|1793330000328|0928_teras_outcome_private_turns|0905|17a50608b153559bfa06cf49f2b2efb526c85f2cbf0ce1de16a78fa4a0df8fa9|
+|762|1793330000329|0929_teras_review_services|0906|765ca87aebc30ae1aaf46ec4eb8cfb3d36466f1401dcbe2bbe092fec60358bc0|
+
+The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.

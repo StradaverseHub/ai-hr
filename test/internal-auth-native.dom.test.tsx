@@ -1,3 +1,4 @@
+import { authenticatorSetupUri } from '../lib/authenticator-setup';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { JsxEmit, ModuleKind, transpileModule } from 'typescript';
@@ -11,6 +12,7 @@ function fixture(organization?: string) {
   let generation = 0;
   class Failure extends Error { constructor(public code: string) { super(code); } }
   const auth = { beginSignIn: () => ++generation, assertAuthGeneration: (owner: number) => { if (owner !== generation) throw new Error('Session changed'); }, completeInternalSignIn: vi.fn(async () => {}) };
+  const microsoft = vi.fn(), openURL = vi.fn(async (_url: string) => {});
   const request = vi.fn(), probe = vi.fn(async () => {}), router = { replace: vi.fn(), push: vi.fn() }, mark = vi.fn(async () => {});
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
   const Text = ({ children, accessibilityRole }: React.PropsWithChildren<{accessibilityRole?:string}>) => accessibilityRole === 'header' ? <h1>{children}</h1> : <span role={accessibilityRole === 'alert' ? 'alert' : undefined}>{children}</span>;
@@ -19,8 +21,10 @@ function fixture(organization?: string) {
   const ports: Record<string, unknown> = {
     'expo/fetch':{fetch:vi.fn()},
     react: React, 'react/jsx-runtime': jsx,
-    'react-native': { Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
+    '../../lib/authenticator-setup': { authenticatorSetupUri },
+    'react-native': { Linking: { openURL }, Text, View:Container, ScrollView:Container, TextInput:Input, Image:({accessibilityLabel,source}:any)=><img alt={accessibilityLabel} src={source.uri}/>, StyleSheet:{create:(v:unknown)=>v} },
     'expo-router':{router,Redirect:()=>null},'expo-web-browser':{openBrowserAsync:vi.fn()},
+    './entra-auth':{signInWithMicrosoft:microsoft},
     './auth':auth,'./company-connection':{useCompanyConnection:()=>({name:'Private customer',apiOrigin:'https://hr.test',organization}),companyCopy:()=>({change:'Change company'})},
     './connection-probe':{verifyCompanyServer:probe},'./config':{config:{apiUrl:'https://hr.test'},runtimeConnections:true},
     './internal-auth':{internalAuthRequest:request,InternalSignInError:Failure},'./session':{useSession:()=>({status:'signedOut',markSignedIn:mark})},
@@ -29,7 +33,7 @@ function fixture(organization?: string) {
   };
   runInNewContext(transpileModule(readFileSync('mobile/lib/internal-sign-in.tsx','utf8'),{compilerOptions:{module:ModuleKind.CommonJS,jsx:JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,
     {exports:output.exports,module:output,URL,require:(name:string)=>{if(!(name in ports))throw new Error(name);return ports[name];}});
-  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure };
+  return { View:output.exports.InternalSignIn,auth,request,probe,router,mark,Failure,microsoft,openURL };
 }
 afterEach(cleanup);
 async function login(user: ReturnType<typeof userEvent.setup>) {
@@ -37,6 +41,14 @@ async function login(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText(copy.en.password),'Temporary fixture password 771!'); await user.click(screen.getByRole('button',{name:copy.en.signIn}));
 }
 describe('native embedded sign-in — rendered shipped screen',()=>{
+  it('uses the signed workplace for Microsoft login and sends no local password request',async()=>{
+    const f=fixture('cloud-alpha'),user=userEvent.setup();f.microsoft.mockResolvedValue(true);
+    render(<f.View/>);await user.type(screen.getByLabelText(copy.en.password),'Local password stays private 771!');
+    await user.click(screen.getByRole('button',{name:copy.en.microsoft}));
+    await waitFor(()=>expect(f.router.replace).toHaveBeenCalledWith('/'));
+    expect(f.mark).toHaveBeenCalledWith(1);expect(f.microsoft).toHaveBeenCalledWith('cloud-alpha',1);expect(f.request).not.toHaveBeenCalled();expect(f.router.replace).toHaveBeenCalledWith('/');
+  });
+
   it.each(['cloud-alpha','cloud-beta','private-company'])('uses the signed workplace %s with only username/password entry before MFA',async organization=>{
     const f=fixture(organization),user=userEvent.setup();f.request.mockResolvedValueOnce({step:'mfa',challenge:'m'.repeat(43)});
     render(<f.View/>);expect(screen.queryByLabelText(copy.en.organization)).not.toBeInTheDocument();
@@ -60,6 +72,24 @@ describe('native embedded sign-in — rendered shipped screen',()=>{
     expect(await screen.findByText('PRIVATE-RECOVERY-CODE')).toBeInTheDocument();expect(f.auth.completeInternalSignIn).not.toHaveBeenCalled();expect(f.mark).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button',{name:copy.en.codesSaved}));
     await waitFor(()=>expect(f.mark).toHaveBeenCalledOnce());expect(f.auth.completeInternalSignIn).toHaveBeenCalledOnce();expect(f.router.replace).toHaveBeenCalledWith('/');
+  });
+  it.each([false, true])('opens the enrollment in the default authenticator and retains manual fallback (launch fails: %s)', async fails => {
+    const f=fixture(), user=userEvent.setup();
+    f.request.mockResolvedValueOnce({step:'enroll',challenge:'e'.repeat(43),secret:'JBSWY3DPEHPK3PXP',account:'alpha:employee',qr:'data:image/png;base64,fixture'});
+    if (fails) f.openURL.mockRejectedValueOnce(new Error('No handler'));
+    render(<f.View/>); expect(screen.queryByRole('button',{name:copy.en.openAuthenticator})).toBeNull();
+    await login(user); await screen.findByRole('button',{name:copy.en.openAuthenticator});
+    expect(screen.getByText(copy.en.enrollHelp)).toBeInTheDocument();
+    expect(screen.getByText(copy.en.samePhoneHelp)).toBeInTheDocument();
+    await user.click(screen.getByRole('button',{name:copy.en.openAuthenticator}));
+    await waitFor(()=>expect(f.openURL).toHaveBeenCalledOnce());
+    const uri = new URL(f.openURL.mock.calls[0][0]);
+    expect(uri.protocol).toBe('otpauth:');expect(decodeURIComponent(uri.pathname)).toBe('/AI HR:alpha:employee');
+    expect(uri.searchParams.get('secret')).toBe('JBSWY3DPEHPK3PXP');
+    if(fails) expect(await screen.findByRole('alert')).toHaveTextContent(copy.en.errors.authenticatorUnavailable);
+    expect(screen.getByText('JBSWY3DPEHPK3PXP')).toBeInTheDocument();
+    expect(screen.getByLabelText(copy.en.code)).toBeInTheDocument();
+    expect(f.request).toHaveBeenCalledOnce();expect(f.mark).not.toHaveBeenCalled();expect(f.auth.completeInternalSignIn).not.toHaveBeenCalled();
   });
   it('never sends credentials when the selected company capability cannot be verified',async()=>{
     const f=fixture(),user=userEvent.setup();f.probe.mockRejectedValueOnce(new Error('Wrong company server'));render(<f.View/>);await login(user);

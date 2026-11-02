@@ -508,7 +508,8 @@
     "securityPermissions": "ความปลอดภัยและสิทธิ์",
     "functionAccess": "การเข้าถึงฟังก์ชัน",
     "securityCenter": "ศูนย์ความปลอดภัย",
-    "aiManagementInventory": "รายการ AI"
+    "aiManagementInventory": "รายการ AI",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "แดชบอร์ด",
@@ -11214,7 +11215,8 @@
         "importHistory": "แสดงการนำเข้าเมื่อคุณมีสิทธิ์ดูข้อมูลบุคลากรของบริษัทอย่างน้อยหนึ่งแห่งในการนำเข้า และแสดงเฉพาะพนักงานของบริษัทที่คุณมีสิทธิ์ดู ไฟล์ต้นฉบับต้องมีสิทธิ์ดูทุกบริษัทในไฟล์ การย้อนกลับต้องมีสิทธิ์ดูแลข้อมูลบุคลากรของทุกบริษัทในไฟล์",
         "securityCenter": "สำหรับผู้ดูแลระบบหรือผู้ที่มีสิทธิ์กำหนดค่าการเข้าถึง",
         "createLogin": "เฉพาะผู้ดูแลระบบระดับกลุ่ม การตั้งค่าด้วยตนเองยังต้องใช้ผู้ให้บริการเข้าสู่ระบบที่รองรับและเซสชันผู้ดูแลระบบที่ยืนยันแล้ว",
-        "inviteUser": "เฉพาะผู้ดูแลระบบระดับกลุ่ม"
+        "inviteUser": "เฉพาะผู้ดูแลระบบระดับกลุ่ม",
+        "entra": "เฉพาะผู้ดูแลระบบระดับกลุ่ม ตั้งค่าการลงชื่อเข้าใช้ Microsoft และการจัดเตรียมบัญชีพนักงานสำหรับองค์กรของตน การเชื่อมโยงตัวตนที่มีอยู่ต้องได้รับการยืนยันอย่างชัดเจน"
       },
       "scopedTo": "จำกัดขอบเขตที่ {company} และบริษัทย่อย",
       "screen": {
@@ -26832,7 +26834,7 @@
     "passwordHelp": "ใช้อย่างน้อย 14 ตัวอักษร โดยไม่ใส่ชื่อผู้ใช้หรือที่อยู่อีเมลของคุณ",
     "passwordTitle": "ตั้งรหัสผ่านของคุณเอง",
     "enrollTitle": "ตั้งค่าแอปยืนยันตัวตน",
-    "enrollHelp": "สแกนรหัส QR นี้ด้วยแอปยืนยันตัวตน หรือป้อนคีย์การตั้งค่าด้วยตนเอง จากนั้นป้อนรหัสหกหลักปัจจุบันจากแอป",
+    "enrollHelp": "เปิดแอปยืนยันตัวตนก่อน เลือกเพิ่มบัญชี แล้วใช้ตัวสแกนในแอปสแกนรหัส QR นี้ หรือป้อนคีย์การตั้งค่าด้วยตนเอง จากนั้นกลับมาที่นี่และป้อนรหัสหกหลักปัจจุบัน",
     "qrAlt": "รหัส QR สำหรับตั้งค่าแอปยืนยันตัวตน",
     "manualKey": "คีย์สำหรับตั้งค่าด้วยตนเอง",
     "code": "รหัสยืนยันตัวตนหกหลัก",
@@ -26864,19 +26866,25 @@
       "invalidLogin": "รหัสองค์กร ชื่อผู้ใช้ หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีนี้ไม่พร้อมใช้งาน",
       "invalidChallenge": "ลิงก์ตั้งค่าหรือกู้คืนนี้หมดอายุหรือใช้ไม่ได้แล้ว โปรดเริ่มใหม่",
       "invalidCode": "รหัสนี้ไม่ถูกต้อง หมดอายุ หรือถูกใช้แล้ว ลองรหัสถัดไปจากแอปยืนยันตัวตนหรือรหัสกู้คืนที่ยังไม่ได้ใช้",
-      "passwordPolicy": "ใช้รหัสผ่านอื่นที่มีอย่างน้อย 14 ตัวอักษร โดยไม่ใส่ชื่อผู้ใช้และอีเมลของคุณ",
+      "passwordPolicy": "ใช้รหัสผ่านที่ไม่เคยใช้มาก่อน อย่างน้อย 14 ตัวอักษร โดยไม่ใส่ชื่อผู้ใช้และอีเมลของคุณ",
       "passwordMismatch": "รหัสผ่านไม่ตรงกัน",
       "rateLimited": "พยายามมากเกินไป โปรดรอก่อนลองอีกครั้ง",
       "unavailable": "การเข้าสู่ระบบหรือการกู้คืนไม่พร้อมใช้งานชั่วคราว ลองใหม่ภายหลังหรือติดต่อผู้ดูแลระบบ",
       "conflict": "ไม่สามารถลงทะเบียนชื่อผู้ใช้นี้ได้ เลือกชื่ออื่นหรือติดต่อผู้ดูแลระบบ",
-      "forbidden": "ไม่สามารถตรวจสอบคำขอนี้ได้ เปิดแอปโดยตรงแล้วลองอีกครั้ง"
+      "forbidden": "ไม่สามารถตรวจสอบคำขอนี้ได้ เปิดแอปโดยตรงแล้วลองอีกครั้ง",
+      "authenticatorUnavailable": "เปิดแอปยืนยันตัวตนไม่ได้ โปรดเปิดแอปยืนยันตัวตนและป้อนคีย์การตั้งค่าด้วยตนเอง จากนั้นกลับมาที่นี่พร้อมรหัสหกหลัก"
     },
     "switchAccountTitle": "ใช้บัญชีอื่น",
     "switchAccountHelp": "คำเชิญนี้เป็นขององค์กรหรืออีเมลที่ยืนยันแล้วอีกบัญชีหนึ่ง ออกจากระบบเพื่อตั้งค่าหรือเข้าสู่บัญชีที่ได้รับเชิญ บัญชี HR ปัจจุบันของคุณยังคงแยกจากกัน",
     "switchAccountSubmit": "ออกจากระบบและเปิดคำเชิญ",
     "workplaceLoginHelp": "เลือกที่ทำงานของคุณแล้ว กรอกชื่อผู้ใช้และรหัสผ่าน",
     "signingInTitle": "กำลังเข้าสู่ระบบ…",
-    "signingInHelp": "กำลังพาคุณไปยัง AIHR"
+    "signingInHelp": "กำลังพาคุณไปยัง AIHR",
+    "idleSignedOut": "คุณถูกออกจากระบบเนื่องจากไม่มีการใช้งานเป็นระยะเวลาหนึ่ง โปรดเข้าสู่ระบบอีกครั้งเพื่อดำเนินการต่อ",
+    "microsoft": "ดำเนินการต่อด้วย Microsoft",
+    "microsoftError": "ไม่สามารถลงชื่อเข้าใช้ Microsoft ได้ โปรดตรวจสอบองค์กรและบัญชีที่เชื่อมโยง แล้วลองอีกครั้ง",
+    "openAuthenticator": "เปิดแอปยืนยันตัวตน",
+    "samePhoneHelp": "ตั้งค่าบนโทรศัพท์เครื่องนี้ใช่ไหม? เปิดแอปยืนยันตัวตนเริ่มต้นด้วยปุ่มด้านล่าง บน iPhone อาจเปิด Apple Passwords หากเปิดไม่ได้ ให้ป้อนคีย์การตั้งค่าด้วยตนเองในแอปยืนยันตัวตนของคุณ"
   },
   "aiManagement": {
     "title": "จัดการ AI",
@@ -33378,5 +33386,248 @@
     "noticeApplied": "ผลลัพธ์นี้ใช้การแก้ไขฐานภาษีเงินได้ที่บันทึกไว้ ยอด PCB ที่ชำระจริงและเงินเดือนที่ออกแล้วไม่เปลี่ยนแปลง",
     "noticeReferences": "เลขอ้างอิงการแก้ไขภาษีเงินได้",
     "noticeView": "ดูการแก้ไขภาษีเงินได้"
+  },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "คุณยังอยู่หรือไม่?",
+    "warningBody": "เพื่อความปลอดภัย คุณจะถูกออกจากระบบใน {seconds} วินาทีเนื่องจากไม่มีการใช้งาน",
+    "staySignedIn": "อยู่ในระบบต่อ",
+    "signOutNow": "ออกจากระบบทันที",
+    "settingsTitle": "ออกจากระบบอัตโนมัติ",
+    "settingsDescription": "ออกจากระบบผู้ใช้ในเว็บแอปเมื่อไม่มีการใช้งานนานเท่านี้ โดยจะแสดงคำเตือนล่วงหน้าหนึ่งนาที",
+    "minutesLabel": "ออกจากระบบหลังจาก (นาทีที่ไม่มีการใช้งาน)",
+    "minutesHelp": "เลือกได้ตั้งแต่ {min} ถึง {max} นาที ค่าเริ่มต้นคือ 15 นาที เซสชันจะยังคงสิ้นสุดหลังจากเข้าสู่ระบบ 8 ชั่วโมง",
+    "save": "บันทึกการออกจากระบบอัตโนมัติ",
+    "saving": "กำลังบันทึก…",
+    "notEnforced": "การติดตั้งนี้ไม่ได้ใช้การเข้าสู่ระบบในตัว จึงยังไม่มีการใช้ขีดจำกัดนี้",
+    "result": {
+      "saved": "บันทึกการออกจากระบบอัตโนมัติแล้ว",
+      "invalid": "โปรดป้อนจำนวนนาทีเป็นจำนวนเต็มภายในช่วงที่อนุญาต",
+      "conflict": "มีผู้อื่นเปลี่ยนการตั้งค่านี้แล้ว โปรดโหลดหน้าใหม่แล้วลองอีกครั้ง",
+      "forbidden": "เฉพาะผู้ดูแลระบบกลุ่มเท่านั้นที่เปลี่ยนการออกจากระบบอัตโนมัติได้",
+      "unavailable": "ไม่สามารถบันทึกการออกจากระบบอัตโนมัติได้ โปรดลองอีกครั้ง"
+    }
+  },
+  "runnerControl": {
+    "title": "Runner controls",
+    "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
+    "environment": "Environment",
+    "environmentName": {
+      "staging": "Staging",
+      "production": "Production"
+    },
+    "unavailable": "Unavailable",
+    "refresh": "Refresh status",
+    "checkedAt": "Checked at",
+    "controllerMissing": "Live scheduler status is unavailable. Do not interpret this as disabled. The installation operator must commission the controller.",
+    "scopeNote": "Changes apply to this installation. Customer administrators can inspect status; only installation operators can change it.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "held": "On hold",
+    "external": "Not managed here",
+    "configure": "Configure runner",
+    "editSchedule": "Change schedule",
+    "minutes": "Minutes between completed runs",
+    "time": "Run time (Malaysia time)",
+    "monthlyRule": "Runs on the first day of each month. The business date cannot be changed here.",
+    "yearlyRule": "Runs on 1 April, after carry-forward expiry. The business date cannot be changed here.",
+    "effectNote": "Enabling may process overdue work immediately. Disabling prevents future runs; a transaction already in progress is allowed to finish.",
+    "confirm": "I have reviewed this runner’s purpose and the data it may change.",
+    "save": "Save configuration",
+    "saving": "Saving…",
+    "saved": "Configuration saved. Refresh to check actual status.",
+    "saveFailed": "The configuration could not be confirmed. Refresh actual status before retrying, or contact the installation operator.",
+    "schedule": "Schedule",
+    "installedSchedule": "Installed schedule; next run shown alongside",
+    "lastRun": "Last completed run",
+    "nextRun": "Next scheduled run",
+    "noEvidence": "No scheduler evidence",
+    "results": "Results",
+    "holdNote": "This production runner is held by the installation policy. A separate owner decision is required to remove the hold.",
+    "health": {
+      "missing": "Not installed",
+      "running": "Running",
+      "failed": "Failed",
+      "unknown": "Not yet verified",
+      "success": "Last run succeeded",
+      "stale": "Last success is overdue",
+      "stopped": "Scheduler stopped"
+    },
+    "jobs": {
+      "provision": {
+        "name": "Customers and modules",
+        "description": "Processes approved customer provisioning and module changes.",
+        "results": "Operator customers"
+      },
+      "accrual": {
+        "name": "Earned leave accrual",
+        "description": "Adds earned leave to employee balances and records ledger entries.",
+        "results": "Leave balances"
+      },
+      "carry-expiry": {
+        "name": "Carry-forward leave expiry",
+        "description": "Forfeits unused carry-forward leave after the configured expiry.",
+        "results": "Leave entitlements"
+      },
+      "reviews": {
+        "name": "Reviews, movements and reminders",
+        "description": "Applies due employment movements, opens reviews and creates reminders and notifications.",
+        "results": "Run history below; employee records and reviews"
+      },
+      "notifications": {
+        "name": "Workflow notifications and email",
+        "description": "Projects workflow notices and sends eligible email. May also advance enabled lifecycle and letter automation.",
+        "results": "My notifications; Email delivery for email outcomes"
+      },
+      "anomalies": {
+        "name": "Payroll anomaly checks",
+        "description": "Records findings and verdicts for review. Does not change payroll amounts.",
+        "results": "Control Tower exceptions and payroll anomalies"
+      },
+      "child-relief": {
+        "name": "Child tax-relief refresh",
+        "description": "Updates calculated child-relief projections from family records; may affect future payroll tax.",
+        "results": "Employee statutory profile"
+      },
+      "usage": {
+        "name": "Usage capture",
+        "description": "Records installation usage snapshots. Missed historical snapshots cannot be fully reconstructed.",
+        "results": "Run history below; operator usage records"
+      },
+      "entitlement-alarm": {
+        "name": "Leave entitlement coverage",
+        "description": "Checks for missing or expired leave-entitlement coverage. Records a monitoring result.",
+        "results": "Run history below"
+      },
+      "ai-alerts": {
+        "name": "AI alerts",
+        "description": "Checks AI operational alert conditions and records monitoring results.",
+        "results": "AI administration and run history below"
+      },
+      "ai-retention": {
+        "name": "AI data retention",
+        "description": "Removes expired AI custody data according to retention policy. Deletions are permanent.",
+        "results": "Protected maintenance logs"
+      },
+      "bank-import": {
+        "name": "Bank and statutory imports",
+        "description": "Processes queued imports and writes the corresponding validated records.",
+        "results": "Import progress and history"
+      },
+      "replacement-holidays": {
+        "name": "Replacement holidays",
+        "description": "Reconciles queued calendar changes and replacement-holiday allocations.",
+        "results": "Replacement holidays and calendars"
+      },
+      "reports": {
+        "name": "Scheduled reports",
+        "description": "Generates and emails due reports when report delivery is commissioned.",
+        "results": "Employee Master report schedules"
+      },
+      "mobile-push": {
+        "name": "Mobile push delivery",
+        "description": "Sends eligible queued notifications through a configured push provider.",
+        "results": "Device notifications and delivery logs"
+      },
+      "auth-cleanup": {
+        "name": "Authentication cleanup",
+        "description": "Removes expired authentication sessions and challenges.",
+        "results": "Protected authentication maintenance logs"
+      },
+      "account-email-retention": {
+        "name": "Account-email retention",
+        "description": "Retires expired account-email content according to retention policy.",
+        "results": "Email delivery and protected maintenance logs"
+      },
+      "dunning": {
+        "name": "Customer payment standing",
+        "description": "Checks customer payment standing. Applying customer suspension requires separately approved configuration.",
+        "results": "Operator customers and maintenance logs"
+      },
+      "backups": {
+        "name": "Database backups",
+        "description": "Creates database backups to an approved destination when configured.",
+        "results": "Backup storage and protected backup logs"
+      }
+    }
+  },
+  "passwordPolicy": {
+    "title": "ความปลอดภัยของรหัสผ่าน",
+    "description": "กำหนดการเปลี่ยนรหัสผ่าน HR เป็นระยะ จัดการรหัสผ่าน Microsoft และ Conditional Access ใน Entra",
+    "enabled": "บังคับเปลี่ยนรหัสผ่านเป็นประจำ",
+    "interval": "เปลี่ยนทุก",
+    "unit": "หน่วย",
+    "days": "วัน",
+    "months": "เดือนตามปฏิทิน",
+    "limits": "เลือก 1–3,650 วัน หรือ 1–120 เดือน วันสิ้นเดือนจะใช้วันสุดท้ายที่มีอยู่จริง",
+    "reuse": "ผู้ใช้ไม่สามารถใช้รหัสผ่านที่บันทึกไว้ตั้งแต่เริ่มเก็บประวัติซ้ำได้ รวมถึงการกู้คืน แม้ปิดการหมดอายุไว้",
+    "effect": "เมื่อบันทึกจะมีผลกับบัญชีและเซสชันปัจจุบัน ผู้ใช้ที่รหัสผ่านหมดอายุหรือไม่มีวันที่เปลี่ยนที่บันทึกไว้ต้องเข้าสู่ระบบ ยืนยัน MFA และเลือกรหัสผ่านใหม่ก่อนดำเนินการต่อ",
+    "save": "บันทึกนโยบายรหัสผ่าน",
+    "saving": "กำลังบันทึก…",
+    "result": {
+      "saved": "บันทึกนโยบายรหัสผ่านแล้ว",
+      "invalid": "ป้อนจำนวนเต็มภายในช่วงที่อนุญาต",
+      "conflict": "ผู้ดูแลคนอื่นเปลี่ยนนโยบายนี้แล้ว โหลดใหม่ก่อนบันทึก",
+      "forbidden": "คุณไม่มีสิทธิ์เปลี่ยนนโยบายนี้",
+      "unavailable": "การตั้งค่ารหัสผ่านไม่พร้อมใช้งาน โปรดลองอีกครั้ง"
+    }
   }
 }

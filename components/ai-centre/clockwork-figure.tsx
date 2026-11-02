@@ -93,6 +93,16 @@ function Shapes({ shapes, glass, model }: { shapes: readonly Shape[]; glass?: bo
   })}</>;
 }
 
+/** Label geometry in viewBox units (about 1px at the figure's 1000-unit width). A row is a name and a part line,
+ * each allowed two lines; rows on the right are at least LABEL_GAP apart so a wrapped row does not reach the next. */
+const LABEL_WIDTH = 276, LABEL_RISE = 16, LABEL_HEIGHT = 64, LABEL_GAP = 50;
+/** Text colours on the #0c0d0f panel, each at least 4.5:1 (on 8.2/8.8, rest 15.9/7.4, dimmed 8.1/5.2). */
+const LABEL_TONE = {
+  on: { name: 'text-[#fb8a4a]', part: 'text-[#d9a37f]' },
+  rest: { name: 'text-[#e8e8ea]', part: 'text-[#9aa0a8]' },
+  dim: { name: 'text-[#a3a8b0]', part: 'text-[#80858d]' },
+} as const;
+
 export type ClockworkLabels = Readonly<Record<ClockworkLayer | 'model' | 'foundation' | 'guard' | 'outcome', Readonly<{ name: string; part: string }>>>;
 
 /** `active` is the part the current step explains (null for the overview). `reduced` shows the watch open
@@ -140,7 +150,7 @@ export function ClockworkFigure({ active, labels, title, caption, mark, reduced,
   rows.push({ key: 'guard', side: 'l', a: d.P(134, 326, Z.found - 6), ...labels.guard, on: lit('guard') });
   rows.push({ key: 'outcome', side: 'r', a: d.P(...at(40, -Math.PI / 4), Z.found), ...labels.outcome, on: lit('outcome') });
   let last = -1e9;
-  for (const row of rows.filter(r => r.side === 'r').sort((p, q) => p.a[1] - q.a[1])) { row.y = Math.max(row.a[1], last + 38); last = row.y; }
+  for (const row of rows.filter(r => r.side === 'r').sort((p, q) => p.a[1] - q.a[1])) { row.y = Math.max(row.a[1], last + LABEL_GAP); last = row.y; }
   for (const row of rows.filter(r => r.side === 'l')) row.y = row.a[1];
   const token: Pt | null = !active || e < 0.95 ? null
     : active === 'guard' ? d.P(150, 326, Z.found - 6) : active === 'outcome' ? d.P(150, 150, Z.found)
@@ -148,8 +158,8 @@ export function ClockworkFigure({ active, labels, title, caption, mark, reduced,
 
   return (
     <div ref={figure} data-clockwork-figure className="relative h-[620px] overflow-hidden rounded-2xl border border-[#1d1f23] bg-[#0c0d0f]">
-      <div className="absolute left-6 top-5"><p className="text-[19px] font-semibold tracking-tight text-[#f2f2f3]">{title}</p><p className="mt-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#6f747c]">{caption}</p></div>
-      <p className="absolute right-6 top-6 font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#6f747c]">{mark}</p>
+      <div className="absolute left-6 top-5"><p className="text-[19px] font-semibold tracking-tight text-[#f2f2f3]">{title}</p><p className="mt-1.5 text-[11px] uppercase tracking-[0.12em] text-[#878c94]">{caption}</p></div>
+      <p className="absolute right-6 top-6 text-[11px] uppercase tracking-[0.12em] text-[#878c94]">{mark}</p>
       <svg viewBox="0 0 1000 620" preserveAspectRatio="xMidYMid meet" role="img" aria-label={label} className="absolute inset-0 size-full">
         {wires.map(([p, q], i) => <line key={i} x1={p[0]} y1={p[1]} x2={q[0]} y2={q[1]} className="stroke-[#2c2f35] [stroke-dasharray:3_4]" strokeWidth={1} />)}
         {order.map(key => (
@@ -173,12 +183,21 @@ export function ClockworkFigure({ active, labels, title, caption, mark, reduced,
           </React.Fragment>
         ))}
         {e > 0.6 && rows.map(row => {
-          const right = row.side === 'r', lx = right ? 700 : 300, tx = right ? 708 : 292, y = row.y!;
+          const right = row.side === 'r', lx = right ? 700 : 300, y = row.y!;
           const tone = row.on ? 'on' : active ? 'dim' : 'rest';
+          // foreignObject, not <text>: SVG text neither wraps nor ellipsises, so a long locale (Tamil) ran past
+          // the panel edge (review M13; the Control Tower loop diagram learnt the same in r286). HTML inside
+          // wraps to two lines within LABEL_WIDTH. Dimmed by colour, never by opacity, so every label keeps
+          // at least 4.5:1 on the panel (review L1). The sans face carries Vietnamese, Thai and Tamil, which
+          // the Latin-only mono face does not (review L10).
           return <g key={row.key} data-label={row.key}>
             <polyline points={`${row.a[0].toFixed(1)},${row.a[1].toFixed(1)} ${right ? lx - 24 : lx + 24},${y.toFixed(1)} ${lx},${y.toFixed(1)}`} fill="none" strokeWidth={1} className={tone === 'on' ? 'stroke-[#fb8a4a]' : 'stroke-[#3a3e45]'} />
-            <text x={tx} y={y - 3} textAnchor={right ? 'start' : 'end'} className={`text-[13px] font-semibold ${tone === 'on' ? 'fill-[#fb8a4a]' : 'fill-[#e8e8ea]'} ${tone === 'dim' ? 'opacity-45' : ''}`}>{row.name}</text>
-            <text x={tx} y={y + 12} textAnchor={right ? 'start' : 'end'} className={`font-mono text-[10px] ${tone === 'on' ? 'fill-[#d9a37f]' : 'fill-[#7b8089]'} ${tone === 'dim' ? 'opacity-45' : ''}`}>{row.part}</text>
+            <foreignObject x={right ? lx + 8 : lx - 8 - LABEL_WIDTH} y={y - LABEL_RISE} width={LABEL_WIDTH} height={LABEL_HEIGHT}>
+              <div className={`flex flex-col leading-tight ${right ? 'items-start text-left' : 'items-end text-right'}`}>
+                <p className={`line-clamp-2 break-words text-[13px] font-semibold ${LABEL_TONE[tone].name}`}>{row.name}</p>
+                <p className={`line-clamp-2 break-words text-[10.5px] ${LABEL_TONE[tone].part}`}>{row.part}</p>
+              </div>
+            </foreignObject>
           </g>;
         })}
         <circle data-clockwork-token r={5.5} cx={0} cy={0} fill="#fb8a4a" stroke="#0c0d0f" strokeWidth={2.5}

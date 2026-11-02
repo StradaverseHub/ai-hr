@@ -76,3 +76,6 @@
 .login-form-content .text-muted-foreground { color: var(--login-muted); }
 .login-form-content :is(pre, code) { background: #f1f1f7; color: #22222b; }
 .login-form-content [role='alert'] { border-color: #fecaca; background: #fff1f0; color: #b42318; }
+
+.login-authenticator { display: flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: .625rem 1rem; border: 1px solid var(--login-line); border-radius: .75rem; font-size: 1rem; font-weight: 600; text-align: center; }
+.login-authenticator:hover { background: #f1f1f7; border-color: var(--login-ink); }

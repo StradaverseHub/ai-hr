@@ -57,7 +57,7 @@ const KNOWN_NEVER_DELEGABLE:Readonly<Record<string,NeverDelegable|'decision_job'
 });
 
 export class MandateRefused extends Error{
- constructor(readonly reason:'never_delegable'|'decision_job'|'unknown_job_type'|'not_enabled'|'stopped'|'no_authority'|'invalid'|'not_found'|'not_grantor'|'not_administrator'|'revoked'|'expired'|'over_ceiling'|'manager_revocation_not_allowed'){
+ constructor(readonly reason:'never_delegable'|'decision_job'|'unknown_job_type'|'not_enabled'|'stopped'|'no_authority'|'invalid'|'not_found'|'not_grantor'|'not_administrator'|'revoked'|'expired'|'over_ceiling'|'manager_revocation_not_allowed'|'already_granted'){
   super('Mandate refused: '+reason);this.name='MandateRefused';
  }
 }

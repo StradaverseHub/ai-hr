@@ -13,7 +13,7 @@ import {isAdmin} from '../../lib/authz-model';
 import {ASSISTANT_TOOLS} from '../assistant-tools';
 import {visibleModuleCodes} from '../../lib/nav-entitlements';
 import {ASSISTANT_PROPOSAL_FALLBACK,ASSISTANT_PROPOSAL_HINT_KEYS,captureAssistantProposalHints,isAssistantProposableAction,type AssistantProposableAction} from '../../lib/ai/assistant-action-proposal-hints';
-import {destinationsFor} from '../../lib/product-context/destinations';
+import {DESTINATION_PURPOSE,destinationsFor} from '../../lib/product-context/destinations';
 import {productGuidance} from './guides';
 import {setupReadiness,SetupReadinessRefused} from './setup-readiness';
 import {ACTION_PURPOSE,SUGGESTABLE_ACTIONS,actionCatalogueFor,type SuggestableAction} from './actions';
@@ -31,7 +31,7 @@ export const CONTEXT_TOOL_SPECS:Readonly<Record<'product_destinations'|'product_
  product_destinations:{name:'product_destinations',description:'Real places in this product that the signed-in person can open, with their labels and addresses. Name or link only these.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  product_guidance:{name:'product_guidance',description:'Search this company\'s published product guides for how a feature works or how to set it up. Returns authored guide sections with links.',inputSchema:object({query:{type:'string',maxLength:200}},['query']) as AiToolSpec['inputSchema']},
  available_actions:{name:'available_actions',description:'Changes this person may be pointed to in the product, each with its purpose, its review page and the details that page collects. Suggest only these; the person completes and confirms each change on its page.',inputSchema:object({}) as AiToolSpec['inputSchema']},
- approval_queue:{name:'approval_queue',description:'How many requests are waiting for the signed-in person\'s own decision, by kind, with the page where they review them and the matching review action. Counts only, no names.',inputSchema:object({}) as AiToolSpec['inputSchema']},
+ approval_queue:{name:'approval_queue',description:'Requests from other people waiting for the signed-in person\'s own decision as an approver ("anything pending for me", "waiting for my approval"): how many, by kind, with the page where they review them and the matching review action. Counts only, no names.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  company_setup:{name:'company_setup',description:'Administrators only: the leave types and attendance schedule groups this company has already configured (names and whether each leave type is paid), with the pages where they are set up. Whether a leave type can grant days comes from setup_readiness.',inputSchema:object({}) as AiToolSpec['inputSchema']},
  setup_readiness:{name:'setup_readiness',description:'Administrators only: whether this company is set up to run: payroll this month, employee records missing required information, each leave type\'s entitlement health and public holidays loaded, attendance schedule groups and employees without one, and onboarding checklists. Counts, statuses and configuration names only, with the page to fix each.',inputSchema:object({}) as AiToolSpec['inputSchema']},
 });
@@ -64,7 +64,8 @@ export async function runContextTool(ctx:SessionContext,name:string,input:unknow
  const value=input&&typeof input==='object'&&!Array.isArray(input)?input as Record<string,unknown>:null;if(!value)return{ok:false,refusal:'invalid_input'};
  if(name==='product_destinations'){
   // The sidebar's own module visibility owner; null means "no opinion" there, so no module filter here.
-  return{ok:true,content:destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>({href:row.href,label:(NAV_LABELS[scope.locale??'en']??NAV_LABELS.en)[row.labelKey]??NAV_LABELS.en[row.labelKey]??row.labelKey,module:row.module}))};
+  return{ok:true,content:destinationsFor(ctx,visibleModuleCodes(ctx)??undefined).map(row=>({href:row.href,label:(NAV_LABELS[scope.locale??'en']??NAV_LABELS.en)[row.labelKey]??NAV_LABELS.en[row.labelKey]??row.labelKey,module:row.module,
+   ...(DESTINATION_PURPOSE[row.href]?{purpose:DESTINATION_PURPOSE[row.href]}:{})}))};
  }
  if(name==='product_guidance'){
   if(typeof value.query!=='string'||!value.query.trim()||value.query.length>200)return{ok:false,refusal:'invalid_input'};

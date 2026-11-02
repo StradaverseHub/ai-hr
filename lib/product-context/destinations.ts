@@ -23,6 +23,14 @@ import {MODULE_CODES_WITH_NAV} from '@/lib/nav-entitlements';
 import type {SessionContext} from '@/db/client';
 
 export type DestinationAudience='everyone'|'manager'|'admin';
+/** What a destination is for, where its label alone could mislead (review B3: the model sent a harassment report to
+ * Feedback, the product feedback board read by the software team). Shown to the model beside the label. */
+export const DESTINATION_PURPOSE:Readonly<Record<string,string>>=Object.freeze({
+ '/feedback':'Product feedback to the software team about this application: problems, ideas and new functions. Never for workplace concerns, complaints about people or personal matters; those go to the person\'s HR team.',
+ // Review M16 (run 41343676782, pp-scope-2): a payroll partner asking for the October payroll summary was sent here.
+ // Payroll runs and their reports are on the payroll pages, which only HR administrators open (scopedAdmin).
+ '/me/payslip':'The signed-in person\'s own released payslips only. Never a payroll run, a payroll summary, a company report or anyone else\'s pay.',
+});
 export type ProductDestination=Readonly<{href:string;labelKey:string;audience:DestinationAudience;module:string|null;source:'pack'|'lifecycle_v9'|'security'|'sidebar'}>;
 
 // The sidebar's own literal rows (components/sidebar.tsx GROUPS, node children and additional rows),
@@ -53,7 +61,7 @@ const SIDEBAR:readonly (readonly [string,string,DestinationAudience,string|null]
  ['/admin/system-settings/approval-delegation','delegations','admin',null],['/admin/settings/movement','movementSettings','admin',null],
  ['/admin/settings/hiring-defaults','hiringDefaults','admin',null],['/admin/holidays','holidays','admin',null],
  ['/admin/settings/profile-requests','profileRequestSettings','admin',null],['/admin/settings/login','loginPresentation','admin',null],
- ['/admin/settings/email','identityEmail','admin',null],['/admin/settings/email-templates','emailTemplates','admin',null],
+ ['/admin/settings/email','identityEmail','admin',null],['/admin/settings/entra','entra','admin',null],['/admin/settings/email-templates','emailTemplates','admin',null],
  ['/admin/settings/notifications','workflowEmail','admin',null],['/admin/scheduled-actions','scheduledActions','admin',null],
  ['/admin/privacy','dataPrivacy','admin',null],['/admin/system-explorer','systemExplorer','admin','system_explorer'],
  ['/admin/system-testing','systemTesting','admin','system_testing'],
@@ -149,7 +157,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/privacy','admin',null],['/admin/rewards','admin','rewards'],['/admin/rewards/access','admin','rewards'],
  ['/admin/rewards/shared','admin','rewards'],['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],
  ['/admin/settings','admin',null],['/admin/settings/dashboard','admin',null],['/admin/settings/email','admin',null],
- ['/admin/settings/email-templates','admin',null],['/admin/settings/employee-id','admin',null],['/admin/settings/hiring-defaults','admin',null],
+ ['/admin/settings/email-templates','admin',null],['/admin/settings/employee-id','admin',null],['/admin/settings/entra','admin',null],['/admin/settings/hiring-defaults','admin',null],
  ['/admin/settings/login','admin',null],['/admin/settings/movement','admin',null],['/admin/settings/movement/reasons','admin',null],
  ['/admin/settings/movement/types/new','admin',null],['/admin/settings/notifications','admin','notifications'],
  ['/admin/settings/people-general','admin',null],['/admin/settings/profile-options','admin',null],['/admin/settings/profile-requests','admin',null],

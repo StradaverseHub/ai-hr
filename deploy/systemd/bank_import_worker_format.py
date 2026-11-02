@@ -14,7 +14,7 @@ MAX_FILE = 256 * 1024**2
 MAX_MANIFEST = 32 * 1024**2
 MAX_ENTRIES = 200000
 ROOT_FILES = {'package.json', 'pnpm-lock.yaml', 'tsconfig.json'}
-ROOT_DIRS = {'app','components','content','core','data','db','deploy','lib','messages','packs','public','scripts','types','node_modules'}
+ROOT_DIRS = {'app','components','content','core','data','db','deploy','lib','i18n','localization','messages','packs','public','scripts','types','node_modules'}
 RUNTIME = {'node':'22.23.3','abi':'127','platform':'linux','arch':'x64','glibc':'2.39'}
 
 def require(ok, message):
@@ -72,7 +72,7 @@ def validate_manifest(manifest, source, lock_hash=None, package_hash=None):
         if row['type']=='symlink':
             resolved=resolve_link(path,set())
             require(not path.startswith(resolved+'/'),'link points at its own ancestor')
-    for path in ROOT_FILES|{'scripts/bank-import-runner.ts','node_modules/tsx/package.json'}:
+    for path in ROOT_FILES|{'scripts/bank-import-runner.ts','node_modules/tsx/package.json','i18n/config.ts','localization/registry.ts'}:
         require(entries[resolve_link(path,set())]['type']=='file','required runtime input absent')
     for path,field in [('package.json','packageSha256'),('pnpm-lock.yaml','lockSha256')]:
         require(entries[path]['type']=='file' and entries[path]['sha256']==manifest[field],'manifest/package bytes differ')

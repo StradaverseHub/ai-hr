@@ -15,6 +15,8 @@ describe('ProposalCard', () => {
     const links = within(card as HTMLElement).getAllByRole('link');
     expect(links).toHaveLength(1);
     expect(links[0]).toHaveAttribute('href', '/approvals?kind=leave&id=11111111-1111-4111-8111-111111111111');
+    // Its accessible name carries the subject, so a screen reader's links list tells the cards apart (review L8).
+    expect(links[0]).toHaveAccessibleName('Review · Approve leave request · Fictional Person');
     expect(card.querySelector('form, button, input')).toBeNull();
     expect(screen.getByRole('img', { name: 'Waiting for your confirmation' })).toBeInTheDocument();
     expect(screen.getByText('Balance covers it')).toHaveAttribute('title', 'AL-2026.3');

@@ -9,6 +9,7 @@ import {HARNESS_SPEC} from './spec';
 
 export const fenceNonce=()=>randomBytes(9).toString('base64url');
 export function fenceUntrusted(tool:string,value:unknown,nonce:string):string{
- const {open,close,maxToolOutputChars}=HARNESS_SPEC.fencing,json=JSON.stringify(value)??'null',cut=json.length>maxToolOutputChars;
+ // Review low item: '<' is escaped inside the JSON body, so no text in a record can even spell a fence marker.
+ const {open,close,maxToolOutputChars}=HARNESS_SPEC.fencing,json=(JSON.stringify(value)??'null').replace(/</g,'\\u003c'),cut=json.length>maxToolOutputChars;
  return `${open} tool="${tool}" nonce="${nonce}"${cut?' cut="true"':''}>>\n${cut?json.slice(0,maxToolOutputChars):json}\n${close} nonce="${nonce}">>`;
 }

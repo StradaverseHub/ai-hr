@@ -130,7 +130,9 @@ function conversation(source:Source):ConverseArgs{
  const tools:AiToolSpec[]=[...source.tools.map(tool=>({name:tool.name,description:tool.description,inputSchema:strictToolSchema(tool.parameters as Schema) as AiJsonSchema})),
   ...[...historyNames].map(name=>({name,description:INERT_DESCRIPTION,inputSchema:{type:'object' as const,properties:{},required:[],additionalProperties:false as const}}))];
  if(tools.length>32)return privatePolicyRefusal();
- return Object.freeze({system,turns,tools,maxTokens:source.maxOutputTokens,timeoutMs:source.timeoutMs});
+ // The turn runner executes several calls from one response sequentially, in order, under the spec's caps, so it opts
+ // in to multi-call responses; every other caller keeps the transport's single-call refusal.
+ return Object.freeze({system,turns,tools,maxTokens:source.maxOutputTokens,timeoutMs:source.timeoutMs,allowMultipleToolCalls:true as const});
 }
 
 export function fingerprintTerasHarnessTask(value:unknown):string{return createHash('sha256').update('teras:harness-turn\n'+JSON.stringify(capture(value))).digest('hex');}

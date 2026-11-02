@@ -508,7 +508,8 @@
     "securityPermissions": "安全与权限",
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
-    "aiManagementInventory": "AI 清单"
+    "aiManagementInventory": "AI 清单",
+    "entra": "Microsoft Entra ID"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -11214,7 +11215,8 @@
         "importHistory": "当您对导入中至少一家公司拥有人员查看权限时会列出该导入，并且只显示您可查看公司的员工。下载原始文件需要对其中每家公司拥有查看权限；撤销需要对其中每家公司拥有人员维护权限。",
         "securityCenter": "管理员或具有访问配置权限的人员可以使用。",
         "createLogin": "仅限集团级管理员。手动设置还需要受支持的登录提供商和已验证的管理员会话。",
-        "inviteUser": "仅限集团级管理员。"
+        "inviteUser": "仅限集团级管理员。",
+        "entra": "仅限集团管理员。配置本组织的 Microsoft 登录和员工帐户预配。关联现有身份需要明确确认。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -26832,7 +26834,7 @@
     "passwordHelp": "使用至少 14 个字符。请勿包含用户名或电子邮箱地址。",
     "passwordTitle": "设置您自己的密码",
     "enrollTitle": "设置身份验证器",
-    "enrollHelp": "使用身份验证器应用扫描二维码，或手动输入设置密钥，然后输入当前的六位验证码。",
+    "enrollHelp": "请先打开身份验证器应用，选择添加账户，再使用应用内的扫描功能扫描此二维码。您也可以手动输入设置密钥。然后返回此处，输入当前的六位验证码。",
     "qrAlt": "身份验证器设置二维码",
     "manualKey": "手动设置密钥",
     "code": "六位身份验证码",
@@ -26864,19 +26866,25 @@
       "invalidLogin": "组织、用户名或密码不正确，或此账号不可用。",
       "invalidChallenge": "此设置或恢复链接已过期或失效，请重新开始。",
       "invalidCode": "此验证码不正确、已过期或已使用，请尝试下一个身份验证码或未使用的恢复码。",
-      "passwordPolicy": "请使用其他至少 14 个字符的密码，不包含用户名或电子邮箱。",
+      "passwordPolicy": "请使用从未用过的密码，至少 14 个字符，且不包含用户名或电子邮箱。",
       "passwordMismatch": "两次密码不一致。",
       "rateLimited": "尝试次数过多，请稍后重试。",
       "unavailable": "登录或密码恢复暂时不可用，请稍后重试或联系管理员。",
       "conflict": "此用户名无法注册，请选择其他用户名或联系管理员。",
-      "forbidden": "无法验证此请求，请直接打开应用后重试。"
+      "forbidden": "无法验证此请求，请直接打开应用后重试。",
+      "authenticatorUnavailable": "无法打开身份验证器。请打开身份验证器应用，手动输入设置密钥，然后返回此处输入其六位验证码。"
     },
     "switchAccountTitle": "使用其他账户",
     "switchAccountHelp": "此邀请属于其他组织或已验证邮箱。请退出当前账户，再设置或登录受邀账户。您当前的 HR 账户将保持独立。",
     "switchAccountSubmit": "退出并打开邀请",
     "workplaceLoginHelp": "已选择您的工作单位。请输入用户名和密码。",
     "signingInTitle": "正在登录…",
-    "signingInHelp": "正在进入 AIHR。"
+    "signingInHelp": "正在进入 AIHR。",
+    "idleSignedOut": "由于一段时间未操作，您已被退出登录。请重新登录以继续。",
+    "microsoft": "使用 Microsoft 继续",
+    "microsoftError": "Microsoft 登录未能完成。请检查组织和关联帐户，然后重试。",
+    "openAuthenticator": "打开身份验证器",
+    "samePhoneHelp": "正在使用本手机设置？请点击下方按钮打开默认身份验证器。在 iPhone 上，可能会打开 Apple 的“密码”应用。如果无法打开，请在身份验证器应用中手动输入设置密钥。"
   },
   "aiManagement": {
     "title": "AI 管理",
@@ -33378,5 +33386,248 @@
     "noticeApplied": "此结果使用已记录的所得税基数更正。实际已扣PCB和已发放的薪资保持不变。",
     "noticeReferences": "所得税更正参考编号",
     "noticeView": "查看所得税更正"
+  },
+  "entra": {
+    "title": "Microsoft Entra ID",
+    "description": "Microsoft sign-in and workforce account provisioning for cloud and hybrid Active Directory.",
+    "manageUsers": "Manage HR user accounts",
+    "connection": "Directory connection",
+    "organization": "Organization code",
+    "directoryTenantId": "Microsoft tenant ID",
+    "clientId": "Sign-in application client ID",
+    "provisioningClientId": "Provisioning application client ID",
+    "servicePrincipalId": "Provisioning service principal ID",
+    "jobId": "Provisioning job ID",
+    "domain": "Verified account domain",
+    "mode": "Directory mode",
+    "cloud": "Cloud Entra ID",
+    "hybrid": "On-premises AD with Entra sync",
+    "clientSecret": "Sign-in application secret",
+    "provisioningSecret": "Provisioning application secret",
+    "secretHelp": "Leave saved secrets blank to retain them. Secrets are encrypted and never displayed.",
+    "enabled": "Enable Microsoft sign-in",
+    "provisioningEnabled": "Automatically provision committed employee records",
+    "matching": "IT has configured externalId as the sole immutable matching key, mapped externalId into the configured target source-ID attribute, and mapped only userName, displayName and active. Existing accounts are linked explicitly.",
+    "hybridHelp": "Hybrid mode requires a customer-managed Microsoft provisioning agent and AD-to-Entra sync. Accounts use a stable HR-generated username; IT controls target OU and attribute mappings.",
+    "save": "Save connection",
+    "test": "Test discovery and provisioning credentials",
+    "tested": "The selected checks succeeded. Discovery does not test a sign-in secret; token acquisition does not prove upload consent, directory mappings, AD agent health or employee sign-in.",
+    "saved": "Settings saved.",
+    "linked": "Microsoft identity linked to the existing HR account.",
+    "error": "The operation failed. Check your permissions, identifiers, configuration revision and Microsoft connection, then retry.",
+    "linkTitle": "Link an existing HR user",
+    "linkHelp": "Select the exact HR account and Microsoft object ID after IT verifies ownership. No HR roles are changed. For hybrid accounts, wait for AD-to-Entra sync first.",
+    "personId": "Person ID",
+    "userId": "HR user ID",
+    "objectId": "Microsoft object ID",
+    "linkConfirm": "I verified that this Microsoft tenant/object belongs to this exact HR user.",
+    "link": "Link Microsoft identity",
+    "queue": "Employee provisioning",
+    "empty": "No employees are queued. Enable provisioning and create an employee, or save the connection to queue existing employees.",
+    "status": "Status",
+    "attempts": "Attempts",
+    "action": "Action",
+    "retry": "Retry",
+    "queueHelp": "Submitted means Microsoft accepted the request. Awaiting sync means AD provisioning succeeded; confirm the Entra identity before sign-in. An uncertain result requires IT reconciliation before any replay.",
+    "states": {
+      "pending": "Pending",
+      "processing": "Processing",
+      "submitted": "Submitted",
+      "awaiting-sync": "Awaiting Entra sync",
+      "ready": "Directory provisioned",
+      "disabled": "Directory disabled",
+      "failed": "Needs attention",
+      "uncertain": "Outcome uncertain",
+      "awaiting-link": "Link existing HR account",
+      "rejected": "Rejected by provisioning service"
+    },
+    "sourceAnchorAttribute": "Immutable source-ID target attribute",
+    "reconcile": "Check reconciled directory object",
+    "reconcileConfirm": "IT has reconciled the uncertain upload in Microsoft. Check the exact source-marked object without resending creation.",
+    "selectUser": "Choose an existing HR user"
+  },
+  "sessionTimeout": {
+    "warningTitle": "您还在吗？",
+    "warningBody": "为保障安全，由于长时间未操作，您将在 {seconds} 秒后被退出登录。",
+    "staySignedIn": "保持登录",
+    "signOutNow": "立即退出",
+    "settingsTitle": "自动退出登录",
+    "settingsDescription": "用户在网页应用中未操作达到此时长后将被退出登录。退出前会先显示一分钟的提醒。",
+    "minutesLabel": "未操作多少分钟后退出",
+    "minutesHelp": "可选择 {min} 至 {max} 分钟，默认为 15 分钟。无论如何，会话仍会在登录 8 小时后结束。",
+    "save": "保存自动退出设置",
+    "saving": "正在保存…",
+    "notEnforced": "此安装未使用内置登录，因此该时限暂未生效。",
+    "result": {
+      "saved": "自动退出设置已保存。",
+      "invalid": "请输入允许范围内的整数分钟数。",
+      "conflict": "其他人已修改此设置。请重新加载页面后再试。",
+      "forbidden": "只有集团管理员可以修改自动退出设置。",
+      "unavailable": "无法保存自动退出设置，请重试。"
+    }
+  },
+  "runnerControl": {
+    "title": "Runner controls",
+    "description": "Check activation, execution health and schedules for this installation. Activation and a successful last run are separate facts.",
+    "environment": "Environment",
+    "environmentName": {
+      "staging": "Staging",
+      "production": "Production"
+    },
+    "unavailable": "Unavailable",
+    "refresh": "Refresh status",
+    "checkedAt": "Checked at",
+    "controllerMissing": "Live scheduler status is unavailable. Do not interpret this as disabled. The installation operator must commission the controller.",
+    "scopeNote": "Changes apply to this installation. Customer administrators can inspect status; only installation operators can change it.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "held": "On hold",
+    "external": "Not managed here",
+    "configure": "Configure runner",
+    "editSchedule": "Change schedule",
+    "minutes": "Minutes between completed runs",
+    "time": "Run time (Malaysia time)",
+    "monthlyRule": "Runs on the first day of each month. The business date cannot be changed here.",
+    "yearlyRule": "Runs on 1 April, after carry-forward expiry. The business date cannot be changed here.",
+    "effectNote": "Enabling may process overdue work immediately. Disabling prevents future runs; a transaction already in progress is allowed to finish.",
+    "confirm": "I have reviewed this runner’s purpose and the data it may change.",
+    "save": "Save configuration",
+    "saving": "Saving…",
+    "saved": "Configuration saved. Refresh to check actual status.",
+    "saveFailed": "The configuration could not be confirmed. Refresh actual status before retrying, or contact the installation operator.",
+    "schedule": "Schedule",
+    "installedSchedule": "Installed schedule; next run shown alongside",
+    "lastRun": "Last completed run",
+    "nextRun": "Next scheduled run",
+    "noEvidence": "No scheduler evidence",
+    "results": "Results",
+    "holdNote": "This production runner is held by the installation policy. A separate owner decision is required to remove the hold.",
+    "health": {
+      "missing": "Not installed",
+      "running": "Running",
+      "failed": "Failed",
+      "unknown": "Not yet verified",
+      "success": "Last run succeeded",
+      "stale": "Last success is overdue",
+      "stopped": "Scheduler stopped"
+    },
+    "jobs": {
+      "provision": {
+        "name": "Customers and modules",
+        "description": "Processes approved customer provisioning and module changes.",
+        "results": "Operator customers"
+      },
+      "accrual": {
+        "name": "Earned leave accrual",
+        "description": "Adds earned leave to employee balances and records ledger entries.",
+        "results": "Leave balances"
+      },
+      "carry-expiry": {
+        "name": "Carry-forward leave expiry",
+        "description": "Forfeits unused carry-forward leave after the configured expiry.",
+        "results": "Leave entitlements"
+      },
+      "reviews": {
+        "name": "Reviews, movements and reminders",
+        "description": "Applies due employment movements, opens reviews and creates reminders and notifications.",
+        "results": "Run history below; employee records and reviews"
+      },
+      "notifications": {
+        "name": "Workflow notifications and email",
+        "description": "Projects workflow notices and sends eligible email. May also advance enabled lifecycle and letter automation.",
+        "results": "My notifications; Email delivery for email outcomes"
+      },
+      "anomalies": {
+        "name": "Payroll anomaly checks",
+        "description": "Records findings and verdicts for review. Does not change payroll amounts.",
+        "results": "Control Tower exceptions and payroll anomalies"
+      },
+      "child-relief": {
+        "name": "Child tax-relief refresh",
+        "description": "Updates calculated child-relief projections from family records; may affect future payroll tax.",
+        "results": "Employee statutory profile"
+      },
+      "usage": {
+        "name": "Usage capture",
+        "description": "Records installation usage snapshots. Missed historical snapshots cannot be fully reconstructed.",
+        "results": "Run history below; operator usage records"
+      },
+      "entitlement-alarm": {
+        "name": "Leave entitlement coverage",
+        "description": "Checks for missing or expired leave-entitlement coverage. Records a monitoring result.",
+        "results": "Run history below"
+      },
+      "ai-alerts": {
+        "name": "AI alerts",
+        "description": "Checks AI operational alert conditions and records monitoring results.",
+        "results": "AI administration and run history below"
+      },
+      "ai-retention": {
+        "name": "AI data retention",
+        "description": "Removes expired AI custody data according to retention policy. Deletions are permanent.",
+        "results": "Protected maintenance logs"
+      },
+      "bank-import": {
+        "name": "Bank and statutory imports",
+        "description": "Processes queued imports and writes the corresponding validated records.",
+        "results": "Import progress and history"
+      },
+      "replacement-holidays": {
+        "name": "Replacement holidays",
+        "description": "Reconciles queued calendar changes and replacement-holiday allocations.",
+        "results": "Replacement holidays and calendars"
+      },
+      "reports": {
+        "name": "Scheduled reports",
+        "description": "Generates and emails due reports when report delivery is commissioned.",
+        "results": "Employee Master report schedules"
+      },
+      "mobile-push": {
+        "name": "Mobile push delivery",
+        "description": "Sends eligible queued notifications through a configured push provider.",
+        "results": "Device notifications and delivery logs"
+      },
+      "auth-cleanup": {
+        "name": "Authentication cleanup",
+        "description": "Removes expired authentication sessions and challenges.",
+        "results": "Protected authentication maintenance logs"
+      },
+      "account-email-retention": {
+        "name": "Account-email retention",
+        "description": "Retires expired account-email content according to retention policy.",
+        "results": "Email delivery and protected maintenance logs"
+      },
+      "dunning": {
+        "name": "Customer payment standing",
+        "description": "Checks customer payment standing. Applying customer suspension requires separately approved configuration.",
+        "results": "Operator customers and maintenance logs"
+      },
+      "backups": {
+        "name": "Database backups",
+        "description": "Creates database backups to an approved destination when configured.",
+        "results": "Backup storage and protected backup logs"
+      }
+    }
+  },
+  "passwordPolicy": {
+    "title": "密码安全",
+    "description": "设置 HR 密码的定期更改。在 Entra 中管理 Microsoft 密码和条件访问。",
+    "enabled": "要求定期更改密码",
+    "interval": "更改间隔",
+    "unit": "单位",
+    "days": "天",
+    "months": "日历月",
+    "limits": "可选择 1–3,650 天或 1–120 个月。月末使用目标月份的最后一个有效日期。",
+    "reuse": "用户不能重复使用自密码历史记录功能启用以来记录的任何密码。即使关闭到期要求，密码找回也适用此规则。",
+    "effect": "保存后适用于现有账户和会话。密码已过期或没有更改日期记录的用户必须登录、完成多因素验证并设置新密码后才能继续。",
+    "save": "保存密码策略",
+    "saving": "正在保存…",
+    "result": {
+      "saved": "密码策略已保存。",
+      "invalid": "请输入允许范围内的整数。",
+      "conflict": "其他管理员已更改此策略。请刷新后再保存。",
+      "forbidden": "您无权更改此策略。",
+      "unavailable": "密码设置暂不可用。请重试。"
+    }
   }
 }

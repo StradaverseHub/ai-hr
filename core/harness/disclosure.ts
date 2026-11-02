@@ -7,7 +7,10 @@
  *             in the turn's ledger and is restored only for a caller who may see it (./restore.ts);
  *  - minimum: kept for the caller's own records and an administrator's configuration. About another person (an
  *             entity whose audience is another person) and for every `name` field, the value becomes a text
- *             placeholder (`{{T1}}`) kept in the ledger and restored locally like a figure;
+ *             placeholder (`{{T1}}`) kept in the ledger and restored locally like a figure. Review M15: the name of
+ *             a person an HR administrator administers (the binding's namesInScope, every employment of the row)
+ *             is kept, so "does Siti have pending leave" can be answered; their other minimum fields still leave
+ *             as placeholders, and nobody outside that scope is named;
  *  - full:    kept.
  * A label marked `screen` whose value names a health, religious or similar matter (SENSITIVE_LABEL) becomes a text
  * placeholder whatever its class. Undeclared keys are removed (fail closed), at any depth, unless they are spec
@@ -73,7 +76,15 @@ const REMOVED=Symbol('removed');
 
 type Walk={tool:string;ledger:DisclosureLedger;removed:string[];banded:string[];undeclared:string[];withheld:string[];handles:number;identifiers:number;identifierKinds:string[];
  /** The entity is about another person: its minimum fields are withheld. */
- others:boolean};
+ others:boolean;
+ /** Review M15: employments whose person the caller administers; a row naming only these keeps its name. */
+ namesInScope:ReadonlySet<string>};
+/** True when every employment a row carries is in the caller's administered scope (and it carries one). */
+function rowInScope(row:Record<string,unknown>,walk:Walk):boolean{
+ if(!walk.namesInScope.size)return false;
+ const ids=[...(typeof row.employmentId==='string'?[row.employmentId]:[]),...(Array.isArray(row.employmentIds)?row.employmentIds:[])];
+ return ids.length>0&&ids.every(id=>typeof id==='string'&&walk.namesInScope.has(id));
+}
 const screen=(text:string,walk:Walk)=>{const result=screenIdentifiers(text);if(result.count){walk.identifiers+=result.count;
  for(const kind of result.kinds)if(!walk.identifierKinds.includes(kind))walk.identifierKinds.push(kind);}return result.text;};
 /** Strings that are record ids become handles wherever they appear; every other string is screened for identifiers. */
@@ -92,7 +103,7 @@ function withhold(value:unknown,path:string,walk:Walk):unknown{
 }
 const sensitiveLabel=(value:unknown)=>typeof value==='string'&&SENSITIVE_LABEL.test(value);
 /** Applies one class to a whole value (a declared leaf, or a declared list/object without its own row shape). */
-function apply(disclosure:DisclosureClass,field:SemanticField,value:unknown,path:string,walk:Walk):{keep:boolean;value?:unknown}{
+function apply(disclosure:DisclosureClass,field:SemanticField,value:unknown,path:string,walk:Walk,inScope=false):{keep:boolean;value?:unknown}{
  if(disclosure==='never'){
   const ids=typeof value==='string'?UUID.test(value):Array.isArray(value)&&value.length>0&&value.every(item=>typeof item==='string'&&UUID.test(item));
   if(ids&&(field.type==='id'||field.type==='list')){walk.handles+=Array.isArray(value)?value.length:1;
@@ -110,6 +121,7 @@ function apply(disclosure:DisclosureClass,field:SemanticField,value:unknown,path
   return{keep:true,value:band(value,path)};
  }
  if(field.screen==='sensitive_label'&&sensitiveLabel(value))return{keep:true,value:withhold(value,path,walk)};
+ if(disclosure==='minimum'&&field.type==='name'&&inScope&&typeof value==='string')return{keep:true,value:screen(value,walk)};
  if(disclosure==='minimum'&&(walk.others||field.type==='name'))return{keep:true,value:withhold(value,path,walk)};
  return{keep:true,value:sweep(value,path,walk)};
 }
@@ -119,14 +131,14 @@ function walkObject(value:unknown,fields:ReadonlyMap<string,SemanticField>,path:
  if(Array.isArray(value))return value.map((item,index)=>walkObject(item,fields,path+'['+index+']',walk)).filter(item=>item!==REMOVED);
  if(value===null||value===undefined)return value;
  if(typeof value!=='object'){walk.undeclared.push(path);return REMOVED;}
- const out:Record<string,unknown>={};
+ const out:Record<string,unknown>={},inScope=rowInScope(value as Record<string,unknown>,walk);
  for(const [key,child] of Object.entries(value)){
   const at=path?path+'.'+key:key,field=fields.get(key);
   if(field){
    // A declared list or object with its own row shape is walked against that shape; the parent's class
    // still governs when it is `never` (a never parent hides its children too).
    if(field.of&&field.disclosure!=='never'){const walked=walkObject(child,fieldMap(field.of),at,walk);if(walked!==REMOVED)out[key]=walked;continue;}
-   const result=apply(field.disclosure,field,child,at,walk);if(result.keep)out[key]=result.value;continue;
+   const result=apply(field.disclosure,field,child,at,walk,inScope);if(result.keep)out[key]=result.value;continue;
   }
   if(ENVELOPE.has(key)){out[key]=sweep(child,at,walk);continue;}
   // An undeclared container (employments, balances, rows, employee) is judged by its children.
@@ -136,9 +148,10 @@ function walkObject(value:unknown,fields:ReadonlyMap<string,SemanticField>,path:
  return out;
 }
 /** Discloses one tool result. `entity` null means a context tool: identifiers swept, vocabulary kept. */
-export function discloseToolOutput(tool:string,entity:EntityId|null,output:unknown,ledger:DisclosureLedger):Readonly<{value:unknown;applied:DisclosureApplied}>{
+export function discloseToolOutput(tool:string,entity:EntityId|null,output:unknown,ledger:DisclosureLedger,options:Readonly<{namesInScope?:ReadonlySet<string>}>={}):Readonly<{value:unknown;applied:DisclosureApplied}>{
  const declared=entity===null?null:terasEntity(entity);
- const walk:Walk={tool,ledger,removed:[],banded:[],undeclared:[],withheld:[],handles:0,identifiers:0,identifierKinds:[],others:declared!==null&&OTHER_PERSON_AUDIENCES.includes(declared.audience)};
+ const walk:Walk={tool,ledger,removed:[],banded:[],undeclared:[],withheld:[],handles:0,identifiers:0,identifierKinds:[],others:declared!==null&&OTHER_PERSON_AUDIENCES.includes(declared.audience),
+  namesInScope:options.namesInScope??new Set()};
  const walked=declared===null?sweep(output,'',walk):walkObject(output,fieldMap(declared.fields),'',walk);
  const value=walked===REMOVED?null:walked;
  return Object.freeze({value,applied:Object.freeze({tool,entity,removed:Object.freeze(walk.removed),banded:Object.freeze(walk.banded),handles:walk.handles,undeclared:Object.freeze(walk.undeclared),

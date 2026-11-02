@@ -5,7 +5,7 @@ import {mkdtempSync,realpathSync,rmSync,mkdirSync,writeFileSync,symlinkSync,chmo
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {compilerStateIdentity,makeCompilerState,verifyCompilerState,publishCompilerState,readCompilerState} from './compiler-state.mjs';
-const identity=()=>({source:'a'.repeat(40),controller:'b'.repeat(40),runId:'123',attempt:'1',runtime:{node:'22.23.3',typescript:'5.9.3',next:'16.3.8',platform:'linux',arch:'x64'},inputs:Object.fromEntries(['tsconfig','lockfile','package','workspace','nextConfig','compilerCli'].map(k=>[k,'c'.repeat(64)]))});
+const identity=()=>({source:'a'.repeat(40),controller:'b'.repeat(40),runId:'123',attempt:'1',runtime:{node:'22.23.3',typescript:'5.9.3',next:'16.4.1',platform:'linux',arch:'x64'},inputs:Object.fromEntries(['tsconfig','lockfile','package','workspace','nextConfig','compilerCli'].map(k=>[k,'c'.repeat(64)]))});
 const state=()=>Buffer.from(JSON.stringify({version:'5.9.3',fileNames:['../../source/real-root.ts']}));
 const completed=()=>({processExitCode:0,files:7046,completedAt:'2026-10-25T19:00:00Z'}),options={now:Date.parse('2026-10-25T19:05:00Z')};
 test('restored state binds exact bytes, candidate, run and complete toolchain/configuration; never a PASS',()=>{

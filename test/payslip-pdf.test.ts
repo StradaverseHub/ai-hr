@@ -604,9 +604,17 @@ describe('5c198931 — the downloaded payslip is a full official document', () =
     expect(head(bytes)).toBe('%PDF-');
     // …and it degraded to the text letterhead rather than embedding rubbish.
     expect(drawnText(bytes)).toContain('Demo Sdn Bhd');
-    expect(bytes.length).toBe(
-      (await renderPayslipPdf({ ...data, logo: null }, labels)).length,
-    );
+    const without = await renderPayslipPdf({ ...data, logo: null }, labels);
+    // Separate PDFs carry wall-clock metadata, so compressed byte length is not a reliable
+    // image-presence check. Read the fallback's actual content, layout and resource dictionary.
+    expect(drawnText(bytes)).toBe(drawnText(without));
+    expect(drawnPlacements(bytes)).toEqual(drawnPlacements(without));
+    const pdf = await PDFDocument.load(bytes), control = await PDFDocument.load(without);
+    expect(pdf.getPageCount()).toBe(control.getPageCount());
+    for (const page of pdf.getPages()) {
+      const imageKeys = page.node.Resources()?.lookupMaybe(PDFName.of('XObject'), PDFDict)?.keys() ?? [];
+      expect(imageKeys).toHaveLength(0);
+    }
   });
 
   it('prints every one of a long earnings list, and repeats the heading only on a REAL break', async () => {

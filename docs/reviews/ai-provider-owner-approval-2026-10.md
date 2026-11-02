@@ -336,3 +336,222 @@ disposition within existing scope, not a new privacy approval, certification, ru
 acceptance. Fresh exact-source hosted qualification remains required. Any further covered-byte change
 requires another exact review.
 
+
+## Technical source binding — 2 November 2026, configurable idle sign-out (ADR-0171)
+
+Branch `claude/idle-session-timeout` (configurable idle sign-out for the web app) moves the provider closure
+from 1141 files / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d` to 1143 files /
+`c44387b32760d03ddbd0f52251733e6393246255817f91470f44b2a179de5664`.
+
+Closure membership grows by two policy sources reached through `db/schema.ts` and the embedded sign-in
+service: `lib/session-policy.ts` (bounds and defaults) and `lib/session-policy-server.ts` (reads only the
+idle limit through `app.session_idle_timeout_minutes`). Changed covered files: `db/schema.ts`,
+`lib/internal-auth/service.ts`, the two new files above and the six `messages/*.json` dictionaries.
+
+- No `lib/ai/*` serializer, descriptor, transport, prompt, spend control or approval-validation file
+  changed.
+- Dictionaries: 16 new leaves per locale under `sessionTimeout.*` plus `internalAuth.idleSignedOut`; no
+  `assistant.*`, `onehr.*` or `aiManagement.*` leaf changed.
+- `db/schema.ts` only adds the `session_policy` table (tenant, idle minutes 5–480, revision, timestamp).
+- `lib/internal-auth/service.ts` records last reported activity on web sessions, revokes and audits a session
+  idle past its organization's limit, and adds `touchSession`; it reads no employee or HR data.
+
+No new protected purpose, raw-data variant, contract, model money calculation or autonomous sensitive
+effect is admitted. The SAME 24 approved records receive only this sourceDigest; every original human
+status, reviewer, evidence anchor and timestamp is preserved, and both pending blocks remain
+byte-identical. `lib/ai/module-agent-source-manifest.ts` is regenerated mechanically to
+`670c4af684ef5bbf240c93e9f7930925618941fbb71bb09e7cf013cb4c712979` (no approval binds it).
+
+The release owner (human) approved this technical re-binding in the implementation session on 2 November
+2026 ("Yes, approve rebind") after reviewing the changed-file list above. This is a technical disposition
+within existing scope, not a new privacy approval, certification, runtime PASS or staging acceptance. Fresh
+exact-source hosted qualification remains required. Any further covered-byte change requires another exact
+review.
+
+## Technical source review — 2 November 2026, PR #194 with shared idle policy
+
+The PR review and required security/data gate include an exact technical source review of the
+combined Entra and PR #196 idle-policy candidate. The closure is 1148 files at
+`7c2e2c31164fcbfc2f5d5c95cb566b52d62c0735f64d698e5f2e19eaab9b05f5`.
+Compared with newly installed staging baseline `438bfae3d9f5b71f54f7fc258959e91249c4f597`, covered changes are `db/schema.ts`,
+`lib/ai/agent-capability-inventory.ts`, `lib/entra/{model,sessions,store}.ts`,
+`lib/internal-auth/{service,web-session}.ts`, `lib/permissions.ts`, `lib/session.ts`,
+`lib/session-policy{,-server}.ts` and the six locale dictionaries.
+
+The added sources hold directory configuration, explicit identity bindings and session validation;
+credentials remain in the existing encrypted internal-auth store. The provider serializers,
+transports, prompts, spend controls and approval validation are unchanged. New administration and
+login actions are classified as access/authentication handoffs, not agent effects. Dictionary changes
+are Entra setup/login and session-timeout copy. The schema adds only the shared tenant idle policy;
+Entra operational tables are private SQL interfaces, not new AI provider payloads. No protected
+purpose, raw-data variant, contract or autonomous sensitive effect is added.
+
+This agent technical review rebinds only `sourceDigest` on the same 24 approved records within the
+requested review/fix/gate scope. Original human reviewers, dates, statuses and evidence anchors are
+preserved; the two pending records remain identical and blocked. It does not assert a new human
+privacy approval, live tenant acceptance or release PASS. The generated module manifest is
+`2fd3bef631acf8e7cd6e7d7bb1d15b4e5dc1d0c15c8cf690b8603ecdde74b73b`.
+Further covered source changes require exact review again.
+
+## Exact technical re-review — PR #194 integration repairs
+
+The post-gate source review covers closure 1148 /
+`45853c97aad334596470becb7e16d4d35562fe5f0ff7457ccdae365436a43d22`.
+Against frozen candidate `c6cd46f1cb6715371f27942e5bae51d228b1840d`, the only changed
+provider-covered files are the six locale dictionaries. The existing employee Microsoft login label
+and refusal text move from `entra` into canonical `internalAuth`; their localized values are
+unchanged. `admin.users.scope.entra` now explains the existing group-administrator restriction.
+No `assistant`, `onehr` or `aiManagement` subtree changes. Native copy is regenerated from the
+canonical authentication vocabulary, including the existing idle-sign-out message.
+
+The shared activity helper and shell contract from PR #196 `90346adf0` are integrated with Entra as
+an enforcing recorder. These add no AI provider payload, access purpose, contract or autonomous
+sensitive effect. Serializers, transports, prompts, spend controls and approval validation remain
+unchanged. This agent technical review changes only `sourceDigest` on the same 24 approved records;
+original human provenance and both pending blocks remain unchanged. It asserts neither new human
+privacy approval nor runtime acceptance. The regenerated module source manifest is
+`1be15b76da3e43106bfe07af40929cdb321666ee7844038d8c060487b41b79fa`.
+
+## Technical source binding — 2 November 2026, recurring password policy
+
+For the password-policy staging release, the owner explicitly approved the exact rebind
+`8d364f4c8cb03c2a61f75b168f9d80b43222f64490204a3def3508f1c165cc47` after reviewing the
+covered delta, responding “Approve this exact rebind.” This updates the same 24 provisional
+approvals; both pending contracts and every original status, reviewer, evidence anchor and human
+review timestamp remain unchanged. It is a technical binding update, not a new privacy certification.
+
+The closure grows from 1,141 to 1,143 files. Added: `lib/internal-auth/password-policy.ts` and
+`lib/password-policy.ts`. Other changed covered sources are `lib/internal-auth/credential.ts`,
+`lib/internal-auth/crypto.ts`, `lib/internal-auth/service.ts`, `lib/ai/agent-capability-inventory.ts`
+and the six `messages/*.json` dictionaries. The dictionaries change only password security labels
+and the password-policy refusal text. Authentication records remain encrypted and local; expiry
+restricts active credentials. The capability inventory classifies the settings action as
+`handoff:access_and_authentication`, granting no agent execution authority. No AI serializer,
+transport, protected data contract, raw-data variant or model calculation is added or widened.
+
+Original release gate 41336655104 retains its failed result. The additional inherited lifecycle
+fixture used a fixed last working day of 1 November; its waiting-run test now supplies a last
+working day 30 days after the HR calendar's current date. Production lifecycle behavior and the
+original assertions are unchanged. Because the existing recovery verifier refuses test-file
+repairs, the owner separately answered “Authorize the new complete gate.” The new complete gate
+must establish its own exact-source evidence before merge or staging installation. This approval
+does not authorize production deployment or claim staging acceptance.
+
+### Released Runner baseline integration — 2 November 2026
+
+The staging orchestrator delegated the owner's instruction “All sessions can auto approve and
+release without me” for routine staging review/integration, while preserving independent
+provider-data permissions and every required check. Under that authority, this automated technical
+review combines accepted Runner source `438bfae3d9f5b71f54f7fc258959e91249c4f597` with password source
+`8507fe45763d8e41415c80aeae6bedec5e893ea8`. It is not a new human privacy-specialist review.
+
+The combined closure has 1,145 files and digest
+`a8886330ea60bcb66d96ee73f58e14e84c33cca8c906a656aff18bcd7441ba1c`. Relative to the accepted Runner
+baseline, changed covered bytes are the password policy and credential helpers, the human-only
+password-policy action classification, and the password-security leaves in six dictionaries.
+Runner labels/classification and the original native source owners remain intact. No serializer,
+transport, protected data contract, raw-data variant or autonomous sensitive effect is introduced.
+The same 24 provisional records receive only the new technical source digest; original approval
+metadata and both pending blocks are preserved.
+
+The accepted Runner lifecycle fixture explicitly starts the frozen workflow to test retention
+independently of a date-trigger window. Integration retains that baseline fixture and all its
+assertions instead of layering the earlier standalone date workaround onto it. No production
+lifecycle rule changes. The accepted baseline has no new migrations. The integrated candidate
+requires its own exact-source qualification against the handed-back baseline; member results
+remain attributed to their original sources and are not aggregate release evidence.
+
+## Technical source binding — 2 November 2026, native mobile approval workspaces
+
+The repository owner explicitly answered “Approve exact binding refresh” in the MOBILE chat at
+2026-11-01T18:25:16Z, for reviewed source `28ca1e91bc493d9261a6f57490d8e3236baa7cba` and
+digest `1988479aa817a581a016138b3fb09e989159856edb17955d4c67aeca35f5b586`. The reviewed dependency closure is 1149 files,
+from 1141 / `c9c5944d9756718e34b08826b1773339ea7430687209992efd5ab84c2aea177d`. The exact five changed and
+eight added covered files, retained boundaries and original failed verification are recorded in
+[the technical review packet](mobile-native-approval-source-binding-2026-11.md). No provider serializer,
+protected-input contract descriptor, prompt, transport, model or spending control changes. Three
+mobile POST entry points are internal clients of existing services and grant no agent decision authority.
+
+Under that actual approval, only the SAME24 active sourceDigest literals are refreshed. Original
+statuses, reviewer identities, evidence anchors and human review timestamps remain unchanged; both
+pending records remain byte-identical. This is a source binding refresh within existing scope, not
+privacy-specialist certification, fresh runtime PASS, staging acceptance or production authority.
+Further covered source changes require another exact review.
+
+## Exact technical review — accepted PASSWORD CHANGE baseline plus Entra
+
+The aggregate adopts accepted main/alpha `29393c2a50242f76b1f454a8b08073aa90524688`
+and the reviewed Entra/idle source. Its provider closure is 1150 files /
+`2d0f111f921ed5673c59b1a4c52818f1dc31217cee449c486d9b964dfbacaca1`.
+Compared with that accepted baseline, covered changes remain `db/schema.ts`, the capability inventory,
+`lib/entra/{model,sessions,store}.ts`, `lib/internal-auth/{service,web-session}.ts`,
+`lib/permissions.ts`, `lib/session.ts`, the two session-policy helpers and six locale dictionaries.
+The accepted password-policy implementation is preserved; Entra and web idle checks are additive.
+
+Serializers, provider transports, prompts, spend controls, contract definitions and approval validation
+are unchanged. `assistant`, `onehr` and `aiManagement` dictionary subtrees exactly match the accepted
+baseline. New auth actions remain access/authentication handoffs. No raw disclosure, protected purpose,
+contract, model calculation or sensitive autonomous effect is added by the merge.
+
+This is an exact agent technical source review within the existing 24 approved finite-contract purposes,
+not a new human privacy approval or installation acceptance. Only their `sourceDigest` changes;
+original human statuses, reviewers, dates and evidence anchors match the accepted baseline, and the two
+pending blocks remain identical. Generated hashes alone do not establish approval. The module source
+manifest is `55de2b0118d5fc10dd5371cf0b12d80f94376ffff3944f4d1ff30ebdc11252e6`.
+
+
+The final UI scope clarification changes only `passwordPolicy.description` in each locale: recurring
+HR password changes are configured here; Microsoft passwords and Conditional Access are managed in
+Entra. This exact follow-up review adds no payload, contract, permission or human approval event.
+The final 1150-file digest is `adbd370dd31e429d8090b935c4dbaa730a840d50506aa4443b70269205ca1055`; the same 24 record digests
+are rebound with all other fields and both pending blocks unchanged. The regenerated module digest
+is `2e96d752dfe314bf33eb449ab842a2b39577a67a4e07e5cc9645f122b3181274`.
+
+## Noveri conversation wiring
+
+Wiring the live chat through the Teras turn harness (ADR-0169 §5.1, ADR-0170 §11.3 change 4) adds one provider-data
+contract, `teras_harness_turn_v1` (lib/ai/teras-harness-policy.ts), registered for `hr_assistant` conversations only
+(lib/ai/provider-task-registry.ts), and makes `core/teras-wiring/switch.ts` and `core/teras-wiring/turn.ts` roots of
+the provider-data closure, together with the whole-stack review fixes (PR 202). The contract opts in to multi-call
+model responses; the turn runner executes those calls sequentially, in order, under the M7 caps, and nothing new is
+sent to the provider. The closure moves from 1158 files /
+`2ee27ebb5026e363ca31a2c7523cf42b15a57b13c2c6e55e1ca0720bb7f50da2` (accepted main 6ea889365) to 1255 files /
+`a70f0770b74b797ca6f8a70adb9f7e302215ef77a0d85f234330848646803644` (candidate 2689b2f86); the per-file delta is in
+docs/reviews/teras-whole-stack-20261102/binding-packet-6ea.md.
+
+Historical basis (earlier decisions, not the time of this binding): the owner's sign-off of the ADR-0169 privacy
+review, 2 November 2026, "Go ahead, signed off" (exported answers, 2026-11-01T18:24:01Z). Processor route is the tenant's choice among existing adapters; a direct route must be
+attested for zero retention and no training, and OpenRouter requests carry data_collection=deny and zdr=true; UnifyAPI
+needs its own approval. Pay reads only as the caller ("Proceed but only based on the user's access").
+
+Remaining conditions: counsel's advice on PDPA cross-border transfer and the data processing agreement before any real
+tenant data reaches a provider; no tenant switch is on; the staging exception covers fictional data only; a
+production-path ceiling rerun must show this gate passing for the approved contract with 0 errors.
+
+Historical basis, continued: the owner's module-agent digest decision of 2 November 2026, "Yes, let it move".
+
+### Noveri binding approval
+
+The repository owner approved this exact binding packet, docs/reviews/teras-whole-stack-20261102/binding-packet-6ea.md
+at 4635d26b4b5853ad55dddaaef8c202669b5fe067 (provider closure a70f0770…, 1255 files), in the Codex orchestrator root chat
+01a19884-0cb3-7931-a240-3da52cbff083: userMessage 01a19bc1-b780-73d2-89a8-08839ddb38c5 in turn
+01a19bc1-b718-7543-8d5a-44cdcac14d2a, server startedAt 1793614526 = 2026-11-02T10:15:26Z (second precision), in these
+words: "I approve Noveri's exact binding packet at 4635d26b and the bounded 8,192 MB build setting if the final
+6,144 MB build fails. Complete all checks and staging verification; keep System Optimization out until it passes."
+The owner authorised relaying that approval, the packet reference and the release instructions to the Noveri wiring
+session in userMessage 01a19bc7-9d6e-70d2-9f67-49a9588f49a7, turn 01a19bc7-9d03-7073-b127-8e64190e2076, startedAt
+1793614912 = 2026-11-02T10:21:52Z. The message and turn metadata were retrieved from that chat and conveyed to the Noveri session by the Codex
+orchestrator under the owner's explicit relay authorization; they are source-chat times, not relay receipt times. The owner then confirmed
+directly in the Noveri session ("I approve binding-packet-6ea.md at 4635d26b. Write the binding."), received there at
+about 2026-11-02T10:29Z (receipt time, not the recorded approval time).
+
+The 24 approved records receive only the new sourceDigest (status, reviewer, evidence and reviewedAt preserved
+byte-for-byte; both pending records byte-identical), and one record is added: `teras_harness_turn_v1`, approved,
+reviewer human:zenlam repository-owner provisional (the repository's standard owner-provisional reviewer; the relay route
+is recorded in this section), evidence #noveri-binding-approval, reviewedAt 2026-11-02T10:15:26Z.
+
+The module-agent manifest is regenerated last, after these literals, from the accepted baseline
+`ad8874a425084aac18256dfad336bd30d54739346397c6258cbb2417ff4abf12` (456 files); both `--check` commands are then rerun.
+The approval covers this provider closure only and does not transfer to a changed one.
+
+This record is not a runtime PASS, staging acceptance or deployment authorisation.

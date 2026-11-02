@@ -2,7 +2,8 @@
  *
  * The record's `trace` column keeps kinds and counts only (storedTrace): tool and check names, statuses, versions,
  * per-tool disclosure counts, identifier-screen counts and kinds, budgets and the outcome. No reply text, matched
- * phrase, field path, placeholder or person id is stored there; the caller is the record's authority column. The
+ * phrase, field path, placeholder or person id is stored there, and a routed or refused turn names no topic and is
+ * readable only by the person who asked (review B1, migration 0905); the caller is the record's authority column. The
  * trace's field groups map onto the record's columns:
  * caller → authority (the person who asked); calls → reads; reply checks → checks, each labelled with the
  * harness spec version that defined it; spec and model → replay; outcome → outcome. A turn never prepares,
@@ -14,18 +15,23 @@
 import {createHash} from 'node:crypto';
 import type {SessionContext} from '../../db/client';
 import {writeOutcomeRecord,type NoticeState,type OutcomeCheck,type OutcomeRecordInput,type OutcomeRead} from '../outcome-record/record';
+import {isSensitiveReason} from '../../lib/product-context/request-gate';
 import {TRACE_KEYS,type TurnTrace} from './trace';
 
 export const ASSISTANT_AGENT_IDENTITY='teras.assistant' as const;
 const REPLY_CHECK_OWNER='core/harness/reply-checks.ts#checkReply';
 const GATE_OWNER='lib/product-context/request-gate.ts#gateTurn';
 
+/** Review B1: a routed (sensitive-topic) or refused (workplace-harms) turn. Its record names no topic: the gate is kept
+ * as `routed`, and the record is private to the person who asked (migration 0905), never read by a group administrator. */
+export const isPrivateTurn=(trace:Pick<TurnTrace,'gate'>)=>isSensitiveReason(trace.gate.reason)||trace.gate.reason==='workplace_harm';
+const storedGate=(trace:TurnTrace)=>isPrivateTurn(trace)?{privateReads:false,reason:'routed'}:trace.gate;
 const count=<T>(rows:readonly T[],key:(row:T)=>string)=>rows.reduce<Record<string,number>>((out,row)=>{const name=key(row);out[name]=(out[name]??0)+1;return out;},{});
 /** The trace as the outcome record keeps it: kinds and counts only. The `notice` default and retention are the
  * privacy reviewer's decision (ADR-0170 §3.11) and are not changed here. */
 export function storedTrace(trace:TurnTrace):Record<string,unknown>{
  const stored={kind:trace.kind,version:trace.version,turnId:trace.turnId,spec:trace.spec,model:trace.model,
-  gate:trace.gate,offered:[...trace.offered],
+  gate:storedGate(trace),offered:[...trace.offered],
   calls:trace.calls.map(call=>({step:call.step,tool:call.tool,status:call.status,...(call.refusal?{refusal:call.refusal}:{})})),
   disclosure:trace.disclosure.map(row=>({tool:row.tool,entity:row.entity,removed:row.removed.length,banded:row.banded.length,handles:row.handles,
    undeclared:row.undeclared.length,withheld:row.withheld.length,identifiers:row.identifiers,identifierKinds:[...row.identifierKinds]})),
@@ -67,6 +73,7 @@ export function outcomeRecordFromTrace(trace:TurnTrace,options:Readonly<{company
   // A turn answers the person who asked about their own work unless the surface says otherwise.
   notice:options.notice??'not_applicable',
   trace:storedTrace(trace),
+  privateToAsker:isPrivateTurn(trace),
  };
 }
 

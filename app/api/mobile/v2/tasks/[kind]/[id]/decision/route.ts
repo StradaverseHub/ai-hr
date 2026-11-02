@@ -18,7 +18,7 @@ export const POST = mobileRoute(TaskDecisionResult, async (s, req) => {
   const c = command.data;
   // The echoed `expected` must be this kind's shape; `dates` names leave dates to approve, nothing else.
   const shape = 'stepIndex' in c.expected ? 'leave' : 'stageIndex' in c.expected ? 'attendance' : 'claim';
-  if (shape !== (kind === 'leaveCancellation' ? 'leave' : kind)) throw new MobileBadRequest('Expected state does not match the task kind');
+  if (shape !== (kind === 'leaveCancellation' ? 'leave' : kind === 'replacementLeave' ? 'claim' : kind)) throw new MobileBadRequest('Expected state does not match the task kind');
   if (c.dates && (kind !== 'leave' || c.decision !== 'approve')) throw new MobileBadRequest('Dates apply to a leave approval only');
   return decideTaskV2(s, kind, id, c);
 });
