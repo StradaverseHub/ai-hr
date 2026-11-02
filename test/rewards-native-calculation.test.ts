@@ -7,6 +7,7 @@ import {defaultPolicy,emptyFacts,emptyRecommendation,policySchema,transition,typ
 import {calculateOffcycle,offcycleRoute,offcycleTransition} from '../packs/rewards/offcycle';
 import {emptyGovernance,confirmedSeniorAwards,effectiveRewardPolicy,governanceBasis,seniorSourceFingerprint,seniorGrade} from '../packs/rewards/governance-model';
 import {calculateRewards,increase,ratio} from '../packs/rewards/engine';
+import {pgErrorChain} from '../lib/db-error';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule} from './harness';
 let ctx:SessionContext;
 beforeAll(async()=>{await migrateTestDb();await resetDb();const b=await seedBase();await setModule(b.tenantId,'rewards','active');ctx=await entitledCtx(b);});
@@ -175,7 +176,7 @@ it('keeps the private payroll Senior override equal to the native post-purpose c
   const awards={[current.id]:award},controls={poolStatus:'final' as const,bonusPools:{standard:100000,h:50000}},base=calculateRewards(entries,policy,controls);
   const expected=calculateRewards(entries,policy,{...controls,seniorAwards:confirmedSeniorAwards({...emptyGovernance(),awards},entries)});
   const [row]=await owner.db.execute<{value:unknown}>(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(awards)}::jsonb)as value`);expect(row.value).toEqual(expected);
-  for(const bad of [{},{[current.id]:{...award,confirmedBy:null}},{[current.id]:{...award,sourceFingerprint:'stale actual source'}}])await expect(owner.db.execute(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(bad)}::jsonb)`)).rejects.toMatchObject({code:'42501'});
+  for(const bad of [{},{[current.id]:{...award,confirmedBy:null}},{[current.id]:{...award,sourceFingerprint:'stale actual source'}}]){const refused=await owner.db.execute(sql`select app.reward_calc_post_senior(${JSON.stringify(base)}::jsonb,${JSON.stringify(policy)}::jsonb,${JSON.stringify(bad)}::jsonb)`).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'42501'}));return true;});expect(refused).toBe(true);}
  }
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_post_senior('{}','{}','{}')`))).rejects.toThrow();
 });
@@ -187,5 +188,5 @@ it('preserves the native Number.toFixed money conversion after IEEE754 payroll b
   const actual=before+awardCents/100,[row]=await owner.db.execute<{value:string}>(sql`select app.reward_calc_fixed_money(${String(before)}::double precision+${awardCents}::double precision/100::double precision)as value`);expect({before,awardCents,value:row.value}).toEqual({before,awardCents,value:actual.toFixed(2)});
  }
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.reward_calc_fixed_money(1)`))).rejects.toThrow();
- for(const invalid of ['NaN','Infinity','-Infinity','-1','1e21'])await expect(owner.db.execute(sql`select app.reward_calc_fixed_money(${invalid}::double precision)`)).rejects.toMatchObject({code:'22003'});
+ for(const invalid of ['NaN','Infinity','-Infinity','-1','1e21']){const refused=await owner.db.execute(sql`select app.reward_calc_fixed_money(${invalid}::double precision)`).then(()=>false,error=>{expect(pgErrorChain(error)).toContainEqual(expect.objectContaining({code:'22003'}));return true;});expect(refused).toBe(true);}
 });
