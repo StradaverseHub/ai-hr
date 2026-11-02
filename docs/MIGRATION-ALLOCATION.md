@@ -962,3 +962,16 @@ owners, exact birth/source custody and retained independent workflow witnesses. 
 unapplied source, requires aggregate hosted migration/behavior checks and re-audit before
 installation, and grants no deployment authority. The full module-binding item is not yet
 accepted solely by this Workforce checkpoint.
+
+## Lifecycle, Rewards and Notice action owners — 2 November 2026 (provisional source claim)
+
+The parent reserves `0944_lifecycle_rewards_notice_actions`, aggregate idx766 /
+when1793330000344, after the independently owned0941–0943 action families. Source base is
+`e28dfce56732c3dab31ae413aa9ca7bde9a8dde0`, with qualified0940 and shared0939 prerequisites
+merged normally into `codex/approved-board-lifecycle-actions-20261102`.
+
+The fresh source audit inspected3090 local/origin refs,325 unique committed journals and284
+actual worktree journals, finding no0944 filename/timestamp claim. One unrelated conflicted
+worktree journal was also checked textually for this identity. The live watermark was **not
+verified**: this reservation is unapplied and provisional, and must be refreshed against the
+ordered applied ledger and competing claims before admission. It grants no installation authority.

@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import { getTranslations,getLocale } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { noticeAudiencePreview, getNotice,noticeAuthoringScope,noticeAttachmentMetadata } from '@/core/notice';
+import { noticeAudiencePreview, getNotice,noticeAuthoringScope,noticeAttachmentMetadata,noticeActions } from '@/core/notice';
 import { Card, ErrorBanner, PageHeader, SectionHeader, StatusBadge, btnGhost } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
 import { NoticeForm } from '@/components/notice/notice-form';
@@ -50,6 +50,7 @@ export default async function NoticeDetailPage({
 
   const vocab = await criteriaVocabulary(s);
   const authoring=await noticeAuthoringScope(s);
+  const actions=await noticeActions(s,n.id);
   const published = n.publishedAt != null;
   const attachments=await noticeAttachmentMetadata(s,n.id);
   // Only a draft needs a projection — a published notice HAS an audience, and re-resolving it would answer
@@ -82,7 +83,7 @@ export default async function NoticeDetailPage({
             <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{t('everyoneWarning')}</p>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            {!published && !n.archivedAt && (
+            {actions.publish && !published && !n.archivedAt && (
               <form action={publishNoticeAction}>
                 <input type="hidden" name="id" value={n.id} />
                 {/* Publishing is the irreversible act in this module: it resolves and freezes the audience
@@ -98,7 +99,7 @@ export default async function NoticeDetailPage({
                 </ConfirmSubmit>
               </form>
             )}
-            {!n.archivedAt && (
+            {actions.delete && !n.archivedAt && (
               <form action={archiveNoticeAction}>
                 <input type="hidden" name="id" value={n.id} />
                 <ConfirmSubmit
@@ -111,7 +112,7 @@ export default async function NoticeDetailPage({
                 </ConfirmSubmit>
               </form>
             )}
-            {n.archivedAt && (
+            {actions.edit && n.archivedAt && (
               <form action={restoreNoticeAction}>
                 <input type="hidden" name="id" value={n.id} />
                 <button type="submit" className={btnGhost}>
@@ -119,16 +120,16 @@ export default async function NoticeDetailPage({
                 </button>
               </form>
             )}
-            <form action={duplicateNoticeAction}>
+            {actions.add&&<form action={duplicateNoticeAction}>
               <input type="hidden" name="id" value={n.id} />
               <button type="submit" className={btnGhost}>
                 {t('duplicate')}
               </button>
-            </form>
+            </form>}
             {/* Delete is offered ONLY for a draft. A published notice was broadcast to people; deleting it
                 would erase the fact that the announcement was made. The service refuses it too — this is
                 the UX half of that rule, not the enforcement. */}
-            {!published && (
+            {actions.delete && !published && (
               <form action={deleteNoticeAction}>
                 <input type="hidden" name="id" value={n.id} />
                 <ConfirmSubmit
@@ -149,7 +150,7 @@ export default async function NoticeDetailPage({
       <Card>
         <SectionHeader title={t('setupTitle')} />
         <div className="px-4 pb-4 pt-3">
-          <NoticeForm key={n.contentVersion}
+          <NoticeForm key={n.contentVersion} readOnly={!actions.edit}
             authoring={{groupAllowed:authoring.groupAllowed,companies:authoring.companies.map(c=>({value:c.id,label:c.name})),owner:{companyId:n.ownerCompanyId,label:n.ownerCompanyId?(n.ownerCompanyName??t('authoringCompanyUnavailable')):t('groupAuthoring')}}}
             action={updateNoticeAction}
             values={{

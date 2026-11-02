@@ -4537,6 +4537,13 @@
       "when": 1793330000340,
       "tag": "0940_bounded_approval_task_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 766,
+      "version": "7",
+      "when": 1793330000344,
+      "tag": "0944_lifecycle_rewards_notice_actions",
+      "breakpoints": true
     }
   ]
 }

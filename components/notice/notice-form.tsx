@@ -122,7 +122,9 @@ export function NoticeForm({
   targetingFrozen,
   labels,
   authoring,
+  readOnly=false,
 }: {
+  readOnly?:boolean;
   action: Action;
   values: NoticeFormValues;
   /** The notice id, on the EDIT screen only — posted as a hidden field so one form serves create + update. */
@@ -228,6 +230,7 @@ export function NoticeForm({
 
   return (
     <form action={action} className="space-y-6 [&_input[type=text]]:min-h-11 [&_input[type=date]]:min-h-11 [&_select]:min-h-11 [&_button]:min-h-11 [&_label]:min-h-11">
+      <fieldset disabled={readOnly} className="contents">
       {idField && <input type="hidden" name="id" value={idField} />}
       {values.contentVersion!==undefined&&<input type="hidden" name="expectedContentVersion" value={values.contentVersion}/>}
       {attachmentIds.map(id=><input key={id} type="hidden" name="attachmentIds" value={id}/>)}
@@ -543,6 +546,7 @@ export function NoticeForm({
           <span className="text-[11px] text-muted-foreground">{labels.employeeNonePicked}</span>
         )}
       </div>
+      </fieldset>
     </form>
   );
 }
