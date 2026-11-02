@@ -80,6 +80,14 @@ these extra fields are denied. The paying-company label uses the stored paying-c
 
 ## Help, examples, sample values and checks (feedback 02472802, round 2)
 
+Owner clarification (2026-11-02, audit BK39): preserve the all-rows-of-a-code rule for mixed
+instances. Recurring HOUSING RM500 plus one-off HOUSING RM100 has a normal code total of RM600,
+but contributes RM0 to both `fixed_allowances` and `{#FixedAllowances}`. The excluded one-off makes
+that entire code ineligible for this aggregate. The proposed per-instance RM500 aggregate was not
+adopted. Preserve this distinction in future formula changes; it does not remove either instance
+from the ordinary code total.
+
+
 `{#CalendarDays}` and `{#FixedAllowances}` are additive registry entries. CalendarDays reads the
 period length the payroll scope already carries (`calendarDays`). FixedAllowances is the legacy
 `fixed_allowances` aggregate: one row test, `countsTowardFixedAllowances` (which delegates to
