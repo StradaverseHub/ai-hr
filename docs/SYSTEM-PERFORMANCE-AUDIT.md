@@ -21,16 +21,15 @@ permanent API and compatible Access/audit contract; it is not500-user acceptance
 
 New language report: app **329c870ac** removes broad layout/data invalidation and
 same-language rewrites, prevents duplicate submissions and indicates pending work.
-**19 affected checks and whole compiler pass**. Authenticated six-language browser
-timing remains unverified: strict migration/fixture setup now passes, but baseline
-41506755351 fails at the build compiler’s6144-MiB heap. The existing guarded8192-MiB
-build allowance and RSS measurement are applied. Baseline41509413854 was cancelled
-after review caught a wrong diagnostic heading namespace; corrected nonempty actual
-translated-heading diagnostic pair41510160121/41511154455 was cancelled unfinished
-after catching the omitted first-login tour dismissal. The corrected exact-UI pair
-**41511950334/41511960054** is queued/running on identical standard-runner profiles.
-The application runtime stays4GiB/pool10. No timing gain is inferred from unit checks.
-See [language review](reviews/system-performance-language-switch-20261103.md).
+**19 affected checks and whole compiler pass**. The matched real-browser pair is now
+terminal: baseline41511950334 CANCELLED at its20-minute job budget; candidate41511960054
+FAIL. Both builds pass, but both hit the unchanged90-second initial Personnel request
+timeout before any language change. No language-speed improvement is established.
+Candidate full-capture CPU is95.99% idle, including the failed screenshot wait; this
+suggests waiting but does not identify a database cause. A single metadata-only
+wait/HTTP diagnostic19b4f9088 /41515969705 is queued/running without changing app code,
+permissions, load data, runtime resources or action deadlines. No original500 pair
+has been restarted. See [language review](reviews/system-performance-language-switch-20261103.md).
 
 Next: consume a compatible corrected frozen native owner source, pass actual
 installation/auth/scope/audit/rollback/processing controls, then rerun the original

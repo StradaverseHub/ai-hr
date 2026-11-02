@@ -110,14 +110,56 @@ checks, each translated-screen screenshot and a failure screenshot. It does not 
 an onboarding flag directly, alter auth or suppress application errors. Timing starts
 after that normal first-login setup.
 
-Corrected baseline **e494a38acc23e67d2974000d439436a8afd8479e** /
-[41511950334](https://github.com/StradaverseHub/ai-hr/actions/runs/41511950334) and
-candidate **424c37e3d5605c1bbefbf35774d8f1a74fee37eb** /
+## Matched pair: terminal, no language-speed result
+
+Exact baseline **e494a38acc23e67d2974000d439436a8afd8479e** /
+[41511950334](https://github.com/StradaverseHub/ai-hr/actions/runs/41511950334)
+is **CANCELLED** at the existing20-minute selected-tests job limit. Its artifact
+nevertheless records successful migrations, fixture, complete production build
+and a failed browser phase. Candidate **424c37e3d5605c1bbefbf35774d8f1a74fee37eb** /
 [41511960054](https://github.com/StradaverseHub/ai-hr/actions/runs/41511960054)
-are queued/running on standard runners. Their harness bytes and resource budgets are
-identical; only the two application files in329c differ. Neither uses a paid/larger
-runner. The passing focused compiler is retained on329c; actual build/browser
-outcomes remain pending.
+is **FAIL**. Both versions hit the unchanged90-second initial Personnel navigation
+timeout before the first language action. No translated heading or language change
+is qualified; samples/actions remain empty. The retained baseline failure screenshot
+is a blank page. These are not before/after speed measurements.
+
+Both actual production builds pass the existing guarded8192-MiB build profile:
+baseline553,003ms, peak7,691,820KiB; candidate462,968ms, peak8,013,340KiB.
+These peaks measure the largest single waited build process, not total RSS.
+App runtime remains4GiB/pool10. Build passes stay on their exact frozen sources;
+the baseline workflow remains CANCELLED, not relabelled PASS.
+
+Candidate CPU capture totals185,825.505ms, with178,371.52ms idle samples(95.99%).
+This covers the entire capture, including the failed screenshot wait; it is not
+page-only CPU. No closed native SQLSTATE error is captured. Waiting is a hypothesis,
+not proof of a database lock, pool deadlock or specific native function.
+
+Artifacts: /private/tmp/aihr-language-baseline-e494-attempt1 and
+/private/tmp/aihr-language-candidate-424c-attempt1. Extracted independent review:
+/private/tmp/aihr-language-matched-terminal-review-20261103.json.
+
+## Causal initial-navigation diagnostic
+
+Only after both original runs reached terminal did source
+**19b4f9088b6d926dc6bdb69f3c8c01a06143ad8d** add a read-only PostgreSQL wait observer
+and navigation request/header/failure timings. Application/core/native SQL bytes,
+permissions, fixture cardinality, app pool10/heap4GiB, PostgreSQL profile2, all actual
+action/navigation targets and90-second navigation/600-second browser/20-minute job
+budgets remain unchanged. One separate metadata-only observer connection samples
+application sessions/advisory locks every second, capped620samples. It uses the
+existing isolated migration identity, enforces a read-only session and refuses any
+URL except postgres@127.0.0.1:5433/ai_hr_dev. Raw SQL, bound values, cookies and
+credentials are excluded; only command/hash/native function names and wait graph
+metadata are recorded. Monitoring overhead makes this a diagnostic, not latency
+acceptance. The failure screenshot capture alone is bounded10seconds to avoid a
+second90-second metadata wait after the original navigation already failed.
+
+[41515969705](https://github.com/StradaverseHub/ai-hr/actions/runs/41515969705)
+is the single affected-area diagnostic. No matched-pair or original500-user retry is
+started. Both generated source manifest checks retain exact b95f digests; no approved
+binding or native owner function changes. Freshly fetched main is b39f910b4 while
+alpha remains dfbcf85b1; the matched pair is intentionally retained on its original
+base, not silently rebased or adopted as current-main qualification.
 
 No language-speed percentage, completed browser acceptance, deployment, staging slot,
 approval binding refresh or production-equivalent infrastructure is claimed.
