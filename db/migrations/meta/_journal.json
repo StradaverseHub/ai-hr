@@ -4541,34 +4541,36 @@
     {
       "idx": 763,
       "version": "7",
-<<<<<<< HEAD
+      "when": 1793330000347,
+      "tag": "0947_rewards_access_approval_exemptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 764,
+      "version": "7",
       "when": 1793330000348,
       "tag": "0948_document_signing",
       "breakpoints": true
     },
     {
-      "idx": 764,
+      "idx": 765,
       "version": "7",
       "when": 1793330000349,
       "tag": "0949_probation_confirmation",
       "breakpoints": true
     },
     {
-      "idx": 765,
+      "idx": 766,
       "version": "7",
       "when": 1793330000351,
       "tag": "0951_payroll_reprocess_correction_lineage",
       "breakpoints": true
     },
     {
-      "idx": 766,
+      "idx": 767,
       "version": "7",
       "when": 1793330000353,
       "tag": "0953_lifecycle_service_info_intents",
-=======
-      "when": 1793330000347,
-      "tag": "0947_rewards_access_approval_exemptions",
->>>>>>> cdae9db0f8e681871ced90f4e75deb084541630c
       "breakpoints": true
     }
   ]

@@ -967,7 +967,6 @@ the then-installed ledger at integration.
 
 The SQL comments inside these files still name their original provisional numbers; the bodies are kept byte for byte.
 
-<<<<<<< HEAD
 ## Approved feedback implementation — 3 November 2026 (provisional source only)
 
 Fresh main/alpha baseline dfbcf85b1, journal through0929 idx762/when1793330000329. A full local/origin ref and registered worktree journal scan found competing claims through0946/when1793330000346. Rewards owns0947/when347 on its independent branch. This lifecycle branch reserves0948_document_signing atidx763/when1793330000348. Probation0949/when349 and Contract Management0950/when350 are coordinated subsequent independent builds; Payroll reserves0951/when351 only if needed. Aggregate integration must reindex the union and recheck current refs/live ordered ledger; none is applied by this reservation. Existing applied bytes and prefix remain unchanged.
@@ -980,8 +979,7 @@ reserves0953_lifecycle_service_info_intents/when1793330000353 for the fixed opti
 service-info intent dispatcher. Module owners define private exact-transaction predicates; the ordinary
 0579 workforce path remains intact. This is uninstalled source, not ledger or release evidence.
 Reindex the final union and check freshly accepted refs plus the ordered live ledger before installation.
-=======
+
 ## Rewards access approval exemptions — 3 November 2026 (provisional)
 
 codex/approved-rewards-20261103 reserves 0947_rewards_access_approval_exemptions at idx763 / when1793330000347, after the parent scan found all local/origin and registered-worktree claims through0946 / when346. Parent coordinates0948 signing,0949 probation and0950 contracts. Source reservation only; no installation priority or permission. Re-freeze the canonical journal and live applied ledger before integration/application; preserve applied bytes, reindex only this unapplied successor in the aggregate.
->>>>>>> cdae9db0f8e681871ced90f4e75deb084541630c
