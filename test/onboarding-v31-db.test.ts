@@ -542,6 +542,18 @@ describe('V3.1 onboarding database and authorization', () => {
         expect(await projection(tech,'case')).toEqual([]);
         await expect(onboardingNote(tech,row.case.id,{id:note.id,context:'case',body:'CONTEXT-SMUGGLE',mentions:[]})).rejects.toThrow();
         expect((await projection(tech))[0]!.note.body).toBe('Edited assigned conversation');
+        expect((await projection(other))[0]!.note).toMatchObject({ body: 'Edited assigned conversation' });
+        expect((await projection(other))[0]!.note).not.toHaveProperty('revisions');
+        await onboardingNote(tech, row.case.id, { id: note.id, context: 'welcome', body: '', mentions: [], deleted: true });
+        expect(await projection(other)).toEqual([]);
+        expect(await projection(tech)).toEqual([]);
+        const [stored] = await owner.db.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.id, note.id));
+        expect(stored?.data).toMatchObject({ deleted: true, body: 'Edited assigned conversation' });
+        const [beforeRefusal] = await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id, row.case.id));
+        await expect(onboardingNote(other, row.case.id, { context: 'welcome', body: 'Reply after deletion', mentions: [] })).rejects.toThrow();
+        await expect(onboardingNote(other, row.case.id, { id: note.id, context: 'welcome', body: '', mentions: [], resolve: true })).rejects.toThrow();
+        expect(await owner.db.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id, row.case.id))).toEqual([beforeRefusal]);
+        expect(await owner.db.select().from(schema.lcOnboardingNote).where(eq(schema.lcOnboardingNote.id, note.id))).toEqual([stored]);
         expect((await owner.client`select count(*)::int as n from app.lifecycle_native_effect_context`)[0].n).toBe(0);
     });
     it('decides exact hidden assigned approvals with canonical requester auto-approval and no sibling rewrite',async()=>{

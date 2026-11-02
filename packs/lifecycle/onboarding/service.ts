@@ -258,7 +258,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
             visible.selected = [];
             const f = M.effectiveFacts(c);
             visible.source = { fullName: f.fullName, joinDate: f.joinDate, businessGroup: f.businessGroup, company: f.company, title: f.title };
-            visible.tasks = visible.tasks.filter(t => t.assignee === actor.id || thread.some(n => n.data.context === t.id && n.data.mentions.includes(actor.id)));
+            visible.tasks = visible.tasks.filter(t => t.assignee === actor.id || thread.some(n => n.data.context === t.id && liveConversationMention(n.data, c.submittedAt, actor.id)));
         }
         if (mode !== 'case') { delete visible.caseValues; delete visible.caseContactEmail; }
         if (mode === 'requisition' && !actor.module && selectedReq) {
@@ -283,7 +283,13 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
         if(mode==='case')visible=projectJoinerPage(visible,config,actor);
         if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
         if(!actor.module&&(mode==='requisition'||actor.sections?.case==='hidden'))for(const key of Object.keys(labels))if(!['company','businessGroup','title'].includes(key))delete labels[key as keyof M.Facts];
-        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor)), availability: actor.module ? (await environmentTx(tx, ctx, config, [c])).leave : {} as M.Environment['leave'], today: todayInKualaLumpur() };
+        return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || liveConversationMention(n, c.submittedAt, actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor))
+            .filter(n => actor.module || actor.page && actor.sections?.notes === 'view' || !n.deleted)
+            .map(n => {
+                if (actor.module || actor.page && actor.sections?.notes === 'view' || n.by === actor.id) return n;
+                const { revisions: _history, ...current } = n;
+                return current;
+            }), availability: actor.module ? (await environmentTx(tx, ctx, config, [c])).leave : {} as M.Environment['leave'], today: todayInKualaLumpur() };
     });
 }
 const participantTx = async (tx: Tx, id: string) => rows<{
@@ -828,6 +834,10 @@ async function saveConfig(ctx: SessionContext, revision: number, input: M.Config
     };
     return outerTx ? save(outerTx) : withTenant(ctx, save);
 }
+function liveConversationMention(note: M.Note, submittedAt: string | null | undefined, userId: string) {
+    return !note.deleted && (!submittedAt || note.at >= submittedAt) && note.mentions.includes(userId);
+}
+
 export async function onboardingNote(ctx: SessionContext, caseId: string, input: {
     id?: string;
     context: string;
@@ -857,7 +867,7 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
             M.fail('Choose an existing task conversation.');
         const task = c.tasks.find(t => t.id === input.context), r = M.currentReq(c);
         const pageNote=actor.caseActions&&actor.sections?.notes==='view'&&(input.context==='case'||input.context==='requisition'&&actor.sections.equip!=='hidden'||!!task&&(actor.sections.checklist==='all'||actor.sections.checklist==='team'&&(task.assignee===actor.id||M.inGroup(config,task.group,actor.id))));
-        const allowed = actor.module || pageNote || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id))) || thread.some(n => n.context === input.context && n.mentions.includes(actor.id));
+        const allowed = actor.module || pageNote || task?.assignee === actor.id || input.context === 'requisition' && !!r && (requisitionGroupAccess(config,actor.id)||r.items.some(item=>M.inGroup(config,item.team,actor.id))) || thread.some(n => n.context === input.context && liveConversationMention(n, c.submittedAt, actor.id));
         if (!allowed)
             M.fail('This conversation is not available.', 'forbidden');
         if (c.state === 'cancelled')
@@ -870,7 +880,7 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
             if (!existing)
                 M.fail('Note not found.');
             if (input.resolve) {
-                if (!existing.mentions.includes(actor.id))
+                if (existing.context !== input.context || !liveConversationMention(existing, c.submittedAt, actor.id))
                     M.fail('This mention is not assigned to you.', 'forbidden');
                 existing.resolved = [...new Set([...existing.resolved, actor.id])];
             }
@@ -896,7 +906,7 @@ export async function onboardingNote(ctx: SessionContext, caseId: string, input:
             const note: M.Note = { id: randomUUID(), context: input.context, body: input.body.trim(), by: actor.id, name: actor.name, at: new Date().toISOString(), edited: false, mentions: input.mentions, resolved: [], deleted: false };
             await tx.insert(notes).values({ id: note.id, tenantId: ctx.tenantId, caseId, data: note });
             // A reply resolves only mentions of its author in this conversation.
-            for (const old of thread.filter(n => n.context === input.context && n.mentions.includes(actor.id) && !n.resolved.includes(actor.id) && (!c.submittedAt || n.at >= c.submittedAt))) {
+            for (const old of thread.filter(n => n.context === input.context && liveConversationMention(n, c.submittedAt, actor.id) && !n.resolved.includes(actor.id))) {
                 old.resolved.push(actor.id);
                 await tx.update(notes).set({ data: old }).where(eq(notes.id, old.id));
             }

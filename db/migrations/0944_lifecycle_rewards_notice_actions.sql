@@ -814,11 +814,23 @@ DO $$ DECLARE key text;operation text;BEGIN
  END LOOP;
 END $$;
 --> statement-breakpoint
+-- A mention grants the shared conversation only while its current note remains
+-- visible in the same submission. Resolved live mentions still allow a reply.
+CREATE FUNCTION app.onboarding_live_conversation_mention(p_note jsonb,p_submitted_at text,p_user uuid)RETURNS boolean
+LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,pg_temp AS $$
+ SELECT coalesce(
+  NOT coalesce((p_note->>'deleted')::boolean,false)
+  AND (p_submitted_at IS NULL OR p_note->>'at'>=p_submitted_at)
+  AND (p_note->'mentions')?p_user::text,
+  false
+ );
+$$;
+REVOKE ALL ON FUNCTION app.onboarding_live_conversation_mention(jsonb,text,uuid)FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.onboarding_conversation_assigned(p_case uuid,p_context text)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.lc_onboarding_case c JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND(EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks')t WHERE t->>'id'=p_context AND t->>'assignee'=u.id::text)
- OR EXISTS(SELECT 1 FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=c.tenant_id AND n.data->>'context'=p_context AND n.data->'mentions'?u.id::text)));
+ OR EXISTS(SELECT 1 FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=c.tenant_id AND n.data->>'context'=p_context AND app.onboarding_live_conversation_mention(n.data,c.data->>'submittedAt',u.id))));
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_conversation_assigned(uuid,text)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_conversation_assigned(uuid,text)TO ai_hr_app;
@@ -844,7 +856,7 @@ BEGIN
   IF note.data->>'context'IS DISTINCT FROM p_context THEN RAISE EXCEPTION 'This conversation is not available.'USING ERRCODE='42501';END IF;
   next_note:=note.data;
   IF coalesce(p_resolve,false)THEN
-   IF NOT(note.data->'mentions'?app.current_user_id()::text)THEN RAISE EXCEPTION 'This mention is not assigned to you.'USING ERRCODE='42501';END IF;
+   IF NOT app.onboarding_live_conversation_mention(note.data,c.data->>'submittedAt',app.current_user_id())THEN RAISE EXCEPTION 'This mention is not assigned to you.'USING ERRCODE='42501';END IF;
    IF NOT(next_note->'resolved'?app.current_user_id()::text)THEN next_note:=jsonb_set(next_note,'{resolved}',coalesce(next_note->'resolved','[]'::jsonb)||jsonb_build_array(app.current_user_id()));END IF;
   ELSE
    IF note.data->>'by'IS DISTINCT FROM app.current_user_id()::text THEN RAISE EXCEPTION 'Only the author can edit a note.'USING ERRCODE='42501';END IF;
@@ -860,7 +872,7 @@ BEGIN
  IF p_note IS NOT NULL THEN UPDATE public.lc_onboarding_note SET data=next_note WHERE id=note.id;
  ELSE
   INSERT INTO public.lc_onboarding_note(id,tenant_id,case_id,data)VALUES((next_note->>'id')::uuid,c.tenant_id,c.id,next_note);
-  FOR old_note IN SELECT * FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=c.tenant_id AND n.data->>'context'=p_context AND n.data->'mentions'?app.current_user_id()::text AND NOT(n.data->'resolved'?app.current_user_id()::text)AND(c.data->>'submittedAt'IS NULL OR n.data->>'at'>=c.data->>'submittedAt')LOOP
+  FOR old_note IN SELECT * FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=c.tenant_id AND n.data->>'context'=p_context AND app.onboarding_live_conversation_mention(n.data,c.data->>'submittedAt',app.current_user_id()) AND NOT(n.data->'resolved'?app.current_user_id()::text)LOOP
    UPDATE public.lc_onboarding_note SET data=jsonb_set(old_note.data,'{resolved}',coalesce(old_note.data->'resolved','[]'::jsonb)||jsonb_build_array(app.current_user_id()))WHERE id=old_note.id;
   END LOOP;
  END IF;
@@ -877,7 +889,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  SELECT co IS NOT NULL AND cap IN('function.lifecycle.shared.conversations.view','function.lifecycle.shared.conversations.execute')
  AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))
  AND EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.tenant_id=t AND c.company_id=co AND(EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks')task WHERE task->>'assignee'=u::text)
- OR EXISTS(SELECT 1 FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=t AND n.data->'mentions'?u::text)));
+ OR EXISTS(SELECT 1 FROM public.lc_onboarding_note n WHERE n.case_id=c.id AND n.tenant_id=t AND app.onboarding_live_conversation_mention(n.data,c.data->>'submittedAt',u))));
 $$;
 CREATE FUNCTION app.lifecycle_conversation_function_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -892,10 +904,12 @@ END $$;
 --> statement-breakpoint
 CREATE FUNCTION app.onboarding_conversation_rows(p_case uuid,p_context text)RETURNS SETOF jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT n.data FROM public.lc_onboarding_note n JOIN public.lc_onboarding_case c ON c.id=n.case_id AND c.tenant_id=n.tenant_id
+ SELECT CASE WHEN n.data->>'by'=app.current_user_id()::text THEN n.data ELSE n.data-'revisions' END
+ FROM public.lc_onboarding_note n JOIN public.lc_onboarding_case c ON c.id=n.case_id AND c.tenant_id=n.tenant_id
  WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND n.data->>'context'=p_context
  AND app.onboarding_conversation_assigned(c.id,p_context)AND app.function_action_allowed('lifecycle.shared.conversations','view',c.company_id)
- AND(n.data->>'by'=app.current_user_id()::text OR n.data->'mentions'?app.current_user_id()::text OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks')task WHERE task->>'id'=p_context AND task->>'assignee'=app.current_user_id()::text))ORDER BY n.created_at,n.id;
+ AND NOT coalesce((n.data->>'deleted')::boolean,false)
+ AND(n.data->>'by'=app.current_user_id()::text OR app.onboarding_live_conversation_mention(n.data,c.data->>'submittedAt',app.current_user_id()) OR EXISTS(SELECT 1 FROM jsonb_array_elements(c.data->'tasks')task WHERE task->>'id'=p_context AND task->>'assignee'=app.current_user_id()::text))ORDER BY n.created_at,n.id;
 $$;
 REVOKE ALL ON FUNCTION app.onboarding_conversation_rows(uuid,text)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_conversation_rows(uuid,text)TO ai_hr_app;
