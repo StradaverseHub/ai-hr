@@ -133,6 +133,17 @@ Generated source manifests are9efe0514d61b3be4e5ce6c6ad80909e69ec3135b134b347be3
 regenerate these same metadata files for this task. Literal bindings are unchanged;
 provider egress remains blocked for this source.
 
+## Native current-policy follow-up
+
+A private prototype on a published policy-equivalent security snapshot now qualifies
+statement-local principal-proof reuse:4,096 records3,215.04→919.89ms for the same wide
+projection (71.39% lower),859.68ms for a bounded variant. All26 native comparisons,
+same-transaction profile/role/actor revocation and native error/rollback controls pass;
+public source stays unchanged. The full-width variant is a review-only proposal,
+not integrated application code, full-current-owner or500-user acceptance. Exact
+failures, identities, proof-counter measurements and required ownership handoff are
+in the [native projection review](system-performance-personnel-native-projection-20261102.md).
+
 ## Live observation and remaining work
 
 Read-only staging checks verify its release-state source and on-disk build agree;

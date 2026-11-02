@@ -21,6 +21,16 @@ single-HR-reader fixtures do not qualify the newer security policy or million-re
 Personnel capacity. The existing full wide projection before paging is the next
 native owner seam; see the same Personnel review for immutable identities and bounds.
 
+A private current-policy native follow-up now qualifies a simpler statement-local
+principal-proof variant:4,096 records3,215.04→919.89ms (71.39% lower); bounded variant
+859.68ms. Native24cdd317c/41469752734 passes26 comparisons and same-transaction
+profile/role/actor freshness plus error/rollback/public-identity controls;da3b whole
+compiler and3 snapshot passes retain their original source. A separate sample reduces
+principal-proof queries4,099→3 for the wide variant. This is not primary application
+integration or whole-system acceptance. Review-only patch waits for a complete
+published security-owner incorporation/frozen seam; its published605b currently
+fails migration/compiler prerequisites. See [native projection review](reviews/system-performance-personnel-native-projection-20261102.md).
+
 The primary draft now includes this qualified Personnel change and the genuine
 self-approval test-fixture repair alongside its earlier performance work. The punch-audit, shell and authentication variants
 remain separate. Existing bounded remote Personnel search is still in this candidate;
