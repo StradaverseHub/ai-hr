@@ -370,12 +370,13 @@ export type OnboardingCommand = ({ type: 'equipmentBulk' } & M.EquipmentBulk) | 
 export async function onboardingCommand(ctx: SessionContext, id: string, revision: number, command: OnboardingCommand) {
     command = onboardingCommandSchema.parse(command);
     jsonSize(command);
-    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'||command.type==='approve'){
+    if(command.type==='task'||command.type==='handover'||command.type==='readNote'||command.type==='acknowledge'||command.type==='fulfil'||command.type==='approve'||command.type==='assignApproval'){
         const taskCommand=command;
         return withTenant(ctx,async tx=>{
             let result:{revision:number;employment_id:string|null;company_id:string;did_change?:boolean};
             try{
                 if(taskCommand.type==='task')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_assigned_task_update(${id}::uuid,${revision},${taskCommand.taskId},${taskCommand.status})`);
+                else if(taskCommand.type==='assignApproval')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_assign(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.stepId},${taskCommand.user})`);
                 else if(taskCommand.type==='approve')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_approval_decide(${id}::uuid,${revision},${JSON.stringify(taskCommand.itemIds)}::jsonb,${taskCommand.decision})`);
                 else if(taskCommand.type==='fulfil')[result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_fulfil_item(${id}::uuid,${revision},${taskCommand.itemId},${taskCommand.status})`);
                 else [result]=await tx.execute<{revision:number;employment_id:string|null;company_id:string}>(sql`select * from app.onboarding_delivery_update(${id}::uuid,${revision},${taskCommand.type},${JSON.stringify(taskCommand.type==='acknowledge'?taskCommand.data:{})}::jsonb)`);
@@ -482,9 +483,6 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 break;
             case 'assignTask':
                 M.manualTask(config, c, command.taskId, command.user, actor, env, command.roundRobin);
-                break;
-            case 'assignApproval':
-                M.assignApproval(config, c, command.itemId, command.stepId, command.user, actor, env);
                 break;
             case 'removeItem': {
                 const i = r?.items.find(i => i.id === command.itemId);
@@ -956,14 +954,6 @@ export async function onboardingTasks(ctx: SessionContext): Promise<OnboardingTa
             if (r && !r.cancelledAt && !r.handedAt) {
                 if (actor.module && r.items.some(i => !i.removed && !i.team))
                     add({ kind: 'owner', title: 'Choose a fulfilling team', itemIds: r.items.filter(i => !i.removed && !i.team).map(i => i.id) });
-                const manual = new Set<string>();
-                for (const i of r.items.filter(i => !i.removed)) {
-                    for (const s of i.steps)
-                        if (M.stepOpen(i, s) && s.manual && !s.user && M.inGroup(config, s.group, actor.id) && !manual.has(s.id + ':' + s.group)) {
-                            manual.add(s.id + ':' + s.group);
-                            add({ kind: 'manualApproval', title: 'Choose an approver: ' + s.label, itemIds: [i.id], stepId: s.id, team: true });
-                        }
-                }
             }
         }
         // Fixed actual-assignee projection also covers a task whose subject is outside the user's
@@ -1395,7 +1385,7 @@ export async function onboardingRecoverHoldingTx(ctx: SessionContext, tx: Tx, em
 export async function onboardingBoundedTask(ctx:SessionContext,taskId:string){
     if(typeof taskId!=='string'||taskId.length===0||taskId.length>500||/[\u0000-\u001f]/.test(taskId))M.fail('This work is not available.','forbidden');
     return withTenant(ctx,async tx=>{
-        const [row]=await tx.execute<{detail:{task:OnboardingTask;body:string;notes:M.Note[];requestNumber:string|null;items?:{id:string;name:string}[]}|null}>(sql`select app.onboarding_delivery_task_detail(${taskId})as detail`);
+        const [row]=await tx.execute<{detail:{task:OnboardingTask;body:string;notes:M.Note[];requestNumber:string|null;items?:{id:string;name:string}[];candidates?:{id:string;name:string}[]}|null}>(sql`select app.onboarding_delivery_task_detail(${taskId})as detail`);
         if(!row?.detail)M.fail('This work is not available.','forbidden');return row.detail;
     });
 }

@@ -60,6 +60,14 @@ describe('V3.1 localized task controls', () => {
         expect(mocks.load).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:translation('en','Approve all')}));
         await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'approve',itemIds:['item'],decision:'approve'}));
     });
+    it('chooses a current native approval-group candidate without opening a private case',async()=>{
+        const bounded={...task,id:'case:manualApproval:item:step',kind:'manualApproval' as const,itemIds:['item'],stepId:'step',taskId:undefined,bounded:true,canExecute:true};
+        mocks.bounded.mockResolvedValue({error:null,detail:{task:bounded,body:'',notes:[],requestNumber:'IT-REQ-1',items:[{id:'item',name:'Fictional selected laptop'}],candidates:[{id:'candidate',name:'Fictional eligible colleague'}]}});
+        render(<NextIntlClientProvider locale="en"messages={messages('en')}timeZone="Asia/Kuala_Lumpur"><TasksView items={[bounded]}existing={[]}/></NextIntlClientProvider>);
+        fireEvent.click(screen.getByRole('button',{name:translation('en','Choose an approver')}));await waitFor(()=>expect(screen.getByRole('option',{name:'Fictional eligible colleague'})).toBeVisible());
+        expect(mocks.load).not.toHaveBeenCalled();fireEvent.change(screen.getByRole('combobox',{name:translation('en','Choose an approver')}),{target:{value:'candidate'}});fireEvent.click(screen.getByRole('button',{name:translation('en','Choose an approver')}));
+        await waitFor(()=>expect(mocks.change).toHaveBeenCalledWith('case',7,{type:'assignApproval',itemId:'item',stepId:'step',user:'candidate'}));
+    });
     it('autosaves checklist tasks without unrelated configuration writes and sequences revisions', async () => {
         const config = defaultConfig('owner');
         config.checklists[0]!.tasks = [{ id: 'welcome', name: 'Welcome', by: 'group', group: 'people-gbs', method: 'manual', opens: null, due: 1, gate: false }];

@@ -9,7 +9,7 @@ import { v9OwnTask, onboardingSetup, onboardingContext, onboardingList, onboardi
 import { appendEvent, actorOf } from '../db/events';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { dayDate,decide as canonicalDecide } from '../lib/onboarding-model';
+import { dayDate,decide as canonicalDecide,assignApproval as canonicalAssignApproval } from '../lib/onboarding-model';
 import { onboardingConfigSchema } from '../lib/onboarding-validation';
 describe('V3.1 onboarding database and authorization', () => {
     let b: Base, admin: SessionContext, tech: SessionContext, other: SessionContext;
@@ -379,6 +379,26 @@ describe('V3.1 onboarding database and authorization', () => {
         const decisions=(entry:typeof item)=>entry.steps.map(({when,...step})=>step);expect(decisions(actual)).toEqual(decisions(wanted));expect(actual.approval).toBe('approved');
         expect(updated.tasks).toEqual(expected.tasks);expect(updated.source).toEqual(expected.source);expect(updated.local).toEqual(expected.local);
         const history=(c:typeof expected)=>c.history.slice(row.case.history.length).map(({id,at,...entry})=>entry);expect(history(updated)).toEqual(history(expected));
+        expect((await onboardingTasks(tech)).some(task=>task.id===review.task.id)).toBe(false);
+    });
+    it('assigns only the actual pending approval group across its recorded siblings under hidden data scope',async()=>{
+        const context=await onboardingContext(admin),config=structuredClone(context.config);config.workflows[0]!.steps[0]!.method='manual';config.catalogue[0]!.workflow='standard';config.catalogue.push({...config.catalogue[0]!,id:'vpn',name:'Fictional VPN'});config.groups.find(group=>group.id==='tech-bp')!.members=[tech.userId!,admin.userId!];
+        await onboardingSaveConfig(admin,context.revision,config);await draft();let row=(await onboardingList(admin))[0]!;
+        await onboardingCommand(admin,row.case.id,row.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:'Manager'},selected:['m365','vpn']}});row=(await onboardingList(admin))[0]!;const item=row.case.requisitions[0]!.items[0]!,step=item.steps[0]!;
+        expect(step).toMatchObject({manual:true,user:null,status:'pending'});
+        const id=randomUUID(),revision=randomUUID();await owner.client`insert into data_permission_profile(id,tenant_id,name)values(${id},${b.tenantId},${'Manual approval scope '+id})`;
+        await owner.client`insert into data_permission_revision(id,tenant_id,profile_id,rules,created_by)values(${revision},${b.tenantId},${id},${JSON.stringify({legacyCompany:false,predicates:[{field:'department',values:[randomUUID()]}]})}::text::jsonb,${admin.userId!})`;
+        await owner.client`update data_permission_profile set enabled=true,active_revision_id=${revision} where id=${id}`;
+        await owner.client`insert into user_data_permission_assignment(tenant_id,user_id,profile_id,assigned_by)values(${b.tenantId},${tech.userId!},${id},${admin.userId!})`;
+        expect(await withTenant(tech,tx=>tx.select().from(schema.lcOnboardingCase).where(eq(schema.lcOnboardingCase.id,row.case.id)))).toEqual([]);
+        const task=(await onboardingTasks(tech)).find(task=>task.kind==='manualApproval'&&task.caseId===row.case.id)!;expect(task).toMatchObject({bounded:true,stepId:step.id});
+        const review=await onboardingBoundedTask(tech,task.id);expect(review.candidates?.map(candidate=>candidate.id)).toEqual([tech.userId,admin.userId]);expect(review.candidates?.find(candidate=>candidate.id===admin.userId)?.name).toBe('User '+admin.userId!.slice(0,8));
+        await expect(onboardingCommand(other,row.case.id,row.revision,{type:'assignApproval',itemId:item.id,stepId:step.id,user:tech.userId!})).rejects.toThrow();
+        await expect(onboardingCommand(tech,row.case.id,row.revision,{type:'assignApproval',itemId:item.id,stepId:step.id,user:other.userId!})).rejects.toThrow('member');
+        await expect(withTenant(tech,tx=>tx.execute(sql`select * from app.onboarding_approval_assign(${row.case.id}::uuid,${row.revision},${item.id},${step.id},${tech.userId!})`))).rejects.toThrow();
+        const expected=structuredClone(row.case);canonicalAssignApproval(config,expected,item.id,step.id,tech.userId!,{id:tech.userId!,name:'Kevin Tech',master:false,hr:false,module:false},{now:'2026-11-02T00:00:00.000Z',today:todayInKualaLumpur(),id:randomUUID,nextNumber:()=>'',leave:{},taskLoads:{},lastTaskAssignment:{},pendingApprovals:{},lifetimeApprovals:{},users:[tech.userId!,admin.userId!]});
+        await onboardingCommand(tech,row.case.id,row.revision,{type:'assignApproval',itemId:item.id,stepId:step.id,user:tech.userId!});const actual=(await onboardingList(admin))[0]!.case;
+        const selections=(c:typeof actual)=>c.requisitions[0]!.items.map(item=>item.steps.map(({when,assignments,...step})=>({...step,assignments:assignments.map(({at,...assignment})=>assignment)})));expect(selections(actual)).toEqual(selections(expected));expect(actual.tasks).toEqual(expected.tasks);
         expect((await onboardingTasks(tech)).some(task=>task.id===review.task.id)).toBe(false);
     });
     it('preserves the same case when Personnel activates its draft', async () => {

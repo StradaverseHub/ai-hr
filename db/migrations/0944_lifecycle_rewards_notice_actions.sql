@@ -193,7 +193,7 @@ REVOKE ALL ON app.lifecycle_native_effect_context,app.lifecycle_native_effect_re
 CREATE FUNCTION app.lifecycle_assigned_task_function(p_case uuid,p_purpose text,p_operation text)RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN p_purpose='assigned-task' THEN EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND app.function_action_allowed('lifecycle.shared.tasks',p_operation,c.company_id))
- WHEN p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval') THEN EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND app.function_action_allowed(CASE p_purpose WHEN 'assigned-onboarding-task' THEN 'lifecycle.shared.tasks' WHEN 'assigned-onboarding-handover' THEN 'lifecycle.shared.handover' WHEN 'assigned-onboarding-note' THEN 'lifecycle.shared.requisitionNotes' WHEN 'assigned-onboarding-conversation' THEN 'lifecycle.shared.conversations' WHEN 'assigned-onboarding-fulfil' THEN 'lifecycle.shared.fulfilment' WHEN 'assigned-onboarding-approval' THEN 'lifecycle.shared.approvals' ELSE 'lifecycle.self.acknowledgement' END,CASE WHEN p_purpose='assigned-onboarding-approval'AND p_operation='execute'THEN'approve'ELSE p_operation END,c.company_id))ELSE false END;
+ WHEN p_purpose IN('assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') THEN EXISTS(SELECT 1 FROM public.lc_onboarding_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND app.function_action_allowed(CASE p_purpose WHEN 'assigned-onboarding-task' THEN 'lifecycle.shared.tasks' WHEN 'assigned-onboarding-handover' THEN 'lifecycle.shared.handover' WHEN 'assigned-onboarding-note' THEN 'lifecycle.shared.requisitionNotes' WHEN 'assigned-onboarding-conversation' THEN 'lifecycle.shared.conversations' WHEN 'assigned-onboarding-fulfil' THEN 'lifecycle.shared.fulfilment' WHEN 'assigned-onboarding-approval' THEN 'lifecycle.shared.approvals' WHEN 'assigned-onboarding-approval-assignment' THEN 'lifecycle.shared.approvalAssignments' ELSE 'lifecycle.self.acknowledgement' END,CASE WHEN p_purpose='assigned-onboarding-approval'AND p_operation='execute'THEN'approve'ELSE p_operation END,c.company_id))ELSE false END;
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_assigned_task_function(uuid,text,text) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
@@ -202,11 +202,11 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE result uuid;
 BEGIN
  IF NOT app.principal_snapshot_current() OR app.current_user_id() IS NULL OR p_case IS NULL
-  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval')
-  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve')
+  OR p_purpose NOT IN('own-daa','own-document','assigned-task','own-return-report','assigned-item','own-equipment-receipt','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment')
+  OR p_event NOT IN('lifecycle-case.daa-submitted','lifecycle-v9.employeeDocumentSigned','lifecycle-v9.employeeDocumentSaved','lifecycle-v9.assignedTaskUpdated','lifecycle-v9.returnReported','lifecycle-v9.providingTeamItemUpdated','lifecycle-v9.equipmentReceipt','onboarding.task','onboarding.handover','onboarding.readNote','onboarding.acknowledge','onboarding.note_changed','onboarding.fulfil','onboarding.approve','onboarding.assignApproval')
   OR EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.active)
  THEN RAISE EXCEPTION 'Invalid native Lifecycle effect context' USING ERRCODE='42501';END IF;
- IF p_purpose IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval') AND NOT app.lifecycle_assigned_task_function(p_case,p_purpose,'execute')THEN RAISE EXCEPTION 'Assigned task function unavailable' USING ERRCODE='42501';END IF;
+ IF p_purpose IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') AND NOT app.lifecycle_assigned_task_function(p_case,p_purpose,'execute')THEN RAISE EXCEPTION 'Assigned task function unavailable' USING ERRCODE='42501';END IF;
  INSERT INTO app.lifecycle_native_effect_context(xact_id,tenant_id,user_id,purpose,case_id,event_type)
  VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),p_purpose,p_case,p_event)RETURNING id INTO result;
  RETURN result;
@@ -274,7 +274,7 @@ CREATE FUNCTION app.lifecycle_native_effect_approved(p_table text,p_before jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c JOIN app.lifecycle_native_effect_receipt r ON r.context_id=c.id
  WHERE c.xact_id=pg_current_xact_id() AND c.tenant_id=app.current_tenant_id() AND c.user_id=app.current_user_id() AND c.completed AND NOT c.active
- AND (c.purpose NOT IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval') OR app.lifecycle_assigned_task_function(c.case_id,c.purpose,'execute'))
+ AND (c.purpose NOT IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') OR app.lifecycle_assigned_task_function(c.case_id,c.purpose,'execute'))
  AND r.table_name=p_table AND r.before_hash=encode(sha256(convert_to(coalesce(p_before,'{}'::jsonb)::text,'UTF8')),'hex') AND r.after_hash=encode(sha256(convert_to(coalesce(p_after,'{}'::jsonb)::text,'UTF8')),'hex')
  AND EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=c.tenant_id AND e.aggregate_id=c.case_id AND e.event_type=c.event_type AND e.actor_type='user' AND e.actor_id=c.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e))));
 $$;
@@ -284,7 +284,7 @@ CREATE FUNCTION app.lifecycle_native_effect_cleanup()RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
  IF NOT EXISTS(SELECT 1 FROM app.lifecycle_native_effect_context c WHERE c.id=NEW.id)THEN RETURN NULL;END IF;
- IF NOT NEW.completed OR NEW.active OR (NEW.purpose IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval') AND NOT app.lifecycle_assigned_task_function(NEW.case_id,NEW.purpose,'execute')) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
+ IF NOT NEW.completed OR NEW.active OR (NEW.purpose IN('assigned-task','assigned-onboarding-task','assigned-onboarding-handover','assigned-onboarding-note','own-onboarding-ack','assigned-onboarding-conversation','assigned-onboarding-fulfil','assigned-onboarding-approval','assigned-onboarding-approval-assignment') AND NOT app.lifecycle_assigned_task_function(NEW.case_id,NEW.purpose,'execute')) OR NOT EXISTS(SELECT 1 FROM public.domain_event e WHERE e.tenant_id=NEW.tenant_id AND e.aggregate_id=NEW.case_id AND e.event_type=NEW.event_type AND e.actor_type='user' AND e.actor_id=NEW.user_id AND app.lifecycle_row_in_transaction('domain_event',e.id,to_jsonb(e)))
  THEN RAISE EXCEPTION 'Native Lifecycle completion requires its actual audit event' USING ERRCODE='42501';END IF;
  DELETE FROM app.lifecycle_native_effect_context WHERE id=NEW.id;
  RETURN NULL;
@@ -873,7 +873,7 @@ GRANT EXECUTE ON FUNCTION app.onboarding_fulfil_item(uuid,integer,text,text)TO a
 -- and unresolved mentions. No private parent or sibling task payload is returned.
 CREATE FUNCTION app.onboarding_delivery_task_rows()RETURNS TABLE(task jsonb,updated_at timestamptz)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE c public.lc_onboarding_case;cfg jsonb;request jsonb;item jsonb;note public.lc_onboarding_note;facts jsonb;base jsonb;due text;claim_name text;actionable jsonb;explicit_assignment boolean;today date:=(now()AT TIME ZONE'Asia/Kuala_Lumpur')::date;actor uuid:=app.current_user_id();
+DECLARE c public.lc_onboarding_case;cfg jsonb;request jsonb;item jsonb;note public.lc_onboarding_note;facts jsonb;base jsonb;due text;claim_name text;actionable jsonb;explicit_assignment boolean;step jsonb;seen_groups text[];today date:=(now()AT TIME ZONE'Asia/Kuala_Lumpur')::date;actor uuid:=app.current_user_id();
 BEGIN
  IF NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=actor AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))THEN RETURN;END IF;
  SELECT data INTO cfg FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id();
@@ -882,6 +882,15 @@ BEGIN
   base:=jsonb_build_object('caseId',c.id,'revision',c.revision,'joiner',coalesce(facts->>'fullName',''),'businessGroup',coalesce(facts->>'businessGroup',''),'joinDate',coalesce(facts->>'joinDate',''),'due',coalesce(facts->>'joinDate',''),'overdue',coalesce(facts->>'joinDate','')<>'' AND facts->>'joinDate'<today::text,'assigned',false,'tagged',false,'team',true,'bounded',true);
   SELECT r INTO request FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY q(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
   IF request IS NOT NULL AND request->>'handedAt'IS NULL THEN
+   IF app.function_action_allowed('lifecycle.shared.approvalAssignments','view',c.company_id)THEN
+    seen_groups:=ARRAY[]::text[];
+    FOR item IN SELECT i FROM jsonb_array_elements(request->'items')i WHERE NOT(i->>'removed')::boolean LOOP
+     FOR step IN SELECT s FROM jsonb_array_elements(item->'steps')WITH ORDINALITY q(s,n)WHERE item->>'approval'='pending'AND s->>'status'IN('pending','unresolved')AND coalesce((s->>'manual')::boolean,false)AND s->>'user'IS NULL AND app.onboarding_group_member(s->>'group')AND(item->>'mode'='par'OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(item->'steps')WITH ORDINALITY prior(p,m)WHERE m<n AND p->>'status'<>'approved'))ORDER BY n LOOP
+      IF(step->>'id')||':'||(step->>'group')=ANY(seen_groups)THEN CONTINUE;END IF;seen_groups:=array_append(seen_groups,(step->>'id')||':'||(step->>'group'));
+      task:=base||jsonb_build_object('id',c.id::text||':manualApproval:'||(item->>'id')||':'||(step->>'id'),'kind','manualApproval','title','Choose an approver: '||(step->>'label'),'itemIds',jsonb_build_array(item->>'id'),'stepId',step->>'id','canExecute',app.function_action_allowed('lifecycle.shared.approvalAssignments','execute',c.company_id));updated_at:=c.updated_at;RETURN NEXT;
+     END LOOP;
+    END LOOP;
+   END IF;
    IF app.function_action_allowed('lifecycle.shared.approvals','view',c.company_id)THEN
     SELECT jsonb_agg(i->>'id'ORDER BY n)INTO actionable FROM jsonb_array_elements(request->'items')WITH ORDINALITY q(i,n)
     WHERE NOT(i->>'removed')::boolean AND i->>'approval'='pending'AND EXISTS(SELECT 1 FROM jsonb_array_elements(i->'steps')WITH ORDINALITY steps(s,m)WHERE s->>'status'='pending'AND(NOT coalesce((s->>'manual')::boolean,false)OR s->>'user'IS NOT NULL)AND(i->>'mode'='par'OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(i->'steps')WITH ORDINALITY prior(p,k)WHERE k<m AND p->>'status'<>'approved'))AND(s->>'user'=actor::text OR app.onboarding_group_member(s->>'group')));
@@ -934,7 +943,7 @@ GRANT EXECUTE ON FUNCTION app.onboarding_checklist_task_rows()TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.onboarding_delivery_task_detail(p_task text)RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE selected jsonb;c public.lc_onboarding_case;request jsonb;body text:='';conversation jsonb:='[]'::jsonb;
+DECLARE selected jsonb;c public.lc_onboarding_case;request jsonb;body text:='';conversation jsonb:='[]'::jsonb;candidate_group text;candidates jsonb:='[]'::jsonb;
 BEGIN
  SELECT r.task INTO selected FROM(SELECT task FROM app.onboarding_delivery_task_rows()UNION ALL SELECT task FROM app.onboarding_checklist_task_rows())r WHERE r.task->>'id'=p_task;
  IF selected IS NULL THEN RETURN NULL;END IF;
@@ -943,7 +952,14 @@ BEGIN
  selected:=selected||jsonb_build_object('canReply',selected->>'kind'IN('mention','checklist')AND app.function_action_allowed('lifecycle.shared.conversations','execute',c.company_id));
  IF selected->>'kind'='hrNote'THEN body:=coalesce(request->>'hrNote','');END IF;
  IF selected->>'kind'IN('mention','checklist')THEN SELECT coalesce(jsonb_agg(n),'[]'::jsonb)INTO conversation FROM app.onboarding_conversation_rows(c.id,selected->>'context')n;END IF;
- RETURN jsonb_build_object('task',selected,'body',body,'notes',conversation,'requestNumber',request->>'number','items',CASE WHEN selected->>'kind'='approval'THEN(SELECT coalesce(jsonb_agg(jsonb_build_object('id',i->>'id','name',i->>'name')),'[]'::jsonb)FROM jsonb_array_elements(request->'items')i WHERE selected->'itemIds'?(i->>'id'))ELSE'[]'::jsonb END);
+ IF selected->>'kind'='manualApproval'THEN
+  SELECT step->>'group'INTO candidate_group FROM jsonb_array_elements(request->'items')i,jsonb_array_elements(i->'steps')step WHERE selected->'itemIds'?(i->>'id')AND step->>'id'=selected->>'stepId';
+  SELECT coalesce(jsonb_agg(jsonb_build_object('id',u.id,'name',CASE WHEN p.id IS NOT NULL AND app.data_permission_person_read(p.id)THEN p.full_name ELSE'User '||left(u.id::text,8)END)ORDER BY members.n),'[]'::jsonb)INTO candidates
+  FROM public.lc_onboarding_config cfg,jsonb_array_elements(cfg.data->'groups')g,jsonb_array_elements_text(g->'members')WITH ORDINALITY members(user_id,n)
+  JOIN public.app_user u ON u.id::text=members.user_id AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+  LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE cfg.tenant_id=c.tenant_id AND g->>'id'=candidate_group;
+ END IF;
+ RETURN jsonb_build_object('task',selected,'body',body,'notes',conversation,'requestNumber',request->>'number','candidates',candidates,'items',CASE WHEN selected->>'kind'IN('approval','manualApproval')THEN(SELECT coalesce(jsonb_agg(jsonb_build_object('id',i->>'id','name',i->>'name')),'[]'::jsonb)FROM jsonb_array_elements(request->'items')i WHERE selected->'itemIds'?(i->>'id'))ELSE'[]'::jsonb END);
 END $$;
 REVOKE ALL ON FUNCTION app.onboarding_delivery_task_detail(text)FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.onboarding_delivery_task_detail(text)TO ai_hr_app;
@@ -1011,16 +1027,7 @@ BEGIN
   step:=step||jsonb_build_object('status',CASE WHEN p_decision='approve'THEN'approved'ELSE'rejected'END,'by',app.current_user_id(),'byName',actor_name,'when',stamp);steps:=jsonb_set(steps,ARRAY[(step_index-1)::text],step);
   target:=app.onboarding_native_refresh_approval(jsonb_set(target,'{steps}',steps));
   IF p_decision='approve'THEN
-   FOR step_row IN SELECT s,n FROM jsonb_array_elements(steps)WITH ORDINALITY q(s,n)LOOP
-    step:=steps->(step_row.n::integer-1);IF step->>'status'<>'pending'THEN CONTINUE;END IF;
-    IF target->>'mode'='seq'AND EXISTS(SELECT 1 FROM jsonb_array_elements(steps)WITH ORDINALITY prior(p,m)WHERE m<step_row.n AND p->>'status'<>'approved')THEN EXIT;END IF;
-    IF step->>'user'=target->>'requester'THEN
-     SELECT coalesce(target->>'requesterName',(SELECT d.name FROM app.onboarding_directory()d WHERE d.id::text=step->>'user'),CASE WHEN step->>'user'=app.current_user_id()::text THEN actor_name ELSE NULL END)INTO auto_name;
-     step:=(step-'byName')||jsonb_build_object('status','approved','by',step->'user','when',stamp);IF auto_name IS NOT NULL THEN step:=step||jsonb_build_object('byName',auto_name);END IF;steps:=jsonb_set(steps,ARRAY[(step_row.n-1)::text],step);
-     history:=history||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',step->'user','name',coalesce(auto_name,'Requester'),'action','approval.auto_approved','detail',(target->>'name')||' · '||(step->>'label')));
-    END IF;
-   END LOOP;
-   target:=app.onboarding_native_refresh_approval(jsonb_set(target,'{steps}',steps));
+   assigned:=app.onboarding_native_requester_auto_approve(target,stamp,actor_name);target:=assigned->'item';history:=history||(assigned->'history');
   END IF;
   IF target->>'fulfilmentMethod'='rr'AND target->>'claim'IS NULL AND NOT(target->>'removed')::boolean AND target->>'approval'NOT IN('pending','rejected','withdrawn')THEN
    assigned:=app.onboarding_native_equipment_assignment(cfg,c.data,target,extra_loads,stamp,actor_name);target:=assigned->'item';extra_loads:=assigned->'loads';history:=history||(assigned->'history');
@@ -1052,5 +1059,100 @@ REVOKE ALL ON FUNCTION app.lifecycle_approval_function_legacy_allowed(uuid,uuid,
 DO $$DECLARE operation text;BEGIN
  FOREACH operation IN ARRAY ARRAY['view','approve']LOOP
   PERFORM app.register_function_action('lifecycle.shared.approvals',operation,'company',NULL,'app.lifecycle_approval_function_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
+ END LOOP;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_native_requester_auto_approve(p_item jsonb,p_stamp text,p_actor_name text)RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE target jsonb:=p_item;steps jsonb:=p_item->'steps';step jsonb;entry record;history jsonb:='[]';auto_name text;
+BEGIN
+ FOR entry IN SELECT s,n FROM jsonb_array_elements(steps)WITH ORDINALITY q(s,n)LOOP
+  step:=steps->(entry.n::integer-1);IF step->>'status'<>'pending'THEN CONTINUE;END IF;
+  IF target->>'mode'='seq'AND EXISTS(SELECT 1 FROM jsonb_array_elements(steps)WITH ORDINALITY prior(p,m)WHERE m<entry.n AND p->>'status'<>'approved')THEN EXIT;END IF;
+  IF step->>'user'=target->>'requester'THEN
+   SELECT coalesce(target->>'requesterName',(SELECT d.name FROM app.onboarding_directory()d WHERE d.id::text=step->>'user'),CASE WHEN step->>'user'=app.current_user_id()::text THEN p_actor_name ELSE NULL END)INTO auto_name;
+   step:=(step-'byName')||jsonb_build_object('status','approved','by',step->'user','when',p_stamp);IF auto_name IS NOT NULL THEN step:=step||jsonb_build_object('byName',auto_name);END IF;
+   steps:=jsonb_set(steps,ARRAY[(entry.n-1)::text],step);
+   history:=history||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'at',p_stamp,'by',step->'user','name',coalesce(auto_name,'Requester'),'action','approval.auto_approved','detail',(target->>'name')||' · '||(step->>'label')));
+  END IF;
+ END LOOP;
+ RETURN jsonb_build_object('item',app.onboarding_native_refresh_approval(jsonb_set(target,'{steps}',steps)),'history',history);
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_native_requester_auto_approve(jsonb,text,text)FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.onboarding_approval_assign(p_case uuid,p_revision integer,p_item text,p_step text,p_user text)
+RETURNS TABLE(revision integer,employment_id uuid,company_id uuid)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c public.lc_onboarding_case;cfg jsonb;request jsonb;request_index bigint;selected_item jsonb;selected_step jsonb;group_row jsonb;chosen uuid;item jsonb;step jsonb;item_row record;step_row record;items jsonb;steps jsonb;history jsonb;requests jsonb;extra_loads jsonb:='{}';assigned jsonb;actor_name text;stamp text;effect uuid;auto_name text;today date:=(now()AT TIME ZONE'Asia/Kuala_Lumpur')::date;
+BEGIN
+ PERFORM app.audit_access_order_lock();PERFORM app.access_workforce_write_lock();
+ PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
+ PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
+ IF NOT app.principal_snapshot_current()OR app.current_user_id()IS NULL OR p_revision IS NULL OR p_revision<1 OR p_user IS NOT NULL AND length(p_user)>100 THEN RAISE EXCEPTION 'This approval cannot be reassigned by you.'USING ERRCODE='42501';END IF;
+ SELECT coalesce(p.full_name,'User '||left(u.id::text,8))INTO actor_name FROM public.app_user u LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id()AND u.tenant_id=app.current_tenant_id()AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ IF actor_name IS NULL THEN RAISE EXCEPTION 'This approval cannot be reassigned by you.'USING ERRCODE='42501';END IF;
+ SELECT * INTO c FROM public.lc_onboarding_case x WHERE x.id=p_case AND x.tenant_id=app.current_tenant_id()FOR UPDATE;
+ SELECT data INTO cfg FROM public.lc_onboarding_config WHERE tenant_id=c.tenant_id;
+ SELECT r,n INTO request,request_index FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY q(r,n)WHERE r->>'cancelledAt'IS NULL ORDER BY n LIMIT 1;
+ SELECT i INTO selected_item FROM jsonb_array_elements(request->'items')WITH ORDINALITY q(i,n)WHERE i->>'id'=p_item ORDER BY n LIMIT 1;
+ SELECT s INTO selected_step FROM jsonb_array_elements(selected_item->'steps')WITH ORDINALITY q(s,n)WHERE s->>'id'=p_step AND selected_item->>'approval'='pending'AND s->>'status'IN('pending','unresolved')AND(selected_item->>'mode'='par'OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(selected_item->'steps')WITH ORDINALITY prior(p,m)WHERE m<n AND p->>'status'<>'approved'))ORDER BY n LIMIT 1;
+ IF c.id IS NULL OR c.data->>'state'<>'submitted'OR request IS NULL OR request->>'handedAt'IS NOT NULL OR selected_item IS NULL OR selected_step IS NULL OR selected_step->>'group'IS NULL OR NOT app.onboarding_group_member(selected_step->>'group')THEN RAISE EXCEPTION 'This approval cannot be reassigned by you.'USING ERRCODE='42501';END IF;
+ IF c.revision<>p_revision THEN RAISE EXCEPTION 'This case changed. Reload it before trying again.'USING ERRCODE='40001';END IF;
+ IF NOT app.function_action_allowed('lifecycle.shared.approvalAssignments','execute',c.company_id)THEN RAISE EXCEPTION 'Approval assignment function unavailable'USING ERRCODE='42501';END IF;
+ SELECT g INTO group_row FROM jsonb_array_elements(cfg->'groups')g WHERE g->>'id'=selected_step->>'group';
+ IF p_user IS NOT NULL THEN
+  IF NOT(group_row->'members'?p_user)THEN RAISE EXCEPTION 'Choose a member of this approval group.'USING ERRCODE='23514';END IF;
+  SELECT u.id INTO chosen FROM public.app_user u WHERE u.id::text=p_user AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+  IF chosen IS NULL THEN RAISE EXCEPTION 'Choose an active user in this organisation.'USING ERRCODE='23514';END IF;
+ ELSE
+  WITH candidates AS(SELECT u.id,m.n,coalesce(l.pending_approvals,0)pending,coalesce(l.lifetime_approvals,0)lifetime FROM jsonb_array_elements_text(group_row->'members')WITH ORDINALITY m(user_id,n)
+   JOIN public.app_user u ON u.id::text=m.user_id AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   LEFT JOIN app.onboarding_assignment_loads()l ON l.user_id=u.id
+   WHERE u.id::text IS DISTINCT FROM selected_step->>'user'AND NOT EXISTS(SELECT 1 FROM app.onboarding_unavailable(ARRAY[today])a WHERE a.user_id=u.id))
+  SELECT id INTO chosen FROM candidates WHERE id::text<>selected_item->>'requester'OR NOT EXISTS(SELECT 1 FROM candidates WHERE id::text<>selected_item->>'requester')ORDER BY pending,lifetime,n LIMIT 1;
+ END IF;
+ stamp:=to_char(clock_timestamp()AT TIME ZONE'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');history:=coalesce(c.data->'history','[]'::jsonb);items:=request->'items';
+ FOR item_row IN SELECT i,n FROM jsonb_array_elements(items)WITH ORDINALITY q(i,n)LOOP
+  item:=items->(item_row.n::integer-1);IF(item->>'removed')::boolean THEN CONTINUE;END IF;steps:=item->'steps';
+  FOR step_row IN SELECT s,n FROM jsonb_array_elements(steps)WITH ORDINALITY q(s,n)LOOP
+   step:=steps->(step_row.n::integer-1);
+   IF step->>'group'IS DISTINCT FROM selected_step->>'group'OR step->>'status'<>'pending'THEN CONTINUE;END IF;
+   step:=step||jsonb_build_object('user',chosen,'manual',chosen IS NULL AND step->>'method'='manual','fallback',chosen IS NULL AND step->>'method'='rr','unavailable',chosen IS NULL);
+   IF chosen IS NOT NULL THEN step:=step||jsonb_build_object('assignments',coalesce(step->'assignments','[]'::jsonb)||jsonb_build_array(jsonb_build_object('user',chosen,'at',stamp)));END IF;
+   steps:=jsonb_set(steps,ARRAY[(step_row.n-1)::text],step);
+   -- Canonical requester auto-approval after each affected group assignment, preserving seq order.
+   assigned:=app.onboarding_native_requester_auto_approve(jsonb_set(item,'{steps}',steps),stamp,actor_name);item:=assigned->'item';steps:=item->'steps';history:=history||(assigned->'history');
+   IF item->>'fulfilmentMethod'='rr'AND item->>'claim'IS NULL AND NOT(item->>'removed')::boolean AND item->>'approval'NOT IN('pending','rejected','withdrawn')THEN
+    assigned:=app.onboarding_native_equipment_assignment(cfg,c.data,item,extra_loads,stamp,actor_name);item:=assigned->'item';extra_loads:=assigned->'loads';history:=history||(assigned->'history');
+   END IF;
+  END LOOP;
+  items:=jsonb_set(items,ARRAY[(item_row.n-1)::text],item);
+ END LOOP;
+ history:=history||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'at',stamp,'by',app.current_user_id(),'name',actor_name,'action','approval.assigned','detail',selected_item->>'name'));
+ request:=jsonb_set(request,'{items}',items);SELECT jsonb_agg(CASE WHEN n=request_index THEN request ELSE r END ORDER BY n)INTO requests FROM jsonb_array_elements(c.data->'requisitions')WITH ORDINALITY q(r,n);
+ effect:=app.lifecycle_native_effect_begin('assigned-onboarding-approval-assignment',c.id,'onboarding.assignApproval');
+ INSERT INTO public.lc_onboarding_case_revision(tenant_id,case_id,company_id,revision,data)VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data)ON CONFLICT DO NOTHING;
+ UPDATE public.lc_onboarding_case x SET data=c.data||jsonb_build_object('requisitions',requests,'history',history),revision=c.revision+1,updated_at=clock_timestamp()WHERE x.id=c.id AND x.tenant_id=c.tenant_id;
+ PERFORM app.lifecycle_native_effect_complete(effect);RETURN QUERY SELECT c.revision+1,c.employment_id,c.company_id;
+END $$;
+REVOKE ALL ON FUNCTION app.onboarding_approval_assign(uuid,integer,text,text,text)FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onboarding_approval_assign(uuid,integer,text,text,text)TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE FUNCTION app.lifecycle_approval_assignment_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT co IS NOT NULL AND cap IN('function.lifecycle.shared.approvalAssignments.view','function.lifecycle.shared.approvalAssignments.execute')
+ AND EXISTS(SELECT 1 FROM public.app_user a WHERE a.id=u AND a.tenant_id=t AND a.archived_at IS NULL AND NOT app.login_blocked(a.id))
+ AND EXISTS(SELECT 1 FROM public.lc_onboarding_case c JOIN public.lc_onboarding_config cfg ON cfg.tenant_id=c.tenant_id,jsonb_array_elements(c.data->'requisitions')r,jsonb_array_elements(r->'items')i,jsonb_array_elements(i->'steps')s,jsonb_array_elements(cfg.data->'groups')g
+ WHERE c.tenant_id=t AND c.company_id=co AND r->>'cancelledAt'IS NULL AND g->>'id'=s->>'group'AND g->'members'?u::text);
+$$;
+CREATE FUNCTION app.lifecycle_approval_assignment_current_legacy_allowed(t uuid,u uuid,cap text,co uuid)RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT t=app.current_tenant_id()AND u=app.current_user_id()AND app.lifecycle_approval_assignment_legacy_allowed(t,u,cap,co);
+$$;
+REVOKE ALL ON FUNCTION app.lifecycle_approval_assignment_legacy_allowed(uuid,uuid,text,uuid),app.lifecycle_approval_assignment_current_legacy_allowed(uuid,uuid,text,uuid)FROM PUBLIC,ai_hr_app;
+DO $$DECLARE operation text;BEGIN
+ FOREACH operation IN ARRAY ARRAY['view','execute']LOOP
+  PERFORM app.register_function_action('lifecycle.shared.approvalAssignments',operation,'company',NULL,'app.lifecycle_approval_assignment_legacy_allowed','{"moduleKey":"lifecycle","labelKey":"nav.myTasks","kind":"native_acl","course":"assigned","href":"/tasks","employeeBearing":false}'::jsonb);
  END LOOP;
 END $$;
