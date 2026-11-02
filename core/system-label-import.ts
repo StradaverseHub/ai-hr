@@ -7,6 +7,7 @@ import * as s from '../db/schema';
 import { actorOf, appendEvent } from '../db/events';
 import { bulkSaveLabels, createJobGrade, type LabelCreateInput, type LabelUpdateInput } from './admin';
 import { createProfileOption } from './profile-options';
+import { settingsAccessTx, organisationAccessTx } from './organisation-access';
 import { employmentStatusSql } from './employment-status-sql';
 import { visibleLabelIdsCondition, labelMaintenanceCondition, SYSTEM_LABEL_MAINTENANCE_LIMIT, boundedLabelMaintenanceRows, lockLabelCriteriaTx, existingSystemLabelImportKeysTx } from './system-labels';
 import { createGradeGroup } from '../packs/leave/service';
@@ -29,7 +30,7 @@ type Catalogue = {
   companies:{id:string;name:string;archived:Date|null;writable:boolean}[];
   orgs:Org[];options:(typeof s.profileOption.$inferSelect)[];grades:(typeof s.jobGrade.$inferSelect)[];
   groups:(typeof s.gradeGroup.$inferSelect)[];members:(typeof s.gradeGroupMember.$inferSelect)[];
-  employees:{id:string;code:string|null;companyId:string;name:string;active:boolean}[];groupAdmin:boolean;
+  employees:{id:string;code:string|null;companyId:string;name:string;active:boolean}[];groupAdmin:boolean;gradeMaintenanceView:boolean;
 };
 const companyCell=(companies:Catalogue['companies'],id:string)=>{const co=companies.find(x=>x.id===id);return co&&!co.name.includes(';')&&companies.filter(x=>x.name===co.name).length===1?co.name:id;};
 async function catalogue(tx: Tx): Promise<Catalogue> {
@@ -45,7 +46,7 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
   ))`).orderBy(asc(s.company.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
     tx.select().from(s.department).where(labelMaintenanceCondition(s.department,'department')).orderBy(asc(s.department.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.position).where(labelMaintenanceCondition(s.position,'position')).orderBy(asc(s.position.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
     tx.select().from(s.costCenter).where(labelMaintenanceCondition(s.costCenter,'cost_center')).orderBy(asc(s.costCenter.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.businessUnit).where(labelMaintenanceCondition(s.businessUnit,'business_unit')).orderBy(asc(s.businessUnit.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
-    tx.select().from(s.profileOption).orderBy(asc(s.profileOption.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.jobGrade).orderBy(asc(s.jobGrade.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
+    tx.select().from(s.profileOption).where(sql`app.organisation_settings_function_allowed('systemLabels.profileOptions.'||${s.profileOption.category},'view',NULL)`).orderBy(asc(s.profileOption.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.jobGrade).orderBy(asc(s.jobGrade.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
     tx.select().from(s.gradeGroup).orderBy(asc(s.gradeGroup.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1), tx.select().from(s.gradeGroupMember).orderBy(asc(s.gradeGroupMember.id)).limit(SYSTEM_LABEL_MAINTENANCE_LIMIT+1),
     tx.select().from(s.labelCompanyAssignment).where(sql`exists(select 1 from department where department.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='department' and ${labelMaintenanceCondition(s.department,'department')}) or exists(select 1 from "position" where "position".id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='position' and ${labelMaintenanceCondition(s.position,'position')}) or exists(select 1 from cost_center where cost_center.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='cost_center' and ${labelMaintenanceCondition(s.costCenter,'cost_center')}) or exists(select 1 from business_unit where business_unit.id=${s.labelCompanyAssignment.labelId} and ${s.labelCompanyAssignment.labelKind}='business_unit' and ${labelMaintenanceCondition(s.businessUnit,'business_unit')})`).orderBy(asc(s.labelCompanyAssignment.id)).limit(50_001),
     tx.select({id:s.employment.id,code:s.employment.employeeCode,companyId:s.employment.companyId,name:s.person.fullName,active:sql<boolean>`(${employmentStatusSql()}) in ('active','active_serving_notice','probation') and ${s.employment.hiredOn} <= ${todayInKualaLumpur()}::date`})
@@ -67,7 +68,7 @@ async function catalogue(tx: Tx): Promise<Catalogue> {
     }
   };
   normalise('department',departments);normalise('position',positions);normalise('cost_center',costs);normalise('business_unit',units);
-  return {companies,orgs,options,grades,groups,members,employees,groupAdmin:permission[0].global};
+  return {companies,orgs,options,grades,groups,members,employees,groupAdmin:permission[0].global,gradeMaintenanceView:await settingsAccessTx(tx,'view','systemLabels.jobGrade')};
 }
 
 /** Sample is a minimal derived projection, filtered before each category's stable three-row limit.
@@ -93,16 +94,16 @@ export function downloadSystemLabelTemplate(ctx: SessionContext, selectedCompany
       const head=headColumn?sql<string>`(select employment.employee_code || ' — ' || p.full_name from employment join person p on p.id=employment.person_id and p.tenant_id=employment.tenant_id where employment.id=${headColumn} and employment.company_id=${outer}.company_id and app.is_admin_for(employment.company_id) and employment.employee_code is not null and employment.hired_on<=${todayInKualaLumpur()}::date and (${employmentStatusSql()}) in ('active','active_serving_notice','probation') limit 1)`:sql<string>`''`;
       const rows=await tx.select({code,label:table.label,description,company:companyName(sql`${outer}.company_id`),global:table.isGlobal,
         criteria:sql<string[]>`array(select ${companyName(sql`lca.company_id`)} from label_company_assignment lca where lca.tenant_id=${outer}.tenant_id and lca.label_kind=${kind} and lca.label_id=${outer}.id order by lca.company_id)`,head,
-      }).from(table).where(and(isNull(table.archivedAt),sql`app.is_admin_for(${table.companyId})`,sql`${companyName(sql`${outer}.company_id`)} is not null`,visibleLabelIdsCondition(table,kind,selected),
+      }).from(table).where(and(isNull(table.archivedAt),sql`app.is_admin_for(${table.companyId})`,sql`app.organisation_settings_function_allowed(${'systemLabels.'+kind},'view',${table.companyId})`,sql`${companyName(sql`${outer}.company_id`)} is not null`,visibleLabelIdsCondition(table,kind,selected),
         sql`not exists(select 1 from label_company_assignment private_criteria join company private_company on private_company.id=private_criteria.company_id and private_company.tenant_id=private_criteria.tenant_id where private_criteria.tenant_id=${table.tenantId} and private_criteria.label_kind=${kind} and private_criteria.label_id=${table.id} and (not app.is_admin_for(private_company.id) or private_company.archived_at is not null))`,
       )).orderBy(asc(code),asc(table.id)).limit(3);
       samples[kind]=rows.map(row=>({Code:row.code,Label:row.label??'',Description:row.description??'',Company:row.company,Criteria:row.global?'global':'companies','Criteria Companies':row.global?'':row.criteria.join(';'),'Head Employee Code':row.head??'',Status:'Active'}));
     }
     for(const category of EMPLOYMENT_LABEL_CATEGORIES){
-      const rows=await tx.select({code:s.profileOption.value,label:s.profileOption.label,description:s.profileOption.description}).from(s.profileOption).where(and(eq(s.profileOption.category,category),eq(s.profileOption.isActive,true))).orderBy(asc(s.profileOption.value),asc(s.profileOption.id)).limit(3);
+      const rows=await tx.select({code:s.profileOption.value,label:s.profileOption.label,description:s.profileOption.description}).from(s.profileOption).where(and(eq(s.profileOption.category,category),eq(s.profileOption.isActive,true),sql`app.organisation_settings_function_allowed(${'systemLabels.profileOptions.'+category},'view',NULL)`)).orderBy(asc(s.profileOption.value),asc(s.profileOption.id)).limit(3);
       samples[category]=rows.map(row=>({Code:row.code,Label:row.label,Description:row.description??'',Status:'Active'}));
     }
-    const grades=await tx.select({code:s.jobGrade.code,label:s.jobGrade.name,description:s.jobGrade.description,rank:s.jobGrade.rank}).from(s.jobGrade).where(isNull(s.jobGrade.archivedAt)).orderBy(asc(s.jobGrade.code),asc(s.jobGrade.id)).limit(3);
+    const grades=await tx.select({code:s.jobGrade.code,label:s.jobGrade.name,description:s.jobGrade.description,rank:s.jobGrade.rank}).from(s.jobGrade).where(and(isNull(s.jobGrade.archivedAt),sql`app.organisation_settings_function_allowed('systemLabels.jobGrade','view',NULL)`)).orderBy(asc(s.jobGrade.code),asc(s.jobGrade.id)).limit(3);
     samples.grades=grades.map(row=>({Code:row.code,Label:row.label,Description:row.description??'',Rank:String(row.rank),Status:'Active'}));
     const groups=await tx.select({name:s.gradeGroup.name,codes:sql<string[]>`array(select jg.code from grade_group_member member join job_grade jg on jg.id=member.grade_id and jg.tenant_id=member.tenant_id where member.grade_group_id=grade_group.id and member.tenant_id=grade_group.tenant_id order by jg.code,jg.id)`}).from(s.gradeGroup).where(isNull(s.gradeGroup.archivedAt)).orderBy(asc(s.gradeGroup.name),asc(s.gradeGroup.id)).limit(3);
     samples.grade_groups=groups.map(row=>({Name:row.name,'Grade Codes':row.codes.join(';')}));
@@ -120,7 +121,7 @@ function exportRows(c:Catalogue,includeInactive:boolean) {
  const rows:{sheet:string;id:string;values:Record<string,string>;active:boolean}[]=[];
  for(const r of c.orgs)if(includeInactive||!r.archived)rows.push({sheet:r.kind,id:r.id,values:{...r.values},active:!r.archived});
  for(const r of c.options)if((EMPLOYMENT_LABEL_CATEGORIES as readonly string[]).includes(r.category)&&(includeInactive||r.isActive))rows.push({sheet:r.category,id:r.id,values:{Code:r.value,Label:r.label,Description:r.description??'','Sort Order':String(r.sortOrder)},active:r.isActive});
- for(const r of c.grades)if(includeInactive||!r.archivedAt)rows.push({sheet:'grades',id:r.id,values:{Code:r.code,Label:r.name,Description:r.description??'',Rank:String(r.rank)},active:!r.archivedAt});
+ for(const r of c.grades)if(c.gradeMaintenanceView&&(includeInactive||!r.archivedAt))rows.push({sheet:'grades',id:r.id,values:{Code:r.code,Label:r.name,Description:r.description??'',Rank:String(r.rank)},active:!r.archivedAt});
  for(const r of c.groups)if(includeInactive||!r.archivedAt)rows.push({sheet:'grade_groups',id:r.id,values:{Name:r.name,'Grade Codes':c.members.filter(m=>m.gradeGroupId===r.id).map(m=>c.grades.find(g=>g.id===m.gradeId)?.code??'').sort().join(';')},active:!r.archivedAt});
  return rows;
 }
@@ -164,6 +165,12 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
   const proposals=rows.filter(row=>(ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)&&!!row.values.Code).map(row=>({key:row.sheet+':'+row.row,kind:row.sheet as OrganisationLabelKind,code:row.values.Code}));
   // Only existence is returned: hidden companies, identities and values never enter this catalogue.
   const incumbentKeys=new Set(await existingSystemLabelImportKeysTx(tx,ctx.tenantId,proposals));
+  const functionPermissions=new Map<string,boolean>();
+  const admitted=async(functionKey:string,companyId:string|null)=>{
+    const key=JSON.stringify([functionKey,companyId]);
+    if(!functionPermissions.has(key))functionPermissions.set(key,companyId===null?await settingsAccessTx(tx,'add',functionKey):await organisationAccessTx(tx,'add',companyId,functionKey));
+    if(!functionPermissions.get(key))throw new LabelImportRowError('invalidRow','This list is not available for adding records.');
+  };
   const seen=new Map<string,Record<string,string>>(), names=new Set<string>(), memberClaims=new Set<string>();
   for(const row of rows){
     const key=row.sheet+':'+row.row;
@@ -189,11 +196,12 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
       };
       if((ORGANISATION_LABEL_KINDS as readonly string[]).includes(row.sheet)){
         const kind=row.sheet as OrganisationLabelKind, code=requireValue('Code');
-        if(incumbentKeys.has(key))throw new LabelImportRowError('existing',existingCodeMessage);
         const companyValue=requireValue('Company'),matches=c.companies.filter(co=>co.id===companyValue||co.name===companyValue);
         const co=matches.length===1?matches[0]:undefined;
         if(!co)throw new LabelImportRowError('invalidCompany','Company is unknown or ambiguous.');
         if(!co.writable||co.archived)throw new LabelImportRowError('invalidCompany','Company is archived or outside your administrator scope.');
+        await admitted('systemLabels.'+kind,co.id);
+        if(incumbentKeys.has(key))throw new LabelImportRowError('existing',existingCodeMessage);
         v.Company=companyCell(c.companies,co.id);
         if(!['companies','global'].includes(v.Criteria))throw new LabelImportRowError('invalidCriteria','Criteria must be companies or global.');
         const shared=list(v['Criteria Companies']).map(value=>{const matches=c.companies.filter(co=>co.id===value||co.name===value);if(matches.length!==1)throw new LabelImportRowError('invalidCriteriaCompany','A Criteria company is unknown or ambiguous. Use a company from Reference.');return matches[0].id;}).sort();
@@ -212,12 +220,14 @@ async function analyse(tx: Tx, ctx: SessionContext, rows: LabelImportRow[], audi
         if('Head Employee Code' in v)fields.headEmploymentId=heads[0]?.id??null;
         add(async()=>{},{kind,create:{...fields,key,companyId:co.id,isGlobal:v.Criteria==='global',companyIds:shared} as LabelCreateInput});
       }else if((EMPLOYMENT_LABEL_CATEGORIES as readonly string[]).includes(row.sheet)){
+        await admitted('systemLabels.profileOptions.'+row.sheet,null);
         const value=requireValue('Code');
         if(c.options.some(option=>option.category===row.sheet&&option.value===value))throw new LabelImportRowError('existing',existingCodeMessage);
         v.Label=v.Label||value;v['Sort Order']=String(whole(v['Sort Order']));
         if(!identify(`${row.sheet}|${value}`))continue;
         add(()=>createProfileOption(ctx,{category:row.sheet,value,label:v.Label,description:v.Description,sortOrder:Number(v['Sort Order']),isActive:active},tx));
       }else if(row.sheet==='grades'){
+        await admitted('systemLabels.jobGrade',null);
         const code=requireValue('Code');
         if(!/^[A-Z][A-Z0-9_]{0,31}$/.test(code))throw new LabelImportRowError('invalidGradeCode','Grade Code must use uppercase letters, digits or underscores.');
         if(c.grades.some(grade=>grade.code===code))throw new LabelImportRowError('existing',existingCodeMessage);
