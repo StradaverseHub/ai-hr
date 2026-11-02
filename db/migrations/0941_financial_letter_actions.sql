@@ -223,7 +223,7 @@ REVOKE ALL ON FUNCTION app.financial_letter_born(text,uuid) FROM PUBLIC,ai_hr_ap
 --> statement-breakpoint
 CREATE FUNCTION app.access_letter_write_guard() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;function_key text;function_operation text;
+DECLARE row_data jsonb;old_data jsonb;co uuid;native text;operation text;root uuid;parent_operation text;function_key text;function_operation text;deactivation_previous jsonb;needs_content_edit boolean:=false;
 BEGIN
  IF TG_OP='DELETE' THEN row_data:=to_jsonb(OLD);ELSE row_data:=to_jsonb(NEW);END IF;
  IF TG_OP='UPDATE' THEN old_data:=to_jsonb(OLD);END IF;
@@ -295,6 +295,20 @@ BEGIN
  WHEN TG_TABLE_NAME IN ('letter_template','letter_template_version','letter_template_field') THEN 'letterTemplates'
  ELSE app.financial_letter_native_function(native,operation) END;
  IF function_key='letterSettings.signature' THEN function_operation:='add';END IF;
+ -- Delete authorizes the native toggle, not unrelated edits bundled into its new version.
+ IF operation='delete' AND TG_OP='INSERT' AND TG_TABLE_NAME IN ('letter_policy_version','letter_merge_field_version','letter_automation_rule_version') THEN
+  CASE TG_TABLE_NAME
+  WHEN 'letter_policy_version' THEN SELECT to_jsonb(v) INTO deactivation_previous FROM public.letter_policy_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.category=row_data->>'category' AND v.ordinal=(row_data->>'ordinal')::integer-1;
+  WHEN 'letter_merge_field_version' THEN SELECT to_jsonb(v) INTO deactivation_previous FROM public.letter_merge_field_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.key=row_data->>'key' AND v.ordinal=(row_data->>'ordinal')::integer-1;
+  WHEN 'letter_automation_rule_version' THEN SELECT to_jsonb(v) INTO deactivation_previous FROM public.letter_automation_rule_version v WHERE v.tenant_id=app.current_tenant_id() AND v.company_id=co AND v.template_id=(row_data->>'template_id')::uuid AND v.trigger=row_data->>'trigger' AND v.ordinal=(row_data->>'ordinal')::integer-1;
+  END CASE;
+  needs_content_edit:=deactivation_previous IS NULL OR row_data-ARRAY['id','ordinal','created_by','created_at','enabled','active'] IS DISTINCT FROM deactivation_previous-ARRAY['id','ordinal','created_by','created_at','enabled','active'];
+ ELSIF operation='delete' AND TG_OP='UPDATE' AND TG_TABLE_NAME='letter_template' THEN
+  needs_content_edit:=row_data-ARRAY['deactivated','revision'] IS DISTINCT FROM old_data-ARRAY['deactivated','revision'];
+ END IF;
+ IF needs_content_edit AND (NOT app.letter_function_action(function_key,'edit',co) OR NOT app.access_letter_action(co,native,'edit')) THEN
+  RAISE EXCEPTION 'Letter content edit unavailable' USING ERRCODE='42501';
+ END IF;
  IF co IS NULL OR function_key IS NULL OR NOT app.letter_function_action(function_key,function_operation,co)
  OR NOT app.access_letter_action(co,native,operation) THEN RAISE EXCEPTION 'Letter action unavailable' USING ERRCODE='42501';END IF;
  IF TG_OP='DELETE' THEN RETURN OLD;END IF;RETURN NEW;
