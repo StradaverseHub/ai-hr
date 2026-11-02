@@ -1189,6 +1189,13 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE function_key text:=regexp_replace(substr(p_capability,10),'\.[^.]+$','');operation text:=substring(p_capability from '[^.]+$');native text;selected uuid;family text;required text[]:='{}';alternatives text[]:='{}';passed boolean:=false;
 BEGIN
  IF p_capability NOT LIKE 'function.%' OR p_current AND (p_tenant IS DISTINCT FROM app.current_tenant_id() OR p_user IS DISTINCT FROM app.current_user_id() OR NOT app.principal_snapshot_current()) THEN RETURN false;END IF;
+ IF function_key='performance.onehr.setup' THEN
+  IF operation NOT IN ('view','add','edit') OR NOT EXISTS(SELECT 1 FROM public.app_user u JOIN public.role_assignment r ON r.app_user_id=u.id AND r.tenant_id=u.tenant_id
+   WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND r.role::text=ANY(CASE WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END)
+   AND (p_company IS NULL AND r.company_id IS NULL AND (operation<>'add' OR r.role::text IN ('hr_admin','super_admin')) OR p_company IS NOT NULL AND app.access_scope_covers(r.company_id,p_company,p_tenant))) THEN RETURN false;END IF;
+  RETURN NOT p_current OR app.performance_current_native_roles(p_company,CASE WHEN operation='add' AND p_company IS NULL THEN ARRAY['hr_admin','super_admin'] WHEN operation='add' THEN ARRAY['hr_admin','super_admin','performance_comp_partner'] ELSE ARRAY['hr_admin','super_admin','performance_comp_partner','performance_partner'] END);
+ END IF;
  IF function_key='myLetters' THEN
   RETURN p_company IS NULL AND operation IN ('view','execute') AND EXISTS(SELECT 1 FROM public.app_user u WHERE u.id=p_user AND u.tenant_id=p_tenant AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
  END IF;
@@ -1235,11 +1242,11 @@ BEGIN
   END LOOP;RETURN true;
  END IF;
  FOREACH native IN ARRAY required LOOP
-  IF NOT CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END THEN RETURN false;END IF;
+  IF NOT (CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END) THEN RETURN false;END IF;
  END LOOP;
  IF cardinality(alternatives)=0 THEN RETURN true;END IF;
  FOREACH native IN ARRAY alternatives LOOP
-  IF CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END THEN passed:=true;END IF;
+  IF (CASE WHEN p_current THEN app.letter_current_native_permission(p_tenant,p_user,p_company,native) ELSE app.letter_native_permission_for_user_at(p_tenant,p_user,p_company,native) END) THEN passed:=true;END IF;
  END LOOP;RETURN passed;
 END;
 $$;
@@ -1906,3 +1913,116 @@ END;
 $$;
 REVOKE ALL ON FUNCTION app.financial_performance_cycle_guard() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER financial_performance_cycle_guard BEFORE INSERT OR UPDATE OR DELETE ON review_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_performance_cycle_guard();
+
+--> statement-breakpoint
+-- OneHR setup has its own native course. Performance Partner must not acquire the
+-- unrelated Performance & Compensation family or its generic cycle writers.
+CREATE FUNCTION app.financial_delegate_onehr_setup(t uuid,u uuid,cap text,co uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(t,u,'function.performance.onehr.setup.'||substring(cap from '[^.]+$'),co,true);
+$$;
+REVOKE ALL ON FUNCTION app.financial_delegate_onehr_setup(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+SELECT app.register_function_action('performance.onehr.setup',operation,'company',NULL,'app.financial_delegate_onehr_setup',
+ '{"moduleKey":"performance_compensation","labelKey":"onehr.policy","kind":"native_acl","course":"administrative","screenKey":"performance","href":"/performance","employeeBearing":true}'::jsonb)
+FROM unnest(ARRAY['view','add','edit']) operation;
+CREATE FUNCTION app.onehr_setup_function_action(co uuid,operation text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.financial_function_native(app.current_tenant_id(),app.current_user_id(),'function.performance.onehr.setup.'||operation,co,true)
+ AND CASE WHEN co IS NOT NULL THEN app.function_action_allowed('performance.onehr.setup','view',co) AND app.function_action_allowed('performance.onehr.setup',operation,co)
+ ELSE app.financial_letter_capability_allowed_current('function.performance.onehr.setup.view',NULL)
+ AND app.financial_letter_capability_allowed_current('function.performance.onehr.setup.'||operation,NULL) END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_setup_function_action(uuid,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_setup_function_action(uuid,text) TO ai_hr_app;
+CREATE FUNCTION app.financial_onehr_setup_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native public.review_cycle%ROWTYPE;operation text:=CASE TG_OP WHEN 'INSERT' THEN 'add' ELSE 'edit' END;profile jsonb;selected text;subject public.employment%ROWTYPE;
+BEGIN
+ IF app.access_workforce_storage_owner() THEN RETURN NEW;END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO native FROM public.review_cycle c WHERE c.id=NEW.cycle_id AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NEW.tenant_id IS DISTINCT FROM native.tenant_id OR TG_OP='UPDATE' AND (NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.cycle_id IS DISTINCT FROM OLD.cycle_id)
+ OR NOT app.onehr_cycle_admin(native.id) OR NOT app.onehr_setup_function_action(native.company_id,operation) THEN
+  RAISE EXCEPTION 'OneHR setup action unavailable' USING ERRCODE='42501';END IF;
+ IF EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.cycle_id=native.id AND r.tenant_id=native.tenant_id AND (NOT app.onehr_setup_function_action(e.company_id,operation) OR NOT app.data_permission_matches(e.id))) THEN
+  RAISE EXCEPTION 'OneHR setup recipient scope unavailable' USING ERRCODE='42501';END IF;
+ FOR profile IN SELECT value FROM jsonb_array_elements(coalesce(NEW.policy->'profiles','[]'::jsonb)||coalesce(CASE WHEN TG_OP='UPDATE' THEN OLD.policy->'profiles' END,'[]'::jsonb)) LOOP
+  IF profile->>'companyId' IS NOT NULL AND NOT app.onehr_setup_function_action((profile->>'companyId')::uuid,operation) THEN RAISE EXCEPTION 'OneHR profile company unavailable' USING ERRCODE='42501';END IF;
+  FOR selected IN SELECT jsonb_array_elements_text(coalesce(profile->'employmentIds','[]'::jsonb)) LOOP
+   SELECT * INTO subject FROM public.employment e WHERE e.id=selected::uuid AND e.tenant_id=native.tenant_id AND e.voided_at IS NULL;
+   IF NOT FOUND OR NOT app.onehr_setup_function_action(subject.company_id,operation) OR NOT app.data_permission_matches(subject.id) THEN RAISE EXCEPTION 'OneHR profile recipient unavailable' USING ERRCODE='42501';END IF;
+  END LOOP;
+ END LOOP;
+ RETURN NEW;
+END;
+$$;
+REVOKE ALL ON FUNCTION app.financial_onehr_setup_guard() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER financial_onehr_setup_guard BEFORE INSERT OR UPDATE ON performance_onehr_cycle FOR EACH ROW EXECUTE FUNCTION app.financial_onehr_setup_guard();
+
+--> statement-breakpoint
+-- Purpose-bound setup projection. A generic cycle/roster reader is not relabelled
+-- as setup View, and participant readers retain their separate native policy use.
+CREATE FUNCTION app.onehr_setup_read(p_cycle uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE native public.review_cycle%ROWTYPE;config public.performance_onehr_cycle%ROWTYPE;profile jsonb;selected text;subject public.employment%ROWTYPE;
+BEGIN
+ SELECT * INTO native FROM public.review_cycle c WHERE c.id=p_cycle AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND OR NOT app.onehr_cycle_admin(native.id) OR NOT app.onehr_setup_function_action(native.company_id,'view') THEN RETURN NULL;END IF;
+ SELECT * INTO config FROM public.performance_onehr_cycle c WHERE c.cycle_id=native.id AND c.tenant_id=native.tenant_id;
+ IF NOT FOUND OR EXISTS(SELECT 1 FROM public.performance_review r JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id
+ WHERE r.cycle_id=native.id AND r.tenant_id=native.tenant_id AND (NOT app.onehr_setup_function_action(e.company_id,'view') OR NOT app.data_permission_matches(e.id))) THEN RETURN NULL;END IF;
+ FOR profile IN SELECT value FROM jsonb_array_elements(coalesce(config.policy->'profiles','[]'::jsonb)) LOOP
+  IF profile->>'companyId' IS NOT NULL AND NOT app.onehr_setup_function_action((profile->>'companyId')::uuid,'view') THEN RETURN NULL;END IF;
+  FOR selected IN SELECT jsonb_array_elements_text(coalesce(profile->'employmentIds','[]'::jsonb)) LOOP
+   SELECT * INTO subject FROM public.employment e WHERE e.id=selected::uuid AND e.tenant_id=native.tenant_id AND e.voided_at IS NULL;
+   IF NOT FOUND OR NOT app.onehr_setup_function_action(subject.company_id,'view') OR NOT app.data_permission_matches(subject.id) THEN RETURN NULL;END IF;
+  END LOOP;
+ END LOOP;
+ RETURN jsonb_build_object('cycleId',native.id,'companyId',native.company_id,'revision',config.revision,'policy',config.policy);
+END;
+$$;
+REVOKE ALL ON FUNCTION app.onehr_setup_read(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_setup_read(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Task identity is a bounded read owner, never an exception on the raw masters or
+-- administrative projections. Preserve historical self and actual assigned work.
+CREATE FUNCTION app.onehr_self_employment(p_employment uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM public.employment e JOIN public.app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id
+ WHERE e.id=p_employment AND e.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id));
+$$;
+REVOKE ALL ON FUNCTION app.onehr_self_employment(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.onehr_self_employment(uuid) TO ai_hr_app;
+CREATE OR REPLACE FUNCTION app.onehr_review_header(wanted_review uuid) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('reviewerEmploymentId',r.reviewer_employment_id,'closedAt',r.closed_at,'name',p.full_name,
+ 'ownEmploymentIds',(SELECT coalesce(jsonb_agg(own.id),'[]'::jsonb) FROM public.employment own WHERE own.person_id=u.person_id AND own.tenant_id=u.tenant_id))
+ FROM public.performance_review r JOIN public.performance_onehr_cycle config ON config.cycle_id=r.cycle_id AND config.tenant_id=r.tenant_id
+ JOIN public.employment e ON e.id=r.employment_id AND e.tenant_id=r.tenant_id JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ JOIN public.app_user u ON u.id=app.current_user_id() AND u.tenant_id=r.tenant_id
+ WHERE r.id=wanted_review AND r.tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ AND (e.person_id=u.person_id OR app.onehr_manager(r.id) OR app.onehr_effective_reviewer(r.id) OR app.onehr_moderator(r.id)
+ OR app.onehr_cycle_admin(r.cycle_id) AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id));
+$$;
+--> statement-breakpoint
+-- Administration can no longer recover an excluded master through the old role-only
+-- projection. The exact participant header above remains its separate native source.
+CREATE OR REPLACE FUNCTION app.onehr_employment_facts() RETURNS TABLE(id uuid,tenant_id uuid,person_id uuid,company_id uuid,employee_code text,grade_id uuid,hired_on date,confirmation_date date,terminated_on date)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,e.tenant_id,e.person_id,e.company_id,e.employee_code,e.grade_id,e.hired_on,e.confirmation_date,e.terminated_on FROM public.employment e
+ WHERE cardinality((SELECT app.onehr_partner_company_ids()))>0 AND e.tenant_id=app.current_tenant_id()
+ AND e.company_id=ANY((SELECT app.onehr_partner_company_ids())::uuid[]) AND app.data_permission_matches(e.id);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_assignment_facts() RETURNS TABLE(id uuid,tenant_id uuid,employment_id uuid,department_id uuid,position_id uuid,valid_from date,valid_to date,superseded_at timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT a.id,a.tenant_id,a.employment_id,a.department_id,a.position_id,a.valid_from,a.valid_to,a.superseded_at FROM public.assignment a JOIN public.employment e ON e.id=a.employment_id AND e.tenant_id=a.tenant_id
+ WHERE cardinality((SELECT app.onehr_partner_company_ids()))>0 AND a.tenant_id=app.current_tenant_id()
+ AND e.company_id=ANY((SELECT app.onehr_partner_company_ids())::uuid[]) AND app.data_permission_matches(e.id);
+$$;
+CREATE OR REPLACE FUNCTION app.onehr_person_labels(employment_ids uuid[]) RETURNS TABLE(employment_id uuid,person_id uuid,full_name text,preferred_name text,employee_code text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT e.id,p.id,p.full_name,p.preferred_name,e.employee_code FROM public.employment e JOIN public.person p ON p.id=e.person_id AND p.tenant_id=e.tenant_id
+ WHERE e.id=ANY(employment_ids) AND e.tenant_id=app.current_tenant_id() AND app.onehr_admin(e.company_id) AND app.data_permission_matches(e.id);
+$$;
