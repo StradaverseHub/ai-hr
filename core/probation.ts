@@ -1,3 +1,4 @@
+import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
 import {effectiveProbationSettings} from '../lib/probation-configuration';
 import {randomUUID} from 'node:crypto';
@@ -62,8 +63,8 @@ export async function installProbationDrafts(ctx:SessionContext,companyId:string
  for(const[kind,data]of [['settings',DEFAULT_PROBATION_CONFIG],['form',DEFAULT_PROBATION_FORM],['route',defaultProbationRoutes()]]as const)if(!setup.latestVersion[kind])await saveProbationConfiguration(ctx,{companyId,kind,data,publish:false,expectedVersion:0});
  const{PROBATION_WORKFLOW_EVENTS}=await import('../lib/probation-workflow'),{newProbationLetterTemplate}=await import('../lib/probation-letter-template');
  await withProbationTenant(ctx,async tx=>{
-  const definitions=await tx.execute<{kind:string;data:{trigger?:{event:string};outcome?:string}}>(sql`select kind,data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid`);
-  for(const event of PROBATION_WORKFLOW_EVENTS)if(!definitions.some(d=>d.kind==='workflow'&&d.data.trigger?.event===event)){
+  const definitions=await tx.execute<{kind:string;data:{trigger?:{event:string};conditions?:Record<string,unknown>;outcome?:string}}>(sql`select kind,data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid`);
+  for(const event of PROBATION_WORKFLOW_EVENTS)if(!definitions.some(d=>d.kind==='workflow'&&d.data.trigger?.event===event&&Object.keys(d.data.conditions??{}).length===0)){
    const id=randomUUID(),roles=event.startsWith('letter_')?['employee','pbp']:event==='overdue_summary'?['pbp','gbs']:['employee','lm','hod','pbp','gbs'];
    const definition={id,name:event.replaceAll('_',' '),module:'probation',status:'draft',description:'Review the wording, recipients and trigger before publishing. Publishing does not activate runtime.',trigger:{event},conditions:{},steps:[{id:'notify',type:'notify',subject:event==='overdue_summary'?'Overdue probation work for {{companyName}}':'Probation review for {{employeeName}}',body:event==='overdue_summary'?'Review the existing overdue probation work in your scoped tracker as of {{dueOn}}.':'{{employeeName}}: Part {{part}} is due {{dueOn}}.',to:roles}]};
    await tx.execute(sql`select app.probation_definition_save(${companyId}::uuid,${id},'workflow',${json(definition)}::jsonb,false,0)`);
@@ -320,8 +321,30 @@ export async function sweepProbation(ctx:SessionContext,connection:import('./not
     else{if(today<=part.dueOn&&(today===addDaysIso(part.dueOn,-view.record.config.firstReminderDays)||today>=addDaysIso(part.dueOn,-view.record.config.dailyReminderDays)))events.add('review_reminder');if(part.dueOn===today)events.add('review_due');}
     for(const w of workflows)if(events.has(w.data.trigger.event))await tx.execute(sql`select app.probation_workflow_run(${c.id}::uuid,${part.id}::uuid,${w.id}::uuid,${part.revision},'Current-day automatic probation event')`);
    }
-   for(const outcome of view.outcomes)if(outcome.releasedAt&&outcome.state!=='completed')await applyProbationOutcomeTx(tx,ctx,outcome.id);
   });processed++;}catch{failed++;}
+ }
+ const released=await connection.withTenant(ctx,tx=>tx.execute<{id:string;companyId:string}>(sql`
+  select outcome.id,c.company_id as "companyId" from probation_outcome outcome
+  join probation_case c on c.id=outcome.case_id and c.tenant_id=outcome.tenant_id
+  join probation_activation active on active.tenant_id=c.tenant_id and active.company_id=c.company_id and active.enabled
+  where outcome.tenant_id=${ctx.tenantId}::uuid and outcome.released_at is not null and outcome.state<>'completed'
+   and outcome.failure is null
+   and app.probation_owns_legacy(c.employment_id) and not app.probation_case_source_moved(c.id)
+   and (outcome.outcome<>'confirm' or (c.data->>'endOn')::date<=${today}::date)
+  order by outcome.released_at,outcome.id limit 200`));
+ for(const outcome of released){
+  if(ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle',outcome.companyId))continue;
+  try{
+   const result=await connection.withTenant(ctx,tx=>applyProbationOutcomeTx(tx,ctx,outcome.id));
+   if(result.completed)processed++;
+  }catch(error){
+   const cause=error instanceof Error&&error.cause?error.cause:error;
+   if(error instanceof LeaveDependencyUnavailable&&error.reason==='busy'||cause&&typeof cause==='object'&&'code' in cause&&cause.code==='55P03')continue;
+   failed++;
+   try{
+    await connection.withTenant(ctx,tx=>tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The canonical Personnel or Offboarding update could not complete. Review the current source and record a GBS retry.')`));
+   }catch{ /* A concurrent pause or transfer retains its own guarded hold. */ }
+  }
  }
  return{processed,failed};
 }
@@ -330,6 +353,7 @@ async function applyProbationOutcomeTx(tx:Tx,ctx:SessionContext,outcomeId:string
  const[outcome]=await tx.execute<{id:string;caseId:string;partId:string;outcome:string;state:string;releasedAt:string|null}>(sql`select id,case_id as "caseId",part_id as "partId",outcome,state,released_at::text as "releasedAt" from probation_outcome where tenant_id=${ctx.tenantId}::uuid and id=${uuid(outcomeId)}::uuid`);
  if(!outcome||!outcome.releasedAt)throw new ProbationError('invalid','Release the authorised signed letter before applying the outcome.');
  if(outcome.state==='completed')return{completed:true};const view=await caseTx(tx,ctx,outcome.caseId),part=view.parts.find(p=>p.id===outcome.partId);if(!part)throw new ProbationError('invalid','Outcome source review unavailable.');
+ if(!view.runtimeEnabled||view.sourceMoved||view.sourceChanged||view.record.facts.resignationOn||view.record.facts.terminatedOn)throw new ProbationError('conflict','The current Personnel source requires outcome reconciliation.');
  let movement:string|null=null,handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
  if(outcome.outcome==='not_confirm'){const{createProbationOffboardingTx}=await import('../packs/lifecycle/service');handoff=await createProbationOffboardingTx(tx,ctx,view.record.id);}
  else if(outcome.outcome==='confirm'||outcome.outcome==='extend'){

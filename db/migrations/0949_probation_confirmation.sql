@@ -679,6 +679,9 @@ BEGIN
  SELECT * INTO c FROM probation_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND OR NOT(app.probation_storage_runner() OR app.probation_role(c.employment_id,'gbs') OR app.probation_role(c.employment_id,'pbp')) THEN RAISE EXCEPTION 'Probation withdrawal authority required';END IF;
  IF NOT EXISTS(SELECT 1 FROM employment WHERE id=c.employment_id AND tenant_id=c.tenant_id AND (resignation_date IS NOT NULL OR terminated_on IS NOT NULL)) THEN RAISE EXCEPTION 'Record the resignation or exit in Personnel first';END IF;
+ IF EXISTS(SELECT 1 FROM probation_outcome outcome WHERE outcome.case_id=c.id AND outcome.tenant_id=c.tenant_id AND outcome.released_at IS NOT NULL AND outcome.state<>'completed') THEN
+  RAISE EXCEPTION 'A released outcome and the recorded Personnel exit require reconciliation';
+ END IF;
  PERFORM app.probation_assert_case_runtime(c.id);
  UPDATE probation_case SET data=jsonb_set(data,'{state}','"withdrawn"'),revision=revision+1 WHERE id=c.id;
  UPDATE probation_occurrence SET state='cancelled' WHERE tenant_id=c.tenant_id AND case_id=c.id AND state IN('ready','scheduled');
@@ -782,7 +785,7 @@ BEGIN
  IF o.outcome='extend' AND (e.extended_confirmation_date::text IS DISTINCT FROM p_next->>'endOn' OR (c.data->>'extensionCount')::integer>=2 OR p_new_part IS NULL) THEN RAISE EXCEPTION 'The canonical extension movement has not completed';END IF;
  IF o.outcome='not_confirm' AND (p_handoff IS NULL OR NOT EXISTS(SELECT 1 FROM lc_v9_case x WHERE x.id=p_handoff AND x.tenant_id=c.tenant_id AND x.employment_id=e.id AND x.module='off' AND x.data->'facts'->>'caseType'='Non-confirmation' AND x.data->'facts'->>'lastDay'=c.data->>'endOn' AND x.data->>'probationSourceCaseId'=c.id::text)) THEN RAISE EXCEPTION 'The canonical company-initiated offboarding handoff has not completed';END IF;
  IF o.outcome IN('confirm','extend') AND NOT EXISTS(SELECT 1 FROM domain_event ev WHERE ev.tenant_id=c.tenant_id AND ev.aggregate_id=e.id AND ev.event_type='employment.info.updated' AND ev.actor_id IS NOT DISTINCT FROM app.current_user_id() AND ev.xmin::text::bigint=mod(txid_current(),4294967296) AND ev.payload->'movement'->>'remarks'=o.source_key AND ev.payload->'movement'->>'type'=CASE WHEN o.outcome='confirm' THEN 'confirmation' ELSE 'probationExtension' END AND CASE WHEN o.outcome='confirm' THEN ev.payload->'after'->>'confirmationDate'=c.data->>'endOn' ELSE ev.payload->'after'->>'extendedConfirmationDate'=p_next->>'endOn' END) THEN RAISE EXCEPTION 'Canonical Personnel movement receipt required in the same transaction';END IF;
- IF o.outcome IN('confirm','extend') THEN SELECT ev.id::text INTO p_movement FROM domain_event ev WHERE ev.tenant_id=c.tenant_id AND ev.aggregate_id=e.id AND ev.event_type='employment.info.updated' AND ev.xmin::text::bigint=mod(txid_current(),4294967296) AND ev.payload->'movement'->>'remarks'=o.source_key ORDER BY ev.created_at,ev.id LIMIT 1;END IF;
+ IF o.outcome IN('confirm','extend') THEN SELECT ev.id::text INTO p_movement FROM domain_event ev WHERE ev.tenant_id=c.tenant_id AND ev.aggregate_id=e.id AND ev.event_type='employment.info.updated' AND ev.xmin::text::bigint=mod(txid_current(),4294967296) AND ev.payload->'movement'->>'remarks'=o.source_key ORDER BY ev.occurred_at,ev.id LIMIT 1;END IF;
  UPDATE probation_personnel_tx_intent SET consumed=true WHERE tenant_id=c.tenant_id AND transaction_id=txid_current() AND backend_pid=pg_backend_pid() AND employment_id=e.id AND source_id=o.id;
  UPDATE probation_outcome SET state='completed',movement_ref=p_movement,handoff_ref=p_handoff,failure=NULL,updated_at=now() WHERE id=o.id;
  IF o.outcome='extend' THEN
@@ -801,7 +804,9 @@ BEGIN
  SELECT * INTO o FROM probation_outcome WHERE id=p_outcome AND tenant_id=app.current_tenant_id();SELECT * INTO c FROM probation_case WHERE id=o.case_id AND tenant_id=o.tenant_id;
  IF NOT(app.probation_role(c.employment_id,'gbs') OR app.probation_storage_runner()) THEN RAISE EXCEPTION 'Outcome retry authority required';END IF;
  PERFORM app.probation_assert_case_runtime(c.id);
- UPDATE probation_outcome SET failure=left(p_message,1000),updated_at=now() WHERE id=o.id AND state<>'completed';
+ UPDATE probation_outcome SET failure=left(p_message,1000),updated_at=now()
+ WHERE id=o.id AND tenant_id=o.tenant_id AND state<>'completed' AND failure IS DISTINCT FROM left(p_message,1000);
+ IF FOUND THEN PERFORM app.probation_audit(c.id,o.part_id,'outcome_processing_held',left(p_message,1000));END IF;
 END $$;
 CREATE FUNCTION app.probation_prepare_signing(p_part uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE p probation_part;c probation_case;kpis jsonb;source jsonb;policy jsonb;scoped_route jsonb;manager jsonb;
@@ -964,11 +969,21 @@ BEGIN
  RETURN jsonb_build_object('outcomeId',o.id,'employmentId',e.id,'kind',CASE WHEN o.outcome='confirm' THEN 'confirmation' ELSE 'probationExtension' END,'effectiveDate',CASE WHEN o.outcome='confirm' THEN c.data->>'endOn' ELSE (o.released_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date::text END,'endDate',new_end,'sourceKey',o.source_key,'completed',o.state='completed');
 END $$;
 CREATE FUNCTION app.probation_offboarding_intent(p_case uuid) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE c probation_case;o probation_outcome;
+DECLARE c probation_case;o probation_outcome;e employment;
 BEGIN
  PERFORM app.probation_write_lock();
- PERFORM app.access_workforce_write_lock();SELECT * INTO c FROM probation_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ -- Match the ordinary V9 writer's locks before touching Employment. A competing
+ -- writer may already hold its audit lock, so never wait while holding Workforce.
+ IF NOT pg_try_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text)) THEN RAISE EXCEPTION 'Offboarding audit writer is busy' USING ERRCODE='55P03';END IF;
+ IF NOT pg_try_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0)) THEN RAISE EXCEPTION 'Onboarding writer is busy' USING ERRCODE='55P03';END IF;
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0)) THEN RAISE EXCEPTION 'Offboarding writer is busy' USING ERRCODE='55P03';END IF;
+SELECT * INTO c FROM probation_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF NOT FOUND OR NOT(app.probation_role(c.employment_id,'gbs') OR app.probation_role(c.employment_id,'pbp') OR app.probation_storage_runner()) THEN RAISE EXCEPTION 'Scoped probation handoff authority required';END IF;PERFORM app.probation_assert_case_runtime(c.id);
+ SELECT * INTO e FROM employment WHERE id=c.employment_id AND tenant_id=c.tenant_id AND company_id=c.company_id FOR SHARE;
+ IF e.id IS NULL OR e.confirmation_date IS NOT NULL OR e.resignation_date IS NOT NULL OR e.terminated_on IS NOT NULL
+  OR coalesce(e.final_confirmation_date,e.extended_confirmation_date,e.probation_end_date,e.provisional_end_on)::text IS DISTINCT FROM c.data->>'endOn' THEN
+  RAISE EXCEPTION 'The canonical Personnel source changed before offboarding handoff';
+ END IF;
  SELECT * INTO o FROM probation_outcome WHERE case_id=c.id AND tenant_id=c.tenant_id AND outcome='not_confirm' AND released_at IS NOT NULL ORDER BY released_at DESC,id DESC LIMIT 1 FOR UPDATE;
  IF NOT FOUND OR NOT EXISTS(SELECT 1 FROM probation_file file JOIN employee_document document ON document.id=file.employee_document_id AND document.tenant_id=file.tenant_id WHERE file.id=o.letter_file_id AND file.tenant_id=c.tenant_id AND document.employment_id=c.employment_id) OR NOT app.probation_review_complete(o.part_id) OR c.data->>'state' NOT IN('outcome_pending','not_confirmed') THEN RAISE EXCEPTION 'Released current nonconfirmation letter and signed decision required';END IF;
  RETURN jsonb_build_object('caseId',c.id,'employmentId',c.employment_id,'type','Non-confirmation','noticeDate',(o.released_at AT TIME ZONE 'Asia/Kuala_Lumpur')::date,'lastDay',c.data->>'endOn','manualHandoff',false,'letterDocumentId',o.letter_file_id,'offboardingCaseId',o.handoff_ref);
@@ -1723,7 +1738,7 @@ BEGIN
  IF o.id IS NULL OR app.probation_role(c.employment_id,'gbs') IS NOT TRUE THEN RAISE EXCEPTION 'Current scoped GBS outcome retry authority required';END IF;PERFORM app.probation_assert_case_runtime(c.id);
  IF o.state='completed' THEN RETURN jsonb_build_object('completed',true,'queued',false);END IF;
  IF o.released_at IS NULL OR NOT EXISTS(SELECT 1 FROM probation_file f WHERE f.id=o.letter_file_id AND f.tenant_id=o.tenant_id AND f.employee_document_id IS NOT NULL) THEN RAISE EXCEPTION 'A released owner-rendered and filed letter is required before an outcome retry';END IF;
- UPDATE probation_outcome SET failure='Approved GBS retry is queued for the canonical owner executor.',updated_at=now() WHERE id=o.id;PERFORM app.probation_audit(c.id,o.part_id,'outcome_retry_requested');RETURN jsonb_build_object('completed',false,'queued',true);
+ UPDATE probation_outcome SET failure=NULL,updated_at=now() WHERE id=o.id;PERFORM app.probation_audit(c.id,o.part_id,'outcome_retry_requested');RETURN jsonb_build_object('completed',false,'queued',true);
 END $$;
 REVOKE ALL ON FUNCTION app.probation_request_outcome_retry(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.probation_request_outcome_retry(uuid) TO ai_hr_app;
@@ -2400,3 +2415,33 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND latest.action->>'contentRevision'=d.data->>'contentRevision')
 $$;
 REVOKE ALL ON FUNCTION app.probation_actor_just_signed(uuid) FROM PUBLIC,ai_hr_app;
+
+CREATE FUNCTION app.probation_required_workflow_status(p_company uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE company_name text;can_configure boolean;missing jsonb;summary_ready boolean;
+BEGIN
+ IF app.probation_active_user() IS NOT TRUE OR app.probation_company_entitled(p_company) IS NOT TRUE THEN RETURN NULL;END IF;
+ can_configure:=app.probation_config_admin(p_company);
+ IF can_configure IS NOT TRUE AND NOT EXISTS(
+  SELECT 1 FROM employment employee WHERE employee.tenant_id=app.current_tenant_id() AND employee.company_id=p_company
+   AND (app.probation_role(employee.id,'pbp') OR app.probation_role(employee.id,'gbs'))
+ ) THEN RETURN NULL;END IF;
+ SELECT company.legal_name INTO company_name FROM company WHERE id=p_company AND tenant_id=app.current_tenant_id() AND archived_at IS NULL;
+ IF company_name IS NULL THEN RETURN NULL;END IF;
+ WITH published AS(
+  SELECT w.data FROM probation_builder_definition w WHERE w.tenant_id=app.current_tenant_id() AND w.company_id=p_company AND w.kind='workflow' AND w.state='published'
+   AND app.probation_is_current_publication('workflow',w.id) AND coalesce(w.data->'conditions','{}')='{}'
+ ), required(event,ordinal) AS(
+  SELECT * FROM unnest(ARRAY['kpi_assigned','kpi_reminder','kpi_overdue','review_issued','review_reminder','review_due','approval_pending','letter_released','letter_signing_pending','letter_release_pending','letter_returned','overdue_summary']) WITH ORDINALITY
+ )
+ SELECT (SELECT coalesce(jsonb_agg(required.event ORDER BY required.ordinal),'[]') FROM required
+  WHERE NOT EXISTS(SELECT 1 FROM published active WHERE active.data->'trigger'->>'event'=required.event)),
+ (SELECT count(*)=1 AND coalesce(bool_and(
+   EXISTS(SELECT 1 FROM jsonb_array_elements(active.data->'steps') step WHERE step->'to'?'pbp')
+   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(active.data->'steps') step
+    WHERE (coalesce(step->>'subject','')||' '||coalesce(step->>'body',''))~'[{][{][[:space:]]*(employeeName|employeeCode|part|endOn)[[:space:]]*[}][}]')
+  ),false) FROM published active WHERE active.data->'trigger'->>'event'='overdue_summary') INTO missing,summary_ready;
+ RETURN jsonb_build_object('companyName',company_name,'canConfigure',can_configure,'missing',missing,'summaryReady',summary_ready);
+END $$;
+REVOKE ALL ON FUNCTION app.probation_required_workflow_status(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.probation_required_workflow_status(uuid) TO ai_hr_app;

@@ -4,13 +4,15 @@ import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {createAppUser} from './harness';
 import {newProbationPart} from '../lib/probation-model';
+import {addCalendarMonths,todayInKualaLumpur} from '../lib/hr-date';
+import {addDaysIso} from '../lib/roster-month';
 import {startReview,pendingManagerReviewsFor} from '../core/employment-review';
 import {recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx} from '../packs/document-signing/service';
 import {dispatchNotifications,notificationStillTargets} from '../core/notifications';
 import {createNoticeSweepAccess} from '../core/notice-projection';
 import {PROBATION_WORKFLOW_EVENTS} from '../lib/probation-workflow';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
-import {probationCase,saveProbationDraft,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
+import {probationCase,saveProbationDraft,applyProbationOutcome,requestProbationDateShift,applyProbationDateShift,previewProbationWorkflow,uploadProbationEvidence,actOnProbation,saveProbationLetterTemplate,probationLetterTemplateChoices,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,probationIntakeWorkspace,saveProbationIntakeDisposition,uploadProbationCutoverEvidence,readProbationCutoverEvidence,prepareProbationCutover,approveProbationCutover,activatePreparedProbationCutover,saveProbationWorkflow,probationRequiredWorkflowStatus,requestProbationLegacyReconciliation,approveProbationLegacyReconciliation,applyProbationLegacyReconciliation,probationIntakeCompanies,probationNavigationAccess,probationInbox,supersedeProbationDateShift,pauseProbationCompany,reconcileProbationDates,probationPublicationRetirement,retireProbationPublication,proposeProbationOfflineFinalDecision,adjudicateProbationOfflineFinalDecision} from '../packs/probation/service';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,sweepProbation} from '../packs/probation/service';
@@ -170,17 +172,21 @@ describe('durable Personal File source receipts',()=>{
 
 
 describe('real evaluation to signed letter custody',()=>{
- it('keeps pre-stage letters private, freezes actual signatures, holds changed Personnel and files only owner-rendered signed bytes',async()=>{
+ it.each(['confirm','extend','not_confirm','confirm-held'] as const)('preserves actual signatures and applies the canonical %s outcome once',async scenario=>{
+  const held=scenario==='confirm-held',outcome=held?'confirm':scenario;
+  const today=todayInKualaLumpur(),endOn=addDaysIso(today,outcome==='confirm'?-4:30);
   const{ids,staff,manager,peer}=await privateCase();
   await owner.db.execute(sql`update probation_configuration set data=jsonb_set(data,'{employeeCommentsRequired}','true') where id=${ids.form}::uuid`);await owner.db.execute(sql`update probation_rater_draft set data=jsonb_set(data,'{employeeComments}','""'::jsonb) where part_id=${ids.part}::uuid and rater='employee'`);
   await setReportingLine(admin,{subordinateEmploymentId:staff.employmentId,managerEmploymentId:manager.employmentId,lineType:'administrative',validFrom:'2026-01-01'});
   await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
-  await owner.db.execute(sql`update employment set probation_end_date='2026-12-31' where id=${staff.employmentId}::uuid`);
+  await owner.db.execute(sql`update employment set probation_end_date=${endOn}::date where id=${staff.employmentId}::uuid`);
+  await owner.db.execute(sql`update probation_case set data=data||jsonb_build_object('originalEndOn',${endOn}::text,'endOn',${endOn}::text) where id=${ids.caseId}::uuid`);
+  await owner.db.execute(sql`update probation_part set data=jsonb_set(data,'{dueOn}',to_jsonb(${endOn}::text)) where id=${ids.part}::uuid`);
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual canonical PBP opt-in'),(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual canonical GBS opt-in')`);
   const current=async(ctx:SessionContext)=>(await probationCase(ctx,ids.caseId)).parts[0];
   const assessment=Object.fromEntries(DEFAULT_PROBATION_FORM.criteria.map(c=>[c.id,{rating:3,evidence:'Observed fictional evidence for this criterion'}]));
   let part=await current(staff.ctx);await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employee:assessment}});part=await current(staff.ctx);await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_employee'});
-  part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:'2026-11-03',conductedBy:manager.userId,outcome:'confirm',justification:'Observed evidence supports confirmation'}});part=await current(manager.ctx);
+  part=await current(manager.ctx);await saveProbationDraft(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'lm',patch:{manager:assessment,reviewOn:today,conductedBy:manager.userId,outcome,justification:'Observed evidence supports the actual outcome',...(outcome==='extend'?{extensionMonths:3 as const}:{})}});part=await current(manager.ctx);
   await actOnProbation(manager.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'submit_manager',method:'typed',value:'Fictional Manager',consent:true});
   part=await current(staff.ctx);expect(part.canEditEmployeeComments).toBe(true);expect(part.canEditSelfAssessment).toBe(false);await expect(actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true})).rejects.toThrow();await saveProbationDraft(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,rater:'employee',patch:{employeeComments:'I acknowledge the submitted review.'}});part=await current(staff.ctx);const evaluation=part.signing!,evaluationAck=evaluation.document.route.steps.find(step=>step.role==='employee')!;await expect(withTenant(staff.ctx,tx=>recordDocumentSigningActionTx(tx,staff.ctx,{id:evaluation.id,stepId:evaluationAck.id,revision:evaluation.document.contentRevision,hash:evaluation.document.contentHash,action:'signed',comment:'A different unsaved acknowledgement',method:'typed',value:'Fictional Staff',consent:true}))).rejects.toThrow();await actOnProbation(staff.ctx,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'acknowledge',method:'typed',value:'Fictional Staff',consent:true});
   const workflowId=await saveProbationWorkflow(admin,{companyId:b.companyId,publish:true,expectedVersion:0,workflow:{
@@ -216,13 +222,17 @@ describe('real evaluation to signed letter custody',()=>{
   expect(finalSigning.document.actions.slice(0,priorSigning.document.actions.length)).toEqual(priorSigning.document.actions);
   expect(finalSigning.document.route.steps.find(step=>step.role==='lm')).toEqual(priorSigning.document.route.steps.find(step=>step.role==='lm'));
 
+  if(outcome==='extend'){
+   part=await current(admin);
+   await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'confirm_extension',months:3,reason:'PBP confirms the recorded three-month extension'});
+  }
   part=await current(admin);await actOnProbation(admin,{caseId:ids.caseId,partId:ids.part,revision:part.revision,command:'record'});
   const[decision]=await owner.db.execute<{id:string;revision:number}>(sql`select id,revision from probation_outcome where part_id=${ids.part}::uuid`);
-  const template=newProbationLetterTemplate('confirm',randomUUID(),'Approved fictional confirmation');template.unfinished=false;template.blocks=template.blocks.filter(b=>b.type!=='letterhead');template.blocks.find(b=>b.type==='text')!.text='Confirmation for {employeeName}. Acknowledged by {acknowledgedBy}.';
+  const template=newProbationLetterTemplate(outcome,randomUUID(),'Approved fictional probation outcome');template.unfinished=false;template.blocks=template.blocks.filter(b=>b.type!=='letterhead');template.blocks.find(b=>b.type==='text')!.text='Outcome for {employeeName}. Acknowledged by {acknowledgedBy}.';
   const templateId=await saveProbationLetterTemplate(admin,{companyId:b.companyId,template,publish:true,expectedVersion:0});
   expect(await probationLetterTemplateChoices(admin,decision.id)).toMatchObject({suggestedTemplateId:templateId,tie:false});
   await expect(probationLetterTemplateChoices(staff.ctx,decision.id)).rejects.toThrow();
-  {
+  if(scenario==='confirm'){
    const [companyB]=await owner.db.execute<{id:string}>(sql`insert into company(tenant_id,legal_name,country,currency) values(${b.tenantId}::uuid,'Fictional unrelated company B','MY','MYR') returning id`);
    const [departmentB]=await owner.db.execute<{id:string}>(sql`insert into department(tenant_id,company_id,name) values(${b.tenantId}::uuid,${companyB.id}::uuid,'Company B People') returning id`);
    const subjectB=await hireEmployee(admin,{person:{fullName:'Fictional company B employee',primaryEmail:randomUUID()+'@probation.example.test'},companyId:companyB.id,departmentId:departmentB.id,employmentType:'full_time',hiredOn:'2026-01-01'});
@@ -235,7 +245,6 @@ describe('real evaluation to signed letter custody',()=>{
    await expect(probationLetterTemplateChoices(reviewerB.ctx,decision.id)).rejects.toThrow();
    await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_cutover_snapshot(${companyB.id}::uuid)`))).rejects.toThrow();
   }
-
 
   let prepared=await prepareProbationLetter(admin,{outcomeId:decision.id,templateId,revision:decision.revision,edits:{}});
   await expect(readProbationLetter(staff.ctx,ids.caseId,prepared.partId)).rejects.toThrow();
@@ -251,8 +260,74 @@ describe('real evaluation to signed letter custody',()=>{
   const request=await releaseProbationLetter(admin,{caseId:ids.caseId,partId:prepared.partId,outcomeRevision:prepared.outcomeRevision,reason:'Release the approved signed letter'});expect(request).toMatch(/^[a-f0-9-]{36}$/);
   const[pending]=await owner.db.execute<{released:string|null;state:string}>(sql`select released_at::text as released,state from probation_outcome where id=${decision.id}::uuid`);expect(pending).toEqual({released:null,state:'release_requested'});expect((await readProbationLetter(admin,ids.caseId,prepared.partId)).canRelease).toBe(false);
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_file_save(${ids.caseId}::uuid,${ids.part}::uuid,'completed_part','forged.pdf',${Buffer.from('%PDF-forged')},1,'Forged completed source')`))).rejects.toThrow();
-  await sweepProbation({...admin,userId:undefined,roles:[],grants:undefined},owner);
+  if(held){
+   let changed=false;
+   const changeAfterFiling={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>{
+    const result=await owner.withTenant(ctx,run);
+    if(!changed){
+     const [release]=await owner.db.execute<{released:boolean}>(sql`select released_at is not null as released from probation_outcome where id=${decision.id}::uuid`);
+     if(release.released){
+      changed=true;
+      await owner.db.execute(sql`update employment set probation_end_date=${addDaysIso(endOn,2)}::date where id=${staff.employmentId}::uuid`);
+     }
+    }
+    return result;
+   }};
+   await sweepProbation(runner,changeAfterFiling);
+   expect(changed).toBe(true);
+   const [heldOutcome]=await owner.db.execute<{failure:string;movement:string|null}>(sql`select failure,movement_ref as movement from probation_outcome where id=${decision.id}::uuid`);
+   expect(heldOutcome).toMatchObject({failure:expect.stringContaining('canonical Personnel'),movement:null});
+   await owner.db.execute(sql`update employment set probation_end_date=${endOn}::date where id=${staff.employmentId}::uuid`);
+   expect(await applyProbationOutcome(admin,decision.id)).toEqual({completed:false,queued:true});
+   await sweepProbation(runner,owner);
+  }else if(outcome==='not_confirm'){
+   let releaseAudit!:()=>void,enteredAudit!:()=>void,contender:Promise<void>|undefined;
+   const auditGate=new Promise<void>(resolve=>{releaseAudit=resolve}),auditHeld=new Promise<void>(resolve=>{enteredAudit=resolve});
+   const competingV9={withTenant:async<T>(ctx:SessionContext,run:(tx:Tx)=>Promise<T>)=>{
+    const result=await owner.withTenant(ctx,run);
+    if(!contender){
+     const [filed]=await owner.db.execute<{ready:boolean}>(sql`select released_at is not null as ready from probation_outcome where id=${decision.id}::uuid`);
+     if(filed.ready){
+      contender=owner.withTenant(runner,async tx=>{
+       await tx.execute(sql`select pg_advisory_xact_lock(hashtext('audit-chain:'||${b.tenantId}::uuid::text))`);
+       enteredAudit();
+       await auditGate;
+      });
+      await auditHeld;
+     }
+    }
+    return result;
+   }};
+   try{
+    await sweepProbation(runner,competingV9);
+    expect(contender).toBeDefined();
+    const [waiting]=await owner.db.execute<{handoff:string|null;failure:string|null}>(sql`select handoff_ref as handoff,failure from probation_outcome where id=${decision.id}::uuid`);
+    expect(waiting).toEqual({handoff:null,failure:null});
+   }finally{releaseAudit();await contender;}
+   await sweepProbation(runner,owner);
+  }else await sweepProbation(runner,owner);
   const[file]=await owner.db.execute<{content:Buffer;documentId:string;released:string}>(sql`select f.content,f.employee_document_id as "documentId",o.released_at::text as released from probation_outcome o join probation_file f on f.id=o.letter_file_id where o.id=${decision.id}::uuid`);expect(file.documentId).toBeTruthy();expect(file.released).toBeTruthy();const{PDFDocument}=await import('pdf-lib');expect((await PDFDocument.load(file.content)).getPageCount()).toBeGreaterThan(0);
+  await sweepProbation(runner,owner);
+  const [effect]=await owner.db.execute<{outcomeState:string;caseState:string;movement:string|null;handoff:string|null;confirmed:string|null;extended:string|null}>(sql`
+   select outcome.state as "outcomeState",c.data->>'state' as "caseState",outcome.movement_ref as movement,outcome.handoff_ref as handoff,
+    e.confirmation_date::text as confirmed,e.extended_confirmation_date::text as extended
+   from probation_outcome outcome join probation_case c on c.id=outcome.case_id and c.tenant_id=outcome.tenant_id
+   join employment e on e.id=c.employment_id and e.tenant_id=c.tenant_id where outcome.id=${decision.id}::uuid`);
+  expect(effect.outcomeState).toBe('completed');
+  if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:expect.any(String),handoff:null,confirmed:endOn,extended:null});
+  if(outcome==='extend'){
+   expect(effect).toMatchObject({caseState:'extended',movement:expect.any(String),handoff:null,confirmed:null,extended:addDaysIso(addCalendarMonths(addDaysIso(endOn,1),3),-1)});
+   const later=await owner.db.execute<{cycle:number}>(sql`select (data->>'cycle')::integer as cycle from probation_part where case_id=${ids.caseId}::uuid and data->>'type'='3' and data->>'documentKind' is distinct from 'letter' order by cycle`);
+   expect(later).toEqual([{cycle:0},{cycle:1}]);
+  }
+  if(outcome==='not_confirm'){
+   expect(effect).toMatchObject({caseState:'not_confirmed',movement:null,handoff:expect.any(String),confirmed:null});
+   const handoffs=await owner.db.execute<{id:string;kind:string}>(sql`select id,data->'facts'->>'caseType' as kind from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'probationSourceCaseId'=${ids.caseId}`);
+   expect(handoffs).toEqual([{id:effect.handoff,kind:'Non-confirmation'}]);
+  }else{
+   const movement=await owner.db.execute<{id:string;actor:string|null}>(sql`select id,actor_id as actor from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated' and payload->'movement'->>'remarks'=${'probation:'+ids.caseId+':'+ids.part}`);
+   expect(movement).toEqual([{id:effect.movement,actor:null}]);
+  }
   const[review]=await owner.db.execute<{count:number}>(sql`select count(*)::integer as count from probation_file where part_id=${ids.part}::uuid and kind='completed_part' and employee_document_id is not null`);expect(review.count).toBe(1);
  });
 });
@@ -538,5 +613,26 @@ describe('native duplicate approval ownership',()=>{
    expect(await stillTargets(nextPbp!.employmentId)).toBe(false);
    if(smtpRecheck)expect(await smtpRecheck(nextPbp!.employmentId)).toBe(false);
   }
+ });
+});
+
+
+describe('required workflow publication warning',()=>{
+ it('reports only scoped readiness and requires an unconditioned active default',async()=>{
+  const {staff,peer}=await privateCase();
+  const initial=await probationRequiredWorkflowStatus(admin,b.companyId);
+  expect(initial).toMatchObject({companyName:'Acme Sdn Bhd',canConfigure:true,missing:PROBATION_WORKFLOW_EVENTS,summaryReady:false});
+  expect(await probationRequiredWorkflowStatus(staff.ctx,b.companyId)).toBeNull();
+  await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups,0,members}',${JSON.stringify([admin.userId,peer.userId])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${peer.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual scoped GBS viewer')`);
+  expect(await probationRequiredWorkflowStatus(peer.ctx,b.companyId)).toMatchObject({companyName:'Acme Sdn Bhd',canConfigure:false});
+  const definition={module:'probation' as const,name:'Fictional review due',status:'published' as const,description:'Actual company warning',
+   trigger:{event:'review_due' as const},steps:[{id:'notify',type:'notify' as const,subject:'Probation review due',body:'Open the scoped review.',to:['lm' as const]}]};
+  await saveProbationWorkflow(admin,{companyId:b.companyId,publish:true,expectedVersion:0,workflow:{...definition,id:randomUUID(),conditions:{departmentId:b.deptA}}});
+  expect((await probationRequiredWorkflowStatus(admin,b.companyId))?.missing).toContain('review_due');
+  const published=await saveProbationWorkflow(admin,{companyId:b.companyId,publish:true,expectedVersion:0,workflow:{...definition,id:randomUUID(),conditions:{}}});
+  expect((await probationRequiredWorkflowStatus(admin,b.companyId))?.missing).not.toContain('review_due');
+  await retireProbationPublication(admin,{companyId:b.companyId,kind:'workflow',versionId:published,expectedVersion:1,reason:'Replace the default wording'});
+  expect((await probationRequiredWorkflowStatus(peer.ctx,b.companyId))?.missing).toContain('review_due');
  });
 });
