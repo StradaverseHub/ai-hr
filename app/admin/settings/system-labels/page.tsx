@@ -1,3 +1,4 @@
+import {moduleFunctionAccess} from '@/core/module-action-access';
 import {organisationAccess,settingsAccess} from '@/core/organisation-access';
 import { SystemLabelImportTools } from '@/components/system-label-import-tools';
 import { getTranslations } from 'next-intl/server';
@@ -17,7 +18,7 @@ import { EMPLOYMENT_PROFILE_CATEGORIES, listAllProfileOptions } from '@/core/pro
 // pages that may reach into it directly are the pack's own routes, and this is not one of them. Importing
 // the facade is the sanctioned path and costs nothing; the alternative would have been a new entry on
 // test/pack-drift-allowlist.json, a list documented to only ever shrink.
-import { listGradeGroups } from '@/packs/leave/service';
+import { listGradeGroupsForMaintenance } from '@/packs/leave/service';
 import { Card, ErrorBanner, PageHeader } from '@/components/ui';
 import { SystemLabelsGrid, type GridKind, type GridRecord } from '@/components/system-labels-grid';
 import { GradeLabelsGrid } from '@/components/grade-labels-grid';
@@ -51,6 +52,10 @@ export default async function SystemLabelsPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const s=await requireAdmin();
+  const canViewGradeGroups=await moduleFunctionAccess(s,'leaveConfig.gradeGroups','view');
+  const groupControls={add:await moduleFunctionAccess(s,'leaveConfig.gradeGroups','add'),edit:await moduleFunctionAccess(s,'leaveConfig.gradeGroups','edit'),delete:await moduleFunctionAccess(s,'leaveConfig.gradeGroups','delete')};
+  // Group membership needs grade references independently of Job Grade maintenance View.
+  const groupGradeOptions=canViewGradeGroups?await listJobGrades(s):[];
   const canViewGrades=await settingsAccess(s,'view','systemLabels.jobGrade');
   const canViewOptions=await settingsAccess(s,'view','systemLabels.profileOptions');
   const settingsControls=async(key:string)=>({add:await settingsAccess(s,'add',key),edit:await settingsAccess(s,'edit',key),delete:await settingsAccess(s,'delete',key)});
@@ -88,7 +93,7 @@ export default async function SystemLabelsPage({
       // tenant's grade vocabulary, TENANT-WIDE (a group carries no company), and they must NOT pass
       // through company Criteria. Archived groups arrive too — the editor badges them and the editor is
       // the only surface that can un-archive one.
-      listGradeGroups(s),
+      canViewGradeGroups?listGradeGroupsForMaintenance(s):[],
       // Head choices are database-admin scoped independently of the common workspace's company cookie.
       labelMaintenanceHeadOptions(s),
     ]);
@@ -201,7 +206,7 @@ export default async function SystemLabelsPage({
    * with `includeArchived: true` for the Grades GRID (which must be able to show and restore an archived
    * row), so the filter has to happen here rather than being inherited from the read.
    */
-  const gradeGroupsSlot = (
+  const gradeGroupsSlot = canViewGradeGroups ? (
     // `min-w-0 flex-1` because the rail and the body are one flex row and every other body carries it —
     // without it this card renders at its content width beside a column of empty space. The rail entry
     // already prints the title and the count, so the SectionHeader the two previous homes wrapped this in
@@ -209,8 +214,9 @@ export default async function SystemLabelsPage({
     <div className="min-w-0 flex-1">
       <Card>
         <GradeGroupConfig
+          actionControls={groupControls}
           gradeGroups={gradeGroups.map((g) => ({ id: g.id, name: g.name, gradeIds: g.gradeIds, archived: g.archived }))}
-          grades={grades.filter((g) => g.archivedAt == null).map((g) => ({ id: g.id, name: g.name }))}
+          grades={groupGradeOptions.filter((g) => g.archivedAt == null).map((g) => ({ id: g.id, name: g.name }))}
           actions={{
             createGradeGroup: createGradeGroupAction,
             updateGradeGroup: updateGradeGroupAction,
@@ -219,7 +225,7 @@ export default async function SystemLabelsPage({
         />
       </Card>
     </div>
-  );
+  ) : undefined;
 
   // c9986927 — one rail entry per relocated organisation category, each with the SAME editor Profile
   // Options used (create / edit / delete / activate / deactivate, value immutability, the in-use delete

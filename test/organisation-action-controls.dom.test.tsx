@@ -5,12 +5,26 @@ import en from '../messages/en.json';
 import {GradeLabelsGrid} from '../components/grade-labels-grid';
 import {ProfileOptionsGrid} from '../components/profile-options-grid';
 import {SystemLabelsGrid,type GridRecord} from '../components/system-labels-grid';
+import {GradeGroupConfig} from '../components/leave/grade-group-config';
 vi.mock('next/navigation',()=>({useRouter:()=>({replace:vi.fn(),push:vi.fn(),refresh:vi.fn()}),useSearchParams:()=>new URLSearchParams()}));
 vi.mock('sonner',()=>({toast:{success:vi.fn(),error:vi.fn()}}));
 afterEach(cleanup);
 const wrap=(children:React.ReactNode)=><NextIntlClientProvider locale="en" timeZone="Asia/Kuala_Lumpur" messages={en}>{children}</NextIntlClientProvider>;
 const denied={add:false,edit:false,delete:false};
 describe('configuration controls reflect independent action decisions',()=>{
+ it.each([
+  {add:true,edit:false,delete:false},
+  {add:false,edit:false,delete:true},
+  {add:false,edit:false,delete:false},
+ ])('keeps Grade Group forms and independent Delete controls within %j',controls=>{
+  render(wrap(<GradeGroupConfig actionControls={controls} gradeGroups={[{id:'group-a',name:'Retained group',gradeIds:['grade-a'],archived:false}]} grades={[{id:'grade-a',name:'Grade A'}]} actions={{createGradeGroup:vi.fn(),updateGradeGroup:vi.fn(),deleteGradeGroup:vi.fn()}}/>));
+  fireEvent.click(screen.getByText('Retained group'));
+  expect(screen.getByDisplayValue('Retained group').matches(':disabled')).toBe(true);
+  expect(screen.getByPlaceholderText(en.admin.benefitScheme.groupNamePlaceholder).matches(':disabled')).toBe(!controls.add);
+  expect(screen.getByRole('button',{name:en.admin.benefitScheme.save})).toHaveProperty('disabled',true);
+  expect(screen.getByRole('button',{name:en.admin.benefitScheme.delete})).toHaveProperty('disabled',!controls.delete);
+  expect(screen.getByRole('button',{name:en.admin.benefitScheme.addGroup}).matches(':disabled')).toBe(!controls.add);
+ });
  it('retains selectable grade values while refusing Add/Edit/Delete controls',()=>{
   const save=vi.fn(),remove=vi.fn();render(wrap(<GradeLabelsGrid actionControls={denied} data={[{id:'grade-a',code:'A',name:'Grade A',description:null,rank:1,archivedAt:null,inUse:false}]} actions={{save,remove,restore:vi.fn()}}/>));
   expect(screen.getByDisplayValue('Grade A')).toHaveProperty('readOnly',true);
