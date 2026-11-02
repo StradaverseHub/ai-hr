@@ -54,3 +54,17 @@ it('does not invalidate authority on ordinary case outcome mutations that bump o
   expect(after.stamp).toBe(before.stamp);
  });
 });
+it('keeps draft-derived admission/completion private and rejects absent native sources',async()=>{
+ const id=randomUUID(),employment=randomUUID(),person=randomUUID();
+ for(const query of [
+  sql`select app.workforce_draft_active_admitted(${id}::uuid,'{}'::jsonb,${employment}::uuid,${person}::uuid)`,
+  sql`select app.workforce_draft_active_completed(${id}::uuid,'{}'::jsonb,${employment}::uuid,${person}::uuid)`,
+  sql`select app.workforce_draft_discard_begin(${id}::uuid,'{}'::jsonb)`,
+  sql`select app.workforce_draft_discard_completed(${id}::uuid,${id}::uuid,'{}'::jsonb)`,
+  sql`select app.workforce_draft_discard_port_record('{}'::jsonb)`,
+  sql`select app.workforce_draft_discard_port_needed(${id}::uuid)`,
+ ])await expect(withTenant(adminCtx(b),tx=>tx.execute(query))).rejects.toThrow();
+ expect(await ownerContext(tx=>tx`select app.workforce_draft_active_admitted(${id}::uuid,'{}'::jsonb,${employment}::uuid,${person}::uuid) as admitted,
+  app.workforce_draft_active_completed(${id}::uuid,'{}'::jsonb,${employment}::uuid,${person}::uuid) as completed,
+  app.workforce_draft_discard_completed(${id}::uuid,${id}::uuid,'{}'::jsonb) as discarded`)).toEqual([{admitted:false,completed:false,discarded:false}]);
+});

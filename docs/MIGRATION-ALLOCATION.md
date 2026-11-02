@@ -1014,3 +1014,14 @@ all source claims and the post-Noveri installation ledger before any release adm
 ## Leave/Attendance/Claims Action source continuation — 2 November 2026
 
 Reserved `0943_leave_attendance_claim_actions`, aggregate idx765 / when1793330000343, is journaled in its existing reserved position after0942 and before0944/0945; no existing entry was renumbered. Current source SHA256 `51d9d2aece45ae1c30642b6b813caa4c999e90c2e8870cbad11e6faac4f594b0`. Source installs dormant family definitions, exact maintained Claim configuration submenu and native Leave Type, Grade Groups and Schedule library guards, finite canonical Standard initialization, actual-root-removal Delete effect witnesses, finite actual-self/admin cancellation and confirmed reimbursement ports, private exact OLD/NEW/audit effects, and a deferred Claim payment guard consuming only genuine941 Payroll receipts. Operational Claim submission/decision, remaining Leave/Attendance, all related UI and whole module source closure remain incomplete. No publication sentinel or installed-history claim exists. Hosted exact-source qualification is required; re-audit actual ordered installation ledger and all coordinated reservations before admission. The separately reserved nine-item0946 and refreshed post-Noveri/nine watermark must be reconciled before eventual integration without rewriting applied history.
+
+
+### Private canonical Draft → Onboarding source contract (unapplied)
+
+0939 now exposes private finite active admission/completion and discard intent/completion APIs to
+0944 only. The actual bound hire source carries the access authority stamp. Discard completion
+requires the exact native discard-port DELETE receipt, queued actual source mutation and same-TX
+native discard audit; preparing alone cannot commit. The INVOKER trigger observes the actual closed
+port role and only materializes OLD source data when the private native-sync intent exists. Metadata,
+regular Personnel writes and runtime proof minting gain no authority. This source requires hosted
+native activation/discard plus 0944 exact derived-case qualification before any completion claim.

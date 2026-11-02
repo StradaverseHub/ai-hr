@@ -735,7 +735,7 @@ CREATE TRIGGER workforce_action_write BEFORE UPDATE OR DELETE ON employment FOR 
 -- Native draft activation consumes a source. It is not the distinct discard/Delete operation.
 CREATE TABLE app.workforce_hire_source (
  xact_id xid8 NOT NULL,tenant_id uuid NOT NULL REFERENCES public.tenant(id) ON DELETE CASCADE,user_id uuid NOT NULL,
- draft_id uuid NOT NULL,company_id uuid NOT NULL,source_hash text NOT NULL,source jsonb NOT NULL,
+ draft_id uuid NOT NULL,company_id uuid NOT NULL,source_hash text NOT NULL,source jsonb NOT NULL,authority_stamp text NOT NULL,
  employment_id uuid,consumed boolean NOT NULL DEFAULT false,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id),UNIQUE(xact_id,tenant_id,user_id,employment_id)
 );
 ALTER TABLE app.workforce_hire_source ENABLE ROW LEVEL SECURITY;
@@ -752,7 +752,7 @@ BEGIN
  hash:=encode(sha256(convert_to(to_jsonb(d)::text,'UTF8')),'hex');
  IF EXISTS(SELECT 1 FROM app.workforce_hire_source s WHERE s.xact_id=pg_current_xact_id() AND s.tenant_id=d.tenant_id AND s.user_id=app.current_user_id() AND (s.draft_id<>d.id OR s.source_hash<>hash OR s.employment_id IS NOT NULL)) THEN RAISE EXCEPTION 'Hire source changed' USING ERRCODE='40001';END IF;
  DELETE FROM app.workforce_hire_source WHERE tenant_id=d.tenant_id AND xact_id<pg_snapshot_xmin(pg_current_snapshot());
- INSERT INTO app.workforce_hire_source(xact_id,tenant_id,user_id,draft_id,company_id,source_hash,source,employment_id) VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),NULL) ON CONFLICT DO NOTHING;
+ INSERT INTO app.workforce_hire_source(xact_id,tenant_id,user_id,draft_id,company_id,source_hash,source,authority_stamp,employment_id) VALUES(pg_current_xact_id(),d.tenant_id,app.current_user_id(),d.id,p_company,hash,to_jsonb(d),app.access_function_authority_stamp(),NULL) ON CONFLICT DO NOTHING;
 END;
 $$;
 REVOKE ALL ON FUNCTION app.access_workforce_prepare_hire_source(uuid,uuid) FROM PUBLIC;
@@ -1850,3 +1850,98 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit WHERE audit.xact_id=proof.xact_id AND audit.tenant_id=proof.tenant_id AND audit.user_id=proof.user_id AND audit.draft_id=proof.draft_id AND audit.event_type IN ('employee-draft.created','employee-draft.updated')));
 $$;
 REVOKE ALL ON FUNCTION app.workforce_draft_saved_source_allowed(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+
+--> statement-breakpoint
+-- Finite derived Onboarding source proof. This does not admit general Personnel writes.
+CREATE FUNCTION app.workforce_draft_active_admitted(p_draft uuid,p_source jsonb,p_employment uuid,p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND app.access_workforce_consumed_draft(p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_hire_source proof JOIN public.employment employment ON employment.id=proof.employment_id AND employment.tenant_id=proof.tenant_id
+  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft
+   AND proof.source=p_source AND proof.employment_id=p_employment AND employment.person_id=p_person AND proof.authority_stamp=app.access_function_authority_stamp())
+ AND EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft AND to_jsonb(actual)=p_source);
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_active_admitted(uuid,jsonb,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_active_completed(p_draft uuid,p_source jsonb,p_employment uuid,p_person uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND app.access_workforce_consumed_draft(p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_hire_source proof JOIN public.employment employment ON employment.id=proof.employment_id AND employment.tenant_id=proof.tenant_id
+  WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft
+   AND proof.source=p_source AND proof.employment_id=p_employment AND employment.person_id=p_person AND proof.consumed AND proof.authority_stamp=app.access_function_authority_stamp())
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_mutation mutation WHERE mutation.xact_id=pg_current_xact_id() AND mutation.tenant_id=app.current_tenant_id() AND mutation.user_id=app.current_user_id() AND mutation.draft_id=p_draft AND mutation.operation='delete' AND mutation.before_source=p_source AND mutation.authority_stamp=app.access_function_authority_stamp())
+ AND NOT EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit JOIN public.domain_event event ON event.id=audit.event_id AND event.tenant_id=audit.tenant_id WHERE audit.xact_id=pg_current_xact_id() AND audit.tenant_id=app.current_tenant_id() AND audit.user_id=app.current_user_id() AND audit.draft_id=p_draft AND audit.event_type='employee-draft.completed' AND event.subject_employment_id=p_employment AND event.payload->>'employmentId'=p_employment::text AND event.payload->>'companyId'=p_source->>'company_id');
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_active_completed(uuid,jsonb,uuid,uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE TABLE app.workforce_draft_discard_source(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,source jsonb NOT NULL,authority_stamp text NOT NULL,UNIQUE(xact_id,tenant_id,user_id,draft_id));
+CREATE TABLE app.workforce_draft_discard_port(xact_id xid8 NOT NULL,tenant_id uuid NOT NULL,user_id uuid NOT NULL,draft_id uuid NOT NULL,source jsonb NOT NULL,PRIMARY KEY(xact_id,tenant_id,user_id,draft_id));
+REVOKE ALL ON app.workforce_draft_discard_source,app.workforce_draft_discard_port FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_begin(p_draft uuid,p_source jsonb) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actual public.employee_draft%ROWTYPE;result uuid;
+BEGIN
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO actual FROM public.employee_draft WHERE id=p_draft AND tenant_id=app.current_tenant_id() FOR UPDATE;
+ IF NOT FOUND OR to_jsonb(actual) IS DISTINCT FROM p_source OR NOT app.access_workforce_draft_delete_allowed(p_draft) OR NOT app.data_permission_draft_matches(actual.tenant_id,app.current_user_id(),p_source) OR app.access_function_authority_stamp() IS NULL THEN RAISE EXCEPTION 'Draft discard source unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_discard_source WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_discard_source(xact_id,tenant_id,user_id,draft_id,source,authority_stamp) VALUES(pg_current_xact_id(),actual.tenant_id,app.current_user_id(),actual.id,p_source,app.access_function_authority_stamp()) ON CONFLICT(xact_id,tenant_id,user_id,draft_id) DO NOTHING RETURNING id INTO result;
+ IF result IS NULL THEN SELECT id INTO result FROM app.workforce_draft_discard_source WHERE xact_id=pg_current_xact_id() AND tenant_id=actual.tenant_id AND user_id=app.current_user_id() AND draft_id=actual.id AND source=p_source AND authority_stamp=app.access_function_authority_stamp();END IF;
+ IF result IS NULL THEN RAISE EXCEPTION 'Draft discard source changed' USING ERRCODE='42501';END IF;
+ RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_begin(uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+-- Only the closed native port's actual DELETE trigger may record this receipt. The outer trigger
+-- is INVOKER so it observes the real port current_user before entering the private recorder.
+CREATE FUNCTION app.workforce_draft_discard_port_record(p_source jsonb) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF p_source->>'tenant_id' IS DISTINCT FROM app.current_tenant_id()::text OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Draft discard port source unavailable' USING ERRCODE='42501';END IF;
+ DELETE FROM app.workforce_draft_discard_port WHERE xact_id<pg_snapshot_xmin(pg_current_snapshot());
+ INSERT INTO app.workforce_draft_discard_port VALUES(pg_current_xact_id(),app.current_tenant_id(),app.current_user_id(),(p_source->>'id')::uuid,p_source);
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_port_record(jsonb) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_discard_port_record(jsonb) TO ai_hr_draft_discard_port;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_port_needed(p_draft uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.workforce_draft_discard_source proof WHERE proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft);
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_port_needed(uuid) FROM PUBLIC,ai_hr_app;
+GRANT EXECUTE ON FUNCTION app.workforce_draft_discard_port_needed(uuid) TO ai_hr_draft_discard_port;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_port_trigger() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF current_user='ai_hr_draft_discard_port' THEN
+  IF app.workforce_draft_discard_port_needed(OLD.id) THEN PERFORM app.workforce_draft_discard_port_record(to_jsonb(OLD));END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_port_trigger() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER workforce_draft_discard_port AFTER DELETE ON public.employee_draft FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_discard_port_trigger();
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_completed(p_intent uuid,p_draft uuid,p_source jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.principal_snapshot_current() AND app.data_permission_draft_matches(app.current_tenant_id(),app.current_user_id(),p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_discard_source proof WHERE proof.id=p_intent AND proof.xact_id=pg_current_xact_id() AND proof.tenant_id=app.current_tenant_id() AND proof.user_id=app.current_user_id() AND proof.draft_id=p_draft AND proof.source=p_source AND proof.authority_stamp=app.access_function_authority_stamp())
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_discard_port port WHERE port.xact_id=pg_current_xact_id() AND port.tenant_id=app.current_tenant_id() AND port.user_id=app.current_user_id() AND port.draft_id=p_draft AND port.source=p_source)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_mutation mutation WHERE mutation.xact_id=pg_current_xact_id() AND mutation.tenant_id=app.current_tenant_id() AND mutation.user_id=app.current_user_id() AND mutation.draft_id=p_draft AND mutation.operation='delete' AND mutation.before_source=p_source AND mutation.authority_stamp=app.access_function_authority_stamp())
+ AND NOT EXISTS(SELECT 1 FROM public.employee_draft actual WHERE actual.tenant_id=app.current_tenant_id() AND actual.id=p_draft)
+ AND EXISTS(SELECT 1 FROM app.workforce_draft_audit audit WHERE audit.xact_id=pg_current_xact_id() AND audit.tenant_id=app.current_tenant_id() AND audit.user_id=app.current_user_id() AND audit.draft_id=p_draft AND audit.event_type='employee-draft.discarded');
+$$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_completed(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.workforce_draft_discard_complete_guard() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NOT app.workforce_draft_discard_completed(NEW.id,NEW.draft_id,NEW.source) THEN RAISE EXCEPTION 'Draft discard source effects incomplete' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.workforce_draft_discard_complete_guard() FROM PUBLIC,ai_hr_app;
+CREATE CONSTRAINT TRIGGER workforce_draft_discard_complete AFTER INSERT ON app.workforce_draft_discard_source DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.workforce_draft_discard_complete_guard();
