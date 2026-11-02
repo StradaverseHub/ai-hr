@@ -509,7 +509,8 @@
     "functionAccess": "Truy cập chức năng",
     "securityCenter": "Trung tâm bảo mật",
     "aiManagementInventory": "Danh mục AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "passwordPolicy": "Chính sách mật khẩu"
   },
   "dashboard": {
     "title": "Bảng điều khiển",
@@ -26866,7 +26867,7 @@
       "invalidLogin": "Mã tổ chức, tên đăng nhập hoặc mật khẩu không đúng, hoặc tài khoản không khả dụng.",
       "invalidChallenge": "Liên kết thiết lập hoặc khôi phục đã hết hạn hoặc không còn hợp lệ. Vui lòng bắt đầu lại.",
       "invalidCode": "Mã không đúng, hết hạn hoặc đã dùng. Thử mã xác thực tiếp theo hoặc mã khôi phục chưa dùng.",
-      "passwordPolicy": "Dùng mật khẩu chưa từng sử dụng, có ít nhất 14 ký tự, không chứa tên đăng nhập hoặc email.",
+      "passwordPolicy": "Chọn mật khẩu đáp ứng chính sách của tổ chức và không chứa tên đăng nhập hoặc email của bạn.",
       "passwordMismatch": "Mật khẩu không khớp.",
       "rateLimited": "Quá nhiều lần thử. Vui lòng đợi rồi thử lại.",
       "unavailable": "Đăng nhập hoặc khôi phục tạm thời không khả dụng. Thử lại sau hoặc liên hệ quản trị viên.",
@@ -32842,6 +32843,10 @@
     "users": {
       "title": "Người dùng",
       "description": "Tìm người dùng và quản lý vai trò, lời mời cùng quyền truy cập tài khoản."
+    },
+    "passwordPolicy": {
+      "title": "Chính sách mật khẩu",
+      "description": "Quy tắc mới áp dụng khi tạo, đổi hoặc đặt lại mật khẩu. Đăng nhập qua tổ chức bên ngoài giữ chính sách của nhà cung cấp."
     }
   },
   "payFormula": {
@@ -33610,7 +33615,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "Bảo mật mật khẩu",
+    "title": "Chính sách mật khẩu",
     "description": "Thiết lập đổi mật khẩu HR định kỳ. Quản lý mật khẩu Microsoft và Truy nhập có điều kiện trong Entra.",
     "enabled": "Yêu cầu đổi mật khẩu định kỳ",
     "interval": "Đổi sau mỗi",
@@ -33628,6 +33633,35 @@
       "conflict": "Quản trị viên khác đã đổi chính sách. Tải lại trước khi lưu.",
       "forbidden": "Bạn không có quyền thay đổi chính sách này.",
       "unavailable": "Không thể truy cập cài đặt mật khẩu. Hãy thử lại."
+    },
+    "full": {
+      "minLength": "Độ dài mật khẩu tối thiểu",
+      "maxLength": "Độ dài mật khẩu tối đa",
+      "uppercase": "Yêu cầu chữ hoa",
+      "lowercase": "Yêu cầu chữ thường",
+      "numbers": "Yêu cầu chữ số",
+      "special": "Yêu cầu ký tự đặc biệt",
+      "historyEnabled": "Ngăn dùng lại mật khẩu cũ",
+      "historyCount": "Số mật khẩu cũ cần nhớ",
+      "lockoutEnabled": "Khóa tài khoản sau các lần đăng nhập lỗi",
+      "failedAttempts": "Số lần lỗi liên tiếp",
+      "autoUnlock": "Tự động mở khóa tài khoản",
+      "unlockMinutes": "Mở khóa sau (phút)",
+      "forceFirstChange": "Bắt buộc đổi mật khẩu ở lần đăng nhập đầu",
+      "firstResetVerification": "Ứng dụng xác thực hoặc mã khôi phục khi đăng nhập lần đầu hay đặt lại",
+      "complexity": "Độ phức tạp và thời hạn",
+      "expiry": "Thời hạn mật khẩu",
+      "account": "Bảo vệ tài khoản",
+      "firstLogin": "Đăng nhập lần đầu và đặt lại",
+      "manualUnlock": "Chỉ quản trị viên được phép mới có thể mở khóa khi tắt mở khóa tự động.",
+      "legacy": "Quy tắc xác thực hiện tại vẫn áp dụng đến khi lưu. Khi lưu, các giá trị hiển thị thay thế quy tắc độ phức tạp và lịch sử cũ.",
+      "mfa": "Yêu cầu xác thực cho đăng nhập thông thường vẫn áp dụng. Thiết lập này không tắt MFA bắt buộc hay cho phép khôi phục chỉ qua email.",
+      "effect": "Quy tắc mới áp dụng khi tạo, đổi hoặc đặt lại mật khẩu. Đăng nhập qua tổ chức bên ngoài giữ chính sách của nhà cung cấp.",
+      "unlockTitle": "Mở khóa tài khoản mật khẩu",
+      "unlockUser": "Tài khoản người dùng",
+      "unlockChoose": "Chọn người dùng",
+      "unlockAction": "Mở khóa tài khoản",
+      "unlocked": "Đã mở khóa tài khoản."
     }
   }
 }

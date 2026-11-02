@@ -1,5 +1,4 @@
-import { readPasswordPolicy } from '@/core/password-policy';
-import { PasswordPolicyForm } from './password-policy-form';
+import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
@@ -18,11 +17,11 @@ export default async function LoginPresentationPage() {
     getTranslations('loginPresentation'), readLoginPresentationEditor(s), loginPresentationTenantId(), readSessionPolicyEditor(s),
   ]);
   const tIdle = await getTranslations('sessionTimeout');
-  const passwordPolicy = internalSelected() ? await readPasswordPolicy(s) : null;
+  const tPassword = await getTranslations('passwordPolicy');
   return <div className="mx-auto max-w-3xl space-y-6">
     <PageHeader title={t('settingsTitle')} description={t('settingsDescription')}/>
     <p className="text-sm leading-relaxed text-muted-foreground">{t(publishedTenant === s.tenantId ? 'activeOrganization' : 'otherOrganization')}</p>
-    {passwordPolicy && <Card className="p-6"><PasswordPolicyForm {...passwordPolicy}/></Card>}
+    {internalSelected() && <Card className="p-6"><Link href="/admin/security-center/password-policy" className="text-primary underline">{tPassword('title')}</Link></Card>}
     <Card className="p-6"><LoginPresentationForm presentation={view.presentation} revision={view.revision}/></Card>
     <Card className="p-6">
       <SessionPolicyForm idleTimeoutMinutes={policy.idleTimeoutMinutes} revision={policy.revision}/>

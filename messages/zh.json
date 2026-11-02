@@ -509,7 +509,8 @@
     "functionAccess": "功能访问",
     "securityCenter": "安全中心",
     "aiManagementInventory": "AI 清单",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "passwordPolicy": "密码策略"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -26866,7 +26867,7 @@
       "invalidLogin": "组织、用户名或密码不正确，或此账号不可用。",
       "invalidChallenge": "此设置或恢复链接已过期或失效，请重新开始。",
       "invalidCode": "此验证码不正确、已过期或已使用，请尝试下一个身份验证码或未使用的恢复码。",
-      "passwordPolicy": "请使用从未用过的密码，至少 14 个字符，且不包含用户名或电子邮箱。",
+      "passwordPolicy": "请选择符合组织密码策略且不包含用户名和电子邮箱的密码。",
       "passwordMismatch": "两次密码不一致。",
       "rateLimited": "尝试次数过多，请稍后重试。",
       "unavailable": "登录或密码恢复暂时不可用，请稍后重试或联系管理员。",
@@ -32842,6 +32843,10 @@
     "users": {
       "title": "用户",
       "description": "查找用户并管理角色、邀请和账户访问权限。"
+    },
+    "passwordPolicy": {
+      "title": "密码策略",
+      "description": "创建、更改或重置密码时应用新的复杂度规则。外部组织登录仍采用其提供商的密码策略。"
     }
   },
   "payFormula": {
@@ -33610,7 +33615,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "密码安全",
+    "title": "密码策略",
     "description": "设置 HR 密码的定期更改。在 Entra 中管理 Microsoft 密码和条件访问。",
     "enabled": "要求定期更改密码",
     "interval": "更改间隔",
@@ -33628,6 +33633,35 @@
       "conflict": "其他管理员已更改此策略。请刷新后再保存。",
       "forbidden": "您无权更改此策略。",
       "unavailable": "密码设置暂不可用。请重试。"
+    },
+    "full": {
+      "minLength": "密码最小长度",
+      "maxLength": "密码最大长度",
+      "uppercase": "必须包含大写字母",
+      "lowercase": "必须包含小写字母",
+      "numbers": "必须包含数字",
+      "special": "必须包含特殊字符",
+      "historyEnabled": "禁止重复使用历史密码",
+      "historyCount": "记住的历史密码数量",
+      "lockoutEnabled": "登录失败后锁定账户",
+      "failedAttempts": "连续失败次数",
+      "autoUnlock": "自动解锁账户",
+      "unlockMinutes": "解锁等待时间（分钟）",
+      "forceFirstChange": "首次登录时强制修改密码",
+      "firstResetVerification": "首次登录或重置时使用验证器或恢复码",
+      "complexity": "复杂度和有效期",
+      "expiry": "密码有效期",
+      "account": "账户保护",
+      "firstLogin": "首次登录和重置",
+      "manualUnlock": "关闭自动解锁后，只有获授权的管理员才能解锁账户。",
+      "legacy": "保存前继续执行现有验证规则。保存将以所示值替换之前的复杂度和历史密码规则。",
+      "mfa": "正常登录的现有验证器要求继续适用。此设置不会关闭强制多因素验证，也不允许仅凭电子邮件恢复账户。",
+      "effect": "创建、更改或重置密码时应用新的复杂度规则。外部组织登录仍采用其提供商的密码策略。",
+      "unlockTitle": "解锁密码账户",
+      "unlockUser": "用户账户",
+      "unlockChoose": "选择用户",
+      "unlockAction": "解锁账户",
+      "unlocked": "账户已解锁。"
     }
   }
 }

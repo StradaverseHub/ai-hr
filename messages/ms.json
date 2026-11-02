@@ -509,7 +509,8 @@
     "functionAccess": "Akses Fungsi",
     "securityCenter": "Pusat Keselamatan",
     "aiManagementInventory": "Inventori AI",
-    "entra": "Microsoft Entra ID"
+    "entra": "Microsoft Entra ID",
+    "passwordPolicy": "Dasar Kata Laluan"
   },
   "dashboard": {
     "title": "Papan pemuka",
@@ -26866,7 +26867,7 @@
       "invalidLogin": "Kod organisasi, nama pengguna atau kata laluan tidak betul, atau akaun tidak tersedia.",
       "invalidChallenge": "Persediaan atau pautan pemulihan ini telah tamat tempoh atau tidak sah. Mulakan semula.",
       "invalidCode": "Kod tidak betul, tamat tempoh atau telah digunakan. Cuba kod pengesah seterusnya atau kod pemulihan yang belum digunakan.",
-      "passwordPolicy": "Gunakan kata laluan yang belum pernah digunakan, sekurang-kurangnya 14 aksara tanpa nama pengguna atau e-mel.",
+      "passwordPolicy": "Pilih kata laluan yang memenuhi dasar kata laluan organisasi anda tanpa nama pengguna dan e-mel anda.",
       "passwordMismatch": "Kata laluan tidak sepadan.",
       "rateLimited": "Terlalu banyak percubaan. Sila tunggu sebelum mencuba lagi.",
       "unavailable": "Log masuk atau pemulihan tidak tersedia buat sementara waktu. Cuba kemudian atau hubungi pentadbir.",
@@ -32842,6 +32843,10 @@
     "users": {
       "title": "Pengguna",
       "description": "Cari pengguna dan urus peranan, jemputan serta akses akaun."
+    },
+    "passwordPolicy": {
+      "title": "Dasar Kata Laluan",
+      "description": "Peraturan kerumitan baharu terpakai apabila kata laluan dicipta, ditukar atau ditetapkan semula. Log masuk organisasi luar mengekalkan dasar penyedia mereka."
     }
   },
   "payFormula": {
@@ -33610,7 +33615,7 @@
     }
   },
   "passwordPolicy": {
-    "title": "Keselamatan kata laluan",
+    "title": "Dasar Kata Laluan",
     "description": "Tetapkan pertukaran berkala untuk kata laluan HR. Urus kata laluan Microsoft dan Akses Bersyarat dalam Entra.",
     "enabled": "Wajibkan penukaran kata laluan berkala",
     "interval": "Tukar setiap",
@@ -33628,6 +33633,35 @@
       "conflict": "Pentadbir lain mengubah dasar ini. Muat semula sebelum menyimpan.",
       "forbidden": "Anda tiada kebenaran untuk mengubah dasar ini.",
       "unavailable": "Tetapan kata laluan tidak tersedia. Cuba lagi."
+    },
+    "full": {
+      "minLength": "Panjang minimum kata laluan",
+      "maxLength": "Panjang maksimum kata laluan",
+      "uppercase": "Wajib huruf besar",
+      "lowercase": "Wajib huruf kecil",
+      "numbers": "Wajib nombor",
+      "special": "Wajib aksara khas",
+      "historyEnabled": "Cegah penggunaan semula kata laluan lama",
+      "historyCount": "Bilangan kata laluan lama diingati",
+      "lockoutEnabled": "Kunci akaun selepas percubaan gagal",
+      "failedAttempts": "Percubaan gagal berturut-turut",
+      "autoUnlock": "Buka kunci akaun secara automatik",
+      "unlockMinutes": "Buka kunci selepas (minit)",
+      "forceFirstChange": "Wajib tukar kata laluan pada log masuk pertama",
+      "firstResetVerification": "Pengesah atau kod pemulihan pada log masuk pertama atau tetapan semula",
+      "complexity": "Kerumitan dan tamat tempoh",
+      "expiry": "Tamat tempoh kata laluan",
+      "account": "Perlindungan akaun",
+      "firstLogin": "Log masuk pertama dan tetapan semula",
+      "manualUnlock": "Hanya pentadbir yang dibenarkan boleh membuka kunci apabila pembukaan automatik dimatikan.",
+      "legacy": "Peraturan semasa kekal sehingga konfigurasi ini disimpan. Penyimpanan menggantikan peraturan kerumitan dan sejarah dengan nilai yang dipaparkan.",
+      "mfa": "Keperluan pengesah log masuk biasa kekal. Tetapan ini tidak mematikan MFA wajib atau membenarkan pemulihan melalui e-mel sahaja.",
+      "effect": "Peraturan kerumitan baharu terpakai apabila kata laluan dicipta, ditukar atau ditetapkan semula. Log masuk organisasi luar mengekalkan dasar penyedia mereka.",
+      "unlockTitle": "Buka kunci akaun kata laluan",
+      "unlockUser": "Akaun pengguna",
+      "unlockChoose": "Pilih pengguna",
+      "unlockAction": "Buka kunci akaun",
+      "unlocked": "Kunci akaun dibuka."
     }
   }
 }

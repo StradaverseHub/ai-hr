@@ -906,3 +906,14 @@ index 756, after `0898` at 755. The complete main/alpha prefix through `0876` / 
 This is an owned aggregate source reservation, not adoption of either member's gate evidence.
 Recheck the then-live watermark and release order before integration or installation; later accepted
 migrations can require reallocation of both uninstalled identities. No lease or staging operation is claimed.
+
+## Approved Password Policy manual unlock — 2 November 2026 (provisional)
+
+`codex/approved-board-security-20261102` appends `0935_password_account_unlock` at
+when1793330000335, index757 on its own main0899 source journal. Parent coordination scanned
+local/origin journals and found claims through0934 / when1793330000334; no other approved-item
+worker is allocating migrations. SQL SHA256 `3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa`.
+This helper preserves revoked raw identity access and checks current tenant/group-administration
+authority under the canonical access lock. Recheck all claims, aggregate journal and live watermark
+before integration/installation; adjust the unapplied index on aggregation. This is source allocation,
+with no deployment or installation authorization.
